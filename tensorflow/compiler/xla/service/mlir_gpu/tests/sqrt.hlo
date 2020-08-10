@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+// RUN: xla-gpu-opt %s | FileCheck %s
 HloModule Sqrt
 
 ENTRY %Sqrt (x: f32[2,2]) -> f32[2,2] {
@@ -7,6 +7,6 @@ ENTRY %Sqrt (x: f32[2,2]) -> f32[2,2] {
 }
 
 // CHECK: func @sqrt(%[[ARG0:.*]]: [[TYPE:.*]], %[[ARG1:.*]]: [[TYPE]]) {
-// CHECK:   "xla_lhlo.sqrt"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
+// CHECK:   "lmhlo.sqrt"(%[[ARG0]], %[[ARG1]]) : ([[TYPE]], [[TYPE]]) -> ()
 // CHECK: }
 

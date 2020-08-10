@@ -259,8 +259,6 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer_value_files",
                           BenchmarkParam::Create<std::string>(""));
-  default_params.AddParam("use_legacy_nnapi",
-                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("require_full_delegation",
                           BenchmarkParam::Create<bool>(false));
@@ -293,7 +291,13 @@ void BenchmarkTfLiteModel::CleanUp() {
   inputs_data_.clear();
 }
 
-BenchmarkTfLiteModel::~BenchmarkTfLiteModel() { CleanUp(); }
+BenchmarkTfLiteModel::~BenchmarkTfLiteModel() {
+  CleanUp();
+
+  // Destory the owned interpreter earlier than other objects (specially
+  // 'owned_delegates_').
+  interpreter_.reset();
+}
 
 std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
   std::vector<Flag> flags = BenchmarkModel::GetFlags();
@@ -318,7 +322,6 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "input_layer_value_range of the input_name will be ignored. The file "
           "format is binary and it should be array format or null separated "
           "strings format."),
-      CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
       CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
       CreateFlag<bool>("require_full_delegation", &params_,
                        "require delegate to run the entire graph"),
@@ -346,39 +349,32 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
 
 void BenchmarkTfLiteModel::LogParams() {
   BenchmarkModel::LogParams();
-  TFLITE_LOG(INFO) << "Graph: [" << params_.Get<std::string>("graph") << "]";
-  TFLITE_LOG(INFO) << "Input layers: ["
-                   << params_.Get<std::string>("input_layer") << "]";
-  TFLITE_LOG(INFO) << "Input shapes: ["
-                   << params_.Get<std::string>("input_layer_shape") << "]";
-  TFLITE_LOG(INFO) << "Input value ranges: ["
-                   << params_.Get<std::string>("input_layer_value_range")
-                   << "]";
-  TFLITE_LOG(INFO) << "Input layer values files: ["
-                   << params_.Get<std::string>("input_layer_value_files")
-                   << "]";
-#if defined(__ANDROID__)
-  TFLITE_LOG(INFO) << "Use legacy nnapi : ["
-                   << params_.Get<bool>("use_legacy_nnapi") << "]";
-#endif
-  TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
-                   << "]";
-  TFLITE_LOG(INFO) << "Require full delegation : ["
-                   << params_.Get<bool>("require_full_delegation") << "]";
-  TFLITE_LOG(INFO) << "Enable op profiling: ["
-                   << params_.Get<bool>("enable_op_profiling") << "]";
-  TFLITE_LOG(INFO) << "Max profiling buffer entries: ["
-                   << params_.Get<int32_t>("max_profiling_buffer_entries")
-                   << "]";
-  TFLITE_LOG(INFO) << "CSV File to export profiling data to: ["
-                   << params_.Get<std::string>("profiling_output_csv_file")
-                   << "]";
-  TFLITE_LOG(INFO) << "Enable platform-wide tracing: ["
-                   << params_.Get<bool>("enable_platform_tracing") << "]";
+  const bool verbose = params_.Get<bool>("verbose");
+  // Always log the value of --graph.
+  LOG_BENCHMARK_PARAM(std::string, "graph", "Graph", /*verbose*/ true);
+  LOG_BENCHMARK_PARAM(std::string, "input_layer", "Input layers", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "input_layer_shape", "Input shapes",
+                      verbose);
+  LOG_BENCHMARK_PARAM(std::string, "input_layer_value_range",
+                      "Input value ranges", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "input_layer_value_files",
+                      "Input value files", verbose);
+
+  LOG_BENCHMARK_PARAM(bool, "allow_fp16", "Allow fp16", verbose);
+  LOG_BENCHMARK_PARAM(bool, "require_full_delegation",
+                      "Require full delegation", verbose);
+  LOG_BENCHMARK_PARAM(bool, "enable_op_profiling", "Enable op profiling",
+                      verbose);
+  LOG_BENCHMARK_PARAM(int32_t, "max_profiling_buffer_entries",
+                      "Max profiling buffer entries", verbose);
+  LOG_BENCHMARK_PARAM(std::string, "profiling_output_csv_file",
+                      "CSV File to export profiling data to", verbose);
+  LOG_BENCHMARK_PARAM(bool, "enable_platform_tracing",
+                      "Enable platform-wide tracing", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
-    delegate_provider->LogParams(params_);
+    delegate_provider->LogParams(params_, verbose);
   }
 }
 
@@ -613,6 +609,7 @@ TfLiteStatus BenchmarkTfLiteModel::InitInterpreter() {
     std::unique_ptr<tflite::CpuBackendContext> cpu_backend_context(
         new tflite::CpuBackendContext());
     cpu_backend_context->SetUseCaching(true);
+    cpu_backend_context->SetMaxNumThreads(num_threads);
     external_context_->set_internal_backend_context(
         std::move(cpu_backend_context));
     interpreter_->SetExternalContext(kTfLiteCpuBackendContext,
@@ -632,7 +629,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   profiling_listener_ = MayCreateProfilingListener();
   if (profiling_listener_) AddListener(profiling_listener_.get());
 
-  interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   owned_delegates_.clear();
@@ -647,26 +643,41 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
                         << " delegate.";
       return kTfLiteError;
     } else {
-      bool fully_delegated = true;
-      if (interpreter_->execution_plan().size() != 1) {
-        fully_delegated = false;
-      } else {
-        int first_node_id = interpreter_->execution_plan()[0];
-        const TfLiteNode first_node =
-            interpreter_->node_and_registration(first_node_id)->first;
-        if (delegate.get() != first_node.delegate) {
-          fully_delegated = false;
+      // Ideally, such delegate info should already be computed when the
+      // delegate is being applied to the model graph.
+      int num_delegated_kernels = 0;
+      for (int i = 0; i < interpreter_->execution_plan().size(); ++i) {
+        int node_id = interpreter_->execution_plan()[i];
+        const TfLiteNode& node =
+            interpreter_->node_and_registration(node_id)->first;
+        if (delegate.get() == node.delegate) {
+          num_delegated_kernels++;
         }
       }
+      bool fully_delegated = (num_delegated_kernels == 1 &&
+                              interpreter_->execution_plan().size() == 1);
+
       if (params_.Get<bool>("require_full_delegation") && !fully_delegated) {
         TFLITE_LOG(ERROR) << "Disallowed CPU fallback detected.";
         return kTfLiteError;
       }
-      const std::string delegate_status =
-          fully_delegated ? "completely" : "partially";
-      TFLITE_LOG(INFO) << "Applied " << delegate_provider->GetName()
-                       << " delegate, and the model graph will be "
-                       << delegate_status << " executed w/ the delegate.";
+      if (fully_delegated) {
+        TFLITE_LOG(INFO) << "Explicitly applied "
+                         << delegate_provider->GetName()
+                         << " delegate, and the model graph will be completely"
+                         << " executed by the delegate.";
+      } else if (num_delegated_kernels > 0) {
+        TFLITE_LOG(INFO) << "Explicitly applied "
+                         << delegate_provider->GetName()
+                         << " delegate, and the model graph will be partially"
+                         << " executed by the delegate w/ "
+                         << num_delegated_kernels << " delegate kernels.";
+      } else {
+        TFLITE_LOG(INFO)
+            << "Though " << delegate_provider->GetName()
+            << " delegate is explicitly applied, the model graph will not be"
+            << " executed by the delegate.";
+      }
     }
     owned_delegates_.emplace_back(std::move(delegate));
   }

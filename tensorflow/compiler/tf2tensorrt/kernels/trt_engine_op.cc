@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
@@ -44,10 +45,10 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/gpus/cuda/include/cuda_runtime_api.h"
 #include "third_party/tensorrt/NvInfer.h"
 
@@ -520,6 +521,17 @@ Status TRTEngineOp::VerifyInputShapes(
   return Status::OK();
 }
 
+static bool AllowEngineNativeSegmentExecution() {
+  bool value;
+  Status status =
+      ReadBoolFromEnvVar("TF_TRT_ALLOW_ENGINE_NATIVE_SEGMENT_EXECUTION",
+                         /*default_value=*/true, &value);
+  if (!status.ok()) {
+    LOG(ERROR) << status;
+  }
+  return value;
+}
+
 void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
                                AsyncOpKernel::DoneCallback done) {
   auto helper = new AsyncHelper(done);
@@ -604,21 +616,37 @@ void TRTEngineOp::ComputeAsync(OpKernelContext* ctx,
 
   EngineContext* engine_context = status.ValueOrDie().first;
   int trt_context_idx = status.ValueOrDie().second;
+  auto may_execute_native_segment = [&] {
+    if (!AllowEngineNativeSegmentExecution()) {
+      ctx->CtxFailure(
+          errors::Aborted("User disallowed engine native segment execution"));
+      return false;
+    }
+    return true;
+  };
   if (!engine_context->cuda_engine) {
-    VLOG(1) << "Engine retrieval for input shapes: "
-            << TensorShapeUtils::ShapeListString(input_concrete_shapes)
-            << " failed. Running native segment for " << name();
-    ExecuteNativeSegment(ctx, helper);
+    LOG_WARNING_WITH_PREFIX
+        << "Engine retrieval for input shapes: "
+        << TensorShapeUtils::ShapeListString(input_concrete_shapes)
+        << " failed. Running native segment for " << name();
+    if (may_execute_native_segment()) {
+      ExecuteNativeSegment(ctx, helper);
+    }
     return;
   }
   Status stat = ExecuteTrtEngine(ctx, engine_context, trt_context_idx);
   if (!stat.ok()) {
-    LOG(WARNING) << "Failed to execute engine: " << stat
-                 << " Retrying with native segment for " << name();
+    LOG_WARNING_WITH_PREFIX << "Failed to execute engine: " << stat
+                            << " Retrying with native segment for " << name();
+    if (!may_execute_native_segment()) {
+      return;
+    }
     // Release any outputs that are allocated, ExecuteNativeSegment will
     // re-allocate them and fail if they are currently allocated.
+    // The Tensor pointer in the returned TensorValue must be explicitly
+    // deleted.
     for (int i = 0; i < ctx->num_outputs(); i++) {
-      ctx->release_output(i);
+      delete ctx->release_output(i).tensor;
     }
     ExecuteNativeSegment(ctx, helper);
     return;
@@ -727,9 +755,9 @@ StatusOr<TrtUniquePtrType<nvinfer1::ICudaEngine>> TRTEngineOp::BuildEngine(
       calibrator, &engine, use_calibration, use_implicit_batch_, nullptr,
       &cache_resource->profiles_);
   if (!status.ok()) {
-    LOG(WARNING) << "Engine creation for " << name() << " failed. "
-                 << "The native segment will be used instead. "
-                 << "Reason: " << status;
+    LOG_WARNING_WITH_PREFIX << "Engine creation for " << name() << " failed. "
+                            << "The native segment will be used instead. "
+                            << "Reason: " << status;
     // Store an empty engine in the cache for these input shapes so we don't try
     // to build the same failing engine again.
     cache_resource->cache_.emplace(input_concrete_shapes,
@@ -791,8 +819,9 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
               FunctionDefToGraphDef(func_handle_, lib, &segment_graph_def_);
         }
         if (!status.ok()) {
-          LOG(WARNING) << "Getting segment graph for " << name() << " failed. "
-                       << "Reason: " << status;
+          LOG_WARNING_WITH_PREFIX << "Getting segment graph for " << name()
+                                  << " failed. "
+                                  << "Reason: " << status;
         }
       }
       auto result = BuildEngine(input_concrete_shapes, batch_size,
@@ -851,10 +880,11 @@ StatusOr<std::pair<EngineContext*, int>> TRTEngineOp::GetEngine(
   // If cache does not have a compatible engine then create a new engine.
   if (engine_contexts == nullptr) {
     if (!allow_build_at_runtime_) {
-      LOG(WARNING) << "Found no engine in cache matching input shapes. "
-                   << "Not building a new engine because "
-                   << "allow_build_at_runtime=False. "
-                   << "The native segment will be used instead.";
+      LOG_WARNING_WITH_PREFIX
+          << "Found no engine in cache matching input shapes. "
+          << "Not building a new engine because "
+          << "allow_build_at_runtime=False. "
+          << "The native segment will be used instead.";
       // Store an empty engine in the cache for these input shapes so we don't
       // try to build the same failing engine again.
       cache.emplace(input_concrete_shapes, absl::make_unique<EngineContext>());
@@ -980,5 +1010,4 @@ REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

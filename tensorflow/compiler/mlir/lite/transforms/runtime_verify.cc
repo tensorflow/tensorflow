@@ -34,8 +34,7 @@ class RuntimeVerifyPass
 
 void RuntimeVerifyPass::runOnFunction() {
   getFunction().walk([&](TflRuntimeVerifyOpInterface op) {
-    if (failed(op.VerifyTflRuntimeConstraints(
-            op.getOperation(), /*failure_on_operand_type_mismatch=*/true)))
+    if (failed(op.VerifyTflRuntimeConstraints(op.getOperation())))
       signalPassFailure();
   });
 }

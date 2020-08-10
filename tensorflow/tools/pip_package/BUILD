@@ -26,7 +26,6 @@ package(default_visibility = ["//visibility:private"])
 transitive_hdrs(
     name = "included_headers",
     deps = [
-        "//tensorflow/c/experimental:network",
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/core:core_cpu",
@@ -128,11 +127,11 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/eager:eager_pip",
     "//tensorflow/python/keras:combinations",
     "//tensorflow/python/keras/layers/preprocessing:preprocessing_test_utils",
-    "//tensorflow/python/keras/distribute:distribute_strategy_test_lib",
-    "//tensorflow/python/keras/distribute:multi_worker_testing_utils",
+    "//tensorflow/python/keras/distribute:distribute_test_lib_pip",
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",
     "//tensorflow/python/keras/tests:model_architectures",
+    "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
     "//tensorflow/python/kernel_tests/random:util",
@@ -151,6 +150,9 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/docs:generate_lib",
     "//tensorflow/tools/docs:parser",
     "//tensorflow/tools/docs:py_guide_parser",
+    "//tensorflow/python/distribute/client:client",
+    "//tensorflow/python/distribute/client:parameter_server_client",
+    "//tensorflow/python/distribute/client:metric_utils",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -183,12 +185,13 @@ filegroup(
         "@com_google_protobuf//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@curl//:COPYING",
+        "@dill_archive//:LICENSE",
         "@dlpack//:LICENSE",
         "@double_conversion//:LICENSE",
         "@eigen_archive//:COPYING.MPL2",
         "@enum34_archive//:LICENSE",
         "@farmhash_archive//:COPYING",
-        "@fft2d//:fft2d/readme2d.txt",
+        "@fft2d//:readme2d.txt",
         "@flatbuffers//:LICENSE.txt",
         "@functools32_archive//:LICENSE",
         "@gast_archive//:PKG-INFO",
@@ -212,8 +215,11 @@ filegroup(
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
         "@sobol_data//:LICENSE",
+        "@tblib_archive//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
         "@zlib//:zlib.h",
+        "@clog//:LICENSE",
+        "@cpuinfo//:LICENSE",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],

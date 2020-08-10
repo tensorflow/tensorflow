@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -582,10 +583,22 @@ class DepthwiseConv2dNativeBackpropInputOp : public OpKernel {
     use_cudnn_ = CanUseCudnn() && std::is_same<Device, GPUDevice>::value;
     cudnn_use_autotune_ = CudnnUseAutotune();
     dtype_ = DataTypeToEnum<T>::value;
+#if CUDNN_VERSION >= 8000
+    // From the cuDNN release note 8.0: We’ve extended the fprop and dgrad
+    // NHWC depthwise kernels to support more combinations (filter
+    // sizes/strides) such as 5x5/1x1, 5x5/2x2, 7x7/1x1, 7x7/2x2 (in addition
+    // to what we already have, 1x1/1x1, 3x3/1x1, 3x3/2x2), which provides
+    // good performance. (https://docs.nvidia.com/deeplearning/sdk/cudnn-
+    // release-notes/rel_8.html#rel_8)
+    use_cudnn_grouped_conv_ =
+        dtype_ == DT_HALF &&
+        ((data_format_ == FORMAT_NCHW && stride_ == 1 && stride_w == 1) ||
+         (data_format_ == FORMAT_NHWC && stride_ == stride_w &&
+          (stride_ == 1 || stride_ == 2)));
+#elif CUDNN_VERSION >= 7603
     // Use CuDNN grouped conv (input gradient) when stride = 1, input/output is
     // NCHW and float16(half). See cudnn release note 7.6.3 (https://docs.nvidi
     // a.com/deeplearning/sdk/cudnn-release-notes/rel_763.html#rel_763).
-#if CUDNN_VERSION >= 7603
     use_cudnn_grouped_conv_ = dtype_ == DT_HALF &&
                               data_format_ == FORMAT_NCHW && stride_ == 1 &&
                               stride_w == 1;
@@ -1168,12 +1181,45 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
       return;
     }
 
-    auto out_backprop_ptr = out_backprop.template flat<T>().data();
-    auto input_ptr = input.template flat<T>().data();
-    auto filter_backprop_ptr = filter_backprop->template flat<T>().data();
-    LaunchDepthwiseConvBackpropFilterOp<Device, T>()(
+    // For GPU inputs with type half, we cast inputs to float and outputs back
+    // to half, as half implementation is slow and does not use full precision
+    // accumulation in some cases.
+    constexpr bool cast_to_float = std::is_same<T, Eigen::half>::value &&
+                                   std::is_same<Device, GPUDevice>::value;
+    using U = typename std::conditional<cast_to_float, float, T>::type;
+    Tensor casted_out_backprop = out_backprop;
+    Tensor casted_input = input;
+    Tensor casted_filter_backprop = *filter_backprop;
+    const Device& device = context->template eigen_device<Device>();
+    if (cast_to_float) {
+      functor::CastFunctor<Device, float, Eigen::half> cast;
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, out_backprop.shape(),
+                                            &casted_out_backprop));
+      cast(device, casted_out_backprop.template flat<float>(),
+           out_backprop.template flat<Eigen::half>());
+      OP_REQUIRES_OK(context, context->allocate_temp(DT_FLOAT, input.shape(),
+                                                     &casted_input));
+      cast(device, casted_input.template flat<float>(),
+           input.template flat<Eigen::half>());
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, filter_backprop->shape(),
+                                            &casted_filter_backprop));
+    }
+
+    auto out_backprop_ptr = casted_out_backprop.template flat<U>().data();
+    auto input_ptr = casted_input.template flat<U>().data();
+    auto filter_backprop_ptr = casted_filter_backprop.template flat<U>().data();
+    LaunchDepthwiseConvBackpropFilterOp<Device, U>()(
         context, args, out_backprop_ptr, input_ptr, filter_backprop_ptr,
         data_format_);
+
+    if (cast_to_float) {
+      functor::CastFunctor<Device, Eigen::half, float> cast;
+      const Tensor& casted_filter_backprop_const = casted_filter_backprop;
+      cast(device, filter_backprop->template flat<Eigen::half>(),
+           casted_filter_backprop_const.template flat<float>());
+    }
   }
 
  protected:

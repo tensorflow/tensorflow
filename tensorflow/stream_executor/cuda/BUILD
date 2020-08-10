@@ -251,6 +251,7 @@ cc_library(
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:tf32_utils",
         "//tensorflow/stream_executor",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:host_or_device_scalar",
@@ -323,6 +324,7 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
+        ":cudnn_version",
     ]),
 )
 
@@ -356,6 +358,7 @@ cc_library(
         "@local_config_cuda//cuda:cudnn_header",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/platform:tf32_utils",
         "//tensorflow/stream_executor:dnn",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:plugin_registry",

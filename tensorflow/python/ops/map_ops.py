@@ -28,23 +28,30 @@ from tensorflow.python.ops.gen_map_ops import *
 
 ops.NotDifferentiable("EmptyTensorMap")
 
+
 def empty_tensor_map():
   return gen_map_ops.empty_tensor_map()
+
 
 def tensor_map_size(input_handle):
   return gen_map_ops.tensor_map_size(input_handle)
 
+
 def tensor_map_insert(input_handle, key, value):
   return gen_map_ops.tensor_map_insert(input_handle, key, value)
+
 
 def tensor_map_lookup(input_handle, key, value_dtype):
   return gen_map_ops.tensor_map_lookup(input_handle, key, value_dtype)
 
+
 def tensor_map_erase(input_handle, key, value_dtype):
   return gen_map_ops.tensor_map_erase(input_handle, key, value_dtype)
 
+
 def tensor_map_has_key(input_handle, key):
   return gen_map_ops.tensor_map_has_key(input_handle, key)
+
 
 @ops.RegisterGradient("TensorMapLookup")
 def LookupGrad(op, dval):
@@ -53,6 +60,7 @@ def LookupGrad(op, dval):
   map_grad = tensor_map_insert(map_grad, k, dval)
   key_grad = None
   return map_grad, key_grad
+
 
 @ops.RegisterGradient("TensorMapInsert")
 def InsertGrad(op, dmap):

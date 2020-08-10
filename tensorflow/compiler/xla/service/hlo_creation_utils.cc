@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/comparators.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/comparison_util.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_clone_context.h"
@@ -258,6 +259,11 @@ HloInstruction* MakeBitcastConvertToHlo(HloInstruction* hlo,
                                         PrimitiveType type) {
   CHECK_NE(hlo->shape().element_type(), type);
   Shape shape = ShapeUtil::ChangeElementType(hlo->shape(), type);
+  // PRED are stored as one byte, PRED have a BitWidth of 1, avoid this problem
+  // by using a convert instead of bitcast convert.
+  if (type == PRED || hlo->shape().element_type() == PRED) {
+    return MakeConvertToHlo(hlo, type);
+  }
   hlo = hlo->parent()->AddInstruction(
       HloInstruction::CreateBitcastConvert(shape, hlo));
   CHECK_EQ(hlo->shape().element_type(), type);
@@ -536,6 +542,15 @@ HloInstruction* BroadcastZeros(HloComputation* computation,
   HloInstruction* zero = computation->AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::Zero(element_type)));
   return MakeBroadcastHlo(zero, /*broadcast_dimensions=*/{},
+                          /*result_shape_bounds=*/broadcast_dimensions);
+}
+
+HloInstruction* BroadcastOnes(HloComputation* computation,
+                              PrimitiveType element_type,
+                              absl::Span<const int64> broadcast_dimensions) {
+  HloInstruction* one = computation->AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::One(element_type)));
+  return MakeBroadcastHlo(one, /*broadcast_dimensions=*/{},
                           /*result_shape_bounds=*/broadcast_dimensions);
 }
 

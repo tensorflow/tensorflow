@@ -233,8 +233,7 @@ class WhileV2Test(PForTestCase):
           body,
           [True, 0, 0.])
 
-    # b/155430349: Enabling forrce_xla=True triggers a CHECK in debug mode.
-    self._test_loop_fn(loop_fn, 3, force_xla=False)
+    self._test_loop_fn(loop_fn, 3, force_xla=True)
 
 
 if __name__ == "__main__":

@@ -13,27 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <iostream>
-#include <limits>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/eigen_support.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 // NOLINTNEXTLINE - This header file should't go to the top.
 #include "tensorflow/lite/kernels/internal/optimized/integer_ops/transpose_conv.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 // NOLINTNEXTLINE - This header file should't go to the top.
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/transpose_conv.h"
+#include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 #include "tensorflow/lite/kernels/padding.h"
 
 namespace tflite {
@@ -112,8 +111,8 @@ TfLiteStatus ResizeTensor(TfLiteContext* context,
                           TfLiteTensor* tensor_to_resize) {
   // Currently only support int32 for output shape.
   if (shape_tensor->type != kTfLiteInt32) {
-    context->ReportError(context, "Output shape is %d, not int32.",
-                         shape_tensor->type);
+    TF_LITE_KERNEL_LOG(context, "Output shape is %s, not int32.",
+                       TfLiteTypeGetName(shape_tensor->type));
     return kTfLiteError;
   }
 
@@ -177,8 +176,8 @@ TfLiteStatus ResizeCol2ImTensor(TfLiteContext* context,
                                 const TfLiteTensor* input,
                                 TfLiteTensor* col2im) {
   if (output_shape->type != kTfLiteInt32) {
-    context->ReportError(context, "col2im shape is %d, not int32.",
-                         output_shape->type);
+    TF_LITE_KERNEL_LOG(context, "col2im shape is %s, not int32.",
+                       TfLiteTypeGetName(output_shape->type));
     return kTfLiteError;
   }
   TF_LITE_ENSURE_EQ(context, NumElements(output_shape), 4);
@@ -275,7 +274,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     bias = GetOptionalInputTensor(context, node, kBiasTensor);
     if (bias) {
       if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
-        TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt32);
+        TF_LITE_ENSURE_TYPES_EQ(context, bias->type, kTfLiteInt32);
         if (input->type == kTfLiteInt8) {
           TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
         }
@@ -283,7 +282,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteInt64);
         TF_LITE_ENSURE_EQ(context, bias->params.zero_point, 0);
       } else {
-        TF_LITE_ENSURE_EQ(context, bias->type, input->type);
+        TF_LITE_ENSURE_TYPES_EQ(context, bias->type, input->type);
       }
       TF_LITE_ENSURE_EQ(context, NumElements(bias),
                         SizeOfDimension(weights, 0));
@@ -295,9 +294,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, input->params.zero_point, 0);
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
   } else {
-    TF_LITE_ENSURE_EQ(context, weights->type, input->type);
+    TF_LITE_ENSURE_TYPES_EQ(context, weights->type, input->type);
   }
-  TF_LITE_ENSURE_EQ(context, output->type, input->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, output->type, input->type);
   // Ensure that weights and inputs have the same channel dimension.
   // Note: TOCO will reorder weights in the following format: OHWI.
   TF_LITE_ENSURE_EQ(context, SizeOfDimension(input, 3),

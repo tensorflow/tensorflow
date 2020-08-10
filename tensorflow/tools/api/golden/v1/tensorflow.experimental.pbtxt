@@ -1,5 +1,9 @@
 path: "tensorflow.experimental"
 tf_module {
+  member {
+    name: "Optional"
+    mtype: "<type \'type\'>"
+  }
   member_method {
     name: "async_clear_error"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"

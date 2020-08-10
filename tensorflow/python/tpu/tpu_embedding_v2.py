@@ -25,12 +25,13 @@ from absl import logging
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf.tpu import tpu_embedding_configuration_pb2
 from tensorflow.python.distribute import device_util
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute import tpu_strategy
-from tensorflow.python.distribute import values as tf_values
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -44,6 +45,7 @@ from tensorflow.python.tpu import tpu
 from tensorflow.python.tpu import tpu_embedding_v2_utils
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.training.saving import saveable_hook
+from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
@@ -131,13 +133,30 @@ class TPUEmbedding(tracking.AutoTrackable):
   First lets look at the `TPUStrategy` mode. Initial setup looks like:
 
   ```python
-  strategy = tf.distribute.experimental.TPUStrategy(...)
+  strategy = tf.distribute.TPUStrategy(...)
   with strategy.scope():
     embedding = tf.tpu.experimental.embedding.TPUEmbedding(
         feature_config=feature_config,
-        batch_size=1024,
         optimizer=tf.tpu.experimental.embedding.SGD(0.1))
   ```
+
+  When creating a distributed dataset that is to be passed to the enqueue
+  operation a special input option must be specified:
+
+  ```python
+  distributed_dataset = (
+      strategy.experimental_distribute_datasets_from_function(
+          dataset_fn=...,
+          options=tf.distribute.InputOptions(
+              experimental_prefetch_to_device=False))
+  dataset_iterator = iter(distributed_dataset)
+  ```
+
+  NOTE: All batches passed to the layer must have the same batch size for each
+  input, more over once you have called the layer with one batch size all
+  subsequent calls must use the same batch_size. In the event that the batch
+  size cannot be automatically determined by the enqueue method, you must call
+  the build method with the batch size to initialize the layer.
 
   To use this API on TPU you should use a custom training loop. Below is an
   example of a training and evaluation step:
@@ -215,13 +234,12 @@ class TPUEmbedding(tracking.AutoTrackable):
 
   """
 
-  def __init__(self, feature_config, batch_size, optimizer,
-               pipeline_execution_with_tensor_core=False,
-               initialize_tpu_embedding=True):
+  def __init__(self, feature_config, optimizer,
+               pipeline_execution_with_tensor_core=False):
     """Creates the TPUEmbedding mid level API object.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(
           feature_config=tf.tpu.experimental.embedding.FeatureConfig(
@@ -233,26 +251,23 @@ class TPUEmbedding(tracking.AutoTrackable):
     Args:
       feature_config: A nested structure of
         `tf.tpu.experimental.embedding.FeatureConfig` configs.
-      batch_size: The global batch size that you indend to use. Note that is
-        fixed and the same batch size must be used for both training and
-        evaluation.
       optimizer: An instance of one of `tf.tpu.experimental.embedding.SGD`,
         `tf.tpu.experimental.embedding.Adagrad` or
-        `tf.tpu.experimental.embedding.Adam`.
+        `tf.tpu.experimental.embedding.Adam`. When not created under
+        TPUStrategy may be set to None to avoid the creation of the optimizer
+        slot variables, useful for optimizing memory consumption when exporting
+        the model for serving where slot variables aren't needed.
       pipeline_execution_with_tensor_core: If True, the TPU embedding
         computations will overlap with the TensorCore computations (and hence
         will be one step old). Set to True for improved performance.
-      initialize_tpu_embedding: If False, will not initialize the TPU embedding
-        engine. If this is set to False and another instance of this class has
-        not initialized the tpu embedding engine, the creation of this object
-        will fail.
 
     Raises:
       ValueError: If optimizer is not one of tf.tpu.experimental.embedding.(SGD,
-      Adam or Adagrad).
+      Adam or Adagrad) or None when created under a TPUStrategy.
     """
     self._strategy = distribution_strategy_context.get_strategy()
-    self._using_tpu = isinstance(self._strategy, tpu_strategy.TPUStrategy)
+    self._using_tpu = isinstance(self._strategy, (tpu_strategy.TPUStrategy,
+                                                  tpu_strategy.TPUStrategyV2))
     self._pipeline_execution_with_tensor_core = (
         pipeline_execution_with_tensor_core)
 
@@ -285,7 +300,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       if table.optimizer is None:
         # TODO(bfontain) Should we allow some sort of optimizer merging here?
         table.optimizer = optimizer
-      if not isinstance(table.optimizer, tpu_embedding_v2_utils._Optimizer):  # pylint: disable=protected-access
+      if ((table.optimizer is not None or self._using_tpu) and
+          not isinstance(table.optimizer, tpu_embedding_v2_utils._Optimizer)):  # pylint: disable=protected-access
         raise ValueError("{} is an unsupported optimizer class. Please pass an "
                          "instance of one of the optimizer classes under "
                          "tf.tpu.experimental.embedding.".format(
@@ -309,35 +325,72 @@ class TPUEmbedding(tracking.AutoTrackable):
       # We need to list of host devices for the load/retrieve operations.
       self._hosts = get_list_of_hosts(self._strategy)
 
-      # TODO(bfontain) Remove this once we have an official way of splitting
-      # prefetch between host and device.
-      self._strategy.extended._set_prefetch_on_host(True)  # pylint: disable=protected-access
+    self._built = False
 
-      # We generally use the per core batch size, but will have the user pass
-      # in a global batch size.
-      self._batch_size = batch_size // self._strategy.num_replicas_in_sync
+  def build(self, per_replica_batch_size=None):
+    """Create the underlying variables and initializes the TPU for embeddings.
+
+    This method creates the underlying variables (including slot variables). If
+    created under a TPUStrategy, this will also initialize the TPU for
+    embeddings.
+
+    This function will automatically get called by enqueue, which will try to
+    determine your batch size automatically. If this fails, you must manually
+    call this method before you call enqueue.
+
+    Args:
+      per_replica_batch_size: The per replica batch size that you intend to use.
+        Note that is fixed and the same batch size must be used for both
+        training and evaluation. If you want to calculate this from the global
+        batch size, you can use `num_replicas_in_sync` property of your strategy
+        object. May be set to None if not created under a TPUStrategy.
+
+    Raises:
+      ValueError: If per_replica_batch_size is None and object was created in a
+        TPUStrategy scope.
+    """
+    if self._built:
+      return
+
+    if self._using_tpu:
+      if per_replica_batch_size is None:
+        raise ValueError("You must specify a per_replica_batch_size when "
+                         "calling build if object is created under a "
+                         "TPUStrategy.")
+
+      self._batch_size = per_replica_batch_size
 
       self._config_proto = self._create_config_proto()
-      if initialize_tpu_embedding:
-        # This is mainly for testing purposes, sometimes we don't want to
-        # initialize the embedding engine, but just want a copy of the API
-        # which can interact with an already initialized engine.
-        logging.info("Initializing TPU Embedding engine with config: %s",
-                     self._config_proto)
-        @def_function.function
-        def load_config():
-          tpu.initialize_system_for_tpu_embedding(self._config_proto)
 
-        load_config()
-        logging.info("Done initializing TPU Embedding engine.")
+      logging.info("Initializing TPU Embedding engine with config: %s",
+                   self._config_proto)
+      @def_function.function
+      def load_config():
+        tpu.initialize_system_for_tpu_embedding(self._config_proto)
+
+      load_config()
+      logging.info("Done initializing TPU Embedding engine.")
 
     # Create and load variables and slot variables into the TPU.
     # Note that this is a dict of dicts. Keys to the first dict are table names.
     # We would prefer to use TableConfigs, but then these variables won't be
     # properly tracked by the tracking API.
     self._variables = self._create_variables_and_slots()
+
     if self._using_tpu:
       self._load_variables()
+
+    self._built = True
+
+  def _maybe_build(self, batch_size):
+    if not self._built:
+      # This can be called while tracing a function, so we wrap the
+      # initialization code with init_scope so it runs eagerly, this means that
+      # it will not be included the function graph generated by tracing so that
+      # we can be sure that we only initialize the TPU for embeddings exactly
+      # once.
+      with ops.init_scope():
+        self.build(batch_size)
 
   @property
   def embedding_tables(self):
@@ -361,6 +414,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       raise RuntimeError("Unable to retrieve embedding tables when using a TPU "
                          "strategy. If you need access, save your model, "
                          "create this object under a CPU strategy and restore.")
+
+    self._maybe_build(None)
 
     # Only return the tables and not the slot variables. On CPU this are honest
     # tf.Variables.
@@ -503,11 +558,15 @@ class TPUEmbedding(tracking.AutoTrackable):
     ensure you understand the effect of applying a zero gradient.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
-    distributed_dataset = strategy.experimental_distribute_dataset(...)
+    distributed_dataset = (
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn=...,
+            options=tf.distribute.InputOptions(
+                experimental_prefetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -535,7 +594,8 @@ class TPUEmbedding(tracking.AutoTrackable):
       name: A name for the underlying op.
 
     Raises:
-      RuntimeError: If called when object wasn't created under a `TPUStrategy`.
+      RuntimeError: If called when object wasn't created under a `TPUStrategy`
+        or if not built (either by manually calling build or calling enqueue).
       ValueError: If a non-`tf.Tensor` non-`None` gradient is passed in, or a
         `tf.Tensor` of the incorrect shape is passed in. Also if
         the size of any sequence in `gradients` does not match corresponding
@@ -546,6 +606,11 @@ class TPUEmbedding(tracking.AutoTrackable):
     if not self._using_tpu:
       raise RuntimeError("apply_gradients is not valid when TPUEmbedding "
                          "object is not created under a TPUStrategy.")
+
+    if not self._built:
+      raise RuntimeError("apply_gradients called on unbuilt TPUEmbedding "
+                         "object. Please either call enqueue first or manually "
+                         "call the build method.")
 
     # send_tpu_embedding_gradients requires per table gradient, if we only have
     # one feature per table this isn't an issue. When multiple features share
@@ -590,11 +655,15 @@ class TPUEmbedding(tracking.AutoTrackable):
     `(batch_size, max_sequence_length, dim)` instead.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
-    distributed_dataset = strategy.experimental_distribute_dataset(...)
+    distributed_dataset = (
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn=...,
+            options=tf.distribute.InputOptions(
+                experimental_prefetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -624,11 +693,17 @@ class TPUEmbedding(tracking.AutoTrackable):
     passed to this instance of the `TPUEmbedding` object.
 
     Raises:
-      RuntimeError: If called when object wasn't created under a `TPUStrategy`.
+      RuntimeError: If called when object wasn't created under a `TPUStrategy`
+        or if not built (either by manually calling build or calling enqueue).
     """
     if not self._using_tpu:
       raise RuntimeError("dequeue is not valid when TPUEmbedding object is not "
                          "created under a TPUStrategy.")
+
+    if not self._built:
+      raise RuntimeError("dequeue called on unbuilt TPUEmbedding object. "
+                         "Please either call enqueue first or manually call "
+                         "the build method.")
 
     # The activations returned by this op are per table. So we must separate
     # them out into per feature activations. The activations are interleaved:
@@ -697,9 +772,16 @@ class TPUEmbedding(tracking.AutoTrackable):
       shape = (table.vocabulary_size, table.dim)
 
       def getter(name, shape, dtype, initializer, trainable):
+        # TODO(bfontain): make CheckpointInitialValue a callable rather than
+        # something that inherits from tensor.
+        if not isinstance(initializer, base.CheckpointInitialValue):
+          initial_value = functools.partial(initializer, shape, dtype=dtype)
+        else:
+          initial_value = initializer
+
         return tf_variables.Variable(
             name=name,
-            initial_value=functools.partial(initializer, shape, dtype=dtype),
+            initial_value=initial_value,
             trainable=trainable)
 
       def variable_creator(name, initializer, trainable=True):
@@ -722,7 +804,10 @@ class TPUEmbedding(tracking.AutoTrackable):
                                 initializer,
                                 False)
 
-      slot_vars = table.optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
+      if table.optimizer is not None:
+        slot_vars = table.optimizer._create_slots(parameters, slot_creator)  # pylint: disable=protected-access
+      else:
+        slot_vars = {}
       slot_vars["parameters"] = parameters
       return slot_vars
 
@@ -802,11 +887,17 @@ class TPUEmbedding(tracking.AutoTrackable):
     # TODO(bfontain): Update restore logic in saver so that these hooks are
     # always executed. Once that is done, we can output an empty list when on
     # CPU.
+
+    def _load_variables():
+      if self._using_tpu and self._built:
+        self._load_variables()
+
+    def _retrieve_variables():
+      if self._using_tpu and self._built:
+        self._retrieve_variables()
+
     def factory(name=_HOOK_KEY):
-      return TPUEmbeddingSaveable(
-          name,
-          self._load_variables if self._using_tpu else None,
-          self._retrieve_variables if self._using_tpu else None)
+      return TPUEmbeddingSaveable(name, _load_variables, _retrieve_variables)
     return {_HOOK_KEY: factory}
 
   # Some helper functions for the below enqueue function.
@@ -1004,6 +1095,32 @@ class TPUEmbedding(tracking.AutoTrackable):
                                                  input_tensor.op.name,
                                                  input_tensor.op.type))
 
+  def _raise_error_for_inputs_not_on_cpu(self, features):
+    """Checks all tensors in features to see are placed on the CPU."""
+
+    def check_device(path, device_string):
+      spec = tf_device.DeviceSpec.from_string(device_string)
+      if spec.device_type == "TPU":
+        raise ValueError(
+            "Received input tensor {} which is on a TPU input device {}. Input "
+            "tensors for TPU embeddings must be placed on the CPU. Please "
+            "ensure that your dataset is prefetching tensors to the host by "
+            "setting the 'experimental_prefetch_to_device' option of the "
+            "dataset distribution function. See the documentation of the "
+            "enqueue method for an example.".format(
+                path, device_string))
+
+    # expand_composites here is important, we need to check the device of each
+    # underlying tensor.
+    for path, input_tensor in nest.flatten_with_joined_string_paths(
+        features, expand_composites=True):
+      if (input_tensor.op.type == "Identity" and
+          input_tensor.op.inputs[0].op.type == "TPUReplicatedInput"):
+        for tensor in input_tensor.op.inputs[0].op.inputs:
+          check_device(path, tensor.device)
+      else:
+        check_device(path, input_tensor.device)
+
   def enqueue(self, features, weights=None, training=True, name=None):
     """Enqueues id tensors for embedding lookup.
 
@@ -1011,17 +1128,21 @@ class TPUEmbedding(tracking.AutoTrackable):
     embedding tables. We expect that the batch size of each of the tensors in
     features matches the per core batch size. This will automatically happen if
     your input dataset is batched to the global batch size and you use
-    `tf.distribute.experimental.TPUStrategy`'s `experimental_distribute_dataset`
+    `tf.distribute.TPUStrategy`'s `experimental_distribute_dataset`
     or if you use `experimental_distribute_datasets_from_function` and batch
     to the per core batch size computed by the context passed to your input
     function.
 
     ```python
-    strategy = tf.distribute.experimental.TPUStrategy(...)
+    strategy = tf.distribute.TPUStrategy(...)
     with strategy.scope():
       embedding = tf.tpu.experimental.embedding.TPUEmbedding(...)
 
-    distributed_dataset = strategy.experimental_distribute_dataset(...)
+    distributed_dataset = (
+        strategy.experimental_distribute_datasets_from_function(
+            dataset_fn=...,
+            options=tf.distribute.InputOptions(
+                experimental_prefetch_to_device=False))
     dataset_iterator = iter(distributed_dataset)
 
     @tf.function
@@ -1069,8 +1190,10 @@ class TPUEmbedding(tracking.AutoTrackable):
         directly taken from the args of the `strategy.run` call. Also if
         the size of any sequence in `features` does not match corresponding
         sequence in `feature_config`. Similarly for `weights`, if not `None`.
+        If batch size of features is unequal or different from a previous call.
       RuntimeError: When called inside a strategy.run call and inside XLA
-        control flow.
+        control flow. If batch_size is not able to be determined and build was
+        not called.
       TypeError: If the type of any sequence in `features` does not match
         corresponding sequence in `feature_config`. Similarly for `weights`, if
         not `None`.
@@ -1079,10 +1202,24 @@ class TPUEmbedding(tracking.AutoTrackable):
       raise RuntimeError("enqueue is not valid when TPUEmbedding object is not "
                          "created under a TPUStrategy.")
 
-    nest.assert_same_structure(self._feature_config, features)
+    in_tpu_context = self._raise_error_for_incorrect_control_flow_context()
 
-    # TODO(bfontain): Add a check that the input batch_size matches the per core
-    # batch size that this instance of the API was initialized with.
+    # Should we also get batch_size from weights if they exist?
+    # Since features is assumed to be batched at the per replica batch size
+    # the returned batch size here is per replica an not global.
+    batch_size = self._get_batch_size(features, in_tpu_context)
+    if batch_size is None and not self._built:
+      raise RuntimeError("Unable to determine batch size from input features."
+                         "Please call build() with global batch size to "
+                         "initialize the TPU for embeddings.")
+    if batch_size is not None:
+      self._maybe_build(batch_size)
+      if self._batch_size != batch_size:
+        raise ValueError("Multiple calls to enqueue with different batch sizes "
+                         "{} and {}.".format(self._batch_size,
+                                             batch_size))
+
+    nest.assert_same_structure(self._feature_config, features)
 
     flat_inputs = nest.flatten(features)
     flat_weights = [None] * len(flat_inputs)
@@ -1091,7 +1228,7 @@ class TPUEmbedding(tracking.AutoTrackable):
       flat_weights = nest.flatten(weights)
     flat_features = nest.flatten_with_joined_string_paths(self._feature_config)
 
-    in_tpu_context = self._raise_error_for_incorrect_control_flow_context()
+    self._raise_error_for_inputs_not_on_cpu(features)
     # If we are in a tpu_context, automatically apply outside compilation.
     if in_tpu_context:
       self._raise_error_for_non_direct_inputs(features)
@@ -1131,8 +1268,10 @@ class TPUEmbedding(tracking.AutoTrackable):
       # in the same (standard) order as self._strategy.extended.worker_devices.
       enqueue_ops = []
       for replica_id in range(self._strategy.num_replicas_in_sync):
-        replica_inputs = tf_values.select_replica(replica_id, flat_inputs)
-        replica_weights = tf_values.select_replica(replica_id, flat_weights)
+        replica_inputs = distribute_utils.select_replica(replica_id,
+                                                         flat_inputs)
+        replica_weights = distribute_utils.select_replica(replica_id,
+                                                          flat_weights)
         tpu_device = self._strategy.extended.worker_devices[replica_id]
         # TPU devices string are like /job:worker/replica:0/task:0/device:TPU:0
         # the device ordinal is the last number
@@ -1147,6 +1286,34 @@ class TPUEmbedding(tracking.AutoTrackable):
             _add_key_attr(enqueue_op, name)
           enqueue_ops.append(enqueue_op)
       ops.get_default_graph().control_outputs.extend(enqueue_ops)
+
+  def _get_batch_size(self, tensors, in_tpu_context):
+    """Gets the batch size from a nested structure of features."""
+    batch_size = None
+    for path, maybe_tensor in nest.flatten_with_joined_string_paths(tensors):
+      tensor_list = []
+      if not in_tpu_context:
+        # if we are not in a context, then this is PerReplica and we need to
+        # check each replica's batch size.
+        for replica_id in range(self._strategy.num_replicas_in_sync):
+          tensor_list.append(distribute_utils.select_replica(replica_id,
+                                                             maybe_tensor))
+      else:
+        tensor_list = [maybe_tensor]
+
+      for tensor in tensor_list:
+        if tensor.shape.rank < 1:
+          raise ValueError(
+              "Input {} has rank 0, rank must be at least 1.".format(path))
+        shape = tensor.shape.as_list()
+        if shape[0] is not None:
+          if batch_size is None:
+            batch_size = shape[0]
+          elif batch_size != shape[0]:
+            raise ValueError("Found multiple batch sizes {} and {}. All inputs "
+                             "must have the same batch dimensions size.".format(
+                                 batch_size, shape[0]))
+    return batch_size
 
 
 class TPUEmbeddingSaveable(saveable_hook.SaveableHook):
@@ -1179,7 +1346,7 @@ def _ragged_embedding_lookup_with_reduce(table, ragged, weights, combiner):
     A Tensor.
   """
   if weights is None:
-    weights = array_ops.ones_like(ragged)
+    weights = array_ops.ones_like(ragged, dtype=table.dtype)
   weights = array_ops.expand_dims(weights, axis=2)
   ragged_result = embedding_ops.embedding_lookup_ragged(table, ragged)
   ragged_result = math_ops.reduce_sum(ragged_result * weights, axis=1)
@@ -1288,6 +1455,9 @@ def extract_variable_info(kwargs):
     return (kwargs["name"], shape,
             kwargs["initial_value"].keywords.get("dtype", kwargs["dtype"]),
             kwargs["initial_value"].func)
+  elif isinstance(kwargs["initial_value"], base.CheckpointInitialValue):
+    return (kwargs["name"], kwargs["initial_value"].shape,
+            kwargs["initial_value"].dtype, kwargs["initial_value"])
   elif "shape" not in kwargs or kwargs["shape"] is None:
     raise ValueError(
         "Unable to extract initializer function and shape from {}. Please "
@@ -1326,12 +1496,24 @@ def make_sharded_variable_creator(hosts):
     variables = []
     newkwargs = kwargs
     newkwargs["dtype"] = dtype
+    # TODO(bfontain): Remove this check once we can pass position and shape of
+    # shards to CheckpointInitialValue.
+    if isinstance(initial_value, base.CheckpointInitialValue) and num_hosts > 1:
+      raise RuntimeError("Delayed restoration of variables not available when "
+                         "there are multiple TPU hosts, please ensure that the "
+                         "api object has been built before you restore.")
+
     for i, p in enumerate(partitions):
       with ops.device(hosts[i]):
         newkwargs["shape"] = (p, cols)
         newkwargs["name"] = "{}_{}".format(name, i)
-        newkwargs["initial_value"] = (
-            lambda: initial_value(newkwargs["shape"], dtype=dtype))
+        if isinstance(initial_value, base.CheckpointInitialValue):
+          # TODO(bfontain): Patch CheckpointInitialValue to take in account the
+          # position and shape of this shard.
+          newkwargs["initial_value"] = initial_value
+        else:
+          newkwargs["initial_value"] = (
+              lambda: initial_value(newkwargs["shape"], dtype=dtype))
         variables.append(next_creator(*args, **kwargs))
     return TPUShardedVariable(variables, name=name)
   return sharded_variable_creator

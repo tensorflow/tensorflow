@@ -148,9 +148,8 @@ class EagerServiceImpl {
 
     bool IsStale() {
       mutex_lock l(last_accessed_mu_);
-      return (destroy_after_micros_ > 0 &&
-              (env_->env->NowMicros() - last_accessed_micros_) >
-                  destroy_after_micros_);
+      const int64 time_passed = env_->env->NowMicros() - last_accessed_micros_;
+      return (destroy_after_micros_ > 0 && time_passed > destroy_after_micros_);
     }
 
    private:

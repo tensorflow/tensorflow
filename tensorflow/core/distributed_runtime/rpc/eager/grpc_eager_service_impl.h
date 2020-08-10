@@ -81,6 +81,7 @@ class GrpcEagerServiceImpl : public AsyncServiceInterface {
       local_impl_.RunComponentFunction(call_opts.get(), &call->request,
                                        &call->response,
                                        [call, call_opts](const Status& s) {
+                                         call->ClearCancelCallback();
                                          call->SendResponse(ToGrpcStatus(s));
                                        });
     });

@@ -16,12 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_CONCRETE_FUNCTION_H_
 #define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_CORE_CONCRETE_FUNCTION_H_
 
+#include <memory>
 #include <vector>
 
-#include "tensorflow/c/eager/operation_interface.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "absl/types/span.h"
+#include "tensorflow/c/eager/immediate_execution_operation.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/c/experimental/saved_model/core/function_metadata.h"
-#include "tensorflow/core/framework/function.pb.h"
 
 namespace tensorflow {
 
@@ -35,19 +36,13 @@ namespace tensorflow {
 // and have only a single implementation.
 class ConcreteFunction {
  public:
-  virtual ~ConcreteFunction() = 0;
+  virtual ~ConcreteFunction() = default;
 
   // This method returns the "Call" Op used to execute the function.
-  virtual AbstractOperationInterface* GetCallOp() = 0;
+  virtual Status GetCallOp(absl::Span<AbstractTensorHandle* const> inputs,
+                           ImmediateOpPtr* out) = 0;
 
-  const std::vector<tensorflow::AbstractTensorHandleInterface*>& GetCaptures()
-      const;
-  const FunctionMetadata& GetFunctionMetadata() const;
-
- private:
-  FunctionMetadata metadata_;
-  std::vector<tensorflow::AbstractTensorHandleInterface*> captures_;
-  FunctionDef* function_;
+  virtual const FunctionMetadata& GetFunctionMetadata() const = 0;
 };
 
 }  // namespace tensorflow

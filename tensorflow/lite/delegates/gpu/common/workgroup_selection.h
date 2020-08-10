@@ -42,9 +42,10 @@ std::vector<T> GenerateWorkGroupSizes(
     WorkGroupSizeAlignment y_alignment, WorkGroupSizeAlignment z_alignment);
 
 template <typename T>
-absl::Status GenerateWorkGroupSizesAlignedToGrid(
-    const T& grid, const T& max_work_group_size,
-    const int max_work_group_invocations, std::vector<T>* work_groups);
+void GenerateWorkGroupSizesAlignedToGrid(const T& grid,
+                                         const T& max_work_group_size,
+                                         const int max_work_group_invocations,
+                                         std::vector<T>* work_groups);
 
 }  // namespace gpu
 }  // namespace tflite

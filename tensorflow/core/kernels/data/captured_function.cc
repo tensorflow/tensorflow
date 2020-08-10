@@ -110,18 +110,33 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
   int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
 };
 
+Status GetCapturedInput(const CapturedFunction* const func, int index,
+                        const Tensor** out) {
+  if (TF_PREDICT_FALSE(index >= func->captured_inputs().size())) {
+    return errors::OutOfRange(
+        "Out of range access to captured inputs for function ",
+        func->func().name(), ". Index: ", index,
+        ". Num captured inputs: ", func->captured_inputs().size());
+  }
+  *out = &func->captured_inputs()[index];
+  return Status::OK();
+}
+
 Status RunShortCircuit(const ShortCircuitInfo& info,
                        const std::vector<Tensor>& args,
                        const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
-  size_t num_args = args.size();
+  const int num_args = args.size();
   rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
       rets->push_back(args[info.indices[i]]);
     } else {
-      rets->push_back(func->captured_inputs()[info.indices[i] - num_args]);
+      const Tensor* captured_input;
+      TF_RETURN_IF_ERROR(
+          GetCapturedInput(func, info.indices[i] - num_args, &captured_input));
+      rets->push_back(*captured_input);
     }
   }
   return Status::OK();
@@ -131,7 +146,7 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
                        const CapturedFunction* const func,
                        std::vector<Tensor>* rets) {
   VLOG(3) << "Running function " << func->func().name() << " short circuit";
-  size_t num_args = args.size();
+  const int num_args = args.size();
   rets->reserve(info.indices.size());
   for (size_t i = 0; i < info.indices.size(); ++i) {
     if (info.indices[i] < num_args) {
@@ -141,7 +156,10 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
         rets->push_back(args[info.indices[i]]);
       }
     } else {
-      rets->push_back(func->captured_inputs()[info.indices[i] - num_args]);
+      const Tensor* captured_input;
+      TF_RETURN_IF_ERROR(
+          GetCapturedInput(func, info.indices[i] - num_args, &captured_input));
+      rets->push_back(*captured_input);
     }
   }
   return Status::OK();
@@ -198,7 +216,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
       last_use[indices[i]] = i;
     }
     can_move.resize(indices.size());
-    for (size_t i = 0; i < indices.size(); ++i) {
+    for (int i = 0, end = indices.size(); i < end; ++i) {
       can_move[i] = last_use[indices[i]] == i;
     }
   }
@@ -232,16 +250,16 @@ Status IsFunctionStateful(const FunctionLibraryDefinition& library,
   return Status::OK();
 }
 
-// Returns whether an op has been whitelisted as stateless. Uses a heuristic to
-// whitelist source dataset ops which have been marked stateful due to
+// Returns whether an op has been allowlisted as stateless. Uses a heuristic to
+// allowlist source dataset ops which have been marked stateful due to
 // b/65524810. Also looks up the `op_def->name` in the global
-// `WhitelistedStatefulOpRegistry`.
-bool IsOpWhitelisted(const OpDef* op_def) {
+// `AllowlistedStatefulOpRegistry`.
+bool IsOpAllowlisted(const OpDef* op_def) {
   return (op_def->output_arg_size() == 1 &&
           op_def->output_arg(0).type() == DT_VARIANT &&
           (absl::EndsWith(op_def->name(), "Dataset") ||
            absl::EndsWith(op_def->name(), "DatasetV2"))) ||
-         WhitelistedStatefulOpRegistry::Global()->Contains(op_def->name());
+         AllowlistedStatefulOpRegistry::Global()->Contains(op_def->name());
 }
 
 Status LookupFunction(const FunctionLibraryDefinition& lib_def,
@@ -278,11 +296,12 @@ class CallFrameBase : public CallFrameInterface {
 
   // Callee methods.
   Status SetRetval(int index, const Tensor& val) override {
-    if (index < retvals_.size() && val.dtype() == ret_types_[index] &&
+    const int retvals_size = retvals_.size();
+    if (index < retvals_size && val.dtype() == ret_types_[index] &&
         !retvals_[index]) {
       retvals_[index] = val;
       return Status::OK();
-    } else if (index >= retvals_.size()) {
+    } else if (index >= retvals_size) {
       return errors::InvalidArgument("Return value ", index,
                                      " is out of range.");
     } else if (val.dtype() != ret_types_[index]) {
@@ -317,10 +336,12 @@ class OwnedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, const Tensor** val) override {
-    if (index < args_.size()) {
+    const int args_size = args_.size();
+    const int captured_inputs_size = captured_inputs_->size();
+    if (index < args_size) {
       *val = &args_[index];
       return Status::OK();
-    } else if (index < args_.size() + captured_inputs_->size()) {
+    } else if (index < args_size + captured_inputs_size) {
       *val = &(*captured_inputs_)[index - args_.size()];
       return Status::OK();
     } else {
@@ -336,7 +357,7 @@ class OwnedArgsCallFrame : public CallFrameBase {
     *val = std::move(args_[index]);
   }
   bool CanConsumeArg(int index) const override {
-    return index >= 0 && index < args_.size();
+    return index >= 0 && index < static_cast<int>(args_.size());
   }
 
  private:
@@ -359,11 +380,13 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 
   // Callee methods.
   Status GetArg(int index, const Tensor** val) override {
-    if (index < args_.size()) {
+    const int args_size = args_.size();
+    const int captured_inputs_size = captured_inputs_->size();
+    if (index < args_size) {
       *val = &args_[index];
       return Status::OK();
-    } else if (index < args_.size() + captured_inputs_->size()) {
-      *val = &(*captured_inputs_)[index - args_.size()];
+    } else if (index < args_size + captured_inputs_size) {
+      *val = &(*captured_inputs_)[index - args_size];
       return Status::OK();
     } else {
       return errors::InvalidArgument("Argument ", index, " is out of range.");
@@ -384,7 +407,7 @@ Status IsNodeStateful(const FunctionLibraryDefinition& library,
   // TODO(jsimsa): Fix C++ unit tests so that we do not have to ignore
   // `LookUpOpDef` errors here.
   if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok() ||
-      IsOpWhitelisted(op_def) || !op_def->is_stateful() ||
+      IsOpAllowlisted(op_def) || !op_def->is_stateful() ||
       op_def->name() == "Assert") {
     return Status::OK();
   }
@@ -565,12 +588,14 @@ Status CapturedFunction::Instantiate(
   if (!metadata_->use_inter_op_parallelism()) {
     inst_opts.executor_type = "SINGLE_THREADED_EXECUTOR";
   }
-  bool is_multi_device = metadata_->use_multi_device_function();
-  inst_opts.is_multi_device_function = is_multi_device;
+  inst_opts.is_multi_device_function = metadata_->use_multi_device_function();
 
   // We infer the target device from the function library runtime.
   DCHECK(lib->device() != nullptr);
   inst_opts.target = lib->device()->name();
+
+  // Maps from a CompositeDevice name to underlying physical device names.
+  absl::flat_hash_map<string, std::vector<string>> composite_devices;
 
   if (inst_opts.is_multi_device_function) {
     // Compute devices of non-captured inputs.
@@ -597,9 +622,29 @@ Status CapturedFunction::Instantiate(
       const auto& input = captured_inputs_[i];
       DataType dtype = input.dtype();
       if (dtype == DT_RESOURCE) {
-        const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
-        inst_opts.input_devices.push_back(handle.device());
-        const auto& dtypes_and_shapes = handle.dtypes_and_shapes();
+        const auto& handles = input.flat<ResourceHandle>();
+        const ResourceHandle& handle0 = handles(0);
+        string composite_device;
+        auto iter = fdef->arg_attr().find(num_non_captured_inputs + i);
+        if (iter != fdef->arg_attr().end()) {
+          auto arg_attr = iter->second.attr().find("_composite_device");
+          if (arg_attr != iter->second.attr().end()) {
+            composite_device = arg_attr->second.s();
+          }
+        }
+        if (!composite_device.empty()) {
+          if (composite_devices.find(composite_device) ==
+              composite_devices.end()) {
+            for (int i = 0; i < handles.size(); ++i) {
+              composite_devices[composite_device].push_back(
+                  handles(i).device());
+            }
+          }
+          inst_opts.input_devices.push_back(composite_device);
+        } else {
+          inst_opts.input_devices.push_back(handle0.device());
+        }
+        const auto& dtypes_and_shapes = handle0.dtypes_and_shapes();
         // Set dtypes and shapes for resource variable inputs.
         if (!dtypes_and_shapes.empty()) {
           input_resource_variable_dtypes_and_shapes[num_non_captured_inputs +
@@ -614,7 +659,11 @@ Status CapturedFunction::Instantiate(
       }
     }
 
-    for (size_t i = 0; i < fdef->signature().output_arg_size(); ++i) {
+    for (const auto& it : composite_devices) {
+      inst_opts.composite_devices[it.first] = &it.second;
+    }
+
+    for (int i = 0, end = fdef->signature().output_arg_size(); i < end; ++i) {
       inst_opts.output_devices.push_back(inst_opts.target);
     }
 
@@ -649,21 +698,107 @@ Status CapturedFunction::Instantiate(
   DataTypeVector ret_types;
   TF_RETURN_IF_ERROR(lib->GetRetTypes(f_handle, &ret_types));
 
-  *instantiated_captured_function =
-      absl::WrapUnique<InstantiatedCapturedFunction>(
-          new InstantiatedCapturedFunction(lib, f_handle, std::move(ret_types),
-                                           *ctx->runner(), this,
-                                           is_multi_device));
-  return Status::OK();
+  bool is_multi_device;
+  TF_RETURN_IF_ERROR(IsMultiDevice(ctx, &is_multi_device));
+  return InstantiatedCapturedFunction::Create(
+      lib, f_handle, std::move(ret_types), *ctx->runner(), this,
+      is_multi_device, instantiated_captured_function);
 }
-
-bool CapturedFunction::IsStateful() const { return !CheckExternalState().ok(); }
 
 Status CapturedFunction::CheckExternalState() const {
   for (const auto& name : lib_def()->ListFunctionNames()) {
     TF_RETURN_IF_ERROR(
         IsFunctionStateful(*lib_def(), *(lib_def()->Find(name))));
   }
+  return Status::OK();
+}
+
+CapturedFunction::CapturedFunction(
+    std::shared_ptr<const FunctionMetadata> metadata,
+    std::vector<Tensor> captured_inputs)
+    : metadata_(std::move(metadata)),
+      captured_inputs_(std::move(captured_inputs)) {}
+
+Status CapturedFunction::IsMultiDevice(IteratorContext* ctx,
+                                       bool* is_multi_device) const {
+  if (!metadata_->use_multi_device_function()) {
+    *is_multi_device = false;
+    return Status::OK();
+  }
+
+  const FunctionDef* fdef;
+  TF_RETURN_IF_ERROR(
+      LookupFunction(*metadata_->lib_def(), metadata_->func().name(), &fdef));
+
+  Device* current_device = ctx->flr()->device();
+  DeviceType current_device_type(current_device->device_type());
+  DeviceNameUtils::ParsedName current_device_name;
+  if (!DeviceNameUtils::ParseFullName(current_device->name(),
+                                      &current_device_name)) {
+    return errors::InvalidArgument("Failed to parse device name: ",
+                                   current_device->name());
+  }
+
+  // Check if any of the captured inputs are placed on a device not compatible
+  // with the current device. For non-captured inputs, we assume they are placed
+  // on the current device.
+  for (const auto& input : captured_inputs_) {
+    DataType dtype = input.dtype();
+    if (dtype == DT_RESOURCE) {
+      const ResourceHandle& handle = input.flat<ResourceHandle>()(0);
+      DeviceNameUtils::ParsedName resource_device_name;
+      if (!DeviceNameUtils::ParseFullName(handle.device(),
+                                          &resource_device_name)) {
+        return errors::InvalidArgument("Failed to parse device name: ",
+                                       handle.device());
+      }
+      if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
+                                                  resource_device_name)) {
+        *is_multi_device = true;
+        return Status::OK();
+      }
+    }
+  }
+
+  // Check if all ops could be placed on the current device.
+  for (const auto& name : metadata_->lib_def()->ListFunctionNames()) {
+    const FunctionDef* fdef;
+    TF_RETURN_IF_ERROR(LookupFunction(*metadata_->lib_def(), name, &fdef));
+    for (const auto& node : fdef->node_def()) {
+      // Check if the op has a kernel available for the current device.
+      if (!KernelDefAvailable(current_device_type, node)) {
+        *is_multi_device = true;
+        return Status::OK();
+      }
+      // If the op has a requested device, check if the requested device is
+      // compatible with the current device.
+      if (!node.device().empty()) {
+        DeviceNameUtils::ParsedName node_device_name;
+        if (!DeviceNameUtils::ParseFullName(node.device(), &node_device_name)) {
+          return errors::InvalidArgument("Failed to parse device name: ",
+                                         node.device());
+        }
+        if (!DeviceNameUtils::AreCompatibleDevNames(current_device_name,
+                                                    node_device_name)) {
+          *is_multi_device = true;
+          return Status::OK();
+        }
+      }
+    }
+  }
+
+  *is_multi_device = false;
+  return Status::OK();
+}
+
+/* static */
+Status InstantiatedCapturedFunction::Create(
+    FunctionLibraryRuntime* lib, FunctionLibraryRuntime::Handle f_handle,
+    DataTypeVector ret_types, std::function<void(std::function<void()>)> runner,
+    CapturedFunction* captured_func, bool is_multi_device,
+    std::unique_ptr<InstantiatedCapturedFunction>* out_function) {
+  out_function->reset(new InstantiatedCapturedFunction(
+      lib, f_handle, ret_types, runner, captured_func, is_multi_device));
   return Status::OK();
 }
 
@@ -677,13 +812,6 @@ InstantiatedCapturedFunction::InstantiatedCapturedFunction(
       captured_runner_(std::move(runner)),
       captured_func_(captured_func),
       is_multi_device_(is_multi_device) {}
-
-// NOTE: We don't release f_handle_ here and instead delegate the function
-// handle releasing to the FunctionHandleCache. This is because in some cases
-// (RepeatDatasetOp in particular), we want to keep the function state (e.g.
-// random number generator) even after the Iterator is reset after going through
-// one epoch.
-InstantiatedCapturedFunction::~InstantiatedCapturedFunction() {}
 
 Status InstantiatedCapturedFunction::Run(IteratorContext* ctx,
                                          std::vector<Tensor>&& args,
@@ -883,12 +1011,6 @@ bool InstantiatedCapturedFunction::ShouldCreateRendezvous() const {
   // created by the process FLR.
   return lib_->device()->device_type() != DEVICE_CPU && !is_multi_device_;
 }
-
-CapturedFunction::CapturedFunction(
-    std::shared_ptr<const FunctionMetadata> metadata,
-    std::vector<Tensor> captured_inputs)
-    : metadata_(std::move(metadata)),
-      captured_inputs_(std::move(captured_inputs)) {}
 
 }  // namespace data
 }  // namespace tensorflow

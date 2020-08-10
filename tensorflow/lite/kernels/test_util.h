@@ -15,25 +15,39 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_
 
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <algorithm>
 #include <cmath>
 #include <complex>
+#include <functional>
+#include <initializer_list>
+#include <limits>
+#include <map>
+#include <memory>
+#include <string>
+#include <tuple>
 #include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/platform/logging.h"
-#include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/delegates/nnapi/nnapi_delegate_kernel.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
-#include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/testing/util.h"
+#include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
+#include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
 
@@ -98,7 +112,8 @@ struct TensorData {
              std::vector<int64_t> per_channel_quantization_offsets = {},
              int32_t channel_index = 0, std::vector<int> traversal_order = {},
              std::vector<TfLiteDimensionType> format = {},
-             std::vector<int> block_size = {}, std::vector<int> block_map = {})
+             std::vector<int> block_size = {}, std::vector<int> block_map = {},
+             std::vector<int> shape_signature = {})
       : type(type),
         shape(shape),
         min(min),
@@ -114,7 +129,8 @@ struct TensorData {
         traversal_order(traversal_order),
         format(format),
         block_size(block_size),
-        block_map(block_map) {}
+        block_map(block_map),
+        shape_signature(shape_signature) {}
   TensorType type;
   std::vector<int> shape;
   float min;
@@ -129,6 +145,7 @@ struct TensorData {
   std::vector<TfLiteDimensionType> format;
   std::vector<int> block_size;
   std::vector<int> block_map;
+  std::vector<int> shape_signature;
 };
 
 class SingleOpResolver : public OpResolver {
@@ -461,7 +478,7 @@ class SingleOpModel {
   std::vector<T> ExtractVector(int index) const {
     const T* v = interpreter_->typed_tensor<T>(index);
     const auto* tensor = interpreter_->tensor(index);
-    CHECK(v);
+    CHECK(v) << "Could not extract vector at index: " << index;
     int tensor_size;
     if (tensor->sparsity) {
       // Getting the size of the sparse buffer this way is based on the
@@ -499,8 +516,7 @@ class SingleOpModel {
     resolver_ = std::move(resolver);
   }
 
-  // Enables NNAPI delegate application during interpreter creation.
-  static void SetForceUseNnapi(bool use_nnapi);
+  // Indicate whether the test has the NNAPI delegate applied.
   static bool GetForceUseNnapi();
   int CountOpsExecutedByCpuKernel();
 
@@ -569,10 +585,11 @@ class SingleOpModel {
       buffers_.push_back(CreateBuffer(builder_, data_buffer));
     }
 
-    tensors_.push_back(CreateTensor(builder_,
-                                    builder_.CreateVector<int>(t.shape), t.type,
-                                    /*buffer=*/buffer_id,
-                                    /*name=*/0, q_params, is_variable));
+    tensors_.push_back(CreateTensor(
+        builder_, builder_.CreateVector<int>(t.shape), t.type,
+        /*buffer=*/buffer_id,
+        /*name=*/0, q_params, is_variable,
+        /*sparsity=*/0, builder_.CreateVector<int>(t.shape_signature)));
 
     tensor_data_[id] = t;
 
@@ -753,6 +770,7 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;
+  int num_applied_delegates_ = 0;
 };
 
 // Populate string tensors.
@@ -883,7 +901,6 @@ class MultiOpModel : public SingleOpModel {
     return AddTensor<T>(t, {}, false);
   }
 };
-
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_

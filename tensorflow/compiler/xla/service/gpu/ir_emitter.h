@@ -124,8 +124,9 @@ class IrEmitter : public DfsHloVisitorWithDefault,
     return bindings_.GetIrArray(inst, consumer, shape_index);
   }
   // A convenient helper for calling HloToIrBindings::GetBasePointer.
-  llvm::Value* GetBasePointer(const HloInstruction& inst) const {
-    return bindings_.GetBasePointer(inst);
+  llvm::Value* GetBasePointer(const HloInstruction& inst,
+                              ShapeIndexView shape_index = {}) const {
+    return bindings_.GetBasePointer(inst, shape_index);
   }
 
   // Generates the IrArray for each output of an hlo instruction and returns

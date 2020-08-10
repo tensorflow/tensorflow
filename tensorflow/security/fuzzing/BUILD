@@ -12,6 +12,69 @@ package(
 )
 
 tf_fuzz_target(
-    name = "demo_fuzz",
-    srcs = ["demo_fuzz.cc"],
+    name = "status_fuzz",
+    srcs = ["status_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
+)
+
+tf_fuzz_target(
+    name = "status_group_fuzz",
+    srcs = ["status_group_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:status",
+    ],
+)
+
+tf_fuzz_target(
+    name = "consume_non_whitespace_fuzz",
+    srcs = ["consume_non_whitespace_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_fuzz_target(
+    name = "consume_leading_digits_fuzz",
+    srcs = ["consume_leading_digits_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_fuzz_target(
+    name = "arg_def_case_fuzz",
+    srcs = ["arg_def_case_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_fuzz_target(
+    name = "string_replace_fuzz",
+    srcs = ["string_replace_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:str_util",
+        "//tensorflow/core/platform:stringpiece",
+    ],
+)
+
+tf_fuzz_target(
+    name = "stringprintf_fuzz",
+    srcs = ["stringprintf_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:stringprintf",
+    ],
+)
+
+tf_fuzz_target(
+    name = "tstring_fuzz",
+    srcs = ["tstring_fuzz.cc"],
+    deps = [
+        "//tensorflow/core/platform:tstring",
+    ],
 )

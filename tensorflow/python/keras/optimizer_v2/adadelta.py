@@ -24,7 +24,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
-from tensorflow.python.training import training_ops
+from tensorflow.python.training import gen_training_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -120,14 +120,14 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
     accum_grad = self.get_slot(var, 'accum_grad')
     accum_var = self.get_slot(var, 'accum_var')
-    return training_ops.resource_apply_adadelta(
-        var.handle,
-        accum_grad.handle,
-        accum_var.handle,
-        coefficients['lr_t'],
-        coefficients['rho'],
-        coefficients['epsilon'],
-        grad,
+    return gen_training_ops.ResourceApplyAdadelta(
+        var=var.handle,
+        accum=accum_grad.handle,
+        accum_update=accum_var.handle,
+        lr=coefficients['lr_t'],
+        rho=coefficients['rho'],
+        epsilon=coefficients['epsilon'],
+        grad=grad,
         use_locking=self._use_locking)
 
   def _resource_apply_sparse(self, grad, var, indices, apply_state=None):
@@ -137,15 +137,15 @@ class Adadelta(optimizer_v2.OptimizerV2):
 
     accum_grad = self.get_slot(var, 'accum_grad')
     accum_var = self.get_slot(var, 'accum_var')
-    return training_ops.resource_sparse_apply_adadelta(
-        var.handle,
-        accum_grad.handle,
-        accum_var.handle,
-        coefficients['lr_t'],
-        coefficients['rho'],
-        coefficients['epsilon'],
-        grad,
-        indices,
+    return gen_training_ops.ResourceSparseApplyAdadelta(
+        var=var.handle,
+        accum=accum_grad.handle,
+        accum_update=accum_var.handle,
+        lr=coefficients['lr_t'],
+        rho=coefficients['rho'],
+        epsilon=coefficients['epsilon'],
+        grad=grad,
+        indices=indices,
         use_locking=self._use_locking)
 
   def get_config(self):

@@ -76,7 +76,7 @@ template <typename T>
 void Col2im(const T* col_data, const int depth, const int height,
             const int width, const int filter_h, const int filter_w,
             const int pad_t, const int pad_l, const int pad_b, const int pad_r,
-            const int stride_h, const int stride_w, T* im_data) {
+            const int stride_h, const int stride_w, T* __restrict im_data) {
   int height_col = (height + pad_t + pad_b - filter_h) / stride_h + 1;
   int width_col = (width + pad_l + pad_r - filter_w) / stride_w + 1;
   int h_pad = -pad_t;
@@ -87,7 +87,6 @@ void Col2im(const T* col_data, const int depth, const int height,
       for (int ih = h_pad; ih < h_pad + filter_h; ++ih) {
         for (int iw = w_pad; iw < w_pad + filter_w; ++iw) {
           if (ih >= 0 && ih < height && iw >= 0 && iw < width) {
-            // TODO(andydavis) Vectorize this loop (if compiler does not).
             for (int i = 0; i < depth; ++i) {
               im_patch_data[i] += col_data[i];
             }
@@ -398,8 +397,8 @@ class Conv2DBackpropInputOp : public OpKernel {
     int stride_w = GetTensorDim(strides_, data_format_, 'W');
     OP_REQUIRES(
         context, (stride_n == 1 && stride_c == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+        errors::Unimplemented("Current implementation does not yet support "
+                              "strides in the batch and depth dimensions."));
     OP_REQUIRES(context, stride_h > 0 && stride_w > 0,
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
@@ -412,10 +411,10 @@ class Conv2DBackpropInputOp : public OpKernel {
     int dilation_c = GetTensorDim(dilations_, data_format_, 'C');
     int dilation_h = GetTensorDim(dilations_, data_format_, 'H');
     int dilation_w = GetTensorDim(dilations_, data_format_, 'W');
-    OP_REQUIRES(context, (dilation_n == 1 && dilation_c == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "dilations in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (dilation_n == 1 && dilation_c == 1),
+        errors::Unimplemented("Current implementation does not yet support "
+                              "dilations in the batch and depth dimensions."));
     OP_REQUIRES(
         context, dilation_h > 0 && dilation_w > 0,
         errors::InvalidArgument("Dilated rates should be larger than 0."));
@@ -518,8 +517,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                                         "specify 4 dimensions"));
     OP_REQUIRES(
         context, (strides_[0] == 1 && strides_[3] == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+        errors::Unimplemented("Current implementation does not yet support "
+                              "strides in the batch and depth dimensions."));
     OP_REQUIRES(context, strides_[1] > 0 && strides_[2] > 0,
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
@@ -528,10 +527,10 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     OP_REQUIRES(context, dilations_.size() == 4,
                 errors::InvalidArgument("Sliding window dilations field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, (dilations_[0] == 1 && dilations_[3] == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "dilations in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (dilations_[0] == 1 && dilations_[3] == 1),
+        errors::Unimplemented("Current implementation does not yet support "
+                              "dilations in the batch and depth dimensions."));
     // TODO(yangzihao): Add a CPU implementation for dilated convolution.
     OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
                 errors::InvalidArgument(
@@ -561,6 +560,16 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                        input_shape, filter.shape(), out_backprop.shape(),
                        /*dilations=*/{1, 1, 1, 1}, strides_, padding_,
                        explicit_paddings_, data_format_, &dims));
+
+    OP_REQUIRES(context, dims.in_depth == filter.shape().dim_size(2),
+                errors::InvalidArgument("Computed input depth ", dims.in_depth,
+                                        " doesn't match filter input depth ",
+                                        filter.shape().dim_size(2)));
+    OP_REQUIRES(
+        context, dims.out_depth == filter.shape().dim_size(3),
+        errors::InvalidArgument("Computed output depth ", dims.out_depth,
+                                " doesn't match filter output depth ",
+                                filter.shape().dim_size(3)));
 
     Tensor* in_backprop = nullptr;
     OP_REQUIRES_OK(context,

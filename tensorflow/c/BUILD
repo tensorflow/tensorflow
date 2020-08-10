@@ -29,6 +29,8 @@ filegroup(
         "tf_file_statistics.h",
         "tf_status.h",
         "tf_tensor.h",
+        "tf_tstring.h",
+        "//tensorflow/core/platform:ctstring",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -48,6 +50,7 @@ filegroup(
             "*test*",
         ],
     ) + [
+        "//tensorflow/core/platform:ctstring",
         "//tensorflow/cc:srcs_no_runtime",
         "//tensorflow/core/distributed_runtime:server_lib.h",
     ],
@@ -78,6 +81,7 @@ tf_cuda_library(
         "c_api_internal.h",
         "tf_datatype.h",
         "tf_tensor.h",
+        "tf_tstring.h",
     ],
     visibility = [
         "//tensorflow:internal",
@@ -173,6 +177,7 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow/c:__subpackages__",
+        "//tensorflow/python:__subpackages__",
         "//third_party/llvm/llvm-project:__subpackages__",
     ],
     deps = [
@@ -206,6 +211,17 @@ tf_cuda_library(
         ],
     }),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "logging",
+    srcs = ["logging.cc"],
+    hdrs = ["logging.h"],
+    deps = [
+        ":c_api_macros",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:stringprintf",
+    ],
 )
 
 tf_cuda_library(

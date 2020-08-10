@@ -106,9 +106,16 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
       const auto* params = reinterpret_cast<const TfLitePoolParams*>(node->builtin_data);
       return params != nullptr && params->activation == kTfLiteActNone;
     }
+    case kTfLiteBuiltinMirrorPad: {
+      return delegates::coreml::IsMirrorPadOpSupported(registration, node, context);
+    }
     case kTfLiteBuiltinMul: {
       return node->builtin_data != nullptr &&
              delegates::coreml::IsBinaryOpSupported(registration, node, context);
+    }
+    case kTfLiteBuiltinPad:
+    case kTfLiteBuiltinPadv2: {
+      return delegates::coreml::IsPadOpSupported(registration, node, context);
     }
     case kTfLiteBuiltinRelu: {
       return true;
@@ -241,8 +248,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
                   delegated_nodes.size(), partition_helper.num_total_nodes(),
                   partition_helper.num_partitions());
   return context->ReplaceNodeSubsetsWithDelegateKernels(
-      context, GetCoreMlKernelRegistration(), BuildTfLiteIntArray(delegated_nodes).get(),
-      delegate);
+      context, GetCoreMlKernelRegistration(), BuildTfLiteIntArray(delegated_nodes).get(), delegate);
 }
 
 TfLiteDelegate* CreateCoreMlDelegate(const TfLiteCoreMlDelegateOptions* options) {

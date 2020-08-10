@@ -12,8 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Main abstraction controlling the tflite interpreter.
-// See context.h for the API for defining operations (TfLiteRegistration).
+/// \file
+/// Main abstraction controlling the tflite interpreter.
+/// See context.h for the API for defining operations (TfLiteRegistration).
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
@@ -347,10 +348,12 @@ class Interpreter {
   /// WARNING: Experimental interface, subject to change
   TfLiteStatus ReleaseNonPersistentMemory();
 
-  /// Update allocations for all tensors. This will redim dependent tensors
-  /// using the input tensor dimensionality as given. This is relatively
-  /// expensive. If you know that your sizes are not changing, you need not call
-  /// this. Returns status of success or failure.
+  // Update allocations for all tensors. This will redim dependent tensors
+  // using the input tensor dimensionality as given. This is relatively
+  // expensive. This *must be* called after the interpreter has been created
+  // and before running inference (and accessing tensor buffers), and *must be*
+  // called again if (and only if) an input tensor is resized. Returns status of
+  // success or failure.
   TfLiteStatus AllocateTensors();
 
   /// Invoke the interpreter (run the whole graph in dependency order).
@@ -361,7 +364,13 @@ class Interpreter {
   /// Returns status of success or failure.
   TfLiteStatus Invoke();
 
-  /// Enable or disable the NN API (true to enable)
+  /// Enable or disable NNAPI (true to enable). Disabled by default.
+  ///
+  /// WARNING: NNAPI cannot be disabled after the graph has been prepared
+  /// (via `AllocateTensors`) with NNAPI enabled.
+  ///
+  /// NOTE: This API is deprecated, prefer using the NNAPI delegate directly.
+  /// This method will be removed in a future release.
   void UseNNAPI(bool enable);
 
   /// Set the number of threads available to the interpreter.
@@ -369,7 +378,7 @@ class Interpreter {
   /// NOTE: num_threads should be >= -1.
   /// User may pass -1 to let the TFLite interpreter set the no of threads
   /// available to itself.
-  void SetNumThreads(int num_threads);
+  TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
   /// default: not allow.
@@ -495,6 +504,29 @@ class Interpreter {
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
+  // Assigns (or reassigns) a custom memory allocation for the given tensor.
+  // If AllocateTensors() is called after this, the runtime does not consider
+  // the tensor during internal memory planning and will continue using the
+  // provided allocation for the tensor (assuming it satisfies the expected
+  // tensor byte length).
+  // The runtime does NOT take ownership of the underlying memory.
+  // Note that while this function can be called again to set a new allocation
+  // for the tensor, it can no longer be reset to the TFLite arena memory.
+  //
+  // Parameters should satisfy the following conditions:
+  // 1. tensor->allocation_type == kTfLiteArenaRw
+  //    In general, this is true for all non-constants such as I/O tensors.
+  // 2. allocation->data has the appropriate permissions for runtime access
+  //    (Read-only for inputs, Read-Write for others), and outlives Interpreter.
+  // 3. allocation->bytes >= tensor->bytes.
+  //    This condition is checked again if any tensors are resized.
+  // 4. allocation->data should be aligned to kDefaultTensorAlignment
+  //    defined in lite/util.h. (Currently 64 bytes)
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus SetCustomAllocationForTensor(
+      int tensor_index, const TfLiteCustomAllocation& allocation);
+
 #ifndef DOXYGEN_SKIP
   /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
   /// entries. The value pointed to by `first_new_subgraph_index` will be set to
@@ -594,6 +626,11 @@ class Interpreter {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
+
+  // Indicating a delegate that the TFLite interpreter will apply by default.
+  // A nullptr value means there's no delegate to be applied by default or the
+  // delegate has been applied and doesn't need to be applied again.
+  TfLiteDelegatePtr lazy_delegate_provider_;
 };
 
 }  // namespace impl

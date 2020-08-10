@@ -23,7 +23,7 @@ limitations under the License.
 #endif
 
 #if defined(TFLITE_ENABLE_HEXAGON)
-#include "tensorflow/lite/experimental/delegates/hexagon/hexagon_delegate.h"
+#include "tensorflow/lite/delegates/hexagon/hexagon_delegate.h"
 #endif
 
 namespace tflite {
@@ -43,7 +43,7 @@ class HexagonDelegateProvider : public DelegateProvider {
 
   std::vector<Flag> CreateFlags(ToolParams* params) const final;
 
-  void LogParams(const ToolParams& params) const final;
+  void LogParams(const ToolParams& params, bool verbose) const final;
 
   TfLiteDelegatePtr CreateTfLiteDelegate(const ToolParams& params) const final;
 
@@ -67,14 +67,14 @@ std::vector<Flag> HexagonDelegateProvider::CreateFlags(
 #endif
 }
 
-void HexagonDelegateProvider::LogParams(const ToolParams& params) const {
+void HexagonDelegateProvider::LogParams(const ToolParams& params,
+                                        bool verbose) const {
 #if defined(TFLITE_ENABLE_HEXAGON)
-  TFLITE_LOG(INFO) << "Use Hexagon : [" << params.Get<bool>("use_hexagon")
-                   << "]";
-  TFLITE_LOG(INFO) << "Hexagon lib path : ["
-                   << params.Get<std::string>("hexagon_lib_path") << "]";
-  TFLITE_LOG(INFO) << "Hexagon Profiling : ["
-                   << params.Get<bool>("hexagon_profiling") << "]";
+  LOG_TOOL_PARAM(params, bool, "use_hexagon", "Use Hexagon", verbose);
+  LOG_TOOL_PARAM(params, std::string, "hexagon_lib_path", "Hexagon lib path",
+                 verbose);
+  LOG_TOOL_PARAM(params, bool, "hexagon_profiling", "Hexagon profiling",
+                 verbose);
 #endif
 }
 

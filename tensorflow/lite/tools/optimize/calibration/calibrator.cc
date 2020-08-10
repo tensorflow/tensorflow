@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op.h"
 #include "tensorflow/lite/tools/optimize/calibration/logging_op_resolver.h"
-#include "tensorflow/lite/tools/optimize/calibration/node_info_delegate.h"
 
 namespace tflite {
 namespace optimize {
@@ -267,18 +266,20 @@ TfLiteStatus GetNodeOpInfoMapAndContext(
     const std::unordered_map<int, OperatorInfo>& node_to_opinfo,
     tflite::Interpreter* const interpreter,
     std::unordered_map<const TfLiteNode*, OperatorInfo>* node_ptr_opinfo_map,
-    const TfLiteContext** context) {
-  NodeInfoDelegateObserver delegate_observer(node_to_opinfo,
-                                             node_ptr_opinfo_map);
-  NodeInfoDelegateParams delegate_params;
-  delegate_params.delegate_observer = &delegate_observer;
-  TfLiteDelegate logging_delegate = CreateNodeInfoDelegate(&delegate_params);
+    TfLiteContext** context) {
+  *context = interpreter->primary_subgraph().context();
 
-  auto modify_status = interpreter->ModifyGraphWithDelegate(&logging_delegate);
-  if (modify_status != kTfLiteOk) {
-    return kTfLiteError;
+  // Since we only consider the primary subgraph while populating
+  // node_to_opinfo, do the same here.
+  TF_LITE_ENSURE_EQ(*context, interpreter->execution_plan().size(),
+                    node_to_opinfo.size());
+  for (const auto op_index : interpreter->execution_plan()) {
+    const auto* node_and_reg = interpreter->node_and_registration(op_index);
+
+    auto op_info = node_to_opinfo.at(op_index);
+    op_info.registration = &node_and_reg->second;
+    node_ptr_opinfo_map->insert({&node_and_reg->first, op_info});
   }
-  *context = delegate_observer.GetContext();
   return kTfLiteOk;
 }
 
@@ -378,8 +379,8 @@ TfLiteStatus BuildLoggingInterpreter(
   // Prepare the logging op resolver to use |LoggingEval| for kernel
   // invocations.
   auto logging_op_resolver = absl::make_unique<LoggingOpResolver>(
-      builtin_op_and_versions, custom_op_and_versions, op_resolver,
-      LoggingEval);
+      builtin_op_and_versions, custom_op_and_versions, op_resolver, LoggingEval,
+      error_reporter);
   tflite::InterpreterBuilder(tflite_model, *logging_op_resolver,
                              error_reporter)(interpreter);
 
@@ -391,7 +392,7 @@ TfLiteStatus BuildLoggingInterpreter(
   // Compute the mapping between runtime and static graph structure, i.e.
   // (TfLiteContext, TfLiteNode) -> OperatorInfo
   std::unordered_map<const TfLiteNode*, OperatorInfo> node_ptr_opinfo_map;
-  const TfLiteContext* context = nullptr;
+  TfLiteContext* context = nullptr;
   GetNodeOpInfoMapAndContext(node_to_opinfo, interpreter->get(),
                              &node_ptr_opinfo_map, &context);
 

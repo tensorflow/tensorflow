@@ -40,7 +40,8 @@ enum class CompilerOptions {
   ADRENO_FULL_SIMD_LINE,
   ADRENO_MORE_WAVES,
   POWERVR_FP16,
-  CL_OPT_DISABLE
+  CL_OPT_DISABLE,
+  CL_2_0
 };
 
 std::string CompilerOptionsToString(

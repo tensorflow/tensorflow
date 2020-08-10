@@ -12,16 +12,28 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+#include <algorithm>
+#include <initializer_list>
 #include <limits>
+#include <map>
+#include <memory>
 #include <random>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -239,6 +251,29 @@ TEST(FloatActivationsOpTest, Elu) {
                                  0.0, -0.997521, 2.0, -0.981684,    //
                                  3.0, -0.864665, 10.0, -0.0951626,  //
                              })));
+}
+
+TEST(QuantizedActivationsOpTest, EluInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel model(
+      BuiltinOperator_ELU,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax});
+
+  model.SetInput<int8_t>({
+      0, -6, 2, -4,    //
+      3, -2, 6, -0.1,  //
+  });
+
+  model.Invoke();
+  EXPECT_THAT(model.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0, -1.0, 2.0, -1,          //
+                      3.0, -0.875, 6.0, -0.125,  //
+                  },
+                  kQuantizedTolerance)));
 }
 
 TEST(FloatActivationsOpTest, Relu) {

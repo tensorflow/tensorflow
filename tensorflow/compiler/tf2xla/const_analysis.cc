@@ -74,7 +74,7 @@ Status CondConstInputIndices(
         *(fbody->graph), &compile_time_const_arg_indices,
         /*compile_time_const_nodes=*/nullptr, flib_runtime));
   }
-  for (int i = 0; i < compile_time_const_arg_indices.size(); i++) {
+  for (int i = 0, end = compile_time_const_arg_indices.size(); i < end; i++) {
     if (compile_time_const_arg_indices[i]) {
       // The 0th input is the pred or branch index, which is not passed to the
       // branches. So the i'th input of a branch function corresponds to the
@@ -140,7 +140,7 @@ Status GetCompileTimeConstInputs(const NodeDef& node, const OpKernel* op_kernel,
         GetFunctionBody(flib_runtime, node, "else_branch", &felse));
     return CondConstInputIndices({fthen, felse}, const_input_idxs,
                                  flib_runtime);
-  } else if (node.op() == "Case") {
+  } else if (node.op() == "Case" || node.op() == "StatelessCase") {
     std::vector<const FunctionBody*> branch_bodies;
     TF_RETURN_IF_ERROR(
         GetFunctionBodies(flib_runtime, node, "branches", &branch_bodies));

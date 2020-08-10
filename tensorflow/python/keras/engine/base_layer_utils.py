@@ -29,16 +29,16 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import control_flow_v2_func_graphs
-from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.tracking import base as tracking
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 _call_context = threading.local()
@@ -118,9 +118,7 @@ def make_variable(name,
     variable_dtype = None
   else:
     # Instantiate initializer if provided initializer is a type object.
-    if isinstance(
-        initializer,
-        (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
+    if tf_inspect.isclass(initializer):
       initializer = initializer()
     init_val = functools.partial(initializer, shape, dtype=dtype)
     variable_dtype = dtype.base_dtype
@@ -211,18 +209,18 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
   # TODO(omalleyt): Resolve circular dependency.
   from tensorflow.python.keras.engine import base_layer  # pylint: disable=g-import-not-at-top
   tensor_list = nest.flatten(tensors)
+  sparse_ops = []
+  ragged_tensors = []
   for tensor in tensor_list:
     if getattr(tensor, '_keras_history', None) is not None:
       continue
-    if sparse_tensor.is_sparse(tensor) or ragged_tensor.is_ragged(tensor):
-      example = """
-      weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
-      output = tf.keras.layers.Lambda(weights_mult)(input)
-      """
-      raise ValueError('Tensorflow ops that generate ragged or sparse tensor '
-                       'outputs are currently not supported by Keras automatic '
-                       'op wrapping. Please wrap these ops in a Lambda layer: '
-                       '\n\n```\n{example}\n```\n'.format(example=example))
+    if sparse_tensor.is_sparse(tensor):
+      sparse_ops.append(tensor.op)
+      continue
+    if tf_utils.is_ragged(tensor):
+      # Ragged tensors don't have an op property
+      ragged_tensors.append(tensor)
+      continue
     op = tensor.op  # The Op that created this Tensor.
     if op not in processed_ops:
       # Recursively set `_keras_history`.
@@ -264,6 +262,21 @@ def _create_keras_history_helper(tensors, processed_ops, created_layers):
           kwargs={},
           outputs=op.outputs)
       processed_ops.update([op])
+  if sparse_ops or ragged_tensors:
+    lambda_example = """
+    weights_mult = lambda x: tf.sparse.sparse_dense_matmul(x, weights)
+    output = tf.keras.layers.Lambda(weights_mult)(input)
+    """
+    raise ValueError(
+        'Tensorflow ops that generate ragged or sparse tensor '
+        'outputs are currently not supported by Keras automatic '
+        'op wrapping. Please wrap these ops in a Lambda layer: '
+        '\n\n```\n{example}\n```\n'
+        'Sparse ops encountered: {sparse_ops}\n'
+        'Ragged tensors encountered: {ragged_tensors}\n'.format(
+            example=lambda_example,
+            sparse_ops=str(sparse_ops),
+            ragged_tensors=str(ragged_tensors)))
   return processed_ops, created_layers
 
 
@@ -774,6 +787,7 @@ class TrackableWeightHandler(object):
     if not isinstance(trackable, tracking.Trackable):
       raise ValueError('%s is not a Trackable object.' % (trackable,))
     self._trackable = trackable
+    self._distribute_strategy = distribution_strategy_context.get_strategy()
 
     # TODO(b/141682913): Figure out why this is private and fix it.
     saveables = trackable._gather_saveables_for_checkpoint().values()  # pylint: disable=protected-access
@@ -835,6 +849,18 @@ def no_ragged_support(inputs, layer_name):
     raise ValueError('Layer %s does not support RaggedTensors as input. '
                      'Inputs received: %s. You can try converting your '
                      'input to an uniform tensor.' % (layer_name, inputs))
+
+
+def is_split_variable(v):
+  """Returns True if `v` is either a PartionedVariable or a SharedVariable."""
+  return hasattr(v, '_variable_list') or hasattr(v, '_variables')
+
+
+def has_weights(obj):
+  obj_type = type(obj)
+  return (hasattr(obj_type, 'trainable_weights') and
+          hasattr(obj_type, 'non_trainable_weights') and
+          not isinstance(obj, type))
 
 
 # TODO(kathywu): This is a temporary hack. When a network of layers is revived

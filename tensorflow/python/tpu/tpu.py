@@ -19,9 +19,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from absl import logging
+import collections
 import enum
 
+from absl import logging
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
@@ -49,14 +50,13 @@ from tensorflow.python.tpu import tpu_function
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable("TPUReplicatedInput")
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
 # that's introduced outside of the infeed.
-_BLACKLISTED_OPS = set([
+_DENYLISTED_OPS = set([
     "Placeholder",
 ])
 
@@ -298,7 +298,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     self._pivot = pivot
     self._replicated_vars = {}
 
-  def get_replicated_var_handle(self, name, vars_, is_mirrored=False):
+  def get_replicated_var_handle(self, name, vars_, is_mirrored=False,
+                                is_packed=False):
     """Returns a variable handle for replicated TPU variable 'var'.
 
     This is a method used by an experimental replicated variable implementation
@@ -309,6 +310,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       vars_: The replicated TPU variables.
       is_mirrored: Whether the variables are mirrored, which guarantees the
         values in each replica are always the same.
+      is_packed: Whether the replicated variables are packed into one variable.
 
     Returns:
       The handle of the TPU replicated input node.
@@ -320,7 +322,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
     if handle is not None:
       return handle
 
-    if device_assignment is not None:
+    if device_assignment is not None and not is_packed:
       # Find a variable copy for each replica in the device assignment.
       # Note that the order of devices for replicas for the variable and the
       # device assignment might not match.
@@ -356,7 +358,8 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       graph._set_control_flow_context(self.outer_context)
       handle = tpu_ops.tpu_replicated_input([v.handle for v in replicated_vars],
                                             name=name + "/handle",
-                                            is_mirrored_variable=is_mirrored)
+                                            is_mirrored_variable=is_mirrored,
+                                            is_packed=is_packed)
       graph._set_control_flow_context(saved_context)
       # pylint: enable=protected-access
     self._replicated_vars[name] = handle
@@ -522,7 +525,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def AddOp(self, op):
     # pylint: disable=protected-access
-    if op.type in _BLACKLISTED_OPS:
+    if op.type in _DENYLISTED_OPS:
       logging.error("Operation of type %s (%s) is not supported on the TPU. "
                     "Execution will fail if this op is used in the graph. " %
                     (op.type, op.name))
@@ -638,6 +641,12 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def GetControlPivot(self):
     return self._pivot
+
+  def RequiresUniqueFunctionRetracing(self):
+    # More context: b/158152827. TPU stack uses the TPUReplicateContext to
+    # create replicated variable handles and cluster TPU computations, thus we
+    # always retrace a tf.function when the wrapped TPUReplicateContext changes.
+    return True
 
 
 class OutsideCompilationV2Context(control_flow_ops.ControlFlowContext):
@@ -803,6 +812,23 @@ class PaddingSpec(enum.IntEnum):
   POWER_OF_TWO = 1
 
 
+@tf_export(v1=["tpu.XLAOptions"])
+class XLAOptions(
+    collections.namedtuple("XLAOptions", [
+        "use_spmd_for_xla_partitioning",
+    ])):
+  """XLA compilation options.
+
+  Attributes:
+    use_spmd_for_xla_partitioning: Boolean. Whether to use XLA's SPMD
+      partitioner instead of MPMD partitioner when compiler partitioning is
+      requested.
+  """
+
+  def __new__(cls, use_spmd_for_xla_partitioning=False):
+    return super(XLAOptions, cls).__new__(cls, use_spmd_for_xla_partitioning)
+
+
 @tf_export(v1=["tpu.replicate"])
 def replicate(computation,
               inputs=None,
@@ -810,7 +836,8 @@ def replicate(computation,
               device_assignment=None,
               name=None,
               maximum_shapes=None,
-              padding_spec=None):
+              padding_spec=None,
+              xla_options=None):
   """Builds a graph operator that runs a replicated TPU computation.
 
   Example for the basic usage that `inputs` has static shape:
@@ -875,6 +902,8 @@ def replicate(computation,
       One usage is to enable automatic bucketizing on the inputs by setting the
       value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
       recompilation in the XLA side.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A list of outputs, indexed by `[replica_num]` each output can be a nested
     structure same as what computation() returns with a few exceptions.
@@ -903,7 +932,8 @@ def replicate(computation,
       device_assignment,
       name,
       maximum_shapes=maximum_shapes,
-      padding_spec=padding_spec)[1]
+      padding_spec=padding_spec,
+      xla_options=xla_options)[1]
 
 
 def _ceil_to_pow_of_n(x, n):
@@ -1095,7 +1125,8 @@ def split_compile_and_replicate(computation,
                                 name=None,
                                 use_tpu=True,
                                 maximum_shapes=None,
-                                padding_spec=None):
+                                padding_spec=None,
+                                xla_options=None):
   """Builds graph operators that runs compilation and replicated computation.
 
   This is a lower level interface than replicate that returns a separate compile
@@ -1137,6 +1168,8 @@ def split_compile_and_replicate(computation,
       One usage is to enable automatic bucketizing on the inputs by setting the
       value to `tpu.PaddingSpec.POWER_OF_TWO`, which can help to reduce the
       recompilation in the XLA side.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
 
   Returns:
     A list of lists with the first list corresponding to the compile op and the
@@ -1152,6 +1185,7 @@ def split_compile_and_replicate(computation,
   """
   del name
   inputs = [[]] if inputs is None else inputs
+  xla_options = xla_options or XLAOptions()
 
   metadata_kwargs = {}
   if device_assignment is not None:
@@ -1192,7 +1226,7 @@ def split_compile_and_replicate(computation,
       nest.flatten(per_replica_input, expand_composites=True)
       for per_replica_input in inputs
   ]
-  # Mask parallel to one replicat's inputs with True for tensors coming from
+  # Mask parallel to one replica's inputs with True for tensors coming from
   # composites.
   is_composite = nest.flatten(nest.map_structure(
       lambda x: _flatten_and_filter_composite(x, False, True), inputs[0]))
@@ -1275,6 +1309,8 @@ def split_compile_and_replicate(computation,
 
   metadata_kwargs["step_marker_location"] = getattr(
       computation, "step_marker_location", "STEP_MARK_AT_ENTRY")
+  metadata_kwargs["use_spmd_for_xla_partitioning"] = \
+      xla_options.use_spmd_for_xla_partitioning
 
   graph = ops.get_default_graph()
 
@@ -1375,9 +1411,11 @@ def split_compile_and_replicate(computation,
 
     outputs_is_flat = xla.is_flat(outputs)
     if outputs_is_flat:
-      output_tensors, control_deps = _postprocess_flat_outputs(outputs)
+      output_tensors, control_deps, pack_template = _postprocess_flat_outputs(
+          outputs)
     else:
-      output_tensors, control_deps = _postprocess_non_flat_outputs(outputs)
+      output_tensors, control_deps, pack_template = (
+          _postprocess_non_flat_outputs(outputs))
 
     # tensor_tracer imports tpu.py. Local import to tensor_tracer to avoid
     # import-cycle
@@ -1436,11 +1474,10 @@ def split_compile_and_replicate(computation,
             array_ops.identity(
                 ys[replica], name="output_%d_shard_%d" % (i, replica)))
 
-  if not outputs_is_flat:
-    replicated_outputs = [
-        nest.pack_sequence_as(outputs, replica_outs)
-        for replica_outs in replicated_outputs
-    ]
+  replicated_outputs = [
+      nest.pack_sequence_as(pack_template, replica_outs, expand_composites=True)
+      for replica_outs in replicated_outputs
+  ]
 
   return [compile_status, replicated_outputs]
 
@@ -1452,7 +1489,9 @@ def _postprocess_flat_outputs(outputs):
     outputs: Output from `computation` inside `tpu.rewrite`.
 
   Returns:
-    Tensors and Operations extracted from outputs.
+    - Tensors extracted from outputs.
+    - Operations extracted from outputs.
+    - A pack template for use with nest.pack_sequence_as to pack the tensors.
   """
   # Following code segment is to preserve legacy behavior. Previously we only
   # supported flat outputs and thus for consistency it was nice to convert even
@@ -1463,9 +1502,17 @@ def _postprocess_flat_outputs(outputs):
   # If the computation returns `None`, make it an empty tuple.
   if outputs is None:
     outputs = tuple()
-  # If the computation only returned one value, makes it a tuple.
-  if not isinstance(outputs, collections_abc.Sequence):
-    outputs = (outputs,)
+
+  # For legacy / backwards compatibility reasons we return a list for "flat"
+  # output values (even if the user's flat return value was a different type or
+  # even just a scalar value) so use nest.flatten to compute a flat list pack
+  # template.
+  pack_template = nest.flatten(outputs, expand_composites=False)
+
+  # Even though outputs is already "flat", we flatten any composites so their
+  # component tensors can be tagged and replicated. The pack_template will be
+  # used by the caller to repack the composite tensors.
+  outputs = nest.flatten(outputs, expand_composites=True)
 
   # Append `no_op` here so that fetching any return value of this function
   # will trigger TPUExecute node.
@@ -1490,6 +1537,11 @@ def _postprocess_flat_outputs(outputs):
         "TPU functions must return zero-or more Tensor values followed by "
         "zero or more Operations.")
 
+  # Trim operations off the end of the pack template. output_operations has 1
+  # extra element due to the no-op that is added.
+  if len(output_operations) > 1:
+    pack_template = pack_template[:1 - len(output_operations)]
+
   # Wraps outputs in Identity ops. Otherwise a replicated input copied
   # straight to an output would bypass the replicate(). This would be bad
   # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
@@ -1503,7 +1555,7 @@ def _postprocess_flat_outputs(outputs):
       o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))
       # pylint: enable=protected-access
       new_output_tensors.append(o)
-  return new_output_tensors, output_operations
+  return new_output_tensors, output_operations, pack_template
 
 
 def _postprocess_non_flat_outputs(outputs):
@@ -1513,12 +1565,14 @@ def _postprocess_non_flat_outputs(outputs):
     outputs: Output from `computation` inside `tpu.rewrite`.
 
   Returns:
-    Tensors extracted from outputs and an empty list because Operations are not
-    allowed in non-flat outputs..
+    - Tensors extracted from outputs.
+    - An empty Operations list because Operations are not allowed in non-flat
+      outputs.
+    - A pack template for use with nest.pack_sequence_as to pack the tensors.
   """
 
   # Flatten output items.
-  flat_outputs = nest.flatten(outputs)
+  flat_outputs = nest.flatten(outputs, expand_composites=True)
 
   # Convert all non-Operation outputs to Tensors.
   for i, o in enumerate(flat_outputs):
@@ -1549,7 +1603,7 @@ def _postprocess_non_flat_outputs(outputs):
       flat_outputs[i] = array_ops.identity(o)
 
   # All flat_outputs are Tensors, and no Operations.
-  return flat_outputs, []
+  return flat_outputs, [], outputs
 
 
 def split_compile_and_shard(computation,
@@ -1560,7 +1614,8 @@ def split_compile_and_shard(computation,
                             output_shard_axes=None,
                             infeed_queue=None,
                             device_assignment=None,
-                            name=None):
+                            name=None,
+                            xla_options=None):
   """Shards `computation` for parallel execution.
 
   `inputs` must be a list of Tensors or None (equivalent to an empty list), each
@@ -1610,6 +1665,8 @@ def split_compile_and_shard(computation,
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A tuple of (compile op, [output tensors]).
   Raises:
@@ -1653,7 +1710,8 @@ def split_compile_and_shard(computation,
       transposed_inputs,
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)
+      name=name,
+      xla_options=xla_options)
 
   # There must be at least one shard since num_shards > 0.
   # TODO(b/36647078) remove disable when pylint bug is fixed.
@@ -1711,7 +1769,8 @@ def shard(computation,
           output_shard_axes=None,
           infeed_queue=None,
           device_assignment=None,
-          name=None):
+          name=None,
+          xla_options=None):
   """Shards `computation` for parallel execution.
 
   `inputs` must be a list of Tensors or None (equivalent to an empty list), each
@@ -1764,6 +1823,8 @@ def shard(computation,
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A list of output tensors.
   Raises:
@@ -1780,7 +1841,8 @@ def shard(computation,
       output_shard_axes=output_shard_axes,
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)[1]
+      name=name,
+      xla_options=xla_options)[1]
 
 
 @tf_export(v1=["tpu.batch_parallel"])
@@ -1789,7 +1851,8 @@ def batch_parallel(computation,
                    num_shards=1,
                    infeed_queue=None,
                    device_assignment=None,
-                   name=None):
+                   name=None,
+                   xla_options=None):
   """Shards `computation` along the batch dimension for parallel execution.
 
   Convenience wrapper around shard().
@@ -1826,6 +1889,8 @@ def batch_parallel(computation,
       only one core, and there is either only one shard, or the number of shards
       is equal to the number of cores in the TPU system.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     A list of output tensors.
   Raises:
@@ -1837,7 +1902,8 @@ def batch_parallel(computation,
       num_shards=num_shards,
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)
+      name=name,
+      xla_options=xla_options)
 
 
 @tf_export(v1=["tpu.rewrite"])
@@ -1845,7 +1911,8 @@ def rewrite(computation,
             inputs=None,
             infeed_queue=None,
             device_assignment=None,
-            name=None):
+            name=None,
+            xla_options=None):
   """Rewrites `computation` for execution on a TPU system.
 
   Args:
@@ -1873,6 +1940,8 @@ def rewrite(computation,
       the TPU topology. May be omitted for a single-core computation, in which
       case the core attached to task 0, TPU device 0 is used.
     name: (Deprecated) Does nothing.
+    xla_options: An instance of `tpu.XLAOptions` which indicates the options
+      passed to XLA compiler. Use `None` for default options.
   Returns:
     Same data structure as if computation(*inputs) is called directly with some
     exceptions for correctness. Exceptions include:
@@ -1890,11 +1959,14 @@ def rewrite(computation,
       None if inputs is None else [inputs],
       infeed_queue=infeed_queue,
       device_assignment=device_assignment,
-      name=name)[0]
+      name=name,
+      xla_options=xla_options)[0]
   # pylint: enable=indexing-exception
 
   # Operations that indicate some error in the user's inference graph.
-_BLACKLISTED_INFERENCE_OPS = set([
+
+
+_DENYLISTED_INFERENCE_OPS = set([
     "ReadVariableOp",
     "AssignVariableOp",
     "AssignAddVariableOp",
@@ -1940,7 +2012,7 @@ class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
-    if self._check_ops and op.type in _BLACKLISTED_INFERENCE_OPS:
+    if self._check_ops and op.type in _DENYLISTED_INFERENCE_OPS:
       raise NotImplementedError(
           "Operation of type %s (%s) is not supported on the TPU for inference."
           " Execution will fail if this op is used in the graph. Make sure your"

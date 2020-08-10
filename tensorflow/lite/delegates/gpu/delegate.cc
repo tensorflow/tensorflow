@@ -18,9 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <thread>  // NOLINT(build/c++11)
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
@@ -34,9 +34,12 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/gl/api2.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/minimal_logging.h"
+
+#ifndef CL_DELEGATE_NO_GL
+#include "tensorflow/lite/delegates/gpu/gl/api2.h"
+#endif
 
 namespace tflite {
 namespace gpu {
@@ -315,6 +318,7 @@ class DelegateKernel {
 
   absl::Status InitializeOpenGlApi(GraphFloat32* graph,
                                    std::unique_ptr<InferenceBuilder>* builder) {
+#ifndef CL_DELEGATE_NO_GL
     gl::InferenceEnvironmentOptions env_options;
     gl::InferenceEnvironmentProperties properties;
     RETURN_IF_ERROR(
@@ -330,20 +334,23 @@ class DelegateKernel {
     enforce_same_thread_ = true;
     TFLITE_LOG_PROD_ONCE(tflite::TFLITE_LOG_INFO,
                          "Initialized OpenGL-based API.");
+#endif
     return absl::OkStatus();
   }
 
   // The Delegate instance that's shared across all DelegateKernel instances.
   Delegate* const delegate_;  // doesn't own the memory.
   std::unique_ptr<cl::InferenceEnvironment> cl_environment_;
+#ifndef CL_DELEGATE_NO_GL
   std::unique_ptr<gl::InferenceEnvironment> gl_environment_;
+#endif
   std::unique_ptr<InferenceRunner> runner_;
   std::vector<int64_t> input_indices_;
   std::vector<int64_t> output_indices_;
   // Whenever quantized inference is enabled, this maps the tensor index of each
   // originally quantized (8-bit) tensor to its float version added in
   // model_builder - and vice versa.
-  std::unordered_map<int, int> quant_conversion_map_;
+  absl::flat_hash_map<int, int> quant_conversion_map_;
   std::thread::id thread_id_prepare_;  // thread id used for Prapare()
   bool enforce_same_thread_ = false;   // flag to enforce same thread for Invoke
 };
@@ -369,8 +376,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
             absl::make_unique<DelegateKernel>(gpu_delegate);
         const auto status = gpu_delegate_kernel->Prepare(context, params);
         if (!status.ok()) {
-          context->ReportError(context, "TfLiteGpuDelegate Init: %s",
-                               std::string(status.message()).c_str());
+          TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Init: %s",
+                             std::string(status.message()).c_str());
           return nullptr;
         }
         return gpu_delegate_kernel.release();
@@ -382,7 +389,7 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       // .prepare
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         if (!node->user_data) {
-          context->ReportError(
+          TF_LITE_KERNEL_LOG(
               context,
               "TfLiteGpuDelegate Prepare: delegate is not initialized");
           return kTfLiteError;
@@ -404,8 +411,8 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       [](TfLiteContext* context, TfLiteNode* node) -> TfLiteStatus {
         const auto status = GetDelegateKernel(node)->Invoke(context);
         if (!status.ok()) {
-          context->ReportError(context, "TfLiteGpuDelegate Invoke: %s",
-                               std::string(status.message()).c_str());
+          TF_LITE_KERNEL_LOG(context, "TfLiteGpuDelegate Invoke: %s",
+                             std::string(status.message()).c_str());
           return kTfLiteError;
         }
         return kTfLiteOk;

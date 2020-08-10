@@ -17,6 +17,7 @@ cc_library(
         "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
         "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:xplane_builder",
+        "//tensorflow/core/profiler/utils:xplane_utils",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
     ],
@@ -28,7 +29,6 @@ cc_library(
     deps = [
         ":host_tracer_utils",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler/internal:profiler_factory",
@@ -72,7 +72,6 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler/internal:profiler_factory",
@@ -90,7 +89,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_proto_cc",
         "//tensorflow/compiler/xla/service/gpu:gpu_debug_info_manager",
         "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/profiler:profiler_options_proto_cc",
         "//tensorflow/core/profiler/internal:profiler_factory",

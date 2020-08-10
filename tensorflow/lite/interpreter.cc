@@ -86,8 +86,9 @@ TfLiteQuantization GetQuantizationFromLegacy(
 }  // namespace
 
 Interpreter::Interpreter(ErrorReporter* error_reporter)
-    : error_reporter_(error_reporter ? error_reporter
-                                     : DefaultErrorReporter()) {
+    : error_reporter_(error_reporter ? error_reporter : DefaultErrorReporter()),
+      lazy_delegate_provider_(
+          TfLiteDelegatePtr(nullptr, [](TfLiteDelegate*) {})) {
   // TODO(b/128420794): Include the TFLite runtime version in the log.
   // Prod logging is useful for mobile platforms where scraping console logs is
   // critical for debugging.
@@ -112,7 +113,7 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   external_contexts_[kTfLiteCpuBackendContext] =
       own_external_cpu_backend_context_.get();
 
-  UseNNAPI(false);
+  primary_subgraph().UseNNAPI(false);
 }
 
 Interpreter::~Interpreter() {
@@ -162,6 +163,12 @@ void Interpreter::SetExternalContext(TfLiteExternalContextType type,
   primary_subgraph().SetExternalContext(type, ctx);
 }
 
+TfLiteStatus Interpreter::SetCustomAllocationForTensor(
+    int tensor_index, const TfLiteCustomAllocation& allocation) {
+  return primary_subgraph().SetCustomAllocationForTensor(tensor_index,
+                                                         allocation);
+}
+
 TfLiteStatus Interpreter::SetInputs(std::vector<int> inputs) {
   return primary_subgraph().SetInputs(std::move(inputs));
 }
@@ -175,6 +182,25 @@ TfLiteStatus Interpreter::SetVariables(std::vector<int> variables) {
 }
 
 TfLiteStatus Interpreter::AllocateTensors() {
+  // Apply the default delegate that TFLite will enable at this point to allow
+  // other user-level delegates to be applied first.
+  if (lazy_delegate_provider_) {
+    // The execution will fall back to default implementation if the XNNPACK
+    // delegate fails to be applied. Therefore, we ignore the return status
+    // here and let it fall through the rest of the code.
+    auto status = ModifyGraphWithDelegate(std::move(lazy_delegate_provider_));
+    if (status != kTfLiteOk) {
+      TF_LITE_REPORT_ERROR(
+          error_reporter_,
+          "Ignoring failed application of the default TensorFlow Lite "
+          "delegate.");
+    } else {
+      TFLITE_LOG(TFLITE_LOG_INFO,
+                 "Successfully applied the default TensorFlow Lite delegate.");
+    }
+    lazy_delegate_provider_.reset();
+  }
+
   return primary_subgraph().AllocateTensors();
 }
 
@@ -289,14 +315,19 @@ TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
   return primary_subgraph().SetExecutionPlan(new_plan);
 }
 
-void Interpreter::UseNNAPI(bool enable) { primary_subgraph().UseNNAPI(enable); }
+void Interpreter::UseNNAPI(bool enable) {
+  TFLITE_LOG_PROD_ONCE(TFLITE_LOG_INFO,
+                       "Interpreter::UseNNAPI() is deprecated. Use "
+                       "tflite::NnApiDelegate() directly instead.");
+  primary_subgraph().UseNNAPI(enable);
+}
 
-void Interpreter::SetNumThreads(int num_threads) {
+TfLiteStatus Interpreter::SetNumThreads(int num_threads) {
   if (num_threads < -1) {
     context_->ReportError(context_,
                           "num_threads should be >=0 or just -1 to let TFLite "
                           "runtime set the value.");
-    return;
+    return kTfLiteError;
   }
 
   for (auto& subgraph : subgraphs_) {
@@ -309,6 +340,7 @@ void Interpreter::SetNumThreads(int num_threads) {
       c->Refresh(context_);
     }
   }
+  return kTfLiteOk;
 }
 
 void Interpreter::SetAllowFp16PrecisionForFp32(bool allow) {

@@ -44,7 +44,7 @@ def get_layer_class():
 @combinations.generate(
     combinations.combine(
         distribution=strategy_combinations.all_strategies,
-        mode=["eager", "graph"]))
+        mode=["eager"]))  # Eager-only, no graph: b/158793009
 class IndexLookupDistributionTest(
     keras_parameterized.TestCase,
     preprocessing_test_utils.PreprocessingLayerTest):
@@ -74,6 +74,7 @@ class IndexLookupDistributionTest(
       layer.adapt(vocab_dataset)
       int_data = layer(input_data)
       model = keras.Model(inputs=input_data, outputs=int_data)
+    model.compile(loss="mse")
     output_dataset = model.predict(input_dataset)
     self.assertAllEqual(expected_output, output_dataset)
 

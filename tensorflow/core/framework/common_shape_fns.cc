@@ -167,7 +167,8 @@ Status EinsumShape(shape_inference::InferenceContext* c) {
     return errors::InvalidArgument("Expected either 1 or 2 inputs but got: ",
                                    c->num_inputs());
   }
-  if (c->num_inputs() != input_labels.size()) {
+  const int input_labels_size = input_labels.size();
+  if (c->num_inputs() != input_labels_size) {
     return errors::InvalidArgument("Expected ", input_labels.size(),
                                    " inputs for equation ", equation,
                                    " but got: ", c->num_inputs());
@@ -177,7 +178,7 @@ Status EinsumShape(shape_inference::InferenceContext* c) {
   // the broadcast shapes that map to ellipsis.
   absl::flat_hash_map<char, DimensionHandle> label_to_dimension;
   gtl::InlinedVector<ShapeHandle, 2> input_bcast_shapes(c->num_inputs());
-  for (int i = 0; i < c->num_inputs(); ++i) {
+  for (int i = 0, end = c->num_inputs(); i < end; ++i) {
     bool has_ellipsis = false;
     TF_RETURN_IF_ERROR(ValidateEinsumEllipsis(input_labels[i], &has_ellipsis));
     ShapeHandle input_shape = c->input(i);
@@ -202,7 +203,8 @@ Status EinsumShape(shape_inference::InferenceContext* c) {
     input_bcast_shapes[i] = c->Scalar();
     // Run through the input labels; populate label_to_dimension mapping and
     // compute the broadcast shapes corresponding to the ellipsis (if present).
-    for (int label_idx = 0; label_idx < input_labels[i].size(); ++label_idx) {
+    for (int label_idx = 0, end = input_labels[i].size(); label_idx < end;
+         ++label_idx) {
       const char label = input_labels[i][label_idx];
       // Calculate the input axis that the current label is referring to. After
       // the ellipsis, the axis may be found by using negative indices; i.e the
@@ -281,7 +283,8 @@ Status EinsumShape(shape_inference::InferenceContext* c) {
 
   // Create the output shape from output labels and label_to_dimension mapping.
   std::vector<DimensionHandle> output_dims;
-  for (int label_idx = 0; label_idx < output_labels.size(); ++label_idx) {
+  for (int label_idx = 0, end = output_labels.size(); label_idx < end;
+       ++label_idx) {
     const char label = output_labels[label_idx];
     // Append the output_bcast_shape when the ellipsis is encountered.
     if (label == '.') {
@@ -473,7 +476,8 @@ Status DatasetIteratorShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &unused));
   std::vector<PartialTensorShape> output_shapes;
   TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));
-  if (output_shapes.size() != c->num_outputs()) {
+  const int output_shapes_size = output_shapes.size();
+  if (output_shapes_size != c->num_outputs()) {
     return errors::InvalidArgument(
         "`output_shapes` must be the same length as `output_types` (",
         output_shapes.size(), " vs. ", c->num_outputs());
@@ -503,7 +507,8 @@ Status MakeShapeFromFormat(TensorFormat format, DimensionOrConstant N,
     dims_actual[GetTensorInnerWidthDimIndex(num_dims, format)] =
         context->MakeDim(4);
   }
-  for (int spatial_dim = 0; spatial_dim < spatial.size(); spatial_dim++) {
+  for (int spatial_dim = 0, end = spatial.size(); spatial_dim < end;
+       spatial_dim++) {
     dims_actual[GetTensorSpatialDimIndex(num_dims, format, spatial_dim)] =
         context->MakeDim(spatial[spatial_dim]);
   }
@@ -520,8 +525,8 @@ Status DimensionsFromShape(ShapeHandle shape, TensorFormat format,
   // Batch.
   *batch_dim = context->Dim(shape, GetTensorBatchDimIndex(rank, format));
   // Spatial.
-  for (int spatial_dim_index = 0; spatial_dim_index < spatial_dims.size();
-       ++spatial_dim_index) {
+  for (int spatial_dim_index = 0, end = spatial_dims.size();
+       spatial_dim_index < end; ++spatial_dim_index) {
     spatial_dims[spatial_dim_index] = context->Dim(
         shape, GetTensorSpatialDimIndex(rank, format, spatial_dim_index));
   }
@@ -546,8 +551,8 @@ Status ShapeFromDimensions(DimensionHandle batch_dim,
   // Batch.
   out_dims[tensorflow::GetTensorBatchDimIndex(rank, format)] = batch_dim;
   // Spatial.
-  for (int spatial_dim_index = 0; spatial_dim_index < spatial_dims.size();
-       ++spatial_dim_index) {
+  for (int spatial_dim_index = 0, end = spatial_dims.size();
+       spatial_dim_index < end; ++spatial_dim_index) {
     out_dims[tensorflow::GetTensorSpatialDimIndex(
         rank, format, spatial_dim_index)] = spatial_dims[spatial_dim_index];
   }
@@ -1955,6 +1960,7 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
       // in C++ op code, we must still assert that the unknown dim is either 1
       // or the same as the known dim.
       // - If either dimension is 1, the other dimension is the output.
+      // - If both are unknown then dimension is unknown
       if (c->Value(dim_x) > 1) {
         if (!incompatible_shape_error) {
           *out = c->UnknownShape();
@@ -1973,6 +1979,8 @@ Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,
         dims.push_back(dim_x);
       } else if (dim_y.SameHandle(dim_x)) {
         dims.push_back(dim_x);
+      } else if (!c->ValueKnown(dim_x) && !c->ValueKnown(dim_y)) {
+        dims.push_back(c->UnknownDim());
       } else {
         if (!incompatible_shape_error) {
           *out = c->UnknownShape();
@@ -2335,7 +2343,7 @@ Status ExplicitShapes(InferenceContext* c) {
   if (shapes.empty()) {
     return errors::Internal("shapes attribute is empty");
   }
-  for (int i = 0; i < shapes.size(); ++i) {
+  for (int i = 0, end = shapes.size(); i < end; ++i) {
     ShapeHandle output_shape;
     TF_RETURN_IF_ERROR(
         c->MakeShapeFromPartialTensorShape(shapes[i], &output_shape));

@@ -20,7 +20,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-//TODO(kttian): Support non-scalar values
+// TODO(kttian): Support non-scalar values
 REGISTER_OP("EmptyTensorMap")
     .Output("handle: variant")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
@@ -64,8 +64,8 @@ REGISTER_OP("TensorMapErase")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->Scalar()); // output map
-      c->set_output(1, c->UnknownShape()); // removed element
+      c->set_output(0, c->Scalar());        // output map
+      c->set_output(1, c->UnknownShape());  // removed element
       return Status::OK();
     });
 

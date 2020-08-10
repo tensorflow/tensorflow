@@ -46,7 +46,7 @@ class IndexLookup(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   This layer translates a set of arbitrary hashables into an integer output via
   a table-based lookup, with optional out-of-vocabulary handling. This is the
-  basis layer for both IntegerLookup and IndexLookup; it holds the common
+  basis layer for both IntegerLookup and StringLookup; it holds the common
   logic but is not intended to be exported as part of the Keras API.
 
   If desired, the user can call this layer's `adapt()` method on a data set,

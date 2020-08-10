@@ -26,16 +26,15 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/device_util.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/tpu_rewrite_device_util.h"
 
 namespace mlir {
 namespace TFTPU {
 
 namespace {
 
-constexpr char kAncestorsAttr[] = "ancestors";
 constexpr char kDeviceAttr[] = "device";
-constexpr char kKeyAttr[] = "key";
-constexpr char kShapesAttr[] = "shapes";
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
 
 // Mapping for `_xla_outside_compilation` attribute to ops of a cluster.
@@ -43,14 +42,39 @@ using OutsideClusterMap =
     llvm::SmallDenseMap<llvm::StringRef, llvm::SmallVector<Operation*, 8>, 8>;
 
 // This pass extracts a CPU computation cluster with `_xla_outside_compilation`
-// annotation from a TPU cluster.  Each outside compilation cluster is moved to
-// a parallel_execute region.  The TPU cluster is also moved to a
-// parallel_execute region.
-// TODO(b/154363171): Add example tranformations.
+// annotation from a TPU cluster. Each outside compilation cluster is moved to
+// a parallel_execute region. The TPU cluster is also moved to a
+// parallel_execute region. Communication ops between device and host are
+// added to pass inputs/outputs to/from the outside compiled region.
+//
+// A simple example:
+//   "tf_device.cluster"() ( {
+//     "tf.A"()
+//     "tf.B"() {_xla_outside_compilation = "cluster1"}
+//     "tf.C"()
+//     tf_device.return
+//   }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []}
+//
+// Would become the following ops (unimportant attribute, type are omitted):
+//   "tf_device.parallel_execute"() ( {
+//     "tf_device.launch"() ( {
+//       "tf.B()
+//       tf_device.return
+//     })
+//     tf_device.return
+//   }, {
+//     "tf_device.cluster"( {
+//       "tf.A"()
+//       "tf.C"()
+//       tf_device.return
+//     })
+//    tf_device.return
+//  })
 
 struct TPUExtractOutsideCompilation
-    : public PassWrapper<TPUExtractOutsideCompilation, FunctionPass> {
-  void runOnFunction() override;
+    : public PassWrapper<TPUExtractOutsideCompilation,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Collects and clusters ops in `block` with the same `_xla_outside_compilation`
@@ -73,9 +97,8 @@ LogicalResult CollectAndGroupOutsideClusterOps(Block* block,
 }
 
 // Moves `cluster_ops` to associated `launch_op` body.
-void MoveOutsideClusterOpsToLaunchOp(
-    tf_device::LaunchOp launch_op,
-    const llvm::SmallVector<Operation*, 8>& cluster_ops) {
+void MoveOutsideClusterOpsToLaunchOp(tf_device::LaunchOp launch_op,
+                                     llvm::ArrayRef<Operation*> cluster_ops) {
   MLIRContext* context = launch_op.getContext();
   Operation* terminator = launch_op.GetBody().getTerminator();
 
@@ -91,13 +114,14 @@ void MoveOutsideClusterOpsToLaunchOp(
 
 // Creates a `tf_device::LaunchOp` to wrap cluster ops.
 tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
-    OpBuilder* builder, Operation* last_cluster_op) {
-  // TODO(b/154363171): Set the CPU device.
+    OpBuilder* builder, Operation* last_cluster_op,
+    llvm::StringRef host_device) {
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated TPUReplicateMetadata op.
   llvm::SmallVector<Type, 8> result_types;
   auto launch_op = builder->create<tf_device::LaunchOp>(
-      last_cluster_op->getLoc(), builder->getStringAttr(""), result_types);
+      last_cluster_op->getLoc(), builder->getStringAttr(host_device),
+      result_types);
 
   launch_op.body().push_back(new Block);
 
@@ -109,21 +133,9 @@ tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
   return launch_op;
 }
 
-// Propagates the return from `parallel_execute_op` to parent replicate
-// op if it exists.
-void PropagateParallelExecuteReturnToReplicate(
-    tf_device::ParallelExecuteOp parallel_execute_op) {
-  // Update the return for the parallel_execute op parent.
-  auto replicate = llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
-      parallel_execute_op.getParentOp());
-  if (replicate)
-    replicate.GetBody().getTerminator()->setOperands(
-        parallel_execute_op.execute_outputs());
-}
-
 // Extracts all externally provided operands of `cluster_ops`.
 llvm::SmallSetVector<Value, 4> GetExternalOperands(
-    const llvm::SmallVector<Operation*, 8>& cluster_ops) {
+    llvm::ArrayRef<Operation*> cluster_ops) {
   llvm::SmallSetVector<Value, 4> external_values;
 
   for (Operation* op : cluster_ops) {
@@ -143,7 +155,7 @@ llvm::SmallSetVector<Value, 4> GetExternalOperands(
 
 // Extracts all externally used outputs of `cluster_ops`.
 llvm::SmallVector<Value, 4> GetExternalOutputs(
-    const llvm::SmallVector<Operation*, 8>& cluster_ops) {
+    llvm::ArrayRef<Operation*> cluster_ops) {
   llvm::SmallSetVector<Value, 4> external_outputs;
 
   for (Operation* op : cluster_ops) {
@@ -166,7 +178,7 @@ llvm::SmallVector<Value, 4> GetExternalOutputs(
 // as an operand.  If there are no external_inputs, set insertion point to first
 // cluster_op.
 void SetHostComputeInsertion(
-    OpBuilder* builder, const llvm::SmallVector<Operation*, 8>& cluster_ops,
+    OpBuilder* builder, llvm::ArrayRef<Operation*> cluster_ops,
     const llvm::SmallSetVector<Value, 4>& external_inputs) {
   if (external_inputs.empty()) builder->setInsertionPoint(cluster_ops.front());
   for (const auto& cluster_op : cluster_ops) {
@@ -181,30 +193,29 @@ void SetHostComputeInsertion(
 
 // Creates the HostCompute with `inputs` and `outputs`
 // using `communication_key`.
-TF::_HostComputeMlirOp CreateHostCompute(
+TF::_XlaHostComputeMlirOp CreateHostCompute(
     OpBuilder* builder, tf_device::ClusterOp tpu_cluster,
-    const llvm::SmallVector<Operation*, 8>& cluster_ops,
+    llvm::ArrayRef<Operation*> cluster_ops,
     const llvm::SmallSetVector<Value, 4>& inputs, llvm::ArrayRef<Value> outputs,
-    const std::string& communication_key) {
+    llvm::StringRef args_communication_key,
+    llvm::StringRef retvals_communication_key) {
   llvm::SmallVector<Type, 4> device_output_types;
   for (const auto& output : outputs)
     device_output_types.push_back(output.getType());
   SetHostComputeInsertion(builder, cluster_ops, inputs);
-  auto host_compute = builder->create<TF::_HostComputeMlirOp>(
+  auto host_compute = builder->create<TF::_XlaHostComputeMlirOp>(
       tpu_cluster.getLoc(), device_output_types, inputs.getArrayRef(),
-      llvm::ArrayRef<NamedAttribute>{});
-  host_compute.setAttr(kAncestorsAttr, builder->getArrayAttr({}));
-  host_compute.setAttr(kShapesAttr, builder->getArrayAttr({}));
-  host_compute.setAttr(kKeyAttr, builder->getStringAttr(communication_key));
+      builder->getStringAttr(args_communication_key),
+      builder->getStringAttr(retvals_communication_key),
+      /*tpu_core=*/builder->getI64IntegerAttr(0));
   return host_compute;
 }
 
 void MoveOutsideCompiledOps(
     tf_device::ClusterOp tpu_cluster, llvm::StringRef outside_cluster_name,
-    tf_device::LaunchOp host_launch_op,
-    const llvm::SmallVector<Operation*, 8>& cluster_ops,
+    tf_device::LaunchOp host_launch_op, llvm::ArrayRef<Operation*> cluster_ops,
     const llvm::SmallSetVector<Value, 4>& external_inputs,
-    const llvm::SmallVector<Value, 4>& external_outputs) {
+    llvm::ArrayRef<Value> external_outputs) {
   if (external_inputs.empty() && external_outputs.empty()) {
     MoveOutsideClusterOpsToLaunchOp(host_launch_op, cluster_ops);
     return;
@@ -219,41 +230,43 @@ void MoveOutsideCompiledOps(
   // TODO(b/157054714): Use a better abstraction instead of _TPUCompileMlirOp
   // and _XlaRecvAtHostOp and _XlaSendFromHostOp.
 
-  // A placeholder _TpuCompileMlirOp is created because it is required input to
-  // XlaRecvAtHostOp and XlaSendFromHostOp but the _TpuCompileMlirOp has not yet
-  // been created for the TPU cluster that contains the outside compiled ops.
-  // This placeholder should be replaced by the TPU cluster _TPUCompileMlirOp in
-  // a subsequent pass.
-  auto compile_op = builder.create<TF::_TPUCompileMlirOp>(
-      tpu_cluster.getLoc(), /*compilation_status=*/result_type, /*program=*/
-      llvm::ArrayRef<Type>{result_type}, llvm::ArrayRef<Value>{}, txt_module,
-      txt_metadata);
+  // A placeholder compilation cache key is created because it is a required
+  // input to _XlaRecvAtHost and _XlaSendFromHost but the _TPUCompileMlir has
+  // not yet been created for the TPU cluster that contains the outside compiled
+  // ops. This placeholder should be replaced by the TPU cluster _TPUCompileMlir
+  // in a subsequent pass.
+  auto compilation_key =
+      builder.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+          tpu_cluster.getLoc(), /*program=*/result_type,
+          llvm::ArrayRef<Value>{});
 
   llvm::SmallVector<Type, 4> host_output_types;
   for (const auto& external_input : external_inputs)
     host_output_types.push_back(external_input.getType());
 
-  std::string communication_key =
-      llvm::formatv("host_compute_channel_{0}", outside_cluster_name).str();
-  // XlaRecvAtHostOp takes both the program key(dynamic_key) from the
-  // _TpuCompileMlirOp and the communication_key.
+  std::string args_communication_key =
+      llvm::formatv("host_compute_channel_{0}_args", outside_cluster_name)
+          .str();
+  std::string retvals_communication_key =
+      llvm::formatv("host_compute_channel_{0}_retvals", outside_cluster_name)
+          .str();
   auto recv_at_host = builder.create<TF::_XlaRecvAtHostOp>(
       tpu_cluster.getLoc(), host_output_types,
-      /*dynamic_key=*/compile_op.getResult(1),
-      builder.getStringAttr(communication_key),
-      builder.getIntegerAttr(builder.getIntegerType(64), 0));
+      /*dynamic_key=*/compilation_key,
+      builder.getStringAttr(args_communication_key),
+      /*device_ordinal=*/builder.getI64IntegerAttr(0));
 
-  auto host_compute =
-      CreateHostCompute(&builder, tpu_cluster, cluster_ops, external_inputs,
-                        external_outputs, communication_key);
+  auto host_compute = CreateHostCompute(
+      &builder, tpu_cluster, cluster_ops, external_inputs, external_outputs,
+      args_communication_key, retvals_communication_key);
   MoveOutsideClusterOpsToLaunchOp(host_launch_op, cluster_ops);
 
   builder.setInsertionPoint(host_launch_op.GetBody().getTerminator());
   builder.create<TF::_XlaSendFromHostOp>(
       tpu_cluster.getLoc(), external_outputs,
-      /*dynamic_key=*/compile_op.getResult(1),
-      builder.getStringAttr(communication_key),
-      /*device_ordinal=*/builder.getIntegerAttr(builder.getIntegerType(64), 0));
+      /*dynamic_key=*/compilation_key,
+      builder.getStringAttr(retvals_communication_key),
+      /*device_ordinal=*/builder.getI64IntegerAttr(0));
 
   for (auto result : llvm::zip(external_inputs, recv_at_host.getResults()))
     mlir::replaceAllUsesInRegionWith(std::get<0>(result), std::get<1>(result),
@@ -266,8 +279,9 @@ void MoveOutsideCompiledOps(
 
 // Creates a `parallel_execute` op in place of launch with 'clusters` and
 // 'launch` as regions.
-void CreateParallelExecuteFromOutsideClusters(
-    tf_device::ClusterOp tpu_cluster, const OutsideClusterMap& clusters) {
+void CreateParallelExecuteFromOutsideClusters(tf_device::ClusterOp tpu_cluster,
+                                              const OutsideClusterMap& clusters,
+                                              llvm::StringRef host_device) {
   OpBuilder builder(tpu_cluster);
   // Create parallel_execute regions.  The original TPU cluster computation
   // is the extra region.
@@ -282,8 +296,8 @@ void CreateParallelExecuteFromOutsideClusters(
     Block& outside_block =
         parallel_execute_op.GetRegionBlockWithIndex(cluster.index());
     builder.setInsertionPointToEnd(&outside_block);
-    tf_device::LaunchOp host_launch_op =
-        CreateLaunchOpForOutsideCluster(&builder, cluster_ops.back());
+    tf_device::LaunchOp host_launch_op = CreateLaunchOpForOutsideCluster(
+        &builder, cluster_ops.back(), host_device);
 
     // Determine if there are any inputs that are provided out of cluster.
     auto external_inputs = GetExternalOperands(cluster_ops);
@@ -307,12 +321,27 @@ void CreateParallelExecuteFromOutsideClusters(
   tpu_cluster.getOperation()->moveBefore(
       parallel_execute_tpu_block.getTerminator());
 
-  PropagateParallelExecuteReturnToReplicate(parallel_execute_op);
+  // Remap cluster results with parallel_execute results if user is outside of
+  // parallel_execute.
+  for (auto result :
+       llvm::zip(tpu_cluster.getResults(), parallel_execute_op.getResults())) {
+    Value tpu_cluster_result = std::get<0>(result);
+    Value parallel_execute_result = std::get<1>(result);
+    for (auto& use : llvm::make_early_inc_range(tpu_cluster_result.getUses()))
+      if (!parallel_execute_op.getOperation()->isProperAncestor(use.getOwner()))
+        use.set(parallel_execute_result);
+  }
 }
 
-void TPUExtractOutsideCompilation::runOnFunction() {
+void TPUExtractOutsideCompilation::runOnOperation() {
+  // Get runtime devices information from the closest parent module.
+  auto module = getOperation();
+  mlir::TF::RuntimeDevices devices;
+  if (failed(tensorflow::GetDevicesFromOp(module, &devices)))
+    return signalPassFailure();
+
   auto extract_result =
-      getFunction().walk([&](tf_device::ClusterOp tpu_cluster) {
+      module.walk([&](tf_device::ClusterOp tpu_cluster) {
         OutsideClusterMap clusters;
         if (failed(CollectAndGroupOutsideClusterOps(&tpu_cluster.GetBody(),
                                                     &clusters)))
@@ -320,7 +349,11 @@ void TPUExtractOutsideCompilation::runOnFunction() {
 
         if (clusters.empty()) return WalkResult::advance();
 
-        CreateParallelExecuteFromOutsideClusters(tpu_cluster, clusters);
+        std::string host_device;
+        tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
+                                                    &host_device);
+        CreateParallelExecuteFromOutsideClusters(tpu_cluster, clusters,
+                                                 host_device);
 
         return WalkResult::advance();
       });
@@ -330,7 +363,7 @@ void TPUExtractOutsideCompilation::runOnFunction() {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass() {
   return std::make_unique<TPUExtractOutsideCompilation>();
 }

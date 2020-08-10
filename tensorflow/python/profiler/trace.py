@@ -18,8 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+
 from tensorflow.python.profiler.internal import _pywrap_traceme
 from tensorflow.python.util.tf_export import tf_export
+
+# This variable is modified by PythonHooks::Start/Stop() in C++. Such
+# arrangement will reduce the number of calls through pybind11.
+enabled = False
 
 
 @tf_export('profiler.experimental.Trace', v1=[])
@@ -72,7 +78,7 @@ class Trace(object):
       The example above uses the keyword argument "step_num" to specify the
       training step being traced.
     """
-    if _pywrap_traceme.TraceMe.IsEnabled():
+    if enabled:
       # Creating _pywrap_traceme.TraceMe starts the clock.
       self._traceme = _pywrap_traceme.TraceMe(name, **kwargs)
     else:
@@ -117,5 +123,45 @@ class Trace(object):
       self._traceme.SetMetadata(**kwargs)
 
   def __exit__(self, exc_type, exc_val, exc_tb):
-    # Deallocating _pywrap_traceme.TraceMe stops the clock.
-    self._traceme = None
+    if self._traceme:
+      self._traceme.Stop()
+
+
+def trace_wrapper(trace_name, **trace_kwargs):
+  """Decorator alternative to `with Trace(): ...`.  It's faster.
+
+  Args:
+    trace_name: The name of the trace event.
+    **trace_kwargs: Keyword arguments added to the trace event. Both the key and
+      value are of types that can be converted to strings, which will be
+      interpreted by the profiler according to the traceme name.
+
+  Returns:
+    A decorator that can wrap a function and apply `Trace` scope if needed.
+
+  Example usage:
+    ```python
+
+    @trace_wrapper('trace_name')
+    def func(x, y, z):
+      pass  # code to execute and apply `Trace` if needed.
+
+    # Equivalent to
+    # with Trace('trace_name'):
+    #   func(1, 2, 3)
+    func(1, 2, 3)
+    ```
+  """
+
+  def inner_wrapper(func):
+
+    @functools.wraps(func)
+    def wrapped(*args, **kwargs):
+      if enabled:
+        with Trace(trace_name, **trace_kwargs):
+          return func(*args, **kwargs)
+      return func(*args, **kwargs)
+
+    return wrapped
+
+  return inner_wrapper

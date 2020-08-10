@@ -15,13 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_
 
+#include <iostream>
+
 #include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/tensor_map.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/kernels/tensor_map.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
 
 namespace tensorflow {
-
 
 Status GetInputMap(OpKernelContext* c, int index, const TensorMap** map) {
   if (!TensorShapeUtils::IsScalar(c->input(index).shape())) {
@@ -38,12 +39,11 @@ Status GetInputMap(OpKernelContext* c, int index, const TensorMap** map) {
   return Status::OK();
 }
 
-
-//TODO(kattian): change into templated function
+// TODO(kattian): change into templated function
 Status ForwardInputOrCreateNewMap(OpKernelContext* c, int32 input_index,
-                                   int32 output_index,
-                                   const TensorMap& input_map,
-                                   TensorMap** output_map) {
+                                  int32 output_index,
+                                  const TensorMap& input_map,
+                                  TensorMap** output_map) {
   // Attempt to forward the input tensor to the output if possible.
   std::unique_ptr<Tensor> maybe_output = c->forward_input(
       input_index, output_index, DT_VARIANT, TensorShape{},
@@ -78,7 +78,6 @@ Status ForwardInputOrCreateNewMap(OpKernelContext* c, int32 input_index,
   return Status::OK();
 }
 
-
 class EmptyTensorMap : public OpKernel {
  public:
   explicit EmptyTensorMap(OpKernelConstruction* c) : OpKernel(c) {}
@@ -93,7 +92,6 @@ class EmptyTensorMap : public OpKernel {
   }
 };
 
-
 class TensorMapSize : public OpKernel {
  public:
   explicit TensorMapSize(OpKernelConstruction* c) : OpKernel(c) {}
@@ -107,7 +105,6 @@ class TensorMapSize : public OpKernel {
     result->scalar<int32>()() = m->tensors().size();
   }
 };
-
 
 class TensorMapInsert : public OpKernel {
  public:
@@ -126,7 +123,6 @@ class TensorMapInsert : public OpKernel {
   }
 };
 
-
 class TensorMapLookup : public OpKernel {
  public:
   explicit TensorMapLookup(OpKernelConstruction* c) : OpKernel(c) {}
@@ -139,11 +135,10 @@ class TensorMapLookup : public OpKernel {
 
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
                 errors::InvalidArgument("Trying to lookup non-existent key."));
-    
+
     c->set_output(0, m->tensors().find(key)->second);
   }
 };
-
 
 class TensorMapErase : public OpKernel {
  public:
@@ -166,7 +161,6 @@ class TensorMapErase : public OpKernel {
   }
 };
 
-
 class TensorMapHasKey : public OpKernel {
  public:
   explicit TensorMapHasKey(OpKernelConstruction* c) : OpKernel(c) {}
@@ -182,6 +176,7 @@ class TensorMapHasKey : public OpKernel {
   }
 };
 
+<<<<<<< HEAD
 
 template <typename Device>
 Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
@@ -213,6 +208,8 @@ Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x, TensorMap* y) 
 }
 
 
+=======
+>>>>>>> master
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_

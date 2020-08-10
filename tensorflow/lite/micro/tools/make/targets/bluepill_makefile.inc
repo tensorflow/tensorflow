@@ -5,7 +5,7 @@ ifeq ($(TARGET), bluepill)
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
 
   $(eval $(call add_third_party_download,$(GCC_EMBEDDED_URL),$(GCC_EMBEDDED_MD5),gcc_embedded,))
-  $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,))
+  $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,patch_cmsis))
   $(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
 
 # TODO(b/149943573): It may be worthwhile to remove -DNDEBUG if we can get the
@@ -29,18 +29,12 @@ ifeq ($(TARGET), bluepill)
     -Wvla \
     -Wall \
     -Wextra \
-    -Wsign-compare \
-    -Wdouble-promotion \
-    -Wshadow \
-    -Wunused-variable \
-    -Wmissing-field-initializers \
     -Wno-unused-parameter \
-    -Wno-write-strings \
-    -Wunused-function \
+    -Wno-strict-aliasing \
+    -Wno-type-limits \
     -fno-delete-null-pointer-checks \
     -fno-threadsafe-statics \
     -fomit-frame-pointer \
-    -fpermissive \
     -fno-use-cxa-atexit \
     -nostdlib \
     -g \

@@ -78,8 +78,8 @@ bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                      const TfLiteConvParams* params) {
   const auto* affine_quantization =
       reinterpret_cast<TfLiteAffineQuantization*>(filter->quantization.params);
-  // MLI optimized version only supports int8 dataype, dilation factor of 1 and
-  // per-axis quantization of weights (no broadcasting/per-tensor)
+  // MLI optimized version only supports int8_t dataype, dilation factor of 1
+  // and per-axis quantization of weights (no broadcasting/per-tensor)
   bool ret_val = (filter->type == kTfLiteInt8) &&
                  (input->type == kTfLiteInt8) && (bias->type == kTfLiteInt32) &&
                  (params->dilation_width_factor == 1) &&
@@ -176,7 +176,7 @@ TfLiteStatus EvalMliQuantizedPerChannel(
     OpData* data, const TfLiteTensor* input, const TfLiteTensor* filter,
     const TfLiteTensor* bias, TfLiteTensor* output) {
   // Run Conv MLI kernel
-  // MLI optimized version only supports int8 dataype and dilation factor of 1
+  // MLI optimized version only supports int8_t dataype and dilation factor of 1
   if ((input->type == kTfLiteInt8) && (params->dilation_width_factor == 1) &&
       (params->dilation_height_factor == 1)) {
     mli_tensor mli_in = {0};
@@ -353,10 +353,10 @@ TfLiteStatus EvalQuantizedPerChannel(TfLiteContext* context, TfLiteNode* node,
   reference_integer_ops::ConvPerChannel(
       op_params, data->per_channel_output_multiplier,
       data->per_channel_output_shift, GetTensorShape(input),
-      GetTensorData<int8>(input), GetTensorShape(filter),
-      GetTensorData<int8>(filter), GetTensorShape(bias),
-      GetTensorData<int32>(bias), GetTensorShape(output),
-      GetTensorData<int8>(output));
+      GetTensorData<int8_t>(input), GetTensorShape(filter),
+      GetTensorData<int8_t>(filter), GetTensorShape(bias),
+      GetTensorData<int32_t>(bias), GetTensorShape(output),
+      GetTensorData<int8_t>(output));
   return kTfLiteOk;
 #else
   TF_LITE_KERNEL_LOG(context,
@@ -473,16 +473,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace conv
 
-TfLiteRegistration* Register_CONV_2D() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/nullptr,
-                                 /*invoke=*/conv::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_CONV_2D() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/nullptr,
+          /*invoke=*/conv::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

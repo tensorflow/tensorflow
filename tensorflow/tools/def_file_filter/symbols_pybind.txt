@@ -17,8 +17,10 @@ tensorflow::swig::Flatten
 tensorflow::swig::IsSequenceForData
 tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
+tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
+tensorflow::swig::GetRegisteredPyObject
 
 [util_port] # util_port
 tensorflow::IsGoogleCudaEnabled
@@ -82,6 +84,7 @@ tensorflow::Device::attributes
 [device_factory]  # device_lib, tfe, tf_session
 tensorflow::DeviceFactory::AddDevices
 tensorflow::DeviceFactory::ListAllPhysicalDevices
+tensorflow::DeviceFactory::GetAnyDeviceDetails
 
 [session_options]  # device_lib, tfe, tf_session
 tensorflow::SessionOptions::SessionOptions
@@ -97,8 +100,8 @@ tensorflow::data::GrpcDataServerBase::Join
 tensorflow::data::GrpcDataServerBase::Start
 tensorflow::data::GrpcDataServerBase::Stop
 tensorflow::data::GrpcDataServerBase::BoundPort
-tensorflow::data::MasterGrpcDataServer::NumWorkers
-tensorflow::data::NewMasterServer
+tensorflow::data::DispatchGrpcDataServer::NumWorkers
+tensorflow::data::NewDispatchServer
 tensorflow::data::NewWorkerServer
 
 [protos_all]  # device_lib, dtypes
@@ -333,6 +336,15 @@ tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
 
+[profiler_server_impl] # profiler
+tensorflow::ProfilerServer::StartProfilerServer
+tensorflow::ProfilerServer::~ProfilerServer
+
+[profiler_client_impl] # profiler
+tensorflow::profiler::ProfileGrpc
+tensorflow::profiler::NewSessionGrpc
+tensorflow::profiler::MonitorGrpc
+
 [status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
 xla::status_macros::MakeErrorStream::Impl::~Impl
@@ -366,3 +378,8 @@ tensorflow::grappler::CostAnalyzer::GenerateReport
 
 [flags] # tfe
 tensorflow::IsXlaEnabled
+tensorflow::GetMlirCommonFlags
+
+[tf32_utils] # tf32
+tensorflow::allow_tf32_execution
+tensorflow::tf32_execution_allowed

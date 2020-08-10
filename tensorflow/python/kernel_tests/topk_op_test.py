@@ -203,8 +203,8 @@ class TopKTest(test.TestCase):
   @test_util.run_deprecated_v1
   def testKTooLarge(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]
-    with self.assertRaisesRegexp(ValueError,
-                                 r"must have last dimension >= k = 4"):
+    with self.assertRaisesRegex(ValueError,
+                                r"must have last dimension >= k = 4"):
       nn_ops.top_k(inputs, 4)
 
   @test_util.run_deprecated_v1
@@ -240,7 +240,7 @@ class TopKBenchmark(test.Benchmark):
           v = resource_variable_ops.ResourceVariable(x)
           op = nn_ops.top_k(v, k)
         with session.Session() as sess:
-          v.initializer.run()
+          self.evaluate(v.initializer)
           r = self.run_op_benchmark(sess, op, min_iters=100, name=name)
           gb_processed_input = m * n / 1.0e9
           throughput = gb_processed_input / r["wall_time"]

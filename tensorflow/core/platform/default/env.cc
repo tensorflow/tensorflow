@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/ram_file_system.h"
+#include "tensorflow/core/platform/strcat.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -134,15 +135,8 @@ class PosixEnv : public Env {
   }
 
   int32 GetCurrentThreadId() override {
-#ifdef __APPLE__
-    uint64_t tid64;
-    pthread_threadid_np(nullptr, &tid64);
-    return static_cast<int32>(tid64);
-#elif defined(__FreeBSD__)
-    return pthread_getthreadid_np();
-#else
-    return static_cast<int32>(pthread_self());
-#endif
+    static thread_local int32 current_thread_id = GetCurrentThreadIdInternal();
+    return current_thread_id;
   }
 
   bool GetCurrentThreadName(string* name) override {
@@ -151,7 +145,7 @@ class PosixEnv : public Env {
       auto thread_name =
           GetThreadNameRegistry().find(std::this_thread::get_id());
       if (thread_name != GetThreadNameRegistry().end()) {
-        *name = thread_name->second;
+        *name = strings::StrCat(thread_name->second, "/", GetCurrentThreadId());
         return true;
       }
     }
@@ -191,8 +185,9 @@ class PosixEnv : public Env {
     });
   }
 
-  Status LoadLibrary(const char* library_filename, void** handle) override {
-    return tensorflow::internal::LoadLibrary(library_filename, handle);
+  Status LoadDynamicLibrary(const char* library_filename,
+                            void** handle) override {
+    return tensorflow::internal::LoadDynamicLibrary(library_filename, handle);
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,
@@ -231,6 +226,20 @@ class PosixEnv : public Env {
 
  private:
   void GetLocalTempDirectories(std::vector<string>* list) override;
+
+  int32 GetCurrentThreadIdInternal() {
+#ifdef __APPLE__
+    uint64_t tid64;
+    pthread_threadid_np(nullptr, &tid64);
+    return static_cast<int32>(tid64);
+#elif defined(__FreeBSD__)
+    return pthread_getthreadid_np();
+#elif defined(__NR_gettid)
+    return static_cast<int32>(syscall(__NR_gettid));
+#else
+    return std::hash<std::thread::id>()(std::this_thread::get_id());
+#endif
+  }
 };
 
 }  // namespace

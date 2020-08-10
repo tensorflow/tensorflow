@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
-
 from tensorflow.python.autograph.converters import variables
 from tensorflow.python.autograph.core import converter_testing
 from tensorflow.python.platform import test
@@ -27,60 +25,63 @@ from tensorflow.python.platform import test
 
 class VariablesTest(converter_testing.TestCase):
 
-  @contextlib.contextmanager
-  def apply_add_one_conversion(self, fn):
+  def transform_with_test_ld(self, f):
     """Generates code which adds 1 to all variable reads."""
-    with self.converted(fn, variables, {}) as result:
-      result.ag__.__dict__['ld'] = lambda x: x + 1
-      yield result
+    return self.transform(f, variables, ag_overrides={'ld': lambda x: x + 1})
 
   def test_read(self):
 
-    def test_fn(l):
+    def f(l):
       return l
 
-    with self.apply_add_one_conversion(test_fn) as result:
-      self.assertEqual(result.test_fn(1), 2)
+    tr = self.transform_with_test_ld(f)
+
+    self.assertEqual(tr(1), 2)
 
   def test_aug_assign(self):
 
-    def test_fn(l):
+    def f(l):
       l *= 10
       return l
 
-    with self.apply_add_one_conversion(test_fn) as result:
-      self.assertEqual(result.test_fn(1), (1 + 1) * 10 + 1)  # two reads
+    tr = self.transform_with_test_ld(f)
+
+    self.assertEqual(tr(1), (1 + 1) * 10 + 1)  # two reads
 
   def test_del(self):
 
-    def test_fn(l):
+    def f(l):
       del l
       return l
 
-    with self.converted(test_fn, variables, {}) as result:
-      with self.assertRaisesRegex(
-          NameError, "'l' is used before assignment"):
-        result.test_fn(1)
+    tr = self.transform(f, variables)
 
-  def test_del_getitem_ignored(self):
+    with self.assertRaisesRegex(NameError, "'l' is used before assignment"):
+      tr(1)
 
-    def basic_slice(l):
+  def test_del_getitem_ignored_basic_slice(self):
+
+    def f(l):
       del l[0]
       return l
 
-    with self.converted(basic_slice, variables, {}) as result:
-      self.assertListEqual([2], result.basic_slice([1, 2]))
+    tr = self.transform(f, variables)
 
-    def range_slice(l):
+    self.assertListEqual([2], tr([1, 2]))
+
+  def test_del_getitem_ignored_range_slice(self):
+
+    def f(l):
       del l[0:2]
       return l
 
-    with self.converted(range_slice, variables, {}) as result:
-      self.assertListEqual([], result.range_slice([1, 2]))
+    tr = self.transform(f, variables)
+
+    self.assertListEqual([], tr([1, 2]))
 
   def test_del_getattr_ignored(self):
 
-    def test_fn(l):
+    def f(l):
       del l.a
       return l
 
@@ -90,50 +91,60 @@ class VariablesTest(converter_testing.TestCase):
         self.a = 1
         self.b = 2
 
-    with self.converted(test_fn, variables, {}) as result:
-      self.assertFalse(hasattr(result.test_fn(TestClass()), 'a'))
-      self.assertEqual(result.test_fn(TestClass()).b, 2)
+    tr = self.transform(f, variables)
 
-  def test_del_packing_ignored(self):
-    # Note: test for UnboundLocalError, not NameError because in this case we
+    self.assertFalse(hasattr(tr(TestClass()), 'a'))
+    self.assertEqual(tr(TestClass()).b, 2)
+
+  def test_del_packing_ignored_list(self):
+    # Note: testing for UnboundLocalError, not NameError because in this case we
     # don't rewrite the del.
 
-    def list_(a, b):
+    def f(a, b):
       del [a, b]
       return a
 
-    with self.converted(list_, variables, {}) as result:
-      with self.assertRaises(UnboundLocalError):
-        result.list_(1, 2)
+    tr = self.transform(f, variables)
 
-    def nested(a, b, c):
+    with self.assertRaises(UnboundLocalError):
+      tr(1, 2)
+
+  def test_del_packing_ignored_nested(self):
+    # Note: testing for UnboundLocalError, not NameError because in this case we
+    # don't rewrite the del.
+
+    def f(a, b, c):
       del [a, (b, c)]
       return c
 
-    with self.converted(nested, variables, {}) as result:
-      with self.assertRaises(UnboundLocalError):
-        result.nested(1, 2, 3)
+    tr = self.transform(f, variables)
 
-  def test_del_item_multiple_mixed(self):
+    with self.assertRaises(UnboundLocalError):
+      tr(1, 2, 3)
 
-    def test_fn_failing(a, b, c):
+  def test_del_item_multiple_mixed_used_after(self):
+
+    def f(a, b, c):
       del a, b, c[0]
       a = 1
       return a, b, c
 
-    with self.converted(test_fn_failing, variables, {}) as result:
-      with self.assertRaisesRegex(
-          NameError, "'b' is used before assignment"):
-        result.test_fn_failing(1, 2, [1, 2])
+    tr = self.transform(f, variables)
 
-    def test_fn_passing(a, b, c):
+    with self.assertRaisesRegex(NameError, "'b' is used before assignment"):
+      tr(1, 2, [1, 2])
+
+  def test_del_item_multiple_mixed_unused_after(self):
+
+    def f(a, b, c):
       del a, b, c[0]
       a = 1
       b = 2
       return c
 
-    with self.converted(test_fn_passing, variables, {}) as result:
-      self.assertListEqual([2], result.test_fn_passing(1, 2, [1, 2]))
+    tr = self.transform(f, variables)
+
+    self.assertListEqual([2], tr(1, 2, [1, 2]))
 
   def test_attribute(self):
 
@@ -146,12 +157,13 @@ class VariablesTest(converter_testing.TestCase):
         self.v += other
         return self
 
-    def test_fn(l):
+    def f(l):
       return l.v
 
     tc = TestClass()
-    with self.apply_add_one_conversion(test_fn) as result:
-      self.assertEqual(result.test_fn(tc), 2)
+    tr = self.transform_with_test_ld(f)
+
+    self.assertEqual(tr(tc), 2)
 
   def test_subscript(self):
 
@@ -167,12 +179,13 @@ class VariablesTest(converter_testing.TestCase):
       def __getitem__(self, _):
         return self.v
 
-    def test_fn(l):
+    def f(l):
       return l[0]
 
     tc = TestClass()
-    with self.apply_add_one_conversion(test_fn) as result:
-      self.assertEqual(result.test_fn(tc), 2)
+    tr = self.transform_with_test_ld(f)
+
+    self.assertEqual(tr(tc), 2)
 
   def test_call(self):
 
@@ -188,12 +201,13 @@ class VariablesTest(converter_testing.TestCase):
       def __call__(self):
         return self.v
 
-    def test_fn(l):
+    def f(l):
       return l()
 
     tc = TestClass()
-    with self.apply_add_one_conversion(test_fn) as result:
-      self.assertEqual(result.test_fn(tc), 2)
+    tr = self.transform_with_test_ld(f)
+
+    self.assertEqual(tr(tc), 2)
 
 
 if __name__ == '__main__':

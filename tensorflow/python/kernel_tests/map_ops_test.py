@@ -28,6 +28,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import map_ops
 from tensorflow.python.platform import test
 
+
 @test_util.run_all_in_graph_and_eager_modes
 class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
@@ -206,6 +207,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(g3, 7)
     del tape
 
+<<<<<<< HEAD
   def testDiffKeySameValueGrad(self):
     with backprop.GradientTape(persistent=True) as tape:
       m = map_ops.empty_tensor_map()
@@ -393,6 +395,8 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 0)
     self.assertAllClose(e, v)
+=======
+>>>>>>> master
 
-if __name__ == '__main__':
+if __name__ == "__main__":
   test.main()

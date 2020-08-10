@@ -41,6 +41,7 @@ enum TensorType : byte {
   COMPLEX64 = 8,
   INT8 = 9,
   FLOAT64 = 10,
+  COMPLEX128 = 11,
 }
 
 // Custom quantization parameters for experimenting with new quantization
@@ -582,6 +583,8 @@ table ConcatenationOptions {
 
 table AddOptions {
   fused_activation_function:ActivationFunctionType;
+  // Parameters supported by version 4.
+  pot_scale_int16:bool = true;
 }
 
 table MulOptions {
@@ -703,6 +706,8 @@ table DepthToSpaceOptions {
 
 table SubOptions {
   fused_activation_function:ActivationFunctionType;
+  // Parameters supported by version 5
+  pot_scale_int16:bool = true;
 }
 
 table DivOptions {

@@ -412,6 +412,29 @@ void ByteSwap16(void* value) {
   std::swap(p[0], p[1]);
 }
 
+int NPyBfloat16_Compare(const void* a, const void* b, void* arr) {
+  bfloat16 x;
+  memcpy(&x, a, sizeof(bfloat16));
+
+  bfloat16 y;
+  memcpy(&y, b, sizeof(bfloat16));
+
+  if (x < y) {
+    return -1;
+  }
+  if (y < x) {
+    return 1;
+  }
+  // NaNs sort to the end.
+  if (!Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) {
+    return -1;
+  }
+  if (Eigen::numext::isnan(x) && !Eigen::numext::isnan(y)) {
+    return 1;
+  }
+  return 0;
+}
+
 void NPyBfloat16_CopySwapN(void* dstv, npy_intp dstride, void* srcv,
                            npy_intp sstride, npy_intp n, int swap, void* arr) {
   char* dst = reinterpret_cast<char*>(dstv);
@@ -494,7 +517,7 @@ bool RegisterBfloat16Cast(int numpy_type, bool cast_is_safe) {
 }
 
 template <typename InType, typename OutType, typename Functor>
-void BinaryUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
+void BinaryUFunc(char** args, const npy_intp* dimensions, const npy_intp* steps,
                  void* data) {
   const char* i0 = args[0];
   const char* i1 = args[1];
@@ -509,9 +532,15 @@ void BinaryUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
   }
 }
 
+// Numpy changed const-ness of PyUFuncGenericFunction, provide overload.
 template <typename Functor>
 void CompareUFunc(char** args, npy_intp* dimensions, npy_intp* steps,
                   void* data) {
+  BinaryUFunc<bfloat16, npy_bool, Functor>(args, dimensions, steps, data);
+}
+template <typename Functor>
+void CompareUFunc(char** args, const npy_intp* dimensions,
+                  const npy_intp* steps, void* data) {
   BinaryUFunc<bfloat16, npy_bool, Functor>(args, dimensions, steps, data);
 }
 
@@ -561,6 +590,7 @@ bool Initialize() {
   PyArray_InitArrFuncs(&NPyBfloat16_ArrFuncs);
   NPyBfloat16_ArrFuncs.getitem = NPyBfloat16_GetItem;
   NPyBfloat16_ArrFuncs.setitem = NPyBfloat16_SetItem;
+  NPyBfloat16_ArrFuncs.compare = NPyBfloat16_Compare;
   NPyBfloat16_ArrFuncs.copyswapn = NPyBfloat16_CopySwapN;
   NPyBfloat16_ArrFuncs.copyswap = NPyBfloat16_CopySwap;
   NPyBfloat16_ArrFuncs.nonzero = NPyBfloat16_NonZero;

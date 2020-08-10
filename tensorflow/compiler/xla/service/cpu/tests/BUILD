@@ -41,6 +41,7 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -108,7 +109,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/memory",
-        "@llvm-project//llvm:ir",
+        "@llvm-project//llvm:Core",
     ],
 )
 
@@ -123,9 +124,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:arm_target",  # fixdeps: keep
-        "@llvm-project//llvm:target_base",
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )
 
@@ -135,6 +136,7 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/core:lib",
@@ -155,9 +157,9 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:arm_target",  # fixdeps: keep
-        "@llvm-project//llvm:target_base",
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )
 
@@ -215,6 +217,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_parser",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -228,6 +231,7 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
@@ -241,7 +245,24 @@ tf_cc_test(
     deps = [
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/compiler/xla/service/cpu/tests:cpu_codegen_test",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "cpu_topk_test",
+    srcs = ["cpu_topk_test.cc"],
+    deps = [
+        ":cpu_codegen_test",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:sorting",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -259,8 +280,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:arm_target",  # fixdeps: keep
-        "@llvm-project//llvm:target_base",
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )

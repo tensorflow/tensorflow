@@ -20,8 +20,9 @@ accuracy and latency tradeoffs for some common image classification models.
 
 One example of models optimized for mobile devices are
 [MobileNets](https://arxiv.org/abs/1704.04861), which are optimized for mobile
-vision applications. [Hosted models](../models/hosted.md) lists several other
-models that have been optimized specifically for mobile and embedded devices.
+vision applications. [Hosted models](../guide/hosted_models.md) lists several
+other models that have been optimized specifically for mobile and embedded
+devices.
 
 You can retrain the listed models on your own dataset by using transfer
 learning. Check out our transfer learning tutorial for

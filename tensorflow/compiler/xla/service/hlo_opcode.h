@@ -98,6 +98,7 @@ namespace xla {
   V(kIsFinite, "is-finite", 1)                                         \
   V(kLog, "log", 1)                                                    \
   V(kLog1p, "log-plus-one", 1)                                         \
+  V(kLogistic, "logistic", 1)                                          \
   V(kAnd, "and", 2)                                                    \
   V(kNot, "not", 1)                                                    \
   V(kOr, "or", 2)                                                      \

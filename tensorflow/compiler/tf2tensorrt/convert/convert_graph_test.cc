@@ -34,8 +34,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"  // NOLINT
 #include "tensorflow/core/public/session.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
@@ -72,7 +71,7 @@ class FakeCluster : public grappler::Cluster {
   }
 
  private:
-  const DeviceSet* device_set_;
+  const DeviceSet* device_set_ = nullptr;
 };
 
 TEST(ConvertGraphTest, GetDeviceAndAllocator) {
@@ -231,5 +230,4 @@ TEST_F(ConvertAfterShapesTest, DirectlyConnectedEngines) {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT

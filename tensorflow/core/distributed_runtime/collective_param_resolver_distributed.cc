@@ -220,31 +220,33 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
     const CompleteGroupResponse& resp) {
   // Build a new record from resp.
   std::unique_ptr<GroupRec> gr(new GroupRec);
-  mutex_lock grl(gr->mu);
-  gr->group.device_type = DeviceType(resp.device_type());
-  gr->group.group_key = resp.group_key();
-  gr->group.group_size = resp.group_size();
-  gr->group.num_tasks = resp.num_tasks();
-  if (resp.device_name_size() != gr->group.group_size) {
-    return errors::Internal(
-        "CompleteGroupResponse group_size doesn't match device_name list");
+  {
+    mutex_lock grl(gr->mu);
+    gr->group.device_type = DeviceType(resp.device_type());
+    gr->group.group_key = resp.group_key();
+    gr->group.group_size = resp.group_size();
+    gr->group.num_tasks = resp.num_tasks();
+    if (resp.device_name_size() != gr->group.group_size) {
+      return errors::Internal(
+          "CompleteGroupResponse group_size doesn't match device_name list");
+    }
+    for (const string& dn : resp.device_name()) {
+      gr->device_set.insert(dn);
+      gr->device_list.push_back(dn);
+    }
+    if (resp.task_name_size() != gr->group.group_size) {
+      return errors::Internal(
+          "CompleteGroupResponse group_size doesn't match task_name list");
+    }
+    for (const string& tn : resp.task_name()) {
+      gr->task_list.push_back(tn);
+      gr->task_set.insert(tn);
+    }
+    CHECK_EQ(gr->task_set.size(), gr->group.num_tasks);
+    gr->group.runtime_details.communicator_key = resp.communicator_key();
+    VLOG(2) << "Group communicator_key="
+            << absl::CEscape(gr->group.runtime_details.communicator_key);
   }
-  for (const string& dn : resp.device_name()) {
-    gr->device_set.insert(dn);
-    gr->device_list.push_back(dn);
-  }
-  if (resp.task_name_size() != gr->group.group_size) {
-    return errors::Internal(
-        "CompleteGroupResponse group_size doesn't match task_name list");
-  }
-  for (const string& tn : resp.task_name()) {
-    gr->task_list.push_back(tn);
-    gr->task_set.insert(tn);
-  }
-  CHECK_EQ(gr->task_set.size(), gr->group.num_tasks);
-  gr->group.runtime_details.communicator_key = resp.communicator_key();
-  VLOG(2) << "Group communicator_key="
-          << absl::CEscape(gr->group.runtime_details.communicator_key);
   {
     // Group membership should never change. Once a record is in group_table_
     // it never gets removed.
@@ -302,10 +304,15 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
   }
 }
 
-bool CollectiveParamResolverDistributed::InstanceIsCached(int32 instance_key) {
+bool CollectiveParamResolverDistributed::InstanceIsCached(int32 group_key,
+                                                          int32 instance_key) {
   mutex_lock l(instance_mu_);
-  const auto& it = instance_table_.find(instance_key);
-  return it != instance_table_.end();
+  auto group_it = instance_table_.find(group_key);
+  if (group_it == instance_table_.end()) {
+    return false;
+  }
+  auto instance_it = group_it->second.find(instance_key);
+  return instance_it != group_it->second.end();
 }
 
 void CollectiveParamResolverDistributed::UpdateInstanceCache(
@@ -339,7 +346,8 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
       }
       if (ir->known_count < cp->group.group_size) {
         ir->known_count = cp->group.group_size;
-        if (ir->known.size() != cp->group.group_size) {
+        const int ir_known_size = ir->known.size();
+        if (ir_known_size != cp->group.group_size) {
           ir->status = errors::Internal(
               "UpdateInstanceCache:: CompleteInstanceResponse for instance ",
               cp->instance.instance_key, " has known.size()=", ir->known.size(),
@@ -347,7 +355,7 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
           status = ir->status;
           break;
         }
-        for (int i = 0; i < ir->known.size(); ++i) {
+        for (int i = 0; i < ir_known_size; ++i) {
           ir->known[i] = true;
         }
       }
@@ -371,7 +379,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
   if (group_leader_.empty()) {
     // This is the group leader so resolution is local.
     return CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
-  } else if (InstanceIsCached(cp->instance.instance_key)) {
+  } else if (InstanceIsCached(gr->group.group_key, cp->instance.instance_key)) {
     return CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
   } else {
     CompleteInstanceCall* call = new CompleteInstanceCall(

@@ -42,8 +42,8 @@ constexpr int64 kAutotune = -1;
 constexpr char kParallelism[] = "parallelism";
 constexpr char kBufferSize[] = "buffer_size";
 
-// A key used to identify input time gradient.
-constexpr char kInputTimeKey[] = "input_time";
+// A key used to identify the input time of the model.
+constexpr char kModelInputTimeKey[] = "model_input_time";
 
 enum class AutotuneAlgorithm {
   HILL_CLIMB = 0,
@@ -294,9 +294,10 @@ class Node {
     autotune_.store(autotune);
   }
 
-  // Given the average time between output events (`output_time`), the average
-  // time between input events (`input_time`) and the buffer size, the method
-  // computes the expected time an input event will have to wait.
+  // Given the average time between events when the elements in the buffer are
+  // produced (`producer_time`), the average time between events when elements
+  // in the buffer are consumed (`consumer_time`) and the buffer size, the
+  // method computes the expected time an consumer event will have to wait.
   //
   // The wait time is approximated as the product of the probability the buffer
   // will be empty and the time it takes to produce an element into the buffer.
@@ -305,13 +306,14 @@ class Node {
   // problem as an M/M/1/K queue
   // (https://en.wikipedia.org/wiki/Birth%E2%80%93death_process#M/M/1/K_queue).
   //
-  // Collects derivatives of `ComputeWaitTime` w.r.t `output_time`, `input_time'
-  // and `buffer_size` if the corresponding pointers are not `nullptr`.
-  static double ComputeWaitTime(const double& output_time,
-                                const double& input_time,
+  // Collects derivatives of `ComputeWaitTime` w.r.t `producer_time`,
+  // `consumer_time' and `buffer_size` if the corresponding pointers are not
+  // `nullptr`.
+  static double ComputeWaitTime(const double& producer_time,
+                                const double& consumer_time,
                                 const double& buffer_size,
-                                double* output_time_derivative,
-                                double* input_time_derivative,
+                                double* producer_time_derivative,
+                                double* consumer_time_derivative,
                                 double* buffer_size_derivative);
 
   // Collects tunable parameters in the subtree rooted in this node.
@@ -337,8 +339,7 @@ class Node {
   //
   // The purpose for this method is to allow the model optimization logic to
   // operate over immutable state while allowing concurrent model updates.
-  std::shared_ptr<Node> Snapshot(std::shared_ptr<Node> output) const
-      TF_LOCKS_EXCLUDED(mu_);
+  std::shared_ptr<Node> Snapshot() const TF_LOCKS_EXCLUDED(mu_);
 
   // Returns the per-element processing time spent in this node.
   double SelfProcessingTime() const TF_LOCKS_EXCLUDED(mu_);
@@ -491,7 +492,7 @@ class Node {
       const TF_SHARED_LOCKS_REQUIRED(mu_);
 
   // Copy the node and add the (input, copy) pairs to the NodePairList.
-  std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> clone_base,
+  std::shared_ptr<Node> SnapshotHelper(std::shared_ptr<Node> cloned_output,
                                        NodePairList* node_pairs) const;
 
   // Compute total buffered bytes for the node and store in the total bytes map.
@@ -608,8 +609,8 @@ class Model {
   void FlushMetrics() TF_LOCKS_EXCLUDED(mu_);
 
   // Uses the given algorithm to perform the autotuning optimization.
-  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget)
-      TF_LOCKS_EXCLUDED(mu_);
+  void Optimize(AutotuneAlgorithm algorithm, int64 cpu_budget, int64 ram_budget,
+                double model_input_time) TF_LOCKS_EXCLUDED(mu_);
 
   // Removes the given node.
   void RemoveNode(std::shared_ptr<Node> node) TF_LOCKS_EXCLUDED(mu_);
@@ -626,7 +627,10 @@ class Model {
   // relative to other transformations. The collected parameters are returned
   // as a mapping from a (unique) node name to a parallelism parameter.
   absl::flat_hash_map<string, std::shared_ptr<Parameter>>
-  CollectEssentialParallelism(std::shared_ptr<Node> node);
+  CollectEssentialParallelism(
+      std::shared_ptr<Node> node,
+      const absl::flat_hash_map<string, std::shared_ptr<Parameter>>&
+          parameters);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then repeatedly identifies the
@@ -634,7 +638,8 @@ class Model {
   // This process is repeated until all parameters reach their maximum values or
   // the projected output time is less than or equal to the processing time
   // needed to produce an element divided by CPU budget.
-  void OptimizeHillClimb(int64 cpu_budget, int64 ram_budget);
+  void OptimizeHillClimb(int64 cpu_budget, int64 ram_budget,
+                         double model_input_time);
 
   // This optimization algorithm starts by setting all tunable parallelism
   // parameters to the minimum value. It then improves current parameters by
@@ -643,12 +648,13 @@ class Model {
   // repeated until either the output time improvement is smaller than threshold
   // value or the output time is less than the processing time needed to produce
   // an element divided by CPU budget.
-  void OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget);
+  void OptimizeGradientDescent(int64 cpu_budget, int64 ram_budget,
+                               double model_input_time);
 
   // Collects the output time and if `gradients` is not `nullptr`, the output
   // time gradient w.r.t. tunable parameters of the subtree rooted in the given
   // node.
-  double OutputTime(std::shared_ptr<Node> node,
+  double OutputTime(std::shared_ptr<Node> node, double model_input_time,
                     absl::flat_hash_map<string, double>* gradients);
 
   // Collects the processing time for the given node.

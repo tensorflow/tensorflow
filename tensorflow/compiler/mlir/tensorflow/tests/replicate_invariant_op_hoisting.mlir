@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-replicate-invariant-op-hoisting | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-replicate-invariant-op-hoisting | FileCheck %s
 
 // CHECK-LABEL: func @replicate_arg_shape
 // CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<*xf32>, %[[ARG_1:[a-z0-9]*]]: tensor<*xf32>)

@@ -57,13 +57,14 @@ class ReduceTest(test_util.TensorFlowTestCase):
   def testReduceExplicitAxes(self):
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     with test_util.device(use_gpu=True):
-      for axis in (0, -2, (0, 0), (0, -2)):
+      for axis in (0, -2):
         self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
                             [5, 7, 9])
-      for axis in (1, -1, (1, 1), (1, -1)):
+      for axis in (1, -1):
         self.assertAllEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)),
                             [6, 15])
-      for axis in (None, (0, 1), (-1, -2), (-2, -1, 0, 1)):
+      for axis in (None, (0, 1), (1, 0), (-1, 0), (0, -1), (-2, 1), (1, -2),
+                   (-1, -2), (-2, -1)):
         self.assertEqual(self.evaluate(math_ops.reduce_sum(x, axis=axis)), 21)
 
   def testReduceInvalidAxis(self):
@@ -73,7 +74,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
       return
     x = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.int32)
     axis = np.array([[0], [1]])
-    with self.assertRaisesRegexp(ValueError, "must be at most rank 1"):
+    with self.assertRaisesRegex(ValueError, "must be at most rank 1"):
       math_ops.reduce_sum(x, axis)
 
   def testReduceVar(self):
@@ -83,7 +84,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
         self.evaluate(math_ops.reduce_variance(x, axis=0)), [0, 0, 0])
 
     x = [[1, 2, 1, 1], [1, 1, 0, 1]]
-    with self.assertRaisesRegexp(TypeError, "must be either real or complex"):
+    with self.assertRaisesRegex(TypeError, "must be either real or complex"):
       math_ops.reduce_variance(x)
 
     x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
@@ -110,7 +111,7 @@ class ReduceTest(test_util.TensorFlowTestCase):
         self.evaluate(math_ops.reduce_std(x, axis=0)), [0, 0, 0])
 
     x = [[1, 2, 1, 1], [1, 1, 0, 1]]
-    with self.assertRaisesRegexp(TypeError, "must be either real or complex"):
+    with self.assertRaisesRegex(TypeError, "must be either real or complex"):
       math_ops.reduce_std(x)
 
     x = [[1., 2., 1., 1.], [1., 1., 0., 1.]]
@@ -176,8 +177,8 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.array(x, dtype=dtype)
       max_np = np.max(x_np)
-      with self.assertRaisesRegexp(RuntimeWarning,
-                                   "overflow encountered in exp"):
+      with self.assertRaisesRegex(RuntimeWarning,
+                                  "overflow encountered in exp"):
         out = np.log(np.sum(np.exp(x_np)))
         if out == np.inf:
           raise RuntimeWarning("overflow encountered in exp")
@@ -193,8 +194,8 @@ class LogSumExpTest(test_util.TensorFlowTestCase):
     for dtype in [np.float16, np.float32, np.double]:
       x_np = np.array(x, dtype=dtype)
       max_np = np.max(x_np)
-      with self.assertRaisesRegexp(RuntimeWarning,
-                                   "divide by zero encountered in log"):
+      with self.assertRaisesRegex(RuntimeWarning,
+                                  "divide by zero encountered in log"):
         out = np.log(np.sum(np.exp(x_np)))
         if out == -np.inf:
           raise RuntimeWarning("divide by zero encountered in log")
@@ -260,7 +261,10 @@ class ModTest(test_util.TensorFlowTestCase):
 class SquaredDifferenceTest(test_util.TensorFlowTestCase):
 
   def testSquaredDifference(self):
-    for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+    for dtype in [
+        np.float16, np.float32, np.float64, dtypes.bfloat16.as_numpy_dtype,
+        np.int32, np.int64
+    ]:
       x = np.array([[1, 2, 3], [4, 5, 6]], dtype=dtype)
       y = np.array([-3, -2, -1], dtype=dtype)
       z = (x - y) * (x - y)
@@ -314,7 +318,7 @@ class ApproximateEqualTest(test_util.TensorFlowTestCase):
       x = np.array([1, 2], dtype=dtype)
       y = np.array([[1, 2]], dtype=dtype)
       # The inputs 'x' and 'y' must have the same shape.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           (ValueError, errors.InvalidArgumentError),
           "Shapes must be equal rank|must be of the same shape"):
         math_ops.approximate_equal(x, y)
@@ -397,7 +401,6 @@ class AddNTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(x[0] * num_inputs,
                             math_ops.add_n([tf_x[0]] * num_inputs))
 
-  @test_util.deprecated_graph_mode_only
   def testGrad(self):
     np.random.seed(42)
     for num_inputs in range(1, 10):
@@ -406,9 +409,16 @@ class AddNTest(test_util.TensorFlowTestCase):
             variables.Variable(10.0 * np.random.random())
             for _ in range(0, num_inputs)
         ]
-        addn = math_ops.add_n(input_vars)
         self.evaluate(variables.global_variables_initializer())
-        add_n_grad = gradients.gradients(addn, input_vars)
+        if context.executing_eagerly():
+          with backprop.GradientTape() as tape:
+            tape.watch(input_vars)
+            addn = math_ops.add_n(input_vars)
+            add_n_grad = tape.gradient(addn, input_vars)
+        else:
+          addn = math_ops.add_n(input_vars)
+          add_n_grad = gradients.gradients(addn, input_vars)
+
         self.assertAllEqual(
             np.repeat(1.0, num_inputs),  # d/dx (x + y + ...) = 1
             [self.evaluate(g) for g in add_n_grad])
@@ -466,6 +476,13 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     #               % array_ops.constant(divs))
     # self.assertAllEqual(tf2_result, tf_result)
 
+  def testFloorModBfloat64(self):
+    nums, divs = self.floatTestData()
+    tf_result = math_ops.floormod(math_ops.cast(nums, dtypes.bfloat16),
+                                  math_ops.cast(divs, dtypes.bfloat16))
+    np_result = nums % divs
+    self.assertAllEqual(tf_result, np_result)
+
   def testTruncateModInt(self):
     nums, divs = self.intTestData()
     tf_result = math_ops.truncatemod(nums, divs)
@@ -515,18 +532,32 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     _ = math_ops.divide(foo, 1.)
     _ = math_ops.div(foo, 2.)
 
-  @test_util.deprecated_graph_mode_only
   def testFloorDivGrad(self):
     a = variables.Variable(2.)
     b = variables.Variable(4.)
+    input_vars = [a, b]
     self.evaluate(variables.global_variables_initializer())
-    c_grad = gradients.gradients(math_ops.divide(a, b), [a, b])
-    self.assertAllEqual([self.evaluate(x) for x in c_grad], [.25, -.125])
-    c_grad = gradients.gradients(math_ops.div(a, b), [a, b])
-    self.assertAllEqual([self.evaluate(x) for x in c_grad], [.25, -.125])
-    c_grad = gradients.gradients(math_ops.floordiv(a, b), [a, b])
+    if context.executing_eagerly():
+      # TDOO(rmlarsen): Is there a more compact way of
+      # writing this for multiple expressions?
+      with backprop.GradientTape() as tape:
+        tape.watch(input_vars)
+        c_grad0 = tape.gradient(math_ops.divide(a, b), input_vars)
+      with backprop.GradientTape() as tape:
+        tape.watch(input_vars)
+        c_grad1 = tape.gradient(math_ops.div(a, b), input_vars)
+      with backprop.GradientTape() as tape:
+        tape.watch(input_vars)
+        c_grad2 = tape.gradient(math_ops.floordiv(a, b), input_vars)
+    else:
+      c_grad0 = gradients.gradients(math_ops.divide(a, b), input_vars)
+      c_grad1 = gradients.gradients(math_ops.div(a, b), input_vars)
+      c_grad2 = gradients.gradients(math_ops.floordiv(a, b), input_vars)
+    self.assertAllEqual([self.evaluate(x) for x in c_grad0], [.25, -.125])
+    self.assertAllEqual([self.evaluate(x) for x in c_grad1], [.25, -.125])
     self.assertAllEqual(
-        [None if x is None else self.evaluate(x) for x in c_grad], [None, None])
+        [None if x is None else self.evaluate(x) for x in c_grad2],
+        [None, None])
 
   def testConsistent(self):
     nums, divs = self.intTestData()
@@ -741,7 +772,7 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
       error_message = (
           "Input 'y' of 'Add(V2)?' Op has type float32 that does not "
           "match type int32 of argument 'x'.")
-    with self.assertRaisesRegexp(error, error_message):
+    with self.assertRaisesRegex(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + 1.0
       self.evaluate(a)
 
@@ -766,7 +797,8 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
 
       def __radd__(self, other):
         raise TypeError("RHS not implemented")
-    with self.assertRaisesRegexp(error, error_message):
+
+    with self.assertRaisesRegex(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSRaisesError()
       self.evaluate(a)
 
@@ -774,13 +806,15 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
 
       def __radd__(self, other):
         return NotImplemented
-    with self.assertRaisesRegexp(error, error_message):
+
+    with self.assertRaisesRegex(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSReturnsNotImplemented()
       self.evaluate(a)
 
     class RHSNotImplemented(object):
       pass
-    with self.assertRaisesRegexp(error, error_message):
+
+    with self.assertRaisesRegex(error, error_message):
       a = array_ops.ones([1], dtype=dtypes.int32) + RHSNotImplemented()
       self.evaluate(a)
 

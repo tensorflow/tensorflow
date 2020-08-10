@@ -148,6 +148,7 @@ endif
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/lite/*test.cc) \
+$(wildcard tensorflow/lite/*/*test.c) \
 $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/benchmark.cc) \
 $(wildcard tensorflow/lite/*/*/example*.cc) \
@@ -187,7 +188,7 @@ ifeq ($(TARGET_ARCH),aarch64)
 	BUILD_WITH_RUY=true
 endif
 ifeq ($(BUILD_WITH_RUY),true)
-  CXXFLAGS += -DTFLITE_WITH_RUY_ONLY
+  CXXFLAGS += -DTFLITE_WITH_RUY
 endif
 
 BUILD_WITH_RUY_PROFILER ?= false

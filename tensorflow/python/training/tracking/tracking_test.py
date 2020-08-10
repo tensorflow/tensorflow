@@ -25,14 +25,10 @@ import time
 import timeit
 
 import numpy as np
-import six
 
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import training
-from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
@@ -63,7 +59,7 @@ class InterfaceTests(test.TestCase):
     root.leaf = tracking.AutoTrackable()
     root.leaf = root.leaf
     duplicate_name_dep = tracking.AutoTrackable()
-    with self.assertRaisesRegexp(ValueError, "already declared"):
+    with self.assertRaisesRegex(ValueError, "already declared"):
       root._track_trackable(duplicate_name_dep, name="leaf")
     # No error; we're overriding __setattr__, so we can't really stop people
     # from doing this while maintaining backward compatibility.
@@ -72,28 +68,6 @@ class InterfaceTests(test.TestCase):
     self.assertIs(duplicate_name_dep, root._lookup_dependency("leaf"))
     (_, dep_object), = root._checkpoint_dependencies
     self.assertIs(duplicate_name_dep, dep_object)
-
-  def testNoDependency(self):
-    root = tracking.AutoTrackable()
-    hasdep = tracking.AutoTrackable()
-    root.hasdep = hasdep
-    nodep = tracking.AutoTrackable()
-    root.nodep = data_structures.NoDependency(nodep)
-    self.assertEqual(1, len(root._checkpoint_dependencies))
-    self.assertIs(root._checkpoint_dependencies[0].ref, root.hasdep)
-    self.assertIs(root.hasdep, hasdep)
-    self.assertIs(root.nodep, nodep)
-
-    class NoDependencyModel(training.Model):
-
-      @base.no_automatic_dependency_tracking
-      def __init__(self):
-        super(NoDependencyModel, self).__init__()
-        self.a = []
-        self.b = tracking.AutoTrackable()
-
-    nodeps = NoDependencyModel()
-    self.assertEqual([nodeps], util.list_objects(nodeps))
 
   def testRemoveDependency(self):
     root = tracking.AutoTrackable()
@@ -132,7 +106,7 @@ class InterfaceTests(test.TestCase):
     c = tracking.AutoTrackable()
     a.l.insert(0, c)
     checkpoint = util.Checkpoint(a=a)
-    with self.assertRaisesRegexp(ValueError, "A list element was replaced"):
+    with self.assertRaisesRegex(ValueError, "A list element was replaced"):
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
   @test_util.run_in_graph_and_eager_modes
@@ -144,7 +118,7 @@ class InterfaceTests(test.TestCase):
     c = tracking.AutoTrackable()
     held_reference.append(c)
     checkpoint = util.Checkpoint(a=a)
-    with self.assertRaisesRegexp(ValueError, "The wrapped list was modified"):
+    with self.assertRaisesRegex(ValueError, "The wrapped list was modified"):
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
   @test_util.run_in_graph_and_eager_modes
@@ -180,44 +154,7 @@ class InterfaceTests(test.TestCase):
     checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
     # Dirtying the inner list means the root object is unsaveable.
     a.l[0][1] = 2
-    with self.assertRaisesRegexp(ValueError, "A list element was replaced"):
-      checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
-
-  @test_util.run_in_graph_and_eager_modes
-  def testDictionariesBasic(self):
-    a = training.Model()
-    b = training.Model()
-    a.attribute = {"b": b}
-    c = training.Model()
-    a.attribute["c"] = []
-    a.attribute["c"].append(c)
-    a_deps = util.list_objects(a)
-    self.assertIn(b, a_deps)
-    self.assertIn(c, a_deps)
-    self.assertIs(b, a.attribute["b"])
-    six.assertCountEqual(
-        self,
-        ["b", "c"],
-        [dep.name for dep in a.attribute._checkpoint_dependencies])
-    self.assertEqual([b, c], a.layers)
-    self.assertEqual([b, c], a.attribute.layers)
-    self.assertEqual([c], a.attribute["c"].layers)
-    checkpoint = util.Checkpoint(a=a)
-    save_path = checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
-    with self.cached_session():
-      checkpoint.restore(save_path).assert_consumed().initialize_or_restore()
-
-  @test_util.run_in_graph_and_eager_modes
-  def testNoDepList(self):
-    a = training.Model()
-    a.l1 = data_structures.NoDependency([])
-    a.l1.insert(1, 0)
-    self.assertTrue(isinstance(a.l1, list))
-    checkpoint = util.Checkpoint(a=a)
-    checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
-    a.l2 = []
-    a.l2.insert(1, module.Module())
-    with self.assertRaisesRegexp(ValueError, "A list element was replaced"):
+    with self.assertRaisesRegex(ValueError, "A list element was replaced"):
       checkpoint.save(os.path.join(self.get_temp_dir(), "ckpt"))
 
   @test_util.run_in_graph_and_eager_modes

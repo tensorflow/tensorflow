@@ -20,9 +20,9 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
@@ -114,6 +114,7 @@ class InferenceContext {
   void BindMemoryToOperations();
   absl::Status Compile(const CreationContext& creation_context);
   absl::Status Tune(const TuningParameters& tuning_parameters);
+  absl::Status UpdateParams();
 
   // performance hacks
   bool need_flush_ = false;
@@ -159,7 +160,7 @@ class InferenceContext {
     DummyTensor Get(ValueId id) { return reservations_[id]; }
 
    private:
-    std::unordered_map<ValueId, DummyTensor> reservations_;
+    absl::flat_hash_map<ValueId, DummyTensor> reservations_;
     ValueId next_;
   };
   TensorReserver tensor_reserver_;

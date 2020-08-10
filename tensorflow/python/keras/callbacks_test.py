@@ -49,9 +49,11 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
+from tensorflow.python.training.saving import checkpoint_options as checkpoint_options_lib
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -272,7 +274,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(dataset, epochs=2, steps_per_epoch=10)
-      self.assertRegexpMatches(printed.contents(), expected_log)
+      self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_all_keras_modes
   def test_callback_warning(self):
@@ -318,7 +320,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(dataset, epochs=2, steps_per_epoch=10)
-      self.assertRegexpMatches(printed.contents(), expected_log)
+      self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes
@@ -333,7 +335,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(training_dataset, epochs=2, validation_data=val_dataset)
-      self.assertRegexpMatches(printed.contents(), expected_log)
+      self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -348,7 +350,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(x, y, batch_size=10, epochs=2, validation_split=0.2)
-      self.assertRegexpMatches(printed.contents(), expected_log)
+      self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -379,7 +381,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     with self.captureWritesToStream(sys.stdout) as printed:
       model.fit(
           x=training, validation_data=validation, epochs=2, steps_per_epoch=20)
-      self.assertRegexpMatches(printed.contents(), expected_log)
+      self.assertRegex(printed.contents(), expected_log)
 
   @keras_parameterized.run_with_all_model_types
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
@@ -645,7 +647,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     os.remove(filepath.format(epoch=9))
 
     # Case 8: `ModelCheckpoint` with valid and invalid save_freq argument.
-    with self.assertRaisesRegexp(ValueError, 'Unrecognized save_freq'):
+    with self.assertRaisesRegex(ValueError, 'Unrecognized save_freq'):
       keras.callbacks.ModelCheckpoint(
           filepath,
           monitor=monitor,
@@ -665,6 +667,38 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         save_best_only=save_best_only,
         mode=mode,
         save_freq=3)
+
+    # Case 9: `ModelCheckpoint` with valid and invalid `options` argument.
+    with self.assertRaisesRegex(TypeError, 'tf.train.CheckpointOptions'):
+      keras.callbacks.ModelCheckpoint(
+          filepath,
+          monitor=monitor,
+          save_best_only=save_best_only,
+          save_weights_only=True,
+          mode=mode,
+          options=save_options_lib.SaveOptions())
+    with self.assertRaisesRegex(TypeError, 'tf.saved_model.SaveOptions'):
+      keras.callbacks.ModelCheckpoint(
+          filepath,
+          monitor=monitor,
+          save_best_only=save_best_only,
+          save_weights_only=False,
+          mode=mode,
+          options=checkpoint_options_lib.CheckpointOptions())
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        save_weights_only=True,
+        mode=mode,
+        options=checkpoint_options_lib.CheckpointOptions())
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        save_weights_only=False,
+        mode=mode,
+        options=save_options_lib.SaveOptions())
 
   def _get_dummy_resource_for_model_checkpoint_testing(self):
 
@@ -847,8 +881,9 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     callback = keras.callbacks.ModelCheckpoint(filepath=filepath)
 
-    with self.assertRaisesRegexp(IOError, 'Please specify a non-directory '
-                                          'filepath for ModelCheckpoint.'):
+    with self.assertRaisesRegex(
+        IOError, 'Please specify a non-directory '
+        'filepath for ModelCheckpoint.'):
       model.fit(train_ds, epochs=1, callbacks=[callback])
 
   def test_ModelCheckpoint_with_bad_path_placeholders(self):
@@ -859,8 +894,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     filepath = os.path.join(temp_dir, 'chkpt_{epoch:02d}_{mape:.2f}.h5')
     callback = keras.callbacks.ModelCheckpoint(filepath=filepath)
 
-    with self.assertRaisesRegexp(KeyError, 'Failed to format this callback '
-                                           'filepath.*'):
+    with self.assertRaisesRegex(KeyError, 'Failed to format this callback '
+                                'filepath.*'):
       model.fit(train_ds, epochs=1, callbacks=[callback])
 
   def test_ModelCheckpoint_nonblocking(self):
@@ -937,7 +972,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       cb_list.on_test_batch_end(0, logs)
       cb_list.on_test_end(logs)
 
-      with self.assertRaisesRegexp(RuntimeError, 'NumPy conversion'):
+      with self.assertRaisesRegex(RuntimeError, 'NumPy conversion'):
         # on_epoch_end should still block.
         cb_list.on_epoch_end(0, logs)
       cb_list.on_train_end(logs)
@@ -1237,7 +1272,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
   def test_ReduceLROnPlateau_backwards_compatibility(self):
     with test.mock.patch.object(logging, 'warning') as mock_log:
       reduce_on_plateau = keras.callbacks.ReduceLROnPlateau(epsilon=1e-13)
-      self.assertRegexpMatches(
+      self.assertRegex(
           str(mock_log.call_args), '`epsilon` argument is deprecated')
     self.assertFalse(hasattr(reduce_on_plateau, 'epsilon'))
     self.assertTrue(hasattr(reduce_on_plateau, 'min_delta'))
@@ -1670,6 +1705,48 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     self.assertEqual(my_cb.test_batches, 0)
     self.assertEqual(my_cb.predict_batches, 0)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_default_callbacks_do_not_call_batch_hooks(self):
+    model = keras.Sequential([keras.layers.Dense(1)])
+    log_dir = self.get_temp_dir()
+    cb_list = keras.callbacks.CallbackList([
+        keras.callbacks.TensorBoard(log_dir, profile_batch=0),
+        keras.callbacks.ModelCheckpoint(log_dir),
+    ],
+                                           add_progbar=True,
+                                           model=model,
+                                           verbose=2,
+                                           epochs=3)
+    self.assertLen(cb_list.callbacks, 3)
+    self.assertFalse(cb_list._should_call_train_batch_hooks)
+    self.assertFalse(cb_list._should_call_test_batch_hooks)
+    self.assertFalse(cb_list._should_call_predict_batch_hooks)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_change_tf_functions_during_fit(self):
+
+    class ChangeFunctions(keras.callbacks.Callback):
+
+      def on_epoch_end(self, epochs, logs=None):
+
+        def new_fn(iterator):
+          raise ValueError('New function substituted successfully.')
+
+        self.model.train_function = new_fn
+        self.model.test_function = new_fn
+        self.model.predict_function = new_fn
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse')
+
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.fit(x, y, batch_size=2, epochs=2, callbacks=[ChangeFunctions()])
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.evaluate(x, y, batch_size=2)
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.predict(x, batch_size=2)
+
 
 # A summary that was emitted during a test. Fields:
 #   logdir: str. The logdir of the FileWriter to which the summary was
@@ -1690,6 +1767,7 @@ class _SummaryFile(object):
     self.images = set()
     self.histograms = set()
     self.tensors = set()
+    self.graph_defs = []
 
 
 def list_summaries(logdir):
@@ -1716,6 +1794,8 @@ def list_summaries(logdir):
         continue
       path = os.path.join(dirpath, filename)
       for event in summary_iterator.summary_iterator(path):
+        if event.graph_def:
+          result.graph_defs.append(event.graph_def)
         if not event.summary:  # (e.g., it's a `graph_def` event)
           continue
         for value in event.summary.value:
@@ -1754,18 +1834,16 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     self.train_dir = os.path.join(self.logdir, 'train')
     self.validation_dir = os.path.join(self.logdir, 'validation')
 
-  def _get_model(self):
+  def _get_model(self, compile_model=True):
     layers = [
         keras.layers.Conv2D(8, (3, 3)),
         keras.layers.Flatten(),
         keras.layers.Dense(1)
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10, 10, 1))
-    opt = gradient_descent.SGD(learning_rate=0.001)
-    model.compile(
-        opt,
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
+    if compile_model:
+      opt = gradient_descent.SGD(learning_rate=0.001)
+      model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def test_TensorBoard_default_logdir(self):
@@ -1876,6 +1954,29 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='batch_loss'),
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
+
+  def test_TensorBoard_learning_rate_schedules(self):
+    model = self._get_model(compile_model=False)
+    opt = gradient_descent.SGD(learning_rate_schedule.CosineDecay(0.01, 1))
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        callbacks=[keras.callbacks.TensorBoard(self.logdir)])
+
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_learning_rate'),
         },
     )
 
@@ -2056,7 +2157,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     return result
 
   def test_TensorBoard_invalid_argument(self):
-    with self.assertRaisesRegexp(ValueError, 'Unrecognized arguments'):
+    with self.assertRaisesRegex(ValueError, 'Unrecognized arguments'):
       keras.callbacks.TensorBoard(wwrite_images=True)
 
   def test_TensorBoard_non_blocking(self):
@@ -2140,7 +2241,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         x,
         y,
         batch_size=2,
-        epochs=2,
+        epochs=3,
         validation_data=(x, y),
         callbacks=[tb_cbk])
     summary_file = list_summaries(self.logdir)
@@ -2150,6 +2251,16 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='keras'),
         },
     )
+    if not model.run_eagerly:
+      # There should be one train graph
+      self.assertLen(summary_file.graph_defs, 1)
+      for graph_def in summary_file.graph_defs:
+        graph_def_str = str(graph_def)
+
+        # All the model layers should appear in the graphs
+        for layer in model.layers:
+          if 'input' not in layer.name:
+            self.assertIn(layer.name, graph_def_str)
 
   def test_TensorBoard_writeSequentialModel_noInputShape(self):
     model = keras.models.Sequential([
@@ -2157,7 +2268,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         keras.layers.Flatten(),
         keras.layers.Dense(1),
     ])
-    model.compile('sgd', 'mse', run_eagerly=False)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     self.fitModelAndAssertKerasModelWritten(model)
 
   def test_TensorBoard_writeSequentialModel_withInputShape(self):
@@ -2166,16 +2277,16 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         keras.layers.Flatten(),
         keras.layers.Dense(1),
     ])
-    model.compile('sgd', 'mse', run_eagerly=False)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     self.fitModelAndAssertKerasModelWritten(model)
 
-  def test_TensoriBoard_writeModel(self):
+  def test_TensorBoard_writeModel(self):
     inputs = keras.layers.Input([10, 10, 1])
     x = keras.layers.Conv2D(8, (3, 3), activation='relu')(inputs)
     x = keras.layers.Flatten()(x)
     x = keras.layers.Dense(1)(x)
     model = keras.models.Model(inputs=inputs, outputs=[x])
-    model.compile('sgd', 'mse', run_eagerly=False)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     self.fitModelAndAssertKerasModelWritten(model)
 
   def test_TensorBoard_autoTrace(self):

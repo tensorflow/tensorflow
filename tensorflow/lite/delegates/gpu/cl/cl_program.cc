@@ -78,13 +78,13 @@ std::string CompilerOptionToString(const CLDevice& device,
                                    CompilerOptions option) {
   switch (option) {
     case CompilerOptions::ADRENO_FULL_SIMD_LINE:
-      if (device.GetInfo().adreno_info.gpu_version < 500) {
+      if (device.info_.adreno_info.gpu_version < 500) {
         return "-qcom-accelerate-16-bit";
       } else {
         return "-qcom-accelerate-16-bit=true";
       }
     case CompilerOptions::ADRENO_MORE_WAVES:
-      if (device.GetInfo().adreno_info.gpu_version >= 500) {
+      if (device.info_.adreno_info.gpu_version >= 500) {
         return "-qcom-accelerate-16-bit=false";
       } else {
         return "";
@@ -93,6 +93,8 @@ std::string CompilerOptionToString(const CLDevice& device,
       return "-cl-fast-relaxed-math";
     case CompilerOptions::CL_OPT_DISABLE:
       return "-cl-opt-disable";
+    case CompilerOptions::CL_2_0:
+      return "-cl-std=CL2.0";
   }
 }
 

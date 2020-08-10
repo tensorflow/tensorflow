@@ -43,7 +43,7 @@ from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import device as tfdev
+from tensorflow.python.framework import device_spec
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -53,10 +53,10 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend_config
 from tensorflow.python.keras.engine import keras_tensor
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import ctc_ops as ctc
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gradients as gradients_module
@@ -83,7 +83,6 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import keras_export
 
 py_all = all
@@ -395,9 +394,6 @@ def _default_learning_phase():
           False, shape=(), name='keras_learning_phase')
 
 
-@deprecated('2020-10-11',
-            'Simply pass a True/False value to the `training` argument '
-            'of the `__call__` method of your layer or model.')
 @keras_export('keras.backend.set_learning_phase')
 def set_learning_phase(value):
   """Sets the learning phase to a fixed value.
@@ -419,6 +415,34 @@ def set_learning_phase(value):
   Arguments:
       value: Learning phase value, either 0 or 1 (integers).
              0 = test, 1 = train
+
+  Raises:
+      ValueError: if `value` is neither `0` nor `1`.
+  """
+  logging.warning('`tf.keras.backend.set_learning_phase` is deprecated and '
+                  'will be removed after 2020-10-11. To update it, simply '
+                  'pass a True/False value to the `training` argument of the '
+                  '`__call__` method of your layer or model.')
+  deprecated_internal_set_learning_phase(value)
+
+
+def deprecated_internal_set_learning_phase(value):
+  """A deprecated internal implementation of set_learning_phase.
+
+  This method is an internal-only version of `set_learning_phase` that
+  does not raise a deprecation error. It is required because
+  saved_model needs to keep working with user code that uses the deprecated
+  learning phase methods until those apis are fully removed from the public api.
+
+  Specifically SavedModel saving needs to make sure the learning phase is 0
+  during tracing even if users overwrote it to a different value.
+
+  But, we don't want to raise deprecation warnings for users when savedmodel
+  sets learning phase just for compatibility with code that relied on
+  explicitly setting the learning phase for other values.
+
+  Arguments:
+      value: Learning phase value, either 0 or 1 (integers). 0 = test, 1 = train
 
   Raises:
       ValueError: if `value` is neither `0` nor `1`.
@@ -452,6 +476,39 @@ def learning_phase_scope(value):
   Raises:
      ValueError: if `value` is neither `0` nor `1`.
   """
+  logging.warning('`tf.keras.backend.learning_phase_scope` is deprecated and '
+                  'will be removed after 2020-10-11. To update it, simply '
+                  'pass a True/False value to the `training` argument of the '
+                  '`__call__` method of your layer or model.')
+  with deprecated_internal_learning_phase_scope(value):
+    try:
+      yield
+    finally:
+      pass
+
+
+@tf_contextlib.contextmanager
+def deprecated_internal_learning_phase_scope(value):
+  """An internal-only version of `learning_phase_scope`.
+
+  Unlike the public method, this method does not raise a deprecation warning.
+  This is needed because saved model saving needs to set learning phase
+  to maintain compatibility
+  with code that sets/gets the learning phase, but saved model
+  saving itself shouldn't raise a deprecation warning.
+
+  We can get rid of this method and its usages when the public api is
+  removed.
+
+  Arguments:
+     value: Learning phase value, either 0 or 1 (integers). 0 = test, 1 = train
+
+  Yields:
+    None.
+
+  Raises:
+     ValueError: if `value` is neither `0` nor `1`.
+  """
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be 0 or 1.')
@@ -464,7 +521,7 @@ def learning_phase_scope(value):
 
   learning_phase_previously_set = _DUMMY_EAGER_GRAPH.learning_phase_is_set
   try:
-    set_learning_phase(value)
+    deprecated_internal_set_learning_phase(value)
     yield
   finally:
     # Restore learning phase to initial value.
@@ -669,7 +726,7 @@ class _TfDeviceCaptureOp(object):
 
   def _set_device(self, device):
     """This method captures TF's explicit device scope setting."""
-    if tfdev.is_device_spec(device):
+    if isinstance(device, device_spec.DeviceSpecV2):
       device = device.to_string()
     self.device = device
 
@@ -688,7 +745,10 @@ def _get_current_tf_device():
   graph = get_graph()
   op = _TfDeviceCaptureOp()
   graph._apply_device_functions(op)
-  return tfdev.DeviceSpec.from_string(op.device)
+  if tf2.enabled():
+    return device_spec.DeviceSpecV2.from_string(op.device)
+  else:
+    return device_spec.DeviceSpecV1.from_string(op.device)
 
 
 def _is_current_explicit_device(device_type):
@@ -797,6 +857,9 @@ def is_sparse(tensor):
   True
 
   """
+  spec = getattr(tensor, '_type_spec', None)
+  if spec is not None:
+    return isinstance(spec, sparse_tensor.SparseTensorSpec)
   return isinstance(tensor, sparse_tensor.SparseTensor)
 
 
@@ -1072,13 +1135,14 @@ def is_keras_tensor(x):
   True
 
   """
-  if keras_tensor.keras_tensors_enabled():
-    return isinstance(x, keras_tensor.KerasTensor)
   if not isinstance(x,
                     (ops.Tensor, variables_module.Variable,
-                     sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
+                     sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor,
+                     keras_tensor.KerasTensor)):
     raise ValueError('Unexpectedly found an instance of type `' + str(type(x)) +
                      '`. Expected a symbolic tensor instance.')
+  if keras_tensor.keras_tensors_enabled():
+    return isinstance(x, keras_tensor.KerasTensor)
   return hasattr(x, '_keras_history')
 
 
@@ -1117,7 +1181,7 @@ def placeholder(shape=None,
 
   >>> input_ph = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> input_ph
-  <tf.Tensor 'Placeholder_...' shape=(2, 4, 5) dtype=float32>
+  <KerasTensor: shape=(2, 4, 5) dtype=float32 (created by layer ...)>
 
   """
   if sparse and ragged:
@@ -1218,7 +1282,7 @@ def shape(x):
   <tf.Tensor: shape=(2,), dtype=int32, numpy=array([2, 2], dtype=int32)>
   >>> input = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> tf.keras.backend.shape(input)
-  <tf.Tensor 'Shape_...' shape=(3,) dtype=int32>
+  <KerasTensor: shape=(3,) dtype=int32 inferred_value=[2, 4, 5] ...>
 
   """
   return array_ops.shape(x)
@@ -1733,13 +1797,13 @@ def dot(x, y):
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
-  <tf.Tensor ... shape=(2, 4) dtype=float32>
+  <KerasTensor: shape=(2, 4) dtype=float32 ...>
 
   >>> x = tf.keras.backend.placeholder(shape=(32, 28, 3))
   >>> y = tf.keras.backend.placeholder(shape=(3, 4))
   >>> xy = tf.keras.backend.dot(x, y)
   >>> xy
-  <tf.Tensor ... shape=(32, 28, 4) dtype=float32>
+  <KerasTensor: shape=(32, 28, 4) dtype=float32 ...>
 
   >>> x = tf.keras.backend.random_uniform_variable(shape=(2, 3), low=0, high=1)
   >>> y = tf.keras.backend.ones((4, 3, 5))
@@ -1989,10 +2053,10 @@ def transpose(x):
          [3.,  6.]], dtype=float32)
   >>> input = tf.keras.backend.placeholder((2, 3))
   >>> input
-  <tf.Tensor 'Placeholder_...' shape=(2, 3) dtype=float32>
+  <KerasTensor: shape=(2, 3) dtype=float32 ...>
   >>> input_transposed = tf.keras.backend.transpose(input)
   >>> input_transposed
-  <tf.Tensor 'Transpose_...' shape=(3, 2) dtype=float32>
+  <KerasTensor: shape=(3, 2) dtype=float32 ...>
   """
   return array_ops.transpose(x)
 
@@ -3396,7 +3460,7 @@ _VALUE_SET_CODE_STRING = """
   >>> print(K.get_value(v))
   3.0
 
-  Variable semantics in TensorFlow 2 are eager execution friendly. The above 
+  Variable semantics in TensorFlow 2 are eager execution friendly. The above
   code is roughly equivalent to:
 
   >>> v = tf.Variable(1.)
@@ -4042,9 +4106,9 @@ def rnn(step_function,
   # That's what the tile call does, it just repeats the mask along its
   # second dimension n times.
   def _expand_mask(mask_t, input_t, fixed_dim=1):
-    if nest.is_sequence(mask_t):
+    if nest.is_nested(mask_t):
       raise ValueError('mask_t is expected to be tensor, but got %s' % mask_t)
-    if nest.is_sequence(input_t):
+    if nest.is_nested(input_t):
       raise ValueError('input_t is expected to be tensor, but got %s' % input_t)
     rank_diff = len(input_t.shape) - len(mask_t.shape)
     for _ in range(rank_diff):
@@ -4070,7 +4134,7 @@ def rnn(step_function,
         input_t.reverse()
       return input_t
 
-    if nest.is_sequence(inputs):
+    if nest.is_nested(inputs):
       processed_input = nest.map_structure(_process_single_input_t, inputs)
     else:
       processed_input = (_process_single_input_t(inputs),)
@@ -4485,7 +4549,10 @@ def relu(x, alpha=0., max_value=None, threshold=0):
   Returns:
       A tensor.
   """
-
+  # While x can be a tensor or variable, we also see cases where
+  # numpy arrays, lists, tuples are passed as well.
+  # lists, tuples do not have 'dtype' attribute.
+  dtype = getattr(x, 'dtype', floatx())
   if alpha != 0.:
     if max_value is None and threshold == 0:
       return nn.leaky_relu(x, alpha=alpha)
@@ -4499,7 +4566,7 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
   if threshold != 0:
     # computes x for x > threshold else 0
-    x = x * math_ops.cast(math_ops.greater(x, threshold), floatx())
+    x = x * math_ops.cast(math_ops.greater(x, threshold), dtype=dtype)
   elif max_value == 6:
     # if no threshold, then can use nn.relu6 native TF op for performance
     x = nn.relu6(x)
@@ -4581,12 +4648,6 @@ def softsign(x):
   return nn.softsign(x)
 
 
-def _backtrack_identity(tensor):
-  while tensor.op.type == 'Identity':
-    tensor = tensor.op.inputs[0]
-  return tensor
-
-
 @keras_export('keras.backend.categorical_crossentropy')
 @dispatch.add_dispatch_support
 def categorical_crossentropy(target, output, from_logits=False, axis=-1):
@@ -4617,15 +4678,15 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     [[1. 0. 0.]
      [0. 1. 0.]
      [0. 0. 1.]], shape=(3, 3), dtype=float32)
-  >>> b = tf.constant([.9, .05, .05, .5, .89, .6, .05, .01, .94], shape=[3,3])
+  >>> b = tf.constant([.9, .05, .05, .05, .89, .06, .05, .01, .94], shape=[3,3])
   >>> print(b)
   tf.Tensor(
     [[0.9  0.05 0.05]
-     [0.5  0.89 0.6 ]
+     [0.05 0.89 0.06]
      [0.05 0.01 0.94]], shape=(3, 3), dtype=float32)
   >>> loss = tf.keras.backend.categorical_crossentropy(a, b)
   >>> print(np.around(loss, 5))
-  [0.10536 0.80467 0.06188]
+  [0.10536 0.11653 0.06188]
   >>> loss = tf.keras.backend.categorical_crossentropy(a, a)
   >>> print(np.around(loss, 5))
   [0. 0. 0.]
@@ -4639,17 +4700,16 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
     return nn.softmax_cross_entropy_with_logits_v2(
         labels=target, logits=output, axis=axis)
 
-  if not isinstance(output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Softmax':
-      # When softmax activation function is used for output operation, we
-      # use logits from the softmax function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      # See b/117284466
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      return nn.softmax_cross_entropy_with_logits_v2(
-          labels=target, logits=output, axis=axis)
+  if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
+    # When softmax activation function is used for output operation, we
+    # use logits from the softmax function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    # See b/117284466
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    return nn.softmax_cross_entropy_with_logits_v2(
+        labels=target, logits=output, axis=axis)
 
   # scale preds so that the class probas of each sample sum to 1
   output = output / math_ops.reduce_sum(output, axis, True)
@@ -4684,17 +4744,16 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
   target = ops.convert_to_tensor_v2(target)
   output = ops.convert_to_tensor_v2(output)
 
-  if not from_logits and not isinstance(
-      output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Softmax':
-      # When softmax activation function is used for output operation, we
-      # use logits from the softmax function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      # See b/117284466
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      from_logits = True
+  if (not from_logits and
+      not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Softmax') and not hasattr(output, '_keras_history'):
+    # When softmax activation function is used for output operation, we
+    # use logits from the softmax function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    # See b/117284466
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    from_logits = True
 
   if not from_logits:
     epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
@@ -4765,15 +4824,14 @@ def binary_crossentropy(target, output, from_logits=False):
   if from_logits:
     return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
-  if not isinstance(output, (ops.EagerTensor, variables_module.Variable)):
-    output = _backtrack_identity(output)
-    if output.op.type == 'Sigmoid':
-      # When sigmoid activation function is used for output operation, we
-      # use logits from the sigmoid function directly to compute loss in order
-      # to prevent collapsing zero when training.
-      assert len(output.op.inputs) == 1
-      output = output.op.inputs[0]
-      return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
+  if (not isinstance(output, (ops.EagerTensor, variables_module.Variable)) and
+      output.op.type == 'Sigmoid') and not hasattr(output, '_keras_history'):
+    # When sigmoid activation function is used for output operation, we
+    # use logits from the sigmoid function directly to compute loss in order
+    # to prevent collapsing zero when training.
+    assert len(output.op.inputs) == 1
+    output = output.op.inputs[0]
+    return nn.sigmoid_cross_entropy_with_logits(labels=target, logits=output)
 
   epsilon_ = _constant_to_tensor(epsilon(), output.dtype.base_dtype)
   output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
@@ -4815,7 +4873,7 @@ def hard_sigmoid(x):
   """
   point_two = _constant_to_tensor(0.2, x.dtype.base_dtype)
   point_five = _constant_to_tensor(0.5, x.dtype.base_dtype)
-  x = math_ops.mul(x, point_two)
+  x = math_ops.multiply(x, point_two)
   x = math_ops.add(x, point_five)
   x = clip_ops.clip_by_value(x, 0., 1.)
   return x
@@ -5805,7 +5863,6 @@ def random_uniform(shape, minval=0.0, maxval=1.0, dtype=None, seed=None):
       shape, minval=minval, maxval=maxval, dtype=dtype, seed=seed)
 
 
-@deprecated(None, 'Use `tf.keras.backend.random_bernoulli` instead.')
 @keras_export('keras.backend.random_binomial')
 @dispatch.add_dispatch_support
 def random_binomial(shape, p=0.0, dtype=None, seed=None):
@@ -5834,6 +5891,8 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
   <tf.Tensor: shape=(2, 3), dtype=float32, numpy=...,
   dtype=float32)>
   """
+  logging.warning('`tf.keras.backend.random_binomial` is deprecated. '
+                  'Please use `tf.keras.backend.random_bernoulli` instead.')
   if dtype is None:
     dtype = floatx()
   if seed is None:
@@ -6007,7 +6066,7 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
               the log probability of each decoded sequence.
   """
   input_shape = shape(y_pred)
-  samples, steps = input_shape[0], input_shape[1]
+  num_samples, num_steps = input_shape[0], input_shape[1]
   y_pred = math_ops.log(array_ops.transpose(y_pred, perm=[1, 0, 2]) + epsilon())
   input_length = math_ops.cast(input_length, dtypes_module.int32)
 
@@ -6020,11 +6079,12 @@ def ctc_decode(y_pred, input_length, greedy=True, beam_width=100, top_paths=1):
         sequence_length=input_length,
         beam_width=beam_width,
         top_paths=top_paths)
-  decoded_dense = [
-      sparse_ops.sparse_to_dense(
-          st.indices, (samples, steps), st.values, default_value=-1)
-      for st in decoded
-  ]
+  decoded_dense = []
+  for st in decoded:
+    st = sparse_tensor.SparseTensor(
+        st.indices, st.values, (num_samples, num_steps))
+    decoded_dense.append(
+        sparse_ops.sparse_tensor_to_dense(sp_input=st, default_value=-1))
   return (decoded_dense, log_prob)
 
 

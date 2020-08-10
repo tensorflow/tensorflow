@@ -80,14 +80,33 @@ auto* tf_data_bytes_fetched_counter = monitoring::Counter<0>::New(
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
 
+auto* tf_data_experiment_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment",
+    "The number of times tf.data experiment is applied to input pipelines.",
+    "name");
+
 auto* tf_data_fingerprint_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
 
-auto* tf_data_getnext_duration_counter = monitoring::Sampler<0>::New(
+auto* tf_data_getnext_duration_usecs_histogram = monitoring::Sampler<0>::New(
     {"/tensorflow/data/getnext_duration",
      "Microseconds spent fetching an element from tf.data Dataset iterator."},
-    // Power of 2 with bucket count 10 (1024 ms)
-    {monitoring::Buckets::Exponential(1, 2, 10)});
+    // Power of 2 with bucket count 10 (1024 microseconds) and 1 second.
+    {monitoring::Buckets::Explicit(
+        {2., 4., 8., 16., 32., 64., 128., 256., 512., 1024., 1e6})});
+
+auto* tf_data_getnext_time_between_msecs_histogram =
+    monitoring::Sampler<0>::New(
+        {"/tensorflow/data/getnext_time_between",
+         "Milliseconds spent in between calls to tf.data Dataset iterator."},
+        // A typical training step is in the 200ms to 1 second range.
+        // Elapsed time less than 25ms are likely due to multiple devices
+        // calling the iterator's getNext() during the same step. Bucket density
+        // is highest for small time intervals to more accurately measure fast
+        // ingest rates. Buckets from 25ms to 10 seconds.
+        {monitoring::Buckets::Explicit({25., 50., 75., 100., 125., 150., 175.,
+                                        200., 225., 250., 300., 350., 400.,
+                                        450., 500., 1000., 10000.})});
 
 auto* tf_data_optimization_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/optimization", "tf.data optimization", "name");
@@ -134,6 +153,11 @@ auto* mlir_import_failure_count = monitoring::Counter<0>::New(
     "/tensorflow/mlir/import_failure_count",
     "The number of jobs that failed during mlir import or verification.");
 
+auto* bfc_allocator_delay =
+    monitoring::Counter<0>::New("/tensorflow/core/bfc_allocator_delay",
+                                "The total time spent running each graph "
+                                "optimization pass in microseconds.");
+
 }  // namespace
 
 void RecordTFDataAutotune(const string& name) {
@@ -160,14 +184,26 @@ void RecordTFDataBytesFetched(int64 num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
 }
 
+void RecordTFDataExperiment(const string& name) {
+  tf_data_experiment_counter->GetCell(name)->IncrementBy(1);
+}
+
 void RecordTFDataFingerprint(const string& name) {
   tf_data_fingerprint_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordTFDataGetNextDuration(uint64 duration_us) {
   static auto* tfdata_getnext_duration_cell =
-      tf_data_getnext_duration_counter->GetCell();
+      tf_data_getnext_duration_usecs_histogram->GetCell();
   tfdata_getnext_duration_cell->Add(duration_us);
+}
+
+void RecordTFDataGetNextTimeBetween(uint64 duration_us) {
+  static auto* tfdata_getnext_time_between_cell =
+      tf_data_getnext_time_between_msecs_histogram->GetCell();
+  // Convert to milliseconds for histogram
+  const auto duration_ms = duration_us / 1000;
+  tfdata_getnext_time_between_cell->Add(duration_ms);
 }
 
 void RecordTFDataOptimization(const string& name, int64 num_changes) {
@@ -249,6 +285,13 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
         xla_compilation_time_usecs->GetCell();
     xla_compilations_cell->IncrementBy(1);
     xla_compilation_time_usecs_cell->IncrementBy(compilation_time_usecs);
+  }
+}
+
+void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs) {
+  static auto* bfc_allocator_delay_cell = bfc_allocator_delay->GetCell();
+  if (delay_usecs > 0) {
+    bfc_allocator_delay_cell->IncrementBy(delay_usecs);
   }
 }
 

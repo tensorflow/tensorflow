@@ -49,7 +49,7 @@ absl::Status CreateTexture2D(int width, int height, cl_channel_type type,
                                        &desc, data, &error_code);
   if (error_code != CL_SUCCESS) {
     return absl::UnknownError(
-        absl::StrCat("Failed to create Texture2D (clCreateImage)",
+        absl::StrCat("Failed to create 2D texture (clCreateImage): ",
                      CLErrorCodeToString(error_code)));
   }
 
@@ -58,6 +58,40 @@ absl::Status CreateTexture2D(int width, int height, cl_channel_type type,
   return absl::OkStatus();
 }
 }  // namespace
+
+GPUResources Texture2DDescriptor::GetGPUResources() const {
+  GPUResources resources;
+  GPUImage2DDescriptor desc;
+  desc.data_type = element_type;
+  desc.access_type = access_type_;
+  resources.images2d.push_back({"tex2d", desc});
+  return resources;
+}
+
+absl::Status Texture2DDescriptor::PerformSelector(
+    const std::string& selector, const std::vector<std::string>& args,
+    const std::vector<std::string>& template_args, std::string* result) const {
+  if (selector == "Read") {
+    return PerformReadSelector(args, result);
+  } else {
+    return absl::NotFoundError(absl::StrCat(
+        "TensorLinearDescriptor don't have selector with name - ", selector));
+  }
+}
+
+absl::Status Texture2DDescriptor::PerformReadSelector(
+    const std::vector<std::string>& args, std::string* result) const {
+  if (args.size() != 2) {
+    return absl::NotFoundError(
+        absl::StrCat("Texture2DDescriptor Read require two arguments, but ",
+                     args.size(), " was passed"));
+  }
+  const std::string read =
+      element_type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
+  *result = absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0],
+                         ", " + args[1] + "))");
+  return absl::OkStatus();
+}
 
 Texture2D::Texture2D(cl_mem texture, int width, int height,
                      cl_channel_type type)
@@ -84,8 +118,6 @@ Texture2D& Texture2D::operator=(Texture2D&& texture) {
   return *this;
 }
 
-Texture2D::~Texture2D() { Release(); }
-
 void Texture2D::Release() {
   if (texture_) {
     clReleaseMemObject(texture_);
@@ -93,6 +125,18 @@ void Texture2D::Release() {
     width_ = 0;
     height_ = 0;
   }
+}
+
+absl::Status Texture2D::GetGPUResources(
+    const GPUObjectDescriptor* obj_ptr,
+    GPUResourcesWithValue* resources) const {
+  const auto* texture_desc = dynamic_cast<const Texture2DDescriptor*>(obj_ptr);
+  if (!texture_desc) {
+    return absl::InvalidArgumentError("Expected Texture2DDescriptor on input.");
+  }
+
+  resources->images2d.push_back({"tex2d", texture_});
+  return absl::OkStatus();
 }
 
 // Creates new 4-channel 2D texture with f32 elements

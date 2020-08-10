@@ -49,6 +49,8 @@ string Hostname() {
   return name;
 }
 
+string JobName() { return ""; }
+
 int NumSchedulableCPUs() {
   SYSTEM_INFO system_info;
   GetSystemInfo(&system_info);
@@ -183,13 +185,15 @@ double NominalCPUFrequency() {
   return 1.0;
 }
 
-int64 AvailableRam() {
+MemoryInfo GetMemoryInfo() {
+  MemoryInfo mem_info = {INT64_MAX, INT64_MAX};
   MEMORYSTATUSEX statex;
   statex.dwLength = sizeof(statex);
   if (GlobalMemoryStatusEx(&statex)) {
-    return statex.ullAvailPhys;
+    mem_info.free = statex.ullAvailPhys;
+    mem_info.total = statex.ullTotalPhys;
   }
-  return INT64_MAX;
+  return mem_info;
 }
 
 int NumHyperthreadsPerCore() {

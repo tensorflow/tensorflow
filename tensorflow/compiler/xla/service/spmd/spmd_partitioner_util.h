@@ -33,8 +33,15 @@ namespace spmd {
 // Returns true if the given sharding contains any replicated sharding.
 bool HasReplicatedSharding(const HloSharding& sharding);
 
+// Creates constant value instructions of the given shape. The literal must be a
+// scalar shape and is broadcast to the given shape.
+HloInstruction* CreateConstant(const Shape& shape, Literal value,
+                               SpmdBuilder* b);
 // Creates zero value instructions of the given shape.
 HloInstruction* CreateZero(const Shape& shape, SpmdBuilder* b);
+
+// Creates one value instructions of the given shape.
+HloInstruction* CreateOne(const Shape& shape, SpmdBuilder* b);
 
 template <typename NativeT>
 HloInstruction* CreateR0WithType(PrimitiveType type, NativeT value,
@@ -87,10 +94,12 @@ Shape MakeNonPaddedShapeForGivenPartition(const Shape& shape,
 
 // Generates the HLO instructions that represent the dimension offsets on any
 // device. The size of the returned vector is the rank of the given shape.
-std::vector<HloInstruction*> MakePartitionOffsets(const Shape& shape,
-                                                  const HloSharding& sharding,
-                                                  HloInstruction* partition_id,
-                                                  SpmdBuilder* b);
+// If `dims` is non-empty, the generated offsets will only be non-zero for those
+// dimensions.
+std::vector<HloInstruction*> MakePartitionOffsets(
+    const Shape& shape, const HloSharding& sharding,
+    HloInstruction* partition_id, SpmdBuilder* b,
+    absl::Span<const int64> dims = {});
 
 // Returns the offsets of the partition in the tile assignment.
 std::vector<HloInstruction*> MakeTiledPartitionOrdinals(
@@ -261,6 +270,106 @@ absl::optional<int64> GetKValueInTopKWhenPartitionSortDim(HloInstruction* hlo);
 // Slices the first k elements at slice dimension.
 HloInstruction* SliceFirstK(HloInstruction* hlo, SpmdBuilder* builder,
                             int64 slice_dim, int64 k);
+
+// Check if a dimension is sharded.
+int64 ShardCountAtDim(const HloSharding& sharding, int64 dim);
+
+// Returns the list of source-target pairs of dimensions to swap during
+// resharding via all-to-all. Reshard can be done by swapping each pair at a
+// time.
+absl::optional<std::vector<std::pair<int64, int64>>>
+GetReshardAllToAllSourceTargetDims(const HloSharding& source,
+                                   const HloSharding& target);
+
+// Returns whether the resharding can be done via collective-permute.
+bool CanReshardWithCollectivePermute(const HloSharding& source,
+                                     const HloSharding& target);
+
+// Represents grouping devices in a tiled sharding along certain dimensions.
+// Elements in group dimensions define different device groups, and the sharding
+// represents the in-group sharding.
+struct GroupedSharding {
+  GroupedSharding(std::vector<std::vector<int64>> device_groups,
+                  std::vector<int64> group_dims,
+                  std::vector<int64> group_dim_sizes, int64 rank,
+                  HloSharding grouped_sharding)
+      : device_groups(std::move(device_groups)),
+        group_dims(std::move(group_dims)),
+        group_dim_sizes(std::move(group_dim_sizes)),
+        sharding(std::move(grouped_sharding)) {}
+  std::vector<std::vector<int64>> device_groups;
+  std::vector<int64> group_dims;
+  std::vector<int64> group_dim_sizes;
+  int64 rank;
+  HloSharding sharding;
+};
+
+// Creates a GroupedSharding for a tiled sharding.
+GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+                                    absl::Span<const int64> group_dims);
+
+// Reconstructs the ungrouped sharding from a GroupedSharding.
+HloSharding UngroupSharding(const GroupedSharding& grouped_sharding);
+
+// Returns a new GroupedSharding that has the same group definition of
+// `reference`.
+GroupedSharding AlignGroupsWith(GroupedSharding grouped_sharding,
+                                const GroupedSharding& reference,
+                                bool ignore_group_order = false);
+
+// Returns the per-group base shape, i.e., before applying the in-group
+// sharding.
+Shape GetPerGroupBaseShape(const GroupedSharding& grouped_sharding,
+                           const Shape& original_base_shape);
+
+// Creates the nested partitioner state for in-group patitioning.
+PartitionedHlo::PartitioningState CreatePerGroupPartitioningState(
+    const PartitionedHlo::PartitioningState& state,
+    const std::vector<std::vector<int64>>& device_groups, SpmdBuilder* b);
+
+// Partially shards a replicated HLO into groups along the group dimensions, and
+// within each group data is still replicated.
+HloInstruction* PerGroupSliceFromReplicated(
+    HloInstruction* replicated, HloInstruction* partition_id,
+    const std::vector<std::vector<int64>>& device_groups,
+    absl::Span<const int64> group_dims, absl::Span<const int64> group_dim_sizes,
+    SpmdBuilder* b);
+
+// Similar to hlo_sharding_util::TransposeSharding(), but allows removing/adding
+// non-partitioned dimensions. In src_to_tgt and tgt_to_src, -1 represents a
+// non-existing dimension.
+absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
+    const HloSharding& source, absl::Span<int64 const> src_to_tgt,
+    absl::Span<int64 const> tgt_to_src);
+
+// Returns the opcode if `reduction_comp` represents a simple binary elementwise
+// computation on the two operands.
+absl::optional<HloOpcode> ParseReductionComputation(
+    const HloComputation* reduction_comp);
+
+// Pad the shape from partial replicate shape for `dst_sharding`.
+// If dst_sharding needs more padding and per_shard_size increased in
+// dst_sharding, halo exchange on the right side is needed.
+absl::optional<HloInstruction*> PadFromPartialReplicateShape(
+    HloInstruction* hlo, const Shape& base_shape,
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const std::vector<int64>& expand_tile_dims,
+    const SPMDCollectiveOpsCreator& collective_ops_creator,
+    int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
+
+// Get the compatible sharding from a partial replicate sharding to a given
+// target tile dimensions.
+// Compatible means replicate sharding can transform to the target tile
+// dimensions by dynamic slice.
+// For example, if partial_sharding is
+// {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+// Target tile dims is {2, 2}, the returned compatible sharding will be
+// sharding={devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}.
+// If patial replicate sharding is not partial replicate or can't reshard to
+// target_tile_dims by dynamic slice, return absl::nullopt.
+absl::optional<HloSharding> PartialReplicateToTileCompatibleSharding(
+    const HloSharding& partial_sharding,
+    const std::vector<int64>& target_tile_dims);
 
 }  // namespace spmd
 }  // namespace xla

@@ -220,8 +220,6 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
     break;
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_tstring(CASE);
-    TF_CALL_uint32(CASE);
-    TF_CALL_uint64(CASE);
     // TODO(feihugis): figure out how to support variant tensors.
 #undef CASE
     default:

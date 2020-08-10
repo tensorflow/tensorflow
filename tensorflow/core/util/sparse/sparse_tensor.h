@@ -580,10 +580,22 @@ inline SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
 
   const int dims = input_tensor.dims();
   for (int dim = 0; dim < dims; dim++) {
-    int64 dim_size = start[dim] + size[dim] < output_shape.dim_size(dim)
-                         ? size[dim]
-                         : output_shape.dim_size(dim) - start[dim];
-    output_shape.set_dim(dim, dim_size);
+    // Determine the size of the result; if the selected slice goes beyond the
+    // input boundary, the result will correspond to the size of the overlap
+    // between the input and the selected slice.
+    const int64 input_size = output_shape.dim_size(dim);
+    const int64 start_index = start[dim];
+    const int64 slice_size = size[dim];
+    if (start_index + slice_size < input_size) {
+      // The entire selection is within input boundaries.
+      output_shape.set_dim(dim, slice_size);
+    } else if (start_index < input_size) {
+      // The selection starts within input boundaries, but goes beyond them.
+      output_shape.set_dim(dim, input_size - start_index);
+    } else {
+      // The selection is entirely out of input boundaries.
+      output_shape.set_dim(dim, 0);
+    }
   }
 
   auto input_indices_t = input_tensor.indices().matrix<int64>();

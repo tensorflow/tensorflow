@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -34,6 +35,7 @@ from tensorflow.python.ops import cond_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
@@ -145,7 +147,7 @@ class CondV2Test(test.TestCase):
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.0)
-      v.initializer.run()
+      self.evaluate(v.initializer)
       op = v.assign_add(1.0)
 
       def true_branch():
@@ -239,25 +241,23 @@ class CondV2Test(test.TestCase):
     with ops.Graph().as_default():
       _, cond_op = self._createCond(None)
       self.assertEqual(cond_op.name, "cond")
-      self.assertRegexpMatches(
-          cond_op.get_attr("then_branch").name, r"cond_true_\d*")
-      self.assertRegexpMatches(
-          cond_op.get_attr("else_branch").name, r"cond_false_\d*")
+      self.assertRegex(cond_op.get_attr("then_branch").name, r"cond_true_\d*")
+      self.assertRegex(cond_op.get_attr("else_branch").name, r"cond_false_\d*")
 
     with ops.Graph().as_default():
       with ops.name_scope("foo"):
         _, cond1_op = self._createCond("")
         self.assertEqual(cond1_op.name, "foo/cond")
-        self.assertRegexpMatches(
+        self.assertRegex(
             cond1_op.get_attr("then_branch").name, r"foo_cond_true_\d*")
-        self.assertRegexpMatches(
+        self.assertRegex(
             cond1_op.get_attr("else_branch").name, r"foo_cond_false_\d*")
 
         _, cond2_op = self._createCond(None)
         self.assertEqual(cond2_op.name, "foo/cond_1")
-        self.assertRegexpMatches(
+        self.assertRegex(
             cond2_op.get_attr("then_branch").name, r"foo_cond_1_true_\d*")
-        self.assertRegexpMatches(
+        self.assertRegex(
             cond2_op.get_attr("else_branch").name, r"foo_cond_1_false_\d*")
 
   @test_util.run_v2_only
@@ -1135,7 +1135,7 @@ class CondV2Test(test.TestCase):
     def false_fn():
       return ((x,), y * 3.0)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, "true_fn and false_fn arguments to tf.cond must have the "
         "same number, type, and overall structure of return values."):
       control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
@@ -1237,6 +1237,30 @@ class CondV2Test(test.TestCase):
     self.assertEqual(len(if_op.outputs), 1)
     # pylint: enable=g-deprecated-assert
 
+  def testIsControlFlowGraph(self):
+    x = constant_op.constant(1.0, name="x")
+
+    @def_function.function
+    def f(c):
+
+      def then_branch():
+        i = x + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      def else_branch():
+        i = x + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      return cond_v2.cond_v2(c, then_branch, else_branch)
+
+    i = f(constant_op.constant(True))
+    self.assertEqual(self.evaluate(i), 2.0)
+
+    i = f(constant_op.constant(False))
+    self.assertEqual(self.evaluate(i), 2.0)
+
 
 class CondV2CollectionTest(test.TestCase):
 
@@ -1254,7 +1278,7 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.add(x_const, y_const)
 
         cnd = cond_v2.cond_v2(constant_op.constant(True), fn, fn)
-        self.assertEquals(cnd.eval(), 7)
+        self.assertEqual(self.evaluate(cnd), 7)
 
   def testCollectionTensorValueAccessInCond(self):
     """Read tensors from collections inside of cond_v2 & use them."""
@@ -1271,7 +1295,7 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.add(x_read, y_read)
 
         cnd = cond_v2.cond_v2(math_ops.less(x, y), fn, fn)
-        self.assertEquals(cnd.eval(), 7)
+        self.assertEqual(self.evaluate(cnd), 7)
 
   def testCollectionIntValueWriteInCond(self):
     """Make sure Int writes to collections work inside of cond_v2."""
@@ -1289,10 +1313,10 @@ class CondV2CollectionTest(test.TestCase):
           return math_ops.mul(x, z)
 
         cnd = cond_v2.cond_v2(constant_op.constant(True), true_fn, false_fn)
-        self.assertEquals(cnd.eval(), 14)
+        self.assertEqual(self.evaluate(cnd), 14)
 
         read_z_collection = ops.get_collection("z")
-        self.assertEquals(read_z_collection, [7])
+        self.assertEqual(read_z_collection, [7])
 
 
 class CondV2ContainerTest(test.TestCase):
@@ -1363,11 +1387,11 @@ class CondV2ContainerTest(test.TestCase):
         with ops.container("l1"):
           cnd_true = cond_v2.cond_v2(
               constant_op.constant(True), true_fn, false_fn)
-          self.assertEquals(cnd_true.eval(), 2)
+          self.assertEqual(self.evaluate(cnd_true), 2)
 
           cnd_false = cond_v2.cond_v2(
               constant_op.constant(False), true_fn, false_fn)
-          self.assertEquals(cnd_false.eval(), 6)
+          self.assertEqual(self.evaluate(cnd_false), 6)
 
           v4 = variables.Variable([3])
           q4 = data_flow_ops.FIFOQueue(1, dtypes.float32)
@@ -1395,7 +1419,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
           return c
 
         with ops.colocate_with(a.op):
-          self.assertEquals(
+          self.assertEqual(
               cond_v2.cond_v2(constant_op.constant(True), fn, fn).eval(), 3)
 
         def fn2():
@@ -1405,7 +1429,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
 
         with ops.colocate_with(a.op):
           with ops.colocate_with(b.op):
-            self.assertEquals(
+            self.assertEqual(
                 cond_v2.cond_v2(constant_op.constant(True), fn2, fn2).eval(), 3)
 
   def testColocateWithInAndOutOfCond(self):
@@ -1422,7 +1446,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
             return c
 
         with ops.colocate_with(a.op):
-          self.assertEquals(
+          self.assertEqual(
               cond_v2.cond_v2(constant_op.constant(True), fn2, fn2).eval(), 3)
 
           d = constant_op.constant([2.0], name="d")
@@ -1495,7 +1519,7 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
             return c
 
         with ops.device("/device:CPU:0"):
-          self.assertEquals(
+          self.assertEqual(
               cond_v2.cond_v2(constant_op.constant(True), fn2, fn2).eval(), 3)
 
           d = constant_op.constant(4.0)
@@ -1521,7 +1545,43 @@ class CondV2ColocationGroupAndDeviceTest(test.TestCase):
         run_metadata = config_pb2.RunMetadata()
         sess.run(out_cond_2, options=run_options, run_metadata=run_metadata)
 
-        self.assertTrue(len(run_metadata.partition_graphs) >= 2)
+        self.assertGreaterEqual(len(run_metadata.partition_graphs), 2)
+
+
+class CaseTest(test.TestCase):
+
+  def testCase(self):
+
+    def branch1(x):
+      logging_ops.print_v2("1")
+      return x
+
+    def branch2(x):
+      return x + 1
+
+    with ops.Graph().as_default():
+      x = array_ops.constant(1)
+      output = cond_v2.indexed_case(
+          array_ops.constant(0), [lambda: branch1(x), lambda: branch2(x)])
+      cond_op = output.op.inputs[0].op
+      self.assertEqual(cond_op.type, "Case")
+      self.assertEqual(1., self.evaluate(output))
+
+  def testStatelessCase(self):
+
+    def branch1(x):
+      return x + 1
+
+    def branch2(x):
+      return x + 2
+
+    with ops.Graph().as_default():
+      x = array_ops.constant(1)
+      output = cond_v2.indexed_case(
+          array_ops.constant(0), [lambda: branch1(x), lambda: branch2(x)])
+      cond_op = output.op.inputs[0].op
+      self.assertEqual(cond_op.type, "StatelessCase")
+      self.assertEqual(2., self.evaluate(output))
 
 
 def _cond(pred, true_fn, false_fn, name):
@@ -1546,4 +1606,5 @@ def _has_node_with_op(run_metadata, op_type):
 
 
 if __name__ == "__main__":
-  test.main()
+  with forward_compatibility_horizon(2020, 8, 21):
+    test.main()

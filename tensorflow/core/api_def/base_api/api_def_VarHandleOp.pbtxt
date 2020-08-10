@@ -28,8 +28,8 @@ END
   attr {
     name: "allowed_devices"
     description: <<END
-The allowed devices containing the resource variable. Set when the output
-ResourceHandle represents a per-replica/partitioned resource variable.
+DEPRECATED. The allowed devices containing the resource variable. Set when the
+output ResourceHandle represents a per-replica/partitioned resource variable.
 END
   }
   summary: "Creates a handle to a Variable resource."

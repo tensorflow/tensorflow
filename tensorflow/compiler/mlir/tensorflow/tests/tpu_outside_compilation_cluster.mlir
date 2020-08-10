@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-tpu-outside-compilation-cluster | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s -tf-tpu-outside-compilation-cluster | FileCheck %s
 
 // CHECK-LABEL: func @one_cluster_no_dependencies
 func @one_cluster_no_dependencies() {

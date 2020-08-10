@@ -232,6 +232,20 @@ func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
 
 // -----
 
+// Check that an island body doesn't have any block arguments.
+func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
+  tf_executor.graph {
+    "tf_executor.island"() ({
+      // expected-error@-1 {{expects body without any arguments}}
+      ^entry(%arg: tensor<2xi32>):
+        tf_executor.yield
+    }) : () -> (!tf_executor.control)
+  }
+  return
+}
+
+// -----
+
 // Check that an island body can't be empty.
 func @invalid_island(%arg0: tensor<*xf32>, %ctl: !tf_executor.control) {
   tf_executor.graph {
@@ -391,11 +405,11 @@ func @invalid_switch(%arg0: tensor<*xf32>, %arg1: tensor<i1>) -> tensor<*xf32> {
 
 // -----
 
-// Check that a tf_executor.SwitchN parent is a graph.
+// Check that a tf_executor._SwitchN parent is a graph.
 func @parent_is_graph(%arg0: tensor<*xf32>, %arg1: tensor<i32>) {
   "tf.some_op"() ({
-     %1:6 = tf_executor.SwitchN %arg0, %arg1 of 5 : tensor<*xf32>
-// expected-error@-1 {{'tf_executor.SwitchN' op expects parent op 'tf_executor.graph'}}
+     %1:6 = tf_executor._SwitchN %arg0, %arg1 of 5 : tensor<*xf32>
+// expected-error@-1 {{'tf_executor._SwitchN' op expects parent op 'tf_executor.graph'}}
   }) : () -> ()
   return
 }
@@ -406,8 +420,8 @@ func @parent_is_graph(%arg0: tensor<*xf32>, %arg1: tensor<i32>) {
 func @invalid_switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
 
-     %1:3 = "tf_executor.SwitchN"(%arg1, %arg0) {num_outs = 5} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.SwitchN' op expect `num_outs` (5) results but got 2}}
+     %1:3 = "tf_executor._SwitchN"(%arg1, %arg0) {num_outs = 5} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<*xf32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor._SwitchN' op expect `num_outs` (5) results but got 2}}
 
      tf_executor.fetch %1#0 : tensor<*xf32>
   }
@@ -419,8 +433,8 @@ func @invalid_switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32>
 // Check that data operands of SwitchN have tensor type
 func @invalid_switchN(%arg0: i32, %arg1: tensor<i32>) -> tensor<*xi32> {
   %result = tf_executor.graph {
-    %1:3 = "tf_executor.SwitchN"(%arg0, %arg1) {num_outs = 2} : (i32, tensor<i32>) -> (tensor<*xi32>, tensor<i32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.SwitchN' op expects data operand to have tensor type but got 'i32'}}
+    %1:3 = "tf_executor._SwitchN"(%arg0, %arg1) {num_outs = 2} : (i32, tensor<i32>) -> (tensor<*xi32>, tensor<i32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor._SwitchN' op expects data operand to have tensor type but got 'i32'}}
     tf_executor.fetch %1#0 : tensor<*xi32>
   }
   return %result : tensor<*xi32>
@@ -431,8 +445,8 @@ func @invalid_switchN(%arg0: i32, %arg1: tensor<i32>) -> tensor<*xi32> {
 // Check that result of SwitchN has tensor type
 func @invalid_switchN(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> i32 {
   %result = tf_executor.graph {
-    %1:3 = "tf_executor.SwitchN"(%arg0, %arg1) {num_outs = 2} : (tensor<*xi32>, tensor<i32>) -> (i32, tensor<i32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.SwitchN' op expects outputs to have tensor type but got 'i32'}}
+    %1:3 = "tf_executor._SwitchN"(%arg0, %arg1) {num_outs = 2} : (tensor<*xi32>, tensor<i32>) -> (i32, tensor<i32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor._SwitchN' op expects outputs to have tensor type but got 'i32'}}
     tf_executor.fetch %1#0 : i32
   }
   return %result : i32
@@ -444,8 +458,8 @@ func @invalid_switchN(%arg0: tensor<*xi32>, %arg1: tensor<i32>) -> i32 {
 func @invalid_switchN(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> tensor<4x!tf.f32ref> {
   %fetches = tf_executor.graph {
 
-    %1:3 = "tf_executor.SwitchN"(%arg0, %arg1) {num_outs = 2} : (tensor<4xf32>, tensor<i32>) -> (tensor<4x!tf.f32ref>, tensor<4xf32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.SwitchN' op expects same operand and output element type but got 'tensor<4xf32>' vs 'tensor<4x!tf.f32ref>'}}
+    %1:3 = "tf_executor._SwitchN"(%arg0, %arg1) {num_outs = 2} : (tensor<4xf32>, tensor<i32>) -> (tensor<4x!tf.f32ref>, tensor<4xf32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor._SwitchN' op expects same operand and output element type but got 'tensor<4xf32>' vs 'tensor<4x!tf.f32ref>'}}
     tf_executor.fetch %1#0 : tensor<4x!tf.f32ref>
   }
   return %fetches : tensor<4x!tf.f32ref>
@@ -457,8 +471,8 @@ func @invalid_switchN(%arg0: tensor<4xf32>, %arg1: tensor<i32>) -> tensor<4x!tf.
 func @invalid_switchN(%arg0: tensor<*xf32>, %arg1: tensor<i32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
 
-     %1:3 = "tf_executor.SwitchN"(%arg0, %arg1) {num_outs = 2} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>, !tf_executor.control)
-// expected-error@-1 {{'tf_executor.SwitchN' op expects data operand to be broadcastable with all output types but got 'tensor<*xf32>' vs 'tensor<i32>'}}
+     %1:3 = "tf_executor._SwitchN"(%arg0, %arg1) {num_outs = 2} : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>, !tf_executor.control)
+// expected-error@-1 {{'tf_executor._SwitchN' op expects data operand to be broadcastable with all output types but got 'tensor<*xf32>' vs 'tensor<i32>'}}
 
      tf_executor.fetch %1#0 : tensor<*xf32>
   }
@@ -471,8 +485,8 @@ func @invalid_switchN(%arg0: tensor<*xf32>, %arg1: tensor<i32>) -> tensor<*xf32>
 func @invalid_switchN(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %fetches = tf_executor.graph {
 
-     %1:3 = tf_executor.SwitchN %arg1, %arg0 of 2 : tensor<*xf32>, i32
-// expected-error@-1 {{custom op 'tf_executor.SwitchN'  expects only a single data type}}
+     %1:3 = tf_executor._SwitchN %arg1, %arg0 of 2 : tensor<*xf32>, i32
+// expected-error@-1 {{custom op 'tf_executor._SwitchN'  expects only a single data type}}
 
      tf_executor.fetch %1#0 : tensor<*xf32>
   }

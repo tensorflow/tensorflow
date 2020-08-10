@@ -24,6 +24,8 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
+#include "absl/strings/ascii.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -36,6 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_domain_metadata.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_lexer.h"
@@ -46,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
@@ -190,6 +194,7 @@ class HloParserImpl : public HloParser {
     kBracedHloComputationList,
     kFftType,
     kComparisonDirection,
+    kComparisonType,
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
@@ -206,6 +211,7 @@ class HloParserImpl : public HloParser {
     kShapeList,
     kEnum,
     kRandomAlgorithm,
+    kAliasing,
   };
 
   struct AttrConfig {
@@ -322,6 +328,7 @@ class HloParserImpl : public HloParser {
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
+  bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParseRandomAlgorithm(RandomAlgorithm* result);
@@ -331,6 +338,15 @@ class HloParserImpl : public HloParser {
   bool ParseComplex(std::complex<double>* result);
   bool ParseBool(bool* result);
   bool ParseToken(TokKind kind, const std::string& msg);
+
+  using AliasingData =
+      absl::flat_hash_map<ShapeIndex, HloInputOutputAliasConfig::Alias>;
+
+  // Parses the aliasing information from string `s`, returns `false` if it
+  // fails.
+  bool ParseAliasing(AliasingData* data);
+
+  bool ParseShapeIndex(ShapeIndex* out);
 
   // Returns true if the current token is the beginning of a shape.
   bool CanBeShape();
@@ -497,6 +513,91 @@ HloParserImpl::FindInstruction(const std::string& name,
   return instr;
 }
 
+bool HloParserImpl::ParseShapeIndex(ShapeIndex* out) {
+  if (!ParseToken(TokKind::kLbrace, "Expects '{' at the start of ShapeIndex")) {
+    return false;
+  }
+
+  std::vector<int64> idxs;
+  while (lexer_.GetKind() != TokKind::kRbrace) {
+    int64 idx;
+    if (!ParseInt64(&idx)) {
+      return false;
+    }
+    idxs.push_back(idx);
+    if (!EatIfPresent(TokKind::kComma)) {
+      break;
+    }
+  }
+  if (!ParseToken(TokKind::kRbrace, "Expects '}' at the end of ShapeIndex")) {
+    return false;
+  }
+  *out = ShapeIndex(idxs.begin(), idxs.end());
+  return true;
+}
+
+bool HloParserImpl::ParseAliasing(AliasingData* data) {
+  if (!ParseToken(TokKind::kLbrace,
+                  "Expects '{' at the start of aliasing description")) {
+    return false;
+  }
+
+  while (lexer_.GetKind() != TokKind::kRbrace) {
+    ShapeIndex out;
+    if (!ParseShapeIndex(&out)) {
+      return false;
+    }
+    std::string errmsg =
+        "Expected format: <output_shape_index>: (<input_param>, "
+        "<input_param_shape_index>) OR <output_shape_index>: <input_param>";
+    if (!ParseToken(TokKind::kColon, errmsg)) {
+      return false;
+    }
+
+    if (!ParseToken(TokKind::kLparen, errmsg)) {
+      return false;
+    }
+    int64 param_num;
+    ParseInt64(&param_num);
+    if (!ParseToken(TokKind::kComma, errmsg)) {
+      return false;
+    }
+    ShapeIndex param_idx;
+    if (!ParseShapeIndex(&param_idx)) {
+      return false;
+    }
+
+    HloInputOutputAliasConfig::AliasKind alias_kind =
+        HloInputOutputAliasConfig::kMayAlias;
+    if (EatIfPresent(TokKind::kComma)) {
+      std::string type;
+      ParseName(&type);
+      if (type == "must-alias") {
+        alias_kind = HloInputOutputAliasConfig::kMustAlias;
+      } else if (type == "may-alias") {
+        alias_kind = HloInputOutputAliasConfig::kMayAlias;
+      } else {
+        return TokenError("Unexpected aliasing kind; expected SYSTEM or USER");
+      }
+    }
+
+    data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
+                  std::forward_as_tuple(param_num, param_idx, alias_kind));
+    if (!ParseToken(TokKind::kRparen, errmsg)) {
+      return false;
+    }
+
+    if (!EatIfPresent(TokKind::kComma)) {
+      break;
+    }
+  }
+  if (!ParseToken(TokKind::kRbrace,
+                  "Expects '}' at the end of aliasing description")) {
+    return false;
+  }
+  return true;
+}
+
 // ::= 'HloModule' name computations
 bool HloParserImpl::ParseHloModule(HloModule* module) {
   if (lexer_.GetKind() != TokKind::kw_HloModule) {
@@ -511,12 +612,15 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   }
 
   absl::optional<bool> is_scheduled;
+  absl::optional<AliasingData> aliasing_data;
   absl::flat_hash_map<std::string, AttrConfig> attrs;
+
   attrs["is_scheduled"] = {/*required=*/false, AttrTy::kBool, &is_scheduled};
+  attrs["input_output_alias"] = {/*required=*/false, AttrTy::kAliasing,
+                                 &aliasing_data};
   if (!ParseAttributes(attrs)) {
     return false;
   }
-
   module->set_name(name);
   if (!ParseComputations(module)) {
     return false;
@@ -524,6 +628,18 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
 
   if (is_scheduled.has_value() && *is_scheduled) {
     TF_CHECK_OK(module->set_schedule(ScheduleFromInstructionOrder(module)));
+  }
+  if (aliasing_data) {
+    HloInputOutputAliasConfig alias_config(module->result_shape());
+    for (auto& p : *aliasing_data) {
+      Status st =
+          alias_config.SetUpAlias(p.first, p.second.parameter_number,
+                                  p.second.parameter_index, p.second.kind);
+      if (!st.ok()) {
+        return TokenError(st.error_message());
+      }
+    }
+    module->input_output_alias_config() = alias_config;
   }
 
   return true;
@@ -777,6 +893,7 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kFloor:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kLogistic:
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kPopulationCount:
@@ -1247,14 +1364,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kCompare: {
       optional<ComparisonDirection> direction;
+      optional<Comparison::Type> type;
       attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
                             &direction};
+      attrs["type"] = {/*required=*/false, AttrTy::kComparisonType, &type};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateCompare(
-          shape, operands[0], operands[1], *direction));
+          shape, operands[0], operands[1], *direction, type));
       break;
     }
     case HloOpcode::kCholesky: {
@@ -2021,6 +2140,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
   LocTy loc = lexer_.GetLoc();
   bool maximal = false;
   bool replicated = false;
+  bool last_tile_dim_replicate = false;
   std::vector<int64> devices;
   std::vector<int64> tile_assignment_dimensions;
   while (lexer_.GetKind() != TokKind::kRbrace) {
@@ -2072,6 +2192,10 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
         }
         break;
       }
+      case TokKind::kw_last_tile_dim_replicate:
+        last_tile_dim_replicate = true;
+        lexer_.Lex();
+        break;
       case TokKind::kRbrace:
         break;
       default:
@@ -2110,6 +2234,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
     for (int64 device : devices) {
       sharding->add_tile_assignment_devices(device);
     }
+    sharding->set_replicate_on_last_tile_dim(last_tile_dim_replicate);
   }
 
   lexer_.Lex();
@@ -2566,7 +2691,9 @@ struct MinMaxFiniteValue<Eigen::half> {
 
 template <>
 struct MinMaxFiniteValue<bfloat16> {
-  static double max() { return static_cast<double>(bfloat16::highest()); }
+  static double max() {
+    return static_cast<double>(Eigen::NumTraits<Eigen::bfloat16>::highest());
+  }
   static double min() { return -max(); }
 };
 
@@ -2895,6 +3022,14 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+      case AttrTy::kComparisonType: {
+        Comparison::Type result;
+        if (!ParseComparisonType(&result)) {
+          return false;
+        }
+        static_cast<optional<Comparison::Type>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
       case AttrTy::kEnum: {
         if (lexer_.GetKind() != TokKind::kIdent) {
           return TokenError("expects an enumeration value");
@@ -3054,6 +3189,15 @@ bool HloParserImpl::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<RandomAlgorithm>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kAliasing: {
+        AliasingData aliasing_data;
+        if (!ParseAliasing(&aliasing_data)) {
+          return false;
+        }
+        static_cast<optional<AliasingData>*>(attr_out_ptr)
+            ->emplace(aliasing_data);
         return true;
       }
     }
@@ -3480,7 +3624,7 @@ bool HloParserImpl::ParseHloComputationList(
     if (!ParseHloComputation(&computation)) {
       return false;
     }
-    LOG(INFO) << "parsed computation " << computation->name();
+    VLOG(3) << "parsed computation " << computation->name();
     result->push_back(computation);
     return true;
   };
@@ -3998,7 +4142,7 @@ bool HloParserImpl::ParseFftType(FftType* result) {
 }
 
 bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
-  VLOG(1) << "ParseComparisonDirection";
+  VLOG(3) << "ParseComparisonDirection";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects comparison direction");
   }
@@ -4007,6 +4151,21 @@ bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects comparison direction but sees: %s", val));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseComparisonType(Comparison::Type* result) {
+  VLOG(1) << "ParseComparisonType";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects comparison type");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToComparisonType(val);
+  if (!status_or_result.ok()) {
+    return TokenError(StrFormat("expects comparison type but sees: %s", val));
   }
   *result = status_or_result.ValueOrDie();
   lexer_.Lex();

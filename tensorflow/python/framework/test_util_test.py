@@ -52,17 +52,16 @@ from tensorflow.python.platform import googletest
 
 class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_assert_ops_in_graph(self):
-    with self.test_session():
+    with ops.Graph().as_default():
       constant_op.constant(["hello", "taffy"], name="hello")
       test_util.assert_ops_in_graph({"hello": "Const"}, ops.get_default_graph())
 
-    self.assertRaises(ValueError, test_util.assert_ops_in_graph,
-                      {"bye": "Const"}, ops.get_default_graph())
+      self.assertRaises(ValueError, test_util.assert_ops_in_graph,
+                        {"bye": "Const"}, ops.get_default_graph())
 
-    self.assertRaises(ValueError, test_util.assert_ops_in_graph,
-                      {"hello": "Variable"}, ops.get_default_graph())
+      self.assertRaises(ValueError, test_util.assert_ops_in_graph,
+                        {"hello": "Variable"}, ops.get_default_graph())
 
   @test_util.run_deprecated_v1
   def test_session_functions(self):
@@ -104,8 +103,8 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     # assert_equal_graph_def doesn't care about order
     test_util.assert_equal_graph_def(def_57, def_75)
     # Compare two unequal graphs
-    with self.assertRaisesRegexp(AssertionError,
-                                 r"^Found unexpected node '{{node seven}}"):
+    with self.assertRaisesRegex(AssertionError,
+                                r"^Found unexpected node '{{node seven}}"):
       test_util.assert_equal_graph_def(def_57, def_empty)
 
   def testIsGoogleCudaEnabled(self):
@@ -162,8 +161,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Check if the assertion failure message contains the content of
     # the inner proto.
-    with self.assertRaisesRegexp(AssertionError,
-                                 r'meta_graph_version: "inner"'):
+    with self.assertRaisesRegex(AssertionError, r'meta_graph_version: "inner"'):
       self.assertProtoEquals("", meta_graph_def_outer)
 
   @test_util.run_in_graph_and_eager_modes
@@ -270,19 +268,19 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testAllCloseScalars(self):
     self.assertAllClose(7, 7 + 1e-8)
-    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+    with self.assertRaisesRegex(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(7, 7 + 1e-5)
 
   @test_util.run_in_graph_and_eager_modes
   def testAllCloseList(self):
-    with self.assertRaisesRegexp(AssertionError, r"not close dif"):
+    with self.assertRaisesRegex(AssertionError, r"not close dif"):
       self.assertAllClose([0], [1])
 
   @test_util.run_in_graph_and_eager_modes
   def testAllCloseDictToNonDict(self):
-    with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
+    with self.assertRaisesRegex(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose(1, {"a": 1})
-    with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
+    with self.assertRaisesRegex(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose({"a": 1}, 1)
 
   @test_util.run_in_graph_and_eager_modes
@@ -313,17 +311,17 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     for k in expected:
       actual = dict(expected)
       del actual[k]
-      with self.assertRaisesRegexp(AssertionError, r"mismatched keys"):
+      with self.assertRaisesRegex(AssertionError, r"mismatched keys"):
         self.assertAllClose(expected, actual)
 
     # With each item changed.
-    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+    with self.assertRaisesRegex(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(expected, {"a": a + 1e-5, "b": b, "c": c})
-    with self.assertRaisesRegexp(AssertionError, r"Shape mismatch"):
+    with self.assertRaisesRegex(AssertionError, r"Shape mismatch"):
       self.assertAllClose(expected, {"a": a, "b": b + (4.,), "c": c})
     c_copy = np.array(c)
     c_copy[1, 1, 1] += 1e-5
-    with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
+    with self.assertRaisesRegex(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(expected, {"a": a, "b": b, "c": c_copy})
 
   @test_util.run_in_graph_and_eager_modes
@@ -349,8 +347,8 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
     # Test mismatched values
     b["y"][1][0]["nested"]["n"] = 4.2
-    with self.assertRaisesRegexp(AssertionError,
-                                 r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
+    with self.assertRaisesRegex(AssertionError,
+                                r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
       self.assertAllClose(a, b)
 
   @test_util.run_in_graph_and_eager_modes
@@ -465,7 +463,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual([120] * 3, k)
     self.assertAllEqual([20] * 3, j)
 
-    with self.assertRaisesRegexp(AssertionError, r"not equal lhs"):
+    with self.assertRaisesRegex(AssertionError, r"not equal lhs"):
       self.assertAllEqual([0] * 3, k)
 
   @test_util.run_in_graph_and_eager_modes
@@ -479,7 +477,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertNotAllEqual([120] * 3, k)
     self.assertNotAllEqual([20] * 3, j)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         AssertionError, r"two values are equal at all elements.*extra message"):
       self.assertNotAllEqual([120], k, msg="extra message")
 
@@ -572,7 +570,6 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(AssertionError):
       self.assertAllLessEqual(x, 95.0)
 
-  @test_util.run_deprecated_v1
   def testAssertAllInRangeWithNonNumericValuesFails(self):
     s1 = constant_op.constant("Hello, ", name="s1")
     c = constant_op.constant([1 + 2j, -3 + 5j], name="c")
@@ -636,25 +633,23 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(AssertionError):
       self.assertAllInSet(x, (42,))
 
-  @test_util.run_deprecated_v1
   def testRandomSeed(self):
     # Call setUp again for WithCApi case (since it makes a new default graph
     # after setup).
     # TODO(skyewm): remove this when C API is permanently enabled.
-    self.setUp()
-    a = random.randint(1, 1000)
-    a_np_rand = np.random.rand(1)
-    with self.test_session():
-      a_rand = random_ops.random_normal([1]).eval()
-    # ensure that randomness in multiple testCases is deterministic.
-    self.setUp()
-    b = random.randint(1, 1000)
-    b_np_rand = np.random.rand(1)
-    with self.test_session():
-      b_rand = random_ops.random_normal([1]).eval()
-    self.assertEqual(a, b)
-    self.assertEqual(a_np_rand, b_np_rand)
-    self.assertEqual(a_rand, b_rand)
+    with context.eager_mode():
+      self.setUp()
+      a = random.randint(1, 1000)
+      a_np_rand = np.random.rand(1)
+      a_rand = random_ops.random_normal([1])
+      # ensure that randomness in multiple testCases is deterministic.
+      self.setUp()
+      b = random.randint(1, 1000)
+      b_np_rand = np.random.rand(1)
+      b_rand = random_ops.random_normal([1])
+      self.assertEqual(a, b)
+      self.assertEqual(a_np_rand, b_np_rand)
+      self.assertAllEqual(a_rand, b_rand)
 
   @test_util.run_in_graph_and_eager_modes
   def test_callable_evaluate(self):
@@ -705,7 +700,8 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def test_run_in_eager_and_graph_modes_test_class(self):
     msg = "`run_in_graph_and_eager_modes` only supports test methods.*"
-    with self.assertRaisesRegexp(ValueError, msg):
+    with self.assertRaisesRegex(ValueError, msg):
+
       @test_util.run_in_graph_and_eager_modes()
       class Foo(object):
         pass
@@ -729,7 +725,6 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     test_util.run_in_graph_and_eager_modes(_test)(self)
     self.assertEqual(modes, ["graph"])
 
-  @test_util.run_deprecated_v1
   def test_run_in_graph_and_eager_modes_setup_in_same_mode(self):
     modes = []
     mode_name = lambda: "eager" if context.executing_eagerly() else "graph"
@@ -750,7 +745,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     e.setUp()
     e.testBody()
 
-    self.assertEqual(modes[0:2], ["setup_graph", "run_graph"])
+    self.assertEqual(modes[1:2], ["run_graph"])
     self.assertEqual(modes[2:], ["setup_eager", "run_eager"])
 
   @parameterized.named_parameters(dict(testcase_name="argument",
@@ -817,7 +812,7 @@ class SkipTestTest(test_util.TensorFlowTestCase):
                                    ["foo bar", "test message"]):
         raise ValueError("test message")
     try:
-      with self.assertRaisesRegexp(ValueError, "foo bar"):
+      with self.assertRaisesRegex(ValueError, "foo bar"):
         with test_util.skip_if_error(self, ValueError, "test message"):
           raise ValueError("foo bar")
     except unittest.SkipTest:
@@ -854,7 +849,7 @@ class SkipTestTest(test_util.TensorFlowTestCase):
 
   def test_skip_if_error_should_raise_message_mismatch(self):
     try:
-      with self.assertRaisesRegexp(ValueError, "foo bar"):
+      with self.assertRaisesRegex(ValueError, "foo bar"):
         with test_util.skip_if_error(self, ValueError, "test message"):
           raise ValueError("foo bar")
     except unittest.SkipTest:
@@ -862,7 +857,7 @@ class SkipTestTest(test_util.TensorFlowTestCase):
 
   def test_skip_if_error_should_raise_no_message(self):
     try:
-      with self.assertRaisesRegexp(ValueError, ""):
+      with self.assertRaisesRegex(ValueError, ""):
         with test_util.skip_if_error(self, ValueError, "test message"):
           raise ValueError()
     except unittest.SkipTest:
@@ -924,7 +919,7 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
       def test_has_no_leak(self):
         constant_op.constant([3.], name="no-leak")
 
-    with self.assertRaisesRegexp(AssertionError, "Tensors not deallocated"):
+    with self.assertRaisesRegex(AssertionError, "Tensors not deallocated"):
       LeakedTensorTest().test_has_leak()
 
     LeakedTensorTest().test_has_no_leak()

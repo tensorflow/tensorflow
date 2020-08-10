@@ -43,6 +43,7 @@ from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.ops import core as core_ops
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
@@ -213,9 +214,8 @@ class Dropout(Layer):
           seed=self.seed,
           rate=self.rate)
 
-    output = tf_utils.smart_cond(training,
-                                 dropped_inputs,
-                                 lambda: array_ops.identity(inputs))
+    output = control_flow_util.smart_cond(training, dropped_inputs,
+                                          lambda: array_ops.identity(inputs))
     return output
 
   def compute_output_shape(self, input_shape):
@@ -679,7 +679,7 @@ class Flatten(Layer):
         return array_ops.reshape(inputs, flattened_shape)
 
   def compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.as_shape(input_shape).as_list()
+    input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if not input_shape:
       output_shape = tensor_shape.TensorShape([1])
     else:
@@ -825,10 +825,14 @@ class Lambda(Layer):
       returned as output mask regardless of what the input is.
     arguments: Optional dictionary of keyword arguments to be passed to the
       function.
-  Input shape: Arbitrary. Use the keyword argument input_shape (tuple of
+
+  Input shape:
+    Arbitrary. Use the keyword argument input_shape (tuple of
     integers, does not include the samples axis) when using this layer as the
     first layer in a model.
-  Output shape: Specified by `output_shape` argument
+
+  Output shape:
+    Specified by `output_shape` argument
   """
 
   @trackable.no_automatic_dependency_tracking
@@ -1287,6 +1291,9 @@ class TFOpLambda(Layer):
         get_canonical_name_for_symbol(self.function,
                                       api_name='keras',
                                       add_prefix_to_v1_names=True))
+    if 'name' not in kwargs:
+      kwargs['name'] = K.unique_object_name(
+          'tf.' + self.symbol, zero_based=True)
     kwargs['autocast'] = False
 
     # Decorate the function to produce this layer's call method
@@ -1294,7 +1301,14 @@ class TFOpLambda(Layer):
       return self._call_wrapper(*args, **kwargs)
     self.call = tf_decorator.make_decorator(function, _call_wrapper)
 
+    # Do not individually trace op layers in the SavedModel.
+    self._must_restore_from_config = True
+
     super(TFOpLambda, self).__init__(**kwargs)
+
+    # Preserve all argument data structures when saving/loading a config
+    # (e.g., don't unnest lists that contain one element)
+    self._preserve_input_structure_in_config = True
 
     # Warning on every invocation will be quite irksome in Eager mode.
     self._already_warned = False
@@ -1412,3 +1426,94 @@ class KerasOpDispatcher(dispatch.GlobalOpDispatcher):
       return self.NOT_SUPPORTED
 
 KerasOpDispatcher().register()
+
+
+def _slice_to_dict(x):
+  if isinstance(x, slice):
+    return {'start': x.start, 'stop': x.stop, 'step': x.step}
+  return x
+
+
+def _dict_to_slice(x):
+  if isinstance(x, dict):
+    return slice(x['start'], x['stop'], x['step'])
+  return x
+
+
+class SlicingOpLambda(TFOpLambda):
+  """Wraps TF API symbols in a `Layer` object.
+
+  It is inserted by the Functional API construction whenever users call
+  a supported TF symbol on KerasTensors.
+
+  Like Lambda layers, this layer tries to raise warnings when it detects users
+  explicitly use variables in the call. (To let them know
+  that the layer will not capture the variables).
+
+  This is useful in the case where users do something like:
+  x = keras.Input(...)
+  y = tf.Variable(...)
+  out = x * tf_variable
+  """
+
+  @trackable.no_automatic_dependency_tracking
+  def __init__(self, function, **kwargs):
+    super(SlicingOpLambda, self).__init__(function, **kwargs)
+
+    original_call = self.call
+    # Decorate the function to produce this layer's call method
+    def _call_wrapper(*args, **kwargs):
+      # Turn any slice dicts in the args back into `slice` objects.
+      # This conversion cannot use nest.flatten/map_structure,
+      # because dicts are flattened by nest while slices aren't.
+      # So, map_structure would only see the individual elements in the
+      # dict.
+      # This can't use map_structure_up_to either because the 'shallowness' of
+      # the shallow tree would have to vary depending on if only one dim or
+      # multiple are being sliced.
+      new_args = []
+      for arg in args:
+        arg = _dict_to_slice(arg)
+        if isinstance(arg, (list, tuple)):
+          new_arg = []
+          for sub_arg in arg:
+            new_arg.append(_dict_to_slice(sub_arg))
+          arg = new_arg
+        new_args.append(arg)
+
+      # Handle the kwargs too.
+      new_kwargs = {}
+      for key, value in kwargs.items():
+        value = _dict_to_slice(value)
+        if isinstance(value, (list, tuple)):
+          new_value = []
+          for v in value:
+            new_value.append(_dict_to_slice(v))
+          value = new_value
+        new_kwargs[key] = value
+
+      return original_call(*new_args, **new_kwargs)
+    self.call = tf_decorator.make_decorator(original_call, _call_wrapper)
+
+
+class TFSlicingOpDispatcher(dispatch.OpDispatcher):
+  """A global dispatcher that allows building a functional model with TF Ops."""
+
+  def __init__(self, op):
+    self.op = op
+
+  def handle(self, args, kwargs):
+    """Handle the specified operation with the specified arguments."""
+    args = nest.map_structure(_slice_to_dict, args)
+    kwargs = nest.map_structure(_slice_to_dict, kwargs)
+    if any(
+        isinstance(x, keras_tensor.KerasTensor)
+        for x in nest.flatten([args, kwargs])):
+      return SlicingOpLambda(self.op)(*args, **kwargs)
+    else:
+      return self.NOT_SUPPORTED
+
+for slicing_op in [array_ops._slice_helper,  # pylint: disable=protected-access
+                   array_ops.boolean_mask,
+                   array_ops.boolean_mask_v2]:
+  TFSlicingOpDispatcher(slicing_op).register(slicing_op)

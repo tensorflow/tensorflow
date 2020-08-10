@@ -97,6 +97,7 @@ void ConstantOp::Compute(OpKernelContext* ctx) {
 ConstantOp::~ConstantOp() {}
 
 REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_CPU), ConstantOp);
+REGISTER_KERNEL_BUILDER(Name("Const").Device(DEVICE_TPU_SYSTEM), ConstantOp);
 
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
@@ -211,7 +212,8 @@ TF_CALL_ALL_TYPES(REGISTER_CPU_KERNEL);
 // the conversion from uint8 to quint8.
 REGISTER_KERNEL(CPU, quint8);
 REGISTER_KERNEL(CPU, quint16);
-REGISTER_KERNEL(CPU, uint32);
+REGISTER_KERNEL(CPU, qint8);
+REGISTER_KERNEL(CPU, qint16);
 #undef REGISTER_CPU_KERNEL
 
 #ifdef TENSORFLOW_USE_SYCL

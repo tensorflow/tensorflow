@@ -184,6 +184,15 @@ class TransferManager {
       const se::DeviceMemoryBase& source,
       const TransferMetadata* transfer_metadata = nullptr);
 
+  // Read from a device buffer and update the dynamic dimension sizes of
+  // `host_shape` and `device_shape`. The function takes in bounded dynamic
+  // shapes, and returns static shapes with dynamic shapes updated.
+  // The shape of the buffer also have to be compatible with the host shape and
+  // device shape.
+  virtual Status ReadDynamicShapes(se::Stream* stream,
+                                   ShapedBuffer* device_buffer,
+                                   Shape* host_shape, Shape* device_shape);
+
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.
   virtual Status TransferLiteralToInfeed(se::StreamExecutor* executor,

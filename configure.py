@@ -49,7 +49,7 @@ _TF_BAZELRC_FILENAME = '.tf_configure.bazelrc'
 _TF_WORKSPACE_ROOT = ''
 _TF_BAZELRC = ''
 _TF_CURRENT_BAZEL_VERSION = None
-_TF_MIN_BAZEL_VERSION = '2.0.0'
+_TF_MIN_BAZEL_VERSION = '3.1.0'
 _TF_MAX_BAZEL_VERSION = '3.99.0'
 
 NCCL_LIB_PATHS = [
@@ -480,7 +480,7 @@ def check_bazel_version(min_version, max_version):
   """
   if which('bazel') is None:
     print('Cannot find bazel. Please install bazel.')
-    sys.exit(0)
+    sys.exit(1)
 
   stderr = open(os.devnull, 'wb')
   curr_version = run_shell(['bazel', '--version'],

@@ -45,12 +45,12 @@ namespace toco {
 
   // Identify prev_activ_input, prev_state_input as required Op inputs,
   // using the rnn_states in the model flag.
-  string prev_activ_input;
+  std::string prev_activ_input;
   if (!GetMatchingRnnArray(model, src_op->outputs[kOutputTensor],
                            &prev_activ_input)) {
     return ::tensorflow::Status::OK();
   }
-  string prev_state_input;
+  std::string prev_state_input;
   if (!GetMatchingRnnArray(model, src_op->outputs[kCellStateTensor],
                            &prev_state_input)) {
     return ::tensorflow::Status::OK();
@@ -72,9 +72,10 @@ namespace toco {
   CHECK_EQ(num_cell, num_output);
 
   // Create tensorflow_graphdef style's one big weight tensor.
-  const string base_name(FindLongestCommonPrefix(
+  const std::string base_name(FindLongestCommonPrefix(
       src_op->outputs[kOutputTensor], src_op->outputs[kCellStateTensor]));
-  string merged_weights = AvailableArrayName(*model, base_name + "weights");
+  std::string merged_weights =
+      AvailableArrayName(*model, base_name + "weights");
   auto& array = model->GetOrCreateArray(merged_weights);
   array.data_type = ArrayDataType::kFloat;
   int weights_dim1 = 4 * num_cell;
@@ -117,7 +118,7 @@ namespace toco {
       num_cell * 3, num_input);
 
   // Create tensorflow_graphdef style's one big bias tensor.
-  string merged_biases = AvailableArrayName(*model, base_name + "biases");
+  std::string merged_biases = AvailableArrayName(*model, base_name + "biases");
   auto& bias_array = model->GetOrCreateArray(merged_biases);
   bias_array.data_type = ArrayDataType::kFloat;
   bias_array.copy_shape(Shape({weights_dim1}));
@@ -160,7 +161,7 @@ namespace toco {
   lstm_cell_op->outputs[LstmCellOperator::ACTIV_TEMP] =
       src_op->outputs[kOutputStateTensor];
   // Create a new temp array for the fourth output.
-  const string& concat_temp_array_name =
+  const std::string& concat_temp_array_name =
       AvailableArrayName(*model, base_name + "concat_temp");
   model->GetOrCreateArray(concat_temp_array_name);
   lstm_cell_op->outputs[LstmCellOperator::CONCAT_TEMP] = concat_temp_array_name;

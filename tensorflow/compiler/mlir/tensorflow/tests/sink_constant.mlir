@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-device-constant-sinking | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-device-constant-sinking | FileCheck %s
 
 // CHECK-LABEL: func @sink_const
 func @sink_const(%arg0 : tensor<16xf32>) -> (tensor<16xf32>, tensor<f32>) {

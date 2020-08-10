@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -tf-test-side-effect-analysis -verify-diagnostics %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -split-input-file -tf-test-side-effect-analysis -verify-diagnostics %s | FileCheck %s
 
 // Tests that the pass tracks control dependencies for reads/writes on the same
 // resource.

@@ -24,6 +24,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.client import session
+from tensorflow.python.feature_column import feature_column_lib as fc_lib
 from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.feature_column import serialization
@@ -31,7 +32,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
@@ -76,7 +76,7 @@ class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
     context_input = ops.convert_to_tensor(np.arange(100).reshape(10, 10))
     seq_input = math_ops.cast(seq_input, dtype=dtypes.float32)
     context_input = math_ops.cast(context_input, dtype=dtypes.float32)
-    with self.assertRaisesRegexp(ValueError, 'sequence_input must have rank 3'):
+    with self.assertRaisesRegex(ValueError, 'sequence_input must have rank 3'):
       sfc.concatenate_context_input(context_input, seq_input)
 
   @parameterized.named_parameters(
@@ -90,23 +90,23 @@ class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
     seq_input = ops.convert_to_tensor(np.arange(100).reshape(5, 5, 4))
     seq_input = math_ops.cast(seq_input, dtype=dtypes.float32)
     context_input = math_ops.cast(context_input, dtype=dtypes.float32)
-    with self.assertRaisesRegexp(ValueError, 'context_input must have rank 2'):
+    with self.assertRaisesRegex(ValueError, 'context_input must have rank 2'):
       sfc.concatenate_context_input(context_input, seq_input)
 
   def test_integer_seq_input_throws_error(self):
     seq_input = ops.convert_to_tensor(np.arange(100).reshape(5, 5, 4))
     context_input = ops.convert_to_tensor(np.arange(100).reshape(10, 10))
     context_input = math_ops.cast(context_input, dtype=dtypes.float32)
-    with self.assertRaisesRegexp(
-        TypeError, 'sequence_input must have dtype float32'):
+    with self.assertRaisesRegex(TypeError,
+                                'sequence_input must have dtype float32'):
       sfc.concatenate_context_input(context_input, seq_input)
 
   def test_integer_context_input_throws_error(self):
     seq_input = ops.convert_to_tensor(np.arange(100).reshape(5, 5, 4))
     context_input = ops.convert_to_tensor(np.arange(100).reshape(10, 10))
     seq_input = math_ops.cast(seq_input, dtype=dtypes.float32)
-    with self.assertRaisesRegexp(
-        TypeError, 'context_input must have dtype float32'):
+    with self.assertRaisesRegex(TypeError,
+                                'context_input must have dtype float32'):
       sfc.concatenate_context_input(context_input, seq_input)
 
 
@@ -132,7 +132,8 @@ def _get_sequence_dense_tensor(column, features):
 
 
 def _get_sequence_dense_tensor_state(column, features):
-  state_manager = fc._StateManagerImpl(Layer(), trainable=True)
+  state_manager = fc._StateManagerImpl(
+      fc_lib.DenseFeatures(column), trainable=True)
   column.create_state(state_manager)
   dense_tensor, lengths = column.get_sequence_dense_tensor(
       fc.FeatureTransformationCache(features), state_manager)
@@ -515,7 +516,6 @@ class SequenceEmbeddingColumnTest(
 
 class SequenceSharedEmbeddingColumnTest(test.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_get_sequence_dense_tensor(self):
     vocabulary_size = 3
     embedding_dimension = 2
@@ -531,67 +531,68 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
       self.assertIsNone(partition_info)
       return embedding_values
 
-    sparse_input_a = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        # example 2, ids []
-        # example 3, ids [1]
-        indices=((0, 0), (1, 0), (1, 1), (3, 0)),
-        values=(2, 0, 1, 1),
-        dense_shape=(4, 2))
-    sparse_input_b = sparse_tensor.SparseTensorValue(
-        # example 0, ids [1]
-        # example 1, ids [0, 2]
-        # example 2, ids [0]
-        # example 3, ids []
-        indices=((0, 0), (1, 0), (1, 1), (2, 0)),
-        values=(1, 0, 2, 0),
-        dense_shape=(4, 2))
+    with ops.Graph().as_default():
+      sparse_input_a = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          # example 2, ids []
+          # example 3, ids [1]
+          indices=((0, 0), (1, 0), (1, 1), (3, 0)),
+          values=(2, 0, 1, 1),
+          dense_shape=(4, 2))
+      sparse_input_b = sparse_tensor.SparseTensorValue(
+          # example 0, ids [1]
+          # example 1, ids [0, 2]
+          # example 2, ids [0]
+          # example 3, ids []
+          indices=((0, 0), (1, 0), (1, 1), (2, 0)),
+          values=(1, 0, 2, 0),
+          dense_shape=(4, 2))
 
-    expected_lookups_a = [
-        # example 0, ids [2]
-        [[7., 11.], [0., 0.]],
-        # example 1, ids [0, 1]
-        [[1., 2.], [3., 5.]],
-        # example 2, ids []
-        [[0., 0.], [0., 0.]],
-        # example 3, ids [1]
-        [[3., 5.], [0., 0.]],
-    ]
+      expected_lookups_a = [
+          # example 0, ids [2]
+          [[7., 11.], [0., 0.]],
+          # example 1, ids [0, 1]
+          [[1., 2.], [3., 5.]],
+          # example 2, ids []
+          [[0., 0.], [0., 0.]],
+          # example 3, ids [1]
+          [[3., 5.], [0., 0.]],
+      ]
 
-    expected_lookups_b = [
-        # example 0, ids [1]
-        [[3., 5.], [0., 0.]],
-        # example 1, ids [0, 2]
-        [[1., 2.], [7., 11.]],
-        # example 2, ids [0]
-        [[1., 2.], [0., 0.]],
-        # example 3, ids []
-        [[0., 0.], [0., 0.]],
-    ]
+      expected_lookups_b = [
+          # example 0, ids [1]
+          [[3., 5.], [0., 0.]],
+          # example 1, ids [0, 2]
+          [[1., 2.], [7., 11.]],
+          # example 2, ids [0]
+          [[1., 2.], [0., 0.]],
+          # example 3, ids []
+          [[0., 0.], [0., 0.]],
+      ]
 
-    categorical_column_a = sfc.sequence_categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = sfc.sequence_categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns_v2(
-        [categorical_column_a, categorical_column_b],
-        dimension=embedding_dimension,
-        initializer=_initializer)
+      categorical_column_a = sfc.sequence_categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      categorical_column_b = sfc.sequence_categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
+      shared_embedding_columns = fc.shared_embedding_columns_v2(
+          [categorical_column_a, categorical_column_b],
+          dimension=embedding_dimension,
+          initializer=_initializer)
 
-    embedding_lookup_a = _get_sequence_dense_tensor(
-        shared_embedding_columns[0], {'aaa': sparse_input_a})[0]
-    embedding_lookup_b = _get_sequence_dense_tensor(
-        shared_embedding_columns[1], {'bbb': sparse_input_b})[0]
+      embedding_lookup_a = _get_sequence_dense_tensor(
+          shared_embedding_columns[0], {'aaa': sparse_input_a})[0]
+      embedding_lookup_b = _get_sequence_dense_tensor(
+          shared_embedding_columns[1], {'bbb': sparse_input_b})[0]
 
-    self.evaluate(variables_lib.global_variables_initializer())
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertItemsEqual(('aaa_bbb_shared_embedding:0',),
-                          tuple([v.name for v in global_vars]))
-    self.assertAllEqual(embedding_values, self.evaluate(global_vars[0]))
-    self.assertAllEqual(
-        expected_lookups_a, self.evaluate(embedding_lookup_a))
-    self.assertAllEqual(expected_lookups_b, self.evaluate(embedding_lookup_b))
+      self.evaluate(variables_lib.global_variables_initializer())
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      self.assertItemsEqual(('aaa_bbb_shared_embedding:0',),
+                            tuple([v.name for v in global_vars]))
+      self.assertAllEqual(embedding_values, self.evaluate(global_vars[0]))
+      self.assertAllEqual(
+          expected_lookups_a, self.evaluate(embedding_lookup_a))
+      self.assertAllEqual(expected_lookups_b, self.evaluate(embedding_lookup_b))
 
   def test_sequence_length(self):
     with ops.Graph().as_default():
@@ -810,20 +811,20 @@ class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
     self.assertEqual((1, 2), a.shape)
 
   def test_shape_must_be_positive_integer(self):
-    with self.assertRaisesRegexp(TypeError, 'shape dimensions must be integer'):
+    with self.assertRaisesRegex(TypeError, 'shape dimensions must be integer'):
       sfc.sequence_numeric_column('aaa', shape=[1.0])
 
-    with self.assertRaisesRegexp(
-        ValueError, 'shape dimensions must be greater than 0'):
+    with self.assertRaisesRegex(ValueError,
+                                'shape dimensions must be greater than 0'):
       sfc.sequence_numeric_column('aaa', shape=[0])
 
   def test_dtype_is_convertible_to_float(self):
-    with self.assertRaisesRegexp(
-        ValueError, 'dtype must be convertible to float'):
+    with self.assertRaisesRegex(ValueError,
+                                'dtype must be convertible to float'):
       sfc.sequence_numeric_column('aaa', dtype=dtypes.string)
 
   def test_normalizer_fn_must_be_callable(self):
-    with self.assertRaisesRegexp(TypeError, 'must be a callable'):
+    with self.assertRaisesRegex(TypeError, 'must be a callable'):
       sfc.sequence_numeric_column('aaa', normalizer_fn='NotACallable')
 
   @parameterized.named_parameters(

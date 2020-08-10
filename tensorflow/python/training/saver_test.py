@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
 import glob
 import math
 import os
@@ -48,8 +47,6 @@ from tensorflow.python.framework import graph_io
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops as ops_lib
 from tensorflow.python.framework import test_util
-from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.layers import core
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -74,10 +71,7 @@ from tensorflow.python.training import py_checkpoint_reader
 from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import saver_test_utils
-from tensorflow.python.training import training_util
 from tensorflow.python.training.tracking import base as trackable_base
-from tensorflow.python.training.tracking import tracking as trackable_tracking
-from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import compat
 
 
@@ -172,24 +166,24 @@ class SaverTest(test.TestCase):
   def testResourceBasic(self):
     self.basicSaveRestore(resource_variable_ops.ResourceVariable)
 
-  @test_util.run_deprecated_v1
   def testResourceColocation(self):
-    partitioner = partitioned_variables.fixed_size_partitioner(num_shards=2)
-    with ops_lib.device("/job:ps/device:GPU:0"):
-      v = variable_scope.get_variable("v0",
-                                      shape=[10, 2],
-                                      partitioner=partitioner,
-                                      use_resource=True)
-    saver_module.Saver({"v0": v}).build()
-    save_op = None
-    for op in ops_lib.get_default_graph().get_operations():
-      if op.type == "SaveV2":
-        save_op = op
-        break
-    assert save_op is not None
-    for save_inp in save_op.inputs[3:]:
-      # Input to SaveV2 op is placed on CPU of the same device as the Variable.
-      self.assertEqual("/job:ps/device:CPU:0", save_inp.device)
+    # train.Saver is V1 only API.
+    with ops_lib.Graph().as_default():
+      partitioner = partitioned_variables.fixed_size_partitioner(num_shards=2)
+      with ops_lib.device("/job:ps/device:GPU:0"):
+        v = variable_scope.get_variable(
+            "v0", shape=[10, 2], partitioner=partitioner, use_resource=True)
+      saver_module.Saver({"v0": v}).build()
+      save_op = None
+      for op in ops_lib.get_default_graph().get_operations():
+        if op.type == "SaveV2":
+          save_op = op
+          break
+      assert save_op is not None
+      for save_inp in save_op.inputs[3:]:
+        # Input to SaveV2 op is placed on CPU of the same device as
+        # the Variable.
+        self.assertEqual("/job:ps/device:CPU:0", save_inp.device)
 
   def testResourceVariableReadOpsAddedDeterministically(self):
     graph_defs = []
@@ -265,8 +259,8 @@ class SaverTest(test.TestCase):
         graph_saver = saver_module.Saver([w3, w4])
         self.evaluate(variables.global_variables_initializer())
         graph_saver.restore(sess, eager_ckpt_prefix)
-        self.assertAllEqual(w3.eval(), 3.0)
-        self.assertAllEqual(w4.eval(), 4.0)
+        self.assertAllEqual(w3, 3.0)
+        self.assertAllEqual(w4, 4.0)
 
   @test_util.run_in_graph_and_eager_modes
   def testResourceSaveRestoreCachingDevice(self):
@@ -283,7 +277,7 @@ class SaverTest(test.TestCase):
 
       save2 = saver_module.Saver([v])
       save2.restore(sess, save_path)
-      self.assertEquals(self.evaluate(v), [1])
+      self.assertEqual(self.evaluate(v), [1])
 
   def testNoAdditionalOpsAddedBySaverForResourceVariablesOutsideSaveScope(self):
     with ops_lib.Graph().as_default() as g:
@@ -303,7 +297,6 @@ class SaverTest(test.TestCase):
             not op.name.startswith("saver2/save/"))]
     self.assertEqual(ops_in_saver2_scope_but_not_save_scope, [])
 
-  @test_util.run_deprecated_v1
   def testSaveCopyRestoreWithSaveRelativePaths(self):
     """Save, copy checkpoint dir and restore from copied dir.
 
@@ -313,86 +306,90 @@ class SaverTest(test.TestCase):
     os.mkdir(save_dir1)
     save_path1 = os.path.join(save_dir1, "save_copy_restore")
 
-    # Build a graph with 2 parameter nodes, and Save and
-    # Restore nodes for them.
-    v0 = variables.VariableV1(10.0, name="v0")
-    v1 = variables.VariableV1(20.0, name="v1")
-    v2 = saver_test_utils.CheckpointedOp(name="v2")
-    v2_init = v2.insert("k1", 30.0)
-    save = saver_module.Saver(
-        var_list={
-            "v0": v0,
-            "v1": v1,
-            "v2": v2.saveable},
-        restore_sequentially=True,
-        save_relative_paths=True)
-    init_all_op = [variables.global_variables_initializer(), v2_init]
-
-    with self.cached_session() as sess:
-      # Initialize all variables
-      self.evaluate(init_all_op)
-
-      # Check that the parameter nodes have been initialized.
-      self.assertEqual(10.0, self.evaluate(v0))
-      self.assertEqual(20.0, self.evaluate(v1))
-      self.assertEqual(b"k1", self.evaluate(v2.keys()))
-      self.assertEqual(30.0, self.evaluate(v2.values()))
-
-      # Save the initialized values in the file at "save_path"
-      val = save.save(sess, save_path1)
-      self.assertTrue(isinstance(val, six.string_types))
-      self.assertEqual(save_path1, val)
-
-    self.assertEqual(
-        checkpoint_management.latest_checkpoint(save_dir1), save_path1)
-    save_dir2 = os.path.join(self.get_temp_dir(), "save_dir2")
-    os.renames(save_dir1, save_dir2)
-    save_path2 = os.path.join(save_dir2, "save_copy_restore")
-    self.assertEqual(
-        checkpoint_management.latest_checkpoint(save_dir2), save_path2)
-
-    # Start a second session.  In that session the parameter nodes
-    # have not been initialized either.
-    with self.cached_session() as sess:
-      v0 = variables.VariableV1(-1.0, name="v0")
-      v1 = variables.VariableV1(-1.0, name="v1")
+    # train.Saver is V1 only API.
+    with ops_lib.Graph().as_default():
+      # Build a graph with 2 parameter nodes, and Save and
+      # Restore nodes for them.
+      v0 = variables.VariableV1(10.0, name="v0")
+      v1 = variables.VariableV1(20.0, name="v1")
       v2 = saver_test_utils.CheckpointedOp(name="v2")
-      save = saver_module.Saver({"v0": v0, "v1": v1, "v2": v2.saveable})
+      v2_init = v2.insert("k1", 30.0)
+      save = saver_module.Saver(
+          var_list={
+              "v0": v0,
+              "v1": v1,
+              "v2": v2.saveable
+          },
+          restore_sequentially=True,
+          save_relative_paths=True)
+      init_all_op = [variables.global_variables_initializer(), v2_init]
 
-      # Assert that the variables are not initialized.
+      with self.cached_session() as sess:
+        # Initialize all variables
+        self.evaluate(init_all_op)
+
+        # Check that the parameter nodes have been initialized.
+        self.assertEqual(10.0, self.evaluate(v0))
+        self.assertEqual(20.0, self.evaluate(v1))
+        self.assertEqual(b"k1", self.evaluate(v2.keys()))
+        self.assertEqual(30.0, self.evaluate(v2.values()))
+
+        # Save the initialized values in the file at "save_path"
+        val = save.save(sess, save_path1)
+        self.assertTrue(isinstance(val, six.string_types))
+        self.assertEqual(save_path1, val)
+
       self.assertEqual(
-          len(variables.report_uninitialized_variables().eval()), 2)
-      self.assertEqual(0, len(self.evaluate(v2.keys())))
-      self.assertEqual(0, len(self.evaluate(v2.values())))
+          checkpoint_management.latest_checkpoint(save_dir1), save_path1)
+      save_dir2 = os.path.join(self.get_temp_dir(), "save_dir2")
+      os.renames(save_dir1, save_dir2)
+      save_path2 = os.path.join(save_dir2, "save_copy_restore")
+      self.assertEqual(
+          checkpoint_management.latest_checkpoint(save_dir2), save_path2)
 
-      # Restore the saved values in the parameter nodes.
-      save.restore(sess, save_path2)
-      # Check that the parameter nodes have been restored.
-      self.assertEqual(10.0, self.evaluate(v0))
-      self.assertEqual(20.0, self.evaluate(v1))
-      self.assertEqual(b"k1", self.evaluate(v2.keys()))
-      self.assertEqual(30.0, self.evaluate(v2.values()))
+      # Start a second session.  In that session the parameter nodes
+      # have not been initialized either.
+      with self.cached_session() as sess:
+        v0 = variables.VariableV1(-1.0, name="v0")
+        v1 = variables.VariableV1(-1.0, name="v1")
+        v2 = saver_test_utils.CheckpointedOp(name="v2")
+        save = saver_module.Saver({"v0": v0, "v1": v1, "v2": v2.saveable})
 
-  @test_util.run_deprecated_v1
+        # Assert that the variables are not initialized.
+        self.assertEqual(
+            len(variables.report_uninitialized_variables().eval()), 2)
+        self.assertEqual(0, len(self.evaluate(v2.keys())))
+        self.assertEqual(0, len(self.evaluate(v2.values())))
+
+        # Restore the saved values in the parameter nodes.
+        save.restore(sess, save_path2)
+        # Check that the parameter nodes have been restored.
+        self.assertEqual(10.0, self.evaluate(v0))
+        self.assertEqual(20.0, self.evaluate(v1))
+        self.assertEqual(b"k1", self.evaluate(v2.keys()))
+        self.assertEqual(30.0, self.evaluate(v2.values()))
+
   def testFilenameTensor(self):
-    v0 = variables.VariableV1(0, name="v0")
-    filename = b"somerandomfilename"
-    save = saver_module.Saver({"v0": v0}, filename=filename)
-    with self.cached_session() as sess:
-      tensor = sess.graph.get_tensor_by_name(
-          save.saver_def.filename_tensor_name)
-      self.assertEqual(self.evaluate(tensor), filename)
+    # train.Saver is V1 only API.
+    with ops_lib.Graph().as_default():
+      v0 = variables.VariableV1(0, name="v0")
+      filename = b"somerandomfilename"
+      save = saver_module.Saver({"v0": v0}, filename=filename)
+      with self.cached_session() as sess:
+        tensor = sess.graph.get_tensor_by_name(
+            save.saver_def.filename_tensor_name)
+        self.assertEqual(self.evaluate(tensor), filename)
 
   def testInvalidPath(self):
     v0 = variables.VariableV1(0, name="v0")
     for ver in (saver_pb2.SaverDef.V1, saver_pb2.SaverDef.V2):
       with self.cached_session() as sess:
         save = saver_module.Saver({"v0": v0}, write_version=ver)
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, "The passed save_path is not a valid checkpoint:"):
           save.restore(sess, "invalid path")
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("train.Saver is V1 only API.")
   def testInt64(self):
     save_path = os.path.join(self.get_temp_dir(), "int64")
 
@@ -429,7 +426,7 @@ class SaverTest(test.TestCase):
           variables.Variable.SaveSliceInfo("v1", [1], [0], [1]))
 
       # By default the name used for "v2" will be "v1" and raise an error.
-      with self.assertRaisesRegexp(ValueError, "same name: v1"):
+      with self.assertRaisesRegex(ValueError, "same name: v1"):
         saver_module.Saver([v0, v1, v2])
 
       # The names are different and will work.
@@ -447,7 +444,7 @@ class SaverTest(test.TestCase):
           partitioner=partitioned_variables.fixed_size_partitioner(
               num_shards=2))
       p_v2._name = "p_v1"
-      with self.assertRaisesRegexp(ValueError, "same name: p_v1"):
+      with self.assertRaisesRegex(ValueError, "same name: p_v1"):
         saver_module.Saver([p_v1, p_v2])
 
   def testSameName(self):
@@ -456,19 +453,19 @@ class SaverTest(test.TestCase):
       v2 = saver_test_utils.CheckpointedOp(name="v2")
 
       # Saving one variable under two names raises an error.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "The same saveable will be restored with two names: v0"):
         saver_module.Saver({"v0": v0, "v0too": v0})
 
       # Ditto for custom saveables.
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "The same saveable will be restored with two names: v2"):
         saver_module.Saver({"v2": v2.saveable, "v2too": v2.saveable})
 
       # Verify non-duplicate names work.
       saver_module.Saver({"v0": v0, "v2": v2.saveable})
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("train.Saver and VariableV1 are V1 only APIs.")
   def testBasicsWithListOfVariables(self):
     save_path = os.path.join(self.get_temp_dir(), "basics_with_list")
 
@@ -564,15 +561,15 @@ class SaverTest(test.TestCase):
     # The cached readers should know to re-read the file.
     self._SaveAndLoad("var1", 1.1, 2.2, save_path)
 
-  @test_util.run_deprecated_v1
   def testAllowEmpty(self):
     save_path = os.path.join(self.get_temp_dir(), "allow_empty")
-    with self.cached_session() as sess:
+    # train.Saver is V1 only API.
+    with ops_lib.Graph().as_default(), self.cached_session() as sess:
       _ = constant_op.constant(1)
       save = saver_module.Saver(allow_empty=True)
       val = save.save(sess, save_path)
       self.assertIsNone(val)
-    with self.cached_session() as sess:
+    with ops_lib.Graph().as_default(), self.cached_session() as sess:
       save = saver_module.Saver(allow_empty=True)
       save.restore(sess, save_path)
 
@@ -637,7 +634,7 @@ class SaverTest(test.TestCase):
   def testVarListShouldBeEmptyInDeferredBuild(self):
     with ops_lib.Graph().as_default():
       v = variables.VariableV1(1.0)
-      with self.assertRaisesRegexp(ValueError, "defer_build"):
+      with self.assertRaisesRegex(ValueError, "defer_build"):
         saver_module.Saver([v], defer_build=True)
 
   def testBuildShouldBeCalledBeforeSaveInCaseOfDeferBuild(self):
@@ -645,7 +642,7 @@ class SaverTest(test.TestCase):
     with ops_lib.Graph().as_default(), session.Session() as sess:
       variables.VariableV1(1.0)
       saver = saver_module.Saver(defer_build=True)
-      with self.assertRaisesRegexp(RuntimeError, "build"):
+      with self.assertRaisesRegex(RuntimeError, "build"):
         saver.save(sess, save_path)
 
   def testDeferredBuild(self):
@@ -669,7 +666,7 @@ class SaverTest(test.TestCase):
       self.assertAllClose(1.0, self.evaluate(one))
       self.assertAllClose([2.0, 2.0, 2.0], self.evaluate(twos))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("train.Saver is V1 only API.")
   def testReshape(self):
     save_path = os.path.join(self.get_temp_dir(), "variables_reshape")
     with session.Session("", graph=ops_lib.Graph()) as sess:
@@ -683,7 +680,7 @@ class SaverTest(test.TestCase):
     with session.Session("", graph=ops_lib.Graph()) as sess:
       var = variables.VariableV1([[0.0, 0.0], [0.0, 0.0], [0.0, 0.0]])
       save = saver_module.Saver()
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           errors_impl.InvalidArgumentError,
           "Assign requires shapes of both tensors to match."):
         save.restore(sess, save_path)
@@ -816,8 +813,8 @@ class SaverTest(test.TestCase):
         # Restore the saved value with different dtype
         # in the parameter nodes.
         save = saver_module.Saver({"v0": v0_wrong_dtype})
-        with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                     "original dtype"):
+        with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                    "original dtype"):
           save.restore(sess, save_path)
 
   # Test restoring large tensors (triggers a thread pool)
@@ -992,9 +989,9 @@ class SaveRestoreShardedTest(test.TestCase):
           checkpoint_management.latest_checkpoint(self.get_temp_dir()),
           os.path.join(self.get_temp_dir(), "sharded_basics"))
 
-  @test_util.run_deprecated_v1
   def testSaverDef(self):
-    with self.cached_session():
+    # train.Saver is V1 only API.
+    with ops_lib.Graph().as_default(), self.cached_session():
       v0 = variables.VariableV1(123, name="v0")
       save = saver_module.Saver({"v0": v0}, sharded=True)
       sd = save.as_saver_def()
@@ -1010,7 +1007,8 @@ class SaveRestoreShardedTest(test.TestCase):
     call_saver_with_dict = False  # updated by test loop below
 
     def _save(partitioner=None):
-      with self.session(graph=ops_lib.Graph()) as sess:
+      # train.Saver is V1 only API.
+      with ops_lib.Graph().as_default(), self.session() as sess:
         # Calls .eval() to return the ndarray that makes up the full variable.
         rnd = random_ops.random_uniform(var_full_shape).eval()
 
@@ -1040,7 +1038,8 @@ class SaveRestoreShardedTest(test.TestCase):
         return rnd
 
     def _restore(partitioner=None):
-      with self.session(graph=ops_lib.Graph()) as sess:
+      # train.Saver is V1 only API.
+      with ops_lib.Graph().as_default(), self.session() as sess:
         if partitioner:
           new_vs = [
               variable_scope.get_variable(
@@ -1098,11 +1097,9 @@ class SaveRestoreShardedTest(test.TestCase):
               num_shards=3))
       self.assertAllEqual(saved_full, restored_full)
 
-  @test_util.run_deprecated_v1
   def testPartitionedVariable(self):
     self._testPartitionedVariables(use_resource=False)
 
-  @test_util.run_deprecated_v1
   def testPartitionedResourceVariable(self):
     self._testPartitionedVariables(use_resource=True)
 
@@ -1327,11 +1324,11 @@ class MaxToKeepTest(test.TestCase):
       # Deleted by the first helper.
       self.assertFalse(checkpoint_management.checkpoint_exists(s3))
 
-  @test_util.run_deprecated_v1
   def testNonSharded(self):
     save_dir = self._get_test_dir("max_to_keep_non_sharded")
 
-    with self.cached_session() as sess:
+    # train.Saver is V1 only API.
+    with ops_lib.Graph().as_default(), self.cached_session() as sess:
       v = variables.VariableV1(10.0, name="v")
       save = saver_module.Saver({"v": v}, max_to_keep=2)
       self.evaluate(variables.global_variables_initializer())
@@ -1810,7 +1807,9 @@ class MetaGraphTest(test.TestCase):
     gfile.MakeDirs(test_dir)
     return test_dir
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "Queue-based input pipelines have been replaced by `tf.data` "
+      "and not supported in V2.")
   def testAddCollectionDef(self):
     test_dir = self._get_test_dir("good_collection")
     filename = os.path.join(test_dir, "metafile")
@@ -1961,13 +1960,15 @@ class MetaGraphTest(test.TestCase):
       v1 = sess.graph.get_tensor_by_name("v1:0")
       self.assertEqual(11.0, self.evaluate(v1))
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "Exporting/importing meta graphs is only supported in V1.")
   def testMultiSaverCollection(self):
     test_dir = self._get_test_dir("saver_collection")
     self._testMultiSaverCollectionSave(test_dir)
     self._testMultiSaverCollectionRestore(test_dir)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "Exporting/importing meta graphs is only supported in V1.")
   def testClearExtraneousSavers(self):
     test_dir = self._get_test_dir("clear_extraneous_savers")
     filename = os.path.join(test_dir, "metafile")
@@ -2022,29 +2023,29 @@ class MetaGraphTest(test.TestCase):
       self.assertEqual(33, len(meta_graph_def0.graph_def.node))
       self.assertEqual(21, len(meta_graph_def1.graph_def.node))
 
-  @test_util.run_deprecated_v1
   def testBinaryAndTextFormat(self):
     test_dir = self._get_test_dir("binary_and_text")
     filename = os.path.join(test_dir, "metafile")
-    with self.session(graph=ops_lib.Graph()):
+    # train.Saver is V1 only API.
+    with ops_lib.Graph().as_default(), self.session():
       # Creates a graph.
       variables.VariableV1(10.0, name="v0")
       # Exports the graph as binary format.
       saver_module.export_meta_graph(filename, as_text=False)
-    with self.session(graph=ops_lib.Graph()):
+    with ops_lib.Graph().as_default(), self.session():
       # Imports the binary format graph.
       saver = saver_module.import_meta_graph(filename)
       self.assertIsNotNone(saver)
       # Exports the graph as text format.
       saver.export_meta_graph(filename, as_text=True)
-    with self.session(graph=ops_lib.Graph()):
+    with ops_lib.Graph().as_default(), self.session():
       # Imports the text format graph.
       saver_module.import_meta_graph(filename)
       # Writes wrong contents to the file.
       graph_io.write_graph(saver.as_saver_def(),
                            os.path.dirname(filename),
                            os.path.basename(filename))
-    with self.session(graph=ops_lib.Graph()):
+    with ops_lib.Graph().as_default(), self.session():
       # Import should fail.
       with self.assertRaisesWithPredicateMatch(IOError,
                                                lambda e: "Cannot parse file"):
@@ -2055,7 +2056,8 @@ class MetaGraphTest(test.TestCase):
                                                lambda e: "does not exist"):
         saver_module.import_meta_graph(filename)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only(
+      "Exporting/importing meta graphs is only supported in V1.")
   def testSliceVariable(self):
     test_dir = self._get_test_dir("slice_saver")
     filename = os.path.join(test_dir, "metafile")
@@ -2196,12 +2198,13 @@ class MetaGraphTest(test.TestCase):
       train_op = ops_lib.get_collection("train_op")[0]
       self.evaluate(train_op)
 
-  @test_util.run_deprecated_v1
   def testGraphExtension(self):
     test_dir = self._get_test_dir("graph_extension")
-    self._testGraphExtensionSave(test_dir)
-    self._testGraphExtensionRestore(test_dir)
-    self._testRestoreFromTrainGraphWithControlContext(test_dir)
+    # train.Saver and train.import_meta_graph are V1 only APIs.
+    with ops_lib.Graph().as_default():
+      self._testGraphExtensionSave(test_dir)
+      self._testGraphExtensionRestore(test_dir)
+      self._testRestoreFromTrainGraphWithControlContext(test_dir)
 
   def _testGradientSerDes(self, graph_fn):
     """Tests that gradients can be computed after exporting and importing.
@@ -2310,7 +2313,7 @@ class MetaGraphTest(test.TestCase):
                                       lambda: math_ops.multiply(x, -1.0))))
     # pylint: enable=g-long-lambda
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("This exercises Tensor.op which is meaningless in V2.")
   def testStrippedOpListDef(self):
     with self.cached_session():
       # Creates a graph.
@@ -2348,13 +2351,13 @@ class MetaGraphTest(test.TestCase):
         self.assertEqual(o.summary, "")
         self.assertEqual(o.description, "")
 
-  @test_util.run_deprecated_v1
   def testStripDefaultValuedAttrs(self):
     """Verifies that default valued attrs are stripped, unless disabled."""
 
     # With strip_default_attrs enabled, attributes "T" (float32) and "Tout"
     # (complex64) in the "Complex" op must be removed.
-    with self.cached_session():
+    # train.Saver and train.export_meta_graph are V1 only APIs.
+    with ops_lib.Graph().as_default(), self.cached_session():
       real_num = variables.VariableV1(1.0, dtype=dtypes.float32, name="real")
       imag_num = variables.VariableV1(2.0, dtype=dtypes.float32, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
@@ -2371,7 +2374,7 @@ class MetaGraphTest(test.TestCase):
     # With strip_default_attrs disabled, attributes "T" (float32) and "Tout"
     # (complex64) in the "Complex" op must *not* be removed, even if they map
     # to their defaults.
-    with self.session(graph=ops_lib.Graph()):
+    with ops_lib.Graph().as_default(), self.session():
       real_num = variables.VariableV1(1.0, dtype=dtypes.float32, name="real")
       imag_num = variables.VariableV1(2.0, dtype=dtypes.float32, name="imag")
       math_ops.complex(real_num, imag_num, name="complex")
@@ -2385,25 +2388,27 @@ class MetaGraphTest(test.TestCase):
       self.assertIn("T", node_def.attr)
       self.assertIn("Tout", node_def.attr)
 
-  @test_util.run_deprecated_v1
   def testImportIntoNamescope(self):
     # Test that we can import a meta graph into a namescope.
     test_dir = self._get_test_dir("import_into_namescope")
     filename = os.path.join(test_dir, "ckpt")
-    image = array_ops.placeholder(dtypes.float32, [None, 784], name="image")
-    label = array_ops.placeholder(dtypes.float32, [None, 10], name="label")
-    with session.Session() as sess:
-      weights = variables.VariableV1(
-          random_ops.random_uniform([784, 10]), name="weights")
-      bias = variables.VariableV1(array_ops.zeros([10]), name="bias")
-      logit = nn_ops.relu(math_ops.matmul(image, weights) + bias, name="logits")
-      nn_ops.softmax(logit, name="prediction")
-      cost = nn_ops.softmax_cross_entropy_with_logits(labels=label,
-                                                      logits=logit, name="cost")
-      adam.AdamOptimizer().minimize(cost, name="optimize")
-      saver = saver_module.Saver()
-      self.evaluate(variables.global_variables_initializer())
-      saver.save(sess, filename)
+    # train.Saver is V1 only API.
+    with ops_lib.Graph().as_default():
+      image = array_ops.placeholder(dtypes.float32, [None, 784], name="image")
+      label = array_ops.placeholder(dtypes.float32, [None, 10], name="label")
+      with session.Session() as sess:
+        weights = variables.VariableV1(
+            random_ops.random_uniform([784, 10]), name="weights")
+        bias = variables.VariableV1(array_ops.zeros([10]), name="bias")
+        logit = nn_ops.relu(
+            math_ops.matmul(image, weights) + bias, name="logits")
+        nn_ops.softmax(logit, name="prediction")
+        cost = nn_ops.softmax_cross_entropy_with_logits(
+            labels=label, logits=logit, name="cost")
+        adam.AdamOptimizer().minimize(cost, name="optimize")
+        saver = saver_module.Saver()
+        self.evaluate(variables.global_variables_initializer())
+        saver.save(sess, filename)
 
     graph = ops_lib.Graph()
     with session.Session(graph=graph) as sess:
@@ -2456,25 +2461,27 @@ class MetaGraphTest(test.TestCase):
           filename + ".meta", graph=graph_2, import_scope="my_scope")
       self.assertIsInstance(new_saver_3, saver_module.Saver)
 
-  @test_util.run_deprecated_v1
   def testImportIntoImplicitNamescope(self):
     # Test that we can import a meta graph into an implicit namescope.
     test_dir = self._get_test_dir("import_into_namescope")
     filename = os.path.join(test_dir, "ckpt")
-    image = array_ops.placeholder(dtypes.float32, [None, 784], name="image")
-    label = array_ops.placeholder(dtypes.float32, [None, 10], name="label")
-    with session.Session() as sess:
-      weights = variables.VariableV1(
-          random_ops.random_uniform([784, 10]), name="weights")
-      bias = variables.VariableV1(array_ops.zeros([10]), name="bias")
-      logit = nn_ops.relu(math_ops.matmul(image, weights) + bias, name="logits")
-      nn_ops.softmax(logit, name="prediction")
-      cost = nn_ops.softmax_cross_entropy_with_logits(labels=label,
-                                                      logits=logit, name="cost")
-      adam.AdamOptimizer().minimize(cost, name="optimize")
-      saver = saver_module.Saver()
-      self.evaluate(variables.global_variables_initializer())
-      saver.save(sess, filename)
+    # train.Saver is V1 only API.
+    with ops_lib.Graph().as_default():
+      image = array_ops.placeholder(dtypes.float32, [None, 784], name="image")
+      label = array_ops.placeholder(dtypes.float32, [None, 10], name="label")
+      with session.Session() as sess:
+        weights = variables.VariableV1(
+            random_ops.random_uniform([784, 10]), name="weights")
+        bias = variables.VariableV1(array_ops.zeros([10]), name="bias")
+        logit = nn_ops.relu(
+            math_ops.matmul(image, weights) + bias, name="logits")
+        nn_ops.softmax(logit, name="prediction")
+        cost = nn_ops.softmax_cross_entropy_with_logits(
+            labels=label, logits=logit, name="cost")
+        adam.AdamOptimizer().minimize(cost, name="optimize")
+        saver = saver_module.Saver()
+        self.evaluate(variables.global_variables_initializer())
+        saver.save(sess, filename)
 
     graph = ops_lib.Graph()
     with session.Session(graph=graph) as sess:
@@ -2579,7 +2586,6 @@ class CheckpointReaderTest(test.TestCase):
 
   _WRITE_VERSION = saver_pb2.SaverDef.V1
 
-  @test_util.run_deprecated_v1
   def testDebugString(self):
     # Builds a graph.
     v0 = variables.VariableV1(
@@ -2615,16 +2621,16 @@ class CheckpointReaderTest(test.TestCase):
       # Verifies get_tensor() returns the tensor value.
       v0_tensor = reader.get_tensor("v0")
       v1_tensor = reader.get_tensor("v1")
-      self.assertAllEqual(v0.eval(), v0_tensor)
-      self.assertAllEqual(v1.eval(), v1_tensor)
+      self.assertAllEqual(v0, v0_tensor)
+      self.assertAllEqual(v1, v1_tensor)
       # Verifies get_tensor() fails for non-existent tensors.
-      with self.assertRaisesRegexp(errors.NotFoundError,
-                                   "v3 not found in checkpoint"):
+      with self.assertRaisesRegex(errors.NotFoundError,
+                                  "v3 not found in checkpoint"):
         reader.get_tensor("v3")
 
   def testNonexistentPath(self):
-    with self.assertRaisesRegexp(errors.NotFoundError,
-                                 "Unsuccessful TensorSliceReader"):
+    with self.assertRaisesRegex(errors.NotFoundError,
+                                "Unsuccessful TensorSliceReader"):
       py_checkpoint_reader.NewCheckpointReader("non-existent")
 
 
@@ -2740,7 +2746,7 @@ class ScopedGraphTest(test.TestCase):
           export_scope="hidden1")
       self.assertEqual(["biases:0", "weights:0"], sorted(var_list.keys()))
 
-    with self.session(graph=graph) as sess:
+    with graph.as_default(), self.session() as sess:
       self.evaluate(variables.global_variables_initializer())
       saver = saver_module.Saver(var_list=var_list, max_to_keep=1)
       saver.save(sess, os.path.join(test_dir, ckpt_filename), write_state=False)
@@ -2752,15 +2758,15 @@ class ScopedGraphTest(test.TestCase):
     with graph.as_default():
       new_image = constant_op.constant(
           1.2, dtypes.float32, shape=[100, 28], name="images")
-    var_list = meta_graph.import_scoped_meta_graph(
-        os.path.join(test_dir, exported_filename),
-        graph=graph,
-        input_map={"$unbound_inputs_images": new_image},
-        import_scope="new_hidden1")
-    self.assertEqual(["biases:0", "weights:0"], sorted(var_list.keys()))
-    hidden1 = graph.as_graph_element("new_hidden1/Relu:0")
-    weights1 = graph.as_graph_element("new_hidden1/weights:0")
-    biases1 = graph.as_graph_element("new_hidden1/biases:0")
+      var_list = meta_graph.import_scoped_meta_graph(
+          os.path.join(test_dir, exported_filename),
+          graph=graph,
+          input_map={"$unbound_inputs_images": new_image},
+          import_scope="new_hidden1")
+      self.assertEqual(["biases:0", "weights:0"], sorted(var_list.keys()))
+      hidden1 = graph.as_graph_element("new_hidden1/Relu:0")
+      weights1 = graph.as_graph_element("new_hidden1/weights:0")
+      biases1 = graph.as_graph_element("new_hidden1/biases:0")
 
     with graph.as_default():
       # Hidden 2
@@ -2800,7 +2806,7 @@ class ScopedGraphTest(test.TestCase):
           set(variables.global_variables()) - set(var_list.keys()))
       init_rest_op = variables.variables_initializer(rest_variables)
 
-    with self.session(graph=graph) as sess:
+    with graph.as_default(), self.session() as sess:
       saver = saver_module.Saver(var_list=var_list, max_to_keep=1)
       saver.restore(sess, os.path.join(test_dir, ckpt_filename))
       # Verify that we have restored weights1 and biases1.
@@ -2811,7 +2817,6 @@ class ScopedGraphTest(test.TestCase):
 
   # Verifies that we can save the subgraph under "hidden1" and restore it
   # into "new_hidden1" in the new graph.
-  @test_util.run_deprecated_v1
   def testScopedSaveAndRestore(self):
     test_dir = self._get_test_dir("scoped_export_import")
     ckpt_filename = "ckpt"
@@ -2821,7 +2826,6 @@ class ScopedGraphTest(test.TestCase):
 
   # Verifies that we can copy the subgraph under "hidden1" and copy it
   # to different name scope in the same graph or different graph.
-  @test_util.run_deprecated_v1
   def testCopyScopedGraph(self):
     test_dir = self._get_test_dir("scoped_copy")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
@@ -2836,7 +2840,7 @@ class ScopedGraphTest(test.TestCase):
         nn_ops.relu(math_ops.matmul(images, weights1) + biases1, name="relu")
 
     # Run the graph and save scoped checkpoint.
-    with self.session(graph=graph1) as sess:
+    with graph1.as_default(), self.session(graph=graph1) as sess:
       self.evaluate(variables.global_variables_initializer())
       _, var_list_1 = meta_graph.export_scoped_meta_graph(
           export_scope="hidden1")
@@ -2857,7 +2861,7 @@ class ScopedGraphTest(test.TestCase):
       var_list_2 = meta_graph.copy_scoped_meta_graph(
           from_scope="hidden1", to_scope="hidden2")
 
-    with self.session(graph=graph1) as sess:
+    with graph1.as_default(), self.session(graph=graph1) as sess:
       saver1 = saver_module.Saver(var_list=var_list_1, max_to_keep=1)
       saver1.restore(sess, saver0_ckpt)
       saver2 = saver_module.Saver(var_list=var_list_2, max_to_keep=1)
@@ -2867,18 +2871,18 @@ class ScopedGraphTest(test.TestCase):
 
     # Verifies copy to different graph.
     graph2 = ops_lib.Graph()
-    new_var_list_1 = meta_graph.copy_scoped_meta_graph(
-        from_scope="hidden1",
-        to_scope="new_hidden1",
-        from_graph=graph1,
-        to_graph=graph2)
+    with graph2.as_default():
+      new_var_list_1 = meta_graph.copy_scoped_meta_graph(
+          from_scope="hidden1",
+          to_scope="new_hidden1",
+          from_graph=graph1,
+          to_graph=graph2)
 
-    with self.session(graph=graph2) as sess:
-      saver3 = saver_module.Saver(var_list=new_var_list_1, max_to_keep=1)
-      saver3.restore(sess, saver0_ckpt)
-      self.assertAllClose(expected, sess.run("new_hidden1/relu:0"))
+      with self.session() as sess:
+        saver3 = saver_module.Saver(var_list=new_var_list_1, max_to_keep=1)
+        saver3.restore(sess, saver0_ckpt)
+        self.assertAllClose(expected, sess.run("new_hidden1/relu:0"))
 
-  @test_util.run_deprecated_v1
   def testExportGraphDefWithScope(self):
     test_dir = self._get_test_dir("export_graph_def")
     saver0_ckpt = os.path.join(test_dir, "saver0.ckpt")
@@ -2892,30 +2896,30 @@ class ScopedGraphTest(test.TestCase):
         biases1 = variables.VariableV1([0.1] * 3, name="biases")
         nn_ops.relu(math_ops.matmul(images, weights1) + biases1, name="relu")
 
-    # Run the graph and save scoped checkpoint.
-    with self.session(graph=graph1) as sess:
-      self.evaluate(variables.global_variables_initializer())
-      _, var_list_1 = meta_graph.export_scoped_meta_graph(
-          graph_def=graph1.as_graph_def(), export_scope="hidden1")
-      saver = saver_module.Saver(var_list=var_list_1, max_to_keep=1)
-      saver.save(sess, saver0_ckpt, write_state=False)
+      # Run the graph and save scoped checkpoint.
+      with self.session(graph=graph1) as sess:
+        self.evaluate(variables.global_variables_initializer())
+        _, var_list_1 = meta_graph.export_scoped_meta_graph(
+            graph_def=graph1.as_graph_def(), export_scope="hidden1")
+        saver = saver_module.Saver(var_list=var_list_1, max_to_keep=1)
+        saver.save(sess, saver0_ckpt, write_state=False)
 
     expected = np.reshape([[5.0999999, 7.0999999, 9.10000038] * 3], (3, 3))
 
     # Verifies that we can run successfully after restoring.
     graph2 = ops_lib.Graph()
-    new_var_list_1 = meta_graph.copy_scoped_meta_graph(
-        from_scope="hidden1",
-        to_scope="new_hidden1",
-        from_graph=graph1,
-        to_graph=graph2)
+    with graph2.as_default():
+      new_var_list_1 = meta_graph.copy_scoped_meta_graph(
+          from_scope="hidden1",
+          to_scope="new_hidden1",
+          from_graph=graph1,
+          to_graph=graph2)
 
-    with self.session(graph=graph2) as sess:
-      saver3 = saver_module.Saver(var_list=new_var_list_1, max_to_keep=1)
-      saver3.restore(sess, saver0_ckpt)
-      self.assertAllClose(expected, sess.run("new_hidden1/relu:0"))
+      with self.session(graph=graph2) as sess:
+        saver3 = saver_module.Saver(var_list=new_var_list_1, max_to_keep=1)
+        saver3.restore(sess, saver0_ckpt)
+        self.assertAllClose(expected, sess.run("new_hidden1/relu:0"))
 
-  @test_util.run_deprecated_v1
   def testSerializeSaverWithScope(self):
     test_dir = self._get_test_dir("export_graph_def")
     saver1_ckpt = os.path.join(test_dir, "saver1.ckpt")
@@ -2932,40 +2936,42 @@ class ScopedGraphTest(test.TestCase):
       saver2 = saver_module.Saver(var_list=[variable2], name="hidden2/")
       graph.add_to_collection(ops_lib.GraphKeys.SAVERS, saver2)
 
-    with self.session(graph=graph) as sess:
-      self.evaluate(variables.global_variables_initializer())
-      saver1.save(sess, saver1_ckpt, write_state=False)
-      saver2.save(sess, saver2_ckpt, write_state=False)
+      with self.session(graph=graph) as sess:
+        self.evaluate(variables.global_variables_initializer())
+        saver1.save(sess, saver1_ckpt, write_state=False)
+        saver2.save(sess, saver2_ckpt, write_state=False)
 
     graph1 = ops_lib.Graph()
-    var_dict1 = meta_graph.copy_scoped_meta_graph(
-        from_scope="hidden1",
-        to_scope="new_hidden1",
-        from_graph=graph,
-        to_graph=graph1)
-    self.assertEqual(1, len(var_dict1))
+    with graph1.as_default():
+      var_dict1 = meta_graph.copy_scoped_meta_graph(
+          from_scope="hidden1",
+          to_scope="new_hidden1",
+          from_graph=graph,
+          to_graph=graph1)
+      self.assertEqual(1, len(var_dict1))
 
-    saver_list1 = graph1.get_collection(ops_lib.GraphKeys.SAVERS)
-    self.assertEqual(1, len(saver_list1))
+      saver_list1 = graph1.get_collection(ops_lib.GraphKeys.SAVERS)
+      self.assertEqual(1, len(saver_list1))
 
-    with self.session(graph=graph1) as sess:
-      saver_list1[0].restore(sess, saver1_ckpt)
-      self.assertEqual(1.0, self.evaluate(var_dict1["variable1:0"]))
+      with self.session(graph=graph1) as sess:
+        saver_list1[0].restore(sess, saver1_ckpt)
+        self.assertEqual(1.0, self.evaluate(var_dict1["variable1:0"]))
 
     graph2 = ops_lib.Graph()
-    var_dict2 = meta_graph.copy_scoped_meta_graph(
-        from_scope="hidden2",
-        to_scope="new_hidden2",
-        from_graph=graph,
-        to_graph=graph2)
-    self.assertEqual(1, len(var_dict2))
+    with graph2.as_default():
+      var_dict2 = meta_graph.copy_scoped_meta_graph(
+          from_scope="hidden2",
+          to_scope="new_hidden2",
+          from_graph=graph,
+          to_graph=graph2)
+      self.assertEqual(1, len(var_dict2))
 
-    saver_list2 = graph2.get_collection(ops_lib.GraphKeys.SAVERS)
-    self.assertEqual(1, len(saver_list2))
+      saver_list2 = graph2.get_collection(ops_lib.GraphKeys.SAVERS)
+      self.assertEqual(1, len(saver_list2))
 
-    with self.session(graph=graph2) as sess:
-      saver_list2[0].restore(sess, saver2_ckpt)
-      self.assertEqual(2.0, self.evaluate(var_dict2["variable2:0"]))
+      with self.session(graph=graph2) as sess:
+        saver_list2[0].restore(sess, saver2_ckpt)
+        self.assertEqual(2.0, self.evaluate(var_dict2["variable2:0"]))
 
 
 class _OwnsAVariableSimple(trackable_base.Trackable):
@@ -3022,29 +3028,6 @@ class _OwnsMirroredVariables(trackable_base.Trackable):
   @property
   def name(self):
     return self.non_dep_variable.name
-
-
-class NonLayerTrackable(trackable_tracking.AutoTrackable):
-
-  def __init__(self):
-    super(NonLayerTrackable, self).__init__()
-    self.a_variable = trackable_utils.add_variable(
-        self, name="a_variable", shape=[])
-
-
-class MyModel(training.Model):
-  """A concrete Model for testing."""
-
-  def __init__(self):
-    super(MyModel, self).__init__()
-    self._named_dense = core.Dense(1, use_bias=True)
-    self._second = core.Dense(1, use_bias=False)
-    # We can still track Trackables which aren't Layers.
-    self._non_layer = NonLayerTrackable()
-
-  def call(self, values):
-    ret = self._second(self._named_dense(values))
-    return ret
 
 
 class TrackableCompatibilityTests(test.TestCase):
@@ -3112,46 +3095,6 @@ class TrackableCompatibilityTests(test.TestCase):
         saver.restore(sess, save_path)
         self.assertEqual(1, v.eval_count)
 
-  def _initialized_model(self):
-    input_value = constant_op.constant([[3.]])
-    model = MyModel()
-    optimizer = adam.AdamOptimizer(0.001)
-    optimizer_step = training_util.get_or_create_global_step()
-    root_trackable = trackable_utils.Checkpoint(
-        optimizer=optimizer, model=model, optimizer_step=optimizer_step)
-    train_op = optimizer.minimize(
-        functools.partial(model, input_value),
-        global_step=optimizer_step)
-    self.evaluate(trackable_utils.gather_initializers(
-        root_trackable))
-    self.evaluate(train_op)
-    # A regular variable, a slot variable, and a non-slot Optimizer variable
-    # with known values to check when loading.
-    self.evaluate(model._named_dense.bias.assign([1.]))
-    self.evaluate(optimizer.get_slot(
-        var=model._named_dense.bias, name="m").assign([2.]))
-    beta1_power, _ = optimizer._get_beta_accumulators()
-    self.evaluate(beta1_power.assign(3.))
-    return root_trackable
-
-  def _set_sentinels(self, root_trackable):
-    self.evaluate(root_trackable.model._named_dense.bias.assign([101.]))
-    self.evaluate(
-        root_trackable.optimizer.get_slot(
-            var=root_trackable.model._named_dense.bias, name="m")
-        .assign([102.]))
-    beta1_power, _ = root_trackable.optimizer._get_beta_accumulators()
-    self.evaluate(beta1_power.assign(103.))
-
-  def _check_sentinels(self, root_trackable):
-    self.assertAllEqual(
-        [1.], self.evaluate(root_trackable.model._named_dense.bias))
-    self.assertAllEqual([2.], self.evaluate(
-        root_trackable.optimizer.get_slot(
-            var=root_trackable.model._named_dense.bias, name="m")))
-    beta1_power, _ = root_trackable.optimizer._get_beta_accumulators()
-    self.assertAllEqual(3., self.evaluate(beta1_power))
-
   def testVariableNotFoundErrorRaised(self):
     # Restore does some tricky exception handling to figure out if it should
     # load an object-based checkpoint. Tests that the exception handling isn't
@@ -3166,8 +3109,8 @@ class TrackableCompatibilityTests(test.TestCase):
     with self.cached_session() as sess:
       self.evaluate(a.initializer)
       save_path = a_saver.save(sess=sess, save_path=checkpoint_prefix)
-      with self.assertRaisesRegexp(
-          errors.NotFoundError, "Key b not found in checkpoint"):
+      with self.assertRaisesRegex(errors.NotFoundError,
+                                  "Key b not found in checkpoint"):
         b_saver.restore(sess=sess, save_path=save_path)
 
       with self.assertRaises(errors.NotFoundError) as cs:
@@ -3177,7 +3120,7 @@ class TrackableCompatibilityTests(test.TestCase):
       # exception" block in Python 3.
       self.assertNotIn("NewCheckpointReader", cs.exception.message)
 
-  @test_util.run_v1_only("b/120545219")
+  @test_util.run_v1_only("train.Saver is V1 only API.")
   def testGraphChangedForRestoreErrorRaised(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
@@ -3194,62 +3137,10 @@ class TrackableCompatibilityTests(test.TestCase):
       a = variables.VariableV1([1.], name="a")
       a_saver = saver_module.Saver([a])
       with self.session(graph=g) as sess:
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors.InvalidArgumentError,
             "a mismatch between the current graph and the graph"):
           a_saver.restore(sess=sess, save_path=save_path)
-
-  def testLoadFromObjectBasedGraph(self):
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-
-    save_graph = ops_lib.Graph()
-    with save_graph.as_default(), self.session(graph=save_graph) as sess:
-      root = self._initialized_model()
-      object_saver = trackable_utils.Checkpoint(root=root)
-      save_path = object_saver.save(file_prefix=checkpoint_prefix)
-
-      # An incompatible object-based checkpoint to check error messages
-      var = resource_variable_ops.ResourceVariable(1., name="a")
-      self.evaluate(var.initializer)
-      second_saver = trackable_utils.Checkpoint(v=var)
-      second_path = second_saver.save(file_prefix=os.path.join(
-          checkpoint_directory, "second"))
-
-    restore_graph = ops_lib.Graph()
-    with restore_graph.as_default(), self.session(
-        graph=restore_graph) as sess:
-      root = self._initialized_model()
-      self._set_sentinels(root)
-      saver = saver_module.Saver()
-      saver.restore(sess=sess, save_path=save_path)
-      self._check_sentinels(root)
-      before_second_restore_ops = restore_graph.get_operations()
-      # Test that multiple restores do not pollute the graph
-      saver.restore(sess=sess, save_path=save_path)
-      self.assertEqual(before_second_restore_ops,
-                       restore_graph.get_operations())
-      with self.assertRaisesRegexp(errors.NotFoundError,
-                                   "Could not find some variables"):
-        saver.restore(sess=sess, save_path=second_path)
-
-  def testLoadFromObjectBasedEager(self):
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-
-    save_graph = ops_lib.Graph()
-    with save_graph.as_default(), self.session(graph=save_graph):
-      root = self._initialized_model()
-      object_saver = trackable_utils.Checkpoint(root=root)
-      save_path = object_saver.save(file_prefix=checkpoint_prefix)
-
-    with context.eager_mode():
-      root = self._initialized_model()
-      self._set_sentinels(root)
-      saver = saver_module.Saver(
-          root.model.variables + root.optimizer.variables())
-      saver.restore(sess=None, save_path=save_path)
-      self._check_sentinels(root)
 
 
 if __name__ == "__main__":

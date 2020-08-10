@@ -96,6 +96,10 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   llvm::Value* EmitThreadId() override;
 
+  bool fast_min_max() override {
+    return hlo_module_config_.debug_options().xla_gpu_enable_fast_min_max();
+  }
+
  private:
   // Emits IR for op, which must have opcode kPower.
   StatusOr<llvm::Value*> EmitPowerOp(const HloInstruction* op,

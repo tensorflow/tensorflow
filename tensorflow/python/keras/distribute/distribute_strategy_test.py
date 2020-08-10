@@ -38,6 +38,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
@@ -280,40 +281,40 @@ def strategy_and_optimizer_combinations():
       strategy_minus_tpu_combinations(),
       combinations.combine(
           optimizer=[
-              strategy_combinations.adagrad_optimizer_v1_fn,
-              strategy_combinations.adam_optimizer_v1_fn,
-              strategy_combinations.gradient_descent_optimizer_v1_fn,
-              strategy_combinations.rmsprop_optimizer_v1_fn,
-              strategy_combinations.adadelta_optimizer_keras_v2_fn,
-              strategy_combinations.adagrad_optimizer_keras_v2_fn,
-              strategy_combinations.adam_optimizer_keras_v2_fn,
-              strategy_combinations.adamax_optimizer_keras_v2_fn,
-              strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-              strategy_combinations.nadam_optimizer_keras_v2_fn,
-              strategy_combinations.rmsprop_optimizer_keras_v2_fn,
-              strategy_combinations.ftrl_optimizer_keras_v2_fn
+              optimizer_combinations.adagrad_optimizer_v1_fn,
+              optimizer_combinations.adam_optimizer_v1_fn,
+              optimizer_combinations.gradient_descent_optimizer_v1_fn,
+              optimizer_combinations.rmsprop_optimizer_v1_fn,
+              optimizer_combinations.adadelta_optimizer_keras_v2_fn,
+              optimizer_combinations.adagrad_optimizer_keras_v2_fn,
+              optimizer_combinations.adam_optimizer_keras_v2_fn,
+              optimizer_combinations.adamax_optimizer_keras_v2_fn,
+              optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+              optimizer_combinations.nadam_optimizer_keras_v2_fn,
+              optimizer_combinations.rmsprop_optimizer_keras_v2_fn,
+              optimizer_combinations.ftrl_optimizer_keras_v2_fn
           ]))
   tpu_strategies_graph = combinations.combine(
       distribution=tpu_strategies,
       mode=['graph'],
       optimizer=[
-          strategy_combinations.adagrad_optimizer_v1_fn,
-          strategy_combinations.adam_optimizer_v1_fn,
-          strategy_combinations.gradient_descent_optimizer_v1_fn,
-          strategy_combinations.rmsprop_optimizer_v1_fn,
-          strategy_combinations.adagrad_optimizer_keras_v2_fn,
-          strategy_combinations.adam_optimizer_keras_v2_fn,
-          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-          strategy_combinations.rmsprop_optimizer_keras_v2_fn
+          optimizer_combinations.adagrad_optimizer_v1_fn,
+          optimizer_combinations.adam_optimizer_v1_fn,
+          optimizer_combinations.gradient_descent_optimizer_v1_fn,
+          optimizer_combinations.rmsprop_optimizer_v1_fn,
+          optimizer_combinations.adagrad_optimizer_keras_v2_fn,
+          optimizer_combinations.adam_optimizer_keras_v2_fn,
+          optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+          optimizer_combinations.rmsprop_optimizer_keras_v2_fn
       ])
   tpu_strategies_eager = combinations.combine(
       distribution=tpu_strategies,
       mode=['eager'],
       optimizer=[
-          strategy_combinations.adagrad_optimizer_keras_v2_fn,
-          strategy_combinations.adam_optimizer_keras_v2_fn,
-          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-          strategy_combinations.rmsprop_optimizer_keras_v2_fn
+          optimizer_combinations.adagrad_optimizer_keras_v2_fn,
+          optimizer_combinations.adam_optimizer_keras_v2_fn,
+          optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+          optimizer_combinations.rmsprop_optimizer_keras_v2_fn
       ])
   return non_tpu_strategies + tpu_strategies_eager + tpu_strategies_graph
 
@@ -395,7 +396,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertEqual(steps, 2)
 
       # All samples can not be consumed in specified number of steps
-      with self.assertRaisesRegexp(ValueError, 'not divisible by steps'):
+      with self.assertRaisesRegex(ValueError, 'not divisible by steps'):
         distributed_training_utils.get_input_params(
             distribution, 63, steps=2, batch_size=None)
 
@@ -409,7 +410,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
         self.assertEqual(steps, 3)
       else:
         # Computed global batch size can not be sharded across replicas
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, 'could not be sharded evenly '
             'across the sync replicas'):
           distributed_training_utils.get_input_params(
@@ -448,7 +449,7 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       self.assertEqual(steps, 5)
 
       # Number of samples is less than global batch size * steps
-      with self.assertRaisesRegexp(ValueError, 'less than samples required'):
+      with self.assertRaisesRegex(ValueError, 'less than samples required'):
         distributed_training_utils.get_input_params(
             distribution, 64, steps=10, batch_size=13)
 
@@ -1166,8 +1167,8 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       self.assertAllClose(
           predict_with_numpy, predict_with_ds, atol=1e-4, rtol=1e-4)
 
-      with self.assertRaisesRegexp(ValueError,
-                                   'Number of steps could not be inferred'):
+      with self.assertRaisesRegex(ValueError,
+                                  'Number of steps could not be inferred'):
         model.fit(dataset, epochs=1)
 
   @combinations.generate(all_strategy_combinations())
@@ -1238,7 +1239,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
 
-      with self.assertRaisesRegexp(ValueError, 'incompatible with the layer'):
+      with self.assertRaisesRegex(ValueError, 'is incompatible with'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
   @combinations.generate(
@@ -1692,8 +1693,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
       # Check for `steps_per_epoch`.
       if distribution.num_replicas_in_sync > 1:
-        with self.assertRaisesRegexp(ValueError,
-                                     'distributed dataset, you must specify'):
+        with self.assertRaisesRegex(ValueError,
+                                    'distributed dataset, you must specify'):
           model.fit(ds, epochs=2)
 
   @combinations.generate(
@@ -1746,8 +1747,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
 
       # Check for `steps_per_epoch`.
       if distribution.num_replicas_in_sync > 1:
-        with self.assertRaisesRegexp(ValueError,
-                                     'distributed dataset, you must specify'):
+        with self.assertRaisesRegex(ValueError,
+                                    'distributed dataset, you must specify'):
           model.fit(ds, epochs=2)
 
   @combinations.generate(
@@ -1815,7 +1816,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     ds = ds.filter(lambda *args, **kwargs: True)  # Makes the size UNKNOWN.
     bc = BatchCountingCB()
 
-    with self.assertRaisesRegexp(ValueError, 'steps_per_execution'):
+    with self.assertRaisesRegex(ValueError, 'steps_per_execution'):
       model.fit(ds, epochs=2, callbacks=[bc])
 
     train_ds = ds.repeat(2)
@@ -1823,7 +1824,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     self.assertEqual(bc.train_begin_batches, [0, 20, 40, 0, 20, 40])
     self.assertEqual(bc.train_end_batches, [19, 39, 49, 19, 39, 49])
 
-    with self.assertRaisesRegexp(ValueError, 'steps_per_execution'):
+    with self.assertRaisesRegex(ValueError, 'steps_per_execution'):
       model.evaluate(ds, callbacks=[bc])
 
     test_ds = ds.repeat(2)
@@ -2266,8 +2267,8 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
                           (parameter_server_strategy.ParameterServerStrategyV1,
                            parameter_server_strategy.ParameterServerStrategy))
 
-    with self.assertRaisesRegexp(NotImplementedError,
-                                 'ParameterServerStrategy*'):
+    with self.assertRaisesRegex(NotImplementedError,
+                                'ParameterServerStrategy*'):
       with distribution.scope():
         model = simple_sequential_model()
         optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
@@ -2494,8 +2495,7 @@ class TestModelCapturesStrategy(test.TestCase, parameterized.TestCase):
     # This should raise an error because the metric is constructed
     # outside of the scope, and not by compile
     if distribution_strategy_context.has_strategy():
-      with self.assertRaisesRegexp(
-          ValueError, 'All metrics must be created in'):
+      with self.assertRaisesRegex(ValueError, 'All metrics must be created in'):
         model.compile(
             optimizer=keras.optimizers.adam_v2.Adam(1e-4),
             loss=keras.losses.MeanSquaredError(),

@@ -351,14 +351,14 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     if (!status.ok()) {
       return status;
     }
-    for (int i = 0; i < data_inputs.size(); ++i) {
+    for (int i = 0, end = data_inputs.size(); i < end; ++i) {
       graph->AddEdge(data_inputs[i].first, data_inputs[i].second, xla_launch,
                      i);
     }
     for (Node* n : control_inputs) {
       graph->AddControlEdge(n, xla_launch);
     }
-    for (int i = 0; i < data_outputs.size(); ++i) {
+    for (int i = 0, end = data_outputs.size(); i < end; ++i) {
       for (const auto& successor : data_outputs[i]) {
         graph->AddEdge(xla_launch, i, successor.first, successor.second);
       }

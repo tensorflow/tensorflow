@@ -22,9 +22,9 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/Support/DebugStringHelper.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/xla/ir/hlo_ops.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -145,11 +145,37 @@ Shape TypeToShape(mlir::Type type) {
       // For the primitive type case, the shape of the memref is similar to the
       // vector type case (i.e., it is, modulo the layout, the same dimensions
       // and primitive type).
-      // Currently we only return shapes for identity affine maps.
-      // TODO(andydavis) Map affine map layout function to XLA layout.
-      if (m.getAffineMaps().empty() ||
-          (m.getAffineMaps().size() == 1 && m.getAffineMaps()[0].isIdentity()))
+      if (m.getAffineMaps().empty())
         return ShapeUtil::MakeShape(primitive_type, span);
+
+      if (m.getAffineMaps().size() == 1) {
+        llvm::SmallVector<int64_t, 4> strides;
+        int64_t offset;
+        if (failed(mlir::getStridesAndOffset(m, strides, offset))) return {};
+
+        llvm::SmallVector<std::pair<int64_t, int>, 4> strides_with_indices;
+        for (const auto& e : llvm::enumerate(strides)) {
+          strides_with_indices.push_back({e.value(), e.index()});
+        }
+        std::sort(strides_with_indices.begin(), strides_with_indices.end());
+
+        llvm::SmallVector<int64, 4> minor_to_major;
+        int64_t stride = 1;
+        for (const auto& pr : strides_with_indices) {
+          minor_to_major.push_back(pr.second);
+
+          // Either the affine map is not perfectly strided, or the dimensions
+          // recovered from strides don't match the actual dimensions in shapes.
+          if (stride != pr.first) return {};
+
+          stride *= m.getShape()[pr.second];
+        }
+
+        llvm::SmallVector<int64, 4> dimensions(m.getShape().begin(),
+                                               m.getShape().end());
+        return ::xla::ShapeUtil::MakeShapeWithLayout(primitive_type, dimensions,
+                                                     minor_to_major);
+      }
       break;
     }
     case mlir::StandardTypes::RankedTensor: {
@@ -179,7 +205,7 @@ Shape TypeToShape(mlir::Type type) {
       }
       return ShapeUtil::MakeTupleShape(shapes);
     }
-    case mlir::xla_hlo::HLOTypes::Token:
+    case mlir::mhlo::HLOTypes::Token:
       return ShapeUtil::MakeTokenShape();
     default:
       break;

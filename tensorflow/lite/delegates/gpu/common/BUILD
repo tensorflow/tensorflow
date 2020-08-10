@@ -97,7 +97,6 @@ cc_test(
     srcs = ["model_test.cc"],
     deps = [
         ":model",
-        ":status",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -110,11 +109,13 @@ cc_library(
         ":data_type",
         ":model",
         ":model_builder_helper",
+        ":model_transformer",
         ":object_reader",
         ":operations",
         ":shape",
         ":status",
         ":tensor",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite:context",
@@ -125,7 +126,6 @@ cc_library(
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
-        "//tensorflow/lite/schema:schema_fbs",
     ] + tf_platform_alias("custom_parsers", "//tensorflow/lite/delegates/gpu/common/"),
 )
 
@@ -148,6 +148,7 @@ cc_library(
     deps = [
         ":data_type",
         ":model",
+        ":operations",
         ":shape",
         ":status",
         ":tensor",
@@ -170,6 +171,7 @@ cc_library(
     hdrs = ["model_transformer.h"],
     deps = [
         ":model",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -187,6 +189,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/kernels:kernel_util",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -199,6 +202,7 @@ cc_library(
         ":model",
         ":shape",
         ":status",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:variant",
     ],
 )
@@ -213,6 +217,7 @@ cc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:types",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 
@@ -222,7 +227,6 @@ cc_test(
     deps = [
         ":quantization_util",
         "//tensorflow/lite:util",
-        "//tensorflow/lite/micro/testing:micro_test",
         "@com_google_googletest//:gtest_main",
     ],
 )

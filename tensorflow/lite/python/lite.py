@@ -61,6 +61,7 @@ from tensorflow.lite.python.util import get_grappler_config as _get_grappler_con
 from tensorflow.lite.python.util import get_tensor_name as _get_tensor_name
 from tensorflow.lite.python.util import get_tensors_from_tensor_names as _get_tensors_from_tensor_names
 from tensorflow.lite.python.util import is_frozen_graph as _is_frozen_graph
+from tensorflow.lite.python.util import modify_integer_quantized_model_io_type as _modify_integer_quantized_model_io_type
 from tensorflow.lite.python.util import run_graph_optimizations as _run_graph_optimizations
 from tensorflow.lite.python.util import set_tensor_shapes as _set_tensor_shapes
 from tensorflow.python import keras as _keras
@@ -82,10 +83,6 @@ from tensorflow.python.saved_model.load import load as _load
 from tensorflow.python.saved_model.loader_impl import parse_saved_model_with_debug_info as _parse_saved_model_with_debug_info
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
-
-
-# The default value of `experimental_new_converter`.
-_USE_EXPERIMENTAL_NEW_CONVERTER = True
 
 
 @_tf_export("lite.Optimize")
@@ -128,7 +125,7 @@ class Optimize(enum.Enum):
   OPTIMIZE_FOR_LATENCY = "OPTIMIZE_FOR_LATENCY"
 
   def __str__(self):
-    return self.value
+    return str(self.value)
 
 
 @_tf_export("lite.RepresentativeDataset")
@@ -193,24 +190,47 @@ class QuantizationMode(object):
   def post_training_int8_no_float(self):
     """Post training int8 quantize, disallow float fallback."""
     return (self._is_int8_target_required() and
+            not self._is_int16x8_target_required() and
             self._representative_dataset is not None)
 
   def post_training_int8_allow_float(self):
     """Post training int8 quantize, allow float fallback."""
     return (self._any_optimization_enabled() and
+            not self._is_int16x8_target_required() and
             self._representative_dataset is not None and
             self._smallest_supported_type() == constants.INT8)
 
-  def is_post_training_integer_quantize(self):
-    """Post training integer quantization."""
+  def is_post_training_integer_quantize_8(self):
+    """Post training integer 8 quantization."""
     return (self.post_training_int8_no_float() or
             self.post_training_int8_allow_float())
+
+  def is_post_training_integer_quantize_16x8(self):
+    """Post training integer 16x8 quantization."""
+    return (self.post_training_int16x8_no_float() or
+            self.post_training_int16x8_allow_float())
+
+  def is_post_training_integer_quantize(self):
+    """Post training integer quantization."""
+    return (self.is_post_training_integer_quantize_8() or
+            self.is_post_training_integer_quantize_16x8())
 
   def training_time_int8_allow_float(self):
     """Training-time int8 quantize, allow float fallback."""
     return (self._any_optimization_enabled() and
             not self.post_training_dynamic_range_int8() and
             not self.post_training_fp16())
+
+  def post_training_int16x8_no_float(self):
+    """Post training int16x8 quantize, disallow float fallback."""
+    return (not self._is_int8_target_required() and
+            self._is_int16x8_target_required() and
+            not self._is_allow_float() and
+            self._representative_dataset is not None)
+
+  def post_training_int16x8_allow_float(self):
+    """Post training int16x8 quantize, allow float fallback."""
+    return self._is_int16x8_target_required() and self._is_allow_float()
 
   def post_training_dynamic_range_int8(self):
     """Post training int8 const, on-the-fly int8 quantize of dynamic tensors."""
@@ -231,8 +251,14 @@ class QuantizationMode(object):
     return not (self.post_training_int8_no_float() or
                 self.post_training_int8_allow_float() or
                 self.training_time_int8_allow_float() or
+                self.post_training_int16x8_no_float() or
+                self.post_training_int16x8_allow_float() or
                 self.post_training_dynamic_range_int8() or
                 self.post_training_fp16())
+
+  def activations_type(self):
+    return constants.INT16 if self._is_int16x8_target_required() \
+      else constants.INT8
 
   def converter_flags(self, inference_ty=None, inference_input_ty=None):
     """Flags to the converter."""
@@ -243,7 +269,8 @@ class QuantizationMode(object):
 
     if self.training_time_int8_allow_float():
       return {
-          "inference_type": inference_ty if inference_ty else constants.INT8,
+          "inference_type": inference_ty if inference_ty else \
+            self.activations_type(),
           "inference_input_type":
               inference_input_ty if inference_input_ty else constants.FLOAT,
           "post_training_quantize": False,  # disable dynamic range quantization
@@ -278,20 +305,42 @@ class QuantizationMode(object):
 
     inference_input_type = input_ty if input_ty else constants.FLOAT
     inference_output_type = output_ty if output_ty else constants.FLOAT
-    if self.post_training_int8_no_float():
+
+    if self.post_training_int8_no_float() \
+      or self.post_training_int16x8_no_float():
       return True, {
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
+          "activations_type": self.activations_type(),
           "allow_float": False
       }
-    elif self.post_training_int8_allow_float():
+    elif self.post_training_int8_allow_float() \
+      or self.post_training_int16x8_allow_float():
       return True, {
           "inference_input_type": inference_input_type,
           "inference_output_type": inference_output_type,
+          "activations_type": self.activations_type(),
           "allow_float": True
       }
     else:
       return False, None
+
+  def flags_modify_model_io_type(
+      self, input_type=constants.FLOAT, output_type=constants.FLOAT):
+    """Flags for modifying the input and output type of a tflite model."""
+    is_post_training_quantize = self.quantizer_flags(input_type, output_type)[0]
+    is_training_time_only_quantize = self.training_time_int8_allow_float() and \
+        not is_post_training_quantize
+
+    # TODO(b/153576658): Consolidate post/during training quantization workflows
+    # to modify model input/output type after MLIR conversion.
+    if is_training_time_only_quantize:
+      return {
+          "inference_input_type": input_type,
+          "inference_output_type": output_type,
+      }
+    else:
+      return None
 
   # Below are helpers for the above functions.
 
@@ -322,6 +371,17 @@ class QuantizationMode(object):
         self._target_spec.supported_ops) or
             set(self._target_spec.supported_types) == set([constants.INT8]))
 
+  def _is_int16x8_target_required(self):
+    return bool(
+        set(self._target_spec.supported_ops).intersection([
+            OpsSet.EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
+        ]))
+
+  def _is_allow_float(self):
+    return bool(
+        set(self._target_spec.supported_ops).intersection(
+            [OpsSet.TFLITE_BUILTINS]))
+
   def _any_optimization_enabled(self):
     return bool(
         set(self._optimizations).intersection([
@@ -344,7 +404,7 @@ class QuantizationMode(object):
     })
 
     for node_def in self._graph_def.node:
-      if any(op in node_def.name for op in training_quant_ops):
+      if node_def.op in training_quant_ops:
         return True
     return False
 
@@ -357,7 +417,7 @@ class TFLiteConverterBase(object):
     self.target_spec = TargetSpec()
     self.optimizations = []
     self.representative_dataset = None
-    self.experimental_new_converter = _USE_EXPERIMENTAL_NEW_CONVERTER
+    self.experimental_new_converter = True
     self._experimental_new_quantizer = False
     self._experimental_calibrate_only = False
     # The 'GraphDebugInfo'  contains the stack traces of all the original nodes
@@ -394,11 +454,13 @@ class TFLiteConverterBase(object):
     return _get_grappler_config(optimizers)
 
   def _calibrate_quantize_model(self, result, inference_input_type,
-                                inference_output_type, allow_float):
+                                inference_output_type, activations_type,
+                                allow_float):
     """Calibrate and quantize the model."""
     if not isinstance(self.representative_dataset, RepresentativeDataset):
       self.representative_dataset = RepresentativeDataset(
           self.representative_dataset)
+
     calibrate_quantize = _calibrator.Calibrator(result)
     if self._experimental_calibrate_only or self._experimental_new_quantizer:
       calibrated = calibrate_quantize.calibrate(
@@ -411,7 +473,7 @@ class TFLiteConverterBase(object):
     else:
       return calibrate_quantize.calibrate_and_quantize(
           self.representative_dataset.input_gen, inference_input_type,
-          inference_output_type, allow_float)
+          inference_output_type, allow_float, activations_type)
 
   def _is_unknown_shapes_allowed(self):
     # Unknown dimensions are only allowed with the new converter.
@@ -449,8 +511,13 @@ class TFLiteConverterBase(object):
         return True
     return False
 
-  def _parse_saved_model_args(self):
-    """Parses SavedModel arguments from the given Keras/RNN SavedModel."""
+  def _parse_saved_model_args(self, always_enable_saved_model_import=False):
+    """Parses SavedModel arguments from the given Keras/RNN SavedModel.
+
+    Args:
+      always_enable_saved_model_import: Bool. When the value is true, it enables
+        MLIR saved model import path regardless of checking the conditions.
+    """
     if not self.experimental_new_converter:
       self.saved_model_dir = None
       return
@@ -463,16 +530,21 @@ class TFLiteConverterBase(object):
         # frozen graph def path.
         self.saved_model_dir = None
         return
-      if not self._contains_function_with_implements_attr(saved_model_proto):
+      if (not always_enable_saved_model_import and
+          not self._contains_function_with_implements_attr(saved_model_proto)):
         self.saved_model_dir = None
-      else:
-        if not self._saved_model_exported_names:
-          self._saved_model_exported_names = []
-        self._saved_model_version = saved_model_proto.saved_model_schema_version
-        if self._saved_model_version not in [1, 2]:
-          raise ValueError(
-              "SavedModel file format({0}) is not supported".format(
-                  self._saved_model_version))
+        return
+
+      if not self._saved_model_exported_names:
+        self._saved_model_exported_names = []
+      self._saved_model_version = saved_model_proto.saved_model_schema_version
+      if self._saved_model_version == 0:
+        self.saved_model_dir = None
+        logging.warning("SavedModel schema version is zero.")
+        return
+      if self._saved_model_version not in [1, 2]:
+        raise ValueError("SavedModel file format({0}) is not supported".format(
+            self._saved_model_version))
 
 
 class TFLiteConverterBaseV2(TFLiteConverterBase):
@@ -501,7 +573,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
       training integer quantization. (default tf.float32, must be in
       {tf.float32, tf.int8, tf.uint8})
     experimental_new_converter: Experimental flag, subject to change. Enables
-      MLIR-based conversion instead of TOCO conversion.
+      MLIR-based conversion instead of TOCO conversion. (default True)
   """
 
   def __init__(self):
@@ -512,11 +584,13 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
 
   def _validate_inference_input_output_types(self, quant_mode):
     """Validate inference_input_type and inference_output_type flags."""
-    default_types = [constants.FLOAT, None]
-    # We only support integer types for post training integer quantization
-    # as we have statistical information to quantize the input and output.
-    if quant_mode.is_post_training_integer_quantize():
-      all_types = default_types + [constants.INT8, constants.QUANTIZED_UINT8]
+    default_types = [constants.FLOAT]
+    # We support integer input/output for integer quantized models only.
+    if quant_mode.training_time_int8_allow_float():
+      if quant_mode.is_post_training_integer_quantize_16x8():
+        all_types = default_types + [constants.INT16]
+      else:
+        all_types = default_types + [constants.INT8, constants.QUANTIZED_UINT8]
       if self.inference_input_type not in all_types or \
           self.inference_output_type not in all_types:
         all_types_names = ["tf." + t.name for t in all_types]
@@ -583,7 +657,7 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
           "experimental_new_converter=True. "
           "The old converter (TOCO) is deprecated.")
     else:
-      logging.info("Using experimental converter: If you encountered a problem "
+      logging.info("Using new converter: If you encounter a problem "
                    "please file a bug. You can opt-out "
                    "by setting experimental_new_converter=False")
 
@@ -598,6 +672,12 @@ class TFLiteConverterBaseV2(TFLiteConverterBase):
         self.inference_input_type, self.inference_output_type)
     if calibrate_and_quantize:
       result = self._calibrate_quantize_model(result, **flags)
+
+    flags_modify_model_io_type = quant_mode.flags_modify_model_io_type(
+        self.inference_input_type, self.inference_output_type)
+    if flags_modify_model_io_type:
+      result = _modify_integer_quantized_model_io_type(
+          result, **flags_modify_model_io_type)
 
     if self._experimental_sparsify_model:
       result = _mlir_sparsify(result)
@@ -637,7 +717,7 @@ class TFLiteSavedModelConverterV2(TFLiteConverterBaseV2):
     self._saved_model_tags = saved_model_tags
     self._saved_model_exported_names = saved_model_exported_names
     self._trackable_obj = trackable_obj
-    self._parse_saved_model_args()
+    self._parse_saved_model_args(always_enable_saved_model_import=True)
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -690,21 +770,20 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
     self._keras_model = keras_model
     self._trackable_obj = trackable_obj
 
-  def convert(self):
-    """Converts a keras model based on instance variables.
+  def _convert_as_saved_model(self):
+    """Converts a Keras model as a saved model.
 
     Returns:
       The converted data in serialized format.
-
-    Raises:
-      ValueError:
-        Multiple concrete functions are specified.
-        Input shape is not specified.
-        Invalid quantization parameters.
     """
     temp_dir = tempfile.mkdtemp()
     try:
-      self._keras_model.save(temp_dir, save_format="tf")
+      try:
+        self._keras_model.save(temp_dir, save_format="tf")
+      except Exception:  # pylint: disable=broad-except
+        # When storing the given keras model to a saved model is failed, let's
+        # use original keras model conversion pipeline.
+        return None
       self.saved_model_dir = temp_dir
       self._saved_model_tags = set([_tag_constants.SERVING])
       self._saved_model_exported_names = [
@@ -734,6 +813,22 @@ class TFLiteKerasModelConverterV2(TFLiteConverterBaseV2):
                                    output_tensors)
     finally:
       shutil.rmtree(temp_dir, True)
+
+  def convert(self):
+    """Converts a keras model based on instance variables.
+
+    Returns:
+      The converted data in serialized format.
+
+    Raises:
+      ValueError:
+        Multiple concrete functions are specified.
+        Input shape is not specified.
+        Invalid quantization parameters.
+    """
+    saved_model_convert_result = self._convert_as_saved_model()
+    if saved_model_convert_result:
+      return saved_model_convert_result
 
     input_signature = None
     # If the model's call is not a `tf.function`, then we need to first get its
@@ -812,7 +907,7 @@ class TFLiteFrozenGraphConverterV2(TFLiteConverterBaseV2):
     """
     # TODO(b/130297984): Add support for converting multiple function.
 
-    if len(self._funcs) == 0:
+    if len(self._funcs) == 0:  # pylint: disable=g-explicit-length-test
       raise ValueError("No ConcreteFunction is specified.")
 
     if len(self._funcs) > 1:
@@ -1032,7 +1127,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
       parameter is ignored. (default tf.float32)
     inference_input_type: Target data type of real-number input arrays. Allows
       for a different type for input arrays. If an integer type is provided and
-      `optimizations` are not used, `quantized_inputs_stats` must be provided.
+      `optimizations` are not used, `quantized_input_stats` must be provided.
       If `inference_type` is tf.uint8, signaling conversion to a fully quantized
       model from a quantization-aware trained input model, then
       `inference_input_type` defaults to tf.uint8. In all other cases,
@@ -1150,7 +1245,7 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
     return object.__getattribute__(self, name)
 
   def _validate_quantized_input_stats(self, converter_kwargs, calibrate):
-    """Ensure quantized_input_stats provided if required."""
+    """Ensure the `quantized_input_stats` flag is provided if required."""
 
     quantized_types = frozenset({constants.INT8, constants.QUANTIZED_UINT8})
 
@@ -1161,8 +1256,9 @@ class TFLiteConverterBaseV1(TFLiteConverterBase):
 
     if (requires_quantized_input_stats and
         not converter_kwargs["quantized_input_stats"]):
-      raise ValueError("std_dev and mean must be defined when inference_type "
-                       "or inference_input_type is QUANTIZED_UINT8 or INT8.")
+      raise ValueError("The `quantized_input_stats` flag must be defined when "
+                       "either `inference_type` flag or `inference_input_type` "
+                       "flag is set to tf.uint8 or tf.int8.")
 
   def convert(self):
     """Converts a TensorFlow GraphDef based on instance variables.
@@ -1473,21 +1569,20 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
     self._output_tensors = output_tensors
     self._debug_info_func = _build_debug_info_func(sess.graph)
 
-  def convert(self):
-    """Converts a Keras model based on instance variables.
+  def _convert_as_saved_model(self):
+    """Converts a Keras model as a saved model.
 
     Returns:
-      The converted data in serialized format. Either a TFLite Flatbuffer or a
-      Graphviz graph depending on value in `output_format`.
-
-    Raises:
-      ValueError:
-        Input shape is not specified.
-        None value for dimension in input_tensor.
+      The converted data in serialized format.
     """
     temp_dir = tempfile.mkdtemp()
     try:
-      self._keras_model.save(temp_dir, save_format="tf")
+      try:
+        self._keras_model.save(temp_dir, save_format="tf")
+      except Exception:  # pylint: disable=broad-except
+        # When storing the given keras model to a saved model is failed, let's
+        # use original keras model conversion pipeline.
+        return None
       tag_set = set([_tag_constants.SERVING])
       signature_key = _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
       result = _freeze_saved_model(temp_dir, None, None, None, tag_set,
@@ -1505,6 +1600,22 @@ class TFLiteKerasModelConverter(TFLiteConverterBaseV1):
         return super(TFLiteKerasModelConverter, self).convert()
     finally:
       shutil.rmtree(temp_dir, True)
+
+  def convert(self):
+    """Converts a Keras model based on instance variables.
+
+    Returns:
+      The converted data in serialized format. Either a TFLite Flatbuffer or a
+      Graphviz graph depending on value in `output_format`.
+
+    Raises:
+      ValueError:
+        Input shape is not specified.
+        None value for dimension in input_tensor.
+    """
+    saved_model_convert_result = self._convert_as_saved_model()
+    if saved_model_convert_result:
+      return saved_model_convert_result
 
     return super(TFLiteKerasModelConverter, self).convert()
 
@@ -1570,7 +1681,7 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
     inference_input_type: Target data type of real-number input arrays. Allows
       for a different type for input arrays.
       If an integer type is provided and `optimizations` are not used,
-      `quantized_inputs_stats` must be provided.
+      `quantized_input_stats` must be provided.
       If `inference_type` is tf.uint8, signaling conversion to a fully quantized
       model from a quantization-aware trained input model, then
       `inference_input_type` defaults to tf.uint8.

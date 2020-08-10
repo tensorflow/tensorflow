@@ -298,7 +298,7 @@ VariableAccessesForTPUExecute BuildVariableAccessInfo(
   // Populate infos.old_to_new_output_mapping.
   int new_output_index = 0;
   infos.old_to_new_output_mapping.resize(execute_launch.getNumResults());
-  for (int i = 0; i < execute_launch.getNumResults(); ++i) {
+  for (int i = 0, end = execute_launch.getNumResults(); i < end; ++i) {
     if (output_fused[i]) {
       infos.old_to_new_output_mapping[i] = -1;
     } else {
@@ -375,7 +375,7 @@ void ReplaceParallelExecute(tf_device::ParallelExecuteOp parallel_execute,
   // Replace the uses of the original parallel_execute for the region containing
   // the merged execute.
   auto old_region_results = parallel_execute.GetRegionOutputs(region_index);
-  for (int i = 0; i < infos.old_to_new_output_mapping.size(); ++i) {
+  for (int i = 0, end = infos.old_to_new_output_mapping.size(); i < end; ++i) {
     if (infos.old_to_new_output_mapping[i] < 0) continue;
     old_region_results[i].replaceAllUsesWith(new_parallel_execute_op->getResult(
         infos.old_to_new_output_mapping[i] + num_results_before_region));
@@ -407,7 +407,7 @@ void ReplaceExecute(tf_device::LaunchOp execute_launch,
                     tf_device::LaunchOp merged_execute_launch,
                     const VariableAccessesForTPUExecute& infos) {
   // Replace the uses.
-  for (int i = 0; i < infos.old_to_new_output_mapping.size(); ++i) {
+  for (int i = 0, end = infos.old_to_new_output_mapping.size(); i < end; ++i) {
     if (infos.old_to_new_output_mapping[i] < 0) continue;
     execute_launch.getResult(i).replaceAllUsesWith(
         merged_execute_launch.getResult(infos.old_to_new_output_mapping[i]));

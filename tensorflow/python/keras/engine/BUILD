@@ -90,8 +90,6 @@ py_library(
         "//tensorflow/python:control_flow_v2_func_graphs",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:init_ops_v2",
         "//tensorflow/python:tf2",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
@@ -323,6 +321,21 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "keras_tensor_test",
+    size = "small",
+    srcs = ["keras_tensor_test.py"],
+    python_version = "PY3",
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
     name = "input_spec_test",
     size = "small",
     srcs = ["input_spec_test.py"],
@@ -529,6 +542,23 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "input_layer_test",
+    size = "medium",
+    srcs = ["input_layer_test.py"],
+    python_version = "PY3",
+    shard_count = 3,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        ":base_layer",
+        ":engine",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
     ],
 )
 

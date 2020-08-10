@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 
 namespace mlir {
@@ -90,8 +91,7 @@ class TensorFlowType : public Type {
 
 // Returns true if the specified type is a valid TensorFlow element type.
 static inline bool IsValidTFElementType(Type type) {
-  return type.isa<ComplexType>() || type.isa<FloatType>() ||
-         type.isa<IntegerType>() || type.isa<TensorFlowType>();
+  return type.isa<ComplexType, FloatType, IntegerType, TensorFlowType>();
 }
 
 // Returns true if this is a valid TensorFlow tensor type.
@@ -110,9 +110,10 @@ namespace detail {
 //   - `static unsigned getTypeKind()` that returns the (fixed) kind of the
 //     type.
 template <typename Derived>
-class TensorFlowTypeImpl : public Type::TypeBase<Derived, TensorFlowType> {
+class TensorFlowTypeImpl
+    : public Type::TypeBase<Derived, TensorFlowType, TypeStorage> {
  public:
-  using Base = typename Type::TypeBase<Derived, TensorFlowType>;
+  using Base = typename Type::TypeBase<Derived, TensorFlowType, TypeStorage>;
   using TFBase = TensorFlowTypeImpl<Derived>;
   using Base::Base;
 
@@ -164,6 +165,17 @@ class TensorFlowRefType : public TensorFlowType {
 // type.
 static inline Type GetDefaultTypeOf(TensorFlowRefType type) {
   return type.RemoveRef();
+}
+
+// Returns the element type if `type` is a `ShapedType` and the type itself
+// otherwise, converting `TensorFlowRef` type to corresponding `TensorFlow` or
+// standard type if necessary.
+static inline Type GetElementTypeOrSelfResolveRef(Type type) {
+  Type element_type = mlir::getElementTypeOrSelf(type);
+  if (auto ref_type = element_type.dyn_cast<mlir::TF::TensorFlowRefType>()) {
+    element_type = ref_type.RemoveRef();
+  }
+  return element_type;
 }
 
 #define HANDLE_TF_TYPE(tftype, enumerant, name)                          \

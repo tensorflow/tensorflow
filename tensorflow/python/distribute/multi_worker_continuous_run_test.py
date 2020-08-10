@@ -127,4 +127,4 @@ class MultiWorkerContinuousRunTest(test.TestCase, parameterized.TestCase):
 
 
 if __name__ == '__main__':
-  multi_process_runner.test_main(barrier_parties=NUM_WORKERS)
+  multi_process_runner.test_main()

@@ -32,6 +32,7 @@ from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
@@ -182,7 +183,7 @@ class LoadTest(test.TestCase):
     return path
 
   def test_multi_meta_graph_loading(self):
-    with self.assertRaisesRegexp(ValueError, "2 MetaGraphs"):
+    with self.assertRaisesRegex(ValueError, "2 MetaGraphs"):
       load.load(self._v1_multi_metagraph_saved_model())
     first_imported = load.load(self._v1_multi_metagraph_saved_model(),
                                tags=["first"])
@@ -191,9 +192,9 @@ class LoadTest(test.TestCase):
                          first_start=constant_op.constant(2.))))
     second_imported = load.load(self._v1_multi_metagraph_saved_model(),
                                 tags=set(["second"]))
-    with self.assertRaisesRegexp(TypeError, "second_start"):
+    with self.assertRaisesRegex(TypeError, "second_start"):
       second_imported.signatures["second_key"](x=constant_op.constant(2.))
-    with self.assertRaisesRegexp(TypeError, "second_start"):
+    with self.assertRaisesRegex(TypeError, "second_start"):
       second_imported.signatures["second_key"](
           second_start=constant_op.constant(2.),
           x=constant_op.constant(2.))
@@ -424,7 +425,7 @@ class LoadTest(test.TestCase):
 
   def test_unfed_placeholder_exception(self):
     path = self._unfed_placeholder_signature()
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         lift_to_graph.UnliftableError,
         "signature needs an input for each placeholder.*\n\nUnable to lift"):
       load.load(path)
@@ -629,6 +630,15 @@ class LoadTest(test.TestCase):
         self.evaluate(
             imported.signatures["serving_default"](constant_op.constant(2.))),
         {"y": [10, 8, 6, 4, 2, 0]})
+
+  def test_structured_input_signature(self):
+    path = self._v1_single_metagraph_saved_model(False)
+    imported = load.load(path)
+    args, kwargs = (
+        imported.signatures["serving_default"].structured_input_signature)
+    self.assertEqual(args, ())
+    self.assertAllEqual(
+        kwargs, {"start": tensor_spec.TensorSpec(shape=None, name="start")})
 
 
 if __name__ == "__main__":

@@ -18,8 +18,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/rewrite_utils.h"
 #include "tensorflow/core/lib/random/random.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -31,10 +33,18 @@ namespace data {
 /* static */ constexpr const char* const OptimizeDatasetOp::kDatasetType;
 /* static */ constexpr const char* const OptimizeDatasetOp::kInputDataset;
 /* static */ constexpr const char* const OptimizeDatasetOp::kOptimizations;
+/* static */ constexpr const char* const
+    OptimizeDatasetOp::kOptimizationsEnabled;
+/* static */ constexpr const char* const
+    OptimizeDatasetOp::kOptimizationsDisabled;
+/* static */ constexpr const char* const
+    OptimizeDatasetOp::kOptimizationsDefault;
 /* static */ constexpr const char* const OptimizeDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const OptimizeDatasetOp::kOutputShapes;
 /* static */ constexpr const char* const
     OptimizeDatasetOp::kOptimizationConfigs;
+/* static */ constexpr const char* const OptimizeDatasetOp::kOptimizeDatasetV1;
+/* static */ constexpr const char* const OptimizeDatasetOp::kOptimizeDatasetV2;
 
 constexpr char kOptimizerName[] = "tf_data_meta_optimizer";
 constexpr char kOptimizers[] = "optimizers";
@@ -42,6 +52,12 @@ constexpr char kOptimizerConfigs[] = "optimizer_configs";
 
 OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
     : UnaryDatasetOpKernel(ctx) {
+  auto& op_name = ctx->def().op();
+  if (op_name == kOptimizeDatasetV1) {
+    op_version_ = 1;
+  } else if (op_name == kOptimizeDatasetV2) {
+    op_version_ = 2;
+  }
   OP_REQUIRES_OK(ctx,
                  ctx->GetAttr(kOptimizationConfigs, &optimization_configs_));
 }
@@ -49,8 +65,67 @@ OptimizeDatasetOp::OptimizeDatasetOp(OpKernelConstruction* ctx)
 void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                     DatasetBase** output) {
   std::vector<tstring> optimizations;
-  OP_REQUIRES_OK(
-      ctx, ParseVectorArgument<tstring>(ctx, kOptimizations, &optimizations));
+  if (op_version_ == 1) {
+    OP_REQUIRES_OK(
+        ctx, ParseVectorArgument<tstring>(ctx, kOptimizations, &optimizations));
+  } else if (op_version_ == 2) {
+    std::vector<tstring> optimizations_enabled, optimizations_disabled,
+        optimizations_default;
+    OP_REQUIRES_OK(ctx, ParseVectorArgument<tstring>(ctx, kOptimizationsEnabled,
+                                                     &optimizations_enabled));
+    OP_REQUIRES_OK(ctx,
+                   ParseVectorArgument<tstring>(ctx, kOptimizationsDisabled,
+                                                &optimizations_disabled));
+    OP_REQUIRES_OK(ctx, ParseVectorArgument<tstring>(ctx, kOptimizationsDefault,
+                                                     &optimizations_default));
+
+    string job_name = port::JobName();
+    if (job_name.empty()) {
+      // If `job_name` is empty, apply the enabled and default optimizations
+      // directly.
+      optimizations.insert(optimizations.end(), optimizations_enabled.begin(),
+                           optimizations_enabled.end());
+      optimizations.insert(optimizations.end(), optimizations_default.begin(),
+                           optimizations_default.end());
+    } else {
+      // The map that stores the experiment names and for how much percentage
+      // of the jobs, the experiments will be randomly turned on.
+      //
+      // This is currently empty; we have no live experiments yet.
+      absl::flat_hash_map<string, uint64> live_experiments;
+
+      const char* opt_ins_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
+      const char* opt_outs_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
+      string opt_ins_raw;
+      if (opt_ins_raw_cs != nullptr) {
+        opt_ins_raw = string(opt_ins_raw_cs);
+      }
+      string opt_outs_raw;
+      if (opt_outs_raw_cs != nullptr) {
+        opt_outs_raw = string(opt_outs_raw_cs);
+      }
+      auto hash_func = [](const string& str) { return Hash64(str); };
+      optimizations = SelectOptimizations(
+          job_name, opt_ins_raw, opt_outs_raw, live_experiments,
+          optimizations_enabled, optimizations_disabled, optimizations_default,
+          hash_func);
+
+      // Log the experiments that will be applied.
+      if (!live_experiments.empty() && VLOG_IS_ON(1)) {
+        VLOG(1) << "The input pipeline is subject to tf.data experiment. "
+                   "Please see `go/tf-data-experiments` for more details.";
+
+        for (auto& pair : live_experiments) {
+          string experiment = pair.first;
+          if (std::find(optimizations.begin(), optimizations.end(),
+                        experiment) != optimizations.end()) {
+            VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
+            metrics::RecordTFDataExperiment(experiment);
+          }
+        }
+      }
+    }
+  }
 
   auto config_factory = [this, &optimizations]() {
     return CreateConfig(optimizations, optimization_configs_);
@@ -94,6 +169,8 @@ RewriterConfig OptimizeDatasetOp::CreateConfig(
 
 namespace {
 REGISTER_KERNEL_BUILDER(Name("OptimizeDataset").Device(DEVICE_CPU),
+                        OptimizeDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("OptimizeDatasetV2").Device(DEVICE_CPU),
                         OptimizeDatasetOp);
 }  // namespace
 }  // namespace data

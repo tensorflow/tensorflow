@@ -21,6 +21,7 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_CUDA_CUDA_BLAS_H_
 
 #include "absl/synchronization/mutex.h"
+#include "third_party/gpus/cuda/include/cublas_v2.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/stream_executor/blas.h"
 #include "tensorflow/stream_executor/host_or_device_scalar.h"
@@ -83,25 +84,16 @@ class CUDABlas : public blas::BlasSupport {
   template <typename FuncT, typename... Args>
   bool DoBlasInternalImpl(FuncT cublas_func, Stream *stream,
                           bool pointer_mode_host, bool err_on_failure,
-                          bool use_tensor_op_math, Args... args);
+                          cublasMath_t math_type, Args... args);
 
-  // Convenience functions that call DoBlasInternalImpl with different values
-  // for err_on_failure.
+  // Convenience functions that call DoBlasInternalImpl with err_on_failure=true
+  // and math_type=CUBLAS_DEFAULT_MATH.
   template <typename FuncT, typename... Args>
   bool DoBlasInternal(FuncT cublas_func, Stream *stream, bool pointer_mode_host,
                       Args... args) {
     return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/true, /*use_tensor_ops=*/false,
+                              /*err_on_failure=*/true, CUBLAS_DEFAULT_MATH,
                               args...);
-  }
-  template <typename FuncT, typename... Args>
-  bool DoBlasInternalFailureOK(FuncT cublas_func, Stream *stream,
-                               bool pointer_mode_host, Args... args) {
-    // Tensor ops are hard-coded off in this path, but can still be enabled with
-    // a specific algorithm choice as in DoBlasGemmWithAlgorithmImpl().
-    return DoBlasInternalImpl(cublas_func, stream, pointer_mode_host,
-                              /*err_on_failure=*/false,
-                              /*use_tensor_ops=*/false, args...);
   }
 
   // A helper function to implement DoBlasGemmBatched interfaces for generic

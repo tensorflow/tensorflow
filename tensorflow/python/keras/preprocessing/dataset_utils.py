@@ -45,7 +45,7 @@ def index_directory(directory,
         valid files found in the directory. Labels should be sorted according
         to the alphanumeric order of the image file paths
         (obtained via `os.walk(directory)` in Python).
-    formats: Whitelist of file extensions to index (e.g. ".jpg", ".txt").
+    formats: Allowlist of file extensions to index (e.g. ".jpg", ".txt").
     class_names: Only valid if "labels" is "inferred". This is the explict
         list of class names (must match names of subdirectories). Used
         to control the order of the classes
@@ -136,7 +136,7 @@ def index_subdirectory(directory, class_indices, follow_links, formats):
     class_indices: dict mapping class names to their index.
     follow_links: boolean, whether to recursively follow subdirectories
       (if False, we only list top-level images in `directory`).
-    formats: Whitelist of file extensions to index (e.g. ".jpg", ".txt").
+    formats: Allowlist of file extensions to index (e.g. ".jpg", ".txt").
 
   Returns:
     tuple `(filenames, labels)`. `filenames` is a list of relative file
@@ -189,6 +189,16 @@ def get_training_or_validation_split(samples, labels, validation_split, subset):
 
 
 def labels_to_dataset(labels, label_mode, num_classes):
+  """Create a tf.data.Dataset from the list/tuple of labels.
+
+  Args:
+    labels: list/tuple of labels to be converted into a tf.data.Dataset.
+    label_mode: - 'binary' indicates that the labels (there can be only 2) are
+      encoded as `float32` scalars with values 0 or 1 (e.g. for
+      `binary_crossentropy`). - 'categorical' means that the labels are mapped
+      into a categorical vector. (e.g. for `categorical_crossentropy` loss).
+    num_classes: number of classes of labels.
+  """
   label_ds = dataset_ops.Dataset.from_tensor_slices(labels)
   if label_mode == 'binary':
     label_ds = label_ds.map(
@@ -199,7 +209,16 @@ def labels_to_dataset(labels, label_mode, num_classes):
 
 
 def check_validation_split_arg(validation_split, subset, shuffle, seed):
-  """Raise errors in case of invalid argument values."""
+  """Raise errors in case of invalid argument values.
+
+  Args:
+    shuffle: Whether to shuffle the data. Either True or False.
+    seed: random seed for shuffling and transformations.
+    validation_split: float between 0 and 1, fraction of data to reserve for
+      validation.
+    subset: One of "training" or "validation". Only used if `validation_split`
+      is set.
+  """
   if validation_split and not 0 < validation_split < 1:
     raise ValueError(
         '`validation_split` must be between 0 and 1, received: %s' %
