@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -41,18 +42,19 @@ static std::vector<int> GetResourceVariableIndices(OpKernelContext* ctx) {
 }
 
 Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
-                                 const XlaDevice::Metadata& metadata,
+                                 XlaCompilationCache* cache,
                                  const XlaCompiler::CompilationResult* result,
                                  xla::LocalExecutable* executable,
                                  const ResourceVarsSnapshot& variable_args) {
-  xla::LocalClient* client = metadata.client();
+  xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
-  // Builds an XLA allocator for the device.
   XlaComputationLaunchContext launch_context(
       client, client->backend().memory_allocator(),
       client->default_device_ordinal(),
-      /*allocate_xla_tensors=*/true,
-      /*use_multiple_streams=*/metadata.UseMultipleStreams());
+      /*allocate_xla_tensors=*/platform_info_.xla_device_metadata() != nullptr,
+      platform_info_.xla_device_metadata()
+          ? platform_info_.xla_device_metadata()->UseMultipleStreams()
+          : false);
 
   std::map<int, const Tensor*> snapshot_ptrs;
   for (auto& p : variable_args) {
@@ -70,7 +72,6 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
 
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
-  TF_RET_CHECK(stream);
 
   VLOG(2) << "Executing computation: " << name();
   xla::ExecutableRunOptions run_options;
@@ -116,9 +117,9 @@ Status XlaCompileOnDemandOp::ShouldArgumentBeConstant(
 }
 
 Status XlaCompileOnDemandOp::Compile(
-    OpKernelContext* ctx, const XlaDevice::Metadata& metadata,
-    const XlaCompiler::CompilationResult** result,
-    ResourceVarsSnapshot* variable_args, xla::LocalExecutable** executable) {
+    OpKernelContext* ctx, const XlaCompiler::CompilationResult** result,
+    XlaCompilationCache** cache, ResourceVarsSnapshot* variable_args,
+    xla::LocalExecutable** executable) {
   std::map<int, Tensor> constant_arguments;
   for (int64 i = 0; i < ctx->num_inputs(); ++i) {
     const Tensor& device_tensor = ctx->input(i);
@@ -168,24 +169,16 @@ Status XlaCompileOnDemandOp::Compile(
   ResourceMgr* rm = ctx->resource_manager();
   CHECK(rm);
 
-  XlaCompilationCache* cache;
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaCompilationCache>(
-      rm->default_container(), "xla_cache", &cache,
-      [&](XlaCompilationCache** cache) {
-        *cache = new XlaCompilationCache(metadata.client(),
-                                         metadata.jit_device_type());
-        return Status::OK();
+      rm->default_container(), "xla_cache", cache,
+      [&](XlaCompilationCache** write_into_cache) {
+        return BuildXlaCompilationCache(ctx, platform_info_, write_into_cache);
       }));
-  // Hold the reference to the JIT during evaluation. (We could probably
-  // free it sooner because the ResourceMgr will retain a reference, but
-  // this is more obviously correct.)
-  core::ScopedUnref cache_ref(cache);
 
-  XlaCompiler::Options options;
-  options.device_type = metadata.jit_device_type();
-  options.client = metadata.client();
-  options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
-  options.shape_representation_fn = metadata.shape_representation_fn();
+  absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
+  XlaCompiler::Options options =
+      GenerateCompilerOptions(*cache, ctx, platform_info_,
+                              /*has_ref_vars=*/true, &tf_allocator_adapter);
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
@@ -206,19 +199,23 @@ Status XlaCompileOnDemandOp::Compile(
         constant_arguments, variable_infos, ctx, &args));
   }
 
-  return cache->CompileSingleOp(options, args, ctx, compile_options, result,
-                                executable);
+  return (*cache)->CompileSingleOp(options, args, ctx, compile_options, result,
+                                   executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   const XlaCompiler::CompilationResult* result;
   xla::LocalExecutable* executable;
-  const XlaDevice::Metadata* metadata;
-  OP_REQUIRES_OK(ctx, XlaDevice::GetMetadata(ctx, &metadata));
   ResourceVarsSnapshot variable_args;
+  XlaCompilationCache* cache;
   OP_REQUIRES_OK(ctx,
-                 Compile(ctx, *metadata, &result, &variable_args, &executable));
-  OP_REQUIRES_OK(ctx, Run(ctx, *metadata, result, executable, variable_args));
+                 Compile(ctx, &result, &cache, &variable_args, &executable));
+
+  // Hold the reference to the JIT during evaluation. (We could probably
+  // free it sooner because the ResourceMgr will retain a reference, but
+  // this is more obviously correct.)
+  core::ScopedUnref cache_ref(cache);
+  OP_REQUIRES_OK(ctx, Run(ctx, cache, result, executable, variable_args));
 }
 
 }  // namespace tensorflow

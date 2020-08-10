@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/core/framework/function.h"
@@ -35,7 +36,8 @@ namespace tensorflow {
 // vanilla TensorFlow op as long as the bridge supports it.
 class XlaCompileOnDemandOp : public OpKernel {
  public:
-  explicit XlaCompileOnDemandOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+  explicit XlaCompileOnDemandOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx), platform_info_(XlaPlatformInfoFromContext(ctx)) {}
   void Compute(OpKernelContext* ctx) override;
 
  private:
@@ -46,14 +48,18 @@ class XlaCompileOnDemandOp : public OpKernel {
   Status MustArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx,
                                 FunctionLibraryRuntime* flib_runtime,
                                 bool* result);
-  Status Compile(OpKernelContext* ctx, const XlaDevice::Metadata& metadata,
+  Status Compile(OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** result,
+                 XlaCompilationCache** cache,
                  ResourceVarsSnapshot* variable_args,
                  xla::LocalExecutable** executable);
-  Status Run(OpKernelContext* ctx, const XlaDevice::Metadata& metadata,
+
+  Status Run(OpKernelContext* ctx, XlaCompilationCache* cache,
              const XlaCompiler::CompilationResult* result,
              xla::LocalExecutable* executable,
              const ResourceVarsSnapshot& variable_args);
+
+  const XlaPlatformInfo platform_info_;
 };
 
 }  // namespace tensorflow
