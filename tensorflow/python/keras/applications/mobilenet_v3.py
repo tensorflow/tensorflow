@@ -348,7 +348,7 @@ def MobileNetV3(stack_fn,
   return model
 
 
-@keras_export('keras.applications.MobileNetV3Samll')
+@keras_export('keras.applications.MobileNetV3Small')
 def MobileNetV3Small(input_shape=None,
                      alpha=1.0,
                      minimalistic=False,
