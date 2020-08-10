@@ -53,11 +53,12 @@ class AutoCastVariable(variables.Variable, core.Tensor):
   called.
   """
 
-  def __init__(self, variable):
+  def __init__(self, variable, op=None):
     """Creates an AutoCastVariable instance.
 
     Args:
       variable: A floating-point resource variable to wrap.
+      op: Optional operation of this variable.
 
     Raises:
       ValueError: If `variable` is not a floating-point resource variable
@@ -69,7 +70,7 @@ class AutoCastVariable(variables.Variable, core.Tensor):
       raise ValueError('variable must be a floating point variable but has '
                        'type: %s' % variable.dtype.name)
     self._variable = variable
-    self._op = None
+    self._op = op
 
   def _should_cast(self):
     """Returns True if this variable should be casted when accessed."""
@@ -198,8 +199,7 @@ class AutoCastVariable(variables.Variable, core.Tensor):
     if ops.executing_eagerly_outside_functions():
       assign_op = update_fn(value, use_locking, name, False)
       if read_value:
-        self._op = assign_op
-        return self
+        return create_autocast_variable(self._variable, op=assign_op)
       return assign_op
 
     # Fallback to wrapping the returned variable in graph mode if possible
@@ -466,7 +466,7 @@ ops.register_tensor_conversion_function(AutoCastVariable,
                                         AutoCastVariable._dense_var_to_tensor)  # pylint:disable=protected-access
 
 
-def create_autocast_variable(variable):
+def create_autocast_variable(variable, op=None):
   """Creates an AutoCastVariable that wraps another variable.
 
   This typically just returns `AutoCastVariable(variable)`. But, if the variable
@@ -478,13 +478,14 @@ def create_autocast_variable(variable):
 
   Args:
     variable: A floating-point resource variable to wrap.
+    op: Optional operation of this variable.
 
   Returns:
     An AutoCastVariable that wraps the variable.
   """
   if not isinstance(variable, (distribute_values.DistributedVariable,
                                ps_distribute_values.AggregatingVariable)):
-    return AutoCastVariable(variable)
+    return AutoCastVariable(variable, op=op)
 
   class AutoCastDistributedVariable(AutoCastVariable, variable.__class__):
     """An AutoCastVariable that also subclasses from variable.__class__.
@@ -506,4 +507,4 @@ def create_autocast_variable(variable):
              ).format(v=self)
       # pylint: enable=missing-format-attribute
 
-  return AutoCastDistributedVariable(variable)
+  return AutoCastDistributedVariable(variable, op=op)
