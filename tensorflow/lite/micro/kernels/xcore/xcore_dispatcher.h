@@ -7,7 +7,7 @@
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_device_memory.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_planning.h"
-#include "tensorflow/lite/micro/kernels/xcore/xcore_reporter.h"
+#include "tensorflow/lite/micro/micro_error_reporter.h"
 
 #ifdef XCORE
 extern "C" {
