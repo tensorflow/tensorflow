@@ -41,13 +41,14 @@ TfLiteStatus Dispatcher::JoinTasks() {
   int begin = 0;
 
   if (use_current_thread_) {
-    (tasks_.function)(tasks_.arguments[begin]);
+    // reserves the first task to be spawned later in this thread
     begin++;
   }
 
   int remaining_tasks = tasks_.size - begin;
 
   if (remaining_tasks > 0) {
+    // add tasks to the thread group
     size_t stack_offset = 0;
     size_t stack_words = tasks_.stack_size / kBytesPerStackword;
     for (int i = begin; i < tasks_.size; i++) {
@@ -56,8 +57,19 @@ TfLiteStatus Dispatcher::JoinTasks() {
       stack_offset += tasks_.stack_size;
     }
 
+    // spawn the thread group
     thread_group_start(group_);
+
+    if (use_current_thread_) {
+      // spawn the first task in this thread
+      (tasks_.function)(tasks_.arguments[0]);
+    }
+
+    // wait for the thread group
     thread_group_wait(group_);
+  } else {
+    // spawn the only task in this thread
+    (tasks_.function)(tasks_.arguments[0]);
   }
 
   tasks_.size = 0;
@@ -79,12 +91,8 @@ Dispatcher::~Dispatcher() {}
 TfLiteStatus Dispatcher::JoinTasks() {
   if (tasks_.size == 0) return kTfLiteOk;
 
+  // NOTE: use_current_thread_ is ignored on non-xcore targets
   int begin = 0;
-
-  if (use_current_thread_) {
-    (tasks_.function)(tasks_.arguments[begin]);
-    begin++;
-  }
 
   // Start threads
   for (int i = begin; i < tasks_.size; i++) {
