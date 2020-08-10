@@ -101,6 +101,7 @@
     * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
       as an alternative to accepting a `callable` loss.
     * Added `beta` parameter to FTRL optimizer to match paper.
+    * Added `mobilenet_v3` to keras application model.
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
