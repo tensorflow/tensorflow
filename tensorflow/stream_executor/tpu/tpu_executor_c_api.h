@@ -203,6 +203,10 @@ int TpuTopology_ChipBounds_Z(void* tpu_topology);
 bool TpuTopology_HasChip(void* tpu_topology, int x, int y, int z);
 void* TpuTopology_Core(void* tpu_topology, int x, int y, int z,
                        TpuCoreTypeEnum tpu_core_type, int index);
+int TpuTopology_NumCores(void* tpu_topology, TpuCoreTypeEnum tpu_core_type);
+// 'cores' should be a preallocated array of size TpuTopology_NumCores.
+void TpuTopology_Cores(void* tpu_topology, TpuCoreTypeEnum tpu_core_type,
+                       void** cores);
 int TpuTopology_IdForHost(void* tpu_topology, int x, int y, int z);
 void TpuCoreLocation_ChipCoordinates(void* tpu_core_location, int* x, int* y,
                                      int* z);
@@ -357,6 +361,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Z);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_HasChip);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Core);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_NumCores);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Cores);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_IdForHost);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates);
