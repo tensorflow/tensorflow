@@ -955,24 +955,47 @@ class ShapeNPartialStaticInputShape : public OpRewritePattern<ShapeNOp> {
   using OpRewritePattern<ShapeNOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(ShapeNOp op,
                                 PatternRewriter &rewriter) const override {
+    // ShapeNOp::fold handles this case.
     if (op.getNumOperands() == 0) return success();
     int width = op.getType(0)
                     .cast<ShapedType>()
                     .getElementType()
                     .getIntOrFloatBitWidth();
-    BoolAttr use32Bit = BoolAttr::get(width == 32, op.getContext());
 
-    SmallVector<Value, 4> results;
-    for (Value input : op.getOperands()) {
-      Value shape;
-      if (OpFoldResult result = ConvertShapeToAttr(input.getType(), width)) {
-        shape =
-            rewriter.create<TF::ConstOp>(op.getLoc(), result.get<Attribute>());
+    SmallVector<Value, 4> results(op.getNumOperands());
+    SmallVector<int64_t, 4> dynamic_indices;
+    SmallVector<Value, 4> dynamic_inputs;
+    SmallVector<Type, 4> result_types;
+    for (auto e : llvm::enumerate(op.getOperands())) {
+      if (Attribute result = ConvertShapeToAttr(e.value().getType(), width)) {
+        results[e.index()] =
+            rewriter.create<TF::ConstOp>(op.getLoc(), result);
       } else {
-        shape = rewriter.create<TF::ShapeOp>(op.getLoc(), input, use32Bit);
+        dynamic_indices.push_back(e.index());
+        dynamic_inputs.push_back(e.value());
+        result_types.push_back(op.getType(e.index()));
       }
-      results.push_back(shape);
     }
+
+    if (dynamic_inputs.size() == op.getNumOperands()) {
+      // Cannot canonicalize ShapeN if all inputs are dynamic.
+      return failure();
+    }
+
+    // Create a ShapeOp when there is only one dynamic input.
+    // Or create a ShapeNOp when there are two or more dynamic inputs.
+    if (dynamic_inputs.size() == 1) {
+      results[dynamic_indices[0]] = rewriter.create<TF::ShapeOp>(
+          op.getLoc(), result_types[0], dynamic_inputs[0]);
+    } else if (dynamic_inputs.size() >= 2) {
+      auto dynamic_shape_n = rewriter.create<TF::ShapeNOp>(
+          op.getLoc(), result_types, dynamic_inputs);
+      for (auto index_result :
+           llvm::zip(dynamic_indices, dynamic_shape_n.getResults())) {
+        results[std::get<0>(index_result)] = std::get<1>(index_result);
+      }
+    }
+
     rewriter.replaceOp(op, results);
     return success();
   }

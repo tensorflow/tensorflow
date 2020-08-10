@@ -89,18 +89,36 @@ func @testEmptybf16() -> (tensor<5xbf16>) {
 }
 
 // CHECK-LABEL: func @testShapeN
-func @testShapeN(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>, %arg3: tensor<1x32x32xf32>) -> (tensor<0xi64>, tensor<4xi64>, tensor<4xi64>, tensor<?xi64>, tensor<3xi64>) {
+func @testShapeN(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>) -> (tensor<0xi64>, tensor<4xi64>) {
 
   // CHECK: %[[SHAPE0:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>}
   // CHECK: %[[SHAPE1:.*]] = "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi64>}
   %0:2 = "tf.ShapeN"(%arg0, %arg1) : (tensor<f32>, tensor<1x32x32x16xf32>) -> (tensor<0xi64>, tensor<4xi64>)
 
-  // CHECK: %[[SHAPE3:.*]] = "tf.Const"() {value = dense<[1, 32, 32]> : tensor<3xi64>}
-  // CHECK: %[[SHAPE2:.*]] = "tf.Shape"(%arg2) : (tensor<*xf32>) -> tensor<?xi64>
-  %1:3 = "tf.ShapeN"(%arg1, %arg2, %arg3) : (tensor<1x32x32x16xf32>, tensor<*xf32>, tensor<1x32x32xf32>) -> (tensor<4xi64>, tensor<?xi64>, tensor<3xi64>)
+  // CHECK: return %[[SHAPE0]], %[[SHAPE1]]
+  return %0#0, %0#1 : tensor<0xi64>, tensor<4xi64>
+}
 
-  // CHECK: return %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE1]], %[[SHAPE2]], %[[SHAPE3]]
-  return %0#0, %0#1, %1#0, %1#1, %1#2 : tensor<0xi64>, tensor<4xi64>, tensor<4xi64>, tensor<?xi64>, tensor<3xi64>
+// CHECK-LABEL: func @testShapeNPartialStatic
+func @testShapeNPartialStatic(%arg0: tensor<f32>, %arg1: tensor<2x?x3xf32>, %arg2: tensor<1x32x32x16xf32>, %arg3: tensor<*xf32>) -> (tensor<0xi64>, tensor<3xi64>, tensor<4xi64>, tensor<?xi64>) {
+  // CHECK: %[[SHAPE0:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>}
+  // CHECK: %[[SHAPE2:.*]] = "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi64>}
+  // CHECK: %[[SHAPE13:.*]]:2 = "tf.ShapeN"(%arg1, %arg3) : (tensor<2x?x3xf32>, tensor<*xf32>) -> (tensor<3xi64>, tensor<?xi64>)
+  %0:4 = "tf.ShapeN"(%arg0, %arg1, %arg2, %arg3) : (tensor<f32>, tensor<2x?x3xf32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0xi64>, tensor<3xi64>, tensor<4xi64>, tensor<?xi64>)
+
+  // CHECK: return %[[SHAPE0]], %[[SHAPE13]]#0, %[[SHAPE2]], %[[SHAPE13]]#1
+  return %0#0, %0#1, %0#2, %0#3 : tensor<0xi64>, tensor<3xi64>, tensor<4xi64>, tensor<?xi64>
+}
+
+// CHECK-LABEL: func @testShapeNOneDynamic
+func @testShapeNOneDynamic(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>) -> (tensor<0xi64>, tensor<4xi64>, tensor<?xi64>) {
+  // CHECK: %[[SHAPE0:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>}
+  // CHECK: %[[SHAPE1:.*]] = "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi64>}
+  // CHECK: %[[SHAPE2:.*]] = "tf.Shape"(%arg2) : (tensor<*xf32>) -> tensor<?xi64>
+  %0:3 = "tf.ShapeN"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0xi64>, tensor<4xi64>, tensor<?xi64>)
+
+  // CHECK: return %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
+  return %0#0, %0#1, %0#2 : tensor<0xi64>, tensor<4xi64>, tensor<?xi64>
 }
 
 // CHECK-LABEL: func @testLeakyRelu
