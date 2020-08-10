@@ -942,7 +942,8 @@ GetReshardAllToAllSourceTargetDims(const HloSharding& source,
                                    const HloSharding& target) {
   if (source.IsTileMaximal() || target.IsTileMaximal() ||
       source.tile_assignment().num_dimensions() !=
-          target.tile_assignment().num_dimensions()) {
+          target.tile_assignment().num_dimensions() ||
+      source.NumTiles() != target.NumTiles()) {
     return absl::nullopt;
   }
   // Record partition count to index for indices that have different partition
@@ -1027,6 +1028,7 @@ bool CanReshardWithCollectivePermute(const HloSharding& source,
   return !source.IsTileMaximal() && !target.IsTileMaximal() &&
          source.tile_assignment().dimensions() ==
              target.tile_assignment().dimensions() &&
+         source.ReplicateOnLastTileDim() == target.ReplicateOnLastTileDim() &&
          source.tile_assignment() != target.tile_assignment();
 }
 

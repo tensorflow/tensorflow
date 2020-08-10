@@ -565,6 +565,27 @@ ENTRY entry {
 }
 
 TEST_F(SpmdPartitioningTest,
+       BroadcastBothOldAndNewDimsShardedPartiallySharded) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  param = f32[4,3] parameter(0),
+    sharding={devices=[1,2,4]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+  ROOT broadcast = f32[4,4,3] broadcast(param), dimensions={1,2},
+    sharding={devices=[2,1,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(op::Shape("f32[2,4,2]"),
+            op::Broadcast(AllOf(op::Shape("f32[4,2]"), op::Parameter(0)))));
+}
+
+TEST_F(SpmdPartitioningTest,
        ConvWithParallelDimAndNonParallelSpatialDimPartitioned) {
   const char* const hlo_string = R"(
 HloModule module
@@ -2744,6 +2765,35 @@ ENTRY entry {
 
   EXPECT_THAT(root,
               AllOf(op::Reduce(param0, op::Constant()), op::Shape("f32[64]")));
+}
+
+TEST_F(SpmdPartitioningTest, PartialTiledToPartialTiledReduce) {
+  const char* const hlo_string = R"(
+HloModule module
+
+sum {
+  a = f32[] parameter(0)
+  b = f32[] parameter(1)
+  ROOT add = f32[] add(a, b)
+}
+
+ENTRY entry {
+  %param0 = f32[4,4] parameter(0),
+    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  %constant.1 = f32[] constant(0), sharding={replicated}
+  ROOT %reduce = f32[4] reduce(%param0, %constant.1), dimensions={0},
+    to_apply=%sum,
+    sharding={devices=[2,4]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::AllReduce(op::Reduce(op::Parameter(0), op::Constant())),
+                    op::Shape("f32[2]")));
 }
 
 TEST_F(SpmdPartitioningTest, TiledToTiledTupleReduce) {

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 
 #include <map>
+#include <vector>
 
 #include "absl/algorithm/container.h"
 #include "tensorflow/compiler/xla/array.h"
@@ -775,6 +776,69 @@ std::vector<int64> DevicesForSharding(
                                         device) != available_devices.end();
                      }));
   return devices;
+}
+
+HloSharding PartiallyReplicateTiledShardingOnDims(
+    const HloSharding& sharding, const std::vector<int64>& dims_to_replicate) {
+  if (sharding.IsTileMaximal()) {
+    return sharding;
+  }
+  int64 group_count = 1;
+  for (int64 dim : dims_to_replicate) {
+    if (sharding.ReplicateOnLastTileDim()) {
+      CHECK_LT(dim, sharding.tile_assignment().num_dimensions());
+    }
+    group_count *= sharding.tile_assignment().dim(dim);
+  }
+  if (group_count == 1) {
+    return sharding;
+  }
+  if (group_count == sharding.NumTiles()) {
+    return HloSharding::Replicate();
+  }
+  std::vector<int64> dim_permutation(
+      sharding.tile_assignment().num_dimensions());
+  std::iota(dim_permutation.begin(), dim_permutation.end(), 0);
+  absl::c_sort(dim_permutation, [&](const int64 a, const int64 b) {
+    return absl::c_linear_search(dims_to_replicate, a) <
+           absl::c_linear_search(dims_to_replicate, b);
+  });
+  auto transposed = TransposeSharding(sharding, dim_permutation);
+  auto new_tile = transposed.tile_assignment();
+  std::vector<int64> new_tile_shape(
+      sharding.tile_assignment().dimensions().begin(),
+      sharding.tile_assignment().dimensions().end());
+  for (int64 dim : dims_to_replicate) {
+    new_tile_shape[dim] = 1;
+  }
+  if (sharding.ReplicateOnLastTileDim()) {
+    new_tile_shape.back() *= group_count;
+  } else {
+    new_tile_shape.push_back(group_count);
+  }
+  new_tile.Reshape(new_tile_shape);
+  return HloSharding::PartialTile(new_tile);
+}
+
+HloSharding RemoveShapeDimensions(const HloSharding& sharding,
+                                  const std::vector<int64>& dims_to_remove) {
+  if (sharding.IsTileMaximal() || dims_to_remove.empty()) {
+    return sharding;
+  }
+  std::vector<int64> new_tile_shape;
+  new_tile_shape.reserve(sharding.tile_assignment().num_dimensions() -
+                         dims_to_remove.size());
+  for (int64 i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+    if (absl::c_linear_search(dims_to_remove, i)) {
+      CHECK_EQ(sharding.tile_assignment().dim(i), 1);
+    } else {
+      new_tile_shape.push_back(sharding.tile_assignment().dim(i));
+    }
+  }
+  auto new_tile = sharding.tile_assignment();
+  new_tile.Reshape(new_tile_shape);
+  return sharding.ReplicateOnLastTileDim() ? HloSharding::PartialTile(new_tile)
+                                           : HloSharding::Tile(new_tile);
 }
 
 }  // namespace hlo_sharding_util
