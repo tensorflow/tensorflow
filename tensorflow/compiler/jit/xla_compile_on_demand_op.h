@@ -42,12 +42,6 @@ class XlaCompileOnDemandOp : public OpKernel {
 
  private:
   XlaCompiler::Argument CreateCompilerArgument(OpKernelContext* ctx, int64 i);
-  Status ShouldArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx,
-                                  FunctionLibraryRuntime* flib_runtime,
-                                  bool* result);
-  Status MustArgumentBeConstant(const OpKernel* op_kernel, int64 argument_idx,
-                                FunctionLibraryRuntime* flib_runtime,
-                                bool* result);
   Status Compile(OpKernelContext* ctx,
                  const XlaCompiler::CompilationResult** result,
                  XlaCompilationCache** cache,

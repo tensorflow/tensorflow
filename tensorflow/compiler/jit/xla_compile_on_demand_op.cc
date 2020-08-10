@@ -95,53 +95,29 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   return Status::OK();
 }
 
-Status XlaCompileOnDemandOp::MustArgumentBeConstant(
-    const OpKernel* op_kernel, int64 argument_idx,
-    FunctionLibraryRuntime* flib_runtime, bool* result) {
-  *result = false;
-
-  // TODO(jmolloy): This could be expensive, so memoize.
-  std::vector<int> constant_input_indices;
-  TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
-      op_kernel, &constant_input_indices, flib_runtime));
-  *result = absl::c_binary_search(constant_input_indices, argument_idx);
-  return Status::OK();
-}
-
-// TODO(ycao): Remove the need to call ShouldArgumentBeConstant. Its benefit is
-// not clear yet and it causes heavy constant analysis to run twice.
-Status XlaCompileOnDemandOp::ShouldArgumentBeConstant(
-    const OpKernel* op_kernel, int64 argument_idx,
-    FunctionLibraryRuntime* flib_runtime, bool* result) {
-  return MustArgumentBeConstant(op_kernel, argument_idx, flib_runtime, result);
-}
-
 Status XlaCompileOnDemandOp::Compile(
     OpKernelContext* ctx, const XlaCompiler::CompilationResult** result,
     XlaCompilationCache** cache, ResourceVarsSnapshot* variable_args,
     xla::LocalExecutable** executable) {
   std::map<int, Tensor> constant_arguments;
+
+  std::vector<int> constant_input_indices;
+  TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
+      &ctx->op_kernel(), &constant_input_indices, ctx->function_library()));
+  CHECK(absl::c_is_sorted(constant_input_indices));
+
   for (int64 i = 0; i < ctx->num_inputs(); ++i) {
     const Tensor& device_tensor = ctx->input(i);
     if (const XlaTensor* xla_tensor = XlaTensor::FromTensor(&device_tensor)) {
       if (xla_tensor->has_host_tensor()) {
-        bool should_arg_be_const;
-        TF_RETURN_IF_ERROR(ShouldArgumentBeConstant(&ctx->op_kernel(), i,
-                                                    ctx->function_library(),
-                                                    &should_arg_be_const));
-        if (should_arg_be_const) {
+        if (absl::c_binary_search(constant_input_indices, i)) {
           constant_arguments[i] = xla_tensor->host_tensor();
         }
       }
     }
 
-    if (constant_arguments.count(i) == 0) {
-      bool must_argument_be_const;
-      TF_RETURN_IF_ERROR(MustArgumentBeConstant(&ctx->op_kernel(), i,
-                                                ctx->function_library(),
-                                                &must_argument_be_const));
-
-      if (must_argument_be_const) {
+    if (!constant_arguments.count(i)) {
+      if (absl::c_binary_search(constant_input_indices, i)) {
         // Slow path; the argument is not available as a host constant so we
         // must fetch it synchronously.
         Tensor host_tensor;
