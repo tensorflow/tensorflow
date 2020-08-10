@@ -820,8 +820,8 @@ ConvPowerVR::ConvParams ConvPowerVR::GuessBestParams(
     int block_size = 2;
     if (dst_shape) {
       int task_size = dst_shape->w * dst_shape->b * dst_shape->h * dst_depth;
-      block_size = GetRecommendedBlockSizeForConv(device, definition.precision,
-                                                  task_size);
+      block_size = GetRecommendedBlockSizeForConv(
+          device.info_, definition.precision, task_size);
     }
     if (!x_kernel_is_1 || !y_kernel_is_1) {
       block_size = std::min(block_size, 4);
