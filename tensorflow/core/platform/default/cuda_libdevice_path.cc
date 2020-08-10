@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/strings/match.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 
 #include <stdlib.h>
