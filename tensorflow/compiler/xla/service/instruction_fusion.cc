@@ -420,7 +420,7 @@ class ReversePostOrderFusionQueue : public FusionQueue {
     // We store the original indices of the operands to pass to ShouldFuse.
     std::vector<int64> sorted_operand_numbers;
     sorted_operand_numbers.reserve(instruction->operands().size());
-    for (int i = 0; i < instruction->operands().size(); ++i) {
+    for (int i = 0, end = instruction->operands().size(); i < end; ++i) {
       // This will happen if we have two possible instructions to fuse the
       // same operand into; once the operand is fused into one instruction,
       // the other instruction will get a new get-tuple-element as its

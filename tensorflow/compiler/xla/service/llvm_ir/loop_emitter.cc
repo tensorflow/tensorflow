@@ -67,7 +67,7 @@ static LoopEmitter::BodyEmitter MakeBodyEmitterForMultiOutput(
     CHECK_EQ(target_element->getType()->getStructNumElements(),
              target_arrays.size());
 
-    for (int64 i = 0; i < target_arrays.size(); ++i) {
+    for (int64 i = 0, end = target_arrays.size(); i < end; ++i) {
       target_arrays[i].EmitWriteArrayElement(
           array_index, b->CreateExtractValue(target_element, i), b);
     }
@@ -99,7 +99,7 @@ IrArray::Index LoopEmitter::EmitStaticIndex(ForLoopNest* loop_nest,
   // class so emit loops in order from most-major dimension down to most-minor
   // dimension (of the target shape).
   std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
-  for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+  for (int i = 0, end = LayoutUtil::MinorToMajor(shape_).size(); i < end; ++i) {
     int64 dimension = LayoutUtil::Major(shape_.layout(), i);
     std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
         /*start_index=*/0,
@@ -118,7 +118,7 @@ IrArray::Index LoopEmitter::EmitDynamicIndex(ForLoopNest* loop_nest,
   // class so emit loops in order from most-major dimension down to most-minor
   // dimension (of the target shape).
   std::vector<llvm::Value*> array_multi_index(shape_.dimensions_size());
-  for (int i = 0; i < LayoutUtil::MinorToMajor(shape_).size(); ++i) {
+  for (int i = 0, end = LayoutUtil::MinorToMajor(shape_).size(); i < end; ++i) {
     int64 dimension = LayoutUtil::Major(shape_.layout(), i);
     std::unique_ptr<ForLoop> loop = loop_nest->AddLoop(
         /*suffix=*/absl::StrFormat("dim.%d", dimension),

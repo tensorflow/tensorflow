@@ -96,7 +96,7 @@ Status MapInlinerVisitor::HandleMap(HloInstruction* map) {
           computation_->ReplaceInstruction(map, placed_instruction));
     } else {
       std::vector<HloInstruction*> params;
-      for (int64 o = 0; o < root.operands().size(); o++) {
+      for (int64 o = 0, end = root.operands().size(); o < end; o++) {
         params.push_back(map->operands()[root.operand(o)->parameter_number()]);
       }
       HloInstruction* placed_instruction = computation_->AddInstruction(
