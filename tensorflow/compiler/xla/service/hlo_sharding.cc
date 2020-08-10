@@ -219,8 +219,11 @@ std::vector<int64> HloSharding::TileOffsetForDevice(const Shape& shape,
   if (maximal_) {
     return std::vector<int64>(shape.dimensions_size(), 0);
   }
-
-  CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions());
+  if (replicate_on_last_tile_dim_) {
+    CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions() - 1);
+  } else {
+    CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions());
+  }
   std::vector<int64> index = TileIndexForDevice(device);
   for (int64 i = 0; i < index.size(); ++i) {
     const int64 shape_dim = shape.dimensions(i);

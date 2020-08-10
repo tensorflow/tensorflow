@@ -4348,6 +4348,53 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Shape("f32[4,4,12,32]"), op::Reshape(xpose)));
 }
 
+TEST_F(SpmdPartitioningTest,
+       ElementwiseTest_PartialReplicateToTiledHaloExchange) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  constant = f32[6,3]{1,0}
+    constant({{1,3,7},{5,1,4},{1,2,8},{2,3,7},{5,2,4},{2,2,8}}),
+    sharding={replicated}
+  constant.1 = f32[6,3]{1,0}
+    constant({{2,7,2},{2,9,2},{2,6,2},{3,7,2},{2,9,3},{2,3,2}}),
+    sharding={replicated}
+  multiply = f32[6,3]{1,0} multiply(constant, constant.1),
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  ROOT add = f32[6,3]{1,0} add(multiply, constant.1),
+    sharding={devices=[4,1]0,1,2,3}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto partial_replicate_lhs =
+      AllOf(op::Shape("f32[3,3]"),
+            op::DynamicSlice(op::Constant(), op::Reshape(), op::Constant()));
+  auto partial_replicate_rhs =
+      AllOf(op::Shape("f32[3,3]"),
+            op::DynamicSlice(op::Constant(), op::Reshape(), op::Constant()));
+  auto multiply =
+      AllOf(op::Shape("f32[3,3]"),
+            op::Multiply(partial_replicate_lhs, partial_replicate_rhs));
+  auto right_halo =
+      AllOf(op::Shape("f32[1,3]"), op::CollectivePermute(op::Slice(multiply)));
+  auto add_lhs = AllOf(
+      op::Shape("f32[2,3]"),
+      op::DynamicSlice(
+          op::DynamicSlice(
+              op::Pad(op::Concatenate(multiply, right_halo), op::Constant()),
+              op::Reshape(), op::Constant()),
+          op::Reshape(), op::Constant()));
+  auto add_rhs = AllOf(op::Shape("f32[2,3]"),
+                       op::DynamicSlice(op::Pad(op::Constant(), op::Constant()),
+                                        op::Reshape(), op::Constant()));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("f32[2,3]"), op::Add(add_lhs, add_rhs)));
+}
+
 }  // namespace
 }  // namespace spmd
 }  // namespace xla
