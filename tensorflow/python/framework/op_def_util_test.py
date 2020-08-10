@@ -87,6 +87,7 @@ class OpDefUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       ("list(any)", 12),
       ("list(int)", [1, "two"]),
       ("list(string)", [1, "two"]),
+      ("tensor", "string that is not a text-formatted TensorProto"),
   ])
   def testConvertError(self, attr_type, value):
     with self.assertRaisesRegex(TypeError, "Failed to convert value"):
