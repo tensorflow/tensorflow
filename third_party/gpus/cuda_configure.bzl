@@ -1068,10 +1068,10 @@ def _create_local_cuda_repository(repository_ctx):
         repository_ctx,
         name = "cuda-bin",
         srcs = [
-            cuda_config.config["cuda_link_stub_dir"] + "link.stub",
-            cuda_config.config["cuda_nvlink_dir"]    + "nvlink"    + file_ext,
-            cuda_config.config["cuda_fatbinary_dir"] + "fatbinary" + file_ext,
-            cuda_config.config["cuda_bin2c_dir"]     + "bin2c"     + file_ext,
+            cuda_config.config["cuda_link_stub_dir"] + "/link.stub",
+            cuda_config.config["cuda_nvlink_dir"]    + "/nvlink"    + file_ext,
+            cuda_config.config["cuda_fatbinary_dir"] + "/fatbinary" + file_ext,
+            cuda_config.config["cuda_bin2c_dir"]     + "/bin2c"     + file_ext,
         ],
         outs = [
             "cuda/bin/" + "crt/link.stub",
@@ -1162,10 +1162,10 @@ def _create_local_cuda_repository(repository_ctx):
     )
     cuda_defines = {}
     cuda_defines["%{builtin_sysroot}"] = tf_sysroot
-    cuda_defines["%{tf_cuda_paths}"] = ""
+    cuda_defines["%{clang_cuda_path}"] = ""
     cuda_defines["%{compiler}"] = "unknown"
     if is_cuda_clang:
-        cuda_defines["%{tf_cuda_paths}"] = cuda_config.config["tf_cuda_paths"]
+        cuda_defines["%{clang_cuda_path}"] = cuda_config.config["cuda_libdevice_dir"]
         cuda_defines["%{compiler}"] = "clang"
 
     host_compiler_prefix = get_host_environ(repository_ctx, _GCC_HOST_COMPILER_PREFIX)

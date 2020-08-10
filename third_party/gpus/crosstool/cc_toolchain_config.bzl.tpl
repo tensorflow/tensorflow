@@ -414,7 +414,7 @@ def _features(cpu, compiler, ctx):
                         with_features = [with_feature_set(features = ["dbg"])],
                     ),
                 ] + _cuda_set(
-                    ctx.attr.cuda_path,
+                    ctx.attr.clang_cuda_path,
                     all_compile_actions(),
                 ) + [
                     flag_set(
@@ -572,7 +572,7 @@ def _features(cpu, compiler, ctx):
                         flag_groups = [flag_group(flags = ["-undefined", "dynamic_lookup"])],
                     ),
                 ] if cpu == "darwin" else []) + _cuda_set(
-                    ctx.attr.cuda_path,
+                    ctx.attr.clang_cuda_path,
                     all_link_actions(),
                 ) + [
                     flag_set(
@@ -1040,7 +1040,7 @@ cc_toolchain_config = rule(
         "host_unfiltered_compile_flags": attr.string_list(),
         "linker_bin_path": attr.string(),
         "builtin_sysroot": attr.string(),
-        "cuda_path": attr.string(),
+        "clang_cuda_path": attr.string(),
         "msvc_cl_path": attr.string(default = "msvc_not_used"),
         "msvc_env_include": attr.string(default = "msvc_not_used"),
         "msvc_env_lib": attr.string(default = "msvc_not_used"),
