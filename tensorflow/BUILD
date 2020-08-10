@@ -882,30 +882,6 @@ genrule(
     visibility = ["//visibility:public"],
 )
 
-# The interface library (tensorflow_framework.dll.if.lib) for linking tensorflow DLL
-# library (tensorflow_framework.dll) on Windows.
-# To learn more about import library (called interface library in Bazel):
-#     https://docs.microsoft.com/en-us/cpp/build/linking-an-executable-to-a-dll?view=vs-2017#linking-implicitly
-filegroup(
-    name = "get_tensorflow_framework_dll_import_lib",
-    srcs = ["//tensorflow:tensorflow_framework.dll"],
-    output_group = "interface_library",
-    visibility = ["//visibility:public"],
-)
-
-# Rename the import library for tensorflow_framework.dll from
-# tensorflow_framework.dll.if.lib to tensorflow_framework.lib
-genrule(
-    name = "tensorflow_framework_dll_import_lib",
-    srcs = [":get_tensorflow_framework_dll_import_lib"],
-    outs = ["tensorflow_framework.lib"],
-    cmd = select({
-        "//tensorflow:windows": "cp -f $< $@",
-        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
-    }),
-    visibility = ["//visibility:public"],
-)
-
 # The interface library (tensorflow_cc.dll.if.lib) for linking tensorflow DLL library (tensorflow_cc.dll) on Windows.
 # To learn more about import library (called interface library in Bazel):
 #     https://docs.microsoft.com/en-us/cpp/build/linking-an-executable-to-a-dll?view=vs-2017#linking-implicitly

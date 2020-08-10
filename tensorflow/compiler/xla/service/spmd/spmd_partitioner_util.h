@@ -347,6 +347,30 @@ absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
 absl::optional<HloOpcode> ParseReductionComputation(
     const HloComputation* reduction_comp);
 
+// Pad the shape from partial replicate shape for `dst_sharding`.
+// If dst_sharding needs more padding and per_shard_size increased in
+// dst_sharding, halo exchange on the right side is needed.
+absl::optional<HloInstruction*> PadFromPartialReplicateShape(
+    HloInstruction* hlo, const Shape& base_shape,
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const std::vector<int64>& expand_tile_dims,
+    const SPMDCollectiveOpsCreator& collective_ops_creator,
+    int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
+
+// Get the compatible sharding from a partial replicate sharding to a given
+// target tile dimensions.
+// Compatible means replicate sharding can transform to the target tile
+// dimensions by dynamic slice.
+// For example, if partial_sharding is
+// {devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+// Target tile dims is {2, 2}, the returned compatible sharding will be
+// sharding={devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}.
+// If patial replicate sharding is not partial replicate or can't reshard to
+// target_tile_dims by dynamic slice, return absl::nullopt.
+absl::optional<HloSharding> PartialReplicateToTileCompatibleSharding(
+    const HloSharding& partial_sharding,
+    const std::vector<int64>& target_tile_dims);
+
 }  // namespace spmd
 }  // namespace xla
 

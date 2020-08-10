@@ -60,7 +60,6 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
-import os
 import traceback
 
 import numpy as np
@@ -972,11 +971,6 @@ def _try_handling_undefineds(
     placeholders, where possible (step 2 above).
   """
   state_modified = False
-
-  # TODO(mdan): Remove once the default option is stable.
-  if os.getenv('AUTOGRAPH_CREATE_SYMBOLS_IN_LOOPS', '1') == '0':
-    _verify_loop_init_vars(init_vars, symbol_names)
-    return False, init_vars
 
   try:
     # Stage an iteration of the loop body in a temporary graph.

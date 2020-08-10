@@ -1197,6 +1197,7 @@ distribute_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/saved_model/model_utils:mode_keys",
         "@absl_py//absl/testing:parameterized",
+        "@wrapt",
     ],
 )
 

@@ -167,8 +167,10 @@ struct ConvertTensorProtoFunctor {
     } else if (PY_STRING_CHECK(value)) {
       result.reset(PyObject_CallObject(tensor_proto, nullptr));
       if (result) {
-        PyObject_CallFunctionObjArgs(text_format_parse, value, result.get(),
-                                     nullptr);
+        if (!PyObject_CallFunctionObjArgs(text_format_parse, value,
+                                          result.get(), nullptr)) {
+          return nullptr;
+        }
       }
     }
     return result;

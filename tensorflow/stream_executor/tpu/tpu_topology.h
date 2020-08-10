@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_TOPOLOGY_H_
 #define TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_TOPOLOGY_H_
 
+#include <vector>
+
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/tpu/c_api_decl.h"
 
@@ -37,6 +39,8 @@ class TpuCoreLocationExternal {
   TpuDimensionsExternal host_coordinates() const;
   int32 index() const;
   int32 Id() const;
+
+  void* impl() const { return core_location_; }
 
  private:
   void* core_location_;
@@ -67,6 +71,7 @@ class TpuTopologyExternal {
   bool HasChip(int x, int y, int z) const;
   TpuCoreLocationExternal Core(int x, int y, int z, TpuCoreTypeEnum core_type,
                                int index) const;
+  std::vector<TpuCoreLocationExternal> cores(TpuCoreTypeEnum core_type) const;
   int IdForHost(TpuDimensionsExternal host) const;
 
  private:

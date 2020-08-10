@@ -255,6 +255,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   Tensor* output = ctx->mutable_output(0);
   const Tensor* input = (col_params.instance.type == REDUCTION_COLLECTIVE ||
                          col_params.instance.type == GATHER_COLLECTIVE ||
+                         col_params.instance.type == PERMUTE_COLLECTIVE ||
                          (col_params.instance.type == BROADCAST_COLLECTIVE &&
                           col_params.is_source))
                             ? &ctx->input(0)

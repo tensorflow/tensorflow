@@ -37,7 +37,9 @@ limitations under the License.
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/tpu/kernels/transfer_ops.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_defs.h"
+#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 #include "tensorflow/stream_executor/tpu/tpu_transfer_manager.h"
 #include "tensorflow/stream_executor/tpu/tpu_transfer_manager_interface.h"
@@ -48,6 +50,23 @@ namespace {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef tensorflow::tpu::NoncopyableBuffer LinearizerBuffer;
 typedef std::deque<LinearizerBuffer> LinearizerBufferList;
+
+// For the given shape, chooses a layout for infeed on TPU. The returned shape
+// has the same dimensions as the original shape, and only the layout is
+// changed.
+xla::Shape GetTPUInfeedLayout(const xla::Shape& shape) {
+  XLA_Shape c_shape;
+  XLA_Shape c_infeed_shape;
+
+  ApiConverter::ToC(shape, &c_shape);
+
+  tpu::ExecutorApiFn()->TpuTransferManager_GetInfeedLayoutFn(&c_shape,
+                                                             &c_infeed_shape);
+  xla::Shape infeed_shape = ApiConverter::FromC(&c_infeed_shape);
+  ApiConverter::Free(&c_shape);
+  ApiConverter::Free(&c_infeed_shape);
+  return infeed_shape;
+}
 
 // Transposes the given tensor using the tensorflow C++ transpose implementation
 // to obtain a XLA literal for the host tensor laid out as the given layout. The

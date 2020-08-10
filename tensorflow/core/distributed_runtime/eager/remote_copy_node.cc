@@ -192,9 +192,20 @@ Status RemoteCopyNode::RunLocalRecv(EagerOperation* op,
   TF_RETURN_IF_ERROR(CreateUncachedKernelAndDeviceOp(op, &kernel));
 
   EagerKernelArgs args;
-  return kernel->Run(/*step_container*/ nullptr, args, outputs,
-                     captured_state_->recv_cancellation(),
-                     /*remote_func_params=*/absl::nullopt);
+  std::vector<EagerKernelRet> rets;
+  TF_RETURN_IF_ERROR(kernel->Run(/*step_container*/ nullptr, args, &rets,
+                                 captured_state_->recv_cancellation(),
+                                 /*remote_func_params=*/absl::nullopt));
+  outputs->clear();
+  for (const auto& ret : rets) {
+    if (ret.index() == 0) {
+      outputs->push_back(absl::get<Tensor>(ret));
+    } else {
+      return errors::Internal(
+          "Expect to receive a Tensor but got a TensorShape.");
+    }
+  }
+  return Status::OK();
 }
 
 void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {

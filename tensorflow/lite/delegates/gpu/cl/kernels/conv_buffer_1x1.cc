@@ -105,8 +105,8 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
   }
 
   int task_size = shape.w * shape.b * shape.h * dst_depth;
-  int block_size =
-      GetRecommendedBlockSizeForConv(device, definition.precision, task_size);
+  int block_size = GetRecommendedBlockSizeForConv(
+      device.info_, definition.precision, task_size);
 
   if (!can_use_flt8 && block_size > 4) {
     block_size = 4;

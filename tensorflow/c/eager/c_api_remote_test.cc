@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/strings/str_cat.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_internal.h"
@@ -115,40 +116,42 @@ void TestRemoteExecute(bool async) {
 TEST(CAPI, RemoteExecute) { TestRemoteExecute(false); }
 TEST(CAPI, RemoteExecuteAsync) { TestRemoteExecute(true); }
 
-string MatMulFunction() {
+string MatMulFunction(const string& matmul_device) {
   tensorflow::FunctionDef def;
   CHECK(tensorflow::protobuf::TextFormat::ParseFromString(
-      "    signature {"
-      "      name: 'MatMulFunction'"
-      "      input_arg {"
-      "        name: 'a'"
-      "        type: DT_FLOAT"
-      "      }"
-      "      input_arg {"
-      "        name: 'b'"
-      "        type: DT_FLOAT"
-      "      }"
-      "      output_arg {"
-      "        name: 'm'"
-      "        type: DT_FLOAT"
-      "      }"
-      "    }"
-      "    node_def {"
-      "      name: 'matmul'"
-      "      op: 'MatMul'"
-      "      input: 'a'"
-      "      input: 'b'"
-      "      attr {"
-      "        key: 'T'"
-      "        value {"
-      "          type: DT_FLOAT"
-      "        }"
-      "      }"
-      "    }"
-      "    ret {"
-      "      key: 'm'"
-      "      value: 'matmul:product'"
-      "    }",
+      absl::StrCat("    signature {"
+                   "      name: 'MatMulFunction'"
+                   "      input_arg {"
+                   "        name: 'a'"
+                   "        type: DT_FLOAT"
+                   "      }"
+                   "      input_arg {"
+                   "        name: 'b'"
+                   "        type: DT_FLOAT"
+                   "      }"
+                   "      output_arg {"
+                   "        name: 'm'"
+                   "        type: DT_FLOAT"
+                   "      }"
+                   "    }"
+                   "    node_def {"
+                   "      name: 'matmul'"
+                   "      op: 'MatMul'"
+                   "      input: 'a'"
+                   "      input: 'b'"
+                   "      device: '",
+                   matmul_device, "'",
+                   "      attr {"
+                   "        key: 'T'"
+                   "        value {"
+                   "          type: DT_FLOAT"
+                   "        }"
+                   "      }"
+                   "    }"
+                   "    ret {"
+                   "      key: 'm'"
+                   "      value: 'matmul:product'"
+                   "    }"),
       &def));
   return def.SerializeAsString();
 }
@@ -157,7 +160,8 @@ string MatMulFunction() {
 // which creates a remote remote input, to simulate a scenario that the remote
 // input is not ready when we start running an op or a function.
 void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func,
-                                   bool heavy_load_on_streaming_rpc) {
+                                   bool heavy_load_on_streaming_rpc,
+                                   bool remote_func_outputs = false) {
   tensorflow::ServerDef server_def = GetServerDef(3);
 
   // This server def has the task index set to 0.
@@ -214,7 +218,8 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func,
 
   TFE_Op* matmul = nullptr;
   if (func) {
-    string function_def = MatMulFunction();
+    const string matmul_device = remote_func_outputs ? task2_name : "";
+    string function_def = MatMulFunction(matmul_device);
     TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
                               status);
     CHECK_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
@@ -250,7 +255,7 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func,
   EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 
   // TODO(gjn): Add support for waiting on async local mirrors
-  if (!remote && !async) {
+  if (!remote && !async && !remote_func_outputs) {
     auto remote_arg =
         tensorflow::TensorHandleFromInterface(tensorflow::unwrap(h1_task2));
     // The input handles should never change since they have been mirrored.
@@ -328,6 +333,19 @@ TEST(CAPI, RemoteExecuteSilentCopiesLocalAsync) {
 TEST(CAPI, RemoteExecuteSilentCopiesLocalAsyncFunc) {
   TestRemoteExecuteSilentCopies(/*async=*/true, /*remote=*/false, /*func=*/true,
                                 /*heavy_load_on_streaming_rpc=*/false);
+}
+// TODO(b/162618595): Enable this test once we remove the check of remote
+// outputs in ProcessFunctionLibraryRuntime.
+TEST(CAPI, DISABLED_RemoteExecuteSilentCopiesLocalFuncRemoteOutputs) {
+  TestRemoteExecuteSilentCopies(/*async=*/false, /*remote=*/false,
+                                /*func=*/true,
+                                /*heavy_load_on_streaming_rpc=*/false,
+                                /*remote_func_outputs=*/true);
+}
+TEST(CAPI, DISABLED_RemoteExecuteSilentCopiesLocalAsyncFuncRemoteOutputs) {
+  TestRemoteExecuteSilentCopies(/*async=*/true, /*remote=*/false, /*func=*/true,
+                                /*heavy_load_on_streaming_rpc=*/false,
+                                /*remote_func_outputs=*/true);
 }
 TEST(CAPI, RemoteExecuteSilentCopiesLocalAsyncFuncOrdering) {
   // A remote input may be not ready when we start running a function. Test that

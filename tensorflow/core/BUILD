@@ -1977,6 +1977,7 @@ cc_library(
         ":lib",
         ":lib_internal",
         "//tensorflow/core/platform:gif",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -2084,13 +2085,9 @@ cc_library(
     copts = tf_copts(),
     linkopts = ["-ldl"],
     deps = [
-        "//tensorflow/core/lib/strings:numbers",
-        "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:gif",
         "//tensorflow/core/platform:logging",
-        "//tensorflow/core/platform:numbers",
-        "//tensorflow/core/platform:strcat",
         "//tensorflow/core/platform:stringpiece",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
