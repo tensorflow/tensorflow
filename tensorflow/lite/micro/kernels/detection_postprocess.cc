@@ -117,20 +117,6 @@ struct OpData {
   int buffer_idx;
   int selected_idx;
 
-  // These are just temporary pointers to scratch buffers, set in each invocation of eval
-  // OpData can then be used to pass them around and the number of parameters can be reduced
-  uint8_t* active_box_candidate;
-  float* decoded_boxes;
-  float* scores;
-  float* score_buffer;
-  float* keep_scores;
-  float* scores_after_regular_non_max_suppression;
-  float* sorted_values;
-  int* keep_indices;
-  int* sorted_indices;
-  int* buffer;
-  int* selected;
-
   // Cached tensor scale and zero point values for quantized operations
   TfLiteQuantizationParams input_box_encodings;
   TfLiteQuantizationParams input_class_predictions;
@@ -388,7 +374,9 @@ TfLiteStatus DecodeCenterSizeBoxes(TfLiteContext* context, TfLiteNode* node,
         0.5f * static_cast<float>(std::exp(box_centersize.w / scale_values.w)) *
         anchor.w;
 
-    auto& box = reinterpret_cast<BoxCornerEncoding*>(op_data->decoded_boxes)[idx];
+    float* decoded_boxes = reinterpret_cast<float*>(
+        context->GetScratchBuffer(context, op_data->decoded_boxes_idx));
+    auto& box = reinterpret_cast<BoxCornerEncoding*>(decoded_boxes)[idx];
     box.ymin = ycenter - half_h;
     box.xmin = xcenter - half_w;
     box.ymax = ycenter + half_h;
@@ -489,15 +477,20 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
   TF_LITE_ENSURE(context, (intersection_over_union_threshold > 0.0f) &&
                               (intersection_over_union_threshold <= 1.0f));
   // Validate boxes
-  TF_LITE_ENSURE(context, ValidateBoxes(op_data->decoded_boxes, num_boxes));
+  float* decoded_boxes = reinterpret_cast<float*>(
+      context->GetScratchBuffer(context, op_data->decoded_boxes_idx));
+
+  TF_LITE_ENSURE(context, ValidateBoxes(decoded_boxes, num_boxes));
 
   // threshold scores
-  int* keep_indices = op_data->keep_indices;
-  float* keep_scores = op_data->keep_scores;
+  int* keep_indices = reinterpret_cast<int*>(
+      context->GetScratchBuffer(context, op_data->keep_indices_idx));
+  float* keep_scores = reinterpret_cast<float*>(
+      context->GetScratchBuffer(context, op_data->keep_scores_idx));
   int num_scores_kept = SelectDetectionsAboveScoreThreshold(
       scores, num_boxes, non_max_suppression_score_threshold, keep_scores, keep_indices);
-
-  int* sorted_indices = op_data->sorted_indices;
+  int* sorted_indices = reinterpret_cast<int*>(
+      context->GetScratchBuffer(context, op_data->sorted_indices_idx));
 
   DecreasingPartialArgSort(keep_scores, num_scores_kept, num_scores_kept,
                             sorted_indices);
@@ -507,7 +500,8 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
   *selected_size = 0;
 
   int num_active_candidate = num_boxes_kept;
-  uint8_t* active_box_candidate = op_data->active_box_candidate;
+  uint8_t* active_box_candidate = reinterpret_cast<uint8_t*>(
+      context->GetScratchBuffer(context, op_data->active_candidate_idx));
 
   for (int row = 0; row < num_boxes_kept; row++) {
     active_box_candidate[row] = 1;
@@ -524,7 +518,7 @@ TfLiteStatus NonMaxSuppressionSingleClassHelper(
     for (int j = i + 1; j < num_boxes_kept; ++j) {
       if (active_box_candidate[j] == 1) {
         float intersection_over_union = ComputeIntersectionOverUnion(
-            op_data->decoded_boxes, keep_indices[sorted_indices[i]],
+            decoded_boxes, keep_indices[sorted_indices[i]],
             keep_indices[sorted_indices[j]]);
 
         if (intersection_over_union > intersection_over_union_threshold) {
@@ -573,14 +567,18 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
   TF_LITE_ENSURE(context, num_detections_per_class > 0);
 
   // For each class, perform non-max suppression.
-  float* class_scores =  op_data->score_buffer;
-  int* box_indices_after_regular_non_max_suppression = op_data->buffer;
-  float* scores_after_regular_non_max_suppression =
-      op_data->scores_after_regular_non_max_suppression;
+  float* class_scores = reinterpret_cast<float*>(
+      context->GetScratchBuffer(context, op_data->score_buffer_idx));
+  int* box_indices_after_regular_non_max_suppression = reinterpret_cast<int*>(
+      context->GetScratchBuffer(context, op_data->buffer_idx));
+  float* scores_after_regular_non_max_suppression = reinterpret_cast<float*>(
+      context->GetScratchBuffer(context, op_data->scores_after_regular_non_max_suppression_idx));
 
   int size_of_sorted_indices = 0;
-  int* sorted_indices = op_data->sorted_indices;
-  float* sorted_values = op_data->sorted_values;
+  int* sorted_indices = reinterpret_cast<int*>(
+      context->GetScratchBuffer(context, op_data->sorted_indices_idx));
+  float* sorted_values = reinterpret_cast<float*>(
+      context->GetScratchBuffer(context, op_data->sorted_values_idx));
 
   for (int col = 0; col < num_classes; col++) {
     for (int row = 0; row < num_boxes; row++) {
@@ -590,7 +588,8 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
     }
     // Perform non-maximal suppression on single class
     int selected_size = 0;
-    int* selected = op_data->selected;
+    int* selected = reinterpret_cast<int*>(
+        context->GetScratchBuffer(context, op_data->selected_idx));
     TF_LITE_ENSURE_STATUS(NonMaxSuppressionSingleClassHelper(
         context, node, op_data, class_scores, selected, &selected_size,
         num_detections_per_class));
@@ -639,8 +638,10 @@ TfLiteStatus NonMaxSuppressionMultiClassRegularHelper(TfLiteContext* context,
       const float selected_score =
           scores_after_regular_non_max_suppression[output_box_index];
       // detection_boxes
+      float* decoded_boxes = reinterpret_cast<float*>(
+          context->GetScratchBuffer(context, op_data->decoded_boxes_idx));
       ReInterpretTensor<BoxCornerEncoding*>(detection_boxes)[output_box_index] =
-          reinterpret_cast<BoxCornerEncoding*>(op_data->decoded_boxes)[anchor_index];
+          reinterpret_cast<BoxCornerEncoding*>(decoded_boxes)[anchor_index];
       // detection_classes
       tflite::micro::GetTensorData<float>(detection_classes)[output_box_index] = class_index;
       // detection_scores
@@ -695,8 +696,11 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
   TF_LITE_ENSURE(context, (max_categories_per_anchor > 0));
   const int num_categories_per_anchor =
       std::min(max_categories_per_anchor, num_classes);
-  float* max_scores = op_data->score_buffer;
-  int* sorted_class_indices = op_data->buffer;
+  float* max_scores = reinterpret_cast<float*>(
+      context->GetScratchBuffer(context, op_data->score_buffer_idx));
+  int* sorted_class_indices = reinterpret_cast<int*>(
+      context->GetScratchBuffer(context, op_data->buffer_idx));
+
   for (int row = 0; row < num_boxes; row++) {
     const float* box_scores =
         scores + row * num_classes_with_background + label_offset;
@@ -708,7 +712,8 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
 
   // Perform non-maximal suppression on max scores
   int selected_size = 0;
-  int* selected = op_data->selected;
+  int* selected = reinterpret_cast<int*>(
+      context->GetScratchBuffer(context, op_data->selected_idx));
   TF_LITE_ENSURE_STATUS(NonMaxSuppressionSingleClassHelper(
       context, node, op_data, max_scores, selected, &selected_size, op_data->max_detections));
 
@@ -727,8 +732,10 @@ TfLiteStatus NonMaxSuppressionMultiClassFastHelper(TfLiteContext* context,
       int box_offset = num_categories_per_anchor * output_box_index + col;
 
       // detection_boxes
+      float* decoded_boxes = reinterpret_cast<float*>(
+          context->GetScratchBuffer(context, op_data->decoded_boxes_idx));
       ReInterpretTensor<BoxCornerEncoding*>(detection_boxes)[box_offset] =
-          reinterpret_cast<BoxCornerEncoding*>(op_data->decoded_boxes)[selected_index];
+          reinterpret_cast<BoxCornerEncoding*>(decoded_boxes)[selected_index];
 
       // detection_classes
       tflite::micro::GetTensorData<float>(detection_classes)[box_offset] = class_indices[col];
@@ -782,7 +789,8 @@ TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
   const float* scores;
   switch (input_class_predictions->type) {
     case kTfLiteUInt8: {
-      float* temporary_scores = op_data->scores;
+      float* temporary_scores = reinterpret_cast<float*>(
+          context->GetScratchBuffer(context, op_data->scores_idx));
       DequantizeClassPredictions(input_class_predictions, num_boxes,
                                  num_classes_with_background, temporary_scores,
                                  op_data);
@@ -806,32 +814,7 @@ TfLiteStatus NonMaxSuppressionMultiClass(TfLiteContext* context,
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, (kBatchSize == 1));
-
-  // Set up scratch buffers
-  void *raw;
   auto* op_data = static_cast<OpData*>(node->user_data);
-  raw = context->GetScratchBuffer(context, op_data->active_candidate_idx);
-  op_data->active_box_candidate = reinterpret_cast<uint8_t*>(raw);
-  raw = context->GetScratchBuffer(context, op_data->decoded_boxes_idx);
-  op_data->decoded_boxes = reinterpret_cast<float*>(raw);
-  raw = context->GetScratchBuffer(context, op_data->scores_idx);
-  op_data->scores = reinterpret_cast<float*>(raw);
-  raw = context->GetScratchBuffer(context, op_data->score_buffer_idx);
-  op_data->score_buffer = reinterpret_cast<float*>(raw);
-  raw = context->GetScratchBuffer(context, op_data->keep_scores_idx);
-  op_data->keep_scores = reinterpret_cast<float*>(raw);
-  raw = context->GetScratchBuffer(context, op_data->scores_after_regular_non_max_suppression_idx);
-  op_data->scores_after_regular_non_max_suppression = reinterpret_cast<float*>(raw);
-  raw = context->GetScratchBuffer(context, op_data->sorted_values_idx);
-  op_data->sorted_values = reinterpret_cast<float*>(raw);
-  raw = context->GetScratchBuffer(context, op_data->keep_indices_idx);
-  op_data->keep_indices = reinterpret_cast<int*>(raw);
-  raw = context->GetScratchBuffer(context, op_data->sorted_indices_idx);
-  op_data->sorted_indices = reinterpret_cast<int*>(raw);
-  raw = context->GetScratchBuffer(context, op_data->buffer_idx);
-  op_data->buffer = reinterpret_cast<int*>(raw);
-  raw = context->GetScratchBuffer(context, op_data->selected_idx);
-  op_data->selected = reinterpret_cast<int*>(raw);
 
   // These two functions correspond to two blocks in the Object Detection model.
   // In future, we would like to break the custom op in two blocks, which is
