@@ -33,7 +33,6 @@ BenchmarkParams BenchmarkModel::DefaultParams() {
   params.AddParam("min_secs", BenchmarkParam::Create<float>(1.0f));
   params.AddParam("max_secs", BenchmarkParam::Create<float>(150.0f));
   params.AddParam("run_delay", BenchmarkParam::Create<float>(-1.0f));
-  params.AddParam("num_threads", BenchmarkParam::Create<int32_t>(1));
   params.AddParam("use_caching", BenchmarkParam::Create<bool>(false));
   params.AddParam("benchmark_name", BenchmarkParam::Create<std::string>(""));
   params.AddParam("output_prefix", BenchmarkParam::Create<std::string>(""));
@@ -83,7 +82,6 @@ std::vector<Flag> BenchmarkModel::GetFlags() {
           "is exceeded in the middle of a run, the benchmark will continue to "
           "the end of the run but will not start the next run."),
       CreateFlag<float>("run_delay", &params_, "delay between runs in seconds"),
-      CreateFlag<int32_t>("num_threads", &params_, "number of threads"),
       CreateFlag<bool>(
           "use_caching", &params_,
           "Enable caching of prepacked weights matrices in matrix "
@@ -118,7 +116,6 @@ void BenchmarkModel::LogParams() {
   LOG_BENCHMARK_PARAM(float, "max_secs", "Max runs duration (seconds)",
                       verbose);
   LOG_BENCHMARK_PARAM(float, "run_delay", "Inter-run delay (seconds)", verbose);
-  LOG_BENCHMARK_PARAM(int32_t, "num_threads", "Num threads", verbose);
   LOG_BENCHMARK_PARAM(bool, "use_caching", "Use caching", verbose);
   LOG_BENCHMARK_PARAM(std::string, "benchmark_name", "Benchmark name", verbose);
   LOG_BENCHMARK_PARAM(std::string, "output_prefix", "Output prefix", verbose);
