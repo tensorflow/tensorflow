@@ -332,6 +332,29 @@ class Subgraph {
   // Before `AllocateTensors` is called, this will always return true;
   bool HasDynamicTensors() { return has_dynamic_tensors_; }
 
+  // Assigns (or reassigns) a custom memory allocation for the given tensor.
+  // If AllocateTensors() is called after this, the runtime does not consider
+  // the tensor during internal memory planning and will continue using the
+  // provided allocation for the tensor (assuming it satisfies the expected
+  // tensor byte length).
+  // The runtime does NOT take ownership of the underlying memory.
+  // Note that while this function can be called again to set a new allocation
+  // for the tensor, it can no longer be reset to the TFLite arena memory.
+  //
+  // Parameters should satisfy the following conditions:
+  // 1. tensor->allocation_type == kTfLiteArenaRw
+  //    In general, this is true for all non-constants such as I/O tensors.
+  // 2. allocation->data has the appropriate permissions for runtime access
+  //    (Read-only for inputs, Read-Write for others), and outlives Interpreter.
+  // 3. allocation->bytes >= tensor->bytes.
+  //    This condition is checked again if any tensors are resized.
+  // 4. allocation->data should be aligned to kDefaultTensorAlignment
+  //    defined in lite/util.h. (Currently 64 bytes)
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus SetCustomAllocationForTensor(
+      int tensor_index, const TfLiteCustomAllocation& allocation);
+
  private:
   // SubgraphAwareProfiler wraps an actual TFLite profiler, such as a
   // BufferedProfiler instance, and takes care of event profiling/tracing in a
@@ -679,6 +702,9 @@ class Subgraph {
   bool applied_nnapi_delegate_ = false;
 
   std::unique_ptr<MemoryPlanner> memory_planner_;
+
+  // Contains <tensor idx, custom allocation> pairs for all applicable tensors.
+  std::vector<std::pair<int, TfLiteCustomAllocation>> custom_allocations_;
 
   // Tracking bit for whether a tensor was resized in the course of an op
   // invocation. This is a useful hint to ensure that dynamic tensor outputs

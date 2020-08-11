@@ -93,6 +93,11 @@ upper_tabs:
       - title: "1.x compatibility"
         path: /lite/convert/1x_compatibility
 
+      - heading: "Create a model"
+      - title: "TensorFlow Lite Model Maker"
+        status: experimental
+        path: /lite/guide/model_maker
+
       - heading: "Inference"
       - title: "Overview"
         path: /lite/guide/inference

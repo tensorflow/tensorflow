@@ -364,7 +364,13 @@ class Interpreter {
   /// Returns status of success or failure.
   TfLiteStatus Invoke();
 
-  /// Enable or disable the NN API (true to enable)
+  /// Enable or disable NNAPI (true to enable). Disabled by default.
+  ///
+  /// WARNING: NNAPI cannot be disabled after the graph has been prepared
+  /// (via `AllocateTensors`) with NNAPI enabled.
+  ///
+  /// NOTE: This API is deprecated, prefer using the NNAPI delegate directly.
+  /// This method will be removed in a future release.
   void UseNNAPI(bool enable);
 
   /// Set the number of threads available to the interpreter.
@@ -497,6 +503,29 @@ class Interpreter {
   // outlive the TFLite interpreter.
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
+
+  // Assigns (or reassigns) a custom memory allocation for the given tensor.
+  // If AllocateTensors() is called after this, the runtime does not consider
+  // the tensor during internal memory planning and will continue using the
+  // provided allocation for the tensor (assuming it satisfies the expected
+  // tensor byte length).
+  // The runtime does NOT take ownership of the underlying memory.
+  // Note that while this function can be called again to set a new allocation
+  // for the tensor, it can no longer be reset to the TFLite arena memory.
+  //
+  // Parameters should satisfy the following conditions:
+  // 1. tensor->allocation_type == kTfLiteArenaRw
+  //    In general, this is true for all non-constants such as I/O tensors.
+  // 2. allocation->data has the appropriate permissions for runtime access
+  //    (Read-only for inputs, Read-Write for others), and outlives Interpreter.
+  // 3. allocation->bytes >= tensor->bytes.
+  //    This condition is checked again if any tensors are resized.
+  // 4. allocation->data should be aligned to kDefaultTensorAlignment
+  //    defined in lite/util.h. (Currently 64 bytes)
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus SetCustomAllocationForTensor(
+      int tensor_index, const TfLiteCustomAllocation& allocation);
 
 #ifndef DOXYGEN_SKIP
   /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph

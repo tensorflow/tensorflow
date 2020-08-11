@@ -519,6 +519,7 @@ cc_library(
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/lib/gtl:inlined_vector",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 

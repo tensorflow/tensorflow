@@ -263,7 +263,7 @@ int3 Winograd4x4To36::SelectBestWorkGroup() {
   const std::vector<int3> wgs = {{8, 6, 4}, {8, 6, 2}, {4, 6, 2},
                                  {4, 6, 2}, {2, 6, 2}, {2, 6, 1},
                                  {1, 6, 1}, {1, 3, 1}, {1, 1, 1}};
-  return GetFirstSuitableWorkGroup(wgs, kernel_.GetMaxWorkGroupSize());
+  return GetFirstSuitableWorkGroup(wgs, kernel_.info_.max_work_group_size);
 }
 
 absl::Status Winograd4x4To36::BindArguments() {
@@ -303,7 +303,7 @@ absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
                                    const Padding2D& padding,
                                    Winograd4x4To36* result) {
   *result =
-      Winograd4x4To36(definition, padding, creation_context.device->GetInfo());
+      Winograd4x4To36(definition, padding, creation_context.device->info_);
   return result->UploadBt(creation_context.context);
 }
 
@@ -465,7 +465,7 @@ int3 Winograd36To4x4::SelectBestWorkGroup() {
   const std::vector<int3> wgs = {{32, 4, 2}, {16, 4, 2}, {16, 4, 1},
                                  {8, 4, 1},  {4, 4, 1},  {2, 4, 1},
                                  {1, 4, 1},  {1, 2, 1},  {1, 1, 1}};
-  return GetFirstSuitableWorkGroup(wgs, kernel_.GetMaxWorkGroupSize());
+  return GetFirstSuitableWorkGroup(wgs, kernel_.info_.max_work_group_size);
 }
 
 absl::Status Winograd36To4x4::BindArguments() {
@@ -502,7 +502,7 @@ absl::Status CreateWinograd36To4x4(
     const CreationContext& creation_context, const OperationDef& definition,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
     Winograd36To4x4* result) {
-  *result = Winograd36To4x4(definition, creation_context.device->GetInfo());
+  *result = Winograd36To4x4(definition, creation_context.device->info_);
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();

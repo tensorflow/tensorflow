@@ -169,6 +169,7 @@ cc_library(
 cc_test(
     name = "gpu_compatibility_test",
     srcs = ["gpu_compatibility_test.cc"],
+    tags = ["no_mac"],  # b/163222453
     deps = [
         ":devicedb_sample",
         ":gpu_compatibility",

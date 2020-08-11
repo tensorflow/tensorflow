@@ -100,6 +100,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::AtanhOp>(),
     TypeID::get<TF::AtanOp>(),
     TypeID::get<TF::BatchMatMulV2Op>(),
+    TypeID::get<TF::BatchToSpaceNDOp>(),
+    TypeID::get<TF::BatchToSpaceOp>(),
     TypeID::get<TF::BiasAddGradOp>(),
     TypeID::get<TF::BiasAddOp>(),
     TypeID::get<TF::BitwiseAndOp>(),
@@ -152,6 +154,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::LogicalOrOp>(),
     TypeID::get<TF::LogOp>(),
     TypeID::get<TF::MatMulOp>(),
+    TypeID::get<TF::MatrixDiagV3Op>(),
+    TypeID::get<TF::MatrixSetDiagV3Op>(),
     TypeID::get<TF::MirrorPadOp>(),
     TypeID::get<TF::MulOp>(),
     TypeID::get<TF::NegOp>(),
@@ -184,6 +188,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SoftplusGradOp>(),
     TypeID::get<TF::SoftsignGradOp>(),
     TypeID::get<TF::SoftsignOp>(),
+    TypeID::get<TF::SpaceToBatchNDOp>(),
+    TypeID::get<TF::SpaceToBatchOp>(),
     TypeID::get<TF::SparseToDenseOp>(),
     TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),
@@ -528,8 +534,7 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   // global device type for all TensorFlow ops.
   Option<std::string> device_type_{
       *this, "device-type",
-      llvm::cl::desc("XLA device type for execution of TensorFlow ops. "
-                     "Supports XLA_CPU_JIT and XLA_TPU_JIT for now.")};
+      llvm::cl::desc("XLA device type for execution of TensorFlow ops.")};
 };
 
 static PassRegistration<LegalizeTF> pass(

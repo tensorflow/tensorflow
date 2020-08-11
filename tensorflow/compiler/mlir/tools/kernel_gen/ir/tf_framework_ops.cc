@@ -24,8 +24,7 @@ namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {
 
-TFFrameworkDialect::TFFrameworkDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context) {
+void TFFrameworkDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.cc.inc"

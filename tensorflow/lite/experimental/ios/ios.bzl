@@ -76,13 +76,14 @@ def tflite_ios_static_framework(
 # to the "Headers" directory with no header path prefixes. This auxiliary rule
 # is used for stripping the path prefix to the "common.h" file included by the
 # "c_api.h" header.
-def strip_common_include_path_prefix(name, hdr_labels):
+def strip_common_include_path_prefix(name, hdr_labels, prefix = ""):
     """Create modified header files with the common.h include path stripped out.
 
     Args:
       name: The name to be used as a prefix to the generated genrules.
       hdr_labels: List of header labels to strip out the include path. Each
           label must end with a colon followed by the header file name.
+      prefix: Optional prefix path to prepend to the common.h inclusion path.
     """
 
     for hdr_label in hdr_labels:
@@ -94,8 +95,8 @@ def strip_common_include_path_prefix(name, hdr_labels):
             srcs = [hdr_label],
             outs = [hdr_filename],
             cmd = """
-            sed 's|#include ".*common.h"|#include "common.h"|'\
+            sed 's|#include ".*common.h"|#include "{}common.h"|'\
             "$(location {})"\
             > "$@"
-            """.format(hdr_label),
+            """.format(prefix, hdr_label),
         )

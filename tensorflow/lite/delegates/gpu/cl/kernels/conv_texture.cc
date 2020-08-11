@@ -430,7 +430,7 @@ absl::Status CreateConvTexture(const CreationContext& creation_context,
                                const Convolution2DAttributes& attr,
                                ConvTexture* result) {
   *result = ConvTexture(definition, attr);
-  result->GenerateCode(creation_context.device->GetInfo());
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
@@ -439,7 +439,7 @@ absl::Status CreateConvTexture(const CreationContext& creation_context,
                                const FullyConnectedAttributes& attr,
                                ConvTexture* result) {
   *result = ConvTexture(definition);
-  result->GenerateCode(creation_context.device->GetInfo());
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
@@ -449,7 +449,7 @@ absl::Status CreateConvTextureWino4x4To6x6(
   *result = ConvTexture(definition);
   result->different_weights_for_height_ = true;
   result->block_size_ = {4, 1, 2};
-  result->GenerateCode(creation_context.device->GetInfo());
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadDataForWinograd4x4To6x6(
       attr.weights, *creation_context.device, creation_context.context);
 }

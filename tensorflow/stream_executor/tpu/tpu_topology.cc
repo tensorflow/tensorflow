@@ -75,6 +75,21 @@ TpuCoreLocationExternal TpuTopologyExternal::Core(int x, int y, int z,
       topology_, x, y, z, core_type, index));
 }
 
+std::vector<TpuCoreLocationExternal> TpuTopologyExternal::cores(
+    TpuCoreTypeEnum core_type) const {
+  int num_cores =
+      tpu::ExecutorApiFn()->TpuTopology_NumCoresFn(topology_, core_type);
+  std::vector<SE_TpuTopology_Core*> core_ptrs(num_cores);
+  tpu::ExecutorApiFn()->TpuTopology_CoresFn(topology_, core_type,
+                                            core_ptrs.data());
+  std::vector<TpuCoreLocationExternal> result;
+  result.reserve(num_cores);
+  for (SE_TpuTopology_Core* ptr : core_ptrs) {
+    result.emplace_back(ptr);
+  }
+  return result;
+}
+
 int TpuTopologyExternal::IdForHost(TpuDimensionsExternal host) const {
   return tpu::ExecutorApiFn()->TpuTopology_IdForHostFn(topology_, host.x,
                                                        host.y, host.z);

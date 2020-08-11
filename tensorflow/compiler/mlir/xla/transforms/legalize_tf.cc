@@ -71,9 +71,14 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
  public:
   LegalizeTF() = default;
   LegalizeTF(const LegalizeTF &) {}
-  explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo) {
+  explicit LegalizeTF(bool allow_partial_conversion, bool legalize_chlo,
+                      llvm::Optional<StringRef> tf2xla_fallback_device_type) {
     allow_partial_conversion_ = allow_partial_conversion;
     legalize_chlo_ = legalize_chlo;
+    use_tf2xla_fallback_ = tf2xla_fallback_device_type.hasValue();
+    if (tf2xla_fallback_device_type.hasValue()) {
+      device_type_ = tf2xla_fallback_device_type.getValue().str();
+    }
   }
 
   /// Performs the lowering to XLA dialect.
@@ -89,6 +94,17 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
       llvm::cl::desc(
           "Also legalizes intermediate chlo ops to hlo (default true)"),
       llvm::cl::init(true)};
+  Option<bool> use_tf2xla_fallback_{
+      *this, "use-tf2xla-fallback",
+      llvm::cl::desc(
+          "Also use TF2XLA fallback for legalization (default false)"),
+      llvm::cl::init(false)};
+  Option<std::string> device_type_{
+      *this, "device-type",
+      llvm::cl::desc(
+          "The device type used by TF2XLA fallback. Must be specified if "
+          "use-tf2xla-fallback is true, otherwise not used."),
+      llvm::cl::init("INVALID_DEVICE_TYPE")};
 };
 
 /// Returns if the given TF data format string is the default format.
@@ -5007,7 +5023,12 @@ class ConvertInplaceUpdateOp : public OpRewritePattern<TF::InplaceUpdateOp> {
     SmallVector<Type, 4> unpacked_indices_type(
         indices_type.getDimSize(0),
         RankedTensorType::get({}, indices_type.getElementType()));
-    auto zero_attr = IntegerAttr::get(rewriter.getIntegerType(64), 0);
+    // Note on zero_attr integer type: DynamicUpdateSlice op start_indices are
+    // required to have matching types. This rewrite rule creates
+    // DynamicUpdateSlice ops where the first "start index" is always i32 and
+    // subsequent ones are constructed based on zero_attr. Thus the type
+    // for zero_attr needs to be i32 as well.
+    auto zero_attr = IntegerAttr::get(rewriter.getIntegerType(32), 0);
     auto unpacked_indices = rewriter.create<TF::UnpackOp>(
         op.getLoc(), unpacked_indices_type, indices, zero_attr);
 
@@ -5086,11 +5107,8 @@ class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
       return failure();
     }
 
-    // TODO(jennik): Add support for the optional 'exclusive' and 'reverse'
-    // arguments.
-    if (op.exclusive() || op.reverse()) {
-      return failure();
-    }
+    ArrayRef<int64_t> input_shape = input_type.getShape();
+    int64_t rank = input_shape.size();
 
     // We can only match when the axis is a constant scalar.
     DenseIntElementsAttr axis_attr;
@@ -5098,21 +5116,27 @@ class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
       return failure();
     }
 
-    // Convert if we need to enlarge the element type's bitwidth to avoid
-    // precision loss.
-    Type input_element_type = input_type.getElementType();
-    Type sum_element_type = GetSumAccumulationType(input_element_type);
-    input = rewriter.create<ConvertOp>(op.getLoc(), input, sum_element_type);
-
-    ArrayRef<int64_t> input_shape = input_type.getShape();
-    int64_t rank = input_shape.size();
-
     // Get the dimension to apply the reduction on, and offset properly if it is
     // negative.
     int64_t axis = (*axis_attr.begin()).getSExtValue();
     if (axis < 0) {
       axis += rank;
     }
+
+    // If we're supposed to sum things up in the reverse direction, we reverse
+    // the input and then later reverse the output.
+    if (op.reverse()) {
+      llvm::SmallVector<int64_t, 4> dims_to_reverse({axis});
+      input = rewriter.create<ReverseOp>(
+          op.getLoc(), op.getType(), input,
+          GetI64ElementsAttr(dims_to_reverse, &rewriter));
+    }
+
+    // Convert if we need to enlarge the element type's bitwidth to avoid
+    // precision loss.
+    Type input_element_type = input_type.getElementType();
+    Type sum_element_type = GetSumAccumulationType(input_element_type);
+    input = rewriter.create<ConvertOp>(op.getLoc(), input, sum_element_type);
 
     SmallVector<int64_t, 4> window_dims(rank, 1);
     SmallVector<int64_t, 4> window_strides(rank, 1);
@@ -5136,9 +5160,33 @@ class ConvertCumsumOp : public OpRewritePattern<TF::CumsumOp> {
     BuildReduceBody<AddOp>(sum_element_type, &reduce.body(), &rewriter);
     Value result = reduce.getResult();
 
+    if (op.exclusive()) {
+      // In "exclusive" operation, the output will start with the "init" (0)
+      // values. There is no way to express that as a ReduceWindowOp, so run the
+      // normal operation, and then use a PadOp to add the 0 "column" on the
+      // left and cut away the last column on the right.
+      llvm::SmallVector<int64_t, 4> low_padding(rank, 0);
+      llvm::SmallVector<int64_t, 4> high_padding(rank, 0);
+      llvm::SmallVector<int64_t, 4> interior_padding(rank, 0);
+      low_padding[axis] = 1;
+      high_padding[axis] = -1;
+      result = rewriter.create<PadOp>(
+          op.getLoc(), op.getType(), result, init,
+          GetI64ElementsAttr(low_padding, &rewriter),
+          GetI64ElementsAttr(high_padding, &rewriter),
+          GetI64ElementsAttr(interior_padding, &rewriter));
+    }
+
     // Convert back if we enlarged the element type's bitwidth.
     result =
         rewriter.create<ConvertOp>(op.getLoc(), result, input_element_type);
+
+    if (op.reverse()) {
+      llvm::SmallVector<int64_t, 4> dims_to_reverse({axis});
+      result = rewriter.create<ReverseOp>(
+          op.getLoc(), op.getType(), result,
+          GetI64ElementsAttr(dims_to_reverse, &rewriter));
+    }
 
     rewriter.replaceOp(op, result);
     return success();
@@ -5714,9 +5762,14 @@ void EmitLegalizationErrors(Operation *op,
 
 // Performs the lowering to XLA dialect.
 void LegalizeTF::runOnFunction() {
-  if (failed(
-          legalizeTF(getFunction(), allow_partial_conversion_, legalize_chlo_)))
+  llvm::Optional<StringRef> tf2xla_fallback_device_type = llvm::None;
+  if (use_tf2xla_fallback_) {
+    tf2xla_fallback_device_type = device_type_;
+  }
+  if (failed(legalizeTF(getFunction(), allow_partial_conversion_,
+                        legalize_chlo_, tf2xla_fallback_device_type))) {
     signalPassFailure();
+  }
 }
 
 static PassRegistration<LegalizeTF> pass(
@@ -5726,23 +5779,48 @@ static PassRegistration<LegalizeTF> pass(
 
 #include "tensorflow/compiler/mlir/xla/transforms/generated_legalize_tf.inc"
 
-LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
-                         bool legalize_chlo) {
+LogicalResult legalizeTF(
+    Operation *op, bool allow_partial_conversion, bool legalize_chlo,
+    llvm::Optional<StringRef> tf2xla_fallback_device_type) {
   MLIRContext *context = op->getContext();
-
-  // Add lowering patterns to the list.
   OwningRewritePatternList patterns;
+  // Note that the `OperationConverter` orders patterns lexicographically by:
+  // 1) Ascending legalization depth (i.e., minimum number of patterns necessary
+  //    to arrive at conversion target).
+  // 2) Descending pattern benefit.
+  // 3) Order of patterns in `OwningRewritePatternList`.
+
+  // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &patterns);
+
+  // Add TF->HLO legalization patterns via TF2XLA fallback.
+  if (tf2xla_fallback_device_type.hasValue()) {
+    PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.getValue(),
+                                         patterns);
+  }
+
+  // Add TF->TF lowering patterns.
+  TF::PopulateLoweringTFPatterns(context, &patterns);
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
   // CHLO first.
   if (legalize_chlo) {
     chlo::PopulateLegalizeChloToHloPatterns(context, &patterns);
   }
+  // ConstantLike op is convenient to create splat constants, but is
+  // canonicalized to plain HLO constant if statically shaped. Add the
+  // canonicalization pattern to pattern list to enable multi-hop lowering.
+  chlo::ConstantLikeOp::getCanonicalizationPatterns(patterns, context);
 
   ConversionTarget target(*context);
   if (legalize_chlo) {
     target.addIllegalDialect<chlo::HloClientDialect>();
+
+    // Mark ConstantLikeOp as dynamically legal only when it doesn't have a
+    // static result type so that it gets canonicalized to MHLO constant.
+    target.addDynamicallyLegalOp<chlo::ConstantLikeOp>([](Operation *op) {
+      return !op->getResultTypes().front().cast<ShapedType>().hasStaticShape();
+    });
   } else {
     target.addLegalDialect<chlo::HloClientDialect>();
   }
@@ -5773,11 +5851,6 @@ LogicalResult legalizeTF(Operation *op, bool allow_partial_conversion,
 void PopulateLegalizeTfPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
   populateWithGenerated(context, patterns);
-
-  // Add patterns that lower some of the high level TensorFlow ops to lower
-  // level TensorFlow ops. So, we don't have to target all the TensorFlow ops
-  // here for lowering to HLO.
-  TF::PopulateLoweringTFPatterns(context, patterns);
   patterns->insert<
       ConvertAllOp, ConvertAnyOp, ConvertArgMaxOp, ConvertBatchMatMulV2Op,
       ConvertBiasAddOp, ConvertBroadcastToOp, ConvertBF16FloorDivOp,
@@ -5806,8 +5879,10 @@ void PopulateLegalizeTfPatterns(MLIRContext *context,
 }
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeTFPass(
-    bool allow_partial_conversion, bool legalize_chlo) {
-  return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo);
+    bool allow_partial_conversion, bool legalize_chlo,
+    llvm::Optional<StringRef> tf2xla_fallback_device_type) {
+  return std::make_unique<LegalizeTF>(allow_partial_conversion, legalize_chlo,
+                                      tf2xla_fallback_device_type);
 }
 
 }  // end namespace mhlo

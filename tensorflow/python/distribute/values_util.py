@@ -270,5 +270,5 @@ def is_saving_non_distributed():
   if not save_context.in_save_context():
     return False
   options = save_context.get_save_options()
-  return (options is not None and options.experimental_variable_policy !=
+  return (options.experimental_variable_policy !=
           save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES)

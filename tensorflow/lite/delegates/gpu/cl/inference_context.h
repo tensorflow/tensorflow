@@ -20,9 +20,9 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
@@ -160,7 +160,7 @@ class InferenceContext {
     DummyTensor Get(ValueId id) { return reservations_[id]; }
 
    private:
-    std::unordered_map<ValueId, DummyTensor> reservations_;
+    absl::flat_hash_map<ValueId, DummyTensor> reservations_;
     ValueId next_;
   };
   TensorReserver tensor_reserver_;

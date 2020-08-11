@@ -49,6 +49,7 @@ struct MarkOpsForOutsideCompilation
 void AddSupportedControlFlowOps(MLIRContext* context,
                                 llvm::DenseSet<OperationName>* supported_ops) {
   supported_ops->insert(OperationName("tf.IfRegion", context));
+  supported_ops->insert(OperationName("tf.WhileRegion", context));
   supported_ops->insert(OperationName("tf.Yield", context));
 }
 
@@ -71,43 +72,44 @@ bool MatchesPattern(Operation& op,
   return (supported_ops.contains(op.getName()));
 }
 
-// Checks if the op is supported inside of a device cluster.
+// Checks if the op is supported inside of a device cluster.  Ops not
+// in `tf_dialect` are considered supported.
 bool IsSupportedOp(Operation& op,
-                   const llvm::DenseSet<OperationName>& supported_ops) {
-  // TODO(b/161726307): Check the allowed ops list in LegalizeTfWithTf2XlaPass
-  // as well.
-  return !HasStringOperand(op) && !HasStringResult(op) &&
-         (MatchesPattern(op, supported_ops) ||
-          mhlo::IsOpAllowedTf2XlaFallback(&op));
+                   const llvm::DenseSet<OperationName>& supported_ops,
+                   const Dialect* tf_dialect) {
+  if (op.getDialect() != tf_dialect)
+    return true;
+  else
+    return !HasStringOperand(op) && !HasStringResult(op) &&
+           (MatchesPattern(op, supported_ops) ||
+            mhlo::IsOpAllowedTf2XlaFallback(&op));
 }
 
-bool HasCapturedStringOperand(TF::IfRegionOp* if_op) {
+// Checks all regions of `op` for captured string operands.
+bool HasCapturedStringOperand(Operation* op) {
   bool string_operand = false;
-  mlir::visitUsedValuesDefinedAbove(
-      if_op->then_branch(), if_op->then_branch(),
-      [&](mlir::OpOperand* operand) {
-        if (getElementTypeOrSelf(operand->get()).isa<TF::StringType>())
-          string_operand = true;
-      });
-  if (string_operand) return string_operand;
-  mlir::visitUsedValuesDefinedAbove(
-      if_op->else_branch(), if_op->else_branch(),
-      [&](mlir::OpOperand* operand) {
-        if (getElementTypeOrSelf(operand->get()).isa<TF::StringType>())
-          string_operand = true;
-      });
+  for (auto& region : op->getRegions()) {
+    mlir::visitUsedValuesDefinedAbove(
+        region, region, [&](mlir::OpOperand* operand) {
+          if (getElementTypeOrSelf(operand->get()).isa<TF::StringType>())
+            string_operand = true;
+        });
+    if (string_operand) return string_operand;
+  }
   return string_operand;
 }
 
+// Marks uncompilable ops that are in `tf_dialect` for outside compilation.
 LogicalResult MarkUncompilableOps(
-    Block* block, llvm::DenseSet<OperationName>& supported_ops) {
+    const Dialect* tf_dialect, Block* block,
+    llvm::DenseSet<OperationName>& supported_ops) {
   block->walk([&](Operation* op) {
-    if (!IsSupportedOp(*op, supported_ops)) {
+    if (!IsSupportedOp(*op, supported_ops, tf_dialect)) {
       op->setAttr(kXlaOutsideCompilationAttr,
                   StringAttr::get("auto", op->getContext()));
     }
-    if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(op)) {
-      if (HasCapturedStringOperand(&if_op)) {
+    if (llvm::isa<TF::IfRegionOp, TF::WhileRegionOp>(op)) {
+      if (HasCapturedStringOperand(op)) {
         op->setAttr(kXlaOutsideCompilationAttr,
                     StringAttr::get("auto", op->getContext()));
       }
@@ -118,6 +120,11 @@ LogicalResult MarkUncompilableOps(
 
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
+  const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
+  if (!tf_dialect) {
+    getOperation().emitError() << "'tf' dialect is not registered";
+    return signalPassFailure();
+  }
   OwningRewritePatternList patterns;
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
 
@@ -132,7 +139,8 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
 
   auto result = module.walk([&](tf_device::ClusterOp cluster) {
-    if (failed(MarkUncompilableOps(&cluster.GetBody(), supported_ops)))
+    if (failed(
+            MarkUncompilableOps(tf_dialect, &cluster.GetBody(), supported_ops)))
       return WalkResult::interrupt();
 
     return WalkResult::advance();

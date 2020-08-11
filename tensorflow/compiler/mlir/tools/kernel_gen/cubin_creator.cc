@@ -278,7 +278,8 @@ StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
 
   mlir::OwningModuleRef kernel_module =
       xla::mlir_gpu::ExtractKernelModule(*module).ValueOrDie();
-  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module);
+  llvm::LLVMContext llvmContext;
+  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module, llvmContext);
   if (!llvmModule) {
     return InternalError("Could not translate MLIR module to NVVM");
   }

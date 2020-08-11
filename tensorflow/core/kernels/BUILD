@@ -9,12 +9,10 @@ load(
     "tf_cc_binary",
     "tf_cc_shared_object",
     "tf_cc_test",
-    "tf_cc_test_mkl",
     "tf_cc_tests",
     "tf_copts",
     "tf_cuda_library",
     "tf_kernel_library",
-    "tf_mkl_kernel_library",
     "tf_opts_nortti_if_lite_protos",
 )
 load("@local_config_sycl//sycl:build_defs.bzl", "if_sycl")
@@ -654,6 +652,7 @@ cc_library(
 cc_library(
     name = "batch_kernels",
     srcs = ["batch_kernels.cc"],
+    hdrs = ["batch_matmul_op_impl.h"],
     deps = [
         ":ops_util_hdrs",
         "//tensorflow/core:framework",
@@ -939,7 +938,7 @@ cc_library(
 cc_library(
     name = "image_resizer_state",
     hdrs = ["image_resizer_state.h"],
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
         ":bounds_check",
         "//tensorflow/core:framework",
@@ -2898,6 +2897,53 @@ tf_kernel_library(
     ],
 )
 
+cc_library(
+    name = "tensor_map",
+    srcs = ["tensor_map.cc"],
+    hdrs = ["tensor_map.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/framework:tensor_shape_proto_cc",
+        "//tensorflow/core/lib/core:refcount",
+    ],
+)
+
+tf_kernel_library(
+    name = "map_kernels",
+    srcs = ["map_kernels.cc"],
+    hdrs = ["map_kernels.h"],
+    deps = [
+        ":concat_lib",
+        ":fill_functor",
+        ":tensor_map",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_tests(
+    name = "tensor_map_test",
+    size = "small",
+    srcs = [
+        "tensor_map_test.cc",
+    ],
+    tags = ["nomsan"],  # b/163222155
+    deps = [
+        ":tensor_map",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_kernel_library(
     name = "fact_op",
     prefix = "fact_op",
@@ -3772,16 +3818,6 @@ tf_kernel_library(
     ]),
 )
 
-tf_mkl_kernel_library(
-    name = "mkl_batch_matmul_op",
-    srcs = ["mkl_batch_matmul_op.cc"],
-    hdrs = [
-        "batch_matmul_op_impl.h",
-        "mkl_matmul_ops_common.h",
-    ],
-    deps = MATH_DEPS + mkl_deps(),
-)
-
 tf_kernel_library(
     name = "betainc_op",
     prefix = "betainc_op",
@@ -3861,16 +3897,6 @@ tf_kernel_library(
     }) + mkl_deps() + if_cuda([
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
     ]) + if_cuda_or_rocm([":gpu_utils"]),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_matmul_op",
-    srcs = [
-        "mkl_matmul_op.cc",
-        "mkl_matmul_op_fused.cc",
-    ],
-    hdrs = ["mkl_matmul_ops_common.h"],
-    deps = MATH_DEPS + mkl_deps(),
 )
 
 tf_kernel_library(
@@ -4376,6 +4402,7 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        ":cast_op",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]),
@@ -6096,6 +6123,19 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "meta_support",
+    srcs = ["meta_support.cc"],
+    hdrs = ["meta_support.h"],
+    deps = [
+        ":quantization_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:mutex",
+        "@gemmlowp",
+    ],
+)
+
 # Android libraries -----------------------------------------------------------
 
 # Changes to the Android srcs here should be replicated in
@@ -6764,7 +6804,6 @@ filegroup(
             "unicode_ops.cc",
             "unicode_script_op.cc",
             # Ops that are inherently incompatible with Android (e.g. tied to x86 platform).
-            "mkl_*",
             "xsmm_*",
             "cwise_ops_sycl_common.h",
             "nextafter_op.cc",
@@ -6867,7 +6906,6 @@ tf_kernel_library(
     name = "quantized_ops",
     srcs = [
         "dequantize_op.cc",
-        "meta_support.cc",
         "quantize_down_and_shrink_range.cc",
         "quantize_op.cc",
         "quantized_activation_ops.cc",
@@ -6886,16 +6924,14 @@ tf_kernel_library(
         "requantize.cc",
         "reshape_op.h",
     ],
-    hdrs = [
-        "meta_support.h",
-        "reference_gemm.h",
-    ],
+    hdrs = ["reference_gemm.h"],
     deps = [
         ":concat_lib_hdrs",
         ":conv_ops",
         ":cwise_op",
         ":eigen_helpers",
         ":image_resizer_state",
+        ":meta_support",
         ":ops_util",
         ":pooling_ops",
         ":quantization_utils",
@@ -7203,50 +7239,6 @@ tf_cc_test(
     ],
 )
 
-tf_cc_test_mkl(
-    name = "mkl_quantized_conv_ops_perchannel_test",
-    size = "small",
-    srcs = ["mkl_quantized_conv_ops_perchannel_test.cc"],
-    deps = [
-        ":mkl_conv_op",
-        ":mkl_input_conversion_op",
-        ":ops_testutil",
-        ":ops_util",
-        ":quantization_utils",
-        ":quantized_ops",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test_mkl(
-    name = "mkl_quantized_conv_ops_test",
-    size = "small",
-    srcs = ["mkl_quantized_conv_ops_test.cc"],
-    deps = [
-        ":mkl_conv_op",
-        ":mkl_input_conversion_op",
-        ":ops_testutil",
-        ":ops_util",
-        ":quantization_utils",
-        ":quantized_ops",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
 tf_cc_test(
     name = "quantize_op_test",
     size = "small",
@@ -7272,28 +7264,6 @@ tf_cc_test(
     srcs = ["quantized_matmul_op_test.cc"],
     tags = ["nomsan"],  # http://b/32242946
     deps = [
-        ":ops_testutil",
-        ":ops_util",
-        ":quantization_utils",
-        ":quantized_ops",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test_mkl(
-    name = "mkl_qmatmul_op_test",
-    size = "small",
-    srcs = ["mkl_qmatmul_op_test.cc"],
-    deps = [
-        ":mkl_input_conversion_op",
-        ":mkl_qmatmul_op",
         ":ops_testutil",
         ":ops_util",
         ":quantization_utils",
@@ -7389,66 +7359,6 @@ tf_cc_test(
     ],
 )
 
-tf_mkl_kernel_library(
-    name = "mkl_quantize_op",
-    srcs = ["mkl_quantize_op.cc"],
-    hdrs = [
-        "meta_support.h",
-        "reference_gemm.h",
-    ],
-    deps = [
-        ":bounds_check",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:mkl_graph_util",
-        "@gemmlowp",
-    ] + mkl_deps(),
-)
-
-tf_cc_test_mkl(
-    name = "mkl_quantize_op_test",
-    size = "small",
-    srcs = ["mkl_quantize_op_test.cc"],
-    deps = [
-        ":mkl_quantize_op",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test_mkl(
-    name = "mkl_quantized_pooling_ops_test",
-    size = "small",
-    srcs = ["mkl_quantized_pooling_ops_test.cc"],
-    deps = [
-        ":mkl_input_conversion_op",
-        ":mkl_pooling_ops",
-        ":ops_testutil",
-        ":ops_util",
-        ":quantization_utils",
-        ":quantized_ops",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
 tf_cc_test(
     name = "quantized_reshape_op_test",
     size = "small",
@@ -7480,30 +7390,6 @@ tf_cc_test(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test_mkl(
-    name = "mkl_quantized_concat_op_test",
-    size = "small",
-    srcs = ["mkl_quantized_concat_op_test.cc"],
-    deps = [
-        ":mkl_concat_op",
-        ":ops_testutil",
-        ":ops_util",
-        ":quantization_utils",
-        ":quantized_ops",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:mkl_array_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -7735,50 +7621,6 @@ tf_cc_test(
     ],
 )
 
-tf_mkl_kernel_library(
-    name = "mkl_qmatmul_op",
-    srcs = ["mkl_qmatmul_op.cc"],
-    hdrs = [
-        "mkl_matmul_ops_common.h",
-        "mkl_quantized_conv_ops.h",
-        "no_op.h",
-    ],
-    deps = [
-        ":bounds_check",
-        ":fill_functor",
-        ":matmul_op",
-        ":ops_util",
-        "//third_party/eigen3",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:mkl_nn_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
-    ] + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_conv_op",
-    hdrs = [
-        "mkl_quantized_conv_ops.h",
-        "no_op.h",
-    ],
-    prefix = "mkl_conv",
-    deps = [
-        ":bounds_check",
-        ":conv_ops",
-        ":ops_util",
-        "@com_google_absl//absl/strings",
-        "//third_party/eigen3",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ] + mkl_deps(),
-)
-
 tf_cc_test(
     name = "bias_op_test",
     size = "small",
@@ -7791,354 +7633,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-)
-
-tf_cc_test_mkl(
-    name = "mkl_conv_ops_test",
-    size = "small",
-    srcs = ["mkl_conv_ops_test.cc"],
-    linkstatic = 1,  # Fixes dyld error on MacOS.
-    deps = [
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test_mkl(
-    name = "mkl_relu_op_test",
-    size = "small",
-    srcs = ["mkl_relu_op_test.cc"],
-    linkstatic = 1,  # Fixes dyld error on MacOS.
-    deps = [
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_tfconv_op",
-    prefix = "mkl_tfconv",
-    deps = [
-        ":bounds_check",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ] + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_input_conversion_op",
-    hdrs = ["mkl_tfconv_op.h"],
-    prefix = "mkl_input_conversion",
-    deps = [
-        ":bounds_check",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ] + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_pooling_ops",
-    srcs = [
-        "mkl_avgpooling_op.cc",
-        "mkl_maxpooling_op.cc",
-        "mkl_pooling_ops_common.cc",
-    ],
-    hdrs = ["mkl_pooling_ops_common.h"],
-    deps = [
-        ":bounds_check",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ] + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_dequantize_op",
-    srcs = ["mkl_dequantize_op.cc"],
-    hdrs = [
-        "meta_support.h",
-        "reference_gemm.h",
-    ],
-    deps = [
-        ":concat_lib_hdrs",
-        ":conv_ops",
-        ":cwise_op",
-        ":eigen_helpers",
-        ":image_resizer_state",
-        ":ops_util",
-        ":pooling_ops",
-        ":quantization_utils",
-        ":quantized_ops",
-        ":transpose_functor",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:mkl_graph_util",
-        "//tensorflow/core:nn_ops_op_lib",
-        "//third_party/eigen3",
-        "@gemmlowp",
-    ] + mkl_deps(),
-)
-
-tf_cc_test_mkl(
-    name = "mkl_dequantize_op_test",
-    size = "small",
-    srcs = ["mkl_dequantize_op_test.cc"],
-    # TODO(b/149940073): Re-enable.
-    tags = [
-        "no_oss",
-        "notap",
-    ],
-    deps = [
-        ":mkl_dequantize_op",
-        ":mkl_tfconv_op",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:mkl_array_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_relu_op",
-    prefix = "mkl_relu",
-    deps = [
-        ":bounds_check",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//third_party/eigen3",
-    ] + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_softmax_op",
-    prefix = "mkl_softmax",
-    deps = [
-        ":bounds_check",
-        ":ops_util",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-        "//third_party/eigen3",
-    ] + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_tmp_bf16_ops",
-    prefix = "mkl_tmp_bf16_ops",
-    deps = [
-        ":no_op",
-    ] + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_fused_batch_norm_op",
-    srcs = ["mkl_fused_batch_norm_op.cc"],
-    deps = NN_DEPS + [
-        ":fused_batch_norm_op",
-        ":no_op",
-    ] + mkl_deps(),
-)
-
-tf_cc_test_mkl(
-    name = "mkl_fused_batch_norm_op_test",
-    size = "small",
-    srcs = ["mkl_fused_batch_norm_op_test.cc"],
-    linkstatic = 1,
-    deps = [
-        ":mkl_fused_batch_norm_op",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_aggregate_ops",
-    prefix = "mkl_aggregate_ops",
-    deps = MATH_DEPS + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_concat_op",
-    prefix = "mkl_concat_op",
-    deps = [":quantization_utils"] + ARRAY_DEPS + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_reshape_op",
-    prefix = "mkl_reshape_op",
-    deps = ARRAY_DEPS + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_slice_op",
-    prefix = "mkl_slice_op",
-    deps = ARRAY_DEPS + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_identity_op",
-    prefix = "mkl_identity_op",
-    deps = ARRAY_DEPS + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_lrn_op",
-    prefix = "mkl_lrn_op",
-    deps = NN_DEPS + mkl_deps(),
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_cwise_ops_common",
-    hdrs = [
-        "cwise_ops.h",
-        "cwise_ops_common.h",
-        "cwise_ops_gradients.h",
-    ],
-    prefix = "mkl_cwise_ops_common",
-    deps = NN_DEPS + mkl_deps() + [":cwise_op"],
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_requantize_ops",
-    srcs = [
-        "mkl_requantization_range_per_channel_op.cc",
-        "mkl_requantize_per_channel_op.cc",
-    ],
-    hdrs = [
-        "meta_support.h",
-        "no_op.h",
-        "reference_gemm.h",
-    ],
-    deps = [
-        ":concat_lib_hdrs",
-        ":conv_ops",
-        ":cwise_op",
-        ":eigen_helpers",
-        ":image_resizer_state",
-        ":ops_util",
-        ":pooling_ops",
-        ":quantization_utils",
-        ":transpose_functor",
-        "//third_party/eigen3",
-        "@gemmlowp",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-    ] + mkl_deps(),
-)
-
-tf_cc_test_mkl(
-    name = "mkl_requantize_ops_test",
-    size = "small",
-    srcs = ["mkl_requantize_ops_test.cc"],
-    linkstatic = 1,  # Fixes dyld error on MacOS.
-    deps = [
-        ":mkl_requantize_ops",
-        ":ops_testutil",
-        ":ops_util",
-        ":quantization_utils",
-        ":quantized_ops",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:array_ops_op_lib",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_cc_test_mkl(
-    name = "mkl_fused_ops_test",
-    size = "small",
-    srcs = ["mkl_fused_ops_test.cc"],
-    linkstatic = 1,
-    deps = [
-        ":conv_ops",
-        ":image",
-        ":mkl_conv_op",
-        ":mkl_matmul_op",
-        ":mkl_tfconv_op",
-        ":ops_testutil",
-        ":ops_util",
-        "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
-    ],
-)
-
-tf_mkl_kernel_library(
-    name = "mkl_transpose_op",
-    srcs = [
-        "mkl_transpose_op.cc",
-    ],
-    hdrs = ["transpose_op.h"],
-    deps = ARRAY_DEPS + mkl_deps() + [":transpose_op"],
 )
 
 # NOTE(lespeholt): This rule is deprecated, please use:
@@ -8264,10 +7758,7 @@ tf_kernel_library(
 # should not be linked by projects that also link the cwise_op library.
 cc_library(
     name = "cwise_lib",
-    srcs = [
-        "cwise_ops_common.cc",
-        "meta_support.cc",
-    ],
+    srcs = ["cwise_ops_common.cc"],
     hdrs = [
         "cwise_ops.h",
         "cwise_ops_common.h",
@@ -8275,10 +7766,10 @@ cc_library(
         "cwise_ops_gpu_gradients.cu.h",
         "cwise_ops_gradients.h",
         "fill_functor.h",
-        "meta_support.h",
     ],
     deps = [
         ":bounds_check",
+        ":meta_support",
         ":quantization_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

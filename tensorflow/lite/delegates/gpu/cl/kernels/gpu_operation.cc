@@ -227,7 +227,7 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
     RETURN_IF_ERROR(
         MergeOperations(linked_operations_, &args_, &element_wise_code));
     RETURN_IF_ERROR(args_.TransformToCLCode(
-        creation_context.device->GetInfo(),
+        creation_context.device->info_,
         {{dst_tensors_names_[0], element_wise_code}}, &code));
     code = absl::Substitute(code, args_.GetListOfArgs());
     RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
@@ -238,13 +238,13 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
     RETURN_IF_ERROR(
         MergeOperations(linked_operations_, &args_, &element_wise_code));
     RETURN_IF_ERROR(args_.TransformToCLCode(
-        creation_context.device->GetInfo(),
+        creation_context.device->info_,
         {{dst_tensors_names_[0], element_wise_code}}, &code_));
     RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
         code_, "main_function", compiler_options_, *creation_context.context,
         *creation_context.device, &kernel_));
   }
-  return PostCompileCheck(creation_context.device->GetInfo());
+  return PostCompileCheck(creation_context.device->info_, kernel_.info_);
 }
 
 int3 GPUOperation::GetGridSize() const {

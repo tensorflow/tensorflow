@@ -95,6 +95,7 @@ constexpr char kFusedBatchNormGrad[] = "FusedBatchNormGrad";
 constexpr char kQuantizedMatMul[] = "QuantizedMatMul";
 constexpr char kQuantizedMatMulV2[] = "QuantizedMatMulV2";
 constexpr char kUnpack[] = "Unpack";
+constexpr char kSoftmax[] = "Softmax";
 // Dynamic control flow ops.
 constexpr char kSwitch[] = "Switch";
 constexpr char kMerge[] = "Merge";
@@ -503,6 +504,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   device_cost_impl_.emplace(
       kFusedBatchNormGrad,
       wrap(&OpLevelCostEstimator::PredictFusedBatchNormGrad));
+  device_cost_impl_.emplace(kSoftmax,
+                            wrap(&OpLevelCostEstimator::PredictSoftmax));
   device_cost_impl_.emplace(
       kAssignVariableOp, wrap(&OpLevelCostEstimator::PredictAssignVariableOps));
   device_cost_impl_.emplace(
@@ -2287,5 +2290,30 @@ Costs OpLevelCostEstimator::PredictNaryOp(const OpContext& op_context) const {
   costs.num_ops_with_unknown_shapes = found_unknown_shapes;
   return costs;
 }
+
+// softmax[i, j] = exp(logits[i, j]) / sum_j(exp(logits[i, j]))
+Costs OpLevelCostEstimator::PredictSoftmax(const OpContext& op_context) const {
+  bool found_unknown_shapes = false;
+  const int64 logits_size = CalculateTensorElementCount(
+      op_context.op_info.inputs(0), &found_unknown_shapes);
+  TensorShapeProto logits_shape = MaybeGetMinimumShape(
+      op_context.op_info.inputs(0).shape(), 2, &found_unknown_shapes);
+
+#define EIGEN_COST(X) Eigen::internal::functor_traits<Eigen::internal::X>::Cost
+
+  // Every element of <logits> will be exponentiated, have that result included
+  // in a sum across j, and also have that result multiplied by the reciprocal
+  // of the sum_j. In addition, we'll compute 1/sum_j for every i.
+  auto ops =
+      (EIGEN_COST(scalar_exp_op<float>) + EIGEN_COST(scalar_sum_op<float>) +
+       EIGEN_COST(scalar_product_op<float>)) *
+          logits_size +
+      EIGEN_COST(scalar_inverse_op<float>) * logits_shape.dim(0).size();
+
+#undef EIGEN_COST
+
+  return PredictOpCountBasedCost(ops, op_context.op_info);
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

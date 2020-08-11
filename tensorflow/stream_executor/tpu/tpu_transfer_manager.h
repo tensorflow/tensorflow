@@ -81,6 +81,12 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
       const xla::Shape& shape,
       stream_executor::DeviceMemoryBase* region) override;
 
+  Status LinearizeToBuffers(
+      const xla::LiteralSlice& literal,
+      std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) override {
+    LOG(FATAL) << "Not yet implemented.";
+  }
+
  private:
   XLA_TransferManager* manager_;
 };

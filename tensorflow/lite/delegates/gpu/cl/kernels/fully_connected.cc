@@ -114,7 +114,7 @@ absl::Status CreateFullyConnected(const CreationContext& creation_context,
                                   const OperationDef& definition,
                                   const FullyConnectedAttributes& attr,
                                   FullyConnected* result) {
-  *result = FullyConnected(definition, creation_context.device->GetInfo());
+  *result = FullyConnected(definition, creation_context.device->info_);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
 

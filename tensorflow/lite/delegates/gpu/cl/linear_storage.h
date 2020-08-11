@@ -61,6 +61,8 @@ class LinearStorage : public GPUObject {
  public:
   LinearStorage() {}
 
+  virtual ~LinearStorage() {}
+
   // Move only
   LinearStorage(LinearStorage&& storage);
   LinearStorage& operator=(LinearStorage&& storage);

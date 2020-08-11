@@ -51,8 +51,33 @@ HloSharding HloSharding::PartialTile(
     int64 group = group_tile_assignment(group_index);
     *device = replication_groups[group][indices.back()];
   });
-  return HloSharding(new_tile_assignment,
-                     /*replicate_on_last_tile_dim=*/true);
+  return PartialTile(new_tile_assignment);
+}
+
+HloSharding HloSharding::PartialTile(
+    const Array<int64>& tile_assignment_last_dim_replicate) {
+  std::vector<std::set<int64>> sorted_groups(
+      tile_assignment_last_dim_replicate.num_elements() /
+      tile_assignment_last_dim_replicate.dimensions().back());
+  auto get_group_id = [&](absl::Span<const int64> indices) {
+    int64 group_id = 0;
+    for (int64 i = 0; i < indices.size() - 1; ++i) {
+      group_id *= tile_assignment_last_dim_replicate.dim(i);
+      group_id += indices[i];
+    }
+    return group_id;
+  };
+  tile_assignment_last_dim_replicate.Each(
+      [&](absl::Span<const int64> indices, const int64 device) {
+        sorted_groups[get_group_id(indices)].insert(device);
+      });
+  Array<int64> sorted_tile(tile_assignment_last_dim_replicate.dimensions());
+  sorted_tile.Each([&](absl::Span<const int64> indices, int64* device) {
+    auto begin = sorted_groups[get_group_id(indices)].begin();
+    *device = *begin;
+    sorted_groups[get_group_id(indices)].erase(begin);
+  });
+  return HloSharding(sorted_tile, /*replicate_on_last_tile_dim=*/true);
 }
 
 HloSharding HloSharding::Tuple(const ShapeTree<HloSharding>& sub_shardings) {
@@ -194,8 +219,11 @@ std::vector<int64> HloSharding::TileOffsetForDevice(const Shape& shape,
   if (maximal_) {
     return std::vector<int64>(shape.dimensions_size(), 0);
   }
-
-  CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions());
+  if (replicate_on_last_tile_dim_) {
+    CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions() - 1);
+  } else {
+    CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions());
+  }
   std::vector<int64> index = TileIndexForDevice(device);
   for (int64 i = 0; i < index.size(); ++i) {
     const int64 shape_dim = shape.dimensions(i);
@@ -432,7 +460,8 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
                          proto.tile_assignment_dimensions().end()));
   std::copy(proto.tile_assignment_devices().begin(),
             proto.tile_assignment_devices().end(), tile_assignment.begin());
-  return HloSharding(tile_assignment, proto.replicate_on_last_tile_dim());
+  return proto.replicate_on_last_tile_dim() ? PartialTile(tile_assignment)
+                                            : HloSharding(tile_assignment);
 }
 
 OpSharding HloSharding::ToProto() const {
@@ -492,6 +521,17 @@ Shape HloSharding::TileShape(const Shape& shape, int64 device) const {
     result_shape.set_dimensions(i, limit - offset);
   }
   return result_shape;
+}
+
+int64 HloSharding::NumTiles() const {
+  if (IsTileMaximal()) {
+    return 1;
+  }
+  if (ReplicateOnLastTileDim()) {
+    return tile_assignment().num_elements() /
+           tile_assignment().dimensions().back();
+  }
+  return tile_assignment().num_elements();
 }
 
 HloSharding HloSharding::GetSubSharding(const Shape& shape,

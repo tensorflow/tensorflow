@@ -504,7 +504,9 @@ Status ExecuteTensorListGetItem(xla::XlaOp list, xla::XlaOp index,
 
   xla::XlaOp list_part = xla::GetTupleElement(list, 0);
   xla::XlaOp read = xla::DynamicSlice(list_part, start_indices, slice_shape);
-  for (int64 i = 0; i < buffer_shape.dimensions_size(); ++i) {
+  // Propagate dynamic dimensions from buffer to the sliced buffer, except for
+  // leading dimension (which is always static 1).
+  for (int64 i = 1; i < buffer_shape.dimensions_size(); ++i) {
     if (buffer_shape.is_dynamic_dimension(i)) {
       auto buffer = xla::GetTupleElement(list, 0);
       auto gds = xla::GetDimensionSize(buffer, i);
