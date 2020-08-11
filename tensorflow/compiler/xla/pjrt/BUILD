@@ -59,6 +59,10 @@ cc_library(
     name = "tracked_device_buffer",
     srcs = ["tracked_device_buffer.cc"],
     hdrs = ["tracked_device_buffer.h"],
+    visibility = [
+        "//learning/pathways/data_parallel:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":event_pool",
         ":local_device_state",
