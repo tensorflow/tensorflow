@@ -262,7 +262,7 @@ def _find_cuda_config(base_paths, required_cuda_version, required_cudnn_version)
                                              required_cudnn_version,
                                              get_cudnn_header_version)
 
-  cudnn_version, *_ = cudnn_version.split(".")
+  cudnn_version = cudnn_version.split(".")[0]
 
   cuda_library_path = _find_library(base_paths, "cudart", cuda_version)
   cudnn_library_path = _find_library(base_paths, "cudnn", cudnn_version)
