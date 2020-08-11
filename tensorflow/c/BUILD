@@ -81,6 +81,7 @@ tf_cuda_library(
     hdrs = [
         "c_api.h",
         "c_api_internal.h",
+        "c_api_macros.h",
         "tf_datatype.h",
         "tf_tensor.h",
         "tf_tstring.h",

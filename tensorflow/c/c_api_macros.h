@@ -30,6 +30,12 @@ limitations under the License.
 #endif  // _WIN32
 #endif  // SWIG
 
+// TF_Bool is the C API typedef for unsigned char, while TF_BOOL is 
+// the datatype for boolean tensors. 
+#ifndef TF_BOOL_DEFINED 
+#define TF_Bool unsigned char 
+#endif // TF_BOOL_DEFINED
+
 // Macro used to calculate struct size for maintaining ABI stability across 
 // different struct implementations. 
 #ifndef TF_OFFSET_OF_END

@@ -50,7 +50,7 @@ extern "C" {
 typedef struct TF_AllocatorAttributes { 
   size_t struct_size; 
   // Set boolean to 1 for CPU allocation, else 0. 
-  unsigned char on_host; 
+  TF_Bool on_host; 
 } TF_AllocatorAttributes; 
 
 

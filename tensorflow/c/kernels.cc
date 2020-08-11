@@ -261,7 +261,6 @@ TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context, int index,
                              size_t len, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-
   static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
                 "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
@@ -286,22 +285,29 @@ TF_Tensor* TF_AllocateTemp(TF_OpKernelContext* context, TF_DataType dtype,
                            TF_AllocatorAttributes* attributes,
                            TF_Status* status) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(context);
-  TF_SetStatus(status, TF_OK, ""); 
+  TF_SetStatus(status, TF_OK, "");
+  static_assert(sizeof(int64_t) == sizeof(tensorflow::int64),
+                "64-bit int types should match in size");
   tensorflow::gtl::ArraySlice<tensorflow::int64> dimarray(
       reinterpret_cast<tensorflow::int64*>(dims), num_dims);
+  if (attributes && !attributes->struct_size) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT, "TF_AllocatorAttributes struct "
+        "size member must be set to TF_ALLOCATOR_ATTRIBUTES_STRUCT_SIZE"); 
+    return nullptr;  
+  }
   tensorflow::AllocatorAttributes allocator_attr; 
-  if (attributes->on_host) { 
+  if (attributes && attributes->on_host) { 
     allocator_attr.set_on_host(true); 
   }
   tensorflow::Status s;
   tensorflow::Tensor tensor;
-  TF_Tensor* tf_tensor;
   s = cc_ctx->allocate_temp(static_cast<tensorflow::DataType>(dtype), 
       tensorflow::TensorShape(dimarray), &tensor, allocator_attr);
   if (!s.ok()) {
     ::tensorflow::Set_TF_Status_from_Status(status, s);
     return nullptr;
   }
+  TF_Tensor* tf_tensor;
   tf_tensor = TF_TensorFromTensor(tensor, &s);
   if (!s.ok()) {
     ::tensorflow::Set_TF_Status_from_Status(status, s);

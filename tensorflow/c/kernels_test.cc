@@ -368,13 +368,12 @@ class DeviceKernelOpTest : public OpsTestBase {
 #endif
 };
 
-// Helper function for tests that validates that the tensor has 
-// shape and type corresponding to dims and dtype. 
+// Validates that the tensor has shape and type corresponding to 
+// dims and dtype. 
 void validate_tensor(TF_Tensor* tensor, int64_t* dims, int64_t num_dims, 
                      TF_DataType dtype);
 
-// Helper function for tests that copies data of length 
-// tensor_size_bytes from values to tensor 
+// Copies data of length tensor_size_bytes from values to tensor.
 template <typename T> 
 void set_tensor_data(TF_Tensor* tensor, T* values, size_t tensor_size_bytes, 
                      TF_OpKernelContext* ctx);
