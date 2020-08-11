@@ -50,35 +50,22 @@ Status ZerosLike(AbstractContext* ctx,
 }
 
 Status Shape(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr shape_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      shape_op->Reset("Shape", /*raw_device_name=*/nullptr));
-  if (isa<tensorflow::tracing::TracingOperation>(shape_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(shape_op.get())
-                           ->SetOpName(name));
-  }
-  TF_RETURN_IF_ERROR(shape_op->AddInput(inputs[0]));
-  int num_retvals = 1;
-  return shape_op->Execute(outputs, &num_retvals);
-}
-
-Status Prod(AbstractContext* ctx,
-                absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
-  AbstractOperationPtr prod_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(
-      prod_op->Reset("Prod", /*raw_device_name=*/nullptr));
-  if (isa<tensorflow::tracing::TracingOperation>(prod_op.get())) {
-    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(shape_op.get())
-                           ->SetOpName(name));
-  }
-  TF_RETURN_IF_ERROR(shape_op->AddInput(inputs[0])); // input vals
-  TF_RETURN_IF_ERROR(shape_op->AddInput(inputs[0])); // dims
-  int num_retvals = 1;
-  return shape_op->Execute(outputs, &num_retvals);
-}
+ TF_RETURN_IF_ERROR(
+     shape_op->Reset("Shape", /*raw_device_name=*/nullptr));
+ 
+ if (isa<tracing::TracingOperation>(shape_op.get())) {
+   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(shape_op.get())
+                          ->SetOpName(name));
+ }
+ 
+ TF_RETURN_IF_ERROR(shape_op->AddInput(inputs[0])); // input
+ int num_retvals = 1;
+ TF_RETURN_IF_ERROR(shape_op->Execute(outputs, &num_retvals));
+ return Status::OK();
+ }
 
 }  // namespace ops
 }  // namespace tensorflow
