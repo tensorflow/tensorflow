@@ -28,6 +28,7 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
+from tensorflow.python.framework import test_util
 
 
 def _test_objects():
@@ -60,15 +61,15 @@ def _test_objects():
   ]
 
 
-def _test_eager_only_objects():
+def _test_ragged_based_objects():
   return [
-      combinations.NamedObject(
-          "ragged",
-          ragged_factory_ops.constant([[0, 1, 2, 3], [4, 5], [6, 7, 8], [9]])
+      dict(
+          test_name="ragged",
+          test_input=ragged_factory_ops.constant([[0, 1, 2, 3], [4, 5], [9]])
       ),
-      combinations.NamedObject(
-          "sparse_ragged_structured",
-          {
+      dict(
+          test_name="sparse_ragged_structured",
+          test_input={
               "sparse": sparse_tensor.SparseTensorValue(
                   indices=[[0, 0], [1, 2]], values=[1, 2], dense_shape=[3, 4]),
               "ragged": ragged_factory_ops.constant([[0, 1, 2, 3], [9]])
@@ -81,10 +82,7 @@ class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(element=_test_objects())) +
-      combinations.times(
-          test_base.eager_only_combinations(),
-          combinations.combine(element=_test_eager_only_objects())))
+          combinations.combine(element=_test_objects())))
   def testCompression(self, element):
     element = element._obj
 
@@ -96,10 +94,7 @@ class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(element=_test_objects())) +
-      combinations.times(
-          test_base.eager_only_combinations(),
-          combinations.combine(element=_test_eager_only_objects())))
+          combinations.combine(element=_test_objects())))
   def testDatasetCompression(self, element):
     element = element._obj
 
@@ -109,6 +104,27 @@ class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda *x: compression_ops.compress(x))
     dataset = dataset.map(lambda x: compression_ops.uncompress(x, element_spec))
     self.assertDatasetProduces(dataset, [element])
+
+
+class RaggedCompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  def testCompression(self):
+    for test_case in _test_ragged_based_objects():
+      element = test_case["test_input"]
+      compressed = compression_ops.compress(element)
+      uncompressed = compression_ops.uncompress(
+          compressed, structure.type_spec_from_value(element))
+      self.assertValuesEqual(element, self.evaluate(uncompressed))
+
+  def testDatasetCompression(self):
+    for test_case in _test_ragged_based_objects():
+      element = test_case["test_input"]
+      dataset = dataset_ops.Dataset.from_tensors(element)
+      element_spec = dataset.element_spec
+
+      dataset = dataset.map(lambda *x: compression_ops.compress(x))
+      dataset = dataset.map(lambda x: compression_ops.uncompress(x, element_spec))
+      self.assertDatasetProduces(dataset, [element])
 
 
 if __name__ == "__main__":
