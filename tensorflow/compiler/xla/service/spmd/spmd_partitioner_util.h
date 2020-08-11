@@ -304,6 +304,11 @@ struct GroupedSharding {
   HloSharding sharding;
 };
 
+// Creates a GroupedSharding for a tiled sharding with group dim shard sizes.
+GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
+                                    absl::Span<const int64> group_dims,
+                                    absl::Span<const int64> group_dim_shards);
+
 // Creates a GroupedSharding for a tiled sharding.
 GroupedSharding GroupShardingOnDims(const HloSharding& sharding,
                                     absl::Span<const int64> group_dims);
@@ -370,6 +375,15 @@ absl::optional<HloInstruction*> PadFromPartialReplicateShape(
 absl::optional<HloSharding> PartialReplicateToTileCompatibleSharding(
     const HloSharding& partial_sharding,
     const std::vector<int64>& target_tile_dims);
+
+// Do left halo exchange if all-reduce directly from tile sharding to partial
+// replicate sharding will remove useful data from the source.
+absl::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
+    HloInstruction* hlo, const Shape& base_shape,
+    const HloSharding& src_sharding, const HloSharding& dst_sharding,
+    const std::vector<int64>& replicate_dims,
+    const SPMDCollectiveOpsCreator& collective_ops_creator,
+    int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
 
 }  // namespace spmd
 }  // namespace xla
