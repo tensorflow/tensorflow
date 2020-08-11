@@ -112,14 +112,14 @@ func @if_else(%arg0: !tf_res, %arg1: !tf_res) -> (!tf_res, !tf_res, !tf_res) {
 
 // CHECK-LABEL: func @while_op_aliasing
 // expected-remark@below {{Region #0, Arg #0, ID 4 : 1, 4}}
-// expected-remark@below {{Region #0, Arg #1, ID 5 : 1, 3, 5}}
-// expected-remark@below {{Region #0, Arg #2, ID 6 : 1, 2, 6}}
+// expected-remark@below {{Region #0, Arg #1, ID 5 : 1, 2, 3, 5}}
+// expected-remark@below {{Region #0, Arg #2, ID 6 : 1, 2, 3, 6}}
 func @while_op_aliasing(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) {
   // expected-remark@below {{Result #0, ID 0 : 0}}
   %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
   // expected-remark@below {{Result #0, ID 1 : Unknown}}
-  // expected-remark@below {{Result #1, ID 2 : 1, 2, 6}}
-  // expected-remark@below {{Result #2, ID 3 : 1, 3, 5}}
+  // expected-remark@below {{Result #1, ID 2 : 1, 2, 3, 5, 6}}
+  // expected-remark@below {{Result #2, ID 3 : 1, 2, 3, 5, 6}}
   %w:3 = "tf.While"(%arg0, %arg1, %arg2) {
             body = @while_body, cond = @while_cond, is_stateless = false
          } : (!tf_res, !tf_res, !tf_res) -> (!tf_res, !tf_res, !tf_res)
@@ -205,14 +205,14 @@ func @if_region_aliasing(%arg0: !tf_res, %arg1: !tf_res) {
 
 // CHECK-LABEL: func @while_region_aliasing
 // expected-remark@below {{Region #0, Arg #0, ID 11 : 1, 8, 11}}
-// expected-remark@below {{Region #0, Arg #1, ID 12 : 1, 8, 10, 12}}
-// expected-remark@below {{Region #0, Arg #2, ID 13 : 1, 8, 9, 13}}
+// expected-remark@below {{Region #0, Arg #1, ID 12 : 1, 8, 9, 10, 12}}
+// expected-remark@below {{Region #0, Arg #2, ID 13 : 1, 8, 9, 10, 13}}
 func @while_region_aliasing(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) {
   // expected-remark@below {{Result #0, ID 0 : 0, 1, 8}}
   %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
   // expected-remark@below {{Result #0, ID 8 : Unknown}}
-  // expected-remark@below {{Result #1, ID 9 : 1, 8, 9, 13}}
-  // expected-remark@below {{Result #2, ID 10 : 1, 8, 10, 12}}
+  // expected-remark@below {{Result #1, ID 9 : 1, 8, 9, 10, 12, 13}}
+  // expected-remark@below {{Result #2, ID 10 : 1, 8, 9, 10, 12, 13}}
   // expected-remark@below {{Region #0, Arg #0, ID 2 : 1, 2, 8}}
   // expected-remark@below {{Region #0, Arg #1, ID 3 : 1, 3, 8}}
   // expected-remark@below {{Region #0, Arg #2, ID 4 : 1, 4, 8}}

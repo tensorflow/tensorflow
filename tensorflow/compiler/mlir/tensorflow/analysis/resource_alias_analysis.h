@@ -35,6 +35,7 @@ namespace mlir {
 namespace TF {
 namespace detail {
 class BacktrackAnalysis;
+class BacktrackAnalysisInfo;
 
 // Resource alias analysis information for a single function.
 class ResourceAliasAnalysisInfo {
@@ -57,14 +58,24 @@ class ResourceAliasAnalysisInfo {
   llvm::SmallSetVector<Value, 8> GetResourceAliases(Value resource) const;
 
  private:
-  // Maps resource value to unique ID and vice-versa.
-  void AddValueUniqueIDMapping(Value value, int64_t id) {
+  // Maps resource value to unique ID and vice-versa. Returns true of the
+  // mapping has changed.
+  bool AddValueUniqueIDMapping(Value value, int64_t id) {
     resource_value_to_ids_[value].insert(id);
-    id_to_resource_values_[id].insert(value);
+    return id_to_resource_values_[id].insert(value);
   }
 
   // Returns the set unique Values which map to `id`.
   const llvm::SmallSetVector<Value, 8>& GetUniqueIdResources(int64_t id) const;
+
+  // Propagates the resource ID's from an input operand to a result. Returns
+  // true of the mapping has changed.
+  bool PropagateInputToOutput(const Value& operand, const OpResult& result);
+
+  // Analyzes while loops to compute resourceID's for the loop results.
+  // `body_info` is the backtrack analysis info for the loop body.
+  void AnalyzeWhileLoop(Operation* while_op,
+                        const BacktrackAnalysisInfo& body_info);
 
   // Maps each resource-type value to a set of unique IDs that it could alias.
   llvm::SmallDenseMap<Value, llvm::SmallSet<int64_t, 8>, 8>

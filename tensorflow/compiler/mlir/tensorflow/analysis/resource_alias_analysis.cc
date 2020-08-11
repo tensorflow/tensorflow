@@ -45,8 +45,8 @@ limitations under the License.
 
 namespace mlir {
 namespace TF {
+namespace detail {
 
-namespace {
 //===----------------------------------------------------------------------===//
 // BacktrackAnalysisInfo
 //===----------------------------------------------------------------------===//
@@ -86,9 +86,6 @@ class BacktrackAnalysisInfo {
   // Backtracked values indexed by the result number.
   llvm::SmallVector<Value, 4> backtracked_values_;
 };
-}  // namespace
-
-namespace detail {
 
 //===----------------------------------------------------------------------===//
 // BacktrackAnalysis
@@ -169,9 +166,6 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
   }
   return value;
 }
-}  // namespace detail
-
-namespace {
 
 // Analyze the region.
 BacktrackAnalysisInfo::BacktrackAnalysisInfo(
@@ -187,6 +181,8 @@ BacktrackAnalysisInfo::BacktrackAnalysisInfo(
   for (auto result : results)
     backtracked_values_.push_back(backtrack_analysis.BacktrackValue(result));
 }
+
+namespace {
 
 //===----------------------------------------------------------------------===//
 // ResourceAliasAnalysisInfo helper functions.
@@ -224,14 +220,13 @@ int64_t GetOrCreateIdForVarHandle(VarHandleOp handle, int64_t* next_id,
 
 }  // namespace
 
-namespace detail {
 //===----------------------------------------------------------------------===//
 // ResourceAliasAnalysisInfo
 //===----------------------------------------------------------------------===//
 
 // Constructs the analysis info by analyzing the given function.
 ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
-    FuncOp func_op, const detail::BacktrackAnalysis& backtrack_analysis) {
+    FuncOp func_op, const BacktrackAnalysis& backtrack_analysis) {
   // This function populates resource_value_to_ids_ and id_to_resource_values_.
 
   int64_t next_unique_id = 0;
@@ -293,15 +288,6 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
   });
 
   llvm::StringMap<int64_t> var_handle_name_id_map;
-  auto forward_input_to_output = [&](const Value& operand,
-                                     const OpResult& result) {
-    auto operand_it = resource_value_to_ids_.find(operand);
-    assert(operand_it != resource_value_to_ids_.end() &&
-           "A resource-type output does not have the corresponding "
-           "resource-type input.");
-    for (int64_t id : operand_it->second) AddValueUniqueIDMapping(result, id);
-  };
-
   func_op.walk([&](Operation* op) {
     if (auto var_handle = dyn_cast<VarHandleOp>(op)) {
       AddValueUniqueIDMapping(
@@ -310,36 +296,14 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
                                     &var_handle_name_id_map));
     } else if (llvm::isa<IdentityNOp, IdentityOp>(op)) {
       for (auto result : filter_resources(op->getResults()))
-        forward_input_to_output(op->getOperand(result.getResultNumber()),
-                                result);
+        PropagateInputToOutput(op->getOperand(result.getResultNumber()),
+                               result);
     } else if (auto while_op = dyn_cast<WhileOp>(op)) {
-      const auto& body_info =
-          backtrack_analysis.GetAnalysisForFunc(while_op.body_func());
-      // If a result is a passthrough of the body input, use the corresponding
-      // operand's resource IDs.
-      for (auto result : filter_resources(while_op.getResults())) {
-        auto passthrough_arg = body_info.GetArg(result.getResultNumber());
-        if (passthrough_arg) {
-          forward_input_to_output(
-              while_op.getOperand(passthrough_arg.getValue()), result);
-        } else {
-          AddValueUniqueIDMapping(result, kUnknownResourceId);
-        }
-      }
+      AnalyzeWhileLoop(while_op, backtrack_analysis.GetAnalysisForFunc(
+                                     while_op.body_func()));
     } else if (auto while_region = dyn_cast<WhileRegionOp>(op)) {
-      const auto& body_info =
-          backtrack_analysis.GetAnalysisForRegion(while_region.body());
-      // If a result is a passthrough of the body input, use the corresponding
-      // operand's resource IDs.
-      for (auto result : filter_resources(while_region.getResults())) {
-        auto passthrough_arg = body_info.GetArg(result.getResultNumber());
-        if (passthrough_arg) {
-          forward_input_to_output(
-              while_region.getOperand(passthrough_arg.getValue()), result);
-        } else {
-          AddValueUniqueIDMapping(result, kUnknownResourceId);
-        }
-      }
+      AnalyzeWhileLoop(while_region, backtrack_analysis.GetAnalysisForRegion(
+                                         while_region.body()));
     } else if (auto if_op = dyn_cast<IfOp>(op)) {
       const auto& then_info =
           backtrack_analysis.GetAnalysisForFunc(if_op.then_func());
@@ -353,8 +317,8 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
         if (passthrough_then_arg && passthrough_else_arg) {
           Value then_operand = if_op.input()[passthrough_then_arg.getValue()];
           Value else_operand = if_op.input()[passthrough_else_arg.getValue()];
-          forward_input_to_output(then_operand, result);
-          forward_input_to_output(else_operand, result);
+          PropagateInputToOutput(then_operand, result);
+          PropagateInputToOutput(else_operand, result);
         } else {
           AddValueUniqueIDMapping(result, kUnknownResourceId);
         }
@@ -374,8 +338,8 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
         // IfRegion, it will have been visited earlier and a mapping would
         // exist for that value. If its computed within the region, then again
         // a mapping would exist.
-        forward_input_to_output(then_result, result);
-        forward_input_to_output(else_result, result);
+        PropagateInputToOutput(then_result, result);
+        PropagateInputToOutput(else_result, result);
       }
     } else if (auto call = dyn_cast<CallOpInterface>(op)) {
       FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
@@ -387,7 +351,7 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
       for (auto result : filter_resources(op->getResults())) {
         auto passthrough_arg = func_info.GetArg(result.getResultNumber());
         if (passthrough_arg) {
-          forward_input_to_output(
+          PropagateInputToOutput(
               call.getArgOperands()[passthrough_arg.getValue()], result);
         } else {
           AddValueUniqueIDMapping(result, kUnknownResourceId);
@@ -398,6 +362,85 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
     }
     return WalkResult::advance();
   });
+}
+
+// Propagates the resource ID's from an input operand to a result. Returns true
+// if the mapping changed.
+bool ResourceAliasAnalysisInfo::PropagateInputToOutput(const Value& operand,
+                                                       const OpResult& result) {
+  auto operand_it = resource_value_to_ids_.find(operand);
+  assert(operand_it != resource_value_to_ids_.end() &&
+         "A resource-type output does not have the corresponding "
+         "resource-type input.");
+  bool change = false;
+  for (int64_t id : operand_it->second)
+    change = AddValueUniqueIDMapping(result, id) || change;
+  return change;
+}
+
+// Analyzes while loops to compute resourceIDs for the loop results.
+//
+// (1) The base case for the analysis is that if the loop body does not execute
+//     at all, the resource IDs for each result is the same as the resource IDs
+//     of the corresponding input.
+// (2) If the loop does execute one or more times, then we need to account for
+//     data flow through the body of the while loop. If result #r is the same
+//     as arg #a of the loop body (pass through argument), then we can reason
+//     further, else if the result is not a passthrough, we mark it as unknown.
+// (3) For passthrough results, if result #r is the same as arg #a of the loop
+//     body, after one iteration, result #r = arg #a, so we need to also
+//     propagate arg #a to result #r. After another iteration, arg #a of the
+//     loop body will be result #a of the previous iteration. So then we need
+//     propagate from result #a to result #r. Generalizing, the resource ID
+//     propagation (for results which are passthrough) looks like:
+//
+//     for r in (0, num_results) : result[r] = arg[r];
+//     repeat till no change {
+//       a = passthrough arg for result #r;
+//       result[r] += result[a];
+//     }
+//
+void ResourceAliasAnalysisInfo::AnalyzeWhileLoop(
+    Operation* while_op, const BacktrackAnalysisInfo& body_info) {
+  // Seed the resource ID's for the results using either the resource ID of the
+  // passthrough arg, or unknown. We need to perform further analysis if we
+  // find a passthrough arg which is not the same as corresponding the result #.
+  llvm::SmallVector<Optional<int>, 4> passthrough_args(
+      while_op->getNumResults());
+  bool need_analysis = false;
+  for (auto result : filter_resources(while_op->getResults())) {
+    int result_index = result.getResultNumber();
+    passthrough_args[result_index] = body_info.GetArg(result_index);
+    if (passthrough_args[result_index]) {
+      int passthru_index = passthrough_args[result_index].getValue();
+      PropagateInputToOutput(while_op->getOperand(passthru_index), result);
+      need_analysis |=
+          !IsUnknownResource(result) && passthru_index != result_index;
+    } else {
+      AddValueUniqueIDMapping(result, kUnknownResourceId);
+    }
+  }
+
+  if (!need_analysis) return;
+
+  // We found a result that is not unknown and whose passthrough operand index
+  // is not the same as the result index, which means there is "crosstalk"
+  // between 2 or more operands. In that case, we do an iterative propagation
+  // of resource ID's till the results converge.
+  bool change = true;
+  while (change) {
+    change = false;
+    for (auto result : filter_resources(while_op->getResults())) {
+      if (IsUnknownResource(result)) continue;
+      // If this result has a valid passthrough arg, propagate resource ID's
+      // from the result of the passthrough arg
+      int result_index = result.getResultNumber();
+      int passthru_index = passthrough_args[result_index].getValue();
+      change =
+          PropagateInputToOutput(while_op->getResult(passthru_index), result) ||
+          change;
+    }
+  }
 }
 
 bool ResourceAliasAnalysisInfo::IsUnknownResource(Value resource) const {
