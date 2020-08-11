@@ -41,10 +41,10 @@ static Graph* BM_ScalarSummaryOp(TensorShape shape, const char* tag,
 }
 
 // Macro used to parse initializer list for tensorshape 
-#define DIMARGS(...) {__VA_ARGS__, 0}
+#define DIMARGS(...) {__VA_ARGS__}
 // Random parameters for testing
-#define LONGTAGPARAM LONGTAG____________________________ 
-#define LARGEVALUEPARAM 2352352.2623433
+constexpr char longTagParam = "LONGTAG____________________________"; 
+constexpr float largeValueParam = 2352352.2623433; 
 
 #define BM_ScalarSummaryDev(device, dims, name, tag, value)       		\
 	static void BM_ScalarSummary_##name##_##device(int iters) { 	      \
@@ -58,7 +58,7 @@ BM_ScalarSummaryDev(cpu, (5, 10, 100), Base, tag, 5.2);
 // Benchmark for large shapes 
 BM_ScalarSummaryDev(cpu, (500, 1000, 10000), Large_Shape, tag, 5.2);
 // Benchmark for large tag tstring 
-BM_ScalarSummaryDev(cpu, (5, 10, 100), Long_Tag, LONGTAGPARAM, 5.2);
+BM_ScalarSummaryDev(cpu, (5, 10, 100), Long_Tag, longTagParam, 5.2);
 // Benchmark for large values 
-BM_ScalarSummaryDev(cpu, (500, 1000, 10000), Large_Value, tag, LARGEVALUEPARAM);
+BM_ScalarSummaryDev(cpu, (500, 1000, 10000), Large_Value, tag, largeValueParam);
 } // namespace tensorflow
