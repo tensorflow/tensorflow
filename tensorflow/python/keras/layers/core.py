@@ -1259,7 +1259,7 @@ class NoisyDense(Layer):
   >>> # and output arrays of shape (None, 32).
   >>> # Note that after the first layer, you don't need to specify
   >>> # the size of the input anymore:
-  >>> model.add(tf.keras.layers.Dense(32))
+  >>> model.add(tf.keras.layers.NoisyDense(32))
   >>> model.output_shape
   (None, 32)
 
