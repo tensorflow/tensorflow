@@ -46,7 +46,8 @@ source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py35"
 
 set +e
-bazel test --config=cuda --config=opt \
+ls /usr/include/cud*
+bazel test --config=cuda --config=opt -s \
   --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda11:toolchain \
   --linkopt=-lrt \
   --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
@@ -54,7 +55,7 @@ bazel test --config=cuda --config=opt \
   --test_tag_filters=${tag_filters} \
   --build_tag_filters=${tag_filters} \
   --test_timeout="300,450,1200,3600" --local_test_jobs=4 \
-  --test_output=errors --verbose_failures=true --keep_going \
+  --test_output=errors --verbose_failures=true \
   --run_under=//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execute \
   -- ${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/...
 test_xml_summary_exit

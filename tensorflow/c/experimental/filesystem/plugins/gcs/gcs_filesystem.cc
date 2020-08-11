@@ -879,32 +879,6 @@ void DeleteDir(const TF_Filesystem* filesystem, const char* path,
   TF_SetStatus(status, TF_OK, "");
 }
 
-// TODO(vnvo2409): `RewriteObjectBlocking` will set `status` to `TF_NOT_FOUND`
-// if the object does not exist. In that case, we will have to check if the
-// `src` is a directory or not to set the correspondent `status` (i.e
-// `TF_NOT_FOUND` if path `src` does not exist, `TF_FAILED_PRECONDITION` if
-// path `src` is a directory).
-void RenameFile(const TF_Filesystem* filesystem, const char* src,
-                const char* dst, TF_Status* status) {
-  std::string bucket_src, object_src;
-  ParseGCSPath(src, false, &bucket_src, &object_src, status);
-  if (TF_GetCode(status) != TF_OK) return;
-
-  std::string bucket_dst, object_dst;
-  ParseGCSPath(dst, false, &bucket_dst, &object_dst, status);
-  if (TF_GetCode(status) != TF_OK) return;
-
-  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
-  auto metadata = gcs_file->gcs_client.RewriteObjectBlocking(
-      bucket_src, object_src, bucket_dst, object_dst);
-  if (!metadata) {
-    TF_SetStatusFromGCSStatus(metadata.status(), status);
-    return;
-  }
-  auto gcs_status = gcs_file->gcs_client.DeleteObject(bucket_src, object_src);
-  TF_SetStatusFromGCSStatus(gcs_status, status);
-}
-
 void CopyFile(const TF_Filesystem* filesystem, const char* src, const char* dst,
               TF_Status* status) {
   std::string bucket_src, object_src;
@@ -956,6 +930,100 @@ bool IsDirectory(const TF_Filesystem* filesystem, const char* path,
   return false;
 }
 
+static void RenameObject(const TF_Filesystem* filesystem,
+                         const std::string& src, const std::string& dst,
+                         TF_Status* status) {
+  std::string bucket_src, object_src;
+  ParseGCSPath(src, false, &bucket_src, &object_src, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string bucket_dst, object_dst;
+  ParseGCSPath(dst, false, &bucket_dst, &object_dst, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  auto metadata = gcs_file->gcs_client.RewriteObjectBlocking(
+      bucket_src, object_src, bucket_dst, object_dst);
+  TF_SetStatusFromGCSStatus(metadata.status(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  ClearFileCaches(gcs_file, dst);
+  DeleteFile(filesystem, src.c_str(), status);
+}
+
+void RenameFile(const TF_Filesystem* filesystem, const char* src,
+                const char* dst, TF_Status* status) {
+  if (!IsDirectory(filesystem, src, status)) {
+    if (TF_GetCode(status) == TF_FAILED_PRECONDITION)
+      RenameObject(filesystem, src, dst, status);
+    return;
+  }
+
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  std::vector<std::string> childrens =
+      GetChildrenBounded(gcs_file, src, UINT64_MAX, true, true, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string src_dir = src;
+  std::string dst_dir = dst;
+  MaybeAppendSlash(&src_dir);
+  MaybeAppendSlash(&dst_dir);
+  for (const std::string& children : childrens) {
+    RenameObject(filesystem, src_dir + children, dst_dir + children, status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void DeleteRecursively(const TF_Filesystem* filesystem, const char* path,
+                       uint64_t* undeleted_files, uint64_t* undeleted_dirs,
+                       TF_Status* status) {
+  if (!undeleted_files || !undeleted_dirs)
+    return TF_SetStatus(
+        status, TF_INTERNAL,
+        "'undeleted_files' and 'undeleted_dirs' cannot be nullptr.");
+  *undeleted_files = 0;
+  *undeleted_dirs = 0;
+  if (!IsDirectory(filesystem, path, status)) {
+    *undeleted_dirs = 1;
+    return;
+  }
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  std::vector<std::string> childrens =
+      GetChildrenBounded(gcs_file, path, UINT64_MAX, true, true, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string dir = path;
+  MaybeAppendSlash(&dir);
+  for (const std::string& children : childrens) {
+    const std::string& full_path = dir + children;
+    DeleteFile(filesystem, full_path.c_str(), status);
+    if (TF_GetCode(status) != TF_OK) {
+      if (IsDirectory(filesystem, full_path.c_str(), status))
+        // The object is a directory marker.
+        (*undeleted_dirs)++;
+      else
+        (*undeleted_files)++;
+    }
+  }
+}
+
+int GetChildren(const TF_Filesystem* filesystem, const char* path,
+                char*** entries, TF_Status* status) {
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  std::vector<std::string> childrens =
+      GetChildrenBounded(gcs_file, path, UINT64_MAX, false, false, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+
+  int num_entries = childrens.size();
+  *entries = static_cast<char**>(
+      plugin_memory_allocate(num_entries * sizeof((*entries)[0])));
+  for (int i = 0; i < num_entries; i++)
+    (*entries)[i] = strdup(childrens[i].c_str());
+  TF_SetStatus(status, TF_OK, "");
+  return num_entries;
+}
+
 void Stat(const TF_Filesystem* filesystem, const char* path,
           TF_FileStatistics* stats, TF_Status* status) {
   std::string bucket, object;
@@ -993,6 +1061,17 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
   }
 }
 
+static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
+  return strdup(uri);
+}
+
+static void FlushCaches(const TF_Filesystem* filesystem) {
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  absl::ReaderMutexLock l(&gcs_file->block_cache_lock);
+  gcs_file->file_block_cache->Flush();
+  gcs_file->stat_cache->Clear();
+}
+
 }  // namespace tf_gcs_filesystem
 
 static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
@@ -1009,6 +1088,13 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
       plugin_memory_allocate(TF_WRITABLE_FILE_OPS_SIZE));
   ops->writable_file_ops->cleanup = tf_writable_file::Cleanup;
 
+  ops->read_only_memory_region_ops = static_cast<TF_ReadOnlyMemoryRegionOps*>(
+      plugin_memory_allocate(TF_READ_ONLY_MEMORY_REGION_OPS_SIZE));
+  ops->read_only_memory_region_ops->cleanup =
+      tf_read_only_memory_region::Cleanup;
+  ops->read_only_memory_region_ops->data = tf_read_only_memory_region::Data;
+  ops->read_only_memory_region_ops->length = tf_read_only_memory_region::Length;
+
   ops->filesystem_ops = static_cast<TF_FilesystemOps*>(
       plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
   ops->filesystem_ops->init = tf_gcs_filesystem::Init;
@@ -1018,6 +1104,20 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   ops->filesystem_ops->new_writable_file = tf_gcs_filesystem::NewWritableFile;
   ops->filesystem_ops->new_appendable_file =
       tf_gcs_filesystem::NewAppendableFile;
+  ops->filesystem_ops->new_read_only_memory_region_from_file =
+      tf_gcs_filesystem::NewReadOnlyMemoryRegionFromFile;
+  ops->filesystem_ops->create_dir = tf_gcs_filesystem::CreateDir;
+  ops->filesystem_ops->delete_file = tf_gcs_filesystem::DeleteFile;
+  ops->filesystem_ops->delete_dir = tf_gcs_filesystem::DeleteDir;
+  ops->filesystem_ops->delete_recursively =
+      tf_gcs_filesystem::DeleteRecursively;
+  ops->filesystem_ops->copy_file = tf_gcs_filesystem::CopyFile;
+  ops->filesystem_ops->path_exists = tf_gcs_filesystem::PathExists;
+  ops->filesystem_ops->is_directory = tf_gcs_filesystem::IsDirectory;
+  ops->filesystem_ops->stat = tf_gcs_filesystem::Stat;
+  ops->filesystem_ops->get_children = tf_gcs_filesystem::GetChildren;
+  ops->filesystem_ops->translate_name = tf_gcs_filesystem::TranslateName;
+  ops->filesystem_ops->flush_caches = tf_gcs_filesystem::FlushCaches;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {

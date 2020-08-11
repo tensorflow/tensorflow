@@ -34,7 +34,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
@@ -182,7 +181,10 @@ template <typename OpType>
 StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
     HloInstruction* instr) {
   Location loc = getLocation(instr);
-  ArrayRef<std::pair<Identifier, Attribute>> attrs;
+  std::pair<Identifier, Attribute> attrs[] = {
+      {Identifier::get("name", builder_.getContext()),
+       builder_.getStringAttr(instr->name())},
+  };
   ArrayRef<Type> rets{};
 
   llvm::SmallVector<Value, 4> operands;
@@ -252,15 +254,14 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   return Status::OK();
 }
 
-StatusOr<mlir::Operation*> LhloDialectEmitter::EmitSortOp(
-    HloInstruction* instr) {
+StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto sort, CreateOpWithoutAttrs<lmhlo::SortOp>(instr));
   auto* sort_instr = ::xla::Cast<::xla::HloSortInstruction>(instr);
   sort.dimensionAttr(builder_.getI64IntegerAttr(sort_instr->sort_dimension()));
   sort.is_stableAttr(builder_.getBoolAttr(sort_instr->is_stable()));
   TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
       *sort_instr->called_computations()[0], &sort.comparator(), &builder_));
-  return sort.getOperation();
+  return sort;
 }
 
 Status LhloDialectEmitter::HandleSort(HloInstruction* instr) {

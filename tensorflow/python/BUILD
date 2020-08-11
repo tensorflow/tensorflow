@@ -102,6 +102,7 @@ py_library(
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
         "//tensorflow_estimator:__subpackages__",
+        "//third_party/py/tensorflow_privacy:__subpackages__",  # TODO(b/163395075): remove when fixed
     ],
     deps = [
         ":layers",
