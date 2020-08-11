@@ -20,6 +20,7 @@ limitations under the License.
 #include <fstream>
 
 #include "absl/base/call_once.h"
+#include "absl/strings/match.h"
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/service/gpu/cublas_gemm_pad_for_tensor_cores.h"
@@ -81,22 +82,32 @@ void PrintCantFindCudaMessage(absl::string_view msg,
 
 // Returns the directory containing nvvm libdevice files.
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
-  for (const string& cuda_root : CandidateCudaRoots(hlo_module_config)) {
-    string libdevice_dir =
-        tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
+  std::string preferred_libdevice_dir =
+      tensorflow::io::JoinPath(
+          hlo_module_config.debug_options().xla_gpu_cuda_data_dir(),
+          "nvvm", "libdevice");
+  for (const std::string& libdevice_dir : tensorflow::CandidateCudaRoots(
+           preferred_libdevice_dir)) {
     VLOG(2) << "Looking for libdevice at " << libdevice_dir;
-    if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
-      VLOG(2) << "Found libdevice dir " << libdevice_dir;
-      return libdevice_dir;
-    }
-  }
-  PrintCantFindCudaMessage(
-      "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
-      "result in compilation or runtime failures, if the program we try to run "
-      "uses routines from libdevice.",
-      hlo_module_config);
 
-  // GetCudaRootCandidates always includes ".", but but if everything fails, we
+    if (!tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok())
+      continue;
+    if (!absl::EndsWith(libdevice_dir, "libdevice"))
+      continue;
+
+    VLOG(2) << "Found libdevice dir " << libdevice_dir;
+    return libdevice_dir;
+  }
+
+  LOG(WARNING)
+      << "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice. This may "
+         "result in compilation or runtime failures, if the program we try to "
+         "run uses routines from libdevice.";
+         "You can choose the search directory by setting xla_gpu_cuda_data_dir "
+         "in HloModule's DebugOptions.  For most apps, setting the environment "
+         "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
+
+  // GetCudaRootCandidates always includes ".", but if everything fails, we
   // return it anyway.  Better than returning the empty string.
   return ".";
 }

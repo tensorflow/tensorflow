@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "absl/strings/escaping.h"
+#include "absl/strings/match.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/StringRef.h"
@@ -67,15 +68,21 @@ using xla::StatusOr;
 
 StatusOr<std::string> GetLibdeviceDir(
     const xla::HloModuleConfig& hlo_module_config) {
-  for (const std::string& cuda_root : tensorflow::CandidateCudaRoots(
-           hlo_module_config.debug_options().xla_gpu_cuda_data_dir())) {
-    std::string libdevice_dir =
-        tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
+  std::string preferred_libdevice_dir =
+      tensorflow::io::JoinPath(
+          hlo_module_config.debug_options().xla_gpu_cuda_data_dir(),
+          "nvvm", "libdevice");
+  for (const std::string& libdevice_dir : tensorflow::CandidateCudaRoots(
+           preferred_libdevice_dir)) {
     VLOG(2) << "Looking for libdevice at " << libdevice_dir;
-    if (tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok()) {
-      VLOG(2) << "Found libdevice dir " << libdevice_dir;
-      return libdevice_dir;
-    }
+
+    if (!tensorflow::Env::Default()->IsDirectory(libdevice_dir).ok())
+      continue;
+    if (!absl::EndsWith(libdevice_dir, "libdevice"))
+      continue;
+
+    VLOG(2) << "Found libdevice dir " << libdevice_dir;
+    return libdevice_dir;
   }
   return InternalError(
       "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice");
