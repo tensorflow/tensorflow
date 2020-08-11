@@ -63,8 +63,8 @@ def regroup(values, wrap_class=values_lib.PerReplica, always_wrap=False):
     if hasattr(v0, "_fields"):
       # This tuple is in fact a namedtuple! Create a new namedtuple instance
       # and initialize it with the regrouped values:
-      assert hasattr(type(v0), "_make")
-      return type(v0)._make(regrouped_tuple)
+      assert hasattr(v0, "_make")
+      return v0._make(regrouped_tuple)
     else:
       return regrouped_tuple
 

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from typing import Any, Callable
+
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import qual_names
@@ -33,7 +35,10 @@ class BasicTestResolver(type_inference.Resolver):
   """A very basic resolver for testing."""
 
   def res_name(self, ns, types_ns, name):
-    return {type(ns[str(name)])}, ns[str(name)]
+    str_name = str(name)
+    if str_name == 'int':
+      return {int}, int
+    return {type(ns[str_name])}, ns[str_name]
 
   def res_value(self, ns, value):
     return {type(value)}
@@ -72,7 +77,9 @@ class TypeInferenceAnalyzerTest(test.TestCase):
   def assertClosureTypes(self, node, expected):
     actual = anno.getanno(node, anno.Static.CLOSURE_TYPES)
     actual = {str(k): v for k, v in actual.items()}
-    self.assertDictEqual(actual, expected)
+    for k, v in expected.items():
+      self.assertIn(k, actual)
+      self.assertEqual(actual[k], v)
 
   def test_no_inference_on_unknown_operand_types(self):
 
@@ -188,10 +195,11 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     node, _ = TestTranspiler(Resolver).transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].value, int)
-    self.assertTypes(fn_body[0].value.func, str)
     self.assertEqual(
         anno.getanno(fn_body[0].value.func, anno.Static.VALUE), tc.a)
+    self.assertTypes(fn_body[0].value.func, str)
+    self.assertTypes(fn_body[0].value, int)
+    self.assertTypes(fn_body[0], int)
 
   def test_assign_overwriting(self):
 
@@ -463,6 +471,42 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     self.assertTypes(fn_body[0].body[0].value, 'int')
     self.assertClosureTypes(fn_body[0], {'x': {'int'}})
 
+  def test_local_function_closure_nested(self):
+
+    def test_fn(x: int):
+
+      def foo():
+
+        def bar():
+          return x
+
+        bar()
+
+      foo()
+
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].body[0].body[0].value, 'int')
+    self.assertClosureTypes(fn_body[0], {'x': {'int'}})
+    self.assertClosureTypes(fn_body[0].body[0], {'x': {'int'}})
+
+  def test_local_function_closure_mutable_var(self):
+
+    def test_fn(x: int):
+
+      def foo():
+        nonlocal x
+        return x
+
+      foo()
+
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].body[1].value, 'int')
+    self.assertClosureTypes(fn_body[0], {'x': {'int'}})
+
   def test_local_function_closure_ignored_for_bound_symbols(self):
 
     def test_fn(x: float):  # pylint:disable=unused-argument
@@ -495,6 +539,65 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     self.assertTypes(fn_body[0].body[0].value, float)
     self.assertTypes(fn_body[1].targets[0], float)
     self.assertClosureTypes(fn_body[0], {'x': {float}})
+
+  def test_local_function_type(self):
+
+    def test_fn(x: int):
+
+      def foo() -> int:
+        return x
+
+      foo()
+
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[1].value.func, Callable[[Any], int])
+    self.assertTypes(fn_body[1].value, int)
+    self.assertTypes(fn_body[1], int)
+
+  def test_side_effects_on_arg_function_closure(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_name(self, ns, types_ns, name):
+        test_self.assertEqual(name, qual_names.QN('g'))
+        return None, g
+
+      def res_value(self, ns, value):
+        test_self.assertEqual(value, 1.0)
+        return {float}
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+        return {str(type_anno)}
+
+      def res_call(self, ns, types_ns, node, args, keywords):
+        test_self.assertEqual(node.func.id, 'g')
+        return None, {qual_names.QN('x'): {str}}
+
+    def g(foo):
+      # The resolver will convey that this function has the following body:
+      #
+      #   nonlocal x
+      #   x = 'a'
+      #   foo()
+      del foo
+      pass
+
+    def test_fn(x: int):  # pylint:disable=unused-argument
+
+      def foo():
+        return x
+
+      x = 1.0
+      g(foo)
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[0].body[0].value, str)
 
   def test_subscript(self):
 

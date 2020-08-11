@@ -92,7 +92,8 @@ struct TensorFlowExecutorOpFolderDialectInterface
 }  // namespace
 
 TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
-    : Dialect(/*name=*/"tf_executor", context) {
+    : Dialect(/*name=*/"tf_executor", context,
+              TypeID::get<TensorFlowExecutorDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"

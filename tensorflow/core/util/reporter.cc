@@ -91,6 +91,14 @@ Status TestReporter::SetProperty(const string& name, double value) {
   return Status::OK();
 }
 
+Status TestReporter::AddMetric(const string& name, double value) {
+  if (report_file_.IsClosed()) return Status::OK();
+  auto* metric = benchmark_entry_.add_metrics();
+  metric->set_name(name);
+  metric->set_value(value);
+  return Status::OK();
+}
+
 Status TestReporter::Initialize() { return report_file_.Initialize(); }
 
 }  // namespace tensorflow

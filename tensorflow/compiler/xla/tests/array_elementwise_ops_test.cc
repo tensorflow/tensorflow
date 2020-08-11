@@ -1203,6 +1203,16 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
   ComputeAndCompareR1<bool>(&builder, {false, false, true, false, false}, {});
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32sTO) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  auto lhs = ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, NAN, 6.0f});
+  auto rhs = ConstantR1<float>(&builder, {10.0f, 5.0f, 2.25f, NAN, NAN});
+  EqTotalOrder(lhs, rhs);
+
+  ComputeAndCompareR1<bool>(&builder, {false, false, true, true, false}, {});
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, CompareEqZeroElementF32s) {
   XlaBuilder builder(TestName());
   auto lhs = ConstantR1<float>(&builder, {});
@@ -1220,6 +1230,18 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGeF32s) {
   Ge(lhs, rhs);
 
   ComputeAndCompareR1<bool>(&builder, {false, true, true, false, false}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, CompareGeF32sTO) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  auto lhs =
+      ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, NAN, 6.0f, 6.0f});
+  auto rhs = ConstantR1<float>(&builder, {10.0f, 5.0f, 1.0f, 10.0f, NAN, -NAN});
+  GeTotalOrder(lhs, rhs);
+
+  ComputeAndCompareR1<bool>(&builder, {false, true, true, true, false, true},
+                            {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareGtF32s) {

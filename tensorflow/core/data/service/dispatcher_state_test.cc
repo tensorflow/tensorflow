@@ -239,6 +239,11 @@ TEST(DispatcherState, CreateTask) {
     TF_EXPECT_OK(state.TasksForJob(job_id, &tasks));
     EXPECT_THAT(tasks, SizeIs(1));
   }
+  {
+    std::vector<std::shared_ptr<const Task>> tasks;
+    TF_EXPECT_OK(state.TasksForWorker(worker_address, tasks));
+    EXPECT_EQ(1, tasks.size());
+  }
 }
 
 TEST(DispatcherState, CreateTasksForSameJob) {
@@ -285,6 +290,63 @@ TEST(DispatcherState, CreateTasksForDifferentJobs) {
     std::vector<std::shared_ptr<const Task>> tasks;
     TF_EXPECT_OK(state.TasksForJob(job_id_2, &tasks));
     EXPECT_THAT(tasks, SizeIs(1));
+  }
+}
+
+TEST(DispatcherState, CreateTasksForSameWorker) {
+  int64 job_id = 3;
+  int64 dataset_id = 10;
+  int64 task_id_1 = 8;
+  int64 task_id_2 = 9;
+  std::string worker_address = "test_worker_address";
+  DispatcherState state;
+  TF_EXPECT_OK(RegisterDatasetWithIdAndFingerprint(dataset_id, 1, &state));
+  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, &state));
+  TF_EXPECT_OK(
+      CreateTask(task_id_1, job_id, dataset_id, worker_address, &state));
+  TF_EXPECT_OK(
+      CreateTask(task_id_2, job_id, dataset_id, worker_address, &state));
+  {
+    std::vector<std::shared_ptr<const Task>> tasks;
+    TF_EXPECT_OK(state.TasksForWorker(worker_address, tasks));
+    EXPECT_EQ(2, tasks.size());
+  }
+}
+
+TEST(DispatcherState, CreateTasksForDifferentWorkers) {
+  int64 job_id = 3;
+  int64 dataset_id = 10;
+  int64 task_id_1 = 8;
+  int64 task_id_2 = 9;
+  std::string worker_address_1 = "test_worker_address_1";
+  std::string worker_address_2 = "test_worker_address_2";
+  DispatcherState state;
+  TF_EXPECT_OK(RegisterDatasetWithIdAndFingerprint(dataset_id, 1, &state));
+  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, &state));
+  TF_EXPECT_OK(
+      CreateTask(task_id_1, job_id, dataset_id, worker_address_1, &state));
+  TF_EXPECT_OK(
+      CreateTask(task_id_2, job_id, dataset_id, worker_address_2, &state));
+  {
+    std::vector<std::shared_ptr<const Task>> tasks;
+    TF_EXPECT_OK(state.TasksForWorker(worker_address_1, tasks));
+    EXPECT_EQ(1, tasks.size());
+  }
+  {
+    std::vector<std::shared_ptr<const Task>> tasks;
+    TF_EXPECT_OK(state.TasksForWorker(worker_address_2, tasks));
+    EXPECT_EQ(1, tasks.size());
+  }
+}
+
+TEST(DispatcherState, GetTasksForWorkerEmpty) {
+  std::string worker_address = "test_worker_address";
+  DispatcherState state;
+  TF_EXPECT_OK(RegisterWorker(worker_address, &state));
+  {
+    std::vector<std::shared_ptr<const Task>> tasks;
+    TF_EXPECT_OK(state.TasksForWorker(worker_address, tasks));
+    EXPECT_EQ(0, tasks.size());
   }
 }
 

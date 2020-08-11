@@ -62,6 +62,24 @@ TpuExecutableInterface::AllocateOutputMemoryWithInputReuse(
           << " host_shape = " << ShapeUtil::HumanStringWithLayout(host_shape);
   Shape device_shape = HostShapeToDeviceShape(host_shape);
 
+  TF_RETURN_IF_ERROR(alias_config.ForEachAliasWithStatus(
+      [&](const ShapeIndex& output_index,
+          absl::optional<HloInputOutputAliasConfig::Alias> alias) {
+        if (alias && alias->must_alias()) {
+          VLOG(1) << alias->ToString();
+          const MaybeOwningDeviceMemory& original_input =
+              (*arguments)[alias->parameter_number].Buffers().element(
+                  alias->parameter_index);
+          if (!original_input.HasOwnership()) {
+            return InvalidArgument(
+                "An input was configured to be must-alias at "
+                "compile time but not donated at runtime: %s",
+                alias->ToString());
+          }
+        }
+        return Status::OK();
+      }));
+
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "AllocateOutputMemoryWithInputReuse, device = " << device_ordinal
             << " host_shape = " << ShapeUtil::HumanStringWithLayout(host_shape);

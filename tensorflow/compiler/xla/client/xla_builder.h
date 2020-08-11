@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/dynamic_parameter_binding.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_input_output_alias_config.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -277,6 +278,31 @@ class XlaBuilder {
   StatusOr<XlaComputation> BuildConstantSubGraph(
       XlaOp root_op, bool dynamic_dimension_is_uint_max = false);
 
+  // Similar to BuildConstantSubGraph, but with root element type changed to
+  // boolean. A true value in the root indicates that the value is dynamic while
+  // false value indicates that the value is a constant. This will copy the
+  // needed ops/computations to the subgraph.
+  //
+  // E.g.,
+  // Compuptation {
+  //   a = 3
+  //   b = param(0)
+  //   ROOT Tuple(a + b, a + 1, b + 1)
+  // }
+  // Calling BuildDynamicInferenceGraph on root will produce the following
+  // graph:
+  //
+  // Compuptation {
+  //   a = False
+  //   b = True
+  //   ROOT Tuple(a | b, a, b)
+  // }
+  //
+  // The result, which is (True, False, True) after evaluation, can be
+  // interpreted as "First element is dynamic; Second element is static; Third
+  // element is dynamic".
+  StatusOr<XlaComputation> BuildDynamicInferenceGraph(XlaOp root_op);
+
   // Returns the first error that was encountered while building the
   // computation. When an error is encountered, by default we return a vacuous
   // XlaOp and inform the user of the error that occurred while
@@ -349,12 +375,16 @@ class XlaBuilder {
   // not available until the computation is built, and eventual error in the
   // arguments of this API will be detected only at computation Build() time.
   //
-  // Note: Aliasing API is 'may-alias' and only donated buffer at runtime will
-  // be aliased with output. If a buffer is not donated at runtime, a copy will
-  // be inserted by XLA to prevent buffer clobbering.
+  // Note: Except when 'must-alias' is true, alias is assumed to be 'may-alias'
+  // and only donated buffer at runtime will be aliased with output. If a buffer
+  // is not donated at runtime, a copy will be inserted by XLA to prevent buffer
+  // clobbering.
   void SetUpAlias(const ShapeIndex& output_index, int64 param_number,
-                  const ShapeIndex& param_index) {
-    input_output_aliases_.push_back({output_index, param_number, param_index});
+                  const ShapeIndex& param_index,
+                  HloInputOutputAliasConfig::AliasKind kind =
+                      HloInputOutputAliasConfig::AliasKind::kMayAlias) {
+    input_output_aliases_.push_back(
+        {output_index, param_number, param_index, kind});
   }
 
   // Describes an input/output alias as inserted by the SetUpAlias() API.
@@ -365,6 +395,8 @@ class XlaBuilder {
     int64 param_number;
     // Specifies the index of the aliased buffer in the parameter
     ShapeIndex param_index;
+    // Specifies if the alias is a must alias or may alias.
+    HloInputOutputAliasConfig::AliasKind kind;
   };
 
   // Looks up the HloInstruction and sets the frontend attribute "attribute" to
@@ -760,14 +792,17 @@ class XlaBuilder {
   // broadcast_dimensions specifies which dimensions to use for broadcasting
   // when the operation is between tensors of different ranks. The direction is
   // only used if opcode is kCompare.
-  XlaOp BinaryOp(
-      HloOpcode binop, XlaOp lhs, XlaOp rhs,
-      absl::Span<const int64> broadcast_dimensions,
-      absl::optional<Comparison::Direction> direction = absl::nullopt);
+  XlaOp BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
+                 absl::Span<const int64> broadcast_dimensions,
+                 absl::optional<ComparisonDirection> direction = absl::nullopt,
+                 absl::optional<Comparison::Type> type = absl::nullopt);
 
   // Internal helper method for binary op compare without broadcast dimensions.
   virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
-                                  Comparison::Direction direction);
+                                  ComparisonDirection direction);
+  virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                                  ComparisonDirection direction,
+                                  Comparison::Type type);
 
   // Internal helper method that does the building for an arbitrary binary op
   // with same ranked operands that doesn't broadcast.
@@ -933,22 +968,13 @@ class XlaBuilder {
   friend XlaOp Select(XlaOp pred, XlaOp on_true, XlaOp on_false);
   friend XlaOp Tuple(XlaBuilder* builder, absl::Span<const XlaOp> elements);
   friend XlaOp GetTupleElement(XlaOp tuple_data, int64 index);
-  friend XlaOp Eq(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Ne(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Ge(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Gt(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Lt(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Le(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
                        absl::Span<const int64> broadcast_dimensions,
                        ComparisonDirection direction);
-  friend XlaOp Compare(XlaOp lhs, XlaOp rhs, ComparisonDirection direction);
+  friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
+                       absl::Span<const int64> broadcast_dimensions,
+                       ComparisonDirection direction,
+                       Comparison::Type compare_type);
   friend XlaOp Dot(XlaOp lhs, XlaOp rhs,
                    const PrecisionConfig* precision_config);
   friend XlaOp DotGeneral(XlaOp lhs, XlaOp rhs,
@@ -1542,29 +1568,44 @@ XlaOp GetTupleElement(XlaOp tuple_data, int64 index);
 // Enqueues an equal-to comparison instruction onto the computation.
 XlaOp Eq(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp EqTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a not-equal comparison instruction onto the computation.
 XlaOp Ne(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp NeTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a greater-or-equal comparison instruction onto the computation.
 XlaOp Ge(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp GeTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a greater-than comparison instruction onto the computation.
 XlaOp Gt(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp GtTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a less-than comparison instruction onto the computation.
 XlaOp Lt(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp LtTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a less-or-equal comparison instruction onto the computation.
 XlaOp Le(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp LeTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a comparison instruction onto the computation (optionally without
 // broadcast_dimensions for consistency with others).
+XlaOp Compare(XlaOp lhs, XlaOp rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction, Comparison::Type compare_type);
 XlaOp Compare(XlaOp lhs, XlaOp rhs,
               absl::Span<const int64> broadcast_dimensions,
               ComparisonDirection direction);

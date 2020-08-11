@@ -63,11 +63,6 @@ class RandomCropOp : public OpKernel {
     if ((target_height == height) && (target_width == width)) {
       *output = context->input(0);
     }
-
-    // TODO(shlens): Implement edge case to guarantee output size dimensions.
-    // Edge case. The target dimensions are larger then the image, so
-    // zero-pad the image. This guarantees that the image will *always*
-    // be [target_height, target_width] in size.
     OP_REQUIRES(context, width >= target_width,
                 errors::FailedPrecondition(
                     "width must be >= target_width: width = ", width,

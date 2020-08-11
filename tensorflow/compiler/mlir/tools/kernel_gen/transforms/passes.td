@@ -34,4 +34,9 @@ def ShapeToDescriptorsPass : Pass<"test-shape-to-descriptors", "ModuleOp"> {
   let constructor = "transforms::CreateShapeToDescriptorsPass()";
 }
 
+def BufferizePass : Pass<"test-bufferize", "ModuleOp"> {
+  let summary = "Pass to transform operations on values to buffer based ones";
+  let constructor = "transforms::CreateBufferizePass()";
+}
+
 #endif // TF_FRAMEWORK_PASSES

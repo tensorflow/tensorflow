@@ -160,6 +160,10 @@ class DispatcherState {
   // if there is no such job.
   Status TasksForJob(int64 job_id,
                      std::vector<std::shared_ptr<const Task>>* tasks) const;
+  // Stores a list of all tasks for the given worker to `*tasks`. Returns
+  // NOT_FOUND if there is no such worker.
+  Status TasksForWorker(const absl::string_view worker_address,
+                        std::vector<std::shared_ptr<const Task>>& tasks) const;
 
  private:
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
@@ -190,6 +194,9 @@ class DispatcherState {
   absl::flat_hash_map<int64, std::shared_ptr<Task>> tasks_;
   // Tasks, keyed by job ids.
   absl::flat_hash_map<int64, std::vector<std::shared_ptr<Task>>> tasks_by_job_;
+  // Tasks, keyed by worker addresses.
+  absl::flat_hash_map<std::string, std::vector<std::shared_ptr<Task>>>
+      tasks_by_worker_;
 };
 
 }  // namespace data

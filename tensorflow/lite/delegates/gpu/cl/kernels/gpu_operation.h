@@ -98,9 +98,10 @@ class GPUOperation {
     return GetBestWorkGroup(params, kernel_, grid_size_, &work_group_size_);
   }
 
-  virtual absl::Status Compile(const CreationContext& creation_context);
+  absl::Status Compile(const CreationContext& creation_context);
 
-  virtual absl::Status PostCompileCheck(const DeviceInfo& device_info) {
+  virtual absl::Status PostCompileCheck(const DeviceInfo& device_info,
+                                        const KernelInfo& kernel_info) {
     return absl::OkStatus();
   }
 

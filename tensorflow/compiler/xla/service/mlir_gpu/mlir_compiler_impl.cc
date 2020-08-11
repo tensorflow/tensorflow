@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "llvm/IR/LLVMContext.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -292,10 +293,10 @@ Status InsertBufferLoadPreduleIntoKernel(
     BufferAssignment* assignment,
     const std::vector<const BufferAllocation*>& buffers) {
   mlir::OpBuilder builder(kernel.getBody());
-  auto llvm_dialect = kernel.getContext()->getRegisteredDialect<LLVMDialect>();
-  auto offset_type = LLVMType::getInt64Ty(llvm_dialect);
-  auto ptr_type = LLVMType::getInt8PtrTy(llvm_dialect);
-  auto void_type = LLVMType::getVoidTy(llvm_dialect);
+  auto* context = kernel.getContext();
+  auto offset_type = LLVMType::getInt64Ty(context);
+  auto ptr_type = LLVMType::getInt8PtrTy(context);
+  auto void_type = LLVMType::getVoidTy(context);
   auto loc = kernel.getLoc();
 
   auto num_original_args = kernel.getNumArguments();
@@ -543,7 +544,11 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   TF_RETURN_IF_ERROR(
       module_hook_.invoke(IRHook::LoweringStage::KERNEL, *kernel_module));
 
-  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module);
+  // Translate to LLVM IR in a fresh context. The module is further translated
+  // to textual PTX and a CUBIN blob so there is no need for the context to live
+  // longer than this function.
+  llvm::LLVMContext llvmContext;
+  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module, llvmContext);
 
   if (!llvmModule) {
     return InternalError("Translation to LLVM failed");

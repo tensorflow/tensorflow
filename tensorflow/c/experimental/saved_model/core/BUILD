@@ -217,6 +217,23 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "signature_flattening_test",
+    srcs = [
+        "signature_flattening_test.cc",
+    ],
+    deps = [
+        ":saved_model_utils",
+        "//tensorflow/c/experimental/saved_model/core:tf_concrete_function_test_protos",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:core",
+    ],
+)
+
+tf_cc_test(
     name = "tf_concrete_function_loading_test",
     srcs = [
         "tf_concrete_function_loading_test.cc",
