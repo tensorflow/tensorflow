@@ -79,12 +79,12 @@ std::vector<TpuCoreLocationExternal> TpuTopologyExternal::cores(
     TpuCoreTypeEnum core_type) const {
   int num_cores =
       tpu::ExecutorApiFn()->TpuTopology_NumCoresFn(topology_, core_type);
-  std::vector<void*> core_ptrs(num_cores);
+  std::vector<SE_TpuTopology_Core*> core_ptrs(num_cores);
   tpu::ExecutorApiFn()->TpuTopology_CoresFn(topology_, core_type,
                                             core_ptrs.data());
   std::vector<TpuCoreLocationExternal> result;
   result.reserve(num_cores);
-  for (void* ptr : core_ptrs) {
+  for (SE_TpuTopology_Core* ptr : core_ptrs) {
     result.emplace_back(ptr);
   }
   return result;
