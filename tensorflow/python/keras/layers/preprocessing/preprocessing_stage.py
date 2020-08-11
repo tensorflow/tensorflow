@@ -116,7 +116,7 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
   nested structure of tensors.
 
   Example:
-  ```
+  ```python
   from tensorflow.keras.layers.experimental import preprocessing
   inputs = {'x2': tf.keras.Input(shape=(5,)),
             'x1': tf.keras.Input(shape=(1,))}
@@ -163,10 +163,10 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
     >>> ds = tf.data.Dataset.from_tensor_slices({'x1': tf.ones((4,5)),
     ...                                          'x2': tf.ones((4,1))})
     >>> ds.element_spec # Check element_spec
-    <TensorSliceDataset shapes: {x1: (5,), x2: (5,)},
-    types: {x1: tf.float32, x2: tf.float32}>
+    {'x1': TensorSpec(shape=(5,), dtype=tf.float32, name=None), \
+     'x2': TensorSpec(shape=(1,), dtype=tf.float32, name=None)}
     >>> stage.adapt(ds)
-    >>> data_np = {'x1': np.ones((4, 5)), np.ones((4, 1))}
+    >>> data_np = {'x1': np.ones((4, 5)), 'x2': np.ones((4, 1))}
     >>> stage.adapt(data_np)
 
     """
