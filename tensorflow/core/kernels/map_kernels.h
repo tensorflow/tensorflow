@@ -176,8 +176,6 @@ class TensorMapHasKey : public OpKernel {
   }
 };
 
-<<<<<<< HEAD
-
 template <typename Device>
 Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
                            const TensorMap& b, TensorMap* out) {
@@ -196,7 +194,6 @@ Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
   return Status::OK();
 }
 
-
 template <typename Device>
 Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x, TensorMap* y) {
   for (const std::pair<TensorKey,Tensor>& p : x.tensors()) {
@@ -207,9 +204,6 @@ Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x, TensorMap* y) 
   return Status::OK();
 }
 
-
-=======
->>>>>>> master
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_
