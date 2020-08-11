@@ -61,21 +61,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Default PaddedShapeFn implementation that simply returns the unpadded
-// on-device shape. This is accurate for CPU and GPU devices that neither
-// transpose nor pad tensors.
-Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
-  const tensorflow::XlaTensor* xla_tensor =
-      tensorflow::XlaTensor::FromTensor(&tensor);
-  if (xla_tensor == nullptr) {
-    return TensorShapeToXLAShape(tensor.dtype(), tensor.shape(), shape);
-  }
-
-  const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
-  *shape = shaped_buffer.on_device_shape();
-  return Status::OK();
-}
-
 // Caches a XlaDeviceAllocator per <backend, device ordinal> pair. A
 // XlaDeviceAllocator is created on demand and is associated with a
 // XlaDevice. It outlives the device itself (for instance, the buffer
@@ -131,6 +116,20 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
 
 namespace {
 
+// Default PaddedShapeFn implementation that simply returns the unpadded
+// on-device shape. This is accurate for CPU and GPU devices that neither
+// transpose nor pad tensors.
+Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape) {
+  const tensorflow::XlaTensor* xla_tensor =
+      tensorflow::XlaTensor::FromTensor(&tensor);
+  if (xla_tensor == nullptr) {
+    return TensorShapeToXLAShape(tensor.dtype(), tensor.shape(), shape);
+  }
+
+  const xla::ShapedBuffer& shaped_buffer = xla_tensor->shaped_buffer();
+  *shape = shaped_buffer.on_device_shape();
+  return Status::OK();
+}
 
 static DeviceAttributes BuildXlaDeviceAttributes(const string& name_prefix,
                                                  const string& device_name,

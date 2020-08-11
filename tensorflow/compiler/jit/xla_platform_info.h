@@ -99,7 +99,7 @@ se::DeviceMemoryAllocator* GetAllocator(
 // Returns created options for the XLA compiler, and writes the used allocator
 // into `tf_allocator_adapter`.
 XlaCompiler::Options GenerateCompilerOptions(
-    const XlaCompilationCache& cache, OpKernelContext* ctx,
+    XlaCompilationCache* cache, OpKernelContext* ctx,
     const XlaPlatformInfo& platform_info, bool has_ref_vars,
     absl::optional<se::TfAllocatorAdapter>* tf_allocator_adapter);
 

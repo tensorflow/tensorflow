@@ -128,17 +128,16 @@ se::DeviceMemoryAllocator* GetAllocator(
 }
 
 XlaCompiler::Options GenerateCompilerOptions(
-    const XlaCompilationCache& cache, OpKernelContext* ctx,
+    XlaCompilationCache* cache, OpKernelContext* ctx,
     const XlaPlatformInfo& platform_info, bool has_ref_vars,
     absl::optional<se::TfAllocatorAdapter>* tf_allocator_adapter) {
-  CHECK(ctx->function_library());
   XlaCompiler::Options options;
-  options.client = static_cast<xla::LocalClient*>(cache.client());
+  options.client = static_cast<xla::LocalClient*>(cache->client());
   if (ctx->op_device_context() != nullptr) {
     options.device_ordinal =
         ctx->op_device_context()->stream()->parent()->device_ordinal();
   }
-  options.device_type = cache.device_type();
+  options.device_type = cache->device_type();
   options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.graph_def_version = ctx->function_library()->graph_def_version();
   options.allow_cpu_custom_calls =

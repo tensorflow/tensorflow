@@ -280,8 +280,6 @@ struct XlaDeviceOpRegistrations {
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,
                                                    const char* jit_device);
 
-Status DefaultPaddedShapeFn(const Tensor& tensor, xla::Shape* shape);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_XLA_DEVICE_H_

@@ -191,7 +191,7 @@ static Status CompileToLocalExecutable(
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
   XlaCompiler::Options options = GenerateCompilerOptions(
-      *cache, ctx, platform_info, has_ref_vars, &tf_allocator_adapter);
+      cache, ctx, platform_info, has_ref_vars, &tf_allocator_adapter);
 
   std::map<int, Tensor> constant_args;
   for (int i : constants) {

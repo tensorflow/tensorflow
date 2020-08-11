@@ -33,9 +33,6 @@
   shape assumptions (note that you can pass shapes with `None` entries for axes
   that are meant to be dynamic). You can also disable the input checking
   entirely by setting `model.input_spec = None`.
-* XLA:CPU and XLA:GPU devices are no longer registered by default. Use
-  `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them (to be
-  removed).
 
 ## Known Caveats
 

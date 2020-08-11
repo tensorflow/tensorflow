@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/cc/ops/function_ops.h"
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
-#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -217,11 +216,6 @@ TEST(ConstAnalysisTest, RespectExplicitAttr_1) {
 
   EXPECT_EQ(const_args, std::vector<bool>({true}));
 }
-
-static bool Initialized = [] {
-  tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
-  return true;
-}();
 
 }  // namespace
 }  // namespace tensorflow
