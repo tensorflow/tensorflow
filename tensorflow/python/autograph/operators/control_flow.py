@@ -81,7 +81,6 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.ragged import ragged_tensor
@@ -479,9 +478,7 @@ def _known_len_tf_for_stmt(
       return control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
 
-  # TODO(b/159186914): Remove.
-  if not control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
-    opts['maximum_iterations'] = n
+  opts['maximum_iterations'] = n
 
   _tf_while_stmt(
       aug_test,
@@ -527,9 +524,7 @@ def _tf_ragged_for_stmt(
       return control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
 
-  # TODO(b/159186914): Remove.
-  if not control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
-    opts['maximum_iterations'] = n
+  opts['maximum_iterations'] = n
 
   _tf_while_stmt(
       aug_test,
@@ -587,10 +582,8 @@ def _tf_range_for_stmt(
       main_test = control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
 
-  # TODO(b/134181679): Remove.
-  if not control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
-    opts['maximum_iterations'] = math_ops.cast(
-        misc.get_range_len(start, limit, delta), dtypes.int32)
+  opts['maximum_iterations'] = math_ops.cast(
+      misc.get_range_len(start, limit, delta), dtypes.int32)
 
   _tf_while_stmt(
       aug_test,
