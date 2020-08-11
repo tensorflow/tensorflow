@@ -57,6 +57,7 @@ from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
 from tensorflow.python.training import training_util
+from tensorflow.python.keras import optimizer_v2
 from tensorflow.python.util import compat
 from tensorflow.python.ops import dynamic_embedding_ops as deo
 
@@ -219,7 +220,7 @@ def _create_dynamic_shape_tensor(max_len=100,
   return _func
 
 
-@test_util.deprecated_graph_mode_only
+@test_util.run_all_in_graph_and_eager_modes
 class DynamicEmbeddingOpTest(test.TestCase):
 
   def test_variable(self):
@@ -295,7 +296,7 @@ class DynamicEmbeddingOpTest(test.TestCase):
                            name='t1',
                            dim=1)
 
-      save = saver.Saver()
+      save = saver.Saver(var_list=[v0, v1, table])
       self.evaluate(variables.global_variables_initializer())
 
       # Check that the parameter nodes have been initialized.
@@ -328,7 +329,7 @@ class DynamicEmbeddingOpTest(test.TestCase):
       size_op = table.size()
       self.assertAllEqual(2, self.evaluate(size_op))
 
-      save = saver.Saver()
+      save = saver.Saver(var_list=[v0, v1, table])
 
       # Restore the saved values in the parameter nodes.
       save.restore(sess, save_path)
@@ -345,7 +346,6 @@ class DynamicEmbeddingOpTest(test.TestCase):
 
       del table
 
-  @test_util.run_v1_only("SaverV1")
   def test_save_restore_only_table(self):
     save_dir = os.path.join(self.get_temp_dir(), "save_restore")
     save_path = os.path.join(tempfile.mkdtemp(prefix=save_dir), "hash")
@@ -423,21 +423,21 @@ class DynamicEmbeddingOpTest(test.TestCase):
                                   0.0, 0.01),
                               dim=dim)
     _, var0 = deo.embedding_lookup(params, ids, return_trainable=True)
-    loss = var0 * var0
+    loss = lambda : var0 * var0
 
     params_keys, params_vals = params.export()
-    mini = opt.minimize(loss)
-    _saver = saver.Saver()
+    mini = opt.minimize(loss, var_list=[var0])
     opt_slots = [opt.get_slot(var0, _s) for _s in opt.get_slot_names()]
-    opt_slots_kv_pairs = [_s.params.export() for _s in opt_slots]
+    _saver = saver.Saver([params] + [_s.params for _s in opt_slots])
 
     with self.session() as sess:
       self.evaluate(variables.global_variables_initializer())
       for _i in range(step):
-        sess.run([mini])
+        self.evaluate([mini])
       size_before_saved = self.evaluate(params.size())
       np_params_keys_before_saved = self.evaluate(params_keys)
       np_params_vals_before_saved = self.evaluate(params_vals)
+      opt_slots_kv_pairs = [_s.params.export() for _s in opt_slots]
       np_slots_kv_pairs_before_saved = [
           self.evaluate(_kv) for _kv in opt_slots_kv_pairs
       ]
@@ -448,12 +448,14 @@ class DynamicEmbeddingOpTest(test.TestCase):
       self.assertAllEqual(0, self.evaluate(params.size()))
 
       _saver.restore(sess, save_path)
-
+      params_keys_restored, params_vals_restored = params.export()
       size_after_restored = self.evaluate(params.size())
-      np_params_keys_after_restored = self.evaluate(params_keys)
-      np_params_vals_after_restored = self.evaluate(params_vals)
+      np_params_keys_after_restored = self.evaluate(params_keys_restored)
+      np_params_vals_after_restored = self.evaluate(params_vals_restored)
+
+      opt_slots_kv_pairs_restored = [_s.params.export() for _s in opt_slots]
       np_slots_kv_pairs_after_restored = [
-          self.evaluate(_kv) for _kv in opt_slots_kv_pairs
+          self.evaluate(_kv) for _kv in opt_slots_kv_pairs_restored
       ]
       self.assertAllEqual(size_before_saved, size_after_restored)
       self.assertAllEqual(np.sort(np_params_keys_before_saved),
@@ -491,6 +493,7 @@ class DynamicEmbeddingOpTest(test.TestCase):
       self.assertAllEqual(table1, table2)
       self.assertNotEqual(table1, table3)
 
+  @test_util.deprecated_graph_mode_only
   def test_get_variable_reuse_error(self):
     with self.session(graph=ops.Graph()) as sess:
       with variable_scope.variable_scope("embedding", reuse=False):
@@ -725,7 +728,7 @@ class DynamicEmbeddingOpTest(test.TestCase):
       result = self.evaluate(output)
       self.assertAllEqual([[0], [-1], [3], [-1]], result)
 
-  def test_dynamic_embedding_variable_find_high_rank(self):
+  def test_dynamic_embedding_variable_insert_high_rank(self):
     with self.cached_session():
       default_val = constant_op.constant([-1, -1, -1], dtypes.int64)
       keys = constant_op.constant([0, 1, 2], dtypes.int64)
@@ -1593,16 +1596,22 @@ class CommonTrainableTestBase(object):
   def common_minimize_trainable(self, base_opt, test_opt, name):
     raise NotImplementedError
 
+  def common_minimize_trainable_v2(self, base_opt, test_opt, name):
+    raise NotImplementedError
+
+  @test_util.deprecated_graph_mode_only
   def test_adadelta_minimize_trainable(self):
     base_opt = adadelta.AdadeltaOptimizer(1.0)
     test_opt = adadelta.AdadeltaOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='adadelta')
 
+  @test_util.deprecated_graph_mode_only
   def test_adagrad_minimize_trainable(self):
     base_opt = adagrad.AdagradOptimizer(1.0)
     test_opt = adagrad.AdagradOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='adagrad')
 
+  @test_util.deprecated_graph_mode_only
   def test_adagradda_minimize_trainable(self):
     base_gs = training_util.create_global_step()
 
@@ -1610,36 +1619,43 @@ class CommonTrainableTestBase(object):
     test_opt = adagrad_da.AdagradDAOptimizer(1.0, base_gs)
     self.common_minimize_trainable(base_opt, test_opt, name='adagrad_da')
 
+  @test_util.deprecated_graph_mode_only
   def test_ftrl_minimize_trainable(self):
     base_opt = ftrl.FtrlOptimizer(1.0)
     test_opt = ftrl.FtrlOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='ftrl')
 
+  @test_util.deprecated_graph_mode_only
   def test_proximal_adagrad_minimize_trainable(self):
     base_opt = proximal_adagrad.ProximalAdagradOptimizer(1.0)
     test_opt = proximal_adagrad.ProximalAdagradOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='proximal_adagrad')
 
+  @test_util.deprecated_graph_mode_only
   def test_proximalsgd_minimize_trainable(self):
     base_opt = pgd.ProximalGradientDescentOptimizer(1.0)
     test_opt = pgd.ProximalGradientDescentOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='proximal_sgd')
 
+  @test_util.deprecated_graph_mode_only
   def test_momentum_minimize_trainable(self):
     base_opt = momentum.MomentumOptimizer(1.0, momentum=0.9)
     test_opt = momentum.MomentumOptimizer(1.0, momentum=0.9)
     self.common_minimize_trainable(base_opt, test_opt, name='momentum')
 
+  @test_util.deprecated_graph_mode_only
   def test_sgd_minimize_trainable(self):
     base_opt = gradient_descent.GradientDescentOptimizer(1.0)
     test_opt = gradient_descent.GradientDescentOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='sgd')
 
+  @test_util.deprecated_graph_mode_only
   def test_adam_minimize_trainable(self):
     base_opt = adam.AdamOptimizer(1.0)
     test_opt = adam.AdamOptimizer(1.0)
     self.common_minimize_trainable(base_opt, test_opt, name='adam')
 
+  @test_util.deprecated_graph_mode_only
   def test_rmsprop_minimize_trainable(self):
     for centered_ in [False, True]:
       base_opt = rmsprop.RMSPropOptimizer(1.0, centered=centered_)
@@ -1648,8 +1664,55 @@ class CommonTrainableTestBase(object):
                                      test_opt,
                                      name='rmsprop' + str(centered_))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_adadelta_v2_minimize_trainable(self):
+    base_opt = optimizer_v2.adadelta.Adadelta(1.0)
+    test_opt = optimizer_v2.adadelta.Adadelta(1.0)
+    self.common_minimize_trainable_v2(base_opt, test_opt, name='adadelta')
 
-@test_util.deprecated_graph_mode_only
+  @test_util.run_in_graph_and_eager_modes
+  def test_adagrad_v2_minimize_trainable(self):
+    base_opt = optimizer_v2.adagrad.Adagrad(1.0)
+    test_opt = optimizer_v2.adagrad.Adagrad(1.0)
+    self.common_minimize_trainable_v2(base_opt, test_opt, name='adagrad')
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_adam_v2_minimize_trainable(self):
+    base_opt = optimizer_v2.adam.Adam(1.0)
+    test_opt = optimizer_v2.adam.Adam(1.0)
+    self.common_minimize_trainable_v2(base_opt, test_opt, name='adam')
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_adamax_v2_minimize_trainable(self):
+    base_opt = optimizer_v2.adamax.Adamax(1.0)
+    test_opt = optimizer_v2.adamax.Adamax(1.0)
+    self.common_minimize_trainable_v2(base_opt, test_opt, name='adamax')
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_ftrl_v2_minimize_trainable(self):
+    base_opt = optimizer_v2.ftrl.Ftrl(1.0)
+    test_opt = optimizer_v2.ftrl.Ftrl(1.0)
+    self.common_minimize_trainable_v2(base_opt, test_opt, name='ftrl')
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_sgd_v2_minimize_trainable(self):
+    base_opt = optimizer_v2.gradient_descent.SGD(1.0)
+    test_opt = optimizer_v2.gradient_descent.SGD(1.0)
+    self.common_minimize_trainable_v2(base_opt, test_opt, name='sgd')
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_nadam_v2_minimize_trainable(self):
+    base_opt = optimizer_v2.nadam.Nadam(1.0)
+    test_opt = optimizer_v2.nadam.Nadam(1.0)
+    self.common_minimize_trainable_v2(base_opt, test_opt, name='Nadam')
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_rmsprop_v2_minimize_trainable(self):
+    base_opt = optimizer_v2.rmsprop.RMSprop(1.0)
+    test_opt = optimizer_v2.rmsprop.RMSprop(1.0)
+    self.common_minimize_trainable_v2(base_opt, test_opt, name='rmsprop')
+
+
 class EmbeddingLookupTrainableTest(test.TestCase, CommonTrainableTestBase):
 
   def common_minimize_trainable(self, base_opt, test_opt, name):
@@ -1723,8 +1786,83 @@ class EmbeddingLookupTrainableTest(test.TestCase, CommonTrainableTestBase):
                                                num_shards, k_dtype, d_dtype,
                                                initial_mode, dim, run_step))
 
+  def common_minimize_trainable_v2(self, base_opt, test_opt, name):
+    id = 0
+    for num_shards, k_dtype, d_dtype, initial_mode, dim, run_step in \
+        itertools.product(
+          [1, 3],
+          [dtypes.int32, dtypes.int64, ],
+          [dtypes.float32, ],
+          ["constant", ],
+          [1, 10],
+          [1, 10]):
+      id += 1
+      # common define
+      raw_init_ids = [0, 1]
+      raw_init_vals = np.random.rand(2, dim)
+      raw_ids = [
+          0,
+      ]
+      x = constant_op.constant(np.random.rand(dim, len(raw_ids)), dtype=d_dtype)
 
-@test_util.deprecated_graph_mode_only
+      # # base graph
+      def base_fn():
+        embeddings = resource_variable_ops.ResourceVariable(raw_init_vals,
+                                                            dtype=d_dtype)
+
+        def loss_fn(emb):
+          ids = constant_op.constant(raw_ids, dtype=k_dtype)
+          pred = embedding_ops.embedding_lookup([emb], ids)
+          return pred * pred
+
+        base_opt_op = base_opt.minimize(lambda: loss_fn(embeddings),
+                                        [embeddings])
+        self.evaluate(variables.global_variables_initializer())
+        for _ in range(run_step):
+          self.evaluate(base_opt_op)
+        return embeddings
+
+      base_opt_val = self.evaluate(base_fn())
+
+      def test_fn():
+        embeddings = deo.get_variable('t2020-v2-' + name + str(id),
+                                      key_dtype=k_dtype,
+                                      value_dtype=d_dtype,
+                                      devices=['/cpu:0'] * num_shards,
+                                      initializer=1.,
+                                      dim=dim)
+        trainables = []
+        init_ids = constant_op.constant(raw_init_ids, dtype=k_dtype)
+        init_vals = constant_op.constant(raw_init_vals, dtype=d_dtype)
+        self.evaluate(embeddings.upsert(init_ids, init_vals))
+
+        def var_fn():
+          return trainables
+
+        def loss_fn(x, trainables):
+          ids = constant_op.constant(raw_ids, dtype=k_dtype)
+          pred, trainable = deo.embedding_lookup([x],
+                                                  ids,
+                                                  return_trainable=True)
+          trainables.clear()
+          trainables.append(trainable)
+          return pred * pred
+
+        test_opt_op = test_opt.minimize(lambda: loss_fn(embeddings, trainables),
+                                        var_fn)
+        self.evaluate(variables.global_variables_initializer())
+        for _ in range(run_step):
+          self.evaluate(test_opt_op)
+        return embeddings.lookup(init_ids)
+
+      test_opt_val = self.evaluate(test_fn())
+      self.assertAllCloseAccordingToType(base_opt_val,
+                                         test_opt_val,
+                                         msg="Cond:{},{},{},{},{},{}".format(
+                                             num_shards, k_dtype, d_dtype,
+                                             initial_mode, dim, run_step))
+
+
 class EmbeddingLookupSparseTrainableTest(test.TestCase,
                                          CommonTrainableTestBase):
 
@@ -1823,11 +1961,106 @@ class EmbeddingLookupSparseTrainableTest(test.TestCase,
                                                num_shards, k_dtype, d_dtype,
                                                dim, run_step))
 
+  def common_minimize_trainable_v2(self, base_opt, test_opt, name):
+    id = 0
+    for num_shards, k_dtype, d_dtype, initial_mode, dim, run_step in \
+        itertools.product(
+          [1, 3],
+          [dtypes.int32, dtypes.int64, ],
+          [dtypes.float32, ],
+          ["constant", ],
+          [1, 10],
+          [1, 10]):
+      id += 1
+      raw_init_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+      raw_init_vals = [[
+          x,
+      ] * dim for x in [0.0, 0.1, 0.3, 0.8, 0.16, 0.25, 0.36, 0.49, 0.64, 0.81]]
+      raw_ids = constant_op.constant([1, 3, 3, 9], dtype=k_dtype)
+      sp_ids = sparse_tensor.SparseTensor(indices=[
+          [0, 0],
+          [0, 1],
+          [1, 0],
+          [2, 1],
+      ],
+                                          values=raw_ids,
+                                          dense_shape=[3, 2])
+      x = constant_op.constant([[_x * dim] for _x in [[0.4], [0.5], [0.6]]],
+                               dtype=d_dtype)
+      x = array_ops.reshape(x, shape=(dim, -1))
 
-@test_util.deprecated_graph_mode_only
+      # # base graph
+      def base_fn():
+        embeddings = variables.Variable(np.array(raw_init_vals).reshape(
+            [len(raw_init_ids), dim]),
+                                        dtype=d_dtype,
+                                        shape=[len(raw_init_ids), dim])
+
+        def loss_fn(emb):
+          embedding = embedding_ops.embedding_lookup_sparse(emb,
+                                                            sp_ids,
+                                                            None,
+                                                            combiner='sum')
+          pred = math_ops.matmul(embedding, x)
+          return pred * pred
+
+        base_opt_op = base_opt.minimize(lambda: loss_fn(embeddings),
+                                        [embeddings])
+        self.evaluate(variables.global_variables_initializer())
+        for _ in range(run_step):
+          self.evaluate(base_opt_op)
+        return embeddings
+
+      base_opt_val = self.evaluate(base_fn())
+
+      def test_fn():
+        embeddings = deo.get_variable('t1030-v2-' + name + str(id),
+                                      key_dtype=k_dtype,
+                                      value_dtype=d_dtype,
+                                      devices=['/cpu:0'] * num_shards,
+                                      initializer=1.,
+                                      dim=dim)
+
+        init_ids = constant_op.constant(raw_init_ids, dtype=k_dtype)
+        init_vals = constant_op.constant(raw_init_vals, dtype=d_dtype)
+        self.evaluate(embeddings.upsert(init_ids, init_vals))
+        trainables = []
+
+        def var_fn():
+          return trainables
+
+        def loss_fn(emb, trainables):
+          test_var, trainable = deo.embedding_lookup_sparse(
+              emb,
+              sp_ids,
+              sp_weights=None,
+              combiner="sum",
+              return_trainable=True)
+
+          pred = math_ops.matmul(test_var, x)
+          trainables.clear()
+          trainables.append(trainable)
+          return pred * pred
+
+        test_opt_op = test_opt.minimize(lambda: loss_fn(embeddings, trainables),
+                                        var_fn)
+        self.evaluate(variables.global_variables_initializer())
+        for _ in range(run_step):
+          self.evaluate(test_opt_op)
+        return embeddings.lookup(init_ids)
+
+      test_opt_val = self.evaluate(test_fn())
+      self.assertAllCloseAccordingToType(base_opt_val,
+                                         test_opt_val,
+                                         msg="Cond:{},{},{},{},{},{}".format(
+                                             num_shards, k_dtype, d_dtype,
+                                             initial_mode, dim, run_step))
+
+
 class SafeEmbeddingLookupSparseTrainableTest(test.TestCase,
                                              CommonTrainableTestBase):
 
+  @test_util.deprecated_graph_mode_only
   def common_minimize_trainable(self, base_opt, test_opt, name):
     id = 0
     for num_shards, k_dtype, d_dtype, initial_mode, dim, run_step in \
@@ -1922,7 +2155,103 @@ class SafeEmbeddingLookupSparseTrainableTest(test.TestCase,
                                                num_shards, k_dtype, d_dtype,
                                                dim, run_step))
 
+  def common_minimize_trainable_v2(self, base_opt, test_opt, name):
+    id = 0
+    for num_shards, k_dtype, d_dtype, initial_mode, dim, run_step in \
+        itertools.product(
+          [1, 3],
+          [dtypes.int32, dtypes.int64, ],
+          [dtypes.float32, ],
+          ["constant", ],
+          [1, 10],
+          [1, 10]):
+      id += 1
+      raw_init_ids = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+      raw_init_vals = [[
+          x,
+      ] * dim for x in [0.0, 0.1, 0.3, 0.8, 0.16, 0.25, 0.36, 0.49, 0.64, 0.81]]
+      raw_ids = constant_op.constant([1, 3, 3, 9], dtype=k_dtype)
+      sp_ids = sparse_tensor.SparseTensor(indices=[
+          [0, 0],
+          [0, 1],
+          [1, 0],
+          [2, 1],
+      ],
+                                          values=raw_ids,
+                                          dense_shape=[3, 2])
+      x = constant_op.constant([[_x * dim] for _x in [[0.4], [0.5], [0.6]]],
+                               dtype=d_dtype)
+      x = array_ops.reshape(x, shape=(dim, -1))
 
+      # # base graph
+      def base_fn():
+        embeddings = variables.Variable(np.array(raw_init_vals).reshape(
+            [len(raw_init_ids), dim]),
+                                        dtype=d_dtype,
+                                        shape=[len(raw_init_ids), dim])
+
+        def loss_fn(emb):
+          embedding = embedding_ops.safe_embedding_lookup_sparse(emb,
+                                                                 sp_ids,
+                                                                 None,
+                                                                 combiner='sum')
+          pred0 = math_ops.matmul(embedding, x)
+          return pred0 * pred0
+
+        base_opt_op = base_opt.minimize(lambda: loss_fn(embeddings),
+                                        [embeddings])
+        self.evaluate(variables.global_variables_initializer())
+        for _ in range(run_step):
+          self.evaluate(base_opt_op)
+        return embeddings
+
+      base_opt_val = self.evaluate(base_fn())
+
+      def test_fn():
+        embeddings = deo.get_variable('s6030-v2-' + name + str(id),
+                                      key_dtype=k_dtype,
+                                      value_dtype=d_dtype,
+                                      devices=['/cpu:0'] * num_shards,
+                                      initializer=1.,
+                                      dim=dim)
+
+        init_ids = constant_op.constant(raw_init_ids, dtype=k_dtype)
+        init_vals = constant_op.constant(raw_init_vals, dtype=d_dtype)
+        self.evaluate(embeddings.upsert(init_ids, init_vals))
+        trainables = []
+
+        def var_fn():
+          return trainables
+
+        def loss_fn(emb, trainables):
+          test_var, trainable = deo.safe_embedding_lookup_sparse(
+              emb,
+              sp_ids,
+              sparse_weights=None,
+              combiner="sum",
+              return_trainable=True)
+
+          pred = math_ops.matmul(test_var, x)
+          trainables.clear()
+          trainables.append(trainable)
+          return pred * pred
+
+        test_opt_op = test_opt.minimize(lambda: loss_fn(embeddings, trainables),
+                                        var_fn)
+        self.evaluate(variables.global_variables_initializer())
+        for _ in range(run_step):
+          self.evaluate(test_opt_op)
+        return embeddings.lookup(init_ids)
+
+      test_opt_val = self.evaluate(test_fn())
+      self.assertAllCloseAccordingToType(base_opt_val,
+                                         test_opt_val,
+                                         msg="Cond:{},{},{},{},{},{}".format(
+                                             num_shards, k_dtype, d_dtype,
+                                             initial_mode, dim, run_step))
+
+
+@test_util.deprecated_graph_mode_only
 class TrainDynamicEmbeddingInMonitoredTrainingSessionTest(test.TestCase):
   """Tests Training in MonitoredTrainingSession."""
 
@@ -1947,6 +2276,7 @@ class TrainDynamicEmbeddingInMonitoredTrainingSessionTest(test.TestCase):
                            dim=1)
       upsert_op = table.upsert(keys, values)
       lookup_op = table.lookup(keys)
+      size_op = table.size()
       with monitored_session.MonitoredTrainingSession(
           is_chief=True, checkpoint_dir=logdir) as sess:
         self.assertEqual(0, sess.run(gstep))
@@ -1956,9 +2286,9 @@ class TrainDynamicEmbeddingInMonitoredTrainingSessionTest(test.TestCase):
         # Check that the parameter nodes have been initialized.
         self.assertEqual(10.0, sess.run(v0))
         self.assertEqual(20.0, sess.run(v1))
-        self.assertAllEqual(0, sess.run(table.size()))
+        self.assertAllEqual(0, sess.run(size_op))
         sess.run(upsert_op, feed_dict={keys: [0, 1, 2]})
-        self.assertAllEqual(3, sess.run(table.size()))
+        self.assertAllEqual(3, sess.run(size_op))
 
       # A restart will find the checkpoint and recover automatically.
       with monitored_session.MonitoredTrainingSession(

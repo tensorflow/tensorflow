@@ -44,6 +44,7 @@ from tensorflow.python.keras.utils import tf_inspect
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import dynamic_embedding_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
@@ -637,23 +638,56 @@ class OptimizerV2(trackable.Trackable):
         raise NotImplementedError("Trying to update a Tensor ", var)
 
       apply_kwargs = {}
-      if isinstance(grad, ops.IndexedSlices):
-        if var.constraint is not None:
-          raise RuntimeError(
-              "Cannot use a constraint function on a sparse variable.")
-        if "apply_state" in self._sparse_apply_args:
-          apply_kwargs["apply_state"] = apply_state
-        return self._resource_apply_sparse_duplicate_indices(
-            grad.values, var, grad.indices, **apply_kwargs)
+      if not isinstance(var, resource_variable_ops.TrainableWrapper):
+        if isinstance(grad, ops.IndexedSlices):
+          if var.constraint is not None:
+            raise RuntimeError(
+                "Cannot use a constraint function on a sparse variable.")
+          if "apply_state" in self._sparse_apply_args:
+            apply_kwargs["apply_state"] = apply_state
+          return self._resource_apply_sparse_duplicate_indices(
+              grad.values, var, grad.indices, **apply_kwargs)
 
-      if "apply_state" in self._dense_apply_args:
-        apply_kwargs["apply_state"] = apply_state
-      update_op = self._resource_apply_dense(grad, var, **apply_kwargs)
-      if var.constraint is not None:
-        with ops.control_dependencies([update_op]):
-          return var.assign(var.constraint(var))
+        if "apply_state" in self._dense_apply_args:
+          apply_kwargs["apply_state"] = apply_state
+        update_op = self._resource_apply_dense(grad, var, **apply_kwargs)
+        if var.constraint is not None:
+          with ops.control_dependencies([update_op]):
+            return var.assign(var.constraint(var))
+        else:
+          return update_op
       else:
-        return update_op
+        with ops.colocate_with(None, ignore_existing=True):
+          _slots = [self.get_slot(var, _s) for _s in self.get_slot_names()]
+          with ops.control_dependencies([grad]):
+            _before = [var.read_value()
+                      ] + [_s.read_value() for _s in _slots]
+          if isinstance(grad, ops.IndexedSlices):
+            if var.constraint is not None:
+              raise RuntimeError(
+                  "Cannot use a constraint function on a sparse variable.")
+            if "apply_state" in self._sparse_apply_args:
+              apply_kwargs["apply_state"] = apply_state
+            with ops.control_dependencies(_before):
+              _apply_op = self._resource_apply_sparse_duplicate_indices(
+                  grad.values, var, grad.indices, **apply_kwargs)
+            with ops.control_dependencies([_apply_op]):
+              _after = control_flow_ops.group([var.update_op()] +
+                                              [_s.update_op() for _s in _slots])
+              return _after
+
+          if "apply_state" in self._dense_apply_args:
+            apply_kwargs["apply_state"] = apply_state
+          with ops.control_dependencies(_before):
+            update_op = self._resource_apply_dense(grad, var, **apply_kwargs)
+          if var.constraint is not None:
+            with ops.control_dependencies([update_op]):
+              return var.assign(var.constraint(var))
+          else:
+            with ops.control_dependencies([update_op]):
+              _after = control_flow_ops.group([var.update_op()] +
+                                              [_s.update_op() for _s in _slots])
+            return _after
 
     eagerly_outside_functions = ops.executing_eagerly_outside_functions()
     update_ops = []
@@ -829,11 +863,16 @@ class OptimizerV2(trackable.Trackable):
             .format(strategy, var))
 
       with strategy.extended.colocate_vars_with(var):
-        weight = tf_variables.Variable(
-            name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
-            dtype=var.dtype,
-            trainable=False,
-            initial_value=initial_value)
+        if isinstance(var, resource_variable_ops.TrainableWrapper):
+          weight = dynamic_embedding_ops.create_slots(var, initial_value,
+                                                      slot_name,
+                                                      var._shared_name)
+        else:
+          weight = tf_variables.Variable(
+              name="%s/%s" % (var._shared_name, slot_name),  # pylint: disable=protected-access
+              dtype=var.dtype,
+              trainable=False,
+              initial_value=initial_value)
       backend.track_variable(weight)
       slot_dict[slot_name] = weight
       self._restore_slot_variable(

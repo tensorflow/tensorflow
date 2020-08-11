@@ -40,6 +40,7 @@ py_library(
     deps = [
         ":learning_rate_schedule",
         "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dynamic_embedding_ops",
         "//tensorflow/python:framework",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:resource_variable_ops",

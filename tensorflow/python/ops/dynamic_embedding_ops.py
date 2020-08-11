@@ -21,6 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -54,7 +56,7 @@ def _partition(data, partition_index, shard_num):
     return [
         data,
     ], None
-  with ops.colocate_with(data):
+  with ops.colocate_with(data, ignore_existing=True):
     partitions = data_flow_ops.dynamic_partition(data, partition_index,
                                                  shard_num)
     indices = data_flow_ops.dynamic_partition(
@@ -188,7 +190,6 @@ class Variable(trackable.TrackableResource):
                 checkpoint=self.checkpoint)
 
             self._tables.append(mht)
-            self.size_ops.append(self._tables[idx].size())
     super(Variable, self).__init__()
 
   @property
@@ -198,7 +199,7 @@ class Variable(trackable.TrackableResource):
   def _convert_anything_to_init(self, raw_init, dim):
     init = raw_init
     while callable(init):
-      if isinstance(init, init_ops.Initializer):
+      if isinstance(init, (init_ops.Initializer, init_ops_v2.Initializer)):
         self.initializer = init
         init = init(shape=[1])
       else:
@@ -278,7 +279,7 @@ class Variable(trackable.TrackableResource):
     if self.initializer is None:
       return None
     try:
-      vals_shape = [array_ops.shape(array_ops.reshape(keys, [-1]))[0], self.dim]
+      vals_shape = keys.get_shape().concatenate(self.dim)
       init_op = self.initializer(vals_shape)
     except Exception:  # constant.initializer
       init_op = self.initializer([self.dim])
@@ -348,6 +349,8 @@ class Variable(trackable.TrackableResource):
     Returns:
       A scalar tensor containing the number of elements in this Variable.
     """
+    if context.executing_eagerly():
+      self.size_ops = []
     if not self.size_ops:
       for idx in range(len(self.devices)):
         with ops.device(self.devices[idx]):
@@ -489,6 +492,7 @@ def embedding_lookup(
   with ops.name_scope(full_name):
     initial_value = None
     trainable_wrap = None
+    ids = ops.convert_to_tensor(ids, name="ids")
     if ids.get_shape() == tensor_shape.unknown_shape():
       ids = array_ops.reshape(ids, shape=[-1])
       initial_shape = (1, params.dim)
@@ -502,6 +506,9 @@ def embedding_lookup(
                                          dtype=params.value_dtype)
 
     with ops.colocate_with(None, ignore_existing=True):
+      collections = [ops.GraphKeys.LOCAL_VARIABLES]
+      if params.trainable:
+        collections += [ops.GraphKeys.TRAINABLE_VARIABLES]
       trainable_ = resource_variable_ops.TrainableWrapper(
           params,
           ids,
@@ -509,9 +516,7 @@ def embedding_lookup(
           initial_value=initial_value,
           dtype=params.value_dtype,
           trainable=params.trainable,
-          collections=[
-              ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.TRAINABLE_VARIABLES
-          ])
+          collections=collections)
       embeddings = array_ops.identity(trainable_)
       embeddings.set_shape(trainable_shape)
 

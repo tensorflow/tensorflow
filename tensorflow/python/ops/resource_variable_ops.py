@@ -2042,6 +2042,7 @@ class TrainableWrapper(ResourceVariable):
       if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
         handle_name = ops.name_from_scope_name(name)
+        handle_name = (handle_name or "TrainableWrapperHandle")
         if self._in_graph_mode:
           shared_name = handle_name
           unique_id = shared_name
@@ -2111,7 +2112,6 @@ class TrainableWrapper(ResourceVariable):
                   name="AssignBeforeInitRead")]):
                 value = gen_resource_variable_ops.read_variable_op(handle,
                                                                    dtype)
-                _maybe_set_handle_data(dtype, handle, value)
               _maybe_set_handle_data(dtype, handle, value)
             graph_element = value
             if caching_device is not None:
@@ -2134,9 +2134,13 @@ class TrainableWrapper(ResourceVariable):
           graph_element = None
           if caching_device:
             with ops.device(caching_device):
-              cached_value = gen_resource_variable_ops.read_variable_op(
-                handle, dtype)
-              _maybe_set_handle_data(dtype, handle, cached_value)
+              with ops.control_dependencies([
+                gen_resource_variable_ops.assign_variable_op(
+                  handle, self.prefetch_values,
+                  name="AssignBeforeInitRead")]):
+                cached_value = gen_resource_variable_ops.read_variable_op(
+                  handle, dtype)
+                _maybe_set_handle_data(dtype, handle, cached_value)
           else:
             cached_value = None
         if not context.executing_eagerly():
