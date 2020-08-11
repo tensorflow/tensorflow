@@ -14,12 +14,16 @@ limitations under the License.
 ==============================================================================*/
 // See docs in ../ops/image_ops.cc.
 #include <math.h>
+
 #include <cmath>
+
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/stateless_random_ops.h"
+#include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/util/guarded_philox_random.h"
 
@@ -201,12 +205,10 @@ bool GenerateRandomCrop(int original_width, int original_height,
 }  // namespace
 
 template <typename T>
-class SampleDistortedBoundingBoxV2Op : public OpKernel {
+class SampleDistortedBoundingBoxBaseOp : public OpKernel {
  public:
-  explicit SampleDistortedBoundingBoxV2Op(OpKernelConstruction* context)
+  explicit SampleDistortedBoundingBoxBaseOp(OpKernelConstruction* context)
       : OpKernel(context) {
-    OP_REQUIRES_OK(context, generator_.Init(context));
-
     if (context->num_inputs() == 2) {
       OP_REQUIRES_OK(context, context->GetAttr("min_object_covered",
                                                &min_object_covered_));
@@ -252,7 +254,7 @@ class SampleDistortedBoundingBoxV2Op : public OpKernel {
                                         max_attempts_));
   }
 
-  void Compute(OpKernelContext* context) override {
+  void DoCompute(OpKernelContext* context, const random::PhiloxRandom& rng) {
     const Tensor& image_size = context->input(0);
 
     OP_REQUIRES(context, image_size.dims() == 1,
@@ -287,7 +289,11 @@ class SampleDistortedBoundingBoxV2Op : public OpKernel {
                     input_boxes.shape().DebugString()));
 
     float min_object_covered_val = 0.0;
-    if (context->num_inputs() == 3) {
+    // `SampleDistortedBoundingBox` op accepts 2 inputs and has
+    // `min_object_covered` as an attribute (handled in the constructor).
+    // `SampleDistortedBoundingBoxV2` and `StatelessSampleDistortedBoundingBox`
+    // ops accept 3+ inputs, including `min_object_covered`.
+    if (context->num_inputs() >= 3) {
       const Tensor& min_object_covered = context->input(2);
 
       OP_REQUIRES(
@@ -342,8 +348,8 @@ class SampleDistortedBoundingBoxV2Op : public OpKernel {
     const float min_sample_aspect_ratio = aspect_ratio_range_[0];
     const float max_sample_aspect_ratio = aspect_ratio_range_[1];
 
-    auto local_gen = generator_.ReserveSamples32(4 * max_attempts_);
-    random::SimplePhilox random(&local_gen);
+    auto local_rng = rng;
+    random::SimplePhilox random(&local_rng);
 
     Rectangle crop_rect;
     bool sample_generated = false;
@@ -420,8 +426,7 @@ class SampleDistortedBoundingBoxV2Op : public OpKernel {
     size_data(2) = T(-1);
   }
 
- private:
-  GuardedPhiloxRandom generator_;
+ protected:
   int32 max_attempts_;
   std::vector<float> area_range_;
   std::vector<float> aspect_ratio_range_;
@@ -429,15 +434,62 @@ class SampleDistortedBoundingBoxV2Op : public OpKernel {
   bool use_image_if_no_bounding_boxes_;
 };
 
-#define REGISTER_KERNELS(type)                                  \
-  REGISTER_KERNEL_BUILDER(Name("SampleDistortedBoundingBox")    \
-                              .Device(DEVICE_CPU)               \
-                              .TypeConstraint<type>("T"),       \
-                          SampleDistortedBoundingBoxV2Op<type>) \
-  REGISTER_KERNEL_BUILDER(Name("SampleDistortedBoundingBoxV2")  \
-                              .Device(DEVICE_CPU)               \
-                              .TypeConstraint<type>("T"),       \
-                          SampleDistortedBoundingBoxV2Op<type>)
+template <typename T>
+class StatefulSampleDistortedBoundingBoxOp
+    : public SampleDistortedBoundingBoxBaseOp<T> {
+ public:
+  explicit StatefulSampleDistortedBoundingBoxOp(OpKernelConstruction* context)
+      : SampleDistortedBoundingBoxBaseOp<T>(context) {
+    OP_REQUIRES_OK(context, generator_.Init(context));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // Need to reserve samples since `generator_` is shared.
+    this->DoCompute(context,
+                    generator_.ReserveSamples32(4 * this->max_attempts_));
+  }
+
+ private:
+  GuardedPhiloxRandom generator_;
+};
+
+template <typename T>
+class StatelessSampleDistortedBoundingBoxOp
+    : public SampleDistortedBoundingBoxBaseOp<T> {
+ public:
+  explicit StatelessSampleDistortedBoundingBoxOp(OpKernelConstruction* context)
+      : SampleDistortedBoundingBoxBaseOp<T>(context) {}
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& seed_t = context->input(3);
+    OP_REQUIRES(context, seed_t.dims() == 1 && seed_t.dim_size(0) == 2,
+                errors::InvalidArgument("seed must have shape [2], not ",
+                                        seed_t.shape().DebugString()));
+
+    // Create and initialize stateless random number generator (rng).
+    // There is no need to `Skip` (or reserve) samples since the scope of this
+    // rng is local.
+    random::PhiloxRandom::Key key;
+    random::PhiloxRandom::ResultType counter;
+    OP_REQUIRES_OK(context, GenerateKey(seed_t, &key, &counter));
+
+    this->DoCompute(context, random::PhiloxRandom(counter, key));
+  }
+};
+
+#define REGISTER_KERNELS(type)                                        \
+  REGISTER_KERNEL_BUILDER(Name("SampleDistortedBoundingBox")          \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T"),             \
+                          StatefulSampleDistortedBoundingBoxOp<type>) \
+  REGISTER_KERNEL_BUILDER(Name("SampleDistortedBoundingBoxV2")        \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T"),             \
+                          StatefulSampleDistortedBoundingBoxOp<type>) \
+  REGISTER_KERNEL_BUILDER(Name("StatelessSampleDistortedBoundingBox") \
+                              .Device(DEVICE_CPU)                     \
+                              .TypeConstraint<type>("T"),             \
+                          StatelessSampleDistortedBoundingBoxOp<type>)
 
 TF_CALL_INTEGRAL_TYPES(REGISTER_KERNELS);
 #undef REGISTER_KERNELS

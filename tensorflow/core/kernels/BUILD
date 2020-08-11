@@ -3166,7 +3166,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "sample_distorted_bounding_box_op",
     prefix = "sample_distorted_bounding_box_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + [":stateless_random_ops"],
 )
 
 tf_kernel_library(

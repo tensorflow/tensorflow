@@ -86,9 +86,11 @@
       option.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
-      `tf.image.random_*` function. Given the same seed, the stateless functions
-      produce the same results independent of how many times the function is
-      called, and independent of global seed settings.
+      `tf.image.random_*` function. Added a new op
+      `stateless_sample_distorted_bounding_box` which is a determinstic
+      version of `sample_distorted_bounding_box` op. Given the same seed, these
+      stateless functions/ops produce the same results independent of how many
+      times the function is called, and independent of global seed settings.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 * `tf.keras`:
