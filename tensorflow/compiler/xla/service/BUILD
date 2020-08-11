@@ -3427,12 +3427,22 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_space_assignment_repacking",
+    hdrs = ["memory_space_assignment_repacking.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+    ],
+)
+
+cc_library(
     name = "memory_space_assignment",
     srcs = ["memory_space_assignment.cc"],
     hdrs = ["memory_space_assignment.h"],
     deps = [
         ":heap_simulator",
         ":hlo_cost_analysis",
+        ":memory_space_assignment_repacking",
         ":memory_space_assignment_utils",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/lib/math:math_util",
