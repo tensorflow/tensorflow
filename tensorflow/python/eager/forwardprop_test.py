@@ -1043,7 +1043,7 @@ class BatchTests(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
       [("ForwardPropFirst", True),
-      ("TapeFirst", False)])
+       ("TapeFirst", False)])
   def testBatchBackwardOverForward(self, forward_prop_first):
     x = constant_op.constant(1.)
     tangents = random_ops.random_normal(shape=[10], seed=1)
