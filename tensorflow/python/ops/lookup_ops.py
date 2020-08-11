@@ -40,6 +40,7 @@ from tensorflow.python.ops import string_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_lookup_ops import *
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.saver import BaseSaverBuilder
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable_base
@@ -209,14 +210,16 @@ class InitializableLookupTableBase(LookupInterface):
       name: A name for the operation (optional).
 
     Returns:
-      A `SparseTensor` if keys are sparse, otherwise a dense `Tensor`.
+      A `SparseTensor` if keys are sparse, a `RaggedTensor` if keys are ragged,
+      otherwise a dense `Tensor`.
 
     Raises:
       TypeError: when `keys` or `default_value` doesn't match the table data
         types.
     """
     key_tensor = keys
-    if isinstance(keys, sparse_tensor.SparseTensor):
+    if isinstance(keys,
+                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
       key_tensor = keys.values
 
     if keys.dtype.base_dtype != self._key_dtype:
@@ -233,6 +236,8 @@ class InitializableLookupTableBase(LookupInterface):
     values.set_shape(key_tensor.get_shape())
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, values, keys.dense_shape)
+    elif isinstance(keys, ragged_tensor.RaggedTensor):
+      return keys.with_values(values)
     else:
       return values
 
@@ -1058,7 +1063,8 @@ class IdTableWithHashBuckets(LookupInterface):
       name: Optional name for the op.
 
     Returns:
-      A `SparseTensor` if keys are sparse, otherwise a dense `Tensor`.
+      A `SparseTensor` if keys are sparse, a `RaggedTensor` if keys are ragged,
+      otherwise a dense `Tensor`.
 
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
@@ -1067,7 +1073,8 @@ class IdTableWithHashBuckets(LookupInterface):
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
     values = keys
-    if isinstance(keys, sparse_tensor.SparseTensor):
+    if isinstance(keys,
+                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
       values = math_ops.cast(values, dtypes.int64)
@@ -1092,6 +1099,8 @@ class IdTableWithHashBuckets(LookupInterface):
           ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, ids, keys.dense_shape)
+    elif isinstance(keys, ragged_tensor.RaggedTensor):
+      return keys.with_values(ids)
     return ids
 
 
@@ -1244,7 +1253,8 @@ class StaticVocabularyTable(LookupInterface):
       name: Optional name for the op.
 
     Returns:
-      A `SparseTensor` if keys are sparse, otherwise a dense `Tensor`.
+      A `SparseTensor` if keys are sparse, a `RaggedTensor` if keys are ragged,
+      otherwise a dense `Tensor`.
 
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
@@ -1253,7 +1263,8 @@ class StaticVocabularyTable(LookupInterface):
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
     values = keys
-    if isinstance(keys, sparse_tensor.SparseTensor):
+    if isinstance(keys,
+                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
       values = math_ops.cast(values, dtypes.int64)
@@ -1273,6 +1284,8 @@ class StaticVocabularyTable(LookupInterface):
         ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, ids, keys.dense_shape)
+    elif isinstance(keys, ragged_tensor.RaggedTensor):
+      return keys.with_values(ids)
     return ids
 
 

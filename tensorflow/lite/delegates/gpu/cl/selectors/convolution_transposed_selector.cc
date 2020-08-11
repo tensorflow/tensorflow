@@ -105,7 +105,7 @@ absl::Status SelectConvolutionTransposed(
     const ConvolutionTransposedAttributes& attr,
     const CreationContext& creation_context, const OperationDef& op_def,
     std::unique_ptr<GPUOperation>* ptr) {
-  const auto& device_info = creation_context.device->GetInfo();
+  const auto& device_info = creation_context.device->info_;
   if (device_info.IsAdreno()) {
     return SelectConvolutionTransposedAdreno(attr, creation_context, op_def,
                                              ptr);

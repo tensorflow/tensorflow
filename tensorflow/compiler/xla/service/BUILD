@@ -1700,7 +1700,10 @@ cc_library(
 cc_library(
     name = "hlo_creation_utils",
     srcs = ["hlo_creation_utils.cc"],
-    hdrs = ["hlo_creation_utils.h"],
+    hdrs = [
+        "hlo_creation_utils.h",
+        "//tensorflow/compiler/xla:literal_util",
+    ],
     deps = [
         ":hlo",
         ":hlo_module_config",
@@ -1813,6 +1816,21 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "comparison_expander",
+    srcs = ["comparison_expander.cc"],
+    hdrs = ["comparison_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client/lib:comparators",
     ],
 )
 
@@ -2259,6 +2277,7 @@ tf_cc_test(
     srcs = ["gather_expander_test.cc"],
     deps = [
         ":gather_expander",
+        ":hlo_query",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_macros_header",
@@ -4983,5 +5002,36 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",  # fixdeps: keep
         "//tensorflow/stream_executor/lib",
+    ],
+)
+
+cc_library(
+    name = "topk_rewriter",
+    srcs = ["topk_rewriter.cc"],
+    hdrs = ["topk_rewriter.h"],
+    deps = [
+        ":hlo",
+        ":hlo_casting_utils",
+        ":hlo_pass",
+        ":pattern_matcher",
+        "//tensorflow/compiler/xla:shape_util",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/types:optional",
+    ],
+)
+
+tf_cc_test(
+    name = "topk_rewriter_test",
+    srcs = ["topk_rewriter_test.cc"],
+    deps = [
+        ":hlo",
+        ":hlo_dce",
+        ":hlo_matchers",
+        ":topk_rewriter",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:test_macros_cpu",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )

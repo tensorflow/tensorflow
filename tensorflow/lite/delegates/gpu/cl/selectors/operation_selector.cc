@@ -75,14 +75,14 @@ absl::Status WinogradFromNode(const CreationContext& creation_context,
   const BHWC shape_1{input_shape.b, 36, tiles_x * tiles_y, output_shape.c};
   TensorDescriptor td_0;
   td_0.storage_type = SelectBestStorageType(
-      *creation_context.context, *creation_context.device, shape_0,
+      creation_context.device->info_, shape_0,
       op_def.src_tensors[0].storage_type, op_def.src_tensors[0].data_type,
       op_def.src_tensors[0].layout);
   td_0.data_type = op_def.src_tensors[0].data_type;
   td_0.layout = op_def.src_tensors[0].layout;
   TensorDescriptor td_1;
   td_1.storage_type = SelectBestStorageType(
-      *creation_context.context, *creation_context.device, shape_1,
+      creation_context.device->info_, shape_1,
       op_def.src_tensors[0].storage_type, op_def.src_tensors[0].data_type,
       op_def.src_tensors[0].layout);
   td_1.data_type = op_def.src_tensors[0].data_type;
@@ -175,7 +175,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         channels[i] = inputs[i]->tensor.shape.c;
       }
       return SelectConcat(attr, channels, op_def,
-                          creation_context.device->GetInfo(), gpu_op);
+                          creation_context.device->info_, gpu_op);
     }
     case OperationType::CONVOLUTION_2D: {
       auto attr =
@@ -248,7 +248,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
                                   inputs[0]->tensor.shape.b, gpu_op);
     }
     case OperationType::LSTM: {
-      SelectLSTM(op_def, creation_context.device->GetInfo(), gpu_op);
+      SelectLSTM(op_def, creation_context.device->info_, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::MAX_UNPOOLING_2D: {
@@ -259,8 +259,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
-      return SelectMean(attr, op_def, creation_context.device->GetInfo(),
-                        gpu_op);
+      return SelectMean(attr, op_def, creation_context.device->info_, gpu_op);
     }
     case OperationType::MEAN_STDDEV_NORMALIZATION: {
       MeanStdDevNormalization operation = CreateMeanStdDevNormalization(op_def);

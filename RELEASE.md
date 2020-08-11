@@ -72,6 +72,11 @@
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process
       to register a dataset with the tf.data service, and another process to
       consume data from the dataset.
+    * Added support for tf.data service dispatcher fault tolerance. To enable
+      fault tolerance, configure a `work_dir` when running your dispatcher
+      server and set `dispatcher_fault_tolerance=True`. The dispatcher will
+      store its state to `work_dir`, so that on restart it can continue from its
+      previous state after restart.
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
       the complement of `select_cols`; at most one of these should be specified.
     * We have implemented an optimization which reorders data-discarding
@@ -95,16 +100,35 @@
       * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be clearer and easier to understand.
     * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
       as an alternative to accepting a `callable` loss.
+    * Added `beta` parameter to FTRL optimizer to match paper.
+    * Added `mobilenet_v3` to keras application model.
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
     performance.
   * Added support for `iter(DistributedDataset)` in AutoGraph `for` loops.
+  * AutoGraph now allows creating new symbols inside a TensorFLow loop, if
+    the values of these symbols at an iteration does not depend on the previous
+    iteration. These types of loops must run at least one iteration, and will
+    raise a runtime error otherwise.
+
+    Example:
+
+    ```
+    for batch in data:
+      outputs = train_step(batch)
+    tf.print('final outputs', outputs)
+    ```
+    See tensorflow/python/autograph/g3doc/reference/limitations.md for more
+    info.
 *   `tf.lite`:
     * `DynamicBuffer::AddJoinedString()` will now add a separator if the first
       string to be joined is empty.
     * `TFLiteConverter`:
       * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`).
+    * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
+      * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
+    * Add NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
@@ -116,6 +140,8 @@
       behavior by adjusting the `l2` parameter.
     * <ADD RELEASE NOTES HERE>
 *   XLA Support:
+    * xla.experimental.compile is deprecated, use
+      `tf.function(experimental_compile=True)` instead
     * <ADD RELEASE NOTES HERE>
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>

@@ -524,7 +524,7 @@ TEST(CompileGraphToXlaHlo, Resources) {
   ASSERT_TRUE(status_or_hlo_module.ok());
 
   constexpr char expected_hlo_module_string[] =
-      R"(HloModule main.4, input_output_alias={ {0}: 1 }
+      R"(HloModule main.4, input_output_alias={ {0}: (1, {}, may_alias) }
 
 ENTRY %main.4 (Arg_0.1: f32[2], Arg_1.2: f32[2]) -> (f32[2]) {
   %Arg_1.2 = f32[2]{0} parameter(1)

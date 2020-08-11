@@ -476,6 +476,13 @@ class DivAndModTest(test_util.TensorFlowTestCase):
     #               % array_ops.constant(divs))
     # self.assertAllEqual(tf2_result, tf_result)
 
+  def testFloorModBfloat64(self):
+    nums, divs = self.floatTestData()
+    tf_result = math_ops.floormod(math_ops.cast(nums, dtypes.bfloat16),
+                                  math_ops.cast(divs, dtypes.bfloat16))
+    np_result = nums % divs
+    self.assertAllEqual(tf_result, np_result)
+
   def testTruncateModInt(self):
     nums, divs = self.intTestData()
     tf_result = math_ops.truncatemod(nums, divs)

@@ -39,7 +39,7 @@ class GrpcWorkerImpl : public WorkerService::Service {
                           const experimental::WorkerConfig& config);
   ~GrpcWorkerImpl() override {}
 
-  void Start(const std::string& worker_address);
+  Status Start(const std::string& worker_address);
 
 #define HANDLER(method)                               \
   grpc::Status method(grpc::ServerContext* context,   \

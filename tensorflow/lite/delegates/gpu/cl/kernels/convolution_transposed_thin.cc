@@ -175,7 +175,7 @@ absl::Status CreateConvolutionTransposedThin(
         "ConvolutionTransposedThin doesn't support this attributes");
   }
   *result = ConvolutionTransposedThin(definition, attr,
-                                      creation_context.device->GetInfo());
+                                      creation_context.device->info_);
   RETURN_IF_ERROR(
       result->UploadData(attr.weights, attr.bias, creation_context.context));
   return absl::OkStatus();

@@ -86,8 +86,11 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
   std::string c = GetCommonDefines(definition_.precision);
   c += GetVectorReduceCode();
   c += GetReduceCode(work_group_size_.x, work_group_size_.y);
-  c += R"(__attribute__((reqd_work_group_size(128, 1, 1)))
-__kernel void main_function(
+  c += "__attribute__((reqd_work_group_size(" +
+       std::to_string(work_group_size_.x) + ", " +
+       std::to_string(work_group_size_.y) + ", " +
+       std::to_string(work_group_size_.z) + ")))\n";
+  c += R"(__kernel void main_function(
 $0) {
 #ifndef __opencl_c_work_group_collective_functions
   __local float tmp[)" +
@@ -130,7 +133,7 @@ $0) {
   const float variance = sum_diff_sq / args.src_tensor.Channels();
   const float stddev_inv =  rsqrt(variance + 1.0e-8f);
   // Calculate (t-mean)/stddev for each element
-  for (int S = 0; S < args.src_tensor.Slices(); ++S) {
+  for (int S = get_local_id(0); S < args.src_tensor.Slices(); S += get_local_size(0)) {
     const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
     FLT4 result = TO_FLT4((t - mean) * stddev_inv);
     args.dst_tensor.Write(result, 0, 0, S, B);

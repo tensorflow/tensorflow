@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/ops/array_ops.h"
 
+#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/core/platform/errors.h"
 
 namespace tensorflow {

@@ -67,6 +67,7 @@ void DispatcherState::RegisterWorker(
   std::string address = register_worker.worker_address();
   DCHECK(!workers_.contains(address));
   workers_[address] = std::make_shared<Worker>(address);
+  tasks_by_worker_[address] = std::vector<std::shared_ptr<Task>>();
 }
 
 void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
@@ -97,6 +98,7 @@ void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
                                 create_task.dataset_id(),
                                 create_task.worker_address());
   tasks_by_job_[create_task.job_id()].push_back(task);
+  tasks_by_worker_[create_task.worker_address()].push_back(task);
   next_available_task_id_ = std::max(next_available_task_id_, task_id + 1);
 }
 
@@ -215,6 +217,21 @@ Status DispatcherState::TasksForJob(
   tasks->reserve(it->second.size());
   for (const auto& task : it->second) {
     tasks->push_back(task);
+  }
+  return Status::OK();
+}
+
+Status DispatcherState::TasksForWorker(
+    absl::string_view worker_address,
+    std::vector<std::shared_ptr<const Task>>& tasks) const {
+  auto it = tasks_by_worker_.find(worker_address);
+  if (it == tasks_by_worker_.end()) {
+    return errors::NotFound("Worker ", worker_address, " not found");
+  }
+  std::vector<std::shared_ptr<Task>> worker_tasks = it->second;
+  tasks.reserve(worker_tasks.size());
+  for (const auto& task : worker_tasks) {
+    tasks.push_back(task);
   }
   return Status::OK();
 }

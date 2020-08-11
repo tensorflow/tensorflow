@@ -22,6 +22,7 @@ limitations under the License.
 #include "grpcpp/create_channel.h"
 #include "grpcpp/impl/codegen/server_context.h"
 #include "grpcpp/security/credentials.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
@@ -43,7 +44,7 @@ namespace data {
 
 namespace {
 // The name of the journal directory inside the dispatcher's working directory.
-constexpr char kJournalDir[] = "journal";
+constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
 
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
@@ -86,21 +87,25 @@ Status DataServiceDispatcherImpl::Start() {
   }
   journal_writer_ = absl::make_unique<FileJournalWriter>(
       Env::Default(), JournalDir(config_.work_dir()));
+  LOG(INFO) << "Restoring dispatcher state from journal in "
+            << JournalDir(config_.work_dir());
   Update update;
   bool end_of_journal = false;
   FileJournalReader reader(Env::Default(), JournalDir(config_.work_dir()));
   Status s = reader.Read(&update, &end_of_journal);
   if (errors::IsNotFound(s)) {
     LOG(INFO) << "No journal found. Starting dispatcher from new state.";
-    return Status::OK();
+  } else if (!s.ok()) {
+    return s;
+  } else {
+    while (!end_of_journal) {
+      TF_RETURN_IF_ERROR(ApplyWithoutJournaling(update));
+      TF_RETURN_IF_ERROR(reader.Read(&update, &end_of_journal));
+    }
   }
-  TF_RETURN_IF_ERROR(s);
-  LOG(INFO) << "Restoring dispatcher state from journal in "
-            << JournalDir(config_.work_dir());
-  while (!end_of_journal) {
-    TF_RETURN_IF_ERROR(ApplyWithoutJournaling(update));
-    TF_RETURN_IF_ERROR(reader.Read(&update, &end_of_journal));
-  }
+  // Initialize the journal writer in `Start` so that we fail fast in case it
+  // can't be initialized.
+  TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   return Status::OK();
 }
 
@@ -109,14 +114,22 @@ Status DataServiceDispatcherImpl::RegisterWorker(
   VLOG(3) << "Received register worker request";
   mutex_lock l(mu_);
   std::string worker_address = request->worker_address();
-  std::shared_ptr<const Worker> worker;
-  Status s = state_.WorkerFromAddress(worker_address, &worker);
+  std::vector<std::shared_ptr<const Task>> tasks;
+  Status s = state_.TasksForWorker(worker_address, tasks);
   if (errors::IsNotFound(s)) {
     Update update;
     update.mutable_register_worker()->set_worker_address(worker_address);
     TF_RETURN_IF_ERROR(Apply(update));
   } else if (!s.ok()) {
     return s;
+  }
+
+  absl::flat_hash_map<int64, std::shared_ptr<const Task>> tasks_by_job;
+  for (const auto& task : tasks) {
+    // Should never have multiple tasks on the same worker for the same job.
+    auto& task_for_job = tasks_by_job[task->job_id];
+    DCHECK(task_for_job == nullptr);
+    task_for_job = task;
   }
 
   std::vector<std::shared_ptr<const Job>> jobs = state_.ListJobs();
@@ -126,7 +139,12 @@ Status DataServiceDispatcherImpl::RegisterWorker(
       continue;
     }
     std::shared_ptr<const Task> task;
-    TF_RETURN_IF_ERROR(CreateTask(job, worker_address, &task));
+    auto it = tasks_by_job.find(job->job_id);
+    if (it != tasks_by_job.end()) {
+      task = it->second;
+    } else {
+      TF_RETURN_IF_ERROR(CreateTask(job, worker_address, &task));
+    }
     TaskDef* task_def = response->add_tasks();
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, &dataset));

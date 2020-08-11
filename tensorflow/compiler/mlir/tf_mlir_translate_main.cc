@@ -121,7 +121,7 @@ int main(int argc, char** argv) {
     mlir::MLIRContext context;
 
     auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, &context);
+        input_filename, tags, exported_names, &context, upgrade_legacy);
     if (!module_or.status().ok()) return 1;
 
     module_or.ConsumeValueOrDie()->print(output->os());

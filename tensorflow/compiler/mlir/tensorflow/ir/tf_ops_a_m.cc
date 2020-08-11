@@ -339,15 +339,19 @@ void BatchToSpaceOp::getCanonicalizationPatterns(
 //   are not unknown.
 //
 static LogicalResult Verify(BiasAddOp op) {
-  StringRef format = op.data_format();
-  if (format == "NHWC") {
+  absl::string_view data_format(op.data_format().data(),
+                                op.data_format().size());
+  tensorflow::TensorFormat format;
+  bool is_valid = FormatFromString(data_format, &format);
+  DCHECK(is_valid) << data_format;
+  if (format == tensorflow::TensorFormat::FORMAT_NHWC) {
     if (!HasRankAtLeast(op.value(), 2))
       return op.emitOpError(
           "requires value operand to have rank at least two with `NHWC` data "
           "format");
   } else {
     // Op definition requires data_format to be either NHWC or NCHW.
-    DCHECK_EQ(format.str(), "NCHW");
+    DCHECK_EQ(format, tensorflow::TensorFormat::FORMAT_NCHW);
     if (!HasRankAtLeast(op.value(), 3))
       return op.emitOpError(
           "requires value operand to have rank at least three with `NCHW` data "
@@ -361,9 +365,8 @@ static LogicalResult Verify(BiasAddOp op) {
   RankedTensorType bias_ty = op.bias().getType().dyn_cast<RankedTensorType>();
   if (!bias_ty || !value_ty) return success();
 
-  // TODO(hinsu): Leverage tensor_format.h utility in TensorFlow to compute
-  // dimension indices based on format.
-  int64_t feature_dim_idx = format == "NHWC" ? value_ty.getRank() - 1 : 1;
+  int64_t feature_dim_idx =
+      tensorflow::GetTensorFeatureDimIndex(value_ty.getRank(), format);
   int64_t feature_dim = value_ty.getDimSize(feature_dim_idx);
   int64_t bias_len = bias_ty.getDimSize(0);
   if (feature_dim != -1 && bias_len != -1 && feature_dim != bias_len) {
@@ -383,15 +386,19 @@ static LogicalResult Verify(BiasAddOp op) {
 // * the out_backprop operands have valid ranks or are unranked.
 //
 static LogicalResult Verify(BiasAddGradOp op) {
-  StringRef format = op.data_format();
-  if (format == "NHWC") {
+  absl::string_view data_format(op.data_format().data(),
+                                op.data_format().size());
+  tensorflow::TensorFormat format;
+  bool is_valid = FormatFromString(data_format, &format);
+  DCHECK(is_valid) << data_format;
+  if (format == tensorflow::TensorFormat::FORMAT_NHWC) {
     if (!HasRankAtLeast(op.out_backprop(), 2))
       return op.emitOpError(
           "requires out_backprop operand to have rank at least two with `NHWC` "
           "data format");
   } else {
     // Op definition requires data_format to be either NHWC or NCHW.
-    DCHECK_EQ(format.str(), "NCHW");
+    DCHECK_EQ(format, tensorflow::TensorFormat::FORMAT_NCHW);
     if (!HasRankAtLeast(op.out_backprop(), 3))
       return op.emitOpError(
           "requires out_backprop operand to have rank at least three with "
@@ -682,8 +689,8 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
   // of `axis + 1` rank and axis dim has size `1`.
   auto is_all_tensors = [&](int operand_idx, int axis) -> bool {
     return llvm::all_of(op.values(), [&](Value arg) -> bool {
-      auto lhs = arg.getDefiningOp()->getOperand(operand_idx);
-      auto ranked = lhs.getType().dyn_cast<RankedTensorType>();
+      auto operand = arg.getDefiningOp()->getOperand(operand_idx);
+      auto ranked = operand.getType().dyn_cast<RankedTensorType>();
       return ranked && ranked.getRank() == (axis + 1) &&
              ranked.getShape()[axis] == 1;
     });
@@ -692,13 +699,14 @@ HoistCwiseBinaryOutOfConcat::GetHoistParams(TF::ConcatV2Op op,
   // Returns true if all binary ops operands at `operand_idx` index are scalars.
   auto is_all_scalars = [&](int operand_idx) -> bool {
     return llvm::all_of(op.values(), [&](Value arg) -> bool {
-      auto lhs = arg.getDefiningOp()->getOperand(operand_idx);
-      auto ranked = lhs.getType().dyn_cast<RankedTensorType>();
+      auto operand = arg.getDefiningOp()->getOperand(operand_idx);
+      auto ranked = operand.getType().dyn_cast<RankedTensorType>();
       return ranked && ranked.hasRank() && ranked.getRank() == 0;
     });
   };
 
-  auto ranked = op.getType().cast<RankedTensorType>();
+  // Concat result type must be a ranked tensor.
+  auto ranked = op.getType().dyn_cast<RankedTensorType>();
   if (!ranked) return None;
 
   // TODO(ezhulenev): Add support for more valid concat patterns.
@@ -989,7 +997,8 @@ static LogicalResult Verify(OpT op) {
 
   int64_t input_channels = -1;
   if (auto ty = op.input().getType().template dyn_cast<RankedTensorType>()) {
-    std::string data_format = op.data_format().str();
+    absl::string_view data_format(op.data_format().data(),
+                                  op.data_format().size());
     tensorflow::TensorFormat format;
     auto is_valid = FormatFromString(data_format, &format);
     DCHECK(is_valid) << data_format;

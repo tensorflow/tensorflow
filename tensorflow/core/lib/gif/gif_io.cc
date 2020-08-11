@@ -16,9 +16,11 @@ limitations under the License.
 // Functions to read images in GIF format.
 
 #include "tensorflow/core/lib/gif/gif_io.h"
+
 #include <algorithm>
+
+#include "absl/strings/str_cat.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/gif.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -68,17 +70,17 @@ uint8* Decode(const void* srcdata, int datasize,
     }
   });
   if (error_code != D_GIF_SUCCEEDED) {
-    *error_string = strings::StrCat("failed to open gif file: ",
-                                    GifErrorStringNonNull(error_code));
+    *error_string = absl::StrCat("failed to open gif file: ",
+                                 GifErrorStringNonNull(error_code));
     return nullptr;
   }
   if (DGifSlurp(gif_file) != GIF_OK) {
-    *error_string = strings::StrCat("failed to slurp gif file: ",
-                                    GifErrorStringNonNull(gif_file->Error));
+    *error_string = absl::StrCat("failed to slurp gif file: ",
+                                 GifErrorStringNonNull(gif_file->Error));
     return nullptr;
   }
   if (gif_file->ImageCount <= 0) {
-    *error_string = strings::StrCat("gif file does not contain any image");
+    *error_string = "gif file does not contain any image";
     return nullptr;
   }
 
@@ -118,8 +120,7 @@ uint8* Decode(const void* srcdata, int datasize,
         img_desc->Height != height) {
       // If the first frame does not fill the entire canvas then return error.
       if (k == 0) {
-        *error_string =
-            strings::StrCat("the first frame does not fill the canvas");
+        *error_string = "the first frame does not fill the canvas";
         return nullptr;
       }
       // Otherwise previous frame will be reused to fill the unoccupied canvas.
@@ -144,7 +145,7 @@ uint8* Decode(const void* srcdata, int datasize,
                                     ? this_image->ImageDesc.ColorMap
                                     : gif_file->SColorMap;
     if (color_map == nullptr) {
-      *error_string = strings::StrCat("missing color map for frame ", k);
+      *error_string = absl::StrCat("missing color map for frame ", k);
       return nullptr;
     }
 
@@ -156,9 +157,9 @@ uint8* Decode(const void* srcdata, int datasize,
                                    (j - img_desc->Left)];
 
         if (color_index >= color_map->ColorCount) {
-          *error_string = strings::StrCat("found color index ", color_index,
-                                          " outside of color map range ",
-                                          color_map->ColorCount);
+          *error_string = absl::StrCat("found color index ", color_index,
+                                       " outside of color map range ",
+                                       color_map->ColorCount);
           return nullptr;
         }
 

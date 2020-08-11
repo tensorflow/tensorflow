@@ -80,10 +80,8 @@ class CoordinatedClosureQueueTest(test.TestCase):
     def get_func(label):
 
       def func():
-        logging.info('Label: ' + label + ', before waiting 3 sec')  # pylint: disable=logging-not-lazy
         time.sleep(3)
         processed_count[label] += 1
-        logging.info('Label: ' + label + ', after waiting 3 sec')  # pylint: disable=logging-not-lazy
 
       return func
 

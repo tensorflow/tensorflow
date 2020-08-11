@@ -101,6 +101,11 @@ class GcsStatsInterface {
   virtual ~GcsStatsInterface() = default;
 };
 
+struct UploadSessionHandle {
+  std::string session_uri;
+  bool resumable;
+};
+
 /// Google Cloud Storage implementation of a file system.
 ///
 /// The clients should use RetryingGcsFileSystem defined below,
@@ -125,68 +130,52 @@ class GcsFileSystem : public FileSystem {
                 std::pair<const string, const string>* additional_header,
                 bool compose_append);
 
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
+
   Status NewRandomAccessFile(
-      const string& fname,
-      std::unique_ptr<RandomAccessFile>*
-          result /*, TransactionToken* token = nullptr */) override;
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override;
 
-  Status NewWritableFile(
-      const string& fname,
-      std::unique_ptr<WritableFile>*
-          result) /*, TransactionToken* token = nullptr */ override;
+  Status NewWritableFile(const string& fname, TransactionToken* token,
+                         std::unique_ptr<WritableFile>* result) override;
 
-  Status NewAppendableFile(
-      const string& fname,
-      std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr */) override;
+  Status NewAppendableFile(const string& fname, TransactionToken* token,
+                           std::unique_ptr<WritableFile>* result) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
-      std::unique_ptr<ReadOnlyMemoryRegion>*
-          result /*, TransactionToken* token = nullptr */) override;
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  Status FileExists(
-      const string& fname /*, TransactionToken* token = nullptr */) override;
+  Status FileExists(const string& fname, TransactionToken* token) override;
 
-  Status Stat(
-      const string& fname,
-      FileStatistics* stat /*, TransactionToken* token = nullptr */) override;
+  Status Stat(const string& fname, TransactionToken* token,
+              FileStatistics* stat) override;
 
-  Status GetChildren(
-      const string& dir,
-      std::vector<string>* result /*, TransactionToken* token = nullptr */)
-      override;
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* result) override;
 
-  Status GetMatchingPaths(
-      const string& pattern,
-      std::vector<string>* results /*, TransactionToken* token = nullptr */)
-      override;
+  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
+                          std::vector<string>* results) override;
 
-  Status DeleteFile(
-      const string& fname /*, TransactionToken* token = nullptr */) override;
+  Status DeleteFile(const string& fname, TransactionToken* token) override;
 
-  Status CreateDir(
-      const string& dirname /*, TransactionToken* token = nullptr */) override;
+  Status CreateDir(const string& dirname, TransactionToken* token) override;
 
-  Status DeleteDir(
-      const string& dirname /*, TransactionToken* token = nullptr */) override;
+  Status DeleteDir(const string& dirname, TransactionToken* token) override;
 
-  Status GetFileSize(
-      const string& fname,
-      uint64* file_size /*, TransactionToken* token = nullptr */) override;
+  Status GetFileSize(const string& fname, TransactionToken* token,
+                     uint64* file_size) override;
 
-  Status RenameFile(
-      const string& src,
-      const string& target /*, TransactionToken* token = nullptr */) override;
+  Status RenameFile(const string& src, const string& target,
+                    TransactionToken* token) override;
 
-  Status IsDirectory(
-      const string& fname /*, TransactionToken* token = nullptr */) override;
+  Status IsDirectory(const string& fname, TransactionToken* token) override;
 
-  Status DeleteRecursively(
-      const string& dirname, int64* undeleted_files,
-      int64* undeleted_dirs /*, TransactionToken* token = nullptr */) override;
+  Status DeleteRecursively(const string& dirname, TransactionToken* token,
+                           int64* undeleted_files,
+                           int64* undeleted_dirs) override;
 
-  void FlushCaches(/* TransactionToken* token = nullptr */) override;
+  void FlushCaches(TransactionToken* token) override;
 
   /// Set an object to collect runtime statistics from the GcsFilesystem.
   void SetStats(GcsStatsInterface* stats);
@@ -297,7 +286,7 @@ class GcsFileSystem : public FileSystem {
                                         const std::string& bucket,
                                         uint64 file_size,
                                         const std::string& gcs_path,
-                                        std::string* session_uri);
+                                        UploadSessionHandle* session_handle);
 
   // Uploads object data to session.
   virtual Status UploadToSession(const std::string& session_uri,
@@ -333,6 +322,9 @@ class GcsFileSystem : public FileSystem {
 
   // Used by a subclass.
   TimeoutConfig timeouts_;
+
+  /// The retry configuration used for retrying failed calls.
+  RetryConfig retry_config_;
 
  private:
   // GCS file statistics.
@@ -431,9 +423,6 @@ class GcsFileSystem : public FileSystem {
   bool compose_append_;
 
   GcsStatsInterface* stats_ = nullptr;  // Not owned.
-
-  /// The initial delay for exponential backoffs when retrying failed calls.
-  RetryConfig retry_config_;
 
   // Additional header material to be transmitted with all GCS requests
   std::unique_ptr<std::pair<const string, const string>> additional_header_;
