@@ -36,6 +36,7 @@ namespace tf_device {
 // XlaRun.
 class TensorFlowDeviceDialect : public Dialect {
  public:
+  static StringRef getDialectNamespace() { return "tf_device"; }
   // Constructing TensorFlowDevice dialect under an non-null MLIRContext.
   explicit TensorFlowDeviceDialect(MLIRContext* context);
 };

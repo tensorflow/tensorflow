@@ -148,6 +148,7 @@ cuda_py_test(
     size = "small",
     srcs = ["cancellation_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":cancellation",
         ":test",
@@ -254,6 +255,7 @@ cuda_py_test(
     name = "monitoring_test",
     srcs = ["monitoring_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":monitoring",
         ":test",
@@ -397,6 +399,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["function_argument_naming_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":def_function",
@@ -412,6 +415,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["function_defun_collection_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":def_function",
@@ -528,6 +532,7 @@ cuda_py_test(
     name = "graph_only_ops_test",
     srcs = ["graph_only_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "graph_only_ops",
         "//tensorflow/python:client_testlib",
@@ -684,6 +689,7 @@ cuda_py_test(
     name = "remote_benchmarks_test",
     srcs = ["remote_benchmarks_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":benchmarks_test_base",
@@ -709,6 +715,7 @@ tf_py_test(
     name = "tape_test",
     srcs = ["tape_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":context",
@@ -817,6 +824,7 @@ tf_py_test(
     size = "medium",
     srcs = ["lift_to_graph_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "lift_to_graph",
         "//tensorflow/python:framework_ops",

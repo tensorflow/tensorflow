@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -241,8 +242,11 @@ Status RestoreCheckpoint(SavedModelV2Bundle* bundle,
           // TODO(bmzhao): This requires using the newly added Save/Restore
           // functions from
           // https://github.com/tensorflow/tensorflow/commit/df6b21c13c82b5d0981642cfe18f10e60f78ea5c
-          return errors::Unimplemented(
-              "Restoring non-variable objects has not been implemented yet. ");
+          LOG(WARNING) << "Restoring non-variable objects has not been "
+                          "implemented yet. (Kind="
+                       << bundle->saved_object_graph().nodes(node).kind_case()
+                       << ")";
+          return Status::OK();
         }
 
         Variable* variable =

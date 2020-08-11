@@ -18,9 +18,9 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 #include <thread>  // NOLINT(build/c++11)
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
@@ -350,7 +350,7 @@ class DelegateKernel {
   // Whenever quantized inference is enabled, this maps the tensor index of each
   // originally quantized (8-bit) tensor to its float version added in
   // model_builder - and vice versa.
-  std::unordered_map<int, int> quant_conversion_map_;
+  absl::flat_hash_map<int, int> quant_conversion_map_;
   std::thread::id thread_id_prepare_;  // thread id used for Prapare()
   bool enforce_same_thread_ = false;   // flag to enforce same thread for Invoke
 };

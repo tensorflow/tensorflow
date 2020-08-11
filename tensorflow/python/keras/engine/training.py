@@ -33,7 +33,6 @@ from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import func_graph
@@ -94,10 +93,6 @@ try:
 except ImportError:
   yaml = None
 # pylint: enable=g-import-not-at-top
-
-
-_keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
-                                        'keras api usage', 'method')
 
 
 def enable_multi_worker(method):
@@ -245,6 +240,8 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
   @trackable.no_automatic_dependency_tracking
   def __init__(self, *args, **kwargs):
+    base_layer.keras_api_gauge.get_cell('model').set(True)
+
     # Special case for Subclassed Functional Model, which we couldn't detect
     # when __new__ is called. We only realize it is a functional model when it
     # calls super.__init__ with input and output tensor.
@@ -255,6 +252,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       functional.Functional.__init__(self, *args, **kwargs)
       return
 
+    base_layer.keras_api_gauge.get_cell('Model subclass').set(True)
     # The following are implemented as property functions:
     # self.trainable_weights
     # self.non_trainable_weights
@@ -309,7 +307,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     self._init_batch_counters()
     self._base_model_initialized = True
-    _keras_api_gauge.get_cell('model').set(True)
 
   @trackable.no_automatic_dependency_tracking
   def _init_batch_counters(self):
@@ -538,7 +535,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss` or `metrics`.
     """
-    _keras_api_gauge.get_cell('compile').set(True)
+    base_layer.keras_api_gauge.get_cell('compile').set(True)
     with self.distribute_strategy.scope():
       self._validate_compile(optimizer, metrics, **kwargs)
       self._run_eagerly = run_eagerly
@@ -1031,7 +1028,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         ValueError: In case of mismatch between the provided input data
             and what the model expects or when the input data is empty.
     """
-    _keras_api_gauge.get_cell('fit').set(True)
+    base_layer.keras_api_gauge.get_cell('fit').set(True)
     # Legacy graph support is contained in `training_v1.Model`.
     version_utils.disallow_legacy_graph('Model', 'fit')
     self._assert_compile_was_called()
@@ -1340,7 +1337,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         RuntimeError: If `model.evaluate` is wrapped in `tf.function`.
         ValueError: in case of invalid arguments.
     """
-    _keras_api_gauge.get_cell('evaluate').set(True)
+    base_layer.keras_api_gauge.get_cell('evaluate').set(True)
     version_utils.disallow_legacy_graph('Model', 'evaluate')
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
@@ -1568,7 +1565,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
-    _keras_api_gauge.get_cell('predict').set(True)
+    base_layer.keras_api_gauge.get_cell('predict').set(True)
     version_utils.disallow_legacy_graph('Model', 'predict')
     self._check_call_args('predict')
     _disallow_inside_tf_function('predict')
@@ -1824,7 +1821,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       `Model.fit` now supports generators, so there is no longer any need to use
       this endpoint.
     """
-    _keras_api_gauge.get_cell('fit_generator').set(True)
     return self.fit(
         generator,
         steps_per_epoch=steps_per_epoch,
@@ -1857,7 +1853,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       `Model.evaluate` now supports generators, so there is no longer any need
       to use this endpoint.
     """
-    _keras_api_gauge.get_cell('evaluate_generator').set(True)
     self._check_call_args('evaluate_generator')
 
     return self.evaluate(
@@ -1885,7 +1880,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       `Model.predict` now supports generators, so there is no longer any need
       to use this endpoint.
     """
-    _keras_api_gauge.get_cell('predict_generator').set(True)
     return self.predict(
         generator,
         steps=steps,

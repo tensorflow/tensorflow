@@ -654,7 +654,7 @@ PYBIND11_MODULE(xla_extension, m) {
   PyTypeObject* buffer_type = reinterpret_cast<PyTypeObject*>(buffer.ptr());
   buffer_type->tp_as_buffer = PyBuffer::BufferProtocol();
 
-  py::class_<PyExecutable, std::unique_ptr<PyExecutable>> executable(
+  py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
       m, "Executable");
   executable.def_property_readonly("client", &PyExecutable::client)
       .def("local_logical_device_ids", &PyExecutable::local_logical_device_ids)

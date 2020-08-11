@@ -124,8 +124,8 @@ AssetManagerFileSystem::AssetManagerFileSystem(AAssetManager* asset_manager,
                                                const string& prefix)
     : asset_manager_(asset_manager), prefix_(prefix) {}
 
-Status AssetManagerFileSystem::FileExists(
-    const string& fname /*, TransactionToken* token */) {
+Status AssetManagerFileSystem::FileExists(const string& fname,
+                                          TransactionToken* token) {
   string path = RemoveAssetPrefix(fname);
   auto asset = ScopedAsset(
       AAssetManager_open(asset_manager_, path.c_str(), AASSET_MODE_RANDOM));
@@ -136,8 +136,8 @@ Status AssetManagerFileSystem::FileExists(
 }
 
 Status AssetManagerFileSystem::NewRandomAccessFile(
-    const string& fname,
-    std::unique_ptr<RandomAccessFile>* result /*, TransactionToken* token */) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<RandomAccessFile>* result) {
   string path = RemoveAssetPrefix(fname);
   auto asset = ScopedAsset(
       AAssetManager_open(asset_manager_, path.c_str(), AASSET_MODE_RANDOM));
@@ -149,8 +149,8 @@ Status AssetManagerFileSystem::NewRandomAccessFile(
 }
 
 Status AssetManagerFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>*
-                             result /*, TransactionToken* token */) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   string path = RemoveAssetPrefix(fname);
   auto asset = ScopedAsset(
       AAssetManager_open(asset_manager_, path.c_str(), AASSET_MODE_STREAMING));
@@ -186,9 +186,9 @@ Status AssetManagerFileSystem::NewReadOnlyMemoryRegionFromFile(
   return Status::OK();
 }
 
-Status AssetManagerFileSystem::GetChildren(
-    const string& prefixed_dir,
-    std::vector<string>* r /*, TransactionToken* token */) {
+Status AssetManagerFileSystem::GetChildren(const string& prefixed_dir,
+                                           TransactionToken* token,
+                                           std::vector<string>* r) {
   std::string path = NormalizeDirectoryPath(prefixed_dir);
   auto dir =
       ScopedAssetDir(AAssetManager_openDir(asset_manager_, path.c_str()));
@@ -203,8 +203,8 @@ Status AssetManagerFileSystem::GetChildren(
   return Status::OK();
 }
 
-Status AssetManagerFileSystem::GetFileSize(
-    const string& fname, uint64* s /*, TransactionToken* token */) {
+Status AssetManagerFileSystem::GetFileSize(const string& fname,
+                                           TransactionToken* token, uint64* s) {
   // If fname corresponds to a directory, return early. It doesn't map to an
   // AAsset, and would otherwise return NotFound.
   if (DirectoryExists(fname)) {
@@ -221,8 +221,9 @@ Status AssetManagerFileSystem::GetFileSize(
   return Status::OK();
 }
 
-Status AssetManagerFileSystem::Stat(
-    const string& fname, FileStatistics* stat /*, TransactionToken* token */) {
+Status AssetManagerFileSystem::Stat(const string& fname,
+                                    TransactionToken* token,
+                                    FileStatistics* stat) {
   uint64 size;
   stat->is_directory = DirectoryExists(fname);
   TF_RETURN_IF_ERROR(GetFileSize(fname, &size));
@@ -240,8 +241,7 @@ string AssetManagerFileSystem::RemoveAssetPrefix(const string& name) {
   return string(piece);
 }
 
-bool AssetManagerFileSystem::DirectoryExists(
-    const std::string& fname /*, TransactionToken* token */) {
+bool AssetManagerFileSystem::DirectoryExists(const std::string& fname) {
   std::string path = NormalizeDirectoryPath(fname);
   auto dir =
       ScopedAssetDir(AAssetManager_openDir(asset_manager_, path.c_str()));
@@ -250,36 +250,36 @@ bool AssetManagerFileSystem::DirectoryExists(
   return AAssetDir_getNextFileName(dir.get()) != NULL;
 }
 
-Status AssetManagerFileSystem::GetMatchingPaths(
-    const string& pattern,
-    std::vector<string>* results /*, TransactionToken* token */) {
+Status AssetManagerFileSystem::GetMatchingPaths(const string& pattern,
+                                                TransactionToken* token,
+                                                std::vector<string>* results) {
   return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
 Status AssetManagerFileSystem::NewWritableFile(
-    const string& fname,
-    std::unique_ptr<WritableFile>* result /*, TransactionToken* token */) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<WritableFile>* result) {
   return errors::Unimplemented("Asset storage is read only.");
 }
 Status AssetManagerFileSystem::NewAppendableFile(
-    const string& fname,
-    std::unique_ptr<WritableFile>* result /*, TransactionToken* token */) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<WritableFile>* result) {
   return errors::Unimplemented("Asset storage is read only.");
 }
-Status AssetManagerFileSystem::DeleteFile(
-    const string& f /*, TransactionToken* token */) {
+Status AssetManagerFileSystem::DeleteFile(const string& f,
+                                          TransactionToken* token) {
   return errors::Unimplemented("Asset storage is read only.");
 }
-Status AssetManagerFileSystem::CreateDir(
-    const string& d /*, TransactionToken* token */) {
+Status AssetManagerFileSystem::CreateDir(const string& d,
+                                         TransactionToken* token) {
   return errors::Unimplemented("Asset storage is read only.");
 }
-Status AssetManagerFileSystem::DeleteDir(
-    const string& d /*, TransactionToken* token */) {
+Status AssetManagerFileSystem::DeleteDir(const string& d,
+                                         TransactionToken* token) {
   return errors::Unimplemented("Asset storage is read only.");
 }
-Status AssetManagerFileSystem::RenameFile(
-    const string& s, const string& t /*, TransactionToken* token */) {
+Status AssetManagerFileSystem::RenameFile(const string& s, const string& t,
+                                          TransactionToken* token) {
   return errors::Unimplemented("Asset storage is read only.");
 }
 

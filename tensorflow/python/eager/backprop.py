@@ -1091,7 +1091,11 @@ class GradientTape(object):
       self._tape = None
 
     if rewrap_as_ndarray:
-      flat_grad = nest.map_structure(np_arrays.tensor_to_ndarray, flat_grad)
+      def _tensor_to_ndarray(x):
+        if x is not None:
+          return np_arrays.tensor_to_ndarray(x)
+        return None
+      flat_grad = nest.map_structure(_tensor_to_ndarray, flat_grad)
 
     grad = nest.pack_sequence_as(sources, flat_grad)
     return grad

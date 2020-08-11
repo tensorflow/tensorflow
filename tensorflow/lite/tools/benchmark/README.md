@@ -34,13 +34,6 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
-*   `use_legacy_nnapi`: `bool` (default=false) \
-    Whether to use the legacy
-    [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/)
-    TFLite path, which requires the graph to be fully compatible with NNAPI.
-    This is available on recent Android devices. Note that some Android P
-    devices will fail to use NNAPI for models in `/data/local/tmp/` and this
-    benchmark tool will not correctly use NNAPI.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 *   `enable_platform_tracing`: `bool` (default=false) \
@@ -65,8 +58,7 @@ The following simply lists the names of these parameters and additional notes
 where applicable. For details about each parameter, please refer to
 [this page](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/README.md#tflite-delegate-registrar).
 #### Common parameters
-* `max_delegated_partitions`: `int` (default=0) \
-Note when `use_legacy_nnapi` is selected, this parameter won't work.
+* `max_delegated_partitions`: `int` (default=0)
 * `min_nodes_per_partition`:`int` (default=0)
 
 #### GPU delegate

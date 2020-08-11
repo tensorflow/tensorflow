@@ -1237,6 +1237,30 @@ class CondV2Test(test.TestCase):
     self.assertEqual(len(if_op.outputs), 1)
     # pylint: enable=g-deprecated-assert
 
+  def testIsControlFlowGraph(self):
+    x = constant_op.constant(1.0, name="x")
+
+    @def_function.function
+    def f(c):
+
+      def then_branch():
+        i = x + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      def else_branch():
+        i = x + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      return cond_v2.cond_v2(c, then_branch, else_branch)
+
+    i = f(constant_op.constant(True))
+    self.assertEqual(self.evaluate(i), 2.0)
+
+    i = f(constant_op.constant(False))
+    self.assertEqual(self.evaluate(i), 2.0)
+
 
 class CondV2CollectionTest(test.TestCase):
 

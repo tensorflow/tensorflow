@@ -51,7 +51,7 @@ TEST_F(GpuNoAliasTest, Concat) {
   hlo_module->AddEntryComputation(std::move(computation));
 
   CompileAndVerifyIr(std::move(hlo_module),
-                     R"(CHECK-LABEL: define void @fusion
+                     R"(CHECK-LABEL: define{{.*}}void @fusion
                         CHECK-SAME: i8* noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %[[OUTPUT_ALLOC:[a-z0-9]*]]
                         CHECK: %fusion.raw = {{.*}} %[[OUTPUT_ALLOC]])",
                      /*match_optimized_ir=*/false);

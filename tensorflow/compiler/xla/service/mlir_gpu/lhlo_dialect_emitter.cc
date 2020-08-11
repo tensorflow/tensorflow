@@ -205,7 +205,7 @@ LhloDialectEmitter::LhloDialectEmitter(
       platform_(platform) {
   LLVMDialect* llvmDialect =
       mlir_module.getContext()->getRegisteredDialect<LLVMDialect>();
-  pointer_size_ = llvmDialect->getLLVMModule().getDataLayout().getPointerSize();
+  pointer_size_ = llvmDialect->getDataLayout().getPointerSize();
 }
 
 void LhloDialectEmitter::AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {

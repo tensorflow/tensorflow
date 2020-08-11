@@ -24,6 +24,9 @@ NumPy" section.
 
 ## Getting Started
 
+Please also see [TensorFlow NumPy Guide](
+https://www.tensorflow.org/guide/tf_numpy).
+
 In the code snippets below, we will assume that `tf.experimental.numpy` is
 imported as `tnp` and NumPy is imported as `np`
 

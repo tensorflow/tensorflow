@@ -48,22 +48,26 @@ template <typename T>
 struct is_complex_t : absl::disjunction<std::is_same<T, complex64>,
                                         std::is_same<T, complex128>> {};
 
+namespace detail {
+template <typename T>
+using unsigned_promoted_type_t =
+    std::make_unsigned_t<decltype(std::declval<T>() + std::declval<T>())>;
+}
+
 // ToArithmeticSafeType(T t):
-//  - converts `t` to the bitwise-equivalent `unsigned T` if T is a signed
+//  - converts `t` to an unsigned integer at least as wide as `int` if T is an
 //    integer, and
 //  - otherwise returns `t` unchanged.
 //
 // It's UB in C++ to under/overflow a signed integer, so we wrap all arithmetic
 // in this type to force 2's complement behavior.
 template <typename T,
-          typename std::enable_if<std::is_integral<T>::value &&
-                                  std::is_signed<T>::value>::type* = nullptr>
-typename std::make_unsigned<T>::type ToArithmeticSafeType(T t) {
-  return static_cast<typename std::make_unsigned<T>::type>(t);
+          typename std::enable_if<std::is_integral<T>::value>::type* = nullptr>
+detail::unsigned_promoted_type_t<T> ToArithmeticSafeType(T t) {
+  return static_cast<detail::unsigned_promoted_type_t<T>>(t);
 }
 template <typename T,
-          typename std::enable_if<!std::is_integral<T>::value ||
-                                  !std::is_signed<T>::value>::type* = nullptr>
+          typename std::enable_if<!std::is_integral<T>::value>::type* = nullptr>
 T ToArithmeticSafeType(T t) {
   return std::move(t);
 }

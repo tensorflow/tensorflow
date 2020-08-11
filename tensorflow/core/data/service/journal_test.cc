@@ -46,10 +46,10 @@ Update MakeCreateJobUpdate() {
   return update;
 }
 
-Update MakeFinishJobUpdate() {
+Update MakeFinishTaskUpdate() {
   Update update;
-  FinishJobUpdate* finish_job = update.mutable_finish_job();
-  finish_job->set_job_id(8);
+  FinishTaskUpdate* finish_task = update.mutable_finish_task();
+  finish_task->set_task_id(8);
   return update;
 }
 
@@ -86,7 +86,7 @@ TEST(Journal, RoundTripMultiple) {
   EXPECT_TRUE(NewJournalDir(&journal_dir));
   std::vector<Update> updates = {MakeCreateJobUpdate(),
                                  MakeRegisterDatasetUpdate(),
-                                 MakeFinishJobUpdate()};
+                                 MakeFinishTaskUpdate()};
   FileJournalWriter writer(Env::Default(), journal_dir);
   for (const auto& update : updates) {
     TF_EXPECT_OK(writer.Write(update));
@@ -95,12 +95,12 @@ TEST(Journal, RoundTripMultiple) {
   TF_EXPECT_OK(CheckJournalContent(journal_dir, updates));
 }
 
-TEST(Journal, AppendExistingFile) {
+TEST(Journal, AppendExistingJournal) {
   std::string journal_dir;
   EXPECT_TRUE(NewJournalDir(&journal_dir));
   std::vector<Update> updates = {MakeCreateJobUpdate(),
                                  MakeRegisterDatasetUpdate(),
-                                 MakeFinishJobUpdate()};
+                                 MakeFinishTaskUpdate()};
   for (const auto& update : updates) {
     FileJournalWriter writer(Env::Default(), journal_dir);
     TF_EXPECT_OK(writer.Write(update));
@@ -127,7 +127,7 @@ TEST(Journal, NonRecordData) {
   {
     std::unique_ptr<WritableFile> file;
     TF_ASSERT_OK(Env::Default()->NewAppendableFile(
-        DataServiceJournalFile(journal_dir), &file));
+        DataServiceJournalFile(journal_dir, /*sequence_number=*/0), &file));
     TF_ASSERT_OK(file->Append("not record data"));
   }
 
@@ -147,7 +147,7 @@ TEST(Journal, InvalidRecordData) {
   {
     std::unique_ptr<WritableFile> file;
     TF_ASSERT_OK(Env::Default()->NewAppendableFile(
-        DataServiceJournalFile(journal_dir), &file));
+        DataServiceJournalFile(journal_dir, /*sequence_number=*/0), &file));
     auto writer = absl::make_unique<io::RecordWriter>(file.get());
     TF_ASSERT_OK(writer->WriteRecord("not serializd proto"));
   }

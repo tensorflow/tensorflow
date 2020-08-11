@@ -595,7 +595,8 @@ class HloInstruction {
   // Creates a compare op, performing the comparison specified in direction.
   static std::unique_ptr<HloInstruction> CreateCompare(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-      Comparison::Direction direction);
+      Comparison::Direction direction,
+      absl::optional<Comparison::Type> type = absl::nullopt);
 
   static std::unique_ptr<HloInstruction> CreateTriangularSolve(
       const Shape& shape, HloInstruction* a, HloInstruction* b,

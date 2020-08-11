@@ -37,29 +37,32 @@ std::string GetReduceCode(size_t work_group_size_x, size_t work_group_size_y) {
   // Otherwise, implement a reduction using __local memory. Note this only works
   // with power-of-two work group sizes.
   return R"(
-static inline float local_reduce(float input) {
-#if (__OPENCL_C_VERSION__ >= 300 && __opencl_c_work_group_collective_functions) || \
-    (__OPENCL_C_VERSION__ >= 200)
-  return work_group_reduce_add(input);
-#else
-  __local float data[)" +
+#if (__OPENCL_C_VERSION__ >= 200) && (__OPENCL_C_VERSION__ < 300) && \
+  !defined(__opencl_c_work_group_collective_functions)
+  #define __opencl_c_work_group_collective_functions 1
+#endif
+
+#ifdef __opencl_c_work_group_collective_functions
+#define local_reduce(input, tmp) work_group_reduce_add(input)
+#else  // !defined(__opencl_c_work_group_collective_functions)
+static inline float local_reduce(float input, __local float tmp[)" +
          std::to_string(work_group_size_y) + "][" +
-         std::to_string(work_group_size_x) + R"(];
+         std::to_string(work_group_size_x) + R"(]) {
   const size_t local_id_x = get_local_id(0);
   const size_t local_id_y = get_local_id(1);
-  data[local_id_y][local_id_x] = input;
+  tmp[local_id_y][local_id_x] = input;
   mem_fence(CLK_LOCAL_MEM_FENCE);
   size_t reduction_size = get_local_size(0) / 2;
   while (reduction_size > 0) {
     if (local_id_x < reduction_size) {
-      data[local_id_y][local_id_x] += data[local_id_y][local_id_x + reduction_size];
+      tmp[local_id_y][local_id_x] += tmp[local_id_y][local_id_x + reduction_size];
     }
     mem_fence(CLK_LOCAL_MEM_FENCE);
     reduction_size /=  2;
   }
-  return data[local_id_y][0];
+  return tmp[local_id_y][0];
 }
-#endif
+#endif  // defined(__opencl_c_work_group_collective_functions)
 )";
 }
 }  // namespace
@@ -83,9 +86,17 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
   std::string c = GetCommonDefines(definition_.precision);
   c += GetVectorReduceCode();
   c += GetReduceCode(work_group_size_.x, work_group_size_.y);
-  c += R"(__attribute__((reqd_work_group_size(128, 1, 1)))
-__kernel void main_function(
+  c += "__attribute__((reqd_work_group_size(" +
+       std::to_string(work_group_size_.x) + ", " +
+       std::to_string(work_group_size_.y) + ", " +
+       std::to_string(work_group_size_.z) + ")))\n";
+  c += R"(__kernel void main_function(
 $0) {
+#ifndef __opencl_c_work_group_collective_functions
+  __local float tmp[)" +
+       std::to_string(work_group_size_.y) + "][" +
+       std::to_string(work_group_size_.x) + R"(];
+#endif
   size_t B = get_global_id(1);
   if (get_global_id(2) > 0) { return; }
   if (B >= args.src_tensor.Batch()) { return; }
@@ -101,7 +112,7 @@ $0) {
   }
   // Reduce the vector to a single float and do a workgroup reduce.
   const float private_sum = reduce_vector(private_sum4);
-  const float sum = local_reduce(private_sum);
+  const float sum = local_reduce(private_sum, tmp);
   // Calculate the mean
   const float mean = sum / args.src_tensor.Channels();
   // Calculate the squared sum of the difference from the mean.
@@ -117,12 +128,12 @@ $0) {
   }
   // Reduce
   const float private_sum_diff_sq = reduce_vector(private_sum_diff_sq4);
-  const float sum_diff_sq = local_reduce(private_sum_diff_sq);
+  const float sum_diff_sq = local_reduce(private_sum_diff_sq, tmp);
   // Calculate 1/stddev (with the 'regulazing constant' as in tensor_utils.cc)
   const float variance = sum_diff_sq / args.src_tensor.Channels();
   const float stddev_inv =  rsqrt(variance + 1.0e-8f);
   // Calculate (t-mean)/stddev for each element
-  for (int S = 0; S < args.src_tensor.Slices(); ++S) {
+  for (int S = get_local_id(0); S < args.src_tensor.Slices(); S += get_local_size(0)) {
     const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
     FLT4 result = TO_FLT4((t - mean) * stddev_inv);
     args.dst_tensor.Write(result, 0, 0, S, B);
