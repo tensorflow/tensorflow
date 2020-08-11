@@ -499,8 +499,10 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
 
 class Tf2XlaRewritePattern : public RewritePattern {
  public:
+  // Set benefit to 0 (= least benefit) so this pattern is only used as a
+  // fallback.
   explicit Tf2XlaRewritePattern(const std::string& device_type)
-      : RewritePattern(1, MatchAnyOpTypeTag()), device_type_(device_type) {}
+      : RewritePattern(0, MatchAnyOpTypeTag()), device_type_(device_type) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
