@@ -61,11 +61,11 @@ class Dispatcher {
 
   tflite::ErrorReporter *GetReporter();
 
-  void FetchBuffer(int8_t **dest, int8_t const *src, size_t size);
-  void FetchWeights(int8_t **dest, int8_t const *src, size_t size,
-                    ChannelGroup const &changrp);
-  void FetchBiases(int16_t **dest, int16_t const *src, size_t size,
-                   ChannelGroup const &changrp);
+  size_t FetchBuffer(int8_t **dest, int8_t const *src, size_t size);
+  size_t FetchWeights(int8_t **dest, int8_t const *src, size_t size,
+                      ChannelGroup const &changrp);
+  size_t FetchBiases(int16_t **dest, int16_t const *src, size_t size,
+                     ChannelGroup const &changrp);
 
  private:
   bool use_current_thread_;
