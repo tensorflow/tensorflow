@@ -40,9 +40,9 @@ Status UpdateWeights(AbstractContext* ctx,
                      std::vector<AbstractTensorHandle*>& weights,
                      AbstractTensorHandle* learning_rate);
 
-Status GradientCheck(Model forward_model, Model grad_model, 
-                     std::vector<AbstractTensorHandle*>& weights,
-                     ){
+Status GradientCheck(Model forward, 
+                     std::vector<AbstractTensorHandle*>& inputs,
+                     int gradIndex, AbstractTensorHandle* dtheta){
                          
 
 
