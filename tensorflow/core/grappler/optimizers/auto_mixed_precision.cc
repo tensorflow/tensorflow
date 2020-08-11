@@ -43,10 +43,25 @@ limitations under the License.
 
 namespace tensorflow {
 namespace grappler {
+
+#if TENSORFLOW_USE_ROCM
+const std::array<std::string, 2> FP16SupportedDevices = {"906", "908"}; 
+
+bool HasEnhancedFP16ComputeSupport(std::pair<int, int> gpu_arch){
+    std::string arch = std::to_string(gpu_arch.first); 
+    return std::find(std::begin(FP16SupportedDevices), 
+                     std::end(FP16SupportedDevices), arch)
+           != std::end(FP16SupportedDevices); 
+}
+#endif
+
 namespace {
 
 #if GOOGLE_CUDA
 const std::pair<int, int> kMinGPUArch = {7, 0};
+#elif TENSORFLOW_USE_ROCM
+const std::pair<int, int> kMinGPUArch = {906,0}; 
+// TODO change this to handle strings for ROCm 3.7
 #else
 const std::pair<int, int> kMinGPUArch = {0, 0};
 #endif
@@ -55,6 +70,7 @@ const char kSuffix[] = "AutoMixedPrecision";
 const char kCastToFp16[] = "CastToFp16";
 const char kCastToBf16[] = "CastToBf16";
 const char kCastToFp32[] = "CastToFp32";
+
 
 // Instances of this class represent unique type attribute identifiers within a
 // node. It handles regular type attributes, list type attributes (where
@@ -1158,7 +1174,11 @@ std::pair<int, int> GetDeviceGPUArch(
 }
 
 bool AutoMixedPrecisionImpl::IsOnSuitableGPUArch(const NodeDef& node) const {
+#ifndef TENSORFLOW_USE_ROCM
   return GetDeviceGPUArch(virtual_placer_.get_device(node)) >= kMinGPUArch;
+#else
+  return HasEnhancedFP16ComputeSupport(GetDeviceGPUArch(virtual_placer_.get_device(node)));
+#endif
 }
 
 bool AutoMixedPrecisionImpl::ShouldProcess(const NodeDef& node) const {
