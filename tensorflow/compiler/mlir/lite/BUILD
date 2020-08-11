@@ -479,6 +479,7 @@ gentbl(
     tblgen = "//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen",
     td_file = "ir/tfl_ops.td",
     td_srcs = [
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "ir/tfl_op_interfaces.td",
