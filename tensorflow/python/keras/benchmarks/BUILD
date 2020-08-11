@@ -179,6 +179,7 @@ cuda_py_test(
     python_version = "PY3",
     tags = COMMON_TAGS,
     deps = [
+        ":distribution_util",
         "//tensorflow:tensorflow_py",
     ],
 )
