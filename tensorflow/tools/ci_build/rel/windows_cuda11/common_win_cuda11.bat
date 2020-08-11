@@ -1,4 +1,4 @@
-:: Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+:: Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 ::
 :: Licensed under the Apache License, Version 2.0 (the "License");
 :: you may not use this file except in compliance with the License.
@@ -13,9 +13,12 @@
 :: limitations under the License.
 :: =============================================================================
 
-SET PYTHON_DIRECTORY=Python38
+echo on
 
-CALL common_win_cuda11.bat
+SET TF_CUDA_VERSION=11
+SET TF_CUDNN_VERSION=8
 
-call tensorflow\tools\ci_build\windows\cpu\pip\run.bat --release_build --extra_test_flags "--test_env=TF2_BEHAVIOR=1" --project_name "tensorflow_cpu"
+REM TODO(sanjoy): This script should be removed once common_win.bat
+REM defaults to CUDA 11.
 
+CALL tensorflow\tools\ci_build\release\common_win.bat

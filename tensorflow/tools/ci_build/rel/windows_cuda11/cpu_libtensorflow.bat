@@ -13,7 +13,7 @@
 :: limitations under the License.
 :: =============================================================================
 
-CALL tensorflow\tools\ci_build\release\common_win.bat
+CALL common_win_cuda11.bat
 
 call tensorflow\tools\ci_build\windows\cpu\bazel\run_libtensorflow.bat || exit /b 1
 

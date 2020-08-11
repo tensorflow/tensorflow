@@ -15,6 +15,6 @@
 
 SET PYTHON_DIRECTORY=Python37
 
-CALL tensorflow\tools\ci_build\release\common_win.bat
+CALL common_win_cuda11.bat
 
 call tensorflow\tools\ci_build\windows\cpu\pip\run.bat --release_build --extra_test_flags "--test_env=TF2_BEHAVIOR=1" --project_name "tensorflow_cpu"
