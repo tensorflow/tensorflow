@@ -40,11 +40,12 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# List of exported proto source files.
+# List of exported source files.
 exports_files(
     srcs = [
         "event.proto",
         "example_proto_fast_parsing_test.proto",
+        "image_resizer_state.h",
         "memmapped_file_system.proto",
         "saved_tensor_slice.proto",
     ],
@@ -631,8 +632,18 @@ tf_kernel_library(
     ]),
 )
 
-# Tests.
+cc_library(
+    name = "image_resizer_state",
+    hdrs = ["image_resizer_state.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:bounds_check",
+        "//third_party/eigen3",
+    ],
+)
 
+# Tests.
 tf_cc_test(
     name = "overflow_test",
     size = "small",
