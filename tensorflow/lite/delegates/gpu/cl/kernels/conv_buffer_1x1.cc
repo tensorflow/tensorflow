@@ -315,11 +315,11 @@ int3 ConvBuffer1x1::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvBuffer1x1::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  RETURN_IF_ERROR(
-      GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_));
-  return absl::OkStatus();
+void ConvBuffer1x1::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
 bool IsConvBuffer1x1Supported(const OperationDef& definition,

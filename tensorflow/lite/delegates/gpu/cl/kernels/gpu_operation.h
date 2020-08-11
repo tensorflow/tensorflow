@@ -93,10 +93,11 @@ class GPUOperation {
     return queue->DispatchImplicit(kernel_, grid_size_, work_group_size_);
   }
 
-  virtual absl::Status Tune(const TuningParameters& params) {
-    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-    return GetBestWorkGroup(params, kernel_, grid_size_, &work_group_size_);
-  }
+  virtual void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
+
+  absl::Status Tune(const TuningParameters& params);
 
   absl::Status Compile(const CreationContext& creation_context);
 
