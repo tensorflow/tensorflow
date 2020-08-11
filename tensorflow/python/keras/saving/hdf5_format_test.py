@@ -731,9 +731,9 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       os.remove(fname)
 
   def test_model_saving_to_new_dir_path(self):
-    saved_model_dir = self._save_model_dir()
-    saved_model_dir = os.path.join(saved_model_dir, 'newdir')
-    saved_model_dir = os.path.join(saved_model_dir, 'saved_model')
+    saved_model_dir = os.path.join(self._save_model_dir(),
+                                   'newdir',
+                                   'saved_model')
     save_format = testing_utils.get_save_format()
 
     with self.cached_session():
@@ -766,9 +766,8 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       model.add(keras.layers.RepeatVector(3))
       model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
 
-      x = np.random.random((1, 3))
-      with self.assertRaises(OSError):
-        with h5py.File(saved_model_path, 'w') as f:
+      with self.assertRaisesRegex(OSError, 'Unable to create file'):
+        with h5py.File(saved_model_path, 'w'):
           keras.models.save_model(model, saved_model_path)
 
 
