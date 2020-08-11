@@ -105,10 +105,7 @@ class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.map(lambda x: compression_ops.uncompress(x, element_spec))
     self.assertDatasetProduces(dataset, [element])
 
-
-class RaggedCompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
-
-  def testCompression(self):
+  def testRaggedCompression(self):
     for test_case in _test_ragged_based_objects():
       element = test_case["test_input"]
       compressed = compression_ops.compress(element)
@@ -116,7 +113,7 @@ class RaggedCompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase
           compressed, structure.type_spec_from_value(element))
       self.assertValuesEqual(element, self.evaluate(uncompressed))
 
-  def testDatasetCompression(self):
+  def testRaggedDatasetCompression(self):
     for test_case in _test_ragged_based_objects():
       element = test_case["test_input"]
       dataset = dataset_ops.Dataset.from_tensors(element)
