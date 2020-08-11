@@ -1355,7 +1355,7 @@ def validate_cuda_config(environ_cp):
   print('    %s' % config['cudnn_library_dir'])
   print('    %s' % config['cudnn_include_dir'])
 
-  print('Set TF_CUDA_PATHS to:')
+  print('Setting TF_CUDA_PATHS to:')
   print('    %s' % config['tf_cuda_paths'])
 
   if 'tensorrt_version' in config:

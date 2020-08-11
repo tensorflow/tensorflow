@@ -41,8 +41,8 @@ library-specific environment variables:
   CUDA      TF_CUDA_VERSION       TF_CUDA_PATHS
   cuBLAS    TF_CUBLAS_VERSION     TF_CUDA_PATHS
   cuDNN     TF_CUDNN_VERSION      TF_CUDA_PATHS
-  NCCL      TF_NCCL_VERSION       NCCL_INSTALL_PATH, NCCL_HDR_PATH
-  TensorRT  TF_TENSORRT_VERSION   TENSORRT_INSTALL_PATH
+  NCCL      TF_NCCL_VERSION       NCCL_INSTALL_PATH, NCCL_HDR_PATH, TF_CUDA_PATHS
+  TensorRT  TF_TENSORRT_VERSION   TENSORRT_INSTALL_PATH, TF_CUDA_PATHS
 
 Versions environment variables can be of the form 'x' or 'x.y' to request a
 specific version, empty or unspecified to accept any version.
@@ -308,6 +308,7 @@ def _find_cuda_config(base_paths, required_cuda_version, required_cudnn_version)
 
   cuda_link_stub_path = _find_file(base_paths, [
       "",
+      "bin/crt",
       "lib/nvidia-cuda-toolkit/bin/crt",
   ], "link.stub")
 
@@ -332,7 +333,6 @@ def _find_cuda_config(base_paths, required_cuda_version, required_cudnn_version)
       "cupti_library_dir": cupti_library_path,
   }
   return_ = {k: os.path.dirname(v) for k, v in return_.items()}
-  return_["tf_cuda_paths"] = ','.join(sorted(set(return_.values())))
   return_["cuda_version"] = cuda_version
   return_["cudnn_version"] = cudnn_version
 
@@ -620,9 +620,16 @@ def find_cuda_config():
     tensorrt_version = os.environ.get("TF_TENSORRT_VERSION", "")
     result.update(_find_tensorrt_config(tensorrt_paths, tensorrt_version))
 
+  def key_is_dir(k):
+      return k.endswith("_dir") or k.endswith("_path")
   for k, v in result.items():
-    if k.endswith("_dir") or k.endswith("_path"):
-      result[k] = _normalize_path(v)
+    if key_is_dir(k):
+       result[k] = _normalize_path(v)
+
+  tf_cuda_paths = set(v for k, v in result.items() if key_is_dir(k))
+  tf_cuda_paths = sorted(tf_cuda_paths)
+  tf_cuda_paths = ','.join(tf_cuda_paths)
+  result["tf_cuda_paths"] = tf_cuda_paths
 
   return result
 

@@ -353,7 +353,7 @@ def _cuda_include_path(repository_ctx, cuda_config):
     for one_line in err_out(result).splitlines():
         if one_line.startswith("#$ _TARGET_DIR_="):
             target_dir = (
-                cuda_config.config["cuda_nvcc_dir"] + "/" + one_line.replace(
+                cuda_config.config["cuda_nvcc_dir"] + "/../" + one_line.replace(
                     "#$ _TARGET_DIR_=",
                     "",
                 ) + "/include"
