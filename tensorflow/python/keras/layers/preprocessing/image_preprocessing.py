@@ -37,7 +37,6 @@ from tensorflow.python.ops import gen_image_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import stateful_random_ops
-from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util.tf_export import keras_export
 
