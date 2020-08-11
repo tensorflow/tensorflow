@@ -83,10 +83,10 @@ const int kDefaultInlineThreshold = 1100;
 static string GetSmName(std::pair<int, int> compute_capability) {
   int compute_capability_version =
       compute_capability.first * 10 + compute_capability.second;
-  int sm_version = 35;
+  int sm_version = 30;
   // If the current compute capability isn't known, fallback to the
   // most recent version before it.
-  for (int v : {75, 72, 70, 62, 61, 60, 53, 52, 50, 37, 35}) {
+  for (int v : {75, 72, 70, 62, 61, 60, 53, 52, 50, 37, 35, 32, 30}) {
     if (v <= compute_capability_version) {
       sm_version = v;
       break;
@@ -630,8 +630,10 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   // Locate lld.
   // TODO(whchung@gmail.com): change to tensorflow::ROCmRoot() after
   // ROCm-Device-Libs PR.
-  std::string lld_path = tensorflow::io::JoinPath("/opt/rocm", "hcc/bin");
-  auto lld_program = llvm::sys::findProgramByName("ld.lld", {lld_path});
+  std::string lld_path_1 = tensorflow::io::JoinPath("/opt/rocm", "hcc/bin");
+  std::string lld_path_2 = tensorflow::io::JoinPath("/opt/rocm", "llvm/bin");
+  auto lld_program =
+      llvm::sys::findProgramByName("ld.lld", {lld_path_1, lld_path_2});
   if (!lld_program) {
     return xla::InternalError("unable to find ld.lld in PATH: %s",
                               lld_program.getError().message());

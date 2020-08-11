@@ -51,12 +51,12 @@ class ConditionalThunk : public Thunk {
   ConditionalThunk(const ConditionalThunk&) = delete;
   ConditionalThunk& operator=(const ConditionalThunk&) = delete;
 
-  void ComputeAnnotations() override;
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   const bool branch_index_is_bool_;
   BufferAllocation::Slice branch_index_buffer_index_;
   std::vector<BufferAllocation::Slice> branch_operand_buffer_indexes_;

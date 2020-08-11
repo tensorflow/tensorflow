@@ -34,6 +34,7 @@ from tensorflow.python.keras.saving.saved_model import utils
 from tensorflow.python.keras.saving.saved_model.serialized_attributes import CommonEndpoints
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import metrics_utils
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import load as tf_load
 from tensorflow.python.saved_model import nested_structure_coder
@@ -43,7 +44,6 @@ from tensorflow.python.training.tracking.tracking import delete_tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util import object_identity
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.

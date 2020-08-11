@@ -19,7 +19,6 @@ from __future__ import print_function
 
 import abc
 import atexit
-import collections
 from collections import OrderedDict
 import functools
 import multiprocessing.pool
@@ -616,7 +615,7 @@ def standardize_sample_or_class_weights(x_weight, output_names, weight_type):
                        'You should provide one `' + weight_type + '`'
                        'array per model output.')
     return x_weight
-  if isinstance(x_weight, collections.Mapping):
+  if isinstance(x_weight, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys(weight_type, x_weight, output_names)
     x_weights = []
     for name in output_names:
@@ -863,7 +862,7 @@ def collect_per_output_metric_info(metrics,
               [metrics_module.clone_metric(m) for m in metrics])
       else:
         nested_metrics = [metrics]
-  elif isinstance(metrics, collections.Mapping):
+  elif isinstance(metrics, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys('metrics', metrics, output_names)
     nested_metrics = []
     for name in output_names:
@@ -1001,8 +1000,7 @@ def standardize_weights(y,
       y_classes = smart_cond.smart_cond(
           len(y.shape.as_list()) == 2 and K.shape(y)[1] > 1,
           lambda: K.argmax(y, axis=1),
-          lambda: math_ops.cast(K.reshape(y, (-1,)), dtypes.int64)
-      )
+          lambda: math_ops.cast(K.reshape(y, (-1,)), dtypes.int64))
       class_sample_weight = array_ops.gather(weight_vector, y_classes)
       gen_array_ops.check_numerics(
           class_sample_weight,
@@ -1442,7 +1440,7 @@ def prepare_sample_weight_modes(training_endpoints, sample_weight_mode):
     ValueError: In case of invalid `sample_weight_mode` input.
   """
 
-  if isinstance(sample_weight_mode, collections.Mapping):
+  if isinstance(sample_weight_mode, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys(
         'sample_weight_mode', sample_weight_mode,
         [e.output_name for e in training_endpoints])
@@ -1535,7 +1533,7 @@ def prepare_loss_weights(training_endpoints, loss_weights=None):
   if loss_weights is None:
     for e in training_endpoints:
       e.loss_weight = 1.
-  elif isinstance(loss_weights, collections.Mapping):
+  elif isinstance(loss_weights, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys(
         'loss_weights', loss_weights,
         [e.output_name for e in training_endpoints])

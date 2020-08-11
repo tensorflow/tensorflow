@@ -15,7 +15,7 @@ limitations under the License.
 
 // This file defines the operations used in the LMHLO dialect.
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
 #include <assert.h>
 #include <stddef.h>
@@ -28,31 +28,31 @@ limitations under the License.
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Dialect.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OpDefinition.h"  // from @llvm-project
-#include "mlir/IR/OpImplementation.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/IR/Types.h"  // from @llvm-project
-#include "mlir/IR/Value.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Dialect.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OpDefinition.h"
+#include "mlir/IR/OpImplementation.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/IR/Types.h"
+#include "mlir/IR/Value.h"
 
 namespace mlir {
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_structs.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops_structs.cc.inc"
 namespace lmhlo {
 
 LmhloDialect::LmhloDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context) {
+    : Dialect(getDialectNamespace(), context, TypeID::get<LmhloDialect>()) {
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
       >();
 }
 
@@ -127,7 +127,7 @@ static LogicalResult Verify(ReshapeMemRefCastOp op) {
 }
 
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
 
 // TODO(cheshire): Support folding, reuse code from hlo_ops.cc.
 

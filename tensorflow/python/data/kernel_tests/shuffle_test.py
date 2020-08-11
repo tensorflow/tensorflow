@@ -364,8 +364,8 @@ class ShuffleTest(test_base.DatasetTestBase, parameterized.TestCase):
     ckpt = trackable_utils.Checkpoint(iterator=iterator)
     manager = checkpoint_management.CheckpointManager(
         ckpt, self.get_temp_dir(), max_to_keep=1)
-    with self.assertRaisesRegex(errors.UnknownError, "Failed to serialize"):
-      manager.save()
+    manager.save()
+    ckpt.restore(manager.latest_checkpoint)
 
 
 if __name__ == "__main__":

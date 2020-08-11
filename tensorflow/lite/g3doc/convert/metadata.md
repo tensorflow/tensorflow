@@ -34,17 +34,17 @@ TensorFlow Lite metadata tooling supports both Python 2 and Python 3.
 ## Adding metadata
 
 There are three parts to the model metadata in the
-[schema](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs):
+[schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs):
 
 1.  **Model information** - Overall description of the model as well as items
     such as licence terms. See
-    [ModelMetadata](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L464).
+    [ModelMetadata](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L640).
 2.  **Input information** - Description of the inputs and pre-processing
     required such as normalization. See
-    [SubGraphMetadata.input_tensor_metadata](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L452).
+    [SubGraphMetadata.input_tensor_metadata](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L590).
 3.  **Output information** - Description of the output and post-processing
     required such as mapping to labels. See
-    [SubGraphMetadata.output_tensor_metadata](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L458).
+    [SubGraphMetadata.output_tensor_metadata](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L599).
 
 Since TensorFlow Lite only supports single subgraph at this point, the
 [TensorFlow Lite code generator](../guide/codegen.md#generate-code-with-tensorflow-lite-android-code-generator)
@@ -65,7 +65,7 @@ Lite metadata:
 *   Feature - Numbers which are unsigned integers or float32.
 *   Image - Metadata currently supports RGB and greyscale images.
 *   Bounding box - Rectangular shape bounding boxes. The schema supports
-    [a variety of numbering schemes](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L165).
+    [a variety of numbering schemes](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L214).
 
 ### Pack the associated files
 
@@ -87,7 +87,7 @@ file type and where the file is attached to (i.e. `ModelMetadata`,
 `SubGraphMetadata`, and `TensorMetadata`),
 [the TensorFlow Lite Android code generator](../guide/codegen.md) may apply
 corresponding pre/post processing automatically to the object. See
-[the \<Codegen usage\> section of each associate file type](https://github.com/tensorflow/tensorflow/blob/268853ee81edab09e07f455cc918f7ef9a421485/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L37-L77)
+[the \<Codegen usage\> section of each associate file type](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L77-L127)
 in the schema for more details.
 
 ### Normalization and quantization parameters
@@ -351,7 +351,7 @@ with open(export_json_file, "w") as f:
 ## Metadata versioning
 
 The
-[metadata schema](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs)
+[metadata schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs)
 is versioned both by the Semantic versioning number, which tracks the changes of
 the schema file, and by the Flatbuffers file identification, which indicates the
 true version compatibility.
@@ -359,11 +359,11 @@ true version compatibility.
 ### The Semantic versioning number
 
 The metadata schema is versioned by the
-[Semantic versioning number](https://github.com/tensorflow/tensorflow/blob/72d30dfb8bc58be931604f853bd161a11b7c9fcc/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L53),
+[Semantic versioning number](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L53),
 such as MAJOR.MINOR.PATCH. It tracks schema changes according to the rules
-[here](https://github.com/tensorflow/tensorflow/blob/72d30dfb8bc58be931604f853bd161a11b7c9fcc/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L32-L44).
+[here](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L32-L44).
 See the
-[history of fields](https://github.com/tensorflow/tensorflow/blob/72d30dfb8bc58be931604f853bd161a11b7c9fcc/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L63)
+[history of fields](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L63)
 added after version `1.0.0`.
 
 ### The Flatbuffers file identification
@@ -373,7 +373,7 @@ does not imply the true incompatibility. When bumping up the MAJOR number, it
 does not necessarily mean the backwards compatibility is broken. Therefore, we
 use the
 [Flatbuffers file identification](https://google.github.io/flatbuffers/md__schemas.html),
-[file_identifiler](https://github.com/tensorflow/tensorflow/blob/72d30dfb8bc58be931604f853bd161a11b7c9fcc/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L61),
+[file_identifiler](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L61),
 to denote the true compatibility of the metadata schema. The file identifier is
 exactly 4 characters long. It is fixed to a certain metadata schema and not
 subject to change by users. If the backward compatibility of the metadata schema
@@ -384,12 +384,12 @@ frequently than the metadata_version.
 ### The minimum necessary metadata parser version
 
 The
-[minimum necessary metadata parser version](https://github.com/tensorflow/tensorflow/blob/72d30dfb8bc58be931604f853bd161a11b7c9fcc/tensorflow/lite/experimental/support/metadata/metadata_schema.fbs#L565)
+[minimum necessary metadata parser version](https://github.com/tensorflow/tflite-support/blob/4cd0551658b6e26030e0ba7fc4d3127152e0d4ae/tensorflow_lite_support/metadata/metadata_schema.fbs#L681)
 is the minimum version of metadata parser (the Flatbuffers generated code) that
 can read the metadata Flatbuffers in full. The version is effectively the
 largest version number among the versions of all the fields populated and the
 smallest compatible version indicated by the file identifier. The minimum
-necessary metadata parser version is automaticaly populated by the
+necessary metadata parser version is automatically populated by the
 `MetadataPopulator` when the metadata is populated into a TFLite model. See the
 [metadata extractor](../guide/codegen.md#read-the-metadata-from-models) about
 how the minimum necessary metadata parser version is used.

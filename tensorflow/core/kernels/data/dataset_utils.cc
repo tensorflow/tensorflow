@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -51,6 +52,9 @@ constexpr std::array<const char*, 3> kOpsWithSeed = {
 
 constexpr char kSeedInputName[] = "seed";
 constexpr char kSeed2InputName[] = "seed2";
+constexpr char kComponent[] = "component";
+constexpr char kNumElements[] = "num_elements";
+constexpr char kNumComponents[] = "num_components";
 
 template <std::size_t SIZE>
 bool IsNodeOfType(const NodeDef& node,
@@ -425,6 +429,49 @@ Status HashGraph(const GraphDef& graph_def, uint64* hash) {
                                            graph_def.library());
   GraphHasher graph_hasher(&graph_def, sink, &flib_def);
   TF_RETURN_IF_ERROR(graph_hasher.ComputeHash(hash));
+  return Status::OK();
+}
+
+Status WriteElementsToCheckpoint(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements) {
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(key_prefix, kNumElements, elements.size()));
+  for (int i = 0; i < elements.size(); ++i) {
+    const std::vector<Tensor>& element = elements[i];
+    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
+    TF_RETURN_IF_ERROR(
+        writer->WriteScalar(element_prefix, kNumComponents, element.size()));
+    for (int j = 0; j < elements[i].size(); ++j) {
+      TF_RETURN_IF_ERROR(writer->WriteTensor(
+          element_prefix, absl::StrCat(kComponent, "[", j, "]"), element[j]));
+    }
+  }
+  return Status::OK();
+}
+
+Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
+                                  StringPiece key_prefix,
+                                  std::vector<std::vector<Tensor>>* elements) {
+  int64 num_elements;
+  TF_RETURN_IF_ERROR(
+      reader->ReadScalar(key_prefix, kNumElements, &num_elements));
+  elements->reserve(num_elements);
+  for (int i = 0; i < num_elements; ++i) {
+    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
+    int64 num_components;
+    TF_RETURN_IF_ERROR(
+        reader->ReadScalar(element_prefix, kNumComponents, &num_components));
+    elements->emplace_back();
+    std::vector<Tensor>& element = elements->at(i);
+    element.reserve(num_components);
+    for (int j = 0; j < num_components; ++j) {
+      element.emplace_back();
+      TF_RETURN_IF_ERROR(reader->ReadTensor(
+          element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+          &element.back()));
+    }
+  }
   return Status::OK();
 }
 
@@ -850,6 +897,155 @@ std::string DeterminismPolicy::String() const {
       LOG(ERROR) << "Unrecognized determinism value";
       return "Unrecognized";
   }
+}
+
+bool MatchesAnyVersionRE(StringPiece op_prefix, StringPiece op_to_match) {
+  // Matches all versions of an op by appending an optional version suffix
+  auto expected_re = strings::StrCat(RE2::QuoteMeta(op_prefix), "(V\\d+)?");
+  return RE2::FullMatch(op_to_match, expected_re);
+}
+
+std::vector<tstring> SelectOptimizations(
+    const string& job_name,
+    const absl::flat_hash_map<string, uint64>& live_experiments,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    std::function<uint64(const string&)> hash_func) {
+  std::vector<tstring> optimizations;
+  if (job_name.empty()) {
+    // If `job_name` is empty, apply the enabled and default optimizations
+    // directly.
+    optimizations.insert(optimizations.end(), optimizations_enabled.begin(),
+                         optimizations_enabled.end());
+    optimizations.insert(optimizations.end(), optimizations_default.begin(),
+                         optimizations_default.end());
+    return optimizations;
+  }
+
+  // If `job_name` is non-empty, we determine which optimizations to apply to
+  // this job based on the enable/disable settings from tf.data.Options, the
+  // opt in/out settings from environment variables, and rollout condition from
+  // `live_experiments`.
+  const char* opt_ins_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
+  const char* opt_outs_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
+  string opt_ins_raw;
+  if (opt_ins_raw_cs != nullptr) {
+    opt_ins_raw = string(opt_ins_raw_cs);
+  }
+  string opt_outs_raw;
+  if (opt_outs_raw_cs != nullptr) {
+    opt_outs_raw = string(opt_outs_raw_cs);
+  }
+
+  // Creates a set of optimizations.
+  absl::flat_hash_set<tstring> optimizations_set;
+
+  // Creates the opt in and opt out settings.
+  std::vector<string> opt_ins, opt_outs;
+  if (opt_ins_raw == "all") {
+    for (auto& pair : live_experiments) {
+      opt_ins.push_back(pair.first);
+    }
+  } else {
+    opt_ins = str_util::Split(opt_ins_raw, ',', str_util::SkipEmpty());
+  }
+  if (opt_outs_raw == "all") {
+    for (auto& pair : live_experiments) {
+      opt_outs.push_back(pair.first);
+    }
+  } else {
+    opt_outs = str_util::Split(opt_outs_raw, ',', str_util::SkipEmpty());
+  }
+
+  // Checks if the opt in and opt out experiments are live experiments.
+  for (auto& optimization : opt_ins) {
+    if (live_experiments.find(optimization) == live_experiments.end()) {
+      LOG(WARNING) << "The experiment \"" << optimization
+                   << "\" is opted in but it is not a live experiment.";
+    }
+  }
+  for (auto& optimization : opt_outs) {
+    if (live_experiments.find(optimization) == live_experiments.end()) {
+      LOG(WARNING) << "The experiment \"" << optimization
+                   << "\" is opted out but it is not a live experiment.";
+    }
+  }
+
+  // Checks if the opt in settings conflict with opt out settings.
+  for (auto& optimization : opt_ins) {
+    if (std::find(opt_outs.begin(), opt_outs.end(), optimization) !=
+        opt_outs.end()) {
+      LOG(WARNING) << "The experiment \"" << optimization
+                   << "\" is set in both \"TF_DATA_EXPERIMENT_OPT_IN\" and "
+                      "\"TF_DATA_EXPERIMENT_OPT_OUT\". Unless the experiment "
+                      "corresponds to an explicitly enabled optimization, it "
+                      "is not applied.";
+    }
+  }
+
+  // Checks if the enable/disable settings from tf.data.Options conflict with
+  // user opt in/out settings. In which case we assume tf.data.Options settings
+  // have higher priority to overwrite.
+  for (auto& optimization : optimizations_enabled) {
+    if (std::find(opt_outs.begin(), opt_outs.end(), optimization) !=
+        opt_outs.end()) {
+      LOG(WARNING) << "The optimization \"" << optimization
+                   << "\" is opt out, but is still applied since"
+                      " it is enabled through tf.data.Options.";
+    }
+  }
+  for (auto& optimization : optimizations_disabled) {
+    if (std::find(opt_ins.begin(), opt_ins.end(), optimization) !=
+        opt_ins.end()) {
+      LOG(WARNING) << "The optimization \"" << optimization
+                   << "\" is opt in, but is not applied since"
+                      " it is disabled through tf.data.Options.";
+    }
+  }
+
+  // Add the enabled optimizations.
+  optimizations_set.insert(optimizations_enabled.begin(),
+                           optimizations_enabled.end());
+
+  // Add the default optimizations that are not explicitly opted out.
+  for (auto& optimization : optimizations_default) {
+    if (std::find(opt_outs.begin(), opt_outs.end(), optimization) ==
+        opt_outs.end()) {
+      optimizations_set.insert(optimization);
+    }
+  }
+
+  // Add the live experiments stochastically if they are neither opted in nor
+  // opted out.
+  for (auto& pair : live_experiments) {
+    string experiment = pair.first;
+    // Skip experiments that are explicitly opted out.
+    if (std::find(opt_outs.begin(), opt_outs.end(), experiment) !=
+        opt_outs.end()) {
+      continue;
+    }
+    // Skip experiments whose transformations are explicitly disabled.
+    if (std::find(optimizations_disabled.begin(), optimizations_disabled.end(),
+                  experiment) != optimizations_disabled.end()) {
+      continue;
+    }
+    // Apply experiments that are explicitly opted in.
+    if (std::find(opt_ins.begin(), opt_ins.end(), experiment) !=
+        opt_ins.end()) {
+      optimizations_set.insert(experiment);
+      continue;
+    }
+    // Otherwise, apply experiment stochastically based on job name and
+    // experiment roll out percentage.
+    if (hash_func(strings::StrCat(job_name, experiment)) % 100 < pair.second) {
+      optimizations_set.insert(experiment);
+    }
+  }
+
+  optimizations.insert(optimizations.end(), optimizations_set.begin(),
+                       optimizations_set.end());
+  return optimizations;
 }
 
 }  // namespace data

@@ -231,7 +231,7 @@ class GrpcEagerClientCache : public EagerClientCache {
   explicit GrpcEagerClientCache(
       std::shared_ptr<tensorflow::GrpcChannelCache> cache)
       : next_round_robin_assignment_(0), cache_(cache), threads_(4) {
-    for (int i = 0; i < threads_.size(); i++) {
+    for (int i = 0, end = threads_.size(); i < end; i++) {
       threads_[i].reset(new GrpcEagerClientThread());
     }
   }

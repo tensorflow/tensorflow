@@ -36,6 +36,7 @@ ifeq ($(TARGET), hexagon)
     -Wno-unused-parameter \
     -Wno-write-strings \
     -Wunused-function \
+    -Wno-unused-private-field \
     -Wvla \
     -fdata-sections \
     -ffunction-sections \

@@ -863,6 +863,9 @@ TfLiteStatus ConvertTensorType(TensorType tensor_type, TfLiteType* type,
     case TensorType_COMPLEX64:
       *type = kTfLiteComplex64;
       return kTfLiteOk;
+    case TensorType_COMPLEX128:
+      *type = kTfLiteComplex128;
+      return kTfLiteOk;
     default:
       *type = kTfLiteNoType;
       TF_LITE_REPORT_ERROR(error_reporter,

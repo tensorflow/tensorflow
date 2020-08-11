@@ -128,7 +128,7 @@ def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
 //   return x / y;
 // }
 //
-// BraodcastToDimensions is used to compute the broadcast attr to higher
+// BroadcastToDimensions is used to compute the broadcast attr to higher
 // dimensions. This computes the broadcast of 'l' to broadcast('l', 'r')
 // without returning the broadcast of 'r' to broadcast('l', 'r').
 //
@@ -143,14 +143,14 @@ def : Pat<(TF_FloorDivOp AnyRankedTensor:$l, AnyRankedTensor:$r),
           (HLOClient_BroadcastCompareOp $r, (HLO_ConstOp (GetScalarOfType<0> $r)),
            (NullDenseIntElementsAttr), HLO_COMPARISON_DIRECTION_LT),
           (BinBroadcastDimensions $l, $r), HLO_COMPARISON_DIRECTION_EQ),
-        (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
-          (HLOClient_BroadcastDivOp
-           (HLO_NegOp:$neg (HLOClient_BroadcastAddOp (HLO_AbsOp $l),
+         (HLOClient_BroadcastDivOp $l, $r, (BinBroadcastDimensions $l, $r)),
+         (HLOClient_BroadcastDivOp
+          (HLO_NegOp:$neg (HLOClient_BroadcastAddOp (HLO_AbsOp $l),
                        (HLOClient_BroadcastSubOp (HLO_AbsOp $r),
                         (HLO_ConstOp (GetScalarOfType<1> $r)),
                         (NullDenseIntElementsAttr)),
                      (BinBroadcastDimensions $l, $r))),
-           (HLO_AbsOp:$abs $r), (BinBroadcastDimensions $neg, $abs))),
+          (HLO_AbsOp:$abs $r), (BinBroadcastDimensions $neg, $abs))),
         [(SignedIntTensor $l)]>;
 
 // Performs a substitution of FloorMod designed to correct for possibly negative
@@ -175,8 +175,8 @@ def : Pat<(TF_FloorModOp AnyRankedTensor:$l, AnyRankedTensor:$r),
           (BinBroadcastDimensions $rem, $r_zeros), HLO_COMPARISON_DIRECTION_LT),
          (BinBroadcastDimensions $r_cmp, $rem_cmp), HLO_COMPARISON_DIRECTION_NE),
         (NullDenseIntElementsAttr)),
-        (HLOClient_BroadcastAddOp $r,
-         $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
+       (HLOClient_BroadcastAddOp $r,
+        $rem, (BinBroadcastDimensions $r, $rem)), $rem)>;
 
 //===----------------------------------------------------------------------===//
 // Logical & bitwise binary op patterns.
@@ -489,7 +489,7 @@ def : Pat<(TF_SliceOp:$op HLO_Tensor:$input, HLO_Tensor:$starting_indices,
             $slice_sizes)]>;
 
 //===----------------------------------------------------------------------===//
-// PartitionedCall op patterns.
+// PartitionedCall and LegacyCall op patterns.
 //===----------------------------------------------------------------------===//
 
 def ArgTypesMatchCallee : Constraint<
@@ -501,6 +501,12 @@ foreach callOp = [TF_PartitionedCallOp, TF_StatefulPartitionedCallOp] in {
             (CallOp $f, $args),
           [(ArgTypesMatchCallee $op, $args, $f)]>;
 }
+
+// The extra attr on this op is _disable_call_shape_inference, which we ignore
+// in the bridge.
+def : Pat<(TF_LegacyCallOp:$op $args, FlatSymbolRefAttr:$f, $attr),
+          (CallOp $f, $args),
+        [(ArgTypesMatchCallee $op, $args, $f)]>;
 
 //===----------------------------------------------------------------------===//
 // Reverse op patterns.
@@ -518,6 +524,7 @@ def : Pat<(TF_ReverseV2Op AnyRankedTensor:$values, (TF_ConstOp $axis)),
 
 foreach Mapping = [
                    [TF_AbsOp, HLO_AbsOp],
+                   [TF_AcosOp, HLOClient_AcosOp],
                    [TF_CeilOp, HLO_CeilOp],
                    [TF_ComplexAbsOp, HLO_AbsOp],
                    [TF_CosOp, HLO_CosOp],
@@ -540,6 +547,19 @@ foreach Mapping = [
            (Mapping[1] $input)>;
 }
 
+// Expand acos to MHLO dialect as follows:
+//   acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x))  if x != -1
+//           = pi                                 if x == -1
+def : Pat<(HLOClient_AcosOp $input), (HLO_SelectOp
+  (HLO_CompareOp $input, (HLO_ConstantLike<"0"> $input),
+     HLO_COMPARISON_DIRECTION_NE),
+  (HLO_MulOp (HLO_ConstantLike<"2.0f"> $input),
+    (HLO_Atan2Op
+      (HLO_SqrtOp (HLO_SubOp
+         (HLO_ConstantLike<"1"> $input), (HLO_MulOp $input, $input))),
+      (HLO_AddOp (HLO_ConstantLike<"1"> $input), $input))),
+  (HLO_ConstantLike<"M_PI"> $input))>;
+
 // TODO(bixia): Lower Cast with a Complex type source operand or with
 // Truncate=True for floating point value conversions.
 def : Pat<(TF_CastOp HLO_Tensor:$arg, ConstBoolAttrFalse),
@@ -557,17 +577,8 @@ foreach TfOp = [TF_ExpandDimsOp, TF_ReshapeOp, TF_SqueezeOp, ] in {
             (HLO_ReshapeOp $arg), [(AnyStaticShapeTensor $res)]>;
 }
 
-// Returns 0 if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
-def : Pat<(TF_SignOp $x),
-          (HLO_SelectOp
-            (HLO_CompareOp
-              $x,
-              $x,
-              HLO_COMPARISON_DIRECTION_NE
-            ),
-            (HLO_ConstOp (ConstantSplat<"0"> $x)),
-            (HLO_SignOp $x)
-          )>;
+// Returns NaN if x is NaN, 0 if x is 0, -1 if x < 0 and 1 if x > 0.
+def : Pat<(TF_SignOp $x), (HLO_SignOp $x)>;
 
 def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
   "getElementTypeOrSelf($0.getType()).isSignlessIntOrFloat() && "
@@ -582,6 +593,9 @@ def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
 def : Pat<(TF_BitcastOp:$res HLO_Tensor:$arg),
           (HLO_BitcastConvertOp $arg),
           [(BothElementTypesSameWidthIntOrFloat $res, $arg)]>;
+
+// TODO(jpienaar): Lower constant like to constant to broadcast if dynamic
+// and going to MHLO.
 
 //===----------------------------------------------------------------------===//
 // Random ops.

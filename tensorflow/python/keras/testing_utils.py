@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import functools
 import threading
 
@@ -26,6 +27,7 @@ import numpy as np
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -917,3 +919,21 @@ def _set_v2_dtype_behavior(fn, enabled):
       base_layer_utils.V2_DTYPE_BEHAVIOR = v2_dtype_behavior
 
   return tf_decorator.make_decorator(fn, wrapper)
+
+
+@contextlib.contextmanager
+def device(should_use_gpu):
+  """Uses gpu when requested and available."""
+  if should_use_gpu and test_util.is_gpu_available():
+    dev = '/device:GPU:0'
+  else:
+    dev = '/device:CPU:0'
+  with ops.device(dev):
+    yield
+
+
+@contextlib.contextmanager
+def use_gpu():
+  """Uses gpu when requested and available."""
+  with device(should_use_gpu=True):
+    yield

@@ -25,7 +25,6 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/distributed_runtime/rpc/grpc_call.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/tpu/kernels/compiled_subgraph.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_metrics.h"
 #include "tensorflow/core/tpu/kernels/trace_util.h"
@@ -49,18 +49,20 @@ class CompilationRefHolder : public ResourceBase {
   ~CompilationRefHolder() override = default;
 };
 
-// Base class for a reference to a cached tpu program. A unique_ptr to a
-// CompilationCacheEntryRef is returned by all the cache Lookup methods below,
-// and ensures the underlying proto is not garbage-collected until the client
-// discards the ptr.
-template <typename CacheEntryType>
+// Wrapper for a cache entry returned by all the TpuCompilationCacheInterface
+// `Lookup` methods, and ensures the underlying proto is not garbage-collected
+// until the client discards the ptr.
 class CompilationCacheEntryRef {
  public:
-  virtual ~CompilationCacheEntryRef() = default;
+  CompilationCacheEntryRef();
+  CompilationCacheEntryRef(TpuCompilationCacheInterface* parent,
+                           CompiledSubgraph* entry, int index);
 
-  // Returns a CompilationCacheEntry that should not be used beyond the lifetime
-  // of the tpu::CompilationCacheEntryRef.
-  virtual CacheEntryType get() = 0;
+  virtual ~CompilationCacheEntryRef();
+
+  // Returns a TpuCompilationCacheEntry that should not be used beyond the
+  // lifetime of the CompilationCacheEntryRef.
+  virtual TpuCompilationCacheEntry get();
 
   // Mutates this ref to point to the entry's subentry (for
   // sharding/unsharding) or main entry (unchanged) as specified by
@@ -70,7 +72,15 @@ class CompilationCacheEntryRef {
   //
   // If the requested subentry does not exist, the ref will point to a nullptr
   // entry, and the original entry will be unref'ed.
-  virtual Status ToSubEntryRef(CompilationCacheFetchTarget fetch_target) = 0;
+  virtual Status ToSubEntryRef(CompilationCacheFetchTarget fetch_target);
+
+ protected:
+  TpuCompilationCacheInterface* parent_;  // Not owned.
+  // A reference to entry_ is acquired in the constructor and released via
+  // parent->DiscardEntryRefs in the destructor.
+  CompiledSubgraph* entry_;
+  // The index of the program in entry_ that is returned by the get method.
+  int index_;
 };
 
 class TpuCompilationCacheInterface : public ResourceBase {
@@ -98,7 +108,8 @@ class TpuCompilationCacheInterface : public ResourceBase {
       const TpuCompilationCacheKey& subgraph_key,
       const SessionMetadata* session_metadata,
       CompilationRefHolder* per_step_ref_holder, int64* uid,
-      std::vector<string>* proto_key, std::vector<bool>* may_modify_variables,
+      std::vector<std::string>* proto_key,
+      std::vector<bool>* may_modify_variables,
       absl::Span<const xla::HloProto* const>* hlo_metadatas,
       const std::function<Status(TpuProgramGroupInterface*)>& compile_function);
 
@@ -125,19 +136,18 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // Looks up an executable corresponding to the model-parallel core index of
   // the subgraph represented by key. On success a pointer to an EntryRef
   // holding the program is returned in entry.
-  template <typename CacheEntryRef, typename CacheEntryRefImpl>
-  Status Lookup(const string& proto_key, std::unique_ptr<CacheEntryRef>* entry);
+  Status Lookup(const std::string& proto_key,
+                std::unique_ptr<CompilationCacheEntryRef>* entry);
 
   // Looks up an executable corresponding to the model-parallel core index of
   // the subgraph represented by uid. On success a pointer to an EntryRef
   // holding the program is returned in entry.
-  template <typename CacheEntryRef, typename CacheEntryRefImpl>
   Status Lookup(int64 uid, int proto_index,
-                std::unique_ptr<CacheEntryRef>* entry);
+                std::unique_ptr<CompilationCacheEntryRef>* entry);
 
   // Looks up the subgraph represented by uid, and returns the vector of keys,
   // one per core, corresponding to that subgraph.
-  Status GetKeysFromUid(int64 uid, std::vector<string>* keys);
+  Status GetKeysFromUid(int64 uid, std::vector<std::string>* keys);
 
   // Makes a reference holder for this cache, that can be stored in the per-step
   // resource manager and will ensure that compiled entries persist until the
@@ -171,7 +181,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
     // parent_->DiscardEntryRefs.
     void AddRef(CompiledSubgraph* entry);
 
-    string DebugString() const override;
+    std::string DebugString() const override;
 
    private:
     TpuCompilationCacheInterface* parent_;  // Not owned.
@@ -186,7 +196,8 @@ class TpuCompilationCacheInterface : public ResourceBase {
       const TpuCompilationCacheKey& subgraph_key,
       const SessionMetadata* session_metadata,
       CompilationRefHolder* per_step_ref_holder, int64* uid,
-      std::vector<string>* proto_key, std::vector<bool>* may_modify_variables,
+      std::vector<std::string>* proto_key,
+      std::vector<bool>* may_modify_variables,
       std::vector<CompiledSubgraph*>* removed_entries,
       absl::Span<const xla::HloProto* const>* hlo_metadatas,
       const std::function<Status(TpuProgramGroupInterface*)>& compile_function);
@@ -231,14 +242,14 @@ class TpuCompilationCacheInterface : public ResourceBase {
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Removes the entry with given key from cache.
-  size_t RemoveEntry(const string& key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  size_t RemoveEntry(const std::string& key) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Inserts the given key and entry to cache.
-  void InsertEntry(const string& key, CompiledSubgraph* entry)
+  void InsertEntry(const std::string& key, CompiledSubgraph* entry)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Returns the cache key matching given subgraph_key.
-  string FindCacheKey(const TpuCompilationCacheKey& subgraph_key)
+  std::string FindCacheKey(const TpuCompilationCacheKey& subgraph_key)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Creates a new entry by running initialize_programs and places it in the
@@ -248,7 +259,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   //
   // **InitializeEntry releases mu_ during the call to initialize_programs.**
   virtual CompiledSubgraph* InitializeEntry(
-      const string& key,
+      const std::string& key,
       const std::function<Status(TpuProgramGroupInterface*)>&
           initialize_programs,
       const TpuCompilationCacheKey& subgraph_key)
@@ -277,13 +288,16 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // cache_ key matching a given subgraph key. When doing a lookup, check
   // session_key_map_ first to avoid unnecessay fingerprint computation.
   // Map from key prefix + session_handle to a cache_ key.
-  absl::node_hash_map<string, string> session_key_map_ ABSL_GUARDED_BY(mu_);
+  absl::node_hash_map<std::string, std::string> session_key_map_
+      ABSL_GUARDED_BY(mu_);
   // Map from key prefix + fingerprint to a cache_ key.
-  absl::node_hash_map<string, string> fingerprint_key_map_ ABSL_GUARDED_BY(mu_);
+  absl::node_hash_map<std::string, std::string> fingerprint_key_map_
+      ABSL_GUARDED_BY(mu_);
   // All the subgraph entries that can be looked up in the cache. An entry is
   // marked for eviction iff it is present in cache_ and not in
   // entries_by_last_use_.
-  std::unordered_map<string, CompiledSubgraph*> cache_ ABSL_GUARDED_BY(mu_);
+  std::unordered_map<std::string, CompiledSubgraph*> cache_
+      ABSL_GUARDED_BY(mu_);
   // All the subgraph entries that can be looked up in the cache, indexed by
   // uid.
   absl::node_hash_map<int64, CompiledSubgraph*> entries_by_uid_
@@ -291,7 +305,7 @@ class TpuCompilationCacheInterface : public ResourceBase {
   // All the protos that can be looked up in the cache, indexed by proto
   // key. The value of the map is a subgraph and the index of the proto compiled
   // for that subgraph.
-  std::unordered_map<string, std::pair<CompiledSubgraph*, int>>
+  std::unordered_map<std::string, std::pair<CompiledSubgraph*, int>>
       entries_by_proto_key_ ABSL_GUARDED_BY(mu_);
   // Map from last_use to entry, used to mark entries for eviction in LRU
   // order. If an entry's last_use counter is not present as a key in
@@ -305,50 +319,6 @@ class TpuCompilationCacheInterface : public ResourceBase {
   TpuCompilationCacheInterface& operator=(const TpuCompilationCacheInterface&) =
       delete;
 };
-
-template <typename CacheEntryRef, typename CacheEntryRefImpl>
-Status TpuCompilationCacheInterface::Lookup(
-    int64 uid, int proto_index, std::unique_ptr<CacheEntryRef>* entry) {
-  entry->reset();
-
-  profiler::TraceMe proto_lookup_traceme(
-      "TPU compilation cache proto lookup by uid",
-      /*level=*/2);
-
-  absl::MutexLock lock(&mu_);
-  const auto iter = entries_by_uid_.find(uid);
-  if (iter == entries_by_uid_.end()) {
-    return errors::NotFound("No subgraph found for uid ", uid);
-  }
-  CompiledSubgraph* cache_entry = iter->second;
-  if (proto_index < 0 ||
-      proto_index >= cache_entry->tpu_program_group->program_count()) {
-    return errors::NotFound("No proto found for core index ", proto_index,
-                            " in subgraph with uid ", uid);
-  }
-  *entry = absl::make_unique<CacheEntryRefImpl>(this, cache_entry, proto_index);
-  return Status::OK();
-}
-
-template <typename CacheEntryRef, typename CacheEntryRefImpl>
-Status TpuCompilationCacheInterface::Lookup(
-    const string& proto_key, std::unique_ptr<CacheEntryRef>* entry) {
-  entry->reset();
-
-  profiler::TraceMe proto_lookup_traceme("TPU compilation cache proto lookup",
-                                         /*level=*/2);
-
-  absl::MutexLock lock(&mu_);
-  const auto iter = entries_by_proto_key_.find(proto_key);
-  if (iter == entries_by_proto_key_.end()) {
-    return errors::NotFound("No proto found for key ", proto_key);
-  }
-  CompiledSubgraph* cache_entry = iter->second.first;
-  int proto_index = iter->second.second;
-  *entry = absl::make_unique<CacheEntryRefImpl>(this, cache_entry, proto_index);
-  return Status::OK();
-}
-
 }  // namespace tpu
 }  // namespace tensorflow
 

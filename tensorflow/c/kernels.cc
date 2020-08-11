@@ -97,6 +97,11 @@ void TF_KernelBuilder_HostMemory(TF_KernelBuilder* kernel_builder,
   kernel_builder->cc_builder->HostMemory(arg_name);
 }
 
+void TF_KernelBuilder_Priority(TF_KernelBuilder* kernel_builder,
+                               int32_t priority_number) {
+  kernel_builder->cc_builder->Priority(priority_number);
+}
+
 namespace tensorflow {
 namespace {
 
@@ -233,6 +238,14 @@ void TF_OpKernelContext_Failure(TF_OpKernelContext* ctx, TF_Status* status) {
 
 DEFINE_TF_GETATTR(Type, TF_DataType, tensorflow::DataType)
 DEFINE_TF_GETATTR(Int32, tensorflow::int32, int32_t)
+
+TF_StringView TF_OpKernelConstruction_GetName(TF_OpKernelConstruction* ctx) {
+  auto* cc_ctx = reinterpret_cast<tensorflow::OpKernelConstruction*>(ctx);
+  TF_StringView string_view_of_name;
+  string_view_of_name.data = cc_ctx->def().name().data();
+  string_view_of_name.len = cc_ctx->def().name().length();
+  return string_view_of_name;
+}
 
 TF_DataType TF_ExpectedOutputDataType(TF_OpKernelContext* ctx, int i) {
   auto* cc_ctx = reinterpret_cast<::tensorflow::OpKernelContext*>(ctx);

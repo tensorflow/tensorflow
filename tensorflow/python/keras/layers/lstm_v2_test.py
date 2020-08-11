@@ -359,7 +359,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     lstm_model.fit(x_train, y_train)
     y_2 = lstm_model.predict(x_train)
 
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       cudnn_layer = rnn.LSTM(rnn_state_size)
       cudnn_model = keras.models.Model(inputs, cudnn_layer(masked_input))
     cudnn_model.set_weights(weights)
@@ -551,14 +551,14 @@ class LSTMV2Test(keras_parameterized.TestCase):
 
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
-    with test_util.device(use_gpu=False):
+    with testing_utils.device(should_use_gpu=False):
       layer = rnn.LSTM(rnn_state_size)
       output = layer(inputs)
       cpu_model = keras.models.Model(inputs, output)
       weights = cpu_model.get_weights()
     y_1 = cpu_model.predict(x_train)
 
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       layer = rnn.LSTM(rnn_state_size)
       output = layer(inputs)
       gpu_model = keras.models.Model(inputs, output)
@@ -568,7 +568,7 @@ class LSTMV2Test(keras_parameterized.TestCase):
     # Note that CuDNN uses 'sigmoid' as activation, so the LSTM V2 uses
     # 'sigmoid' as default. Construct the canonical LSTM with sigmoid to achieve
     # the same output.
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       layer = rnn_v1.LSTM(rnn_state_size, recurrent_activation='sigmoid')
       output = layer(inputs)
       canonical_model = keras.models.Model(inputs, output)
@@ -784,14 +784,14 @@ class LSTMV2Test(keras_parameterized.TestCase):
 
     # Test for V1 behavior.
     lstm_v1 = rnn_v1.LSTM(units, return_sequences=True, go_backwards=True)
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       outputs_masked_v1 = lstm_v1(inputs, mask=constant_op.constant(mask))
       outputs_trimmed_v1 = lstm_v1(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked_v1[:, -masksteps:], outputs_trimmed_v1)
 
     # Test for V2 behavior.
     lstm = rnn.LSTM(units, return_sequences=True, go_backwards=True)
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       outputs_masked = lstm(inputs, mask=constant_op.constant(mask))
       outputs_trimmed = lstm(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
@@ -812,6 +812,34 @@ class LSTMV2Test(keras_parameterized.TestCase):
 
       model.compile(loss='mse', optimizer='sgd')
       model.fit(dataset)
+
+  def test_with_fully_masked_inputs(self):
+    num_samples = 8
+    timestep = 5
+    embedding_dim = 4
+    vocab_size = 20
+    units = 2
+
+    inputs = np.random.randint(0, vocab_size, size=(num_samples, timestep))
+    # Set the first inputs to be fully zero.
+    inputs[0, :] = 0.0
+
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.Embedding(
+            vocab_size,
+            embedding_dim,
+            mask_zero=True,
+            input_length=timestep,
+            batch_input_shape=(num_samples, timestep)))
+    layer = rnn.LSTM(units)
+    model.add(layer)
+    model.compile(
+        optimizer=gradient_descent.GradientDescentOptimizer(0.01),
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+    # Make sure it doesn't crash with cudnn kernel.
+    model.predict(inputs)
 
 
 @keras_parameterized.run_all_keras_modes(config=_config)

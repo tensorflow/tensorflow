@@ -19,9 +19,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/jit/shape_inference.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
+#include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
@@ -33,6 +35,29 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
+// Forward declaration, defined below.
+class TpuCompileOpKernelCommon;
+
+// A base factory class for creating a `TpuCompileOpKernelImpl` variant.
+// By design, the actual factory can only be set once.
+class CompileOpImplFactory {
+ public:
+  virtual ~CompileOpImplFactory() = default;
+
+  virtual stream_executor::port::StatusOr<
+      std::unique_ptr<TpuCompileOpKernelCommon>>
+  CreateNonMlirImpl(OpKernelConstruction* ctx) = 0;
+
+  virtual stream_executor::port::StatusOr<
+      std::unique_ptr<TpuCompileOpKernelCommon>>
+  CreateMlirImpl(OpKernelConstruction* ctx) = 0;
+
+  static CompileOpImplFactory* Get();
+  static void Register(CompileOpImplFactory* factory);
+
+ private:
+  static CompileOpImplFactory* factory_;
+};
 
 // Abstract base class for TpuCompileOpKernel implementation.
 class TpuCompileOpKernelCommon {
@@ -66,14 +91,13 @@ class TpuCompileOpKernelCommon {
 
   void Compute(OpKernelContext* ctx);
 
-  // Computes shapes for each argument. Uses both the static shape from the
-  // metadata, and the dynamic shapes where the static shape is not
-  // defined. There must be one dynamic_shape for each argument with a
-  // partially defined shape, in index order.
-  static Status ComputeArgumentShapes(
-      const tpu::TPUCompileMetadataProto& metadata,
-      const std::vector<TensorShape>& dynamic_shapes,
-      std::vector<TensorShape>* arg_shapes);
+  // Lowers Mlir or TF Function computation into HLO IR and using XLA compiler
+  // compiles into TPU programs ready for execution.
+  virtual Status Compile(
+      const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+      const XLA_TpuMeshState* mesh_state,
+      const std::vector<TensorShape>& arg_shapes,
+      TpuProgramGroupInterface* tpu_program_group) = 0;
 
   // Performs shape inference on `computation`, filling shape_info with operator
   // shapes. The shapes of the _Arg nodes are taken from `arg_shapes`.
@@ -84,15 +108,6 @@ class TpuCompileOpKernelCommon {
 
  protected:
   Status ComputeInternal(OpKernelContext* ctx);
-
-  // Compile function that invokes the different helper functions to compile
-  // the given function.
-  virtual Status Compile(const FunctionLibraryDefinition& flib_def,
-                         int graph_def_version,
-                         const TpuMeshStateInterface* mesh_state,
-                         const std::vector<TensorShape>& dynamic_shapes,
-                         const OpInputList& guaranteed_constants,
-                         TpuProgramGroupInterface* tpu_program_group) = 0;
 
   // Compile TPU program locally and populate the host compilation cache.
   Status CompileLocallyAndFillHostCache(
@@ -120,8 +135,7 @@ class TpuCompileOpKernelCommon {
 
   // Sleeps for `kSleepSeconds` seconds to give time for TPUCompileOp to finish
   // before terminating peacefully.
-  static void ExitCountdown(OpKernelContext* ctx,
-                            std::shared_ptr<std::atomic<bool>> done);
+  static void ExitCountdown(Env* env, std::shared_ptr<std::atomic<bool>> done);
 
   // Converts the `dynamic_shapes` arguments to the compile operator into
   // TensorShapes.
@@ -154,7 +168,8 @@ class TpuCompileOpKernelCommon {
       const FunctionLibraryDefinition& flib_def, int graph_def_version,
       const XlaCompiler::ShapeRepresentationFn shape_representation_fn,
       const std::vector<TensorShape>& arg_shapes,
-      const OpInputList& guaranteed_constants, const NameAttrList& function,
+      const GuaranteedConsts& guaranteed_constants,
+      const NameAttrList& function,
       std::function<Status(ResourceMgr*)> populate_resource_manager_fn,
       xla::CompileOnlyClient* client,
       std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
@@ -177,7 +192,7 @@ class TpuCompileOpKernelCommon {
   // computation.
   Status BuildComputationArgumentDescriptions(
       const std::vector<TensorShape>& arg_shapes,
-      const OpInputList& guaranteed_constants, const XlaCompiler& compiler,
+      const GuaranteedConsts& guaranteed_constants, const XlaCompiler& compiler,
       std::vector<XlaCompiler::Argument>* args,
       std::vector<tpu::ShardingAndIndex>* arg_core_mapping,
       std::vector<std::vector<xla::Shape>>* per_core_arg_shapes);
@@ -213,7 +228,6 @@ class TpuCompileOpKernelCommon {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(TpuCompileOpKernelCommon);
 };
-
 }  // namespace tpu
 }  // namespace tensorflow
 

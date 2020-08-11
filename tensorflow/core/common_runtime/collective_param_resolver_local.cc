@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -122,6 +123,14 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     } else {
       gr = it->second.get();
     }
+  }
+  {
+    mutex_lock l(status_mu_);
+    status = status_;
+  }
+  if (!status.ok()) {
+    done(status, nullptr);
+    return;
   }
   {
     mutex_lock gr_lock(gr->mu);
@@ -577,26 +586,43 @@ void CollectiveParamResolverLocal::FindInstanceRec(
   InstanceRec* irec = nullptr;
   bool exit_outside_locks = false;
   {
+    bool found_instance = false;
     mutex_lock l(instance_mu_);
-    auto it = instance_table_.find(cp->instance.instance_key);
-    if (it != instance_table_.end()) {
-      irec = it->second.get();
-      {
-        mutex_lock l(irec->in_mu);
-        if (irec->is_init) {
-          exit_outside_locks = true;
-        } else {
-          irec->init_waiters.push_back([this, done](InstanceRec* irec) {
-            CallbackWithStatus(done, irec);
-          });
-          return;
+    auto group_it = instance_table_.find(gr->group.group_key);
+    if (group_it != instance_table_.end()) {
+      auto instance_it = group_it->second.find(cp->instance.instance_key);
+      if (instance_it != group_it->second.end()) {
+        irec = instance_it->second.get();
+        {
+          mutex_lock l(irec->in_mu);
+          if (irec->is_init) {
+            exit_outside_locks = true;
+          } else {
+            irec->init_waiters.push_back([this, done](InstanceRec* irec) {
+              CallbackWithStatus(done, irec);
+            });
+            return;
+          }
         }
+        found_instance = true;
       }
-    } else {
+    }
+    if (!found_instance) {
       // Create new InstanceRec.
       irec = new InstanceRec;
-      instance_table_[cp->instance.instance_key].reset(irec);
+      instance_table_[gr->group.group_key][cp->instance.instance_key].reset(
+          irec);
     }
+  }
+  Status status;
+  {
+    mutex_lock l(status_mu_);
+    status = status_;
+  }
+  if (!status.ok()) {
+    mutex_lock il(irec->out_mu);
+    irec->WaitForOutMu(il);
+    irec->status = status;
   }
   if (exit_outside_locks) {
     CallbackWithStatus(done, irec);
@@ -790,9 +816,12 @@ void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
                                                 bool is_source,
                                                 const IRConsumer& f) {
   std::vector<IRConsumer> ready_waiters;
-  {
+  do {
     mutex_lock l(ir->out_mu);
     ir->WaitForOutMu(l);
+    if (!ir->status.ok()) {
+      break;
+    }
     CHECK_EQ(cp->group.group_size, ir->known.size());
     CHECK_GE(cp->default_rank, 0);
     if (!ir->known[cp->default_rank]) {
@@ -828,10 +857,63 @@ void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
     if (!ir->known_waiters.empty()) {
       ready_waiters = std::move(ir->known_waiters);
     }
-  }
+  } while (false);
   f(ir);
   for (auto& f : ready_waiters) {
     f(ir);
+  }
+}
+
+void CollectiveParamResolverLocal::StartAbort(const Status& s) {
+  {
+    mutex_lock l(status_mu_);
+    if (!status_.ok()) {
+      VLOG(1) << "CollectiveParamResolverLocal already aborted. Ignoring "
+                 "subsequent abortion with status: "
+              << s;
+      return;
+    }
+    status_ = s;
+  }
+  StartAbortLocal(s);
+}
+
+void CollectiveParamResolverLocal::StartAbortLocal(const Status& s) {
+  {
+    mutex_lock l(group_mu_);
+    for (const auto& item : group_table_) {
+      GroupRec* gr = item.second.get();
+      std::vector<StatusCallback> waiting;
+      {
+        mutex_lock gl(gr->mu);
+        gr->status = s;
+        waiting.swap(gr->waiting);
+      }
+      for (const StatusCallback& done : waiting) {
+        done(s);
+      }
+    }
+  }
+  std::vector<InstanceRec*> instances;
+  {
+    mutex_lock l(instance_mu_);
+    for (const auto& group_entry : instance_table_) {
+      for (const auto& item : group_entry.second) {
+        instances.push_back(item.second.get());
+      }
+    }
+  }
+  for (InstanceRec* ir : instances) {
+    std::vector<IRConsumer> known_waiters;
+    {
+      mutex_lock il(ir->out_mu);
+      ir->WaitForOutMu(il);
+      ir->status = s;
+      known_waiters.swap(ir->known_waiters);
+    }
+    for (const IRConsumer& done : known_waiters) {
+      done(ir);
+    }
   }
 }
 

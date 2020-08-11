@@ -145,14 +145,16 @@ class OpKernel {
 
   // Accessors.
   const NodeDef& def() const { return props_->node_def; }
-  const string& name() const { return props_->node_def.name(); }
+  const std::string& name() const { return props_->node_def.name(); }
   absl::string_view name_view() const { return name_view_; }
-  const string& type_string() const { return props_->node_def.op(); }
+  const std::string& type_string() const { return props_->node_def.op(); }
   absl::string_view type_string_view() const { return type_string_view_; }
-  const string& requested_input(int i) const {
+  const std::string& requested_input(int i) const {
     return props_->node_def.input(i);
   }
-  const string& requested_device() const { return props_->node_def.device(); }
+  const std::string& requested_device() const {
+    return props_->node_def.device();
+  }
 
   int num_inputs() const { return props_->input_types.size(); }
   DataType input_type(int i) const { return props_->input_types[i]; }
@@ -177,12 +179,11 @@ class OpKernel {
   // Returns a trace string for current computation, op name/type and input
   // tensor shape/dtype are encoded for profiler cost analysis. Most OpKernel
   // should use the default implementation.
-  // Override this function to add OpKernel specific attributes that are
-  // necessary for cost analysis.
-  virtual string TraceString(OpKernelContext* ctx, bool verbose);
+  virtual std::string TraceString(const OpKernelContext& ctx,
+                                  bool verbose) const;
 
  protected:
-  string GetTraceArgument(OpKernelContext* ctx);
+  std::string ShapeTraceString(const OpKernelContext& ctx) const;
 
  private:
   const std::shared_ptr<const NodeProperties> props_;
@@ -654,7 +655,7 @@ class OpKernelContext {
     SessionState* session_state = nullptr;
 
     // Unique session identifier. Can be empty.
-    string session_handle;
+    std::string session_handle;
 
     // Metadata about the session. Can be nullptr.
     const SessionMetadata* session_metadata = nullptr;
@@ -686,7 +687,7 @@ class OpKernelContext {
     StepStatsCollectorInterface* stats_collector = nullptr;
     GraphCollector* graph_collector = nullptr;
     bool run_all_kernels_inline = false;
-    const string* executor_type = nullptr;
+    const std::string* executor_type = nullptr;
 
     // TensorSliceReaderCache support.
     checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache = nullptr;
@@ -734,7 +735,7 @@ class OpKernelContext {
   // inputs. For Ref inputs use mutable_input below.
   // REQUIRES: !IsRefType(input_dtype(index))
   // TODO(mrry): Convert this to return Status.
-  const Tensor& input(int index);
+  const Tensor& input(int index) const;
 
   // Returns the named immutable input tensor in "tensor", as defined
   // in the OpDef. May only be used for non-Ref inputs. For Ref inputs
@@ -828,7 +829,7 @@ class OpKernelContext {
 
   // Returns the registered name for the executor type that is executing the
   // current kernel. If empty, the default executor is used.
-  const string& executor_type() const;
+  const std::string& executor_type() const;
 
   // Input to output forwarding.
 
@@ -887,10 +888,14 @@ class OpKernelContext {
 
   // Tries to forward one of the inputs given in input_indices to
   // output[output_index]. If none of the given inputs can be forwarded, calls
-  // allocate_output() to allocate a new output buffer.
+  // allocate_output() to allocate a new output buffer. The index of the
+  // forwarded input will be assign to output argument forwarded_input (if it's
+  // not nullptr). If no inputs are forwarded, forwarded_input will be assigned
+  // -1.
   Status forward_input_or_allocate_output(
       gtl::ArraySlice<int> candidate_input_indices, int output_index,
-      const TensorShape& output_shape, Tensor** output) TF_MUST_USE_RESULT;
+      const TensorShape& output_shape, Tensor** output,
+      int* forwarded_input = nullptr) TF_MUST_USE_RESULT;
   Status forward_input_or_allocate_output(
       gtl::ArraySlice<StringPiece> candidate_input_names,
       StringPiece output_name, const TensorShape& output_shape,
@@ -1098,7 +1103,7 @@ class OpKernelContext {
   SessionState* session_state() const { return params_->session_state; }
 
   // Unique identifier of the session it belongs to. Can be empty.
-  string session_handle() const { return params_->session_handle; }
+  std::string session_handle() const { return params_->session_handle; }
 
   // Metadata about the session. Can be nullptr.
   const SessionMetadata* session_metadata() const {
@@ -1403,7 +1408,7 @@ Status SupportedDeviceTypesForNode(
 
 // Returns a message with a description of the kernels registered for op
 // `op_name`.
-string KernelsRegisteredForOp(StringPiece op_name);
+std::string KernelsRegisteredForOp(StringPiece op_name);
 
 // Call once after Op registration has completed.
 Status ValidateKernelRegistrations(const OpRegistryInterface& op_registry);
@@ -1495,13 +1500,13 @@ Status FindKernelDef(
     bool has_experimental_debug_info,
     const NodeDef_ExperimentalDebugInfo& experimental_debug_info,
     StringPiece node_op, StringPiece node_device, AttrSlice node_attrs,
-    const KernelDef** def, string* kernel_class_name);
+    const KernelDef** def, std::string* kernel_class_name);
 
 // If node_def has a corresponding kernel registered on device_type,
 // returns OK and fill in the kernel def and kernel_class_name. <def> and
 // <kernel_class_name> may be null.
 Status FindKernelDef(const DeviceType& device_type, const NodeDef& node_def,
-                     const KernelDef** def, string* kernel_class_name);
+                     const KernelDef** def, std::string* kernel_class_name);
 
 // Writes a list of all registered kernels to LOG(INFO), to help users debug
 // missing kernel errors.
@@ -1638,12 +1643,18 @@ inline TensorValue OpKernelContext::release_output(int index) {
 
 inline Status OpKernelContext::forward_input_or_allocate_output(
     gtl::ArraySlice<int> candidate_input_indices, int output_index,
-    const TensorShape& output_shape, Tensor** output) {
+    const TensorShape& output_shape, Tensor** output, int* forwarded_input) {
   for (int input_index : candidate_input_indices) {
     if (forward_input_to_output_with_shape(input_index, output_index,
                                            output_shape, output)) {
+      if (forwarded_input != nullptr) {
+        *forwarded_input = input_index;
+      }
       return Status::OK();
     }
+  }
+  if (forwarded_input != nullptr) {
+    *forwarded_input = -1;
   }
   return allocate_output(output_index, output_shape, output);
 }

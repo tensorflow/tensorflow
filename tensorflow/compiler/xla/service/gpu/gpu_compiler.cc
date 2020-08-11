@@ -35,6 +35,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/batchnorm_expander.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/comparison_expander.h"
+#include "tensorflow/compiler/xla/service/conditional_canonicalizer.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_4d_expander.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
@@ -42,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
 #include "tensorflow/compiler/xla/service/dynamic_padder.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
+#include "tensorflow/compiler/xla/service/gather_expander.h"
 #include "tensorflow/compiler/xla/service/gpu/alias_passthrough_params.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
@@ -138,6 +141,9 @@ Status GpuCompiler::OptimizeHloModule(
     pipeline.AddPass<RngExpander>();
     pipeline.AddPass<RngBitGeneratorExpander>(RandomAlgorithm::RNG_PHILOX);
 
+    // Comparison total order expander
+    pipeline.AddPass<ComparisonExpander>();
+
     // Remove zero-sized HLO from the input so that other passes don't have to
     // handle it.
     pipeline.AddPass<ZeroSizedHloElimination>();
@@ -179,7 +185,7 @@ Status GpuCompiler::OptimizeHloModule(
 
     pipeline.AddPass<LogisticExpander>(
         /*expansion_type=*/LogisticExpansionType::kExp);
-
+    pipeline.AddPass<ConditionalCanonicalizer>();
     pipeline.AddPass<DynamicPadder>();
 
     {
@@ -189,11 +195,13 @@ Status GpuCompiler::OptimizeHloModule(
           /*layout_sensitive=*/false,
           /*allow_mixed_precision=*/false);
 
-      pipeline.AddPass<HloGetDimensionSizeRewriter>();
+      pass.AddPass<HloGetDimensionSizeRewriter>();
 
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
-      pipeline.AddPass<ZeroSizedHloElimination>();
+      pass.AddPass<ZeroSizedHloElimination>();
+
+      pass.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
 
       AlgebraicSimplifierOptions options;
       // When transposes appear in a fusion node, we can easily adjust the
@@ -537,10 +545,10 @@ static Status CompileModuleToLlvmIrImpl(
       // computation.
       // * For each visit of these HloInstructions, either none or one Thunk
       // will be returned.
-      // * If there is a thunk returned, thunk->hlo_instruction() equals the
+      // * If there is a thunk returned, thunk->hlo_instruction_ equals the
       // input HloInstruction*.
       // * A returned thunk may contain other sub-thunks. A sub-thunk may or may
-      // not have an associated hlo_instruction().
+      // not have an associated hlo_instruction_.
       TF_RET_CHECK(thunks->size() <= 1) << instruction->ToString();
       if (!thunks->empty()) {
         auto thunk = std::move(thunks->front());

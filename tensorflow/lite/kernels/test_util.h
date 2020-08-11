@@ -45,10 +45,8 @@ limitations under the License.
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
-#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
-#include "tensorflow/lite/tools/tool_params.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
@@ -114,7 +112,8 @@ struct TensorData {
              std::vector<int64_t> per_channel_quantization_offsets = {},
              int32_t channel_index = 0, std::vector<int> traversal_order = {},
              std::vector<TfLiteDimensionType> format = {},
-             std::vector<int> block_size = {}, std::vector<int> block_map = {})
+             std::vector<int> block_size = {}, std::vector<int> block_map = {},
+             std::vector<int> shape_signature = {})
       : type(type),
         shape(shape),
         min(min),
@@ -130,7 +129,8 @@ struct TensorData {
         traversal_order(traversal_order),
         format(format),
         block_size(block_size),
-        block_map(block_map) {}
+        block_map(block_map),
+        shape_signature(shape_signature) {}
   TensorType type;
   std::vector<int> shape;
   float min;
@@ -145,6 +145,7 @@ struct TensorData {
   std::vector<TfLiteDimensionType> format;
   std::vector<int> block_size;
   std::vector<int> block_map;
+  std::vector<int> shape_signature;
 };
 
 class SingleOpResolver : public OpResolver {
@@ -515,8 +516,7 @@ class SingleOpModel {
     resolver_ = std::move(resolver);
   }
 
-  // Enables NNAPI delegate application during interpreter creation.
-  static void SetForceUseNnapi(bool use_nnapi);
+  // Indicate whether the test has the NNAPI delegate applied.
   static bool GetForceUseNnapi();
   int CountOpsExecutedByCpuKernel();
 
@@ -585,10 +585,11 @@ class SingleOpModel {
       buffers_.push_back(CreateBuffer(builder_, data_buffer));
     }
 
-    tensors_.push_back(CreateTensor(builder_,
-                                    builder_.CreateVector<int>(t.shape), t.type,
-                                    /*buffer=*/buffer_id,
-                                    /*name=*/0, q_params, is_variable));
+    tensors_.push_back(CreateTensor(
+        builder_, builder_.CreateVector<int>(t.shape), t.type,
+        /*buffer=*/buffer_id,
+        /*name=*/0, q_params, is_variable,
+        /*sparsity=*/0, builder_.CreateVector<int>(t.shape_signature)));
 
     tensor_data_[id] = t;
 
@@ -769,6 +770,7 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;
+  int num_applied_delegates_ = 0;
 };
 
 // Populate string tensors.
@@ -899,37 +901,6 @@ class MultiOpModel : public SingleOpModel {
     return AddTensor<T>(t, {}, false);
   }
 };
-
-// A utility class to provide TfLite delegate creations for kernel tests. The
-// options of a particular delegate could be specified from commandline flags by
-// using the delegate provider registrar as implemented in lite/tools/delegates
-// directory.
-class KernelTestDelegateProviders {
- public:
-  // Returns a global KernelTestDelegateProviders instance.
-  static KernelTestDelegateProviders* Get();
-
-  KernelTestDelegateProviders();
-
-  // Initialize delegate-related parameters from commandline arguments and
-  // returns true if successful.
-  bool InitFromCmdlineArgs(int* argc, const char** argv);
-
-  // This provides a way to overwrite parameter values programmatically before
-  // creating TfLite delegates.
-  tools::ToolParams* MutableParams() { return &params_; }
-  const tools::ToolParams& ConstParams() const { return params_; }
-
-  // Create a list of TfLite delegates based on what have been initialized (i.e.
-  // 'params_').
-  std::vector<tools::TfLiteDelegatePtr> CreateAllDelegates() const;
-
- private:
-  // Contain delegate-related parameters that are initialized from command-line
-  // flags.
-  tools::ToolParams params_;
-};
-
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_

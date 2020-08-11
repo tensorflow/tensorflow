@@ -94,7 +94,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/public/version.h"
 
-using tensorflow::int64;
 using tensorflow::string;
 
 namespace {
@@ -725,13 +724,7 @@ void TFE_DeleteContextOptions(TFE_ContextOptions* options) { delete options; }
 TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
   if (opts->use_tfrt) {
 #ifdef PLATFORM_GOOGLE
-    tfrt::SmallVector<std::string, 4> op_handler_chains;
-    tfrt::SmallVector<tensorflow::DeviceAttributes, 4> device_attributes;
-    status->status = tfrt::ListOpHandlerChains(
-        opts->session_options.options, &op_handler_chains, &device_attributes);
-    if (!status->status.ok()) return nullptr;
-    return tensorflow::wrap(new tfrt::ContextInterface(
-        op_handler_chains, device_attributes, opts->async));
+    return tensorflow::wrap(new tfrt::tf::ContextInterface(opts->async));
 #else
     status->status = tensorflow::errors::Unimplemented("TFRT is not supported");
     return nullptr;
@@ -974,7 +967,7 @@ int64_t TFE_TensorHandleNumElements(TFE_TensorHandle* h, TF_Status* status) {
     return -1;
   }
 
-  int64 num_elements = -1;
+  tensorflow::int64 num_elements = -1;
   status->status = tensorflow::unwrap(h)->NumElements(&num_elements);
   return num_elements;
 }
@@ -986,7 +979,7 @@ int64_t TFE_TensorHandleDim(TFE_TensorHandle* h, int dim_index,
     return -1;
   }
 
-  int64 dim = -1;
+  tensorflow::int64 dim = -1;
   status->status = tensorflow::unwrap(h)->Dim(dim_index, &dim);
   return dim;
 }
@@ -1079,11 +1072,13 @@ TFE_TensorHandle* TFE_NewTensorHandleFromDeviceMemory(
   status->status = context->FindDeviceFromName(device_name, &device);
   tensorflow::CustomDevice* custom_device = nullptr;
   if (!status->status.ok()) {
-    status->status =
-        context->FindCustomDeviceFromName(device_name, &custom_device);
-    if (!status->status.ok()) {
+    if (!context->FindCustomDeviceFromName(device_name, &custom_device)) {
       deallocator(data, len, deallocator_arg);
+      status->status =
+          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
       return nullptr;
+    } else {
+      status->status = tensorflow::Status::OK();
     }
   }
   std::vector<tensorflow::int64> dimvec(num_dims);

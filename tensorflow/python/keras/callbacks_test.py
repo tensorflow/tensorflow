@@ -1705,6 +1705,48 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     self.assertEqual(my_cb.test_batches, 0)
     self.assertEqual(my_cb.predict_batches, 0)
 
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_default_callbacks_do_not_call_batch_hooks(self):
+    model = keras.Sequential([keras.layers.Dense(1)])
+    log_dir = self.get_temp_dir()
+    cb_list = keras.callbacks.CallbackList([
+        keras.callbacks.TensorBoard(log_dir, profile_batch=0),
+        keras.callbacks.ModelCheckpoint(log_dir),
+    ],
+                                           add_progbar=True,
+                                           model=model,
+                                           verbose=2,
+                                           epochs=3)
+    self.assertLen(cb_list.callbacks, 3)
+    self.assertFalse(cb_list._should_call_train_batch_hooks)
+    self.assertFalse(cb_list._should_call_test_batch_hooks)
+    self.assertFalse(cb_list._should_call_predict_batch_hooks)
+
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_change_tf_functions_during_fit(self):
+
+    class ChangeFunctions(keras.callbacks.Callback):
+
+      def on_epoch_end(self, epochs, logs=None):
+
+        def new_fn(iterator):
+          raise ValueError('New function substituted successfully.')
+
+        self.model.train_function = new_fn
+        self.model.test_function = new_fn
+        self.model.predict_function = new_fn
+
+    model = keras.Sequential([keras.layers.Dense(1)])
+    model.compile('sgd', 'mse')
+
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.fit(x, y, batch_size=2, epochs=2, callbacks=[ChangeFunctions()])
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.evaluate(x, y, batch_size=2)
+    with self.assertRaisesRegexp(ValueError, 'New function '):
+      model.predict(x, batch_size=2)
+
 
 # A summary that was emitted during a test. Fields:
 #   logdir: str. The logdir of the FileWriter to which the summary was
@@ -1725,6 +1767,7 @@ class _SummaryFile(object):
     self.images = set()
     self.histograms = set()
     self.tensors = set()
+    self.graph_defs = []
 
 
 def list_summaries(logdir):
@@ -1751,6 +1794,8 @@ def list_summaries(logdir):
         continue
       path = os.path.join(dirpath, filename)
       for event in summary_iterator.summary_iterator(path):
+        if event.graph_def:
+          result.graph_defs.append(event.graph_def)
         if not event.summary:  # (e.g., it's a `graph_def` event)
           continue
         for value in event.summary.value:
@@ -1789,18 +1834,16 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     self.train_dir = os.path.join(self.logdir, 'train')
     self.validation_dir = os.path.join(self.logdir, 'validation')
 
-  def _get_model(self):
+  def _get_model(self, compile_model=True):
     layers = [
         keras.layers.Conv2D(8, (3, 3)),
         keras.layers.Flatten(),
         keras.layers.Dense(1)
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10, 10, 1))
-    opt = gradient_descent.SGD(learning_rate=0.001)
-    model.compile(
-        opt,
-        'mse',
-        run_eagerly=testing_utils.should_run_eagerly())
+    if compile_model:
+      opt = gradient_descent.SGD(learning_rate=0.001)
+      model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
   def test_TensorBoard_default_logdir(self):
@@ -1911,6 +1954,29 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='batch_loss'),
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
+
+  def test_TensorBoard_learning_rate_schedules(self):
+    model = self._get_model(compile_model=False)
+    opt = gradient_descent.SGD(learning_rate_schedule.CosineDecay(0.01, 1))
+    model.compile(opt, 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        callbacks=[keras.callbacks.TensorBoard(self.logdir)])
+
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_learning_rate'),
         },
     )
 
@@ -2175,7 +2241,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         x,
         y,
         batch_size=2,
-        epochs=2,
+        epochs=3,
         validation_data=(x, y),
         callbacks=[tb_cbk])
     summary_file = list_summaries(self.logdir)
@@ -2185,6 +2251,16 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.train_dir, tag='keras'),
         },
     )
+    if not model.run_eagerly:
+      # There should be one train graph
+      self.assertLen(summary_file.graph_defs, 1)
+      for graph_def in summary_file.graph_defs:
+        graph_def_str = str(graph_def)
+
+        # All the model layers should appear in the graphs
+        for layer in model.layers:
+          if 'input' not in layer.name:
+            self.assertIn(layer.name, graph_def_str)
 
   def test_TensorBoard_writeSequentialModel_noInputShape(self):
     model = keras.models.Sequential([
@@ -2192,7 +2268,7 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         keras.layers.Flatten(),
         keras.layers.Dense(1),
     ])
-    model.compile('sgd', 'mse', run_eagerly=False)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     self.fitModelAndAssertKerasModelWritten(model)
 
   def test_TensorBoard_writeSequentialModel_withInputShape(self):
@@ -2201,16 +2277,16 @@ class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
         keras.layers.Flatten(),
         keras.layers.Dense(1),
     ])
-    model.compile('sgd', 'mse', run_eagerly=False)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     self.fitModelAndAssertKerasModelWritten(model)
 
-  def test_TensoriBoard_writeModel(self):
+  def test_TensorBoard_writeModel(self):
     inputs = keras.layers.Input([10, 10, 1])
     x = keras.layers.Conv2D(8, (3, 3), activation='relu')(inputs)
     x = keras.layers.Flatten()(x)
     x = keras.layers.Dense(1)(x)
     model = keras.models.Model(inputs=inputs, outputs=[x])
-    model.compile('sgd', 'mse', run_eagerly=False)
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     self.fitModelAndAssertKerasModelWritten(model)
 
   def test_TensorBoard_autoTrace(self):

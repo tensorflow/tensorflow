@@ -31,7 +31,6 @@ from tensorflow.python.keras.mixed_precision.experimental import loss_scale as k
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import keras_export
@@ -271,7 +270,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     # constructor.
     _DelegatingTrackableMixin.__init__(self, self._optimizer)
 
-    for weight in loss_scale_module.get_loss_scale_weights(self._loss_scale):
+    for weight in self._loss_scale._weights.values():  # pylint: disable=protected-access
       # We cannot call `track_variable` in the LossScale class itself, because a
       # file outside of Keras cannot depend on a Keras file. Calling it here
       # instead is OK, because a variable only needs to be tracked if used with
@@ -349,7 +348,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
         for g in grads
     ]
 
-  def _compute_gradients(self, loss, var_list, grad_loss=None):
+  def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
     loss = self.get_scaled_loss(loss)
     grads_and_vars = self._optimizer._compute_gradients(loss, var_list,  # pylint: disable=protected-access
                                                         grad_loss)
@@ -407,8 +406,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     # DistributionStrategy does not support having a cond in a replica context
     # with a branch that calls `merge_call`, and self._optimizer.apply_gradients
     # calls `merge_call`.
-    maybe_apply_op = smart_cond.smart_cond(should_apply_grads,
-                                           apply_fn,
+    maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
                                            do_not_apply_fn)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 

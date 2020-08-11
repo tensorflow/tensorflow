@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <string>
+
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/node_builder.h"
@@ -20,19 +22,20 @@ limitations under the License.
 #include "tensorflow/core/platform/test_benchmark.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 
-namespace tensorflow { 
+namespace tensorflow {
+namespace {
 
-static Graph* BM_ScalarSummaryOp(TensorShape shape, const char* tag, 
-																 float value) {
+Graph* BM_ScalarSummaryOp(TensorShape shape, std::string tag, 
+                          float value) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor tags(DT_STRING, shape);
   Tensor values(DT_FLOAT, shape);
   for (int i = 0; i < tags.NumElements(); ++i){ 
-  	tags.flat<tstring>()(i) = tag; 
-  	values.flat<float>()(i) = value; 
+    tags.flat<tstring>()(i) = tag; 
+    values.flat<float>()(i) = value; 
   } 
   Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("dummy"), "SummaryScalar")
+  TF_CHECK_OK(NodeBuilder(g->NewName("dummy"), "ScalarSummary")
                   .Input(test::graph::Constant(g, tags))
                   .Input(test::graph::Constant(g, values))
                   .Attr("T", DT_FLOAT)
@@ -42,23 +45,27 @@ static Graph* BM_ScalarSummaryOp(TensorShape shape, const char* tag,
 
 // Macro used to parse initializer list for tensorshape 
 #define DIMARGS(...) {__VA_ARGS__}
-// Random parameters for testing
-constexpr char longTagParam = "LONGTAG____________________________"; 
+// // Random parameters for testing
+constexpr char longTagParam[] = "LONGTAG____________________________"; 
 constexpr float largeValueParam = 2352352.2623433; 
 
-#define BM_ScalarSummaryDev(device, dims, name, tag, value)       		\
-	static void BM_ScalarSummary_##name##_##device(int iters) { 	      \
-		TensorShape tensorshape(DIMARGS(dims)); 													\
-		test::Benchmark(#device, BM_ScalarSummaryOp(											\
-				tensorshape, #tag, value)).Run(iters); 												\
-	}																																		\
-	BENCHMARK(BM_ScalarSummary_##name##_##device); 
+#define BM_ScalarSummaryDev(device, dims, name, tag, value)           \
+  void BM_ScalarSummary##name##device(int iters) {                    \
+    testing::StopTiming();                                            \
+    TensorShape tensorshape(DIMARGS dims);                            \
+    auto g = BM_ScalarSummaryOp(tensorshape, #tag, value);            \
+    testing::StartTiming();                                           \
+    test::Benchmark("cpu", g).Run(iters);                             \
+  }                                                                   \
+  BENCHMARK(BM_ScalarSummary##name##device); 
 
-BM_ScalarSummaryDev(cpu, (5, 10, 100), Base, tag, 5.2);
+BM_ScalarSummaryDev(Cpu, (5, 10, 100), Base, Tag, 5.2);
 // Benchmark for large shapes 
-BM_ScalarSummaryDev(cpu, (500, 1000, 10000), Large_Shape, tag, 5.2);
+BM_ScalarSummaryDev(Cpu, (500, 100, 100), LargeShape, Tag, 5.2);
 // Benchmark for large tag tstring 
-BM_ScalarSummaryDev(cpu, (5, 10, 100), Long_Tag, longTagParam, 5.2);
+BM_ScalarSummaryDev(Cpu, (5, 10, 100), LongTag, longTagParam, 5.2);
 // Benchmark for large values 
-BM_ScalarSummaryDev(cpu, (500, 1000, 10000), Large_Value, tag, largeValueParam);
+BM_ScalarSummaryDev(Cpu, (500, 100, 100), LargeValue, Tag, largeValueParam);
+
+} // namespace
 } // namespace tensorflow

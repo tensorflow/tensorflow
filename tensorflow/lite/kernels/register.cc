@@ -131,13 +131,13 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE, Register_DEPTH_TO_SPACE());
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version = */ 1,
              /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_DIV, Register_DIV(),
              /* min_version */ 1,
              /* max_version */ 2);

@@ -455,10 +455,10 @@ int NPyBfloat16_Compare(const void* a, const void* b, void* arr) {
     return 1;
   }
   // NaNs sort to the end.
-  if (!std::isnan(x) && std::isnan(y)) {
+  if (!Eigen::numext::isnan(x) && Eigen::numext::isnan(y)) {
     return -1;
   }
-  if (std::isnan(x) && !std::isnan(y)) {
+  if (Eigen::numext::isnan(x) && !Eigen::numext::isnan(y)) {
     return 1;
   }
   return 0;
@@ -962,7 +962,7 @@ struct Frexp {
 struct Heaviside {
   bfloat16 operator()(bfloat16 bx, bfloat16 h0) {
     float x = static_cast<float>(bx);
-    if (std::isnan(x)) {
+    if (Eigen::numext::isnan(x)) {
       return bx;
     }
     if (x < 0) {
@@ -984,7 +984,9 @@ struct IsInf {
   bool operator()(bfloat16 a) { return std::isinf(static_cast<float>(a)); }
 };
 struct IsNan {
-  bool operator()(bfloat16 a) { return std::isnan(static_cast<float>(a)); }
+  bool operator()(bfloat16 a) {
+    return Eigen::numext::isnan(static_cast<float>(a));
+  }
 };
 struct Ldexp {
   bfloat16 operator()(bfloat16 a, int exp) {
@@ -1200,25 +1202,25 @@ struct Ge {
 struct Maximum {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
     float fa(a), fb(b);
-    return std::isnan(fa) || fa > fb ? a : b;
+    return Eigen::numext::isnan(fa) || fa > fb ? a : b;
   }
 };
 struct Minimum {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
     float fa(a), fb(b);
-    return std::isnan(fa) || fa < fb ? a : b;
+    return Eigen::numext::isnan(fa) || fa < fb ? a : b;
   }
 };
 struct Fmax {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
     float fa(a), fb(b);
-    return std::isnan(fb) || fa > fb ? a : b;
+    return Eigen::numext::isnan(fb) || fa > fb ? a : b;
   }
 };
 struct Fmin {
   bfloat16 operator()(bfloat16 a, bfloat16 b) {
     float fa(a), fb(b);
-    return std::isnan(fb) || fa < fb ? a : b;
+    return Eigen::numext::isnan(fb) || fa < fb ? a : b;
   }
 };
 
@@ -1244,7 +1246,8 @@ struct NextAfter {
     float from_as_float(from), to_as_float(to);
     memcpy(&from_as_int, &from, sizeof(bfloat16));
     memcpy(&to_as_int, &to, sizeof(bfloat16));
-    if (std::isnan(from_as_float) || std::isnan(to_as_float)) {
+    if (Eigen::numext::isnan(from_as_float) ||
+        Eigen::numext::isnan(to_as_float)) {
       return bfloat16(std::numeric_limits<float>::quiet_NaN());
     }
     if (from_as_int == to_as_int) {

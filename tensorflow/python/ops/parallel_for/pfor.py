@@ -2029,7 +2029,7 @@ def _convert_broadcast_to(pfor_input):
 def _convert_expanddims(pfor_input):
   t = pfor_input.stacked_input(0)
   dim = pfor_input.unstacked_input(1)
-  dim += math_ops.cast(dim >= 0, dtypes.int32)
+  dim += math_ops.cast(dim >= 0, dim.dtype)
   return wrap(array_ops.expand_dims(t, axis=dim), True)
 
 
@@ -2510,7 +2510,7 @@ def _convert_reduction(pfor_input, _, op_func):
   t = pfor_input.stacked_input(0)
   indices = pfor_input.unstacked_input(1)
   # Shift positive indices by one to account for the extra dimension.
-  indices += math_ops.cast(indices >= 0, dtypes.int32)
+  indices += math_ops.cast(indices >= 0, indices.dtype)
   keep_dims = pfor_input.get_attr("keep_dims")
   return wrap(op_func(t, indices, keepdims=keep_dims), True)
 
@@ -2547,7 +2547,7 @@ def _convert_cumfoo(pfor_input, _, op_func):
   t = pfor_input.stacked_input(0)
   axis = pfor_input.unstacked_input(1)
   # Shift positive indices by one to account for the extra dimension.
-  axis += math_ops.cast(axis >= 0, dtypes.int32)
+  axis += math_ops.cast(axis >= 0, axis.dtype)
   exclusive = pfor_input.get_attr("exclusive")
   reverse = pfor_input.get_attr("reverse")
   return wrap(op_func(t, axis, exclusive=exclusive, reverse=reverse), True)
@@ -3064,6 +3064,7 @@ def _convert_multinomial(pfor_input):
 
 
 @RegisterPFor("StatelessMultinomial")
+@RegisterPFor("StatelessParameterizedTruncatedNormal")
 @RegisterPFor("StatelessRandomBinomial")
 @RegisterPFor("StatelessRandomGammaV2")
 @RegisterPFor("StatelessRandomNormal")

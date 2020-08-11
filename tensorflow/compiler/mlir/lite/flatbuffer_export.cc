@@ -149,6 +149,9 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
       if (ftype && ftype.isF32()) {
         return tflite::TensorType_COMPLEX64;
       }
+      if (ftype && ftype.isF64()) {
+        return tflite::TensorType_COMPLEX128;
+      }
       return Status(error::INVALID_ARGUMENT, "Unsupported type");
     }
     case mlir::StandardTypes::Integer: {
@@ -1193,22 +1196,35 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     if (IsConst(&inst)) continue;
 
     // Fetch operand and result tensor indices.
-    std::vector<int32_t> operands;
-    operands.reserve(inst.getNumOperands());
-    for (auto operand : inst.getOperands()) {
-      if (operand.getType().isa<NoneType>())
-        operands.push_back(kTfLiteOptionalTensor);
-      else
-        operands.push_back(tensor_index_map.lookup(operand));
-    }
     std::vector<int32_t> results;
     results.reserve(inst.getNumOperands());
     for (auto result : inst.getResults()) {
       results.push_back(tensor_index_map.lookup(result));
     }
+    Operation* real_inst = &inst;
+    // CustomTfOp is just a wrapper around a TF op, we export the custom Op
+    // not the wrapper, so we fetch the op from the region.
+    if (auto custom_op = dyn_cast<mlir::TFL::CustomTfOp>(inst)) {
+      // If we have custom op with a region, then use the first op in the
+      // region, if it exists, otherwise just use params for custom op.
+      if (!custom_op.body().empty()) {
+        real_inst = &custom_op.body().front().front();
+      } else {
+        module_.emitError(
+            "Invalid CustomTfOp: Custom TF Op have empty region.");
+      }
+    }
+    std::vector<int32_t> operands;
+    operands.reserve(real_inst->getNumOperands());
+    for (auto operand : real_inst->getOperands()) {
+      if (operand.getType().isa<NoneType>())
+        operands.push_back(kTfLiteOptionalTensor);
+      else
+        operands.push_back(tensor_index_map.lookup(operand));
+    }
 
     if (auto tfl_operator =
-            BuildOperator(&inst, operands, results, intermediates))
+            BuildOperator(real_inst, operands, results, intermediates))
       operators.push_back(*tfl_operator);
     else
       failed_once = true;
@@ -1402,7 +1418,7 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
     } else {
       auto segments = dim_metadata.segments();
       std::vector<int> vector_segments(segments.size(), 0);
-      for (int j = 0; j < segments.size(); j++) {
+      for (int j = 0, end = segments.size(); j < end; j++) {
         vector_segments[j] = segments[j].dyn_cast<mlir::IntegerAttr>().getInt();
       }
       tflite::SparseIndexVector segments_type;
@@ -1434,7 +1450,7 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
       auto indices = dim_metadata.indices();
       std::vector<int> vector_indices(indices.size(), 0);
       int max_of_indices = 0;
-      for (int j = 0; j < indices.size(); j++) {
+      for (int j = 0, end = indices.size(); j < end; j++) {
         vector_indices[j] = indices[j].dyn_cast<mlir::IntegerAttr>().getInt();
         if (vector_indices[j] > max_of_indices) {
           max_of_indices = vector_indices[j];

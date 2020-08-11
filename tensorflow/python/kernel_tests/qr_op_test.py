@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -48,7 +49,7 @@ class QrOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testWrongDimensions(self):
-    # The input to svd should be a tensor of at least rank 2.
+    # The input to qr should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
     with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
                                 "rank.* 2.*0"):
@@ -170,7 +171,23 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
 
 
 class QrGradOpTest(test.TestCase):
-  pass
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testNotImplementedCheck(self):
+    # Test that the correct message is issued
+    np.random.seed(42)
+    matrix = constant_op.constant(
+        np.random.uniform(low=-1.0, high=1.0, size=(5, 2)).astype(np.float32))
+
+    def _NoGrad(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        ret = linalg_ops.qr(x, full_matrices=True)
+      return tape.gradient(ret, x)
+
+    m = r"QrGrad not implemented when nrows > ncols and full_matrices is true."
+    with self.assertRaisesRegex(NotImplementedError, m):
+      _NoGrad(matrix)
 
 
 def _GetQrGradOpTest(dtype_, shape_, full_matrices_):

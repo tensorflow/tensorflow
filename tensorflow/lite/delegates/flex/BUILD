@@ -58,12 +58,14 @@ tf_cc_test(
 
 # Define the standard flex delegate library, that pulls in the standard set
 # of TensorFlow ops and kernels, using tflite_flex_cc_library with no
-# portable_tensorflow_lib parameter. Custom flex delegate can be defined with
-# tflite_flex_cc_library if the parameter portable_tensorflow_lib
-# is provided. Ex:
+# models parameter. Custom flex delegate can be defined with
+# tflite_flex_cc_library if the parameter models is provided. Tensorflow
+# user-provided ops could also be supported by passing to additional_deps.
+# Ex:
 # tflite_flex_cc_library(
-#   name = "sample",
-#   portable_tensorflow_lib = custom_portable_tensorflow_lib,
+#   name = "sample_delegate",
+#   models = ["model1.tflite", "model2.tflite"],
+#   additional_deps = ["your_custom_ops_lib"],
 # )
 tflite_flex_cc_library(
     name = "delegate",
@@ -92,6 +94,7 @@ cc_library(
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite:kernel_api",
+        "//tensorflow/lite:macros",
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite:string",
         "//tensorflow/lite:string_util",
@@ -230,11 +233,46 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "whitelisted_flex_ops_lib",
+    name = "allowlisted_flex_ops_lib",
     srcs = [
         "allowlisted_flex_ops.cc",
     ],
     hdrs = [
         "allowlisted_flex_ops.h",
+        "allowlisted_flex_ops_internal.h",
     ],
+    deps = select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
+)
+
+tf_cc_test(
+    name = "allowlisted_flex_ops_test",
+    size = "small",
+    srcs = [
+        "allowlisted_flex_ops_test.cc",
+    ],
+    deps = [
+        ":delegate",
+        ":allowlisted_flex_ops_lib",
+        "@com_google_googletest//:gtest",
+    ] + select({
+        "//tensorflow:android": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//tensorflow:ios": [
+            "//tensorflow/core:portable_tensorflow_lib_lite",
+        ],
+        "//conditions:default": [
+            "//tensorflow/core:framework",
+        ],
+    }),
 )

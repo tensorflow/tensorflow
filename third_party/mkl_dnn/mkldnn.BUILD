@@ -3,7 +3,7 @@ exports_files(["LICENSE"])
 load(
     "@org_tensorflow//third_party/mkl_dnn:build_defs.bzl",
     "if_mkl_open_source_only",
-    "if_mkl_v1_open_source_only",
+    "if_mkl_v1",
 )
 load(
     "@org_tensorflow//third_party:common.bzl",
@@ -60,7 +60,7 @@ cc_library(
         "src/cpu/**/*.cpp",
         "src/cpu/**/*.hpp",
         "src/cpu/xbyak/*.h",
-    ]) + if_mkl_v1_open_source_only([
+    ]) + if_mkl_v1([
         ":mkldnn_config_h",
     ]) + [":mkldnn_version_h"],
     hdrs = glob(["include/*"]),
@@ -71,7 +71,7 @@ cc_library(
     ] + if_mkl_open_source_only([
         "-UUSE_MKL",
         "-UUSE_CBLAS",
-    ]) + if_mkl_v1_open_source_only([
+    ]) + if_mkl_v1([
         "-UUSE_MKL",
         "-UUSE_CBLAS",
     ]) + select({

@@ -37,7 +37,7 @@ absl::Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only,
                                  const_cast<void*>(data), &error_code);
   if (!buffer) {
     return absl::UnknownError(
-        absl::StrCat("Failed to allocate device memory with clCreateBuffer",
+        absl::StrCat("Failed to allocate device memory (clCreateBuffer): ",
                      CLErrorCodeToString(error_code)));
   }
 
@@ -131,8 +131,6 @@ Buffer& Buffer::operator=(Buffer&& buffer) {
   }
   return *this;
 }
-
-Buffer::~Buffer() { Release(); }
 
 void Buffer::Release() {
   if (buffer_) {

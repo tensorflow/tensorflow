@@ -258,7 +258,7 @@ tf_module {
   }
   member {
     name: "Tensor"
-    mtype: "<class \'typing.GenericMeta\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "TensorArray"
@@ -655,6 +655,10 @@ tf_module {
   member {
     name: "truncated_normal_initializer"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "types"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "uint16"
@@ -1338,7 +1342,7 @@ tf_module {
   }
   member_method {
     name: "function"
-    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_relax_shapes\', \'experimental_compile\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'func\', \'input_signature\', \'autograph\', \'experimental_implements\', \'experimental_autograph_options\', \'experimental_relax_shapes\', \'experimental_compile\', \'experimental_follow_type_hints\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'True\', \'None\', \'None\', \'False\', \'None\', \'None\'], "
   }
   member_method {
     name: "gather"
@@ -1730,7 +1734,7 @@ tf_module {
   }
   member_method {
     name: "nondifferentiable_batch_function"
-    argspec: "args=[\'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'allowed_batch_sizes\', \'max_enqueued_batches\', \'autograph\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\'], "
+    argspec: "args=[\'num_batch_threads\', \'max_batch_size\', \'batch_timeout_micros\', \'allowed_batch_sizes\', \'max_enqueued_batches\', \'autograph\', \'enable_large_batch_splitting\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'True\'], "
   }
   member_method {
     name: "norm"

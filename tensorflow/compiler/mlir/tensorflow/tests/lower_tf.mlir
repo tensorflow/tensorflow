@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -test-tf-lower-tf | FileCheck %s
+// RUN: tf-opt %s -test-tf-lower-tf | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: invert_permutation
 func @invert_permutation(%arg0: tensor<5xi32>) -> tensor<5xi32> {
@@ -353,12 +353,41 @@ func @ZerosLike_variant(%arg0: tensor<!tf.variant<tensor<2xi32>>>) -> tensor<!tf
   return %0 : tensor<!tf.variant<tensor<2xi32>>>
 }
 
-// CHECK-LABEL: func @addN
-func @addN(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<*xf32> {
+// CHECK-LABEL: func @addN_2
+func @addN_2(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
+  // return %[[SUM0]]
+  %0 = "tf.AddN"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @addN_3
+func @addN_3(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
   // CHECK: %[[SUM1:.*]] = "tf.AddV2"(%[[SUM0]], %arg2)
   // return %[[SUM1]]
   %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @addN_4
+func @addN_4(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
+  // CHECK: %[[SUM1:.*]] = "tf.AddV2"(%arg2, %arg3)
+  // CHECK: %[[SUM2:.*]] = "tf.AddV2"(%[[SUM0]], %[[SUM1]])
+  // return %[[SUM2]]
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2, %arg3) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @addN_5
+func @addN_5(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>, %arg4: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
+  // CHECK: %[[SUM1:.*]] = "tf.AddV2"(%arg2, %arg3)
+  // CHECK: %[[SUM2:.*]] = "tf.AddV2"(%[[SUM0]], %[[SUM1]])
+  // CHECK: %[[SUM3:.*]] = "tf.AddV2"(%[[SUM2]], %arg4)
+  // return %[[SUM3]]
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -371,9 +400,7 @@ func @addN_variant(%arg0: tensor<!tf.variant<tensor<2xf32>>>, %arg1: tensor<!tf.
 
 // CHECK-LABEL: func @DynamicStitch_simple
 func @DynamicStitch_simple(%arg0: tensor<2x2xf32>) -> tensor<2x2xf32> {
-  // CHECK-DAG: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[-1, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
-  // CHECK-DAG: %[[INP:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<2x2xf32>, tensor<2xi64>) -> tensor<2x2xf32>
-  // CHECK-DAG: %[[ITEMS:.*]]:2 = "tf.Unpack"(%[[INP]]) {axis = 0 : i64} : (tensor<2x2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+  // CHECK-DAG: %[[ITEMS:.*]]:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2x2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
   // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
   // CHECK-DAG: %[[RESULT:.*]] = "tf.ConcatV2"(%[[ITEMS]]#1, %[[ITEMS]]#0, %[[AXIS]]) : (tensor<2xf32>, tensor<2xf32>, tensor<i64>) -> tensor<2x2xf32>
   // CHECK: return %[[RESULT]]
@@ -411,9 +438,7 @@ func @DynamicStitch_uint8(%arg0: tensor<2x2xui8>) -> tensor<2x2xui8> {
 
 // CHECK-LABEL: func @DynamicStitch_scalar_item
 func @DynamicStitch_scalar_item(%arg0: tensor<2xf32>) -> tensor<2xf32> {
-  // CHECK-DAG: %[[SHAPE:.*]] = "tf.Const"() {value = dense<-1> : tensor<1xi64>} : () -> tensor<1xi64>
-  // CHECK-DAG: %[[INP:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<2xf32>, tensor<1xi64>) -> tensor<2xf32>
-  // CHECK-DAG: %[[ITEMS]]:2 = "tf.Unpack"(%[[INP]]) {axis = 0 : i64} : (tensor<2xf32>) -> (tensor<f32>, tensor<f32>)
+  // CHECK-DAG: %[[ITEMS]]:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2xf32>) -> (tensor<f32>, tensor<f32>)
   // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
   // CHECK-DAG: %[[RESULT]] = "tf.ConcatV2"(%[[ITEMS]]#1, %[[ITEMS]]#0, %[[AXIS]]) : (tensor<f32>, tensor<f32>, tensor<i64>) -> tensor<2xf32>
   // CHECK: return %[[RESULT]]
@@ -425,9 +450,7 @@ func @DynamicStitch_scalar_item(%arg0: tensor<2xf32>) -> tensor<2xf32> {
 
 // CHECK-LABEL: func @DynamicStitch_matrix_item
 func @DynamicStitch_matrix_item(%arg0: tensor<2x2x2xf32>) -> tensor<2x2x2xf32> {
-  // CHECK-DAG: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[-1, 2, 2]> : tensor<3xi64>} : () -> tensor<3xi64>
-  // CHECK-DAG: %[[INP:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<2x2x2xf32>, tensor<3xi64>) -> tensor<2x2x2xf32>
-  // CHECK-DAG: %[[ITEMS:.*]]:2 = "tf.Unpack"(%[[INP]]) {axis = 0 : i64} : (tensor<2x2x2xf32>) -> (tensor<2x2xf32>, tensor<2x2xf32>)
+  // CHECK-DAG: %[[ITEMS:.*]]:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2x2x2xf32>) -> (tensor<2x2xf32>, tensor<2x2xf32>)
   // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
   // CHECK-DAG: %[[RESULT:.*]] = "tf.ConcatV2"(%[[ITEMS]]#1, %[[ITEMS]]#0, %[[AXIS]]) : (tensor<2x2xf32>, tensor<2x2xf32>, tensor<i64>) -> tensor<2x2x2xf32>
   // CHECK: return %[[RESULT]]
@@ -446,9 +469,7 @@ func @DynamicStitch_dynamic(%arg0: tensor<*xi32>, %arg1: tensor<*xf32>) -> tenso
 
 // CHECK-LABEL: func @DynamicStitch_duplicates
 func @DynamicStitch_duplicates(%arg0: tensor<2x2xf32>) -> tensor<1x2xf32> {
-  // CHECK-DAG: %[[SHAPE:.*]] = "tf.Const"() {value = dense<[-1, 2]> : tensor<2xi64>} : () -> tensor<2xi64>
-  // CHECK-DAG: %[[INP:.*]] = "tf.Reshape"(%arg0, %[[SHAPE]]) : (tensor<2x2xf32>, tensor<2xi64>) -> tensor<2x2xf32>
-  // CHECK-DAG: %[[ITEMS:.*]]:2 = "tf.Unpack"(%[[INP]]) {axis = 0 : i64} : (tensor<2x2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+  // CHECK-DAG: %[[ITEMS:.*]]:2 = "tf.Unpack"(%arg0) {axis = 0 : i64} : (tensor<2x2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
   // CHECK-DAG: %[[AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>} : () -> tensor<i64>
   // CHECK-DAG: %[[RESULT:.*]] = "tf.ConcatV2"(%[[ITEMS]]#1, %[[AXIS]]) : (tensor<2xf32>, tensor<i64>) -> tensor<1x2xf32>
   // CHECK: return %[[RESULT]]

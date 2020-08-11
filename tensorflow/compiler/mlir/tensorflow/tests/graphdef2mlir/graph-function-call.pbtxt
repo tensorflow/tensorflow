@@ -34,6 +34,12 @@ node {
       b: true
     }
   }
+  attr {
+    key: "_tpu_replicate"
+    value {
+      s: "cluster"
+    }
+  }
 }
 library {
   function {
@@ -62,4 +68,4 @@ library {
 }
 
 # CHECK: func @main
-# CHECK: "tf.LegacyCall"(%arg0) {_disable_call_shape_inference = true, f = @test_func_name0}
+# CHECK: "tf.LegacyCall"(%arg0) {_disable_call_shape_inference = true, _tpu_replicate = "cluster", device = "", f = @test_func_name0}

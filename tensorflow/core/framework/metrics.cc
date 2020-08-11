@@ -80,6 +80,11 @@ auto* tf_data_bytes_fetched_counter = monitoring::Counter<0>::New(
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
 
+auto* tf_data_experiment_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment",
+    "The number of times tf.data experiment is applied to input pipelines.",
+    "name");
+
 auto* tf_data_fingerprint_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
 
@@ -148,6 +153,11 @@ auto* mlir_import_failure_count = monitoring::Counter<0>::New(
     "/tensorflow/mlir/import_failure_count",
     "The number of jobs that failed during mlir import or verification.");
 
+auto* bfc_allocator_delay =
+    monitoring::Counter<0>::New("/tensorflow/core/bfc_allocator_delay",
+                                "The total time spent running each graph "
+                                "optimization pass in microseconds.");
+
 }  // namespace
 
 void RecordTFDataAutotune(const string& name) {
@@ -172,6 +182,10 @@ monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {
 
 void RecordTFDataBytesFetched(int64 num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
+}
+
+void RecordTFDataExperiment(const string& name) {
+  tf_data_experiment_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordTFDataFingerprint(const string& name) {
@@ -271,6 +285,13 @@ void UpdateXlaCompilationTime(const uint64 compilation_time_usecs) {
         xla_compilation_time_usecs->GetCell();
     xla_compilations_cell->IncrementBy(1);
     xla_compilation_time_usecs_cell->IncrementBy(compilation_time_usecs);
+  }
+}
+
+void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs) {
+  static auto* bfc_allocator_delay_cell = bfc_allocator_delay->GetCell();
+  if (delay_usecs > 0) {
+    bfc_allocator_delay_cell->IncrementBy(delay_usecs);
   }
 }
 

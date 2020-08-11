@@ -28,7 +28,6 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
@@ -71,9 +70,6 @@ try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
 except ImportError:
   issparse = None
-
-_keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras/model_v1',
-                                        'keras model v1 usage', 'method')
 
 
 class Model(training_lib.Model):
@@ -142,7 +138,7 @@ class Model(training_lib.Model):
 
   def __init__(self, *args, **kwargs):
     super(Model, self).__init__(*args, **kwargs)
-    _keras_api_gauge.get_cell('model_v1').set(True)
+    base_layer.keras_api_gauge.get_cell('model v1').set(True)
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
@@ -302,6 +298,7 @@ class Model(training_lib.Model):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
+    self._assert_built_as_v1()
     self._run_eagerly = kwargs.pop('run_eagerly', None)
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
@@ -412,7 +409,7 @@ class Model(training_lib.Model):
       # time the model gets called on training data.
       return
     self._is_compiled = True
-    _keras_api_gauge.get_cell('compile_v1').set(True)
+    base_layer.keras_api_gauge.get_cell('compile_v1').set(True)
 
     # Prepare list of loss functions, same size of model outputs.
     self.loss_functions = training_utils.prepare_loss_functions(
@@ -547,7 +544,7 @@ class Model(training_lib.Model):
       if self._run_eagerly is None:
         # Respect `tf.config.run_functions_eagerly` unless
         # `run_eagerly` was explicitly passed to `compile`.
-        return def_function.RUN_FUNCTIONS_EAGERLY
+        return def_function.functions_run_eagerly()
       else:
         return self._run_eagerly
     else:
@@ -772,7 +769,8 @@ class Model(training_lib.Model):
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
-    _keras_api_gauge.get_cell('fit_v1').set(True)
+    self._assert_built_as_v1()
+    base_layer.keras_api_gauge.get_cell('fit_v1').set(True)
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
@@ -892,7 +890,8 @@ class Model(training_lib.Model):
     Raises:
         ValueError: in case of invalid arguments.
     """
-    _keras_api_gauge.get_cell('evaluate_v1').set(True)
+    self._assert_built_as_v1()
+    base_layer.keras_api_gauge.get_cell('evaluate_v1').set(True)
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
 
@@ -971,7 +970,8 @@ class Model(training_lib.Model):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
-    _keras_api_gauge.get_cell('predict_v1').set(True)
+    self._assert_built_as_v1()
+    base_layer.keras_api_gauge.get_cell('predict_v1').set(True)
     self._check_call_args('predict')
 
     func = self._select_training_loop(x)

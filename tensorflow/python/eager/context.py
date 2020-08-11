@@ -756,6 +756,21 @@ class Context(object):
     self._collective_use_nccl_communication = use_nccl_communication
     self._collective_device_filters = device_filters
 
+  def abort_collective_ops(self, code, message):
+    """Abort the collective ops.
+
+    This is intended to be used when a peer failure is detected, which allows
+    the user to handle the case instead of hanging. This aborts all on-going
+    collectives. After all subsequent collectives error immediately. The only
+    way to recovery now is to restart the program.
+
+    Args:
+      code: a `tf.errors` error code.
+      message: a string. The error message.
+    """
+    self.ensure_initialized()
+    pywrap_tfe.TFE_AbortCollectiveOps(self._handle, code, message)
+
   @property
   def _handle(self):
     if self._context_handle is None:
@@ -1397,6 +1412,12 @@ class Context(object):
           "Visible devices cannot be modified after being initialized")
 
     self._visible_device_list = visible_device_list
+
+  def get_total_memory_usage(self, dev):
+    """Returns total memory usage in bytes for the current device."""
+    self._initialize_physical_devices()
+    self.ensure_initialized()
+    return pywrap_tfe.TFE_GetTotalMemoryUsage(self._context_handle, dev)
 
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
@@ -2295,7 +2316,7 @@ def async_scope():
         train_step_fn()
   except tf.errors.OutOfRangeError:
     tf.experimental.async_clear_error()
-  logging.info('loss =', loss.numpy())
+  logging.info('loss = %s', loss.numpy())
   ```
 
   Yields:
@@ -2349,7 +2370,7 @@ def async_clear_error():
     except tf.errors.OutOfRangeError:
       tf.experimental.async_clear_error()
       break
-  logging.info('loss =', loss.numpy())
+  logging.info('loss = %s', loss.numpy())
   ```
   """
   context().clear_executor_errors()

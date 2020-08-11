@@ -591,7 +591,7 @@ def shape_v2(input, out_type=dtypes.int32, name=None):
 
   >>> a = tf.keras.layers.Input((None, 10))
   >>> tf.shape(a)
-  <tf.Tensor ... shape=(3,) dtype=int32>
+  <... shape=(3,) dtype=int32...>
 
   In these cases, using `tf.Tensor.shape` will return more informative results.
 
@@ -955,6 +955,8 @@ def _slice_helper(tensor, slice_spec, var=None):
     TypeError: If the slice indices aren't int, slice, ellipsis,
       tf.newaxis or scalar int32/int64 tensors.
   """
+  tensor = ops.convert_to_tensor(tensor)
+
   if isinstance(slice_spec, bool) or \
   (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
   (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool):
@@ -2804,6 +2806,8 @@ def zeros(shape, dtype=dtypes.float32, name=None):
       zero = False
     elif dtype == dtypes.string:
       zero = ""
+    elif dtype.is_quantized:
+      zero = np.zeros([]).astype(dtype.as_numpy_dtype)
     else:
       zero = 0
 
@@ -3053,7 +3057,12 @@ def ones(shape, dtype=dtypes.float32, name=None):
   """
   dtype = dtypes.as_dtype(dtype).base_dtype
   with ops.name_scope(name, "ones", [shape]) as name:
-    one = True if dtype == dtypes.bool else 1
+    if dtype == dtypes.bool:
+      one = True
+    elif dtype.is_quantized:
+      one = np.ones([]).astype(dtype.as_numpy_dtype)
+    else:
+      one = 1
     if not isinstance(shape, ops.Tensor):
       try:
         if not context.executing_eagerly():

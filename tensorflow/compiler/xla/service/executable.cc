@@ -93,7 +93,8 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteOnStream(
 
 static ExecutionInput MakeMaybeOwningDeviceMemoryTree(
     const ShapedBuffer& shaped_buffer) {
-  ExecutionInput result(shaped_buffer.on_device_shape());
+  ExecutionInput result(shaped_buffer.on_device_shape(),
+                        shaped_buffer.on_host_shape());
   shaped_buffer.buffers().ForEachElement(
       [&](const ShapeIndex& index, const se::DeviceMemoryBase& mem) {
         result.SetBuffer(index, MaybeOwningDeviceMemory(mem));
@@ -105,10 +106,10 @@ StatusOr<ScopedShapedBuffer> Executable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
     absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
-  std::vector<ExecutionInput> args(arguments.size());
-  auto out_it = args.begin();
+  std::vector<ExecutionInput> args;
+  args.reserve(arguments.size());
   for (const ShapedBuffer* arg : arguments) {
-    *out_it++ = MakeMaybeOwningDeviceMemoryTree(*arg);
+    args.emplace_back(MakeMaybeOwningDeviceMemoryTree(*arg));
   }
   TF_ASSIGN_OR_RETURN(ExecutionOutput out,
                       ExecuteAsyncOnStream(run_options, std::move(args),

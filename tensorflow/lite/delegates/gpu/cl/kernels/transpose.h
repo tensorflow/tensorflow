@@ -26,11 +26,8 @@ namespace cl {
 
 class Transpose : public GPUOperation {
  public:
-  Transpose(const OperationDef& definition, const TransposeAttributes& attr)
-      : GPUOperation(definition), attr_(attr), work_group_size_(8, 4, 1) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
+  Transpose(const OperationDef& definition, const TransposeAttributes& attr);
+  int3 GetGridSize() const override;
 
   // Move only
   Transpose(Transpose&& operation);
@@ -39,12 +36,9 @@ class Transpose : public GPUOperation {
   Transpose& operator=(const Transpose&) = delete;
 
  private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
+  std::string GetTransposeCode(const OperationDef& op_def,
+                               const TransposeAttributes& attr);
   TransposeAttributes attr_;
-  CLKernel kernel_;
-  int3 work_group_size_;
 };
 
 Transpose CreateTranspose(const OperationDef& definition,

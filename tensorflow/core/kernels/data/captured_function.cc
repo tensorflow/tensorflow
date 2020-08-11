@@ -110,6 +110,18 @@ class SimpleStepStatsCollector : public StepStatsCollectorInterface {
   int64 processing_time_ TF_GUARDED_BY(mu_) = 0;
 };
 
+Status GetCapturedInput(const CapturedFunction* const func, int index,
+                        const Tensor** out) {
+  if (TF_PREDICT_FALSE(index >= func->captured_inputs().size())) {
+    return errors::OutOfRange(
+        "Out of range access to captured inputs for function ",
+        func->func().name(), ". Index: ", index,
+        ". Num captured inputs: ", func->captured_inputs().size());
+  }
+  *out = &func->captured_inputs()[index];
+  return Status::OK();
+}
+
 Status RunShortCircuit(const ShortCircuitInfo& info,
                        const std::vector<Tensor>& args,
                        const CapturedFunction* const func,
@@ -121,7 +133,10 @@ Status RunShortCircuit(const ShortCircuitInfo& info,
     if (info.indices[i] < num_args) {
       rets->push_back(args[info.indices[i]]);
     } else {
-      rets->push_back(func->captured_inputs()[info.indices[i] - num_args]);
+      const Tensor* captured_input;
+      TF_RETURN_IF_ERROR(
+          GetCapturedInput(func, info.indices[i] - num_args, &captured_input));
+      rets->push_back(*captured_input);
     }
   }
   return Status::OK();
@@ -141,7 +156,10 @@ Status RunShortCircuit(const ShortCircuitInfo& info, std::vector<Tensor>&& args,
         rets->push_back(args[info.indices[i]]);
       }
     } else {
-      rets->push_back(func->captured_inputs()[info.indices[i] - num_args]);
+      const Tensor* captured_input;
+      TF_RETURN_IF_ERROR(
+          GetCapturedInput(func, info.indices[i] - num_args, &captured_input));
+      rets->push_back(*captured_input);
     }
   }
   return Status::OK();
@@ -198,7 +216,7 @@ Status CreateShortCircuitInfo(OpKernelConstruction* ctx,
       last_use[indices[i]] = i;
     }
     can_move.resize(indices.size());
-    for (int i = 0, iter_limit = indices.size(); i < iter_limit; ++i) {
+    for (int i = 0, end = indices.size(); i < end; ++i) {
       can_move[i] = last_use[indices[i]] == i;
     }
   }
@@ -645,8 +663,7 @@ Status CapturedFunction::Instantiate(
       inst_opts.composite_devices[it.first] = &it.second;
     }
 
-    for (int i = 0, iter_limit = fdef->signature().output_arg_size();
-         i < iter_limit; ++i) {
+    for (int i = 0, end = fdef->signature().output_arg_size(); i < end; ++i) {
       inst_opts.output_devices.push_back(inst_opts.target);
     }
 

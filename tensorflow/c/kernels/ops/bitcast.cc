@@ -22,8 +22,19 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 
 static void ComputeNewShape(TF_ShapeInferenceContext* ctx,
-                            TF_ShapeHandle* shape, size_t input_type_size,
-                            size_t output_type_size, TF_Status* status) {
+                            TF_ShapeHandle* shape, TF_DataType input_type,
+                            TF_DataType output_type, TF_Status* status) {
+  size_t input_type_size = TF_DataTypeSize(input_type);
+  size_t output_type_size = TF_DataTypeSize(output_type);
+
+  if (input_type_size == 0 || output_type_size == 0) {
+    std::ostringstream err;
+    err << "Cannot bitcast type " << input_type << " to " << output_type
+        << " because one of the type sizes is zero";
+    TF_SetStatus(status, TF_INVALID_ARGUMENT, err.str().c_str());
+    return;
+  }
+
   TF_SetStatus(status, TF_OK, "");
   if (input_type_size < output_type_size) {
     TF_ShapeInferenceContextWithRankAtLeast(ctx, shape, 1, shape, status);
@@ -37,9 +48,9 @@ static void ComputeNewShape(TF_ShapeInferenceContext* ctx,
         TF_ShapeInferenceContextSubshape(ctx, shape, 0, -1, shape, status);
       } else {
         std::ostringstream err;
-        err << "Cannot bitcast due to shape. "
-            << TF_DimensionHandleValue(last_dim) << " does not match "
-            << divisor_val;
+        err << "Cannot bitcast from " << input_type << " to " << output_type
+            << " due to shape. " << TF_DimensionHandleValue(last_dim)
+            << " does not match " << divisor_val;
         TF_SetStatus(status, TF_INVALID_ARGUMENT, err.str().c_str());
       }
       TF_DeleteDimensionHandle(last_dim);
@@ -78,23 +89,8 @@ static void bitcast_shape_inference_fn(TF_ShapeInferenceContext* ctx,
     TF_ShapeInferenceContext_GetAttrType(ctx, "type", &output_type, status);
   }
 
-  size_t input_type_size;
-  size_t output_type_size;
-
   if (TF_GetCode(status) == TF_OK) {
-    input_type_size = TF_DataTypeSize(input_type);
-    output_type_size = TF_DataTypeSize(output_type);
-
-    if (input_type_size == 0 || output_type_size == 0) {
-      std::ostringstream err;
-      err << "Cannot bitcast type " << input_type << " to " << output_type
-          << " because one of the type sizes is zero";
-      TF_SetStatus(status, TF_INVALID_ARGUMENT, err.str().c_str());
-    }
-  }
-
-  if (TF_GetCode(status) == TF_OK) {
-    ComputeNewShape(ctx, result, input_type_size, output_type_size, status);
+    ComputeNewShape(ctx, result, input_type, output_type, status);
   }
 
   if (TF_GetCode(status) == TF_OK) {

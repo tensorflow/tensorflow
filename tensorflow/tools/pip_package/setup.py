@@ -54,6 +54,7 @@ _VERSION = '2.4.0'
 REQUIRED_PACKAGES = [
     'absl-py >= 0.7.0',
     'astunparse == 1.6.3',
+    'flatbuffers >= 1.12',
     'gast == 0.3.3',
     'google_pasta >= 0.1.8',
     'h5py >= 2.10.0, < 2.11.0',
@@ -63,14 +64,12 @@ REQUIRED_PACKAGES = [
     'numpy >= 1.16.0, < 1.19.0',
     'opt_einsum >= 2.3.2',
     'protobuf >= 3.9.2',
-    'tensorboard >= 2.2.0, < 2.3.0',
-    'tensorflow_estimator >= 2.2.0, < 2.3.0',
+    'tensorboard >= 2.3.0, < 3',
+    'tensorflow_estimator >= 2.3.0, < 2.4.0',
     'termcolor >= 1.1.0',
     'wrapt >= 1.11.1',
     'wheel >= 0.26',
     'six >= 1.12.0',
-    # scipy < 1.4.1 causes segfaults due to pybind11
-    'scipy == 1.4.1',
 ]
 
 if sys.byteorder == 'little':
@@ -90,7 +89,7 @@ if '--project_name' in sys.argv:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.3.0a0, < 2.4.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 2.4.0a0, < 3.0.0a0'
     elif 'tensorflow_estimator' in pkg:
       REQUIRED_PACKAGES[i] = 'tf-estimator-nightly'
 

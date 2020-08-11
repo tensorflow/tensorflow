@@ -37,8 +37,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
 from tensorflow.python.util import nest
+
+
+newaxis = np_export.np_export_constant(__name__, 'newaxis', np.newaxis)
 
 
 @np_utils.np_doc('empty')
@@ -378,11 +382,11 @@ def _promote_dtype(*arrays):
 
 def _promote_dtype_binary(t1, t2):
   dtype = np_utils._result_type_binary(t1, t2)  # pylint: disable=protected-access
-  def _fast_asarray(a):
-    if isinstance(a, np_arrays.ndarray) and dtype == a.dtype:
-      return a
-    return _array_internal(a, dtype=dtype, copy=False)
-  return _fast_asarray(t1), _fast_asarray(t2)
+  if not(isinstance(t1, np_arrays.ndarray) and dtype == t1.dtype):
+    t1 = _array_internal(t1, dtype=dtype, copy=False)
+  if not(isinstance(t2, np_arrays.ndarray) and dtype == t2.dtype):
+    t2 = _array_internal(t2, dtype=dtype, copy=False)
+  return t1, t2
 
 
 @np_utils.np_doc('all')
@@ -954,13 +958,14 @@ def select(condlist, choicelist, default=0):  # pylint: disable=missing-docstrin
   return output
 
 
-@np_utils.np_doc('shape')
+@np_utils.np_doc('shape', link=np_utils.Link(
+    'https://numpy.org/doc/1.18/reference/generated/numpy.shape.html'))
 def shape(a):
   a = asarray(a)
   return a.shape
 
 
-@np_utils.np_doc('ndim')
+@np_utils.np_doc('ndim', link=np_utils.NoLink())
 def ndim(a):
   a = asarray(a)
   return a.ndim

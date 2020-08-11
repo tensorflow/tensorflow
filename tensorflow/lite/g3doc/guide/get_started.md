@@ -67,6 +67,10 @@ If you have designed and trained your own TensorFlow model, or you have trained
 a model obtained from another source, you must
 [convert it to the TensorFlow Lite format](#2_convert_the_model_format).
 
+You can also try [The TensorFlow Lite Model Maker library](model_maker.md) which
+simplifies the process of training a TensorFlow Lite model using custom
+datasets.
+
 ## 2. Convert the model
 
 <a id="2_convert_the_model_format"></a>

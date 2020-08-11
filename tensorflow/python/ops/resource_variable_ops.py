@@ -23,6 +23,8 @@ import contextlib
 import functools
 import weakref
 
+import numpy as np
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import _pywrap_utils
@@ -473,6 +475,23 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
         yield
     else:
       yield
+
+  def __array__(self):
+    """Allows direct conversion to a numpy array.
+
+    >>> np.array(tf.Variable([1.0]))
+    array([1.], dtype=float32)
+
+    Returns:
+      The variable value as a numpy array.
+    """
+    # You can't return `self.numpy()` here because for scalars
+    # that raises:
+    #     ValueError: object __array__ method not producing an array
+    # Even `self.read_value().__array__()` and `self.read_value()._numpy()` give
+    # the same error. The `EagerTensor` class must be doing something behind the
+    # scenes to make `np.array(tf.constant(1))` work.
+    return np.asarray(self.numpy())
 
   def __nonzero__(self):
     return self.__bool__()

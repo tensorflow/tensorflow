@@ -46,6 +46,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
+from tensorflow.python.platform import sysconfig
 from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
@@ -59,8 +60,8 @@ def _input(shape):
 def _weight(shape):
   """Generates a weight of a given shape."""
   # Note that the lambda is needed to allow construction inside loops.
-  return variables.Variable(
-      lambda: init_ops.glorot_uniform_initializer(seed=0)(shape))
+  return variables.Variable(lambda: init_ops.glorot_uniform_initializer(seed=0)
+                            (shape))
 
 
 def _bias(shape):
@@ -138,6 +139,11 @@ def _conv_pool(x):
   return h_pool2
 
 
+def _depthwise_conv2d(x, w):
+  """Returns a 2d depthwise convolution layer with full stride."""
+  return nn.depthwise_conv2d(x, w, strides=[1, 1, 1, 1], padding='SAME')
+
+
 def _simple_loop(x, functor):
   """Simple loop whose body is provided by the functor."""
   init = (constant_op.constant(0), x)
@@ -204,11 +210,11 @@ def _make_node_with_color(color, input_tensor, name=None):
   if color == 'w':  # Allow node
     weights = _weight(input_tensor.get_shape().as_list())
     return math_ops.matmul(input_tensor, weights, name=name)
-  if color == 'g':  # Gray node
+  if color == 'g':  # Infer node
     return math_ops.add(input_tensor, 0.1, name=name)
   if color == 'c':  # Clear node
     return nn.relu(input_tensor, name=name)
-  if color == 'b':  # Black node
+  if color == 'b':  # Deny node
     return math_ops.pow(math_ops.pow(input_tensor, 2.), 0.5, name=name)
   raise ValueError('Invalid node color: ' + str(color))
 
@@ -371,8 +377,8 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
     The loop has different node colors in different sections of the graph. The
     arguments must be strings where each character represents the color of a
-    node in that section of the graph: w = allow, g = gray, c = clear,
-    b = black. CAPITALIZED characters indicate that the node is expected to be
+    node in that section of the graph: w = allow, g = infer, c = clear,
+    b = deny. CAPITALIZED characters indicate that the node is expected to be
     changed to DT_HALF during graph optimization.
 
     inp -> loop [ body ] -> out.
@@ -564,6 +570,43 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(num_to_f16, 4)
     self.assertEqual(num_to_fp32, 1)
     tol = 5e-3 if mode == 'mkl' else 1e-3
+    self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
+
+  # TODO(benbarsdell): This test has not been tried with MKL.
+  @parameterized.parameters(['cuda'])
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla('This test does not pass with XLA')
+  def test_depthwise_conv2d(self, mode):
+    """Test grad ops with depthwise convolution2d graph."""
+    self._maybe_skip(mode)
+    cudnn_version = tuple([
+        int(x) for x in sysconfig.get_build_info()['cudnn_version'].split('.')
+    ])
+    if cudnn_version < (8,):
+      # Depthwise conv2d ops are only enabled in auto_mixed_precision as of
+      # cuDNN v8.
+      self.skipTest('cuDNN version >= 8 required')
+    random_seed.set_random_seed(0)
+    x = _input([2, 8, 8, 1])
+    f = _weight([3, 3, 1, 4])
+    y = _depthwise_conv2d(x, f)
+    y = array_ops.identity(y)
+    optimizer = gradient_descent.GradientDescentOptimizer(learning_rate=0.01)
+    g = optimizer.compute_gradients(y, [x, f])
+    output = (y, g)
+
+    output_val_ref, output_val, cost_graph = self._run(mode, output)
+    node_map = _build_node_map(cost_graph.node)
+    self._assert_output_f16(mode, node_map, 'depthwise')
+    self._assert_output_f16(
+        mode, node_map,
+        'gradients/depthwise_grad/DepthwiseConv2dNativeBackpropInput')
+    self._assert_output_f16(
+        mode, node_map,
+        'gradients/depthwise_grad/DepthwiseConv2dNativeBackpropFilter')
+
+    output_val_ref, output_val, cost_graph = self._run(mode, output)
+    tol = 2e-3
     self.assertAllClose(output_val_ref, output_val, atol=tol, rtol=tol)
 
   @parameterized.parameters(['cuda', 'mkl'])

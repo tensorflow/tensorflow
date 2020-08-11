@@ -122,12 +122,13 @@ LocalExecutable::RunHelper(const absl::Span<const Shape* const> argument_shapes,
       executable_->module_config().entry_computation_layout();
 
   // Check argument number, shapes, and layouts.
-  if (argument_shapes.size() != computation_layout.parameter_count()) {
+  const int argument_shapes_size = argument_shapes.size();
+  if (argument_shapes_size != computation_layout.parameter_count()) {
     return InvalidArgument(
         "invalid number of arguments for computation: expected %d, got %u",
         computation_layout.parameter_count(), argument_shapes.size());
   }
-  for (int i = 0; i < argument_shapes.size(); ++i) {
+  for (int i = 0, end = argument_shapes.size(); i < end; ++i) {
     if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
             *argument_shapes[i])) {
       return InvalidParameterArgument(
@@ -187,7 +188,7 @@ StatusOr<ExecutionOutput> LocalExecutable::Run(
   std::vector<const Shape*> argument_shapes;
   argument_shapes.reserve(arguments.size());
   for (const ExecutionInput& arg : arguments) {
-    argument_shapes.push_back(&arg.shape());
+    argument_shapes.push_back(&arg.host_shape());
   }
   return AsyncCallAndBlockHostUntilDone<ExecutionOutput>(
       argument_shapes, run_options, [&](const ExecutableRunOptions& options) {
@@ -325,7 +326,7 @@ StatusOr<ExecutionOutput> LocalExecutable::RunAsync(
   std::vector<const Shape*> argument_shapes;
   argument_shapes.reserve(arguments.size());
   for (const ExecutionInput& arg : arguments) {
-    argument_shapes.push_back(&arg.shape());
+    argument_shapes.push_back(&arg.host_shape());
   }
   return RunAsync(argument_shapes, std::move(arguments), run_options);
 }

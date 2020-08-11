@@ -62,6 +62,12 @@ CreateShardedConvForDotGeneralConvolution(
     const DotGeneralAsConvolutionDimsInfo& dot_dnums,
     HloInstruction* sharded_lhs_hlo, HloInstruction* sharded_rhs_hlo);
 
+// Check if a spatial dim is parallel batch dimension.
+// A parallel batch dimension in DotGeneral is represented as a spatial
+// dimension with window size B (batch dimension size), stride B - 1, and base
+// dilation B.
+bool ConvSpatialDimensionIsParallel(const WindowDimension& wd, int64 lhs_size);
+
 }  // namespace dot_as_convolution_util
 }  // namespace xla
 

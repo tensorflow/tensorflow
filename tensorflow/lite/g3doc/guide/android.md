@@ -16,7 +16,7 @@ to continuously classify whatever it sees from the device's rear-facing camera.
 The application can run either on device or emulator.
 
 Inference is performed using the TensorFlow Lite Java API and the
-[TensorFlow Lite Android Support Library](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/java/README.md).
+[TensorFlow Lite Android Support Library](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/java/README.md).
 The demo app classifies frames in real-time, displaying the top most probable
 classifications. It allows the user to choose between a floating point or
 [quantized](https://www.tensorflow.org/lite/performance/post_training_quantization)
@@ -53,7 +53,7 @@ arrays. It also provides pre- and post-processing units that perform tasks such
 as image resizing and cropping.
 
 To get started, follow the instructions in the
-[TensorFlow Lite Android Support Library README.md](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/support/java/README.md).
+[TensorFlow Lite Android Support Library README.md](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/java/README.md).
 
 ### Use the TensorFlow Lite AAR from JCenter
 
@@ -143,7 +143,7 @@ directory instead (-v hostDir:/tmp).
     license):
 
 ```shell
-android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}’
+android update sdk --no-ui -a --filter tools,platform-tools,android-${ANDROID_API_LEVEL},build-tools-${ANDROID_BUILD_TOOLS_VERSION}
 ```
 
 You can now proceed to the "Build and Install" section. After you are finished
@@ -205,8 +205,19 @@ bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
 This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. Note
 that this builds a "fat" AAR with several different architectures; if you don't
 need all of them, use the subset appropriate for your deployment environment.
-From there, there are several approaches you can take to use the .aar in your
-Android Studio project.
+
+Caution: Following feature is experimental and only available at HEAD. You can
+build smaller AAR files targeting only a set of models as follows:
+
+```sh
+bash tensorflow/lite/tools/build_aar.sh \
+  --input_models=model1,model2 \
+  --target_archs=x86,x86_64,arm64-v8a,armeabi-v7a
+```
+
+Above script will generate the `tensorflow-lite.aar` file and optionally the
+`tensorflow-lite-select-tf-ops.aar` file if one of the models is using
+Tensorflow ops.
 
 ##### Add AAR directly to project
 
