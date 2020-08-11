@@ -486,14 +486,16 @@ TEST_F(DeviceKernelOpTest, TestForwardInputOrAllocateOutput) {
       .Output("output1: float")
       .Attr("SomeDataTypeAttr: type");;
 
-  // A kernel whose Compute function that forwards one input to output
+  // A kernel whose Compute function that forwards a scalar input to output
   auto my_compute_func = [](void* kernel, TF_OpKernelContext* ctx) {
     TF_Status* s = TF_NewStatus();
     int candidate_input_indices[1] = {0}; 
     int forwarded_input; 
     int64_t output_dims[1] = {};
-    TF_Tensor* output = TF_ForwardInputOrAllocateOutput(ctx, 
-        candidate_input_indices, 1, 0, output_dims, 0, &forwarded_input, s); 
+    TF_Tensor* output = TF_ForwardInputOrAllocateOutput(/*context=*/ctx, 
+        candidate_input_indices, /*num_candidate_input_indices=*/1, 
+        /*output_index=*/0, output_dims, /*output_num_dims=*/0, 
+        &forwarded_input, /*status=*/s); 
     EXPECT_EQ(TF_OK, TF_GetCode(s));
     EXPECT_EQ(forwarded_input, 0);
     EXPECT_EQ(TF_FLOAT, TF_TensorType(output));
@@ -518,7 +520,7 @@ TEST_F(DeviceKernelOpTest, TestForwardInputOrAllocateOutput) {
     AllocatorAttributes alloc_attrs; 
     p.output_attr_array = &alloc_attrs;
 
-    Tensor t(static_cast<float>(123));
+    Tensor t(123.0f);
 
     gtl::InlinedVector<TensorValue, 4> inputs;
     // GetFakeKernel requires a NodeDef with two inputs 
