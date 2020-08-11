@@ -22,6 +22,8 @@ import numpy as np
 
 import tensorflow as tf
 
+from tensorflow.python.keras.benchmarks import distribution_util
+
 class CustomMnistBenchmark(tf.test.Benchmark):
   """Benchmarks for custom training loop using `tf.test.Benchmark`."""
 
@@ -53,12 +55,79 @@ class CustomMnistBenchmark(tf.test.Benchmark):
 
     return model
 
+  def compute_loss(self,
+                   targets,
+                   predictions,
+                   loss_fn,
+                   batch_size):
+    """Compute average loss."""
+    per_example_loss = loss_fn(targets, predictions)
+    return tf.nn.compute_average_loss(
+        per_example_loss, global_batch_size=batch_size)
+
+  @tf.function
   def train_step(self,
+                 inputs,
                  model,
-                 train_dataset,
                  loss_fn,
                  optimizer,
-                 epochs=2):
+                 batch_size):
+    """Compute loss and optimize model by optimizer.
+
+    Arguments:
+      inputs: `tf.data`.
+      model: See `model` in `train_function()` method.
+      loss_fn: See `loss_fn` in `train_function()` method.
+      optimizer: See `optimizer` in `train_function()` method.
+      batch_size: See `batch_size` in `train_function()` method.
+
+    Returns:
+      Loss value.
+    """
+    train_x, train_y = inputs
+    with tf.GradientTape() as tape:
+      predictions = model(train_x, training=True)
+      loss = self.compute_loss(train_y, predictions, loss_fn, batch_size)
+    grads = tape.gradient(loss, model.trainable_weights)
+    optimizer.apply_gradients(zip(grads, model.trainable_weights))
+    return loss
+
+  @tf.function
+  def distributed_train_step(self,
+                             batch_dataset,
+                             model,
+                             loss_fn,
+                             optimizer,
+                             batch_size,
+                             distribution_strategy):
+    """Train step in distribution strategy setting.
+
+    Arguments:
+      batch_dataset: `tf.data`.
+      model: See `model` in `train_function()` method.
+      loss_fn: See `loss_fn` in `train_function()` method.
+      optimizer: See `optimizer` in `train_function()` method.
+      batch_size: See `batch_size` in `train_function()` method.
+      distribution_strategy: See `distribution_strategy`
+        in `train_function()` method.
+
+    Returns:
+      Sum of per_replica_losses.
+    """
+    per_replica_losses = distribution_strategy.run(
+        self.train_step, args=(
+            batch_dataset, model, loss_fn, optimizer, batch_size,))
+    return distribution_strategy.reduce(
+        tf.distribute.ReduceOp.SUM, per_replica_losses, axis=None)
+
+  def train_function(self,
+                     model,
+                     train_dataset,
+                     loss_fn,
+                     optimizer,
+                     epochs=2,
+                     distribution_strategy=None,
+                     batch_size=256):
     """Train model in custom training loop and return average
     train_step_time.
 
@@ -70,6 +139,12 @@ class CustomMnistBenchmark(tf.test.Benchmark):
       optimizer: `tf.keras.optimizers` instance.
       epochs: Integer. Number of epochs to train the model.
         If unspecified, `epochs` will default to 2.
+      distribution_strategy: Distribution strategies. It could be
+      `multi_worker_mirrored`, `one_device`, `mirrored`. If unspecified,
+      `distribution_strategy` will default to 'off'. Note that, `TPU`
+      and `parameter_server` are not supported yet.
+      batch_size: Integer. Number of samples per gradient update.
+      If unspecified, `batch_size` will default to 32.
 
     Returns:
       Average train_step_time.
@@ -77,33 +152,28 @@ class CustomMnistBenchmark(tf.test.Benchmark):
     train_step_time_list = []
     timer = timeit.default_timer
 
+    total_loss = 0.0
+    num_batches = 0
     for epoch in range(epochs):
-      print("\nStart of epoch %d" % (epoch,))
-
       # Iterate over the batches of the dataset.
-      for step, (x_batch_train, y_batch_train) in enumerate(train_dataset):
+      for batch_dataset in train_dataset:
 
-          # Open a GradientTape to record the operations run
-          # during the forward pass, which enables autodifferentiation.
-        with tf.GradientTape() as tape:
-          start_time = timer()
+        start_time = timer()
 
-          logits = model(x_batch_train, training=True)
-          loss_value = loss_fn(y_batch_train, logits)
+        if distribution_strategy is not None:
+          total_loss += self.distributed_train_step(
+              batch_dataset, model, loss_fn,
+              optimizer, batch_size, distribution_strategy)
+        else:
+          total_loss += self.train_step(
+              batch_dataset, model, loss_fn, optimizer, batch_size)
+        num_batches += 1
 
-          grads = tape.gradient(loss_value, model.trainable_weights)
+        end_time = timer()
+        train_step_time_list.append(end_time - start_time)
 
-          # Run one step of gradient descent by updating
-          # the value of the variables to minimize the loss.
-          optimizer.apply_gradients(zip(grads, model.trainable_weights))
-
-          end_time = timer()
-          train_step_time_list.append(end_time - start_time)
-        # Log every 200 batches.
-        if step % 200 == 0:
-          print(
-              "Training loss (for one batch) at step %d: %.4f"
-              % (step, float(loss_value)))
+      train_loss = total_loss / num_batches
+      print("Loss for epoch %d: %.4f" % ((epoch + 1), train_loss))
 
     return np.mean(train_step_time_list)
 
@@ -112,8 +182,10 @@ class CustomMnistBenchmark(tf.test.Benchmark):
                           dataset,
                           loss_fn,
                           optimizer,
+                          batch_size=32,
                           run_iters=4,
-                          epochs=2):
+                          epochs=2,
+                          distribution_strategy=None):
     """Run models and measure the performance.
 
     Arguments:
@@ -122,10 +194,16 @@ class CustomMnistBenchmark(tf.test.Benchmark):
         of either (inputs, targets) or (inputs, targets, sample_weights).
       loss_fn: `tf.keras.losses.Loss` instance.
       optimizer: `tf.keras.optimizers` instance.
+      batch_size: Integer. Number of samples per gradient update.
+      If unspecified, `batch_size` will default to 32.
       run_iters: Integer. Number of iterations to run the performance
         measurement. If unspecified, `run_iters` will default to 4.
       epochs: Integer. Number of epochs to train the model.
         If unspecified, `epochs` will default to 2.
+      distribution_strategy: Distribution strategies. It could be
+      `multi_worker_mirrored`, `one_device`, `mirrored`. If unspecified,
+      `distribution_strategy` will default to 'off'. Note that, `TPU`
+      and `parameter_server` are not supported yet.
 
     Returns:
       Performance summary, which contains build_time, avg_epoch_time,
@@ -135,7 +213,13 @@ class CustomMnistBenchmark(tf.test.Benchmark):
       ValueError: if `dataset` is None or if `optimizer` instance is
       not provided or if `loss_fn` instance is not provided.
     """
-    if not isinstance(dataset, tf.data.Dataset):
+    if distribution_strategy is not None and \
+      not isinstance(dataset, tf.distribute.DistributedDataset):
+      raise ValueError('tf.distribute.DistributedDataset'
+                       ' required in distribution strategy.')
+
+    if distribution_strategy is None and \
+      not isinstance(dataset, tf.data.Dataset):
       raise ValueError('`tf.data` is required.')
 
     if not isinstance(loss_fn, tf.keras.losses.Loss):
@@ -154,18 +238,24 @@ class CustomMnistBenchmark(tf.test.Benchmark):
     for _ in range(run_iters):
       timer = timeit.default_timer
       start_time = timer()
-      t0 = timer()
-      model = model_fn()
 
-      build_time = timer() - t0
+      strategy_scope = distribution_util.get_strategy_scope(
+          distribution_strategy)
+      with strategy_scope:
+        t0 = timer()
+        model = model_fn()
+        build_time = timer() - t0
       # Run one warm up epoch.
       t1 = timer()
-      self.train_step(model, dataset, loss_fn, optimizer, epochs=1)
+      self.train_function(
+          model, dataset, loss_fn, optimizer,
+          1, distribution_strategy, batch_size)
       warmup_time = timer() - t1
 
       t2 = timer()
-      train_step_time = self.train_step(
-          model, dataset, loss_fn, optimizer, epochs=epochs)
+      train_step_time = self.train_function(
+          model, dataset, loss_fn, optimizer,
+          epochs, distribution_strategy, batch_size)
       end_time = timer()
 
       train_step_time_list.append(train_step_time)
@@ -189,24 +279,39 @@ class CustomMnistBenchmark(tf.test.Benchmark):
 
     return metrics, wall_time
 
-  def benchmark_custom_training_mnist_bs_128(self):
-    """Measure performance with batch_size=128 and run_iters=2"""
-    batch_size = 128
-    run_iters = 2
+  def benchmark_custom_training_mnist_bs_256(self):
+    """Measure performance with batch_size=128 and run_iters=1"""
+    batch_size = 256
+    run_iters = 1 # But we only support one iteration.
     train_dataset = self.train_dataset.shuffle(
         buffer_size=1024).batch(batch_size)
 
-    # Instantiate a loss function.
-    loss_fn = tf.keras.losses.CategoricalCrossentropy()
-    # Instantiate an optimizer to train the model.
-    optimizer = tf.keras.optimizers.Adam()
+    distribution_strategy = "off"
+
+    strategy = distribution_util.get_distribution_strategy(
+        distribution_strategy=distribution_strategy,
+        num_gpus=0)
+
+    if distribution_strategy != 'off':
+      train_dataset = strategy.experimental_distribute_dataset(train_dataset)
+
+    strategy_scope = distribution_util.get_strategy_scope(strategy)
+
+    with strategy_scope:
+      # Instantiate a loss function.
+      loss_fn = tf.keras.losses.CategoricalCrossentropy(
+          reduction=tf.keras.losses.Reduction.NONE)
+      # Instantiate an optimizer to train the model.
+      optimizer = tf.keras.optimizers.Adam()
 
     metrics, wall_time = self.measure_performance(self._build_model,
-                                                  dataset=train_dataset,
-                                                  loss_fn=loss_fn,
-                                                  optimizer=optimizer,
-                                                  run_iters=run_iters,
-                                                  epochs=self.epochs)
+                                                  train_dataset,
+                                                  loss_fn,
+                                                  optimizer,
+                                                  batch_size,
+                                                  run_iters,
+                                                  self.epochs,
+                                                  strategy)
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics)
 
