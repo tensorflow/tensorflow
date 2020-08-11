@@ -20,13 +20,16 @@ limitations under the License.
 #include <cstdint>
 #include <memory>
 
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/Region.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/per_function_aggregate_analysis.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 
 namespace mlir {
 namespace TF {
@@ -43,7 +46,7 @@ class ResourceAliasAnalysisInfo {
   ResourceAliasAnalysisInfo(ResourceAliasAnalysisInfo&&) = default;
 
   // Returns if the analysis fails to resolve a resource-type value.
-  bool IsUnknownResource(const Value resource) const;
+  bool IsUnknownResource(Value resource) const;
 
   // Returns the set unique IDs which `resource` could alias. Requires that
   // IsUnknownResource(resource) == false.
@@ -90,6 +93,15 @@ class ResourceAliasAnalysis : public detail::PerFunctionAggregateAnalysis<
   // Constructs analysis by analyzing the given module operation.
   explicit ResourceAliasAnalysis(Operation* op);
 };
+
+// Returns a range with just resource type values from the input range
+// preserved.
+template <typename RangeT>
+auto filter_resources(RangeT&& range) {
+  return llvm::make_filter_range(std::forward<RangeT>(range), [](Value val) {
+    return getElementTypeOrSelf(val.getType()).isa<TF::ResourceType>();
+  });
+}
 
 }  // namespace TF
 }  // namespace mlir

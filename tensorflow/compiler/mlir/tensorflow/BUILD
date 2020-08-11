@@ -776,6 +776,7 @@ cc_library(
         "transforms/stack_ops_decomposition.cc",
         "transforms/tensor_array_ops_decomposition.cc",
         "transforms/tensor_list_ops_decomposition.cc",
+        "transforms/test_resource_alias_analysis.cc",
         "transforms/test_side_effect_analysis.cc",
         "transforms/tf_data_optimization_pass.cc",
         "transforms/tf_device_assignment.cc",
