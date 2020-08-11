@@ -98,6 +98,18 @@ class InteropTest(tf.test.TestCase):
     self.assertAllClose(dx, 2.0)
     self.assertAllClose(dy, 3.0)
 
+  def testGradientTapeNoneGradients(self):
+    y = np.asarray(2.0)
+
+    with tf.GradientTape() as t:
+      x = np.asarray(3.0)
+      t.watch([x])
+      z = 2 * x
+
+    dz = t.gradient(z, y)
+
+    self.assertIsNone(dz)
+
   def testCondInterop(self):
     x = np.asarray(3.0)
 
