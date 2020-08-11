@@ -934,7 +934,7 @@ def _shape_invariants_mapping_to_positional_list(mapping, keys):
 LEGAL_LOOP_TYPES = 'Tensor, int, float, bool or a list, tuple or dict thereof'
 
 
-def _placeholder_value(like, original):
+def _placeholder_value(like, original=None):
   if isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
     return original
   if isinstance(like, (int, float, bool)):
@@ -1079,8 +1079,10 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
             _runtime_zero_iterations_errmsg(symbol_names, nulls, orig_init_vars)
         ])
     ]):
-      final_loop_vars = tuple(
-          array_ops.identity(v) for v in final_loop_vars[1:])
+      final_loop_vars = nest.map_structure(
+          lambda v: (array_ops.identity(v) if tensor_util.is_tensor(v) else v),
+          final_loop_vars[1:],
+      )
 
   set_state(final_loop_vars)
 
