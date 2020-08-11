@@ -42,7 +42,6 @@ limitations under the License.
 #endif
 
 namespace tensorflow {
-absl::once_flag omp_setting_flag;
 
 ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
                                    const string& name, Bytes memory_limit,
@@ -57,6 +56,7 @@ ThreadPoolDevice::ThreadPoolDevice(const SessionOptions& options,
   if (DisableMKL()) return;
 #ifdef _OPENMP
   const char* user_omp_threads = getenv("OMP_NUM_THREADS");
+  static absl::once_flag omp_setting_flag;
   if (user_omp_threads == nullptr) {
     // OMP_NUM_THREADS controls MKL's intra-op parallelization
     // Default to available physical cores
