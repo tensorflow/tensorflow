@@ -28,7 +28,6 @@ from tensorflow.python.framework import combinations
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
 
 
 def _test_objects():
