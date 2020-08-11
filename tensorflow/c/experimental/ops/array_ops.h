@@ -31,6 +31,10 @@ Status ZerosLike(AbstractContext* ctx,
                  absl::Span<AbstractTensorHandle* const> inputs,
                  absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
+Status Shape(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
 }  // namespace ops
 }  // namespace tensorflow
 

@@ -19,32 +19,26 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
+#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/mnist_gradients_util.h"
+#include "tensorflow/c/experimental/gradients/math_grad.h"
+#include "tensorflow/c/experimental/gradients/nn_grad.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
-#include "tensorflow/c/experimental/ops/math_ops.h"
-#include "tensorflow/c/experimental/ops/nn_ops.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
-
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/test.h"
 
 using Model = std::function<Status(
     AbstractContext*, absl::Span<AbstractTensorHandle* const>,
     absl::Span<AbstractTensorHandle*>, const GradientRegistry&)>;
 
-Status UpdateWeights(AbstractContext* ctx,
-                     std::vector<AbstractTensorHandle*>& grads,
-                     std::vector<AbstractTensorHandle*>& weights,
-                     AbstractTensorHandle* learning_rate);
-
-Status GradientCheck(Model forward, 
-                     std::vector<AbstractTensorHandle*>& inputs,
-                     int gradIndex, AbstractTensorHandle* dtheta){
-                         
-
-
-
-}
+Status GradientCheck(AbstractContext* ctx, Model forward, 
+                     std::vector<AbstractTensorHandle*> inputs,
+                     int gradIndex,
+                     AbstractTensorHandle* dtheta);

@@ -276,6 +276,84 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "gradient_checker",
+    testonly = True,
+    srcs = [
+        "gradient_checker.cc",
+    ],
+    hdrs = [
+         "gradient_checker.h",
+    ],
+    visibility = [
+        "//tensorflow:internal",
+    ],
+    deps = [
+       ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        ":c_api_unified_internal",
+        ":gradients_internal",
+        ":mnist_gradients_util",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:nn_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "gradient_checker_test",
+    size = "small",
+    srcs = [
+        "gradient_checker_test.cc",
+    ],
+    args = ["--heap_check=local"],
+    extra_copts = tfe_xla_copts(),
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = tf_cuda_tests_tags() + ["nomac"],
+    deps = [
+        ":gradient_checker",
+        ":abstract_tensor_handle",
+        ":c_api_experimental",
+        ":c_api_test_util",
+        ":c_api_unified_internal",
+        ":gradients_internal",
+        ":mnist_gradients_util",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_test_util",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:math_grad",
+        "//tensorflow/c/experimental/gradients:nn_grad",
+        "//tensorflow/c/experimental/ops:array_ops",
+        "//tensorflow/c/experimental/ops:math_ops",
+        "//tensorflow/c/experimental/ops:nn_ops",
+        "//tensorflow/cc/profiler",
+        "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/lib/llvm_rtti",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+
 tf_cuda_cc_test(
     name = "mnist_gradients_test",
     size = "small",
