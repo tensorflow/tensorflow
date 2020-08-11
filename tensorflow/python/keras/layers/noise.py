@@ -418,8 +418,8 @@ class NoisyDense(Dense):
                               stddev=1.0,
                               dtype=self.dtype)
 
-      self.kernel_epsilon.assign(w_eps)
-      self.bias_epsilon.assign(b_eps)
+    self.kernel_epsilon.assign(w_eps)
+    self.bias_epsilon.assign(b_eps)
     
   def remove_noise(self):
     self.kernel_epsilon.assign(array_ops.zeros(self.kernel_epsilon.shape, self.dtype))
