@@ -27,11 +27,7 @@ limitations under the License.
 #include "mlir/Dialect/GPU/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/NVVMDialect.h"  // from @llvm-project
-<<<<<<< HEAD
 #include "mlir/Dialect/LLVMIR/ROCDLDialect.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
-=======
->>>>>>> google-upstream/master
 #include "mlir/Dialect/Linalg/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Passes.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/Transforms.h"  // from @llvm-project

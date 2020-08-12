@@ -2419,11 +2419,8 @@ tf_py_test(
     srcs = ["framework/importer_test.py"],
     main = "framework/importer_test.py",
     python_version = "PY3",
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-=======
     tfrt_enabled = True,
->>>>>>> google-upstream/master
+    tags = ["no_rocm"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -3415,14 +3412,8 @@ tf_py_test(
     size = "small",
     srcs = ["ops/collective_ops_test.py"],
     python_version = "PY3",
-<<<<<<< HEAD
-    tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
-    ],
-=======
     tags = ["no_rocm"],
     tfrt_enabled = True,
->>>>>>> google-upstream/master
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -5327,11 +5318,8 @@ cuda_py_test(
     srcs = ["ops/nn_fused_batchnorm_test.py"],
     python_version = "PY3",
     shard_count = 24,
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-=======
     tfrt_enabled = True,
->>>>>>> google-upstream/master
+    tags = ["no_rocm"],
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -6879,11 +6867,8 @@ tf_py_test(
     size = "small",
     srcs = ["framework/convert_to_constants_test.py"],
     python_version = "PY3",
-<<<<<<< HEAD
-=======
     tags = ["no_rocm"],
     tfrt_enabled = True,
->>>>>>> google-upstream/master
     deps = [
         ":client_testlib",
         ":control_flow_v2_toggles",

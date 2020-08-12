@@ -85,11 +85,8 @@ tf_py_test(
 tf_py_test(
     name = "batch_scatter_ops_test",
     srcs = ["batch_scatter_ops_test.py"],
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-=======
     tfrt_enabled = True,
->>>>>>> google-upstream/master
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -167,14 +164,8 @@ cuda_py_test(
     name = "benchmark_test",
     size = "small",
     srcs = ["benchmark_test.py"],
-<<<<<<< HEAD
-    tags = [
-        "no_windows",
-    ],
-=======
     tags = ["no_windows"],
     tfrt_enabled = True,
->>>>>>> google-upstream/master
     deps = [
         "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
@@ -2521,11 +2512,8 @@ cuda_py_test(
     name = "relu_op_test",
     size = "small",
     srcs = ["relu_op_test.py"],
-<<<<<<< HEAD
-    tags = ["no_rocm"],
-=======
     tfrt_enabled = True,
->>>>>>> google-upstream/master
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -3996,11 +3984,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["tridiagonal_matmul_op_test.py"],
     shard_count = 10,
-<<<<<<< HEAD
-=======
-    tags = ["no_rocm"],
     tfrt_enabled = True,
->>>>>>> google-upstream/master
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
