@@ -108,6 +108,10 @@
       as an alternative to accepting a `callable` loss.
     * Added `beta` parameter to FTRL optimizer to match paper.
     * Added `mobilenet_v3` to keras application model.
+    * `Optimizer.__init__` now accepts a `gradient_aggregator` to allow for
+      customization of how gradients are aggregated across devices, as well as
+      `gradients_transformers` to allow for custom gradient transformations
+      (such as gradient clipping).
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
