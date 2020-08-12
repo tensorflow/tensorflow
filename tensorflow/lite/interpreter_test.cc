@@ -43,11 +43,7 @@ class InterpreterTest : public ::testing::Test {
   template <typename Delegate>
   static TfLiteStatus ModifyGraphWithDelegate(
       Interpreter* interpreter, std::unique_ptr<Delegate> delegate) {
-    Interpreter::TfLiteDelegatePtr tflite_delegate(
-        delegate.release(), [](TfLiteDelegate* delegate) {
-          delete reinterpret_cast<Delegate*>(delegate);
-        });
-    return interpreter->ModifyGraphWithDelegate(std::move(tflite_delegate));
+    return interpreter->ModifyGraphWithDelegate(std::move(delegate));
   }
 
  protected:

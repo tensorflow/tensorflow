@@ -21,6 +21,7 @@ limitations under the License.
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -422,10 +423,29 @@ class Interpreter {
       std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
   /// Same as ModifyGraphWithDelegate except this interpreter takes
-  /// ownership of the provided delegate. Be sure to construct the unique_ptr
-  /// with a suitable destruction function.
+  /// ownership of the provided delegate.
   /// WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate);
+  template <typename Delegate, typename Deleter>
+  inline TfLiteStatus ModifyGraphWithDelegate(
+      std::unique_ptr<Delegate, Deleter> delegate) {
+    Deleter deleter = std::move(delegate.get_deleter());
+
+    // Note that we retain ownership of the delegate even if graph modification
+    // fails, as delegate use will be in an indeterminate state at that point.
+    owned_delegates_.emplace_back(
+        delegate.release(), [deleter](TfLiteDelegate* delegate_to_delete) {
+          deleter(
+              static_cast<typename std::unique_ptr<Delegate, Deleter>::pointer>(
+                  delegate_to_delete));
+        });
+    return ModifyGraphWithDelegate(owned_delegates_.back().get());
+  }
+
+  /// This overload is *never* OK. TfLiteDelegate is a C structure, so it has no
+  /// virtual destructor. The default deleter of the unique_ptr does not know
+  /// how to delete C++ objects deriving from TfLiteDelegate.
+  TfLiteStatus ModifyGraphWithDelegate(
+      std::unique_ptr<TfLiteDelegate> delegate) = delete;
 
   /// Ensure the data in `tensor.data` is readable. In case delegate is used,
   /// it might require to copy the data from delegate buffer to raw memory.
@@ -604,7 +624,9 @@ class Interpreter {
   // interpreter instance. Useful if client delegate ownership is burdensome.
   // WARNING: This is an experimental API and subject to change.
   // TODO(b/116667551): Use TfLiteExternalContext for storing state.
-  std::vector<TfLiteDelegatePtr> owned_delegates_;
+  std::vector<
+      std::unique_ptr<TfLiteDelegate, std::function<void(TfLiteDelegate*)>>>
+      owned_delegates_;
 
   // Profiler that has been installed and is owned by this interpreter instance.
   // Useful if client profiler ownership is burdensome.
