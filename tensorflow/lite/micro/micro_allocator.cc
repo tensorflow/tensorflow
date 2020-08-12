@@ -242,6 +242,18 @@ TfLiteStatus AllocationInfoBuilder::AddTensors(const SubGraph* subgraph,
     for (size_t n = 0; n < op->inputs()->size(); ++n) {
       const int tensor_index = op->inputs()->Get(n);
       AllocationInfo* current = &info_[tensor_index];
+
+      // In case operator input are not in subgraph inputs initialize them.
+      if (current->first_created == 0) {
+        for (size_t op_input = 0; op_input < op->inputs()->size(); ++op_input) {
+          const int op_tensor_index = op->inputs()->Get(op_input);
+          AllocationInfo* op_current = &info_[op_tensor_index];
+          if (op_current->needs_allocating && op_current->first_created == -1) {
+            op_current->first_created = i;
+          }
+        }
+      }
+
       if (((current->last_used == -1) || (current->last_used < i))) {
         current->last_used = i;
       }

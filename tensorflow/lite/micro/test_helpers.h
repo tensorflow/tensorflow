@@ -91,7 +91,8 @@ const Model* GetSimpleModelWithBranch();
 const Model* GetModelWithOfflinePlanning(int num_tensors,
                                          const int32_t* metadata_buffer,
                                          NodeConnection* node_conn,
-                                         int num_conns);
+                                         int num_conns,
+                                         int num_subgraph_inputs = 0/*0 means all*/);
 
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();

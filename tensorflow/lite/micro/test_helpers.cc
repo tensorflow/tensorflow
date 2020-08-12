@@ -108,7 +108,8 @@ class ModelBuilder {
   // Constructs the flatbuffer model using `builder_` and return a pointer to
   // it. The returned model has the same lifetime as `builder_`.
   const Model* BuildModel(std::initializer_list<Tensor> inputs,
-                          std::initializer_list<Tensor> outputs);
+                          std::initializer_list<Tensor> outputs,
+                          size_t num_subgraph_inputs = 0);
 
  private:
   // Adds a tensor to the model.
@@ -179,7 +180,8 @@ void ModelBuilder::AddMetadata(const char* description_string,
 
 const Model* ModelBuilder::BuildModel(
     std::initializer_list<ModelBuilder::Tensor> inputs,
-    std::initializer_list<ModelBuilder::Tensor> outputs) {
+    std::initializer_list<ModelBuilder::Tensor> outputs,
+    size_t num_subgraph_inputs) {
   // Model schema requires an empty buffer at idx 0.
   size_t buffer_size = 1 + ModelBuilder::nbr_of_metadata_buffers_;
   flatbuffers::Offset<Buffer> buffers[kMaxMetadataBuffers];
@@ -193,10 +195,17 @@ const Model* ModelBuilder::BuildModel(
 
   // TFLM only supports single subgraph.
   constexpr size_t subgraphs_size = 1;
+
+  // Find out number of subgraph inputs.
+  int num_tensors_in_subgraph_inputs = inputs.size(); // Default case = all inputs
+  if (num_subgraph_inputs > 0 && num_subgraph_inputs < inputs.size()) {
+    num_tensors_in_subgraph_inputs = num_subgraph_inputs;
+  }
+
   const flatbuffers::Offset<SubGraph> subgraphs[subgraphs_size] = {
       tflite::CreateSubGraph(
           *builder_, builder_->CreateVector(tensors_, next_tensor_id_),
-          builder_->CreateVector(inputs.begin(), inputs.size()),
+          builder_->CreateVector(inputs.begin(), num_tensors_in_subgraph_inputs),
           builder_->CreateVector(outputs.begin(), outputs.size()),
           builder_->CreateVector(operators_, next_operator_id_),
           builder_->CreateString("test_subgraph"))};
@@ -301,7 +310,8 @@ const Model* BuildSimpleModelWithBranch() {
 const Model* BuildModelWithOfflinePlanning(int number_of_tensors,
                                            const int32_t* metadata_buffer,
                                            NodeConnection* node_conn,
-                                           int num_conns) {
+                                           int num_conns,
+                                           int num_subgraph_inputs) {
   using flatbuffers::Offset;
   flatbuffers::FlatBufferBuilder* fb_builder = BuilderInstance();
 
@@ -324,7 +334,8 @@ const Model* BuildModelWithOfflinePlanning(int number_of_tensors,
       number_of_tensors + tflite::testing::kOfflinePlannerHeaderSize);
 
   return model_builder.BuildModel(node_conn[0].input,
-                                  node_conn[num_conns - 1].output);
+                                  node_conn[num_conns - 1].output,
+                                  num_subgraph_inputs);
 }
 
 const Model* BuildSimpleMockModel() {
@@ -710,9 +721,10 @@ const Model* GetSimpleModelWithBranch() {
 const Model* GetModelWithOfflinePlanning(int num_tensors,
                                          const int32_t* metadata_buffer,
                                          NodeConnection* node_conn,
-                                         int num_conns) {
+                                         int num_conns,
+                                         int num_subgraph_inputs) {
   const Model* model = BuildModelWithOfflinePlanning(
-      num_tensors, metadata_buffer, node_conn, num_conns);
+      num_tensors, metadata_buffer, node_conn, num_conns, num_subgraph_inputs);
   return model;
 }
 
