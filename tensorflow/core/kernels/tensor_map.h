@@ -179,7 +179,8 @@ class TensorMap {
 
 #if defined(PLATFORM_GOOGLE)
 // TODO(ebrevdo): Identify why Variant inline size is smaller on mobile devices.
-static_assert(Variant::CanInlineType<TensorMap>(),
+// For 32-bit devices, it's acceptable not to inline.
+static_assert(Variant::CanInlineType<TensorMap>() || sizeof(void*) < 8,
               "Must be able to inline TensorMap into a Variant");
 #endif
 }  // namespace tensorflow

@@ -51,11 +51,8 @@ INCLUDEPRE_RE = re.compile(r"google::protobuf::internal::ExplicitlyConstructed|"
                            r"google::protobuf::internal::ArenaImpl::AddCleanup|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::internal::LogMessage|" # for contrib/data/_prefetching_ops
                            r"google::protobuf::Arena::OnArenaAllocation|" # for contrib/data/_prefetching_ops
-                           r"google::protobuf::Message::InitializationErrorString|"
-                           r"google::protobuf::MessageLite::ParseFromArray|"
                            r"absl::Mutex::ReaderLock|" # for //tensorflow/contrib/rnn:python/ops/_gru_ops.so and more ops
                            r"absl::Mutex::ReaderUnlock|" # for //tensorflow/contrib/rnn:python/ops/_gru_ops.so and more ops
-                           r"tensorflow::TensorShape|"
                            r"tensorflow::internal::LogMessage|"
                            r"tensorflow::internal::LogString|"
                            r"tensorflow::internal::CheckOpMessageBuilder|"

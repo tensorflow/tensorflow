@@ -792,14 +792,17 @@ class XlaBuilder {
   // broadcast_dimensions specifies which dimensions to use for broadcasting
   // when the operation is between tensors of different ranks. The direction is
   // only used if opcode is kCompare.
-  XlaOp BinaryOp(
-      HloOpcode binop, XlaOp lhs, XlaOp rhs,
-      absl::Span<const int64> broadcast_dimensions,
-      absl::optional<Comparison::Direction> direction = absl::nullopt);
+  XlaOp BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
+                 absl::Span<const int64> broadcast_dimensions,
+                 absl::optional<ComparisonDirection> direction = absl::nullopt,
+                 absl::optional<Comparison::Type> type = absl::nullopt);
 
   // Internal helper method for binary op compare without broadcast dimensions.
   virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
-                                  Comparison::Direction direction);
+                                  ComparisonDirection direction);
+  virtual StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                                  ComparisonDirection direction,
+                                  Comparison::Type type);
 
   // Internal helper method that does the building for an arbitrary binary op
   // with same ranked operands that doesn't broadcast.
@@ -965,22 +968,13 @@ class XlaBuilder {
   friend XlaOp Select(XlaOp pred, XlaOp on_true, XlaOp on_false);
   friend XlaOp Tuple(XlaBuilder* builder, absl::Span<const XlaOp> elements);
   friend XlaOp GetTupleElement(XlaOp tuple_data, int64 index);
-  friend XlaOp Eq(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Ne(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Ge(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Gt(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Lt(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
-  friend XlaOp Le(XlaOp lhs, XlaOp rhs,
-                  absl::Span<const int64> broadcast_dimensions);
   friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
                        absl::Span<const int64> broadcast_dimensions,
                        ComparisonDirection direction);
-  friend XlaOp Compare(XlaOp lhs, XlaOp rhs, ComparisonDirection direction);
+  friend XlaOp Compare(XlaOp lhs, XlaOp rhs,
+                       absl::Span<const int64> broadcast_dimensions,
+                       ComparisonDirection direction,
+                       Comparison::Type compare_type);
   friend XlaOp Dot(XlaOp lhs, XlaOp rhs,
                    const PrecisionConfig* precision_config);
   friend XlaOp DotGeneral(XlaOp lhs, XlaOp rhs,
@@ -1574,29 +1568,44 @@ XlaOp GetTupleElement(XlaOp tuple_data, int64 index);
 // Enqueues an equal-to comparison instruction onto the computation.
 XlaOp Eq(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp EqTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a not-equal comparison instruction onto the computation.
 XlaOp Ne(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp NeTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a greater-or-equal comparison instruction onto the computation.
 XlaOp Ge(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp GeTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a greater-than comparison instruction onto the computation.
 XlaOp Gt(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp GtTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a less-than comparison instruction onto the computation.
 XlaOp Lt(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp LtTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a less-or-equal comparison instruction onto the computation.
 XlaOp Le(XlaOp lhs, XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions = {});
+XlaOp LeTotalOrder(XlaOp lhs, XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions = {});
 
 // Enqueues a comparison instruction onto the computation (optionally without
 // broadcast_dimensions for consistency with others).
+XlaOp Compare(XlaOp lhs, XlaOp rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction, Comparison::Type compare_type);
 XlaOp Compare(XlaOp lhs, XlaOp rhs,
               absl::Span<const int64> broadcast_dimensions,
               ComparisonDirection direction);

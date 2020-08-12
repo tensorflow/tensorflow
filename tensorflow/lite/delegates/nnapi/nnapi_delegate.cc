@@ -2436,13 +2436,20 @@ bool NNAPIDelegateKernel::Validate(
              "Input should be Float32.", &val_ctx);
     } break;
     case kTfLiteBuiltinQuantize: {
-      ExpectOpVersion(version, 1, &val_ctx);
+      ExpectMaxOpVersion(version, 2, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       const auto value_type = context->tensors[node->inputs->data[0]].type;
-      Expect(value_type == kTfLiteFloat32,
+      Expect(value_type == kTfLiteFloat32 || IsQuantized(value_type),
              NNAPIValidationFailureType::kUnsupportedInputType,
-             "Value should be Float32.", &val_ctx);
+             "Value should be quantized or Float32.", &val_ctx);
+      if (IsQuantized(value_type)) {
+        const auto quantization_params =
+            context->tensors[node->inputs->data[0]].params;
+        Expect(quantization_params.scale > 0.f,
+               NNAPIValidationFailureType::kUnsupportedQuantizationParameters,
+               "Quantization scale should be > 0.", &val_ctx);
+      }
       const auto output_type = context->tensors[node->outputs->data[0]].type;
       if (android_sdk_version < kMinSdkVersionForNNAPI13) {
         Expect(output_type == kTfLiteUInt8,
@@ -3284,6 +3291,15 @@ TfLiteStatus NNAPIDelegateKernel::Map(
       *nn_op_type = ANEURALNETWORKS_LOG_SOFTMAX;
     } break;
     case kTfLiteBuiltinQuantize: {
+      auto input_index = mapping_args.node->inputs->data[0];
+      // NNAPI doesn't support requantization cases but only quantizations
+      // from float. Dequantizing our input adding a Dequantize node before
+      // this one.
+      if (IsQuantized(mapping_args.context->tensors[input_index].type)) {
+        mapping_args.builder->AddDequantize(0, input_index, kTfLiteFloat32,
+                                            mapping_args.node_index);
+      }
+
       *nn_op_type = ANEURALNETWORKS_QUANTIZE;
     } break;
     case kTfLiteBuiltinReduceAny: {
@@ -4254,7 +4270,7 @@ TfLiteStatus NNAPIDelegateKernel::AddOpsAndTensors(
     int nn_op_type;
     TF_LITE_ENSURE_STATUS(
         Map(context, reg->builtin_code, reg->version, target_sdk_version_,
-            {context, &builder, node, &model_state_outputs_,
+            {context, &builder, node, node_index, &model_state_outputs_,
              &model_state_tfl_inputs_, &feedback_loops_, nnapi_errno},
             &nn_op_type));
 

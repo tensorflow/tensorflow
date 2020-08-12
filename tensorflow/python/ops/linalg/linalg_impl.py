@@ -31,6 +31,7 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import numerics
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
@@ -276,6 +277,9 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
             math_ops.abs(matrix),
             axis=array_ops.size(array_ops.shape(matrix)) - 2),
         axis=-1)[..., array_ops.newaxis, array_ops.newaxis]
+    l1_norm = numerics.verify_tensor_all_finite(
+        l1_norm, 'l1 norm of matrix is Inf or NaN.')
+
     const = lambda x: constant_op.constant(x, l1_norm.dtype)
 
     def _nest_where(vals, cases):

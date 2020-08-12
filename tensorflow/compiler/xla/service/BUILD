@@ -1700,7 +1700,10 @@ cc_library(
 cc_library(
     name = "hlo_creation_utils",
     srcs = ["hlo_creation_utils.cc"],
-    hdrs = ["hlo_creation_utils.h"],
+    hdrs = [
+        "hlo_creation_utils.h",
+        "//tensorflow/compiler/xla:literal_util",
+    ],
     deps = [
         ":hlo",
         ":hlo_module_config",
@@ -1813,6 +1816,21 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "comparison_expander",
+    srcs = ["comparison_expander.cc"],
+    hdrs = ["comparison_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client/lib:comparators",
     ],
 )
 
@@ -3409,12 +3427,22 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_space_assignment_repacking",
+    hdrs = ["memory_space_assignment_repacking.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+    ],
+)
+
+cc_library(
     name = "memory_space_assignment",
     srcs = ["memory_space_assignment.cc"],
     hdrs = ["memory_space_assignment.h"],
     deps = [
         ":heap_simulator",
         ":hlo_cost_analysis",
+        ":memory_space_assignment_repacking",
         ":memory_space_assignment_utils",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/lib/math:math_util",

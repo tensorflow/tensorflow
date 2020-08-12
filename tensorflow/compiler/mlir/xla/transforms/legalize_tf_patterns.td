@@ -548,17 +548,17 @@ foreach Mapping = [
 }
 
 // Expand acos to MHLO dialect as follows:
-//   acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x)) if x != -1
-//           = pi                                if x == -1
+//   acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x))  if x != -1
+//           = pi                                 if x == -1
 def : Pat<(HLOClient_AcosOp $input), (HLO_SelectOp
-  (HLO_CompareOp $input, (HLO_ConstOp (ConstantSplat<"0"> $input)),
-    HLO_COMPARISON_DIRECTION_NE),
-  (HLO_MulOp (HLO_ConstOp (ConstantSplat<"2"> $input)),
-    (HLO_Atan2Op (HLO_SqrtOp (HLO_SubOp
-                               (HLO_ConstOp (ConstantSplat<"1"> $input)),
-                               (HLO_MulOp $input, $input))),
-      (HLO_AddOp (HLO_ConstOp (ConstantSplat<"1"> $input)), $input))),
-  (HLO_ConstOp (ConstantSplat<"M_PI"> $input)))>;
+  (HLO_CompareOp $input, (HLO_ConstantLike<"0"> $input),
+     HLO_COMPARISON_DIRECTION_NE),
+  (HLO_MulOp (HLO_ConstantLike<"2.0f"> $input),
+    (HLO_Atan2Op
+      (HLO_SqrtOp (HLO_SubOp
+         (HLO_ConstantLike<"1"> $input), (HLO_MulOp $input, $input))),
+      (HLO_AddOp (HLO_ConstantLike<"1"> $input), $input))),
+  (HLO_ConstantLike<"M_PI"> $input))>;
 
 // TODO(bixia): Lower Cast with a Complex type source operand or with
 // Truncate=True for floating point value conversions.
@@ -593,6 +593,9 @@ def BothElementTypesSameWidthIntOrFloat : Constraint<CPred<
 def : Pat<(TF_BitcastOp:$res HLO_Tensor:$arg),
           (HLO_BitcastConvertOp $arg),
           [(BothElementTypesSameWidthIntOrFloat $res, $arg)]>;
+
+// TODO(jpienaar): Lower constant like to constant to broadcast if dynamic
+// and going to MHLO.
 
 //===----------------------------------------------------------------------===//
 // Random ops.

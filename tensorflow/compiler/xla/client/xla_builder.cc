@@ -577,7 +577,8 @@ XlaOp XlaBuilder::UnaryOp(HloOpcode unop, XlaOp operand) {
 
 XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
                            absl::Span<const int64> broadcast_dimensions,
-                           absl::optional<ComparisonDirection> direction) {
+                           absl::optional<ComparisonDirection> direction,
+                           absl::optional<Comparison::Type> type) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(const Shape* lhs_shape, GetShapePtr(lhs));
     TF_ASSIGN_OR_RETURN(const Shape* rhs_shape, GetShapePtr(rhs));
@@ -635,7 +636,11 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, XlaOp lhs, XlaOp rhs,
         return InvalidArgument(
             "kCompare expects a ComparisonDirection, but none provided.");
       }
-      return Compare(shape, updated_lhs, updated_rhs, *direction);
+      if (type == absl::nullopt) {
+        return Compare(shape, updated_lhs, updated_rhs, *direction);
+      } else {
+        return Compare(shape, updated_lhs, updated_rhs, *direction, *type);
+      }
     }
 
     if (direction.has_value()) {
@@ -658,8 +663,16 @@ XlaOp XlaBuilder::BinaryOpNoBroadcast(HloOpcode binop, const Shape& shape,
 
 StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
                                     ComparisonDirection direction) {
+  return Compare(shape, lhs, rhs, direction,
+                 Comparison::DefaultComparisonType(shape.element_type()));
+}
+
+StatusOr<XlaOp> XlaBuilder::Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
+                                    ComparisonDirection direction,
+                                    Comparison::Type type) {
   HloInstructionProto instr;
   instr.set_comparison_direction(ComparisonDirectionToString(direction));
+  instr.set_comparison_type(ComparisonTypeToString(type));
   *instr.mutable_shape() = shape.ToProto();
   return AddInstruction(std::move(instr), HloOpcode::kCompare, {lhs, rhs});
 }
@@ -3512,9 +3525,23 @@ XlaOp Eq(const XlaOp lhs, const XlaOp rhs,
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq);
 }
 
+XlaOp EqTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  auto compare_type = Comparison::Type::kFloatTotalOrder;
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq,
+                 compare_type);
+}
+
 XlaOp Ne(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kNe);
+}
+
+XlaOp NeTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  auto compare_type = Comparison::Type::kFloatTotalOrder;
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kNe,
+                 compare_type);
 }
 
 XlaOp Ge(const XlaOp lhs, const XlaOp rhs,
@@ -3522,9 +3549,23 @@ XlaOp Ge(const XlaOp lhs, const XlaOp rhs,
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGe);
 }
 
+XlaOp GeTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  auto compare_type = Comparison::Type::kFloatTotalOrder;
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGe,
+                 compare_type);
+}
+
 XlaOp Gt(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGt);
+}
+
+XlaOp GtTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  auto compare_type = Comparison::Type::kFloatTotalOrder;
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGt,
+                 compare_type);
 }
 
 XlaOp Le(const XlaOp lhs, const XlaOp rhs,
@@ -3532,9 +3573,21 @@ XlaOp Le(const XlaOp lhs, const XlaOp rhs,
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLe);
 }
 
+XlaOp LeTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  auto compare_type = Comparison::Type::kFloatTotalOrder;
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLe,
+                 compare_type);
+}
 XlaOp Lt(const XlaOp lhs, const XlaOp rhs,
          absl::Span<const int64> broadcast_dimensions) {
   return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt);
+}
+
+XlaOp LtTotalOrder(const XlaOp lhs, const XlaOp rhs,
+                   absl::Span<const int64> broadcast_dimensions) {
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt,
+                 Comparison::Type::kFloatTotalOrder);
 }
 
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
@@ -3542,6 +3595,13 @@ XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
               ComparisonDirection direction) {
   return lhs.builder()->BinaryOp(HloOpcode::kCompare, lhs, rhs,
                                  broadcast_dimensions, direction);
+}
+
+XlaOp Compare(const XlaOp lhs, const XlaOp rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction, Comparison::Type compare_type) {
+  return lhs.builder()->BinaryOp(HloOpcode::kCompare, lhs, rhs,
+                                 broadcast_dimensions, direction, compare_type);
 }
 
 XlaOp Compare(const XlaOp lhs, const XlaOp rhs, ComparisonDirection direction) {

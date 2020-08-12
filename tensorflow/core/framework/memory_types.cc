@@ -161,6 +161,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
       }
     }
   }
+  hostmem_attr.clear();
   if (TryGetNodeAttr(ndef, "_output_hostmem", &hostmem_attr)) {
     for (int32 i : hostmem_attr) {
       if (0 <= i && i < out_mtypes->size()) {

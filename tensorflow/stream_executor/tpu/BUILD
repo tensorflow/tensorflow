@@ -230,6 +230,7 @@ cc_library(
     hdrs = ["tpu_transfer_manager.h"],
     deps = [
         ":c_api_conversions",
+        ":noncopyable_buffer",
         ":proto_helper",
         ":status_helper",
         ":tpu_executor_base",
@@ -294,6 +295,7 @@ cc_library(
     hdrs = ["tpu_platform_interface.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_decl",
         ":tpu_topology_external",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor",

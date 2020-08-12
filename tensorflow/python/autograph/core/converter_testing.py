@@ -21,7 +21,6 @@ from __future__ import print_function
 import contextlib
 import imp
 import inspect
-import os
 import sys
 
 import six
@@ -101,7 +100,6 @@ class TestCase(test.TestCase):
 
   def setUp(self):
     # AutoGraph tests must run in graph mode to properly test control flow.
-    os.environ['AUTOGRAPH_CREATE_SYMBOLS_IN_LOOPS'] = '1'
     self.graph = ops.Graph().as_default()
     self.graph.__enter__()
 

@@ -120,6 +120,113 @@ HloSharding MergeForMoreSpecificSharding(const HloSharding& a,
   return IsShardingMoreSpecific(a, b) ? a : b;
 }
 
+// Returns a sharding that is refined by merging old and to_merge. May combine
+// partial sharding in addition to MergeForMoreSpecificSharding().
+HloSharding MergeSharding(const HloSharding& old, const HloSharding& to_merge,
+                          bool may_combine_partial_sharding) {
+  if (old.IsTuple()) {
+    HloSharding result = old;
+    CHECK(to_merge.IsTuple());
+    CHECK_EQ(old.tuple_elements().size(), to_merge.tuple_elements().size());
+    for (int64 i = 0; i < result.tuple_elements().size(); ++i) {
+      result.tuple_elements()[i] =
+          MergeSharding(old.tuple_elements()[i], to_merge.tuple_elements()[i],
+                        may_combine_partial_sharding);
+    }
+    return result;
+  }
+  if (!may_combine_partial_sharding || !old.ReplicateOnLastTileDim() ||
+      !to_merge.ReplicateOnLastTileDim() ||
+      old.tile_assignment().num_elements() !=
+          to_merge.tile_assignment().num_elements()) {
+    return IsShardingMoreSpecific(to_merge, old) ? to_merge : old;
+  }
+  // Combine the tile dimension sizes from new and old.
+  int64 num_devices = old.tile_assignment().num_elements();
+  std::vector<int64> new_tile_dims;
+  bool compatible = true;
+  new_tile_dims.reserve(to_merge.tile_assignment().num_dimensions());
+  for (int64 i = 0; i < to_merge.tile_assignment().num_dimensions() - 1; ++i) {
+    int64 new_dim = to_merge.tile_assignment().dim(i);
+    int64 old_dim = old.tile_assignment().dim(i);
+    if (new_dim == 1) {
+      new_tile_dims.push_back(old_dim);
+    } else if (old_dim == 1) {
+      new_tile_dims.push_back(new_dim);
+    } else if (new_dim == old_dim) {
+      new_tile_dims.push_back(new_dim);
+    } else {
+      compatible = false;
+      break;
+    }
+  }
+  int64 replication = num_devices / Product(new_tile_dims);
+  if (!compatible || num_devices % Product(new_tile_dims) != 0 ||
+      replication >= old.tile_assignment().dimensions().back()) {
+    return IsShardingMoreSpecific(to_merge, old) ? to_merge : old;
+  }
+  new_tile_dims.push_back(replication);
+  Array<int64> new_tile(new_tile_dims);
+  // Maps from replication group ID to sorted members.
+  absl::flat_hash_map<int64, std::set<int64>> old_group_members;
+  absl::flat_hash_map<int64, std::set<int64>> new_group_members;
+  auto get_group_index = [&](absl::Span<const int64> tile_indices,
+                             const HloSharding& sharding) {
+    int64 group_id = 0;
+    for (int64 i = 0; i < tile_indices.size() - 1; ++i) {
+      group_id *= to_merge.tile_assignment().dim(i);
+      group_id += tile_indices[i];
+    }
+    return group_id;
+  };
+  old.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        old_group_members[get_group_index(indices, old)].insert(device);
+      });
+  to_merge.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        new_group_members[get_group_index(indices, to_merge)].insert(device);
+      });
+  // Try to find the intersection of old and new replication groups, in
+  // order to determine the merged tile assignment.
+  new_tile.Each([&](absl::Span<const int64> indices, int64* device) {
+    if (!compatible) {
+      return;
+    }
+    std::vector<int64> old_index(indices.begin(), indices.end());
+    std::vector<int64> new_index = old_index;
+    for (int64 i = 0; i < indices.size() - 1; ++i) {
+      if (old.tile_assignment().dim(i) == 1) {
+        old_index[i] = 0;
+      }
+      if (to_merge.tile_assignment().dim(i) == 1) {
+        new_index[i] = 0;
+      }
+    }
+    int64 old_group_id = get_group_index(old_index, old);
+    int64 new_group_id = get_group_index(new_index, to_merge);
+    if (old_group_members[old_group_id].empty() ||
+        new_group_members[new_group_id].empty() ||
+        *old_group_members[old_group_id].begin() !=
+            *new_group_members[new_group_id].begin()) {
+      compatible = false;
+      return;
+    }
+    *device = *old_group_members[old_group_id].begin();
+    old_group_members[old_group_id].erase(*device);
+    new_group_members[new_group_id].erase(*device);
+  });
+  if (compatible) {
+    if (replication == 1) {
+      new_tile_dims.pop_back();
+      new_tile.Reshape(new_tile_dims);
+      return HloSharding::Tile(new_tile);
+    }
+    return HloSharding::PartialTile(new_tile);
+  }
+  return IsShardingMoreSpecific(to_merge, old) ? to_merge : old;
+}
+
 // Updates the sharding of the specified instruction with the specified sharding
 // if it is better than the current one and returns true if a new sharding have
 // been applied. If may_combine_partial_sharding is true, this may combine the
@@ -137,103 +244,10 @@ bool MaybeImproveInstructionSharding(const HloSharding& sharding,
     instruction->set_sharding(sharding);
     return true;
   }
-  if (may_combine_partial_sharding && sharding.ReplicateOnLastTileDim() &&
-      instruction->sharding().ReplicateOnLastTileDim()) {
-    if (sharding.tile_assignment().num_elements() ==
-        instruction->sharding().tile_assignment().num_elements()) {
-      // Combine the tile dimension sizes from new and old.
-      int64 num_devices = sharding.tile_assignment().num_elements();
-      std::vector<int64> new_tile_dims;
-      bool compatible = true;
-      new_tile_dims.reserve(sharding.tile_assignment().num_dimensions());
-      for (int64 i = 0; i < sharding.tile_assignment().num_dimensions() - 1;
-           ++i) {
-        int64 new_dim = sharding.tile_assignment().dim(i);
-        int64 old_dim = instruction->sharding().tile_assignment().dim(i);
-        if (new_dim == 1) {
-          new_tile_dims.push_back(old_dim);
-        } else if (old_dim == 1) {
-          new_tile_dims.push_back(new_dim);
-        } else if (new_dim == old_dim) {
-          new_tile_dims.push_back(new_dim);
-        } else {
-          compatible = false;
-          break;
-        }
-      }
-      int64 replication = num_devices / Product(new_tile_dims);
-      if (compatible && num_devices % Product(new_tile_dims) == 0 &&
-          replication <
-              instruction->sharding().tile_assignment().dimensions().back()) {
-        new_tile_dims.push_back(replication);
-        Array<int64> new_tile(new_tile_dims);
-        // Maps from replication group ID to sorted members.
-        absl::flat_hash_map<int64, std::set<int64>> old_group_members;
-        absl::flat_hash_map<int64, std::set<int64>> new_group_members;
-        auto get_group_index = [&](absl::Span<const int64> tile_indices,
-                                   const HloSharding& sharding) {
-          int64 group_id = 0;
-          for (int64 i = 0; i < tile_indices.size() - 1; ++i) {
-            group_id *= sharding.tile_assignment().dim(i);
-            group_id += tile_indices[i];
-          }
-          return group_id;
-        };
-        instruction->sharding().tile_assignment().Each(
-            [&](absl::Span<const int64> indices, int64 device) {
-              old_group_members[get_group_index(indices,
-                                                instruction->sharding())]
-                  .insert(device);
-            });
-        sharding.tile_assignment().Each([&](absl::Span<const int64> indices,
-                                            int64 device) {
-          new_group_members[get_group_index(indices, sharding)].insert(device);
-        });
-        // Try to find the intersection of old and new replication groups, in
-        // order to determine the merged tile assignment.
-        new_tile.Each([&](absl::Span<const int64> indices, int64* device) {
-          if (!compatible) {
-            return;
-          }
-          std::vector<int64> old_index(indices.begin(), indices.end());
-          std::vector<int64> new_index = old_index;
-          for (int64 i = 0; i < indices.size() - 1; ++i) {
-            if (instruction->sharding().tile_assignment().dim(i) == 1) {
-              old_index[i] = 0;
-            }
-            if (sharding.tile_assignment().dim(i) == 1) {
-              new_index[i] = 0;
-            }
-          }
-          int64 old_group_id =
-              get_group_index(old_index, instruction->sharding());
-          int64 new_group_id = get_group_index(new_index, sharding);
-          if (old_group_members[old_group_id].empty() ||
-              new_group_members[new_group_id].empty() ||
-              *old_group_members[old_group_id].begin() !=
-                  *new_group_members[new_group_id].begin()) {
-            compatible = false;
-            return;
-          }
-          *device = *old_group_members[old_group_id].begin();
-          old_group_members[old_group_id].erase(*device);
-          new_group_members[new_group_id].erase(*device);
-        });
-        if (compatible) {
-          if (replication == 1) {
-            new_tile_dims.pop_back();
-            new_tile.Reshape(new_tile_dims);
-            instruction->set_sharding(HloSharding::Tile(new_tile));
-          } else {
-            instruction->set_sharding(HloSharding::PartialTile(new_tile));
-          }
-          return true;
-        }
-      }
-    }
-  }
-  if (IsShardingMoreSpecific(sharding, instruction->sharding())) {
-    instruction->set_sharding(sharding);
+  auto merged = MergeSharding(instruction->sharding(), sharding,
+                              may_combine_partial_sharding);
+  if (merged != instruction->sharding()) {
+    instruction->set_sharding(merged);
     return true;
   }
   return false;
@@ -457,13 +471,82 @@ bool SupportSpatialPartitioning(const HloInstruction* instruction,
   }
 }
 
+bool InferDotShardingFromOperands(
+    HloInstruction* instruction,
+    const dot_as_convolution_util::DotGeneralAsConvolutionDimsInfo& dnums,
+    bool may_combine_partial_sharding) {
+  auto from_operand = [&](int64 operand_index) {
+    auto operand = instruction->operand(operand_index);
+    const HloSharding& operand_sharding = operand->sharding();
+    if (operand_sharding.IsTileMaximal()) {
+      return operand_sharding;
+    }
+    std::vector<int64> contracting_dims;
+    contracting_dims.reserve(dnums.contracting_dims.size());
+    for (const auto& dim : dnums.contracting_dims) {
+      contracting_dims.push_back(operand_index == 0 ? dim.lhs : dim.rhs);
+    }
+    // It's possible that some size-1 spatial dims of convolutions are parsed as
+    // non-contracting dims. We might have tiled dimensions on them.
+    for (const auto& dim : operand_index == 0
+                               ? dnums.rhs_non_contracting_dims
+                               : dnums.lhs_non_contracting_dims) {
+      int64 d = operand_index == 0 ? dim.lhs : dim.rhs;
+      if (d > 0) {
+        contracting_dims.push_back(d);
+      }
+    }
+    auto replicate_contracting_dims =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            operand_sharding, contracting_dims);
+    std::vector<int64> out_dims_to_op_perm(instruction->shape().rank(), -1);
+    std::vector<int64> op_dims_to_output_perm(operand->shape().rank(), -1);
+    for (const auto& dim : dnums.batch_dims) {
+      out_dims_to_op_perm[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
+      op_dims_to_output_perm[operand_index == 0 ? dim.lhs : dim.rhs] =
+          dim.output;
+    }
+    for (const auto& dim : operand_index == 0
+                               ? dnums.lhs_non_contracting_dims
+                               : dnums.rhs_non_contracting_dims) {
+      out_dims_to_op_perm[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
+      op_dims_to_output_perm[operand_index == 0 ? dim.lhs : dim.rhs] =
+          dim.output;
+    }
+    return *hlo_sharding_util::TransposeShardingWithCollapsedDims(
+        replicate_contracting_dims, op_dims_to_output_perm,
+        out_dims_to_op_perm);
+  };
+  bool changed = false;
+  int64 larger_operand =
+      ShapeUtil::ByteSizeOf(instruction->operand(0)->shape()) >=
+              ShapeUtil::ByteSizeOf(instruction->operand(1)->shape())
+          ? 0
+          : 1;
+  if (IsSpatiallyPartitioned(instruction->operand(larger_operand))) {
+    changed |= MaybeImproveInstructionSharding(from_operand(larger_operand),
+                                               instruction,
+                                               may_combine_partial_sharding);
+  }
+  if (IsSpatiallyPartitioned(instruction->operand(1 - larger_operand))) {
+    changed |= MaybeImproveInstructionSharding(from_operand(1 - larger_operand),
+                                               instruction,
+                                               may_combine_partial_sharding);
+  }
+  return changed;
+}
+
 // Convolution handling for InferShardingFromOperands().
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                           bool aggressive_prop,
                                           bool may_combine_partial_sharding) {
+  if (auto dot_dims = dot_as_convolution_util::ParseDotGeneralFromConvolution(
+          instruction)) {
+    return InferDotShardingFromOperands(instruction, *dot_dims,
+                                        may_combine_partial_sharding);
+  }
   const auto& dnums = instruction->convolution_dimension_numbers();
   const HloInstruction* lhs = instruction->operand(0);
-  const HloInstruction* rhs = instruction->operand(1);
   auto get_tiled_sharding_based_on_lhs = [&] {
     CHECK(!lhs->sharding().IsTileMaximal());
     std::vector<int64> output_to_lhs_indices(instruction->shape().rank());
@@ -478,103 +561,6 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
     return hlo_sharding_util::TransposeSharding(lhs->sharding(),
                                                 output_to_lhs_indices);
   };
-  auto get_tiled_sharding_based_on_rhs = [&] {
-    CHECK(!rhs->sharding().IsTileMaximal());
-    std::vector<int64> output_to_rhs_indices(instruction->shape().rank());
-    output_to_rhs_indices[dnums.output_batch_dimension()] =
-        dnums.kernel_input_feature_dimension();
-    output_to_rhs_indices[dnums.output_feature_dimension()] =
-        dnums.kernel_output_feature_dimension();
-    for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
-      output_to_rhs_indices[dnums.output_spatial_dimensions(i)] =
-          dnums.kernel_spatial_dimensions(i);
-    }
-    return hlo_sharding_util::TransposeSharding(rhs->sharding(),
-                                                output_to_rhs_indices);
-  };
-  if (auto dot_dims = dot_as_convolution_util::ParseDotGeneralFromConvolution(
-          instruction)) {
-    // lhs_or_rhs: lhs is 0 and rhs is 1. Skips dimensions with size 1.
-    auto partitioned_only_along_non_trivial_dims =
-        [&](const HloSharding& sharding,
-            std::vector<dot_as_convolution_util::
-                            DotGeneralAsConvolutionDimsInfo::DimNums>& dims,
-            int64 lhs_or_rhs) {
-          if (sharding.IsTileMaximal()) {
-            return false;
-          }
-          int64 partition_count = 1;
-          for (const auto& dim : dims) {
-            if (lhs_or_rhs == 0) {
-              if (lhs->shape().dimensions(dim.lhs) == 1) {
-                continue;
-              }
-              partition_count *= sharding.tile_assignment().dim(dim.lhs);
-            } else {
-              if (rhs->shape().dimensions(dim.rhs) == 1) {
-                continue;
-              }
-              CHECK_EQ(lhs_or_rhs, 1);
-              partition_count *= sharding.tile_assignment().dim(dim.rhs);
-            }
-          }
-          return partition_count == sharding.tile_assignment().num_elements();
-        };
-    // If LHS/RHS is partitioned only along the batch dimensions, propagate
-    // the sharding to the output, since batch dimensions are the easiest to
-    // partition.
-    if (IsSpatiallyPartitioned(lhs) &&
-        partitioned_only_along_non_trivial_dims(lhs->sharding(),
-                                                dot_dims->batch_dims, 0)) {
-      return MaybeImproveInstructionSharding(get_tiled_sharding_based_on_lhs(),
-                                             instruction,
-                                             may_combine_partial_sharding);
-    }
-    if (IsSpatiallyPartitioned(rhs) &&
-        partitioned_only_along_non_trivial_dims(rhs->sharding(),
-                                                dot_dims->batch_dims, 1)) {
-      return MaybeImproveInstructionSharding(get_tiled_sharding_based_on_rhs(),
-                                             instruction,
-                                             may_combine_partial_sharding);
-    }
-    if (aggressive_prop) {
-      // If LHS/RHS is partitioned only along the non-contracting
-      // dimensions, propagate the sharding to the output.
-      const bool can_propagate_from_lhs =
-          IsSpatiallyPartitioned(lhs) &&
-          partitioned_only_along_non_trivial_dims(
-              lhs->sharding(), dot_dims->lhs_non_contracting_dims, 0);
-      const bool can_propagate_from_rhs =
-          IsSpatiallyPartitioned(rhs) &&
-          partitioned_only_along_non_trivial_dims(
-              rhs->sharding(), dot_dims->rhs_non_contracting_dims, 1);
-      // If we can propagate from both operands, choose the larger one which
-      // should help us reduce communications.
-      if (can_propagate_from_lhs && can_propagate_from_rhs) {
-        if (Product(lhs->shape().dimensions()) >=
-            Product(rhs->shape().dimensions())) {
-          return MaybeImproveInstructionSharding(
-              get_tiled_sharding_based_on_lhs(), instruction,
-              may_combine_partial_sharding);
-        } else {
-          return MaybeImproveInstructionSharding(
-              get_tiled_sharding_based_on_rhs(), instruction,
-              may_combine_partial_sharding);
-        }
-      }
-      if (can_propagate_from_lhs) {
-        return MaybeImproveInstructionSharding(
-            get_tiled_sharding_based_on_lhs(), instruction,
-            may_combine_partial_sharding);
-      }
-      if (can_propagate_from_rhs) {
-        return MaybeImproveInstructionSharding(
-            get_tiled_sharding_based_on_rhs(), instruction,
-            may_combine_partial_sharding);
-      }
-    }
-  }
-
   if (!IsSpatiallyPartitioned(lhs)) {
     return false;
   }
@@ -859,83 +845,11 @@ bool InferShardingFromOperands(HloInstruction* instruction,
           instruction, /*may_combine_partial_sharding=*/is_spmd);
     }
     case HloOpcode::kDot: {
-      auto& dot_dim_numbs = instruction->dot_dimension_numbers();
-      // Batch dimensions are the same for lhs and rhs on dot operations.
-      int64 num_batch_dims = dot_dim_numbs.lhs_batch_dimensions_size();
-      std::vector<int64> contracting_dims(2);
-      contracting_dims[0] = dot_dim_numbs.lhs_contracting_dimensions(0);
-      contracting_dims[1] = dot_dim_numbs.rhs_contracting_dimensions(0);
-      std::vector<const HloSharding*> ops_sharding(2, nullptr);
-      for (int64 op_num = 0; op_num < 2; ++op_num) {
-        const HloInstruction* op = instruction->operand(op_num);
-        if (IsSpatiallyPartitioned(op)) {
-          ops_sharding[op_num] = &op->sharding();
-        }
-      }
-      if (ops_sharding[0] == nullptr && ops_sharding[1] == nullptr) {
-        return false;
-      }
-
-      // Select representative operand.
-      int64 representative_op = -1;
-      if (ops_sharding[0] == nullptr) {
-        representative_op = 1;
-      } else if (ops_sharding[1] == nullptr) {
-        representative_op = 0;
-      } else if (ops_sharding[0]->IsReplicated() &&
-                 ops_sharding[1]->IsReplicated()) {
-        // Both replicated -> replicate
-        return MaybeImproveInstructionSharding(
-            HloSharding::Replicate(), instruction,
-            /*may_combine_partial_sharding=*/is_spmd);
-      } else if (!ops_sharding[0]->IsReplicated() &&
-                 !ops_sharding[1]->IsReplicated()) {
-        // Both tile sharded. The dot spatial partitioning implementation
-        // replicates the operand corresponding to the non-tiled dimension:
-        // dot(lhs, rhs), sharding={devices=[1, ..., n, 1]} replicates rhs
-        // dot(lhs, rhs), sharding={devices=[1, ..., 1, n]} replicates lhs
-        // so set sharding in order to replicate the smaller of lhs and rhs
-        representative_op =
-            ShapeUtil::ByteSizeOf(instruction->operand(0)->shape()) <
-                    ShapeUtil::ByteSizeOf(instruction->operand(1)->shape())
-                ? 1
-                : 0;
-      } else {
-        // One is replicated and the other is tiled - pick the tiled one.
-        representative_op = ops_sharding[0]->IsReplicated() ? 1 : 0;
-      }
-
-      if (ops_sharding[representative_op]->IsReplicated()) {
-        return MaybeImproveInstructionSharding(
-            HloSharding::Replicate(), instruction,
-            /*may_combine_partial_sharding=*/is_spmd);
-      } else {
-        // Tile-shard instruction according to representative op.
-        auto sharding = *ops_sharding[representative_op];
-        if (instruction->shape().dimensions_size() !=
-            sharding.tile_assignment().num_dimensions()) {
-          // It is necessarily the case of a matrix x vector, with
-          // representative_op being the matrix, because the vector op has the
-          // same shape as instruction.
-          CHECK_EQ(sharding.tile_assignment().num_dimensions(),
-                   instruction->shape().dimensions_size() + 1);
-          // Reshape sharding so that last dimension is 1, and then remove
-          // last dimension.
-          std::vector<int64> non_batch_dims(
-              sharding.tile_assignment().num_dimensions() - num_batch_dims);
-          absl::c_iota(non_batch_dims, num_batch_dims);
-          sharding = hlo_sharding_util::ReshapeToTileDimension(
-              sharding, num_batch_dims, non_batch_dims);
-          auto tile_assignment = sharding.tile_assignment();
-          auto dimensions = tile_assignment.dimensions();
-          CHECK_EQ(dimensions.back(), 1);
-          dimensions.pop_back();
-          tile_assignment.Reshape(dimensions);
-          sharding = HloSharding::Tile(tile_assignment);
-        }
-        return MaybeImproveInstructionSharding(
-            sharding, instruction, /*may_combine_partial_sharding=*/is_spmd);
-      }
+      const auto& dnums =
+          dot_as_convolution_util::ParseDotGeneralFromDot(instruction);
+      return InferDotShardingFromOperands(
+          instruction, dnums,
+          /*may_combine_partial_sharding=*/is_spmd);
     }
     case HloOpcode::kParameter: {
       auto parent_it = computation_map.find(instruction->parent());
@@ -1109,6 +1023,81 @@ bool InferShardingFromOperands(HloInstruction* instruction,
   return false;
 }
 
+HloSharding InferDotOperandSharding(
+    const HloInstruction* instruction,
+    const dot_as_convolution_util::DotGeneralAsConvolutionDimsInfo& dnums,
+    int64 operand_index, bool may_combine_partial_sharding) {
+  auto operand = instruction->operand(operand_index);
+  auto other = instruction->operand(1 - operand_index);
+  std::vector<int64> output_dims_to_replicate;
+  std::vector<int64> other_operand_dims_to_replicate;
+  for (const auto& dim : operand_index == 0 ? dnums.rhs_non_contracting_dims
+                                            : dnums.lhs_non_contracting_dims) {
+    output_dims_to_replicate.push_back(dim.output);
+    other_operand_dims_to_replicate.push_back(operand_index == 0 ? dim.rhs
+                                                                 : dim.lhs);
+  }
+  // If this dot is interpreted from a conv, then contracting dims may have
+  // corresponding spatial dimensions in the output, and this operand's
+  // non-contracting dims may have corresponding spatial dims in the other
+  // operand.
+  for (const auto& dim : dnums.contracting_dims) {
+    if (dim.output >= 0) {
+      output_dims_to_replicate.push_back(dim.output);
+    }
+  }
+  for (const auto& dim : operand_index == 0 ? dnums.lhs_non_contracting_dims
+                                            : dnums.rhs_non_contracting_dims) {
+    int64 other_dim = operand_index == 0 ? dim.rhs : dim.lhs;
+    if (other_dim >= 0) {
+      other_operand_dims_to_replicate.push_back(other_dim);
+    }
+  }
+  auto output_other_dims_replicated =
+      hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+          instruction->sharding(), output_dims_to_replicate);
+  std::vector<int64> output_to_operand_dims(instruction->shape().rank(), -1);
+  std::vector<int64> operand_to_output_dims(operand->shape().rank(), -1);
+  for (const auto& dim : dnums.batch_dims) {
+    output_to_operand_dims[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
+    operand_to_output_dims[operand_index == 0 ? dim.lhs : dim.rhs] = dim.output;
+  }
+  for (const auto& dim : operand_index == 0 ? dnums.lhs_non_contracting_dims
+                                            : dnums.rhs_non_contracting_dims) {
+    output_to_operand_dims[dim.output] = operand_index == 0 ? dim.lhs : dim.rhs;
+    operand_to_output_dims[operand_index == 0 ? dim.lhs : dim.rhs] = dim.output;
+  }
+  auto sharding = *hlo_sharding_util::TransposeShardingWithCollapsedDims(
+      output_other_dims_replicated, output_to_operand_dims,
+      operand_to_output_dims);
+  if (IsSpatiallyPartitioned(other)) {
+    auto other_operand_dims_replicated =
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+            other->sharding(), other_operand_dims_to_replicate);
+    std::vector<int64> other_to_operand_dims(other->shape().rank(), -1);
+    std::vector<int64> operand_to_other_dims(operand->shape().rank(), -1);
+    for (const auto& dim : dnums.batch_dims) {
+      other_to_operand_dims[operand_index == 0 ? dim.rhs : dim.lhs] =
+          operand_index == 0 ? dim.lhs : dim.rhs;
+      operand_to_other_dims[operand_index == 0 ? dim.lhs : dim.rhs] =
+          operand_index == 0 ? dim.rhs : dim.lhs;
+    }
+    for (const auto& dim : dnums.contracting_dims) {
+      other_to_operand_dims[operand_index == 0 ? dim.rhs : dim.lhs] =
+          operand_index == 0 ? dim.lhs : dim.rhs;
+      operand_to_other_dims[operand_index == 0 ? dim.lhs : dim.rhs] =
+          operand_index == 0 ? dim.rhs : dim.lhs;
+    }
+    sharding =
+        MergeSharding(sharding,
+                      *hlo_sharding_util::TransposeShardingWithCollapsedDims(
+                          other_operand_dims_replicated, other_to_operand_dims,
+                          operand_to_other_dims),
+                      may_combine_partial_sharding);
+  }
+  return sharding;
+}
+
 // Return the sharding that should be propagated from user to instruction.
 absl::optional<HloSharding> GetShardingFromUser(
     const HloInstruction& instruction, const HloInstruction& user,
@@ -1186,62 +1175,10 @@ absl::optional<HloSharding> GetShardingFromUser(
     case HloOpcode::kConvolution: {
       if (auto dot_dims =
               dot_as_convolution_util::ParseDotGeneralFromConvolution(&user)) {
-        const auto& dnums = user.convolution_dimension_numbers();
-        auto partitioned_only_along_non_trivial_dims =
-            [&](const HloSharding& sharding,
-                std::vector<dot_as_convolution_util::
-                                DotGeneralAsConvolutionDimsInfo::DimNums>&
-                    dims) {
-              if (sharding.IsTileMaximal()) {
-                return false;
-              }
-              int64 partition_count = 1;
-              for (const auto& dim : dims) {
-                if (user.shape().dimensions(dim.output) == 1) {
-                  continue;
-                }
-                partition_count *= sharding.tile_assignment().dim(dim.output);
-              }
-              return partition_count ==
-                     sharding.tile_assignment().num_elements();
-            };
-        // If output is partitioned only along the batch dimensions, or only
-        // along the non-contracting dimensions, propagate the sharding to the
-        // operand.
-        if (&instruction == user.operand(0) &&
-            (partitioned_only_along_non_trivial_dims(user.sharding(),
-                                                     dot_dims->batch_dims) ||
-             partitioned_only_along_non_trivial_dims(
-                 user.sharding(), dot_dims->lhs_non_contracting_dims))) {
-          std::vector<int64> lhs_to_output_indices(user.shape().rank());
-          lhs_to_output_indices[dnums.input_batch_dimension()] =
-              dnums.output_batch_dimension();
-          lhs_to_output_indices[dnums.input_feature_dimension()] =
-              dnums.output_feature_dimension();
-          for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
-            lhs_to_output_indices[dnums.input_spatial_dimensions(i)] =
-                dnums.output_spatial_dimensions(i);
-          }
-          return hlo_sharding_util::TransposeSharding(user.sharding(),
-                                                      lhs_to_output_indices);
-        }
-        if (&instruction == user.operand(1) &&
-            (partitioned_only_along_non_trivial_dims(user.sharding(),
-                                                     dot_dims->batch_dims) ||
-             partitioned_only_along_non_trivial_dims(
-                 user.sharding(), dot_dims->rhs_non_contracting_dims))) {
-          std::vector<int64> rhs_to_output_indices(user.shape().rank());
-          rhs_to_output_indices[dnums.kernel_input_feature_dimension()] =
-              dnums.output_batch_dimension();
-          rhs_to_output_indices[dnums.kernel_output_feature_dimension()] =
-              dnums.output_feature_dimension();
-          for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
-            rhs_to_output_indices[dnums.kernel_spatial_dimensions(i)] =
-                dnums.output_spatial_dimensions(i);
-          }
-          return hlo_sharding_util::TransposeSharding(user.sharding(),
-                                                      rhs_to_output_indices);
-        }
+        int64 op_idx = user.operand_index(&instruction);
+        return InferDotOperandSharding(
+            &user, *dot_dims, op_idx,
+            /*may_combine_partial_sharding=*/is_spmd);
       }
       return absl::nullopt;
     }
@@ -1323,33 +1260,10 @@ absl::optional<HloSharding> GetShardingFromUser(
       return new_sharding;
     }
     case HloOpcode::kDot: {
-      if (user.sharding().IsReplicated()) {
-        return user.sharding();
-      }
-      auto& dim_numbers = user.dot_dimension_numbers();
       int64 op_idx = user.operand_index(&instruction);
-      // Batch dimensions are the same on lhs and rhs for dot operations.
-      int64 num_batch_dims = dim_numbers.lhs_batch_dimensions_size();
-      int64 num_spatial_dims =
-          instruction.shape().dimensions_size() - num_batch_dims;
-      if (num_spatial_dims == 1) {
-        // This is the vector of a matrix x vector operation -> replicate,
-        // since tiling on the vector would necessarily be on the contracting
-        // dimension, which we don't support.
-        CHECK_EQ(op_idx, 1);
-        return HloSharding::Replicate();
-      }
-      // Instruction is necessarily a matrix because it is one of the operands
-      // of a matrix x matrix operation.
-      CHECK_EQ(num_spatial_dims, 2);
-      // Propagate tile sharding to the bigger operand, and replicate the other.
-      auto other_op = user.operand(op_idx ^ 1);
-      if (ShapeUtil::ByteSizeOf(instruction.shape()) >
-          ShapeUtil::ByteSizeOf(other_op->shape())) {
-        return user.sharding();
-      } else {
-        return HloSharding::Replicate();
-      }
+      auto dnums = dot_as_convolution_util::ParseDotGeneralFromDot(&user);
+      return InferDotOperandSharding(&user, dnums, op_idx,
+                                     /*may_combine_partial_sharding=*/is_spmd);
     }
     case HloOpcode::kReduce: {
       if (instruction.shape().rank() == 0) {
