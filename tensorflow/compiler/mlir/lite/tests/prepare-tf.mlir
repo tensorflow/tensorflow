@@ -595,24 +595,4 @@ func @xla_conv(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
   // CHECK: return %[[RES]]
 }
 
-func @broadcast_to_f32(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
-  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<2xi32>) -> tensor<3x3xf32>
-  return %0: tensor<3x3xf32>
-
-// CHECK-LABEL: broadcast_to_f32
-// CHECK:  [[CST:%.*]] = constant dense<1.000000e+00> : tensor<3x3xf32>
-// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
-// CHECK:  return [[MUL]] : tensor<3x3xf32>
-}
-
-func @broadcast_to_i32(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<3x3xi32> {
-  %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi32>, tensor<2xi32>) -> tensor<3x3xi32>
-  return %0: tensor<3x3xi32>
-
-// CHECK-LABEL: broadcast_to_i32
-// CHECK:  [[CST:%.*]] = constant dense<1> : tensor<3x3xi32>
-// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xi32>, tensor<3x3xi32>) -> tensor<3x3xi32>
-// CHECK:  return [[MUL]] : tensor<3x3xi32>
-}
-
 }
