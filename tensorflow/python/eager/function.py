@@ -2524,7 +2524,7 @@ class FunctionSpec(object):
     """
     args = list(self._arg_names)
     if default_values:
-      offset = len(args) - len(self._fullargspec.defaults)
+      offset = len(args) - len(self._fullargspec.defaults or [])
       for i, default in enumerate(self._fullargspec.defaults):
         args[offset + i] += "={}".format(default)
     if self._fullargspec.kwonlyargs:
@@ -2629,14 +2629,12 @@ class FunctionSpec(object):
               "{} got keyword argument `{}` that was not included in "
               "input_signature".format(self.signature_summary(), arg))
 
-    num_req_args = len(self._arg_names)
-    if self._fullargspec.defaults:
-      num_req_args -= len(self._fullargspec.defaults)
+    num_req_args = len(self._arg_names) - len(self._fullargspec.defaults or [])
 
     if not kwargs:
       inputs = args
       if self._fullargspec.defaults:
-        if len(args) + len(self._fullargspec.defaults) < len(self._arg_names):
+        if len(args) < num_req_args:
           missing_args = self._arg_names[len(args):num_req_args]
           raise TypeError("{} missing required arguments: {}".format(
               self.signature_summary(), ", ".join(missing_args)))
