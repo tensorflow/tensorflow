@@ -238,9 +238,10 @@ tf_kernel_library(
 tf_kernel_library(
     name = "generate_box_proposals_op",
     gpu_srcs = ["generate_box_proposals_op.cu.cc"],
-    deps = ["//tensorflow/core/kernels:gpu_prim_hdrs"] + if_cuda([
+    deps = [
         ":non_max_suppression_op_gpu",
-    ]),
+        "//tensorflow/core/kernels:gpu_prim_hdrs",
+    ],
 )
 
 tf_kernel_library(

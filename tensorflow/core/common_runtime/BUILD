@@ -2019,7 +2019,10 @@ tf_cc_tests_gpu(
         "permuter_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["notap"],  # b/163417734
+    tags = [
+        "notap",
+        "no_rocm",
+    ],  # b/163417734
     deps = [
         ":core",
         ":core_cpu",

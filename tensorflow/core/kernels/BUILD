@@ -7338,7 +7338,6 @@ tf_kernel_library(
         ":bounds_check",
         ":conv_2d",
         ":conv_ops_gpu_hdrs",
-        ":image_resizer_state",
         ":fill_functor",
         ":ops_util",
         ":gpu_util_hdrs",
@@ -7347,6 +7346,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core/util:image_resizer_state",
         "//third_party/eigen3",
     ],
 )
