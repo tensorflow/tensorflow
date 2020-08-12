@@ -408,7 +408,6 @@ cc_test(
     ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
-        "noasan",  # b/163674257
         "tflite_not_portable_ios",  # TODO(b/117786830)
         "tflite_smoke_test",
     ],
