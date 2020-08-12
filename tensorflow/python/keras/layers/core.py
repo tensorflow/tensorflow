@@ -1380,7 +1380,7 @@ class NoisyDense(Layer):
     if inputs.dtype.base_dtype != dtype.base_dtype:
       inputs = math_ops.cast(inputs, dtype=dtype)
 
-    # Unlearnable parameters added as the noise
+    # Fixed parameters added as the noise
     ε_i = tf.random.normal([self.last_dim, self.units])
     ε_j = tf.random.normal([self.units,])
 
@@ -1388,8 +1388,8 @@ class NoisyDense(Layer):
     ε_kernel = f(ε_i) * f(ε_j)
     ε_bias = f(ε_j)
 
-    # Code adapted from: https://github.com/tensorflow/tensorflow/blob/v2.3.0/tensorflow/python/keras/layers/ops/core.py
-    # Optimally performs: y = (µw + σw · εw)x + µb + σb · εb
+    # Performs: y = (µw + σw · εw)x + µb + σb · εb
+    # to calculate the output
     rank = inputs.shape.rank
     if rank == 2 or rank is None:
       if isinstance(inputs, sparse_tensor.SparseTensor):
