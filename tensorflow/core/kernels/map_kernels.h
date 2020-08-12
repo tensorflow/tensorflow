@@ -152,8 +152,8 @@ class TensorMapErase : public OpKernel {
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
                 errors::InvalidArgument("Trying to erase non-existent item."));
 
-    //const Tensor& t = m->tensors().find(key)->second;
-    //c->set_output(1, t);
+    const Tensor& t = m->tensors().find(key)->second;
+    c->set_output(1, t);
 
     TensorMap* output_map = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
