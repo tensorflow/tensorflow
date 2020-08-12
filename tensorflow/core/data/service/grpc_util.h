@@ -24,7 +24,7 @@ namespace data {
 namespace grpc_util {
 
 // Wraps a grpc::Status in a tensorflow::Status with the given message.
-Status WrapError(const std::string& message, const grpc::Status& status);
+Status WrapError(const std::string& message, const ::grpc::Status& status);
 
 // Retries the given function if the function produces UNAVAILABLE, ABORTED, or
 // CANCELLED status codes. We retry these codes because they can all indicate

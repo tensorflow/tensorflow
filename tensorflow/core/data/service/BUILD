@@ -3,6 +3,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
+    "tf_protos_profiler_service",
 )
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
@@ -332,6 +333,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/profiler/rpc:profiler_service_impl",
         tf_grpc_cc_dependency(),
     ],
     alwayslink = 1,
@@ -375,14 +377,14 @@ tf_cc_test(
         ":test_util",
         ":worker_cc_grpc_proto",
         ":worker_proto_cc",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:compression_utils",
         "//tensorflow/core/kernels/data:dataset_test_base",
-        "@com_google_absl//absl/strings",
         tf_grpc_cc_dependency(),
-    ],
+    ] + tf_protos_profiler_service(),
 )
 
 cc_grpc_library(
