@@ -58,10 +58,10 @@ class DepthwiseConvolution : public GPUOperation {
       DepthwiseConvolution* result);
   DepthwiseConvolution(const OperationDef& definition,
                        const DepthwiseConvolution2DAttributes& attr,
-                       bool weights_are_buffer, const DeviceInfo& device_info);
+                       bool weights_are_buffer);
   DepthwiseConvolution(const OperationDef& definition,
                        const DepthwiseConvolution3DAttributes& attr,
-                       bool weights_are_buffer, const DeviceInfo& device_info);
+                       bool weights_are_buffer);
 
   template <DataType T>
   absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
@@ -82,8 +82,7 @@ class DepthwiseConvolution : public GPUOperation {
   std::string GenerateDepthwiseConvolutionCode(const OperationDef& op_def,
                                                bool stride_correction,
                                                int channel_multiplier,
-                                               bool weights_are_buffer,
-                                               const DeviceInfo& device_info);
+                                               bool weights_are_buffer);
 
   bool weights_are_buffer_;
 

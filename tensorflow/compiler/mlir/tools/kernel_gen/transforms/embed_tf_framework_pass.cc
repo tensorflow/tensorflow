@@ -26,7 +26,7 @@ namespace tf_framework {
 namespace {
 
 #define GEN_PASS_CLASSES
-#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/tf_framework_passes.h.inc"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/kernel_gen_passes.h.inc"
 
 static constexpr StringRef kTFEntry = "tf_entry";
 

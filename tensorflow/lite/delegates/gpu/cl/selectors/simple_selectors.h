@@ -41,12 +41,10 @@ absl::Status SelectPReLU(const PReLUAttributes& attr,
                          std::unique_ptr<GPUOperation>* ptr);
 
 void SelectPooling(const Pooling2DAttributes& attr, const OperationDef& op_def,
-                   const DeviceInfo& device_info,
                    std::unique_ptr<GPUOperation>* ptr);
 
 void SelectMaxUnpooling(const MaxUnpooling2DAttributes& attr,
                         const OperationDef& op_def,
-                        const DeviceInfo& device_info,
                         std::unique_ptr<GPUOperation>* ptr);
 
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,
@@ -97,10 +95,10 @@ absl::Status SelectWinograd36To4x4(
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
     std::unique_ptr<GPUOperation>* ptr);
 
-absl::Status SelectQuantizeAndDequantize(
-    const QuantizeAndDequantizeAttributes& attr,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr);
+void SelectQuantizeAndDequantize(const QuantizeAndDequantizeAttributes& attr,
+                                 const CreationContext& creation_context,
+                                 const OperationDef& op_def,
+                                 std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace cl
 }  // namespace gpu

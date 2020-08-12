@@ -95,10 +95,9 @@ std::string ConvTexture::GenerateConvCode(const OperationDef& op_def,
                                           const int3& block_size, bool is1x1,
                                           bool adreno4xx_optimization,
                                           bool stride_correction,
-                                          bool different_weights_for_height,
-                                          const DeviceInfo& device_info) {
+                                          bool different_weights_for_height) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -390,9 +389,9 @@ void ConvTexture::GenerateCode(const DeviceInfo& device_info) {
       definition_.precision == CalculationsPrecision::F16;
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  code_ = GenerateConvCode(definition_, block_size_, is1x1,
-                           adreno4xx_optimization, stride_correction,
-                           different_weights_for_height_, device_info);
+  code_ =
+      GenerateConvCode(definition_, block_size_, is1x1, adreno4xx_optimization,
+                       stride_correction, different_weights_for_height_);
 
   if (UseFP16SIMD(device_info, definition_.precision, is1x1)) {
     compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
@@ -421,9 +420,11 @@ int3 ConvTexture::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvTexture::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
+void ConvTexture::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
 absl::Status CreateConvTexture(const CreationContext& creation_context,
@@ -431,7 +432,7 @@ absl::Status CreateConvTexture(const CreationContext& creation_context,
                                const Convolution2DAttributes& attr,
                                ConvTexture* result) {
   *result = ConvTexture(definition, attr);
-  result->GenerateCode(creation_context.device->GetInfo());
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
@@ -440,7 +441,7 @@ absl::Status CreateConvTexture(const CreationContext& creation_context,
                                const FullyConnectedAttributes& attr,
                                ConvTexture* result) {
   *result = ConvTexture(definition);
-  result->GenerateCode(creation_context.device->GetInfo());
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
@@ -450,7 +451,7 @@ absl::Status CreateConvTextureWino4x4To6x6(
   *result = ConvTexture(definition);
   result->different_weights_for_height_ = true;
   result->block_size_ = {4, 1, 2};
-  result->GenerateCode(creation_context.device->GetInfo());
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadDataForWinograd4x4To6x6(
       attr.weights, *creation_context.device, creation_context.context);
 }

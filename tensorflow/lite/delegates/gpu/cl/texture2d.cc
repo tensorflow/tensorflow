@@ -118,8 +118,6 @@ Texture2D& Texture2D::operator=(Texture2D&& texture) {
   return *this;
 }
 
-Texture2D::~Texture2D() { Release(); }
-
 void Texture2D::Release() {
   if (texture_) {
     clReleaseMemObject(texture_);

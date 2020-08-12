@@ -1,3 +1,4 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
@@ -735,70 +736,36 @@ cc_library(
         ":cpu_check",
         "//third_party/eigen3",
         "//tensorflow/lite/c:common",
-    ] + select({
-        ":aarch64": [
-            ":neon_tensor_utils",
-        ],
-        ":arm": [
-            ":neon_tensor_utils",
-        ],
-        ":arm64-v8a": [
-            ":neon_tensor_utils",
-        ],
-        ":armeabi-v7a": [
-            ":neon_tensor_utils",
-        ],
-        ":armhf": [
-            ":neon_tensor_utils",
-        ],
-        ":armv7a": [
-            ":neon_tensor_utils",
-        ],
-        ":haswell": [
+    ] + selects.with_or({
+        (
+            ":aarch64",
+            ":arm",
+            ":arm64-v8a",
+            ":armeabi-v7a",
+            ":armhf",
+            ":armv7a",
+            ":ios_armv7",
+            ":ios_arm64",
+            ":ios_arm64e",
+            ":raspberry_pi_with_neon",
+        ): [":neon_tensor_utils"],
+        (
+            ":darwin",
+            ":darwin_x86_64",
+            ":freebsd",
+            ":haswell",
+            ":ios_x86_64",
+            ":x86_64",
+            ":x86",
+            ":k8",
+            ":windows",
+        ): [
             ":sse_tensor_utils",
         ],
-        ":ios_armv7": [
-            ":neon_tensor_utils",
-        ],
-        ":ios_arm64": [
-            ":neon_tensor_utils",
-        ],
-        ":ios_arm64e": [
-            ":neon_tensor_utils",
-        ],
-        ":raspberry_pi_with_neon": [
-            ":neon_tensor_utils",
-        ],
-        ":ios_x86_64": [
-            ":sse_tensor_utils",
-        ],
-        ":x86_64": [
-            ":sse_tensor_utils",
-        ],
-        ":x86": [
-            ":sse_tensor_utils",
-        ],
-        ":k8": [
-            ":sse_tensor_utils",
-        ],
-        ":darwin": [
-            ":sse_tensor_utils",
-        ],
-        ":darwin_x86_64": [
-            ":sse_tensor_utils",
-        ],
-        ":freebsd": [
-            ":sse_tensor_utils",
-        ],
-        ":windows": [
-            ":sse_tensor_utils",
-        ],
-        ":tf_lite_static_memory": [
-            ":portable_tensor_utils",
-        ],
-        "//conditions:default": [
-            ":portable_tensor_utils",
-        ],
+        (
+            ":tf_lite_static_memory",
+            "//conditions:default",
+        ): [":portable_tensor_utils"],
     }),
 )
 

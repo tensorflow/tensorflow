@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
-#include "tensorflow/lite/experimental/acceleration/compatibility/database_generated.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/devicedb-sample.h"
 #include "tensorflow/lite/experimental/acceleration/compatibility/variables.h"
 #include "tensorflow/lite/testing/util.h"

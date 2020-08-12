@@ -2410,6 +2410,40 @@ Status ConvertTranspose(OpConverterParams* params) {
   return Status::OK();
 }
 
+Status ConvertShape(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"input", TrtInputArg::kBoth}}));
+  if (params->use_implicit_batch) {
+    return errors::Unimplemented(
+        "Shape is only supported for explicit batch mode.");
+  }
+  if (HasStaticShape(inputs.at(0).GetTrtDims())) {
+    if (params->validation_only) return Status::OK();
+    nvinfer1::Dims input_dims = inputs.at(0).GetTrtDims();
+    nvinfer1::Dims output_dims{1, {input_dims.nbDims}};
+    // Create a const node with the values of output_dims
+    TRT_ShapedWeights weight = params->weight_store->GetTempWeights(
+        nvinfer1::DataType::kINT32, output_dims);
+    int32* values_ptr = static_cast<int32*>(weight.GetValues());
+    std::copy(input_dims.d, input_dims.d + input_dims.nbDims, values_ptr);
+    auto output = params->converter->CreateConstantLayer(weight, output_dims);
+    params->outputs->push_back(TRT_TensorOrWeights(output));
+    return Status::OK();
+  }
+#if IS_TRT_VERSION_GE(6, 0, 0, 0)
+  if (params->validation_only) return Status::OK();
+  nvinfer1::IShapeLayer* shape_layer =
+      params->converter->network()->addShape(*inputs.at(0).tensor());
+  TFTRT_RETURN_ERROR_IF_NULLPTR(shape_layer, params->node_def.name());
+  params->outputs->push_back(TRT_TensorOrWeights(shape_layer->getOutput(0)));
+  return Status::OK();
+#else
+  return errors::Unavailable(
+      "Shape op conversion requires TensorRT 6 or above");
+#endif
+}
+
 Status ConvertReshape(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   TF_RETURN_IF_ERROR(
@@ -3749,6 +3783,7 @@ Status ConvertActivation(OpConverterParams* params) {
       params->converter->network()->addActivation(*inputs.at(0).tensor(),
                                                   op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   // Set parameters.
 #if IS_TRT_VERSION_GE(5, 1, 2, 0)
   if (node_def.op() == "Elu") {
@@ -3849,9 +3884,10 @@ Status ConvertRelu6(OpConverterParams* params) {
   nvinfer1::IActivationLayer* layer =
       params->converter->network()->addActivation(
           *inputs.at(0).tensor(), nvinfer1::ActivationType::kCLIP);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   layer->setAlpha(0.0f);
   layer->setBeta(6.0f);
-  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 6.0f);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -4407,6 +4443,7 @@ Status ConvertUnary(OpConverterParams* params) {
   nvinfer1::IUnaryLayer* layer =
       params->converter->network()->addUnary(*tensor, op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   // Set quantization ranges.
@@ -4484,7 +4521,7 @@ Status ConvertReduce(OpConverterParams* params) {
     int trt_axis;
     TF_RETURN_IF_ERROR(
         ConvertAxis(tf_axes_list[i], tensor->getDimensions().nbDims,
-                    node_def.name(), /*use_implicit_batch=*/true, &trt_axis));
+                    node_def.name(), params->use_implicit_batch, &trt_axis));
     axes |= (1 << trt_axis);
   }
 
@@ -5055,6 +5092,7 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
       combined_scale_weights.GetTrtWeights(),
       dummy_power_weights.GetTrtWeights());
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  layer->setName(node_def.name().c_str());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -5974,6 +6012,7 @@ static void RegisterValidatableOpConverters(
     (*registration)[pool_op_type] = ConvertPool3D;
   }
 #endif
+  (*registration)["Shape"] = ConvertShape;
   (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
   (*registration)["Softmax"] = ConvertSoftmax;

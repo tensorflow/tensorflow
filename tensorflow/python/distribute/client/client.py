@@ -293,8 +293,7 @@ class Closure(object):
       self._output_remote_values = nest.map_structure(
           lambda x: RemoteValue(self, x), concrete_function.structured_outputs)
     elif isinstance(function, tf_function.ConcreteFunction):
-      self._function = cancellation_mgr.get_cancelable_function(
-          concrete_function)
+      self._function = cancellation_mgr.get_cancelable_function(function)
       self._output_remote_values = nest.map_structure(
           lambda x: RemoteValue(self, x), function.structured_outputs)
     else:

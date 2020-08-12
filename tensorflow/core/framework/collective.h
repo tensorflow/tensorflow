@@ -43,6 +43,7 @@ enum CollectiveType {
   REDUCTION_COLLECTIVE = 0,
   BROADCAST_COLLECTIVE,
   GATHER_COLLECTIVE,
+  PERMUTE_COLLECTIVE,
   UNDEFINED_COLLECTIVE,
 };
 
@@ -89,6 +90,7 @@ struct CollImplDetails {
 };
 
 // Data common to all members of a collective instance.
+// TODO(b/163171014) Refactor this struct to not be a union of all fields.
 struct CollInstanceParams {
   // Identifies all participating graph nodes.
   int32 instance_key = -1;
@@ -109,6 +111,8 @@ struct CollInstanceParams {
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
+  std::vector<string> devices;   // all_permute only
+  std::vector<int> permutation;  // all_permute only
 };
 
 // Data common to all instance members in the same task.

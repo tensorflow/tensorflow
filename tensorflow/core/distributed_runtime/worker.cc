@@ -198,7 +198,9 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
   ProfilerSession* profiler_session = nullptr;
   if (collector && request->exec_opts().record_timeline()) {
     // If timeline was requested, assume we want hardware level tracing.
-    profiler_session = ProfilerSession::Create().release();
+    ProfileOptions options = ProfilerSession::DefaultOptions();
+    options.set_host_tracer_level(0);
+    profiler_session = ProfilerSession::Create(options).release();
   }
   CancellationManager* cm = new CancellationManager;
   opts->SetCancelCallback([this, cm, step_id]() {

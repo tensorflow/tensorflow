@@ -9,7 +9,9 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["logging.h"])
+exports_files([
+    "logging.h",
+])
 
 common_copts = ["-Wall"]
 
@@ -278,6 +280,38 @@ tf_cc_binary(
     visibility = ["//visibility:public"],
     deps = [
         ":list_flex_ops",
+        "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "list_flex_ops_main_lib",
+    srcs = ["list_flex_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_flex_ops",
+        "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "list_flex_ops_no_kernel",
+    srcs = ["list_flex_ops_no_kernel.cc"],
+    hdrs = ["list_flex_ops.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_binary(
+    name = "list_flex_ops_no_kernel_main",
+    srcs = ["list_flex_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_flex_ops_no_kernel",
         "//tensorflow/lite/tools:command_line_flags",
         "@com_google_absl//absl/strings",
     ],

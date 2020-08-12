@@ -42,7 +42,10 @@ namespace cl {
 class ConvTexture : public GPUOperation {
  public:
   ConvTexture() = default;
-  absl::Status Tune(const TuningParameters& params) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -94,8 +97,7 @@ class ConvTexture : public GPUOperation {
                                const int3& block_size, bool is1x1,
                                bool adreno4xx_optimization,
                                bool stride_correction,
-                               bool different_weights_for_height,
-                               const DeviceInfo& device_info);
+                               bool different_weights_for_height);
 
   int2 kernel_size_;
   int2 stride_;

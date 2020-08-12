@@ -882,6 +882,17 @@ LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  auto xla_arg_1 = value_map[*op.getODSOperands(0).begin()];
+  auto xla_result = xla::RngBitGenerator(
+      static_cast<xla::RandomAlgorithm>(op.rng_algorithm().getSExtValue()),
+      Unwrap(xla_arg_1), xla::TypeToShape(result.getType()).tuple_shapes(1));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp mu, sigma;

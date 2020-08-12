@@ -685,6 +685,7 @@ xla::StatusOr<Node*> CreateSplitNode(int num_splits, int dim,
   split_def.add_input(absl::StrCat(split_dim_node->name(), ":0"));
   split_def.add_input(absl::StrCat(orig_src->name(), ":", orig_src_output));
   Node* split_node = graph->AddNode(split_def, &s);
+  split_node->set_assigned_device_name(input_assigned_device);
   TF_RETURN_IF_ERROR(s);
 
   graph->AddEdge(split_dim_node, 0, split_node, 0);
@@ -1813,7 +1814,8 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
     } else if (sharding->type() != xla::OpSharding::REPLICATED &&
                sharding->type() != xla::OpSharding::OTHER) {
       return tensorflow::errors::InvalidArgument(
-          "Unsupported argument sharding: ", sharding->DebugString());
+          "Unsupported argument sharding (for arg ", n->DebugString(),
+          "): ", sharding->DebugString());
     }
     if (assigned_core.has_value()) {
       args_device_selector.ReportDeviceAssigned(*assigned_core, i);
@@ -1855,7 +1857,7 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
 
     TF_ASSIGN_OR_RETURN(
         absl::optional<xla::OpSharding> sharding,
-        ParseShardingFromDevice(*edge->src(), num_cores_per_replica));
+        ParseShardingFromEdgeSource(*edge, num_cores_per_replica));
 
     if (partitioned_output_nodes.contains(i)) {
       Node* output_node = partitioned_output_nodes[i];
@@ -1883,7 +1885,9 @@ Status DistributedTPURewritePass::AssignArgsAndRetvalsToCores(
       } else if (sharding.value().type() != xla::OpSharding::REPLICATED &&
                  sharding.value().type() != xla::OpSharding::OTHER) {
         return tensorflow::errors::InvalidArgument(
-            "Unsupported argument sharding: ", sharding->DebugString());
+            "Unsupported argument sharding for retval ",
+            retvals[i]->DebugString(), " edge=", edge->DebugString(), ": ",
+            sharding->DebugString());
       }
     } else {
       if (use_spmd) {
@@ -2472,7 +2476,8 @@ xla::StatusOr<NodeOut> CreateOrGetPerHostVariableCopy(
 
 Status DistributedTPURewritePass::BuildExecuteNodes(
     const ParameterInfo& params_info, int num_tasks, int num_cores_per_replica,
-    const Node& replicate_node, const DataTypeVector& arg_types,
+    const Node& replicate_node, const std::vector<std::string>& arg_names,
+    const DataTypeVector& arg_types,
     const std::vector<InferredShape>& arg_shapes,
     const DataTypeVector& retval_types,
     const std::vector<xla::OpSharding>& arg_shardings,
@@ -2595,7 +2600,9 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
       }
     } else {
       return tensorflow::errors::InvalidArgument(
-          "Unsupported argument sharding: ", sharding.DebugString());
+          "Unsupported argument sharding for arg=", arg_names[i],
+          " shape=", arg_shapes[i].shape.DebugString(), ": ",
+          sharding.DebugString());
     }
   }
   std::vector<std::vector<int>> core_retval_nums(num_cores_per_replica);
@@ -3922,8 +3929,8 @@ Status DistributedTPURewritePass::FingerprintFunctionLibrary(
 
   std::vector<VariableWrite> variable_writes;
   TF_RETURN_IF_ERROR(BuildExecuteNodes(
-      params_info, num_tasks, num_cores_per_replica, *replicate_node, arg_types,
-      arg_shapes, retval_types, arg_sharding, retval_sharding,
+      params_info, num_tasks, num_cores_per_replica, *replicate_node, arg_names,
+      arg_types, arg_shapes, retval_types, arg_sharding, retval_sharding,
       tf_device_assignment, compile_node, variable_reads,
       control_after_compilation, control_after, &variable_writes, graph));
   bool contains_resource_write_op =

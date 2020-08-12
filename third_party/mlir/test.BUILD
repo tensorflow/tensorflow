@@ -229,3 +229,15 @@ cc_library(
         "@llvm-project//mlir:SPIRVLowering",
     ],
 )
+
+cc_library(
+    name = "TestTypeDialect",
+    srcs = glob([
+        "lib/Dialect/LLVMIR/*.cpp",
+    ]),
+    deps = [
+        ":TestDialect",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+    ],
+)

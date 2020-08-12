@@ -52,8 +52,7 @@ class DepthwiseConvPlus1x1Conv : public GPUOperation {
       DepthwiseConvPlus1x1Conv* result);
   DepthwiseConvPlus1x1Conv(const OperationDef& definition,
                            const DepthwiseConvolution2DAttributes& dw_attr,
-                           const Convolution2DAttributes& conv_attr,
-                           const DeviceInfo& device_info);
+                           const Convolution2DAttributes& conv_attr);
 
   absl::Status UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
                              const Convolution2DAttributes& conv_attr,
@@ -61,7 +60,7 @@ class DepthwiseConvPlus1x1Conv : public GPUOperation {
 
   std::string GenerateCode(const OperationDef& op_def,
                            const DepthwiseConvolution2DAttributes& dw_attr,
-                           int result_depth, const DeviceInfo& device_info);
+                           int result_depth);
 
   DepthwiseConvolution2DAttributes dw_attr_;
 };

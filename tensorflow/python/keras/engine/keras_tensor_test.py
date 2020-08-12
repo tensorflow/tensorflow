@@ -68,21 +68,20 @@ class KerasTensorTest(test.TestCase):
       expected_str = (
           "KerasTensor(type_spec=TensorSpec(shape=(None, 3, 10), "
           "dtype=tf.float32, name=None), name='dense/BiasAdd:0', "
-          "description=\"Symbolic value 0 from symbolic call 0 "
-          "of layer 'dense'\")")
+          "description=\"created by layer 'dense'\")")
       expected_repr = (
-          "<KerasTensor: shape=(None, 3, 10) dtype=float32 (Symbolic value 0 "
-          "from symbolic call 0 of layer 'dense')>")
+          "<KerasTensor: shape=(None, 3, 10) dtype=float32 (created "
+          "by layer 'dense')>")
       self.assertEqual(expected_str, str(kt))
       self.assertEqual(expected_repr, repr(kt))
 
       kt = array_ops.reshape(kt, shape=(3, 5, 2))
       expected_str = (
           "KerasTensor(type_spec=TensorSpec(shape=(3, 5, 2), dtype=tf.float32, "
-          "name=None), name='tf.reshape/Reshape:0', description=\"Symbolic "
-          "value 0 from symbolic call 0 of layer 'tf.reshape'\")")
-      expected_repr = ("<KerasTensor: shape=(3, 5, 2) dtype=float32 (Symbolic "
-                       "value 0 from symbolic call 0 of layer 'tf.reshape')>")
+          "name=None), name='tf.reshape/Reshape:0', description=\"created "
+          "by layer 'tf.reshape'\")")
+      expected_repr = ("<KerasTensor: shape=(3, 5, 2) dtype=float32 (created "
+                       "by layer 'tf.reshape')>")
       self.assertEqual(expected_str, str(kt))
       self.assertEqual(expected_repr, repr(kt))
 
@@ -90,12 +89,10 @@ class KerasTensorTest(test.TestCase):
       for i in range(3):
         expected_str = (
             "KerasTensor(type_spec=TensorSpec(shape=(5, 2), dtype=tf.float32, "
-            "name=None), name='tf.unstack/unstack:%s', description=\"Symbolic "
-            "value %s from symbolic call 0 of layer 'tf.unstack'\")"
-        ) % (i, i)
+            "name=None), name='tf.unstack/unstack:%s', description=\"created "
+            "by layer 'tf.unstack'\")" % (i,))
         expected_repr = ("<KerasTensor: shape=(5, 2) dtype=float32 "
-                         "(Symbolic value %s from symbolic call 0 "
-                         "of layer 'tf.unstack')>") % i
+                         "(created by layer 'tf.unstack')>")
         self.assertEqual(expected_str, str(kts[i]))
         self.assertEqual(expected_repr, repr(kts[i]))
 

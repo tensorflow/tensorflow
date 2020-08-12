@@ -85,20 +85,29 @@ message StochasticGradientDescentParameters {}
 // https://github.com/tensorflow/tensorflow/blob/6b6471f3ffb7f1fefe42d814aa5fb9ab7a535b58/tensorflow/core/kernels/training_ops.cc#L2646
 //
 // The hyperparameters for FTRL are the same as for the Keras implementation,
-// with some additions. When the multiply_linear_by_lr field is set to true, a
-// modified formula is used for FTRL that treats the "linear" accumulator as
-// being pre-multiplied by the learning rate (i.e., the accumulator named
-// "linear" actually stores "linear * learning_rate"). Other than checkpoint
+// with some additions. The "beta" parameter matches the behavior described in
+// the second link above; "beta" / (2 * learning rate) should be added to "l2"
+// to get equivalent behavior in the other TensorFlow implementations of this
+// optimizer. When the multiply_linear_by_lr field is set to true, a modified
+// formula is used for FTRL that treats the "linear" accumulator as being
+// pre-multiplied by the learning rate (i.e., the accumulator named "linear"
+// actually stores "linear * learning_rate"). Other than checkpoint
 // compatibility, this is mathematically equivalent for a static learning rate;
 // for a dynamic learning rate, it is nearly the same as long as the learning
 // rate does not change quickly. The benefit of setting multiply_linear_by_lr to
 // true is that the modified formula handles zero and near-zero learning rates
-// without producing NaNs, improving flexibility for learning rate ramp-up.
+// without producing NaNs, improving flexibility for learning rate ramp-up. The
+// allow_zero_accumulator parameter changes some internal formulas to allow zero
+// and near-zero accumulator values at the cost of some performance; this only
+// needs to be set if you are using an initial accumulator value of zero, which
+// is uncommon.
 message FtrlParameters {
   float l1 = 1;
   float l2 = 2;
   float lr_power = 3;
+  float beta = 7;
   bool multiply_linear_by_lr = 6;
+  bool allow_zero_accumulator = 8;
 
   // Old initial accumulator parameters.
   reserved "initial_accum", "initial_linear";

@@ -70,6 +70,12 @@ class SimpleSingleEngineTest(trt_test.TfTrtIntegrationTestBase):
         ]
     }
 
+  def ShouldRunTest(self, run_params):
+    # TODO(b/162448349): Enable the test for TRT 7.1.3.
+    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
+      return (False, "Skip test due to b/162448349")
+    return super().ShouldRunTest(run_params)
+
 
 class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
 
@@ -129,6 +135,12 @@ class SimpleMultiEnginesTest(trt_test.TfTrtIntegrationTestBase):
         disable_non_trt_optimizers=True)
     return conversion_params._replace(
         rewriter_config_template=rewrite_config_with_trt)
+
+  def ShouldRunTest(self, run_params):
+    # TODO(b/162448349): Enable the test for TRT 7.1.3.
+    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
+      return (False, "Skip test due to b/162448349")
+    return super().ShouldRunTest(run_params)
 
 
 class SimpleMultiEnginesTest2(trt_test.TfTrtIntegrationTestBase):

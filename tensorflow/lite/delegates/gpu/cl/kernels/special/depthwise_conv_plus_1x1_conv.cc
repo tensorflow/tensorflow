@@ -30,12 +30,11 @@ namespace cl {
 DepthwiseConvPlus1x1Conv::DepthwiseConvPlus1x1Conv(
     const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr, const DeviceInfo& device_info)
+    const Convolution2DAttributes& conv_attr)
     : GPUOperation(definition), dw_attr_(dw_attr) {
   work_group_size_ = int3(8, 8, 1);
-  code_ =
-      GenerateCode(definition_, dw_attr_,
-                   DivideRoundUp(conv_attr.weights.shape.o, 4), device_info);
+  code_ = GenerateCode(definition_, dw_attr_,
+                       DivideRoundUp(conv_attr.weights.shape.o, 4));
 }
 
 DepthwiseConvPlus1x1Conv::DepthwiseConvPlus1x1Conv(
@@ -146,9 +145,9 @@ absl::Status DepthwiseConvPlus1x1Conv::UploadWeights(
 
 std::string DepthwiseConvPlus1x1Conv::GenerateCode(
     const OperationDef& op_def, const DepthwiseConvolution2DAttributes& dw_attr,
-    int result_depth, const DeviceInfo& device_info) {
+    int result_depth) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
@@ -273,8 +272,7 @@ absl::Status CreateDepthwiseConvPlus1x1Conv(
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr,
     DepthwiseConvPlus1x1Conv* result) {
-  *result = DepthwiseConvPlus1x1Conv(definition, dw_attr, conv_attr,
-                                     creation_context.device->GetInfo());
+  *result = DepthwiseConvPlus1x1Conv(definition, dw_attr, conv_attr);
   RETURN_IF_ERROR(
       result->UploadWeights(dw_attr, conv_attr, creation_context.context));
   return absl::OkStatus();

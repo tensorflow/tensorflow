@@ -22,7 +22,6 @@ limitations under the License.
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#undef LoadLibrary
 #undef ERROR
 
 #include <string>
@@ -156,8 +155,9 @@ class WindowsEnv : public Env {
     SetThreadpoolTimer(timer, &FileDueTime, 0, 0);
   }
 
-  Status LoadLibrary(const char* library_filename, void** handle) override {
-    return tensorflow::internal::LoadLibrary(library_filename, handle);
+  Status LoadDynamicLibrary(const char* library_filename,
+                            void** handle) override {
+    return tensorflow::internal::LoadDynamicLibrary(library_filename, handle);
   }
 
   Status GetSymbolFromLibrary(void* handle, const char* symbol_name,

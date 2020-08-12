@@ -27,24 +27,10 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-// Add operation inherited from ElementwiseOperation, but it is more
-// complicated than usual elementwise, that is why it has own versions for
-// Compile. Add operation support not equal tensors on input (for possibility to
-// remove Padding operation with zeroes in Z dimension)
-class Add : public ElementwiseOperation {
- public:
-  Add(const OperationDef& definition, const std::vector<int>& channels,
-      int dst_channels);
-
-  // Move only
-  Add(Add&& operation);
-  Add& operator=(Add&& operation);
-  Add(const Add&) = delete;
-  Add& operator=(const Add&) = delete;
-};
-
-Add CreateAdd(const OperationDef& definition, const std::vector<int>& channels,
-              int dst_channels);
+// Add operation supports not equal tensors on input (for possibility to
+// remove Padding operation with zeroes in channels dimension)
+GPUOperation CreateAdd(const OperationDef& definition,
+                       const std::vector<int>& channels, int dst_channels);
 
 }  // namespace cl
 }  // namespace gpu

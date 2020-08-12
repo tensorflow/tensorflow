@@ -37,7 +37,7 @@ int GetAdrenoOptimalMaxConstantSize(int gpu_version) {
 }
 
 int GetOptimalMaxConstantSize(const DeviceInfo& info) {
-  if (info.vendor != Vendor::QUALCOMM) {
+  if (!info.IsAdreno()) {
     // In general we do not expect that this kernel will be used with non Adreno
     // so as it tuned for __constant memory that have big profit on Adreno
     return 1024;  // 1KB
@@ -59,9 +59,9 @@ ConvConstants::ConvConstants(const OperationDef& definition,
       dst_channels_(attr.weights.shape.o) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  code_ = GenerateConvolutionConstantCode(definition_, kernel_size_,
-                                          src_channels_, dst_channels_,
-                                          stride_correction, device_info);
+  code_ =
+      GenerateConvolutionConstantCode(definition_, kernel_size_, src_channels_,
+                                      dst_channels_, stride_correction);
   if (definition_.precision == CalculationsPrecision::F16 &&
       device_info.IsAdreno3xx()) {
     compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
@@ -97,9 +97,9 @@ ConvConstants& ConvConstants::operator=(ConvConstants&& kernel) {
 
 std::string ConvConstants::GenerateConvolutionConstantCode(
     const OperationDef& op_def, const int2& kernel_size, int src_channels,
-    int dst_channels, bool stride_correction, const DeviceInfo& device_info) {
+    int dst_channels, bool stride_correction) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device_info));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -271,7 +271,7 @@ bool IsConvConstantsSupported(const CLDevice& device,
                              ? sizeof(float)
                              : sizeof(half);
   const int filters_buffer_size = filters_count * float_size;
-  const int kConstantMaxSize = GetOptimalMaxConstantSize(device.GetInfo());
+  const int kConstantMaxSize = GetOptimalMaxConstantSize(device.info_);
   const int flt4_registers = DivideRoundUp(w_shape.o, 4);
   return filters_buffer_size <= kConstantMaxSize && flt4_registers <= 8;
 }
@@ -283,7 +283,7 @@ absl::Status CreateConvConstants(const CreationContext& creation_context,
   if (!IsConvConstantsSupported(*creation_context.device, definition, attr)) {
     return absl::InvalidArgumentError("ConvConstants doesn't supported");
   }
-  *result = ConvConstants(definition, attr, creation_context.device->GetInfo());
+  *result = ConvConstants(definition, attr, creation_context.device->info_);
   RETURN_IF_ERROR(
       result->UploadWeights(attr.weights, creation_context.context));
 

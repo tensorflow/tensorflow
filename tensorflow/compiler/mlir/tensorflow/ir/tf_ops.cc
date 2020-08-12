@@ -74,23 +74,6 @@ namespace TF {
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Returns true if the op can be duplicated.
-bool CanDuplicate(Operation *op) {
-  // If the op is marked with the cannot duplicate trait, it cannot be
-  // duplicated.
-  if (op->hasTrait<OpTrait::TF::CannotDuplicate>()) return false;
-
-  // If the op has no memory side effects, it can be duplicated.
-  if (MemoryEffectOpInterface::hasNoEffect(op)) return true;
-
-  // If the op is marked stateless using the `is_stateless` attribute, that
-  // attribute determines if the op can be duplicated.
-  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
-    return is_stateless.getValue();
-
-  // Otherwise, assume ops can be duplicated by default.
-  return true;
-}
 
 // Returns true of the given function has a single uses (within the scope
 // of the module containing it and all parent modules).
@@ -113,7 +96,7 @@ bool HasSingleUse(FuncOp func) {
 
     // If no uses in this scope, continue looking in parent module
     SymbolTable::UseRange func_uses = func_uses_optional.getValue();
-    if (llvm::empty(func_uses)) continue;
+    if (func_uses.empty()) continue;
 
     // Check if multiple uses at this scope or another use already seen.
     if (!llvm::hasSingleElement(func_uses) || use_seen) return false;
@@ -156,7 +139,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
     //     post inlining, the function will be dead and eliminated from the IR.
     //     So there won't be any code duplication.
     FuncOp func = op->getParentOfType<FuncOp>();
-    return !func || CanDuplicate(op) || HasSingleUse(func);
+    return !func || TensorFlowDialect::CanDuplicate(op) || HasSingleUse(func);
   }
 
   //===--------------------------------------------------------------------===//
@@ -183,12 +166,48 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 // TF Dialect
 //===----------------------------------------------------------------------===//
 
+// Returns true if the op can be duplicated.
+bool TensorFlowDialect::CanDuplicate(Operation *op) {
+  // If the op is marked with the cannot duplicate trait, it cannot be
+  // duplicated.
+  if (op->hasTrait<OpTrait::TF::CannotDuplicate>()) return false;
+
+  // If the op has no memory side effects, it can be duplicated.
+  if (MemoryEffectOpInterface::hasNoEffect(op)) return true;
+
+  // If the op is marked stateless using the `is_stateless` attribute, that
+  // attribute determines if the op can be duplicated.
+  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
+    return is_stateless.getValue();
+
+  // Otherwise, assume ops can be duplicated by default if its registered, else
+  // it cannot be for unknown ops.
+  return op->isRegistered();
+}
+
+// Returns true if the op can have side effects.
+bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
+  // If the op has no memory side effects, it has no side effects
+  if (MemoryEffectOpInterface::hasNoEffect(op)) return false;
+
+  // If the op is marked stateless using the `is_stateless` attribute, then
+  // it has no side effects.
+  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
+    return !is_stateless.getValue();
+
+  // Terminators defined in the TF dialect do not have side effects.
+  if (op->isKnownTerminator()) return false;
+
+  // Otherwise assume that the op can have side effects.
+  return true;
+}
+
 std::vector<TensorFlowDialect::AdditionalOpFunction>
     *TensorFlowDialect::additional_operation_hooks_ =
         new std::vector<TensorFlowDialect::AdditionalOpFunction>();
 
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
-    : Dialect(/*name=*/"tf", context) {
+    : Dialect(/*name=*/"tf", context, TypeID::get<TensorFlowDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_all_ops.cc.inc"

@@ -367,8 +367,17 @@ def abs(x, name=None):  # pylint: disable=redefined-builtin
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
   `float32` or `float64` that is the absolute value of each element in `x`. For
   a complex number \\(a + bj\\), its absolute value is computed as
-  \\(\sqrt{a^2 + b^2}\\).  For example:
+  \\(\sqrt{a^2 + b^2}\\).
 
+  For example:
+
+  >>> # real number
+  >>> x = tf.constant([-2.25, 3.25])
+  >>> tf.abs(x)
+  <tf.Tensor: shape=(2,), dtype=float32,
+  numpy=array([2.25, 3.25], dtype=float32)>
+
+  >>> # complex number
   >>> x = tf.constant([[-2.25 + 4.75j], [-3.25 + 5.75j]])
   >>> tf.abs(x)
   <tf.Tensor: shape=(2, 1), dtype=float64, numpy=
@@ -685,20 +694,27 @@ def complex(real, imag, name=None):
 @tf_export("math.sign", "sign")
 @dispatch.add_dispatch_support
 def sign(x, name=None):
-  """Returns an element-wise indication of the sign of a number.
+  r"""Returns an element-wise indication of the sign of a number.
 
-  y = sign(x) = -1 if x < 0; 0 if x == 0; 1 if x > 0.
+  `y = sign(x) = -1 if x < 0; 0 if x == 0; 1 if x > 0`.
 
-  For complex numbers, y = sign(x) = x / |x| if x != 0, otherwise y = 0.
+  For complex numbers, `y = sign(x) = x / |x| if x != 0, otherwise y = 0`.
 
   Example usage:
 
+  >>> # real number
   >>> tf.math.sign([0., 2., -3.])
-  <tf.Tensor: ... numpy=array([ 0.,  1., -1.], dtype=float32)>
+  <tf.Tensor: shape=(3,), dtype=float32,
+  numpy=array([ 0.,  1., -1.], dtype=float32)>
+
+  >>> # complex number
+  >>> tf.math.sign([1 + 1j, 0 + 0j])
+  <tf.Tensor: shape=(2,), dtype=complex128,
+  numpy=array([0.70710678+0.70710678j, 0.        +0.j        ])>
 
   Args:
    x: A Tensor. Must be one of the following types: bfloat16, half, float32,
-      float64, int32, int64, complex64, complex128.
+     float64, int32, int64, complex64, complex128.
    name: A name for the operation (optional).
 
   Returns:
@@ -708,7 +724,7 @@ def sign(x, name=None):
      tf.math.sign(x.values, ...), x.dense_shape).
   """
   x = ops.convert_to_tensor(x)
-  if x.dtype in (dtypes.complex64, dtypes.complex128):
+  if x.dtype.is_complex:
     return gen_math_ops.div_no_nan(
         x,
         cast(
@@ -3615,9 +3631,9 @@ def _accumulate_n_grad(op, grad):
 def sigmoid(x, name=None):
   r"""Computes sigmoid of `x` element-wise.
 
-  Formula for calculating sigmoid(x): `y = 1 / (1 + exp(-x))`.
+  Formula for calculating $\mathrm{sigmoid}(x) = y = 1 / (1 + \exp(-x))$.
 
-  For x \in (-inf, inf) => sigmoid(x) \in (0, 1)
+  For $x \in (-\infty, \infty)$, $\mathrm{sigmoid}(x) \in (0, 1)$.
 
   Example Usage:
 
@@ -3871,19 +3887,28 @@ def cumulative_logsumexp(x, axis=0, exclusive=False, reverse=False, name=None):
 def conj(x, name=None):
   r"""Returns the complex conjugate of a complex number.
 
-  Given a tensor `input` of complex numbers, this operation returns a tensor of
-  complex numbers that are the complex conjugate of each element in `input`. The
-  complex numbers in `input` must be of the form \\(a + bj\\), where *a* is the
-  real part and *b* is the imaginary part.
+  Given a tensor `x` of complex numbers, this operation returns a tensor of
+  complex numbers that are the complex conjugate of each element in `x`. The
+  complex numbers in `x` must be of the form \\(a + bj\\), where `a` is the
+  real part and `b` is the imaginary part.
 
   The complex conjugate returned by this operation is of the form \\(a - bj\\).
 
   For example:
 
-      # tensor 'input' is [-2.25 + 4.75j, 3.25 + 5.75j]
-      tf.math.conj(input) ==> [-2.25 - 4.75j, 3.25 - 5.75j]
+  >>> x = tf.constant([-2.25 + 4.75j, 3.25 + 5.75j])
+  >>> tf.math.conj(x)
+  <tf.Tensor: shape=(2,), dtype=complex128,
+  numpy=array([-2.25-4.75j,  3.25-5.75j])>
 
   If `x` is real, it is returned unchanged.
+
+  For example:
+
+  >>> x = tf.constant([-2.25, 3.25])
+  >>> tf.math.conj(x)
+  <tf.Tensor: shape=(2,), dtype=float32,
+  numpy=array([-2.25,  3.25], dtype=float32)>
 
   Args:
     x: `Tensor` to conjugate.  Must have numeric or variant type.
@@ -3894,6 +3919,10 @@ def conj(x, name=None):
 
   Raises:
     TypeError: If `x` is not a numeric tensor.
+
+  @compatibility(numpy)
+  Equivalent to numpy.conj.
+  @end_compatibility
   """
   if isinstance(x, ops.Tensor):
     dt = x.dtype
@@ -3987,8 +4016,7 @@ def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
   segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
-  This operator is similar to the unsorted segment sum operator found
-  [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+  This operator is similar to the `tf.math.unsorted_segment_sum` operator.
   Instead of computing the sum over segments, it computes the mean of all
   entries belonging to a segment such that:
 
@@ -4034,8 +4062,7 @@ def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
   segmentation](https://www.tensorflow.org/versions/r2.0/api_docs/python/tf/math#about_segmentation)
   for an explanation of segments.
 
-  This operator is similar to the unsorted segment sum operator found
-  [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+  This operator is similar to the `tf.math.unsorted_segment_sum` operator.
   Additionally to computing the sum over segments, it divides the results by
   sqrt(N).
 
@@ -4568,12 +4595,12 @@ def polyval(coeffs, x, name=None):
   If `x` is a tensor and `coeffs` is a list n + 1 tensors,
   this function returns the value of the n-th order polynomial
 
-     p(x) = coeffs[n-1] + coeffs[n-2] * x + ...  + coeffs[0] * x**(n-1)
+  `p(x) = coeffs[n-1] + coeffs[n-2] * x + ...  + coeffs[0] * x**(n-1)`
 
   evaluated using Horner's method, i.e.
 
-     p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1] +
-            x * coeffs[0]))
+  `p(x) = coeffs[n-1] + x * (coeffs[n-2] + ... + x * (coeffs[1]
+          + x * coeffs[0]))`
 
   Usage Example:
 
@@ -4820,10 +4847,14 @@ def exp(x, name=None):
   numpy=array([   7.389056, 2980.958   ], dtype=float32)>
 
   For complex numbers, the exponential value is calculated as
-  \\(e^{x+iy}={e^x}{e^{iy}}={e^x}{\\cos(y)+i\\sin(y)}\\)
+  $$
+  e^{x+iy} = {e^x} {e^{iy}} = {e^x} ({\cos (y) + i \sin (y)})
+  $$
 
   For `1+1j` the value would be computed as:
-  \\(e^1{\\cos(1)+i\\sin(1)} = 2.7182817 \\times (0.5403023+0.84147096j)\\)
+  $$
+  e^1 (\cos (1) + i \sin (1)) = 2.7182817 \times (0.5403023+0.84147096j)
+  $$
 
   >>> x = tf.constant(1 + 1j)
   >>> tf.math.exp(x)

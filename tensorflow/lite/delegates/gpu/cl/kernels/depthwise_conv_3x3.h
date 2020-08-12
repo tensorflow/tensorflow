@@ -38,7 +38,10 @@ namespace cl {
 class DepthwiseConv3x3 : public GPUOperation {
  public:
   DepthwiseConv3x3() = default;
-  absl::Status Tune(const TuningParameters& params) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -67,7 +70,6 @@ class DepthwiseConv3x3 : public GPUOperation {
       const tflite::gpu::Tensor<Linear, S>& biases, absl::Span<T> dst);
 
   std::string GenerateDepthwiseConvCode(const OperationDef& op_def,
-                                        const DeviceInfo& device_info,
                                         bool weights_are_buffer,
                                         bool local_mem_uploads);
 

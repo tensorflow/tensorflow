@@ -101,7 +101,7 @@ AbstractTensorHandle* TapeTensor::ZerosLike() const {
   }
   if (isa<tracing::TracingOperation>(op.get())) {
     s = dyn_cast<tracing::TracingOperation>(op.get())->SetOpName(
-        absl::StrCat("OnesLike", ToId(handle_)).c_str());
+        absl::StrCat("ZerosLike", ToId(handle_)).c_str());
     if (!s.ok()) {
       return nullptr;
     }
@@ -362,6 +362,10 @@ Status Execute(AbstractOperation* op_, AbstractContext* ctx,
   for (int i = 0; i < forward_op_->inputs.size(); i++) {
     input_ids[i] = ToId(forward_op_->inputs[i]);
     input_dtypes[i] = forward_op_->inputs[i]->DataType();
+  }
+  for (int i = 0; i < *num_retvals; i++) {
+    // TODO(srbs): Manage refcount of ForwardOperation's inputs/outputs.
+    forward_op_->outputs.push_back(retvals[i]);
   }
   std::vector<TapeTensor> tape_tensors;
   for (auto t : retvals) {

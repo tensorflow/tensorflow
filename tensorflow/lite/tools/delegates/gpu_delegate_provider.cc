@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/evaluation/utils.h"
-#if defined(__ANDROID__)
+#if TFLITE_SUPPORTS_GPU_DELEGATE
 #include "tensorflow/lite/delegates/gpu/delegate.h"
 #elif defined(__APPLE__)
 #include "TargetConditionals.h"
@@ -34,13 +34,13 @@ class GpuDelegateProvider : public DelegateProvider {
  public:
   GpuDelegateProvider() {
     default_params_.AddParam("use_gpu", ToolParam::Create<bool>(false));
-#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
+#if TFLITE_SUPPORTS_GPU_DELEGATE || defined(REAL_IPHONE_DEVICE)
     default_params_.AddParam("gpu_precision_loss_allowed",
                              ToolParam::Create<bool>(true));
     default_params_.AddParam("gpu_experimental_enable_quant",
                              ToolParam::Create<bool>(true));
 #endif
-#if defined(__ANDROID__)
+#if TFLITE_SUPPORTS_GPU_DELEGATE
     default_params_.AddParam("gpu_backend", ToolParam::Create<std::string>(""));
 #endif
 #if defined(REAL_IPHONE_DEVICE)
@@ -62,7 +62,7 @@ REGISTER_DELEGATE_PROVIDER(GpuDelegateProvider);
 std::vector<Flag> GpuDelegateProvider::CreateFlags(ToolParams* params) const {
   std::vector<Flag> flags = {
     CreateFlag<bool>("use_gpu", params, "use gpu"),
-#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
+#if TFLITE_SUPPORTS_GPU_DELEGATE || defined(REAL_IPHONE_DEVICE)
     CreateFlag<bool>("gpu_precision_loss_allowed", params,
                      "Allow to process computation in lower precision than "
                      "FP32 in GPU. By default, it's enabled."),
@@ -70,7 +70,7 @@ std::vector<Flag> GpuDelegateProvider::CreateFlags(ToolParams* params) const {
                      "Whether to enable the GPU delegate to run quantized "
                      "models or not. By default, it's enabled."),
 #endif
-#if defined(__ANDROID__)
+#if TFLITE_SUPPORTS_GPU_DELEGATE
     CreateFlag<std::string>(
         "gpu_backend", params,
         "Force the GPU delegate to use a particular backend for execution, and "
@@ -89,13 +89,13 @@ std::vector<Flag> GpuDelegateProvider::CreateFlags(ToolParams* params) const {
 void GpuDelegateProvider::LogParams(const ToolParams& params,
                                     bool verbose) const {
   LOG_TOOL_PARAM(params, bool, "use_gpu", "Use gpu", verbose);
-#if defined(__ANDROID__) || defined(REAL_IPHONE_DEVICE)
+#if TFLITE_SUPPORTS_GPU_DELEGATE || defined(REAL_IPHONE_DEVICE)
   LOG_TOOL_PARAM(params, bool, "gpu_precision_loss_allowed",
                  "Allow lower precision in gpu", verbose);
   LOG_TOOL_PARAM(params, bool, "gpu_experimental_enable_quant",
                  "Enable running quant models in gpu", verbose);
 #endif
-#if defined(__ANDROID__)
+#if TFLITE_SUPPORTS_GPU_DELEGATE
   LOG_TOOL_PARAM(params, std::string, "gpu_backend", "GPU backend", verbose);
 #endif
 #if defined(REAL_IPHONE_DEVICE)
@@ -109,7 +109,7 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
   TfLiteDelegatePtr delegate(nullptr, [](TfLiteDelegate*) {});
 
   if (params.Get<bool>("use_gpu")) {
-#if defined(__ANDROID__)
+#if TFLITE_SUPPORTS_GPU_DELEGATE
     TfLiteGpuDelegateOptionsV2 gpu_opts = TfLiteGpuDelegateOptionsV2Default();
     if (params.Get<bool>("gpu_precision_loss_allowed")) {
       gpu_opts.inference_priority1 = TFLITE_GPU_INFERENCE_PRIORITY_MIN_LATENCY;
@@ -157,7 +157,8 @@ TfLiteDelegatePtr GpuDelegateProvider::CreateTfLiteDelegate(
                                  &TFLGpuDelegateDelete);
 #else
     TFLITE_LOG(WARN) << "The GPU delegate compile options are only supported "
-                        "on Android or iOS platforms.";
+                        "on Android or iOS platforms or when the tool was "
+                        "built with -DCL_DELEGATE_NO_GL.";
     delegate = evaluation::CreateGPUDelegate();
 #endif
 

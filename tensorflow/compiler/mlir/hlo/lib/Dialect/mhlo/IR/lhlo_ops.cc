@@ -49,7 +49,7 @@ namespace mlir {
 namespace lmhlo {
 
 LmhloDialect::LmhloDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context) {
+    : Dialect(getDialectNamespace(), context, TypeID::get<LmhloDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"

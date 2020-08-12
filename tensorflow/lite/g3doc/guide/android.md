@@ -205,8 +205,19 @@ bazel build -c opt --fat_apk_cpu=x86,x86_64,arm64-v8a,armeabi-v7a \
 This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. Note
 that this builds a "fat" AAR with several different architectures; if you don't
 need all of them, use the subset appropriate for your deployment environment.
-From there, there are several approaches you can take to use the .aar in your
-Android Studio project.
+
+Caution: Following feature is experimental and only available at HEAD. You can
+build smaller AAR files targeting only a set of models as follows:
+
+```sh
+bash tensorflow/lite/tools/build_aar.sh \
+  --input_models=model1,model2 \
+  --target_archs=x86,x86_64,arm64-v8a,armeabi-v7a
+```
+
+Above script will generate the `tensorflow-lite.aar` file and optionally the
+`tensorflow-lite-select-tf-ops.aar` file if one of the models is using
+Tensorflow ops.
 
 ##### Add AAR directly to project
 

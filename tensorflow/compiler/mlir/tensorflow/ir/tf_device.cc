@@ -101,7 +101,8 @@ bool BlockWrapsSingleOp(Block* block) {
 }  // end anonymous namespace
 
 TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
-    : Dialect(/*name=*/"tf_device", context) {
+    : Dialect(/*name=*/"tf_device", context,
+              TypeID::get<TensorFlowDeviceDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
@@ -117,31 +118,6 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 // Checks if a tf_device.launch wraps a single operation and the single
 // operation results are perfectly forwarded to the launch return.
 bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
-
-//===----------------------------------------------------------------------===//
-// tf_device.return
-//===----------------------------------------------------------------------===//
-
-namespace {
-ParseResult ParseReturnOp(OpAsmParser* parser, OperationState* state) {
-  llvm::SmallVector<OpAsmParser::OperandType, 2> op_info;
-  llvm::SmallVector<Type, 2> types;
-  llvm::SMLoc loc = parser->getCurrentLocation();
-  return failure(parser->parseOperandList(op_info) ||
-                 (!op_info.empty() && parser->parseColonTypeList(types)) ||
-                 parser->resolveOperands(op_info, types, loc, state->operands));
-}
-
-void Print(ReturnOp op, OpAsmPrinter* p) {
-  *p << op.getOperationName();
-  if (op.getNumOperands() > 0) {
-    *p << ' ';
-    p->printOperands(op.getOperands());
-    *p << " : ";
-    interleaveComma(op.getOperandTypes(), *p);
-  }
-}
-}  // anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // tf_device.parallel_execute

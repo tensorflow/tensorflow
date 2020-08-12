@@ -10,8 +10,6 @@ message RegisterWorkerRequest {
 }
 
 message RegisterWorkerResponse {
-  // An id for the worker.
-  int64 worker_id = 1;
   // Tasks to begin processing.
   repeated TaskDef tasks = 2;
 }
@@ -24,8 +22,7 @@ message TaskProgress {
 }
 
 message WorkerUpdateRequest {
-  // The worker id that the update is for.
-  int64 worker_id = 1;
+  string worker_address = 1;
   repeated TaskProgress updates = 2;
 }
 
@@ -73,13 +70,6 @@ message GetOrCreateJobResponse {
 message GetTasksRequest {
   // The job to look up tasks for.
   int64 job_id = 1;
-}
-
-message TaskInfo {
-  // The address of the worker processing the task.
-  string worker_address = 1;
-  // The task id.
-  int64 id = 2;
 }
 
 message GetTasksResponse {

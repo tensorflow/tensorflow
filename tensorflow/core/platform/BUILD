@@ -780,7 +780,10 @@ cc_library(
     name = "types",
     hdrs = ["types.h"],
     # TODO(b/161569340): Short-term fix. Remove this visibility rule.
-    visibility = ["//tensorflow:__subpackages__"],
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow_text:__subpackages__",
+    ],
     deps = [
         ":platform",
         ":tstring",

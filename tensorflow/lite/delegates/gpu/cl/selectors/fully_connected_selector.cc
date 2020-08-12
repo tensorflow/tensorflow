@@ -104,22 +104,20 @@ absl::Status SelectFullyConnected(const FullyConnectedAttributes& attr,
                                   const CreationContext& creation_context,
                                   const OperationDef& op_def, int batch_size,
                                   std::unique_ptr<GPUOperation>* ptr) {
-  switch (creation_context.device->vendor()) {
-    case Vendor::QUALCOMM:
-      return SelectFullyConnectedAdreno(attr, creation_context, op_def,
-                                        batch_size, ptr);
-    case Vendor::POWERVR:
-    case Vendor::AMD:
-    case Vendor::NVIDIA:
-    case Vendor::INTEL:
-      return SelectFullyConnectedPowerVR(attr, creation_context, op_def,
-                                         batch_size, ptr);
-    case Vendor::MALI:
-      return SelectFullyConnectedMali(attr, creation_context, op_def,
+  const auto& device_info = creation_context.device->info_;
+  if (device_info.IsAdreno()) {
+    return SelectFullyConnectedAdreno(attr, creation_context, op_def,
                                       batch_size, ptr);
-    default:
-      return SelectFullyConnectedGeneric(attr, creation_context, op_def,
-                                         batch_size, ptr);
+  } else if (device_info.IsPowerVR() || device_info.IsAMD() ||
+             device_info.IsNvidia() || device_info.IsIntel()) {
+    return SelectFullyConnectedPowerVR(attr, creation_context, op_def,
+                                       batch_size, ptr);
+  } else if (device_info.IsMali()) {
+    return SelectFullyConnectedMali(attr, creation_context, op_def, batch_size,
+                                    ptr);
+  } else {
+    return SelectFullyConnectedGeneric(attr, creation_context, op_def,
+                                       batch_size, ptr);
   }
 }
 
