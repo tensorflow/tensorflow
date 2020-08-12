@@ -8,7 +8,6 @@ load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "pybind_extension")
-
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
