@@ -30,6 +30,9 @@ using tensorflow::string;
 namespace tensorflow {
 namespace {
 
+// The tests are parameterized on:
+// - a string representing the tracing implementation: "mlir" or "graphdef".
+// - a boolean that when true enables TFRT as the execution engine.
 class UnifiedCAPI
     : public ::testing::TestWithParam<std::tuple<const char*, bool>> {
  protected:
@@ -983,6 +986,10 @@ TEST_P(UnifiedCAPI, TF_ExecutionContextGetTFEContextFromFunctionContextRaises) {
 
   TF_DeleteExecutionContext(graph_ctx);
 }
+
+// The above tests are run for a combination of:
+// - graphdef and MLIR tracing engine
+// - Using TFRT as an execution runtime (true == enable TFRT)
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(Tracing, UnifiedCAPI,
                          ::testing::Combine(::testing::Values("graphdef",
