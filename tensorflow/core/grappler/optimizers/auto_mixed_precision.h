@@ -24,6 +24,11 @@ namespace grappler {
 
 enum class AutoMixedPrecisionMode { CUDA, MKL };
 
+//Getting FP16 supported devices for ROCm
+#if TENSORFLOW_USE_ROCM
+bool HasEnhancedFP16ComputeSupport(std::pair<int, int> gpu_arch);
+#endif
+
 // Convert data types to float16 or bfloat16 where appropriate to improve
 // performance on GPUs or CPUs.
 class AutoMixedPrecision : public GraphOptimizer {
