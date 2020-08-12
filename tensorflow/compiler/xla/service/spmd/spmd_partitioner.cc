@@ -1375,8 +1375,10 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
         update_dim_to_index_dim[update_scatter_dims[i]] = indices_scatter_dim;
         index_dim_to_update_dim[indices_scatter_dim] = update_scatter_dims[i];
       }
-      auto new_updates_sharding = TransposeShardingWithCollapsedDims(
-          indices.sharding(), index_dim_to_update_dim, update_dim_to_index_dim);
+      auto new_updates_sharding =
+          hlo_sharding_util::TransposeShardingWithCollapsedDims(
+              indices.sharding(), index_dim_to_update_dim,
+              update_dim_to_index_dim);
       CHECK(new_updates_sharding.has_value());
       updates = updates.Reshard(*new_updates_sharding);
       // To avoid accumulating the initial operand multiple times during
@@ -2243,8 +2245,10 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
         output_dim_to_index_dim[batch_dims[i]] = indices_batch_dim;
         index_dim_to_output_dim[indices_batch_dim] = batch_dims[i];
       }
-      auto pgather_sharding = TransposeShardingWithCollapsedDims(
-          indices.sharding(), index_dim_to_output_dim, output_dim_to_index_dim);
+      auto pgather_sharding =
+          hlo_sharding_util::TransposeShardingWithCollapsedDims(
+              indices.sharding(), index_dim_to_output_dim,
+              output_dim_to_index_dim);
       CHECK(pgather_sharding.has_value());
       pgather->set_sharding(*pgather_sharding);
       SetPartitionedHlo(hlo, [&]() {

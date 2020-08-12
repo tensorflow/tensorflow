@@ -841,5 +841,56 @@ HloSharding RemoveShapeDimensions(const HloSharding& sharding,
                                            : HloSharding::Tile(new_tile);
 }
 
+absl::optional<HloSharding> TransposeShardingWithCollapsedDims(
+    const HloSharding& source, absl::Span<int64 const> src_to_tgt,
+    absl::Span<int64 const> tgt_to_src) {
+  if (source.IsTileMaximal()) {
+    return source;
+  }
+  if (source.ReplicateOnLastTileDim() &&
+      src_to_tgt.size() < source.tile_assignment().num_dimensions()) {
+    std::vector<int64> new_src_to_tgt(src_to_tgt.begin(), src_to_tgt.end());
+    new_src_to_tgt.push_back(tgt_to_src.size());
+    std::vector<int64> new_tgt_to_src(tgt_to_src.begin(), tgt_to_src.end());
+    new_tgt_to_src.push_back(src_to_tgt.size());
+    return TransposeShardingWithCollapsedDims(source, new_src_to_tgt,
+                                              new_tgt_to_src);
+  }
+  std::vector<int64> tgt_dims_skipping_new(tgt_to_src.size(), -1);
+  int64 skipped_tgt_dims = 0;
+  for (int64 i = 0; i < tgt_to_src.size(); ++i) {
+    if (tgt_to_src[i] < 0) {
+      skipped_tgt_dims++;
+    } else {
+      tgt_dims_skipping_new[i] = i - skipped_tgt_dims;
+    }
+  }
+  int64 skipped_src_dims = absl::c_count(src_to_tgt, -1);
+  std::vector<int64> perm(src_to_tgt.size());
+  for (int64 i = 0; i < src_to_tgt.size(); ++i) {
+    if (src_to_tgt[i] < 0) {
+      if (source.tile_assignment().dim(i) > 1) {
+        return absl::nullopt;
+      }
+      perm[src_to_tgt.size() - skipped_src_dims] = i;
+      skipped_src_dims--;
+    } else {
+      perm[tgt_dims_skipping_new[src_to_tgt[i]]] = i;
+    }
+  }
+  auto tgt_sharding = hlo_sharding_util::TransposeSharding(source, perm);
+  auto reshape_tiles = tgt_sharding.tile_assignment();
+  std::vector<int64> tgt_tiles(tgt_to_src.size(), 1);
+  for (int64 i = 0; i < tgt_tiles.size(); ++i) {
+    if (tgt_to_src[i] >= 0) {
+      tgt_tiles[i] = reshape_tiles.dim(tgt_dims_skipping_new[i]);
+    }
+  }
+  reshape_tiles.Reshape(tgt_tiles);
+  return source.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(reshape_tiles)
+             : HloSharding::Tile(reshape_tiles);
+}
+
 }  // namespace hlo_sharding_util
 }  // namespace xla
