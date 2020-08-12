@@ -467,11 +467,11 @@ class RandomTranslation(PreprocessingLayer):
         The input is extended by wrapping around to the opposite edge.
       - *nearest*: `(a a a a | a b c d | d d d d)`
         The input is extended by the nearest pixel.
-    fill_value: a float represents the value to be filled outside the
-      boundaries when `fill_mode` is "constant".
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
 
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
@@ -490,10 +490,10 @@ class RandomTranslation(PreprocessingLayer):
                height_factor,
                width_factor,
                fill_mode='reflect',
-               fill_value=0.0,
                interpolation='bilinear',
                seed=None,
                name=None,
+               fill_value=0.0,
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
@@ -796,11 +796,11 @@ class RandomRotation(PreprocessingLayer):
         The input is extended by wrapping around to the opposite edge.
       - *nearest*: `(a a a a | a b c d | d d d d)`
         The input is extended by the nearest pixel.
-    fill_value: a float represents the value to be filled outside the
-      boundaries when `fill_mode` is "constant".
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
 
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
@@ -817,10 +817,10 @@ class RandomRotation(PreprocessingLayer):
   def __init__(self,
                factor,
                fill_mode='reflect',
-               fill_value=0.0,
                interpolation='bilinear',
                seed=None,
                name=None,
+               fill_value=0.0,
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
@@ -917,11 +917,11 @@ class RandomZoom(PreprocessingLayer):
         The input is extended by wrapping around to the opposite edge.
       - *nearest*: `(a a a a | a b c d | d d d d)`
         The input is extended by the nearest pixel.
-    fill_value: a float represents the value to be filled outside the
-      boundaries when `fill_mode` is "constant".
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
 
   Example:
 
@@ -948,10 +948,10 @@ class RandomZoom(PreprocessingLayer):
                height_factor,
                width_factor=None,
                fill_mode='reflect',
-               fill_value=0.0,
                interpolation='bilinear',
                seed=None,
                name=None,
+               fill_value=0.0,
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
