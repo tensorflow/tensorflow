@@ -38,6 +38,7 @@ tf_kernel_library(
         ":tpu_execute_op",
         ":tpu_handle_to_key_op",
         ":transfer_ops",
+        "//tensorflow/core/tpu/kernels/xla:xla_ops",
     ],
 )
 
