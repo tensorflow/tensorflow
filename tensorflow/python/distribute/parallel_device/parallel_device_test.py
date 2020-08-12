@@ -100,13 +100,10 @@ class _VirtualDeviceTestCase(test.TestCase):
         context.LogicalDeviceConfiguration()
     ])
 
-    # TODO(allenl): Make CPU:0 and CPU:1 work (right now "CPU:1" soft-places
-    # onto CPU:0, which seems wrong).
-    components = [
-        "/job:localhost/replica:0/task:0/device:CPU:0",
-        "/job:localhost/replica:0/task:0/device:CPU:1"
-    ]
-    self.device = parallel_device.ParallelDevice(components)
+    self.device = parallel_device.ParallelDevice(
+        components=["/job:localhost/device:CPU:0", "CPU:1"])
+    self.assertIn("CPU:0", self.device.components[0])
+    self.assertIn("CPU:1", self.device.components[1])
 
 
 class ParallelDeviceTests(_VirtualDeviceTestCase):
@@ -198,6 +195,15 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     with self.device:
       result = broadcast_send_recv(self.device.device_ids)
     self.assertAllClose([[2], [6]], self.device.unpack(result))
+
+  def test_use_in_graph_error_is_informative(self):
+    @def_function.function
+    def uses_parallel():
+      with self.device:
+        return self.device.unpack(array_ops.ones([]))
+
+    with self.assertRaisesRegex(NotImplementedError, "inside `tf.function`"):
+      uses_parallel()
 
   def test_checkpointing(self):
     self.skipTest(

@@ -100,6 +100,10 @@ parser.add_argument(
     type=str,
     help="Name of job calling this script. Default: $KOKORO_JOB_NAME.")
 parser.add_argument(
+    "--build_id",
+    type=str,
+    help="UUID of build calling this script. Default: $KOKORO_BUILD_ID.")
+parser.add_argument(
     "--print_schema",
     action="store_true",
     help="Print the table schema and don't do anything else.")
@@ -151,6 +155,7 @@ SCHEMA = ",".join([
     "logged_date:timestamp",
     "uploaded_to:string",
     "job:string",
+    "build_id:string",
 ])
 # Select the earliest recorded commit in the same table for the same artifact
 # and team. Used to determine the full range of tested commits for each
@@ -328,6 +333,7 @@ def build_row():
       current_time,
       get_upload_path(),
       FLAGS.job,
+      FLAGS.build_id,
   ]
 
 
@@ -347,6 +353,8 @@ def main():
 
   if not FLAGS.job:
     FLAGS.job = os.environ.get("KOKORO_JOB_NAME", "NO_JOB")
+  if not FLAGS.build_id:
+    FLAGS.build_id = os.environ.get("KOKORO_BUILD_ID", "NO_BUILD")
 
   # Generate data about this artifact into a Tab Separated Value file
   next_tsv_row = build_row()

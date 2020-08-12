@@ -10899,12 +10899,26 @@ func ExperimentalRandomDataset(scope *Scope, seed tf.Output, seed2 tf.Output, ou
 	return op.Output(0)
 }
 
+// ExperimentalIgnoreErrorsDatasetAttr is an optional argument to ExperimentalIgnoreErrorsDataset.
+type ExperimentalIgnoreErrorsDatasetAttr func(optionalAttr)
+
+// ExperimentalIgnoreErrorsDatasetLogWarning sets the optional log_warning attribute to value.
+// If not specified, defaults to false
+func ExperimentalIgnoreErrorsDatasetLogWarning(value bool) ExperimentalIgnoreErrorsDatasetAttr {
+	return func(m optionalAttr) {
+		m["log_warning"] = value
+	}
+}
+
 // Creates a dataset that contains the elements of `input_dataset` ignoring errors.
-func ExperimentalIgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func ExperimentalIgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ExperimentalIgnoreErrorsDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ExperimentalIgnoreErrorsDataset",
 		Input: []tf.Input{
@@ -31035,12 +31049,26 @@ func MaxPool3DGradGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output
 	return op.Output(0)
 }
 
+// IgnoreErrorsDatasetAttr is an optional argument to IgnoreErrorsDataset.
+type IgnoreErrorsDatasetAttr func(optionalAttr)
+
+// IgnoreErrorsDatasetLogWarning sets the optional log_warning attribute to value.
+// If not specified, defaults to false
+func IgnoreErrorsDatasetLogWarning(value bool) IgnoreErrorsDatasetAttr {
+	return func(m optionalAttr) {
+		m["log_warning"] = value
+	}
+}
+
 // Creates a dataset that contains the elements of `input_dataset` ignoring errors.
-func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...IgnoreErrorsDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "IgnoreErrorsDataset",
 		Input: []tf.Input{

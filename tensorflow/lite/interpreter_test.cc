@@ -1578,8 +1578,9 @@ class TestCustomAllocation : public ::testing::Test {
 TEST_F(TestCustomAllocation, InvalidAlignment) {
   const TfLiteTensor* input_tensor =
       interpreter_->tensor(interpreter_->inputs()[0]);
-  auto input_alloc =
-      NewCustomAlloc(input_tensor->bytes, kDefaultTensorAlignment - 1);
+  intptr_t dummy_ptr = kDefaultTensorAlignment - 1;
+  TfLiteCustomAllocation input_alloc{reinterpret_cast<void*>(dummy_ptr),
+                                     input_tensor->bytes};
   ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
                 interpreter_->inputs()[0], input_alloc),
             kTfLiteError);

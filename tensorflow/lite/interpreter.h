@@ -56,35 +56,39 @@ namespace impl {
 /// Usage:
 ///
 /// <pre><code>
-/// // Create basic model
-/// Interpreter foo(2, 1);
-/// foo.SetTensorParametersReadWrite(0, ...);
-/// foo.SetTensorParametersReadOnly(1, ...);
-/// foo.SetNodeParameters(0, ...)
-/// // Resize input array to 1 length.
-/// foo.ResizeInputTensor(0, 1);
-/// foo.AllocateTensors();
-/// // Install array data
-/// foo.typed_tensor<float>(0)[0] = 3;
-/// foo.Invoke();
-/// foo.typed_tensor<float>(0)[0] = 4;
-/// foo.Invoke();
-/// // Resize input array and set data.
-/// foo.ResizeInputTensor(0, 2);
-/// foo.AllocateTensors();
-/// foo.typed_tensor<float>(0)[0] = 4;
-/// foo.typed_tensor<float>(0)[1] = 8;
-/// foo.Invoke();
+/// // Create model from file. Note that the model instance must outlive the
+/// // interpreter instance.
+/// auto model = tflite::FlatBufferModel::BuildFromFile(...);
+/// if (model == nullptr) {
+///   // Return error.
+/// }
+/// // Create an Interpreter with an InterpreterBuilder.
+/// std::unique_ptr<tflite::Interpreter> interpreter;
+/// tflite::ops::builtin::BuiltinOpResolver resolver;
+/// if (InterpreterBuilder(*model, resolver)(&interpreter) != kTfLiteOk) {
+///   // Return failure.
+/// }
+/// interpreter->AllocateTensors();
+///
+/// auto input = interpreter->typed_tensor<float>(0);
+/// for (int i = 0; i < input_size; i++) {
+///   input[i] = ...;
+//  }
+/// interpreter.Invoke();
 /// </code></pre>
 ///
+/// Note: for nearly all practical use cases, one should not directly construct
+/// an Interpreter object, but rather use the InterpreterBuilder.
 
 class Interpreter {
  public:
-  /// Instantiate an interpreter. All errors associated with reading and
-  /// processing this model will be forwarded to the error_reporter object.
+  // Instantiate an interpreter. All errors associated with reading and
+  // processing this model will be forwarded to the error_reporter object.
   //
-  /// Note, if error_reporter is nullptr, then a default StderrReporter is
-  /// used. Ownership of 'error_reporter' remains with the caller.
+  // Note, if error_reporter is nullptr, then a default StderrReporter is
+  // used. Ownership of 'error_reporter' remains with the caller.
+  // WARNING: Use of this constructor outside of an InterpreterBuilder is not
+  // recommended.
   explicit Interpreter(ErrorReporter* error_reporter = DefaultErrorReporter());
 
   ~Interpreter();
