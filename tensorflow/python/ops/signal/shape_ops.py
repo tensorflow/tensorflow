@@ -169,7 +169,7 @@ def frame(signal, frame_length, frame_step, pad_end=False, pad_value=0, axis=-1,
       # Pad the inner dimension of signal by pad_samples.
       paddings = array_ops.concat(
           [array_ops.zeros([num_outer_dimensions, 2], dtype=pad_samples.dtype),
-           [[0, pad_samples]],
+           ops.convert_to_tensor([[0, pad_samples]]),
            array_ops.zeros([num_inner_dimensions, 2], dtype=pad_samples.dtype)],
           0)
       signal = array_ops.pad(signal, paddings, constant_values=pad_value)
