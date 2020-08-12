@@ -91,7 +91,7 @@ genrule(
         --output_source_file $(location :devicedb-sample.cc) \
         --array_variable_name g_tflite_acceleration_devicedb_sample_binary
     """,
-    tools = [":convert_binary_to_cc_source"],
+    exec_tools = [":convert_binary_to_cc_source"],
 )
 
 cc_library(
@@ -132,7 +132,7 @@ genrule(
         --output_source_file $(location :gpu_compatibility_binary.cc) \
         --array_variable_name g_tflite_acceleration_gpu_compatibility_binary
     """,
-    tools = [":convert_binary_to_cc_source"],
+    exec_tools = [":convert_binary_to_cc_source"],
 )
 
 cc_library(
