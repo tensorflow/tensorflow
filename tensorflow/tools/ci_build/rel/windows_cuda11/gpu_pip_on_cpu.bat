@@ -15,7 +15,7 @@
 
 SET PYTHON_DIRECTORY=Python36
 
-CALL common_win_cuda11.bat
+CALL tensorflow\tools\ci_build\rel\windows\common_win_cuda11.bat
 
 call tensorflow\tools\ci_build\windows\integration\gpu_pip_on_cpu\run.bat
 
