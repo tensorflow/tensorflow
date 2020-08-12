@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/tpu/c_api_conversions.h"
+#include "tensorflow/stream_executor/tpu/noncopyable_buffer.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
@@ -165,6 +166,33 @@ Status TpuTransferManager::WriteSingleTupleIndexTable(
 
   delete[] elements_bases;
   ApiConverter::Free(&c_shape);
+  return status.status();
+}
+
+Status TpuTransferManager::LinearizeToBuffers(
+    const xla::LiteralSlice& literal,
+    std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) {
+  XLA_Literal c_literal;
+  ApiConverter::ToC(literal, &c_literal);
+
+  char** buffers_array;
+  int64_t* buffers_size;
+  int64_t buffers_array_size;
+  StatusHelper status;
+
+  tpu::ExecutorApiFn()->TpuTransferManager_LinearizeToBuffersFn(
+      manager_, &c_literal, &buffers_array, &buffers_size, &buffers_array_size,
+      status.c_status);
+
+  for (int64_t i = 0; i < buffers_array_size; ++i) {
+    tpu::NoncopyableBuffer buf(buffers_size[i]);
+    memcpy(buf.mutable_data().data(), buffers_array[i], buffers_size[i]);
+    buffers->push_back(std::move(buf));
+  }
+
+  tpu::ExecutorApiFn()->TpuTransferManager_FreeBuffersFn(
+      buffers_array, buffers_size, buffers_array_size);
+
   return status.status();
 }
 

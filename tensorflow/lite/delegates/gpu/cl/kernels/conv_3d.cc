@@ -245,21 +245,25 @@ int3 Conv3D::GetGridSize() const {
               wg[conv_params_.work_group_launch_order[2]] * work_group_size_.z);
 }
 
-absl::Status Conv3D::Tune(const TuningParameters& params) {
+void Conv3D::GetPossibleKernelWorkGroups(TuningType tuning_type,
+                                         const DeviceInfo& device_info,
+                                         const KernelInfo& kernel_info,
+                                         std::vector<int3>* work_groups) const {
   if (conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP ||
       conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    return absl::OkStatus();
+    work_groups->push_back(work_group_size_);
+    return;
   }
   if (conv_params_.work_group_launch_order[0] == 0 &&
       conv_params_.work_group_launch_order[1] == 1 &&
       conv_params_.work_group_launch_order[2] == 2) {
-    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-    RETURN_IF_ERROR(
-        GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_));
+    GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                              work_groups);
+  } else {
+    work_groups->push_back(work_group_size_);
   }
-  return absl::OkStatus();
 }
 
 std::string Conv3D::GenerateConv3D(const OperationDef& op_def,

@@ -32,6 +32,20 @@ func @tf2xla_fallback_op() -> tensor<f32> {
   return %0 : tensor<f32>
 }
 
+// CHECK-LABEL: func @ignore_embedding_ops
+func @ignore_embedding_ops() -> () {
+  "tf_device.cluster"() ( {
+    // CHECK: "tf.RecvTPUEmbeddingActivations"
+    // CHECK-NOT: _xla_outside_compilation
+    // CHECK: "tf.SendTPUEmbeddingGradients"
+    // CHECK-NOT: _xla_outside_compilation
+    %2:2 = "tf.RecvTPUEmbeddingActivations"() {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D"} : () -> (tensor<2x2xf32>, tensor<4x4xf32>)
+    "tf.SendTPUEmbeddingGradients"(%2#0, %2#1) {_tpu_embedding_layer = "call1", config = "\0A\0B\0C\0D", operand_segment_sizes = dense<[2, 0]> : vector<2xi32>} : (tensor<2x2xf32>, tensor<4x4xf32>) -> ()
+    tf_device.return
+  }) {num_cores_per_replica = 1, topology =  "", device_assignment =  []} : () -> ()
+  return
+}
+
 // CHECK-LABEL: func @op_string_result
 func @op_string_result() -> tensor<i32> {
   %0 = "tf_device.cluster"() ( {

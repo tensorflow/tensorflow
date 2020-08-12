@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_UNNESTED_H_
 
 #include "absl/container/inlined_vector.h"
-#include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_mapping_scheme.h"
 #include "tensorflow/compiler/xla/service/gpu/sequential_thunk.h"
@@ -28,40 +27,6 @@ limitations under the License.
 
 namespace xla {
 namespace gpu {
-
-struct BufferSlice {
-  // The root buffer to look at.
-  BufferAllocation::Slice buffer_slice;
-
-  // Describes how to dereference starting at that buffer to get to the buffer
-  // in question.
-  ShapeIndex gte_index;
-};
-
-// Describes how to access a particular subshape for an HLO.  For instance if
-// `.hlo_index` is {1} and `.gte_index` is {3, 4} then buffer for `.instr` at
-// ShapeIndex {1} (i.e. the buffer for the second tuple element of hlo) is
-// found at `.buffer_slice`[3][4].  That is, `.slice` is a void***, which we
-// dereference twice -- first at index 3, and then at index 4 -- to get the
-// address of our buffer.
-struct HloBufferSlice : public BufferSlice {
-  const HloInstruction* instr;
-  ShapeIndex hlo_index;
-};
-
-struct MlirBufferSlice : public BufferSlice {
-  // The buffer is modified by the kernel.
-  bool written;
-
-  Shape shape;
-};
-
-struct MlirEmitterInput {
-  mlir::Operation* op;
-  absl::string_view name;
-  Thunk::ThunkInfo thunk_info;
-  MlirBufferSlice extra_slice;
-};
 
 // Emits LLVM IR for an "unnested computation".
 //
@@ -124,13 +89,11 @@ class IrEmitterUnnested : public IrEmitter,
       const string& loop_name, llvm::Value* tile_height,
       llvm::Value* tile_width, KernelSupportLibrary* ksl)>;
 
+  IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
+                    const HloComputation* hlo_computation,
+                    IrEmitterContext* ir_emitter_context);
   IrEmitterUnnested(const IrEmitterUnnested&) = delete;
   IrEmitterUnnested& operator=(const IrEmitterUnnested&) = delete;
-
-  static StatusOr<std::unique_ptr<IrEmitterUnnested>> Create(
-      const HloModuleConfig& hlo_module_config,
-      const HloComputation* hlo_computation,
-      IrEmitterContext* ir_emitter_context);
 
   // Transfers the ownship of thunk_sequence_ out.
   std::unique_ptr<ThunkSequence> ConsumeThunkSequence() {
@@ -161,7 +124,6 @@ class IrEmitterUnnested : public IrEmitter,
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
-  Status EmitMlirSort(MlirEmitterInput input);
   Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
@@ -186,10 +148,6 @@ class IrEmitterUnnested : public IrEmitter,
   Status Postprocess(HloInstruction* hlo) override;
 
  private:
-  IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
-                    const HloComputation* hlo_computation,
-                    IrEmitterContext* ir_emitter_context);
-
   // Add a owning Thunk object to the thunk sequence.
   void AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) override {
     thunk_sequence_.emplace_back(std::move(thunk));
@@ -306,7 +264,8 @@ class IrEmitterUnnested : public IrEmitter,
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.
   // This kernel takes as arguments pointers to the given buffer allocations.
   llvm::Function* BuildKernelPrototype(
-      absl::string_view name, absl::Span<const BufferAllocation* const> args);
+      const HloInstruction& inst,
+      absl::Span<const BufferAllocation* const> args);
 
   // Helper for writing extra outputs from inside a reduce kernel.
   Status EmitExtraOutputsForReduce(
@@ -531,12 +490,6 @@ class IrEmitterUnnested : public IrEmitter,
       HloComputation* reducer, llvm::Type* element_type,
       llvm::Value* partial_result_address);
 
-  std::unique_ptr<KernelThunk> BuildKernelThunkFromBufferSlices(
-      absl::string_view name, Thunk::ThunkInfo thunk_info,
-      absl::Span<const BufferSlice* const> slices,
-      std::function<void(const BufferSlice*, llvm::Value*)>
-          bind_slice_to_ir_value);
-
   // Returns a KernelThunk that invokes the kernel emitted for `inst`. The
   // caller needs to make sure `inst` outlives the lifetime of the returned
   // Thunk object. 'implements_whole_instruction' specifies whether this
@@ -545,11 +498,6 @@ class IrEmitterUnnested : public IrEmitter,
   std::unique_ptr<KernelThunk> BuildKernelThunk(
       const HloInstruction* inst, bool implements_whole_instruction);
 
-  std::unique_ptr<KernelThunk> BuildKernelThunkForMlir(
-      absl::string_view name, Thunk::ThunkInfo thunk_info,
-      absl::Span<const MlirBufferSlice> slices,
-      std::vector<llvm_ir::IrArray>* ir_arrays);
-
   // Returns a thunk that, given a reduce or select-and-scatter op,
   // initializes its memory to the appropriate initial value.
   StatusOr<std::unique_ptr<Thunk>> BuildInitializerThunk(
@@ -557,18 +505,17 @@ class IrEmitterUnnested : public IrEmitter,
 
   // Returns a WhileThunk that invokes thunk sequences for 'condition' and
   // 'body' sub-computations of while instruction 'hlo'.
-  StatusOr<std::unique_ptr<Thunk>> BuildWhileThunk(const HloInstruction* hlo);
+  std::unique_ptr<Thunk> BuildWhileThunk(const HloInstruction* hlo);
 
   // Returns a ForThunk which executes 'loop_limit' invocations of a thunk
   // sequence from the 'body' sub-computation of the while instruction 'hlo'.
-  StatusOr<std::unique_ptr<Thunk>> BuildForThunk(const HloInstruction* hlo,
-                                                 const int64 loop_limit);
+  std::unique_ptr<Thunk> BuildForThunk(const HloInstruction* hlo,
+                                       const int64 loop_limit);
 
   // Returns a ConditionalThunk which executes the thunk sequence for the
   // 'branch_computation' corresponding to the predicate/branch_index of the
   // given conditional instruction.
-  StatusOr<std::unique_ptr<Thunk>> BuildConditionalThunk(
-      const HloInstruction* hlo);
+  std::unique_ptr<Thunk> BuildConditionalThunk(const HloInstruction* hlo);
 
   // Emits current thread id with the given type.
   //
@@ -598,9 +545,6 @@ class IrEmitterUnnested : public IrEmitter,
       absl::optional<int64> thread_id_filter = absl::nullopt,
       absl::optional<int64> block_id_filter = absl::nullopt);
 
-  StatusOr<const HloComputation*> GetOrCreateSubComputationFromRegion(
-      mlir::Region* region);
-
   // Returns the last generated thunk.
   Thunk* LastThunk() const { return thunk_sequence_.back().get(); }
 
@@ -611,14 +555,6 @@ class IrEmitterUnnested : public IrEmitter,
 
   // The HloComputation that this IrEmitter emits code for.
   const HloComputation* hlo_computation_;
-
-  mlir::OwningModuleRef mlir_scratch_module_;
-
-  // This is for cache-purpose only. It has no significant semantics.
-  mlir::LhloDialectEmitter lhlo_scratch_emitter_;
-
-  absl::flat_hash_map<const mlir::Region*, std::unique_ptr<HloModule>>
-      scratch_nested_computations_;
 };
 
 }  // namespace gpu

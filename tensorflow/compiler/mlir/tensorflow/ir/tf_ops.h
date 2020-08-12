@@ -63,6 +63,12 @@ class TensorFlowDialect : public Dialect {
   // Returns the string description of stateful attribute.
   static StringRef GetStatefulAttrName() { return "tf.signature.is_stateful"; }
 
+  // Returns true if the op can be duplicated during transformations.
+  static bool CanDuplicate(Operation *op);
+
+  // Returns true if the op can have side effects.
+  static bool CanHaveSideEffects(Operation *op);
+
   Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
 
   void printAttribute(Attribute attr, DialectAsmPrinter &os) const override;
