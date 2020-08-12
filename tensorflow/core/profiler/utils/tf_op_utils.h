@@ -104,6 +104,9 @@ bool IsTfOpType(absl::string_view op_type);
 // Returns true if the given string matches JAX pattern.
 bool IsJaxOpType(absl::string_view op_type);
 
+// Returns true if the given strings match JAX pattern.
+bool IsJaxOpNameAndType(absl::string_view op_name, absl::string_view op_type);
+
 }  // namespace profiler
 }  // namespace tensorflow
 

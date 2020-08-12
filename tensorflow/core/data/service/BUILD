@@ -149,6 +149,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/core:lib",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         tf_grpc_cc_dependency(),
     ],
 )
@@ -172,6 +173,7 @@ cc_library(
     deps = [
         ":journal_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform:regexp",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],

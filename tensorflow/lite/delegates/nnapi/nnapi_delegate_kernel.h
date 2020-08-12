@@ -111,6 +111,7 @@ struct NNAPIOpMappingArgs {
   TfLiteContext* context;
   NNAPIOpBuilder* builder;
   TfLiteNode* node;
+  int node_index;
   std::vector<int>* model_state_outputs;
   std::vector<int>* model_state_tfl_inputs;
   std::vector<std::tuple<int, int>>* feedback_loops;
@@ -163,6 +164,7 @@ class NNMemory {
 
   ANeuralNetworksMemory* get_handle() { return nn_memory_handle_; }
   uint8_t* get_data_ptr() { return data_ptr_; }
+  size_t get_byte_size() { return byte_size_; }
 
  private:
   // NnApi instance to use. Not owned by this object.
@@ -352,7 +354,8 @@ class NNAPIDelegateKernel {
       const TfLiteContext* context, int builtin_code, const TfLiteNode* node,
       int tflite_node_index, NNAPIOpBuilder* builder, int* nnapi_errno);
 
-  TfLiteStatus AddOpsAndTensors(TfLiteContext* context, int* nnapi_errno);
+  TfLiteStatus AddOpsAndTensors(TfLiteContext* context, int* nnapi_errno,
+                                bool allow_dynamic_dimensions);
 
   TfLiteStatus BuildGraph(TfLiteContext* context,
                           const StatefulNnApiDelegate::Options& options,

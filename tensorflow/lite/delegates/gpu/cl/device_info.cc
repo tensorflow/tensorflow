@@ -231,6 +231,28 @@ bool DeviceInfo::SupportsImage3D() const {
   return supports_image3d_writes;
 }
 
+bool DeviceInfo::SupportsFloatImage2D(DataType data_type, int channels) const {
+  if (channels == 1) {
+    return data_type == DataType::FLOAT32 ? supports_r_f32_tex2d
+                                          : supports_r_f16_tex2d;
+  } else if (channels == 2) {
+    return data_type == DataType::FLOAT32 ? supports_rg_f32_tex2d
+                                          : supports_rg_f16_tex2d;
+  } else if (channels == 3) {
+    return data_type == DataType::FLOAT32 ? supports_rgb_f32_tex2d
+                                          : supports_rgb_f16_tex2d;
+  } else if (channels == 4) {
+    return data_type == DataType::FLOAT32 ? supports_rgba_f32_tex2d
+                                          : supports_rgba_f16_tex2d;
+  } else {
+    return false;
+  }
+}
+
+bool DeviceInfo::SupportsOneLayerTextureArray() const {
+  return !IsAdreno() || adreno_info.support_one_layer_texture_array;
+}
+
 bool DeviceInfo::IsAdreno() const { return vendor == Vendor::kQualcomm; }
 
 bool DeviceInfo::IsAdreno3xx() const {

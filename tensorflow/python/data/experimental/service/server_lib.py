@@ -25,6 +25,9 @@ from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.util.tf_export import tf_export
 
 
+DEFAULT_PROTOCOL = "grpc"
+
+
 @tf_export("data.experimental.service.DispatchServer", v1=[])
 class DispatchServer(object):
   """An in-process tf.data service dispatch server.
@@ -50,15 +53,38 @@ class DispatchServer(object):
   dispatcher = tf.data.experimental.service.DispatchServer(port=5050)
   dispatcher.join()
   ```
+
+  To start a `DispatchServer` in fault-tolerant mode, set `work_dir` and
+  `fault_tolerant_mode` like below:
+
+  ```
+  dispatcher = tf.data.experimental.service.DispatchServer(
+      port=5050,
+      work_dir="gs://my-bucket/dispatcher/work_dir",
+      fault_tolerant_mode=True)
+  ```
   """
 
-  def __init__(self, port, protocol=None, start=True):
+  def __init__(self,
+               port,
+               protocol=None,
+               work_dir=None,
+               fault_tolerant_mode=None,
+               start=True):
     """Creates a new dispatch server.
 
     Args:
       port: Specifies the port to bind to.
       protocol: (Optional.) Specifies the protocol to be used by the server.
         Acceptable values include `"grpc", "grpc+local"`. Defaults to `"grpc"`.
+      work_dir: (Optional.) A directory to store dispatcher state in. This
+        argument is required for the dispatcher to be able to recover from
+        restarts.
+      fault_tolerant_mode: (Optional.) Whether the dispatcher should write
+        its state to a journal so that it can recover from restarts. Dispatcher
+        state, including registered datasets and created jobs, is synchronously
+        written to the journal before responding to RPCs. If `True`, `work_dir`
+        must also be specified. Defaults to `False`.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to `True`.
 
@@ -66,10 +92,17 @@ class DispatchServer(object):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         creating the TensorFlow server.
     """
-    if protocol is None:
-      protocol = "grpc"
-    self._protocol = protocol
-    config = service_config_pb2.DispatcherConfig(port=port, protocol=protocol)
+    self._protocol = protocol or DEFAULT_PROTOCOL
+    work_dir = work_dir or ""
+    fault_tolerant_mode = fault_tolerant_mode or False
+    if fault_tolerant_mode and not work_dir:
+      raise ValueError(
+          "Cannot enable fault tolerant mode without configuring a work_dir")
+    config = service_config_pb2.DispatcherConfig(
+        port=port,
+        protocol=self._protocol,
+        work_dir=work_dir,
+        fault_tolerant_mode=fault_tolerant_mode)
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
         config.SerializeToString())
     if start:

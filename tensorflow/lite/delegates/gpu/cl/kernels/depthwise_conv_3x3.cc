@@ -301,12 +301,15 @@ int3 DepthwiseConv3x3::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status DepthwiseConv3x3::Tune(const TuningParameters& params) {
+void DepthwiseConv3x3::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   if (local_mem_uploads_) {
-    return absl::OkStatus();
+    work_groups->push_back(work_group_size_);
+  } else {
+    GetPossibleWorkGroups(tuning_type, device_info, kernel_info, grid_size_,
+                          work_groups);
   }
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
 bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr) {
@@ -330,7 +333,7 @@ absl::Status CreateDepthwiseConv3x3(
   bool local_mem_uploads =
       weights_are_buffer && creation_context.device->IsPowerVR();
   *result = DepthwiseConv3x3(definition, weights_are_buffer, local_mem_uploads,
-                             creation_context.device->GetInfo());
+                             creation_context.device->info_);
   return result->UploadWeightsAndBiases(attr.weights, attr.bias,
                                         creation_context.context);
 }

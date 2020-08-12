@@ -132,8 +132,6 @@ Buffer& Buffer::operator=(Buffer&& buffer) {
   return *this;
 }
 
-Buffer::~Buffer() { Release(); }
-
 void Buffer::Release() {
   if (buffer_) {
     clReleaseMemObject(buffer_);

@@ -10,7 +10,7 @@ exports_files(["LICENSE"])
 py_library(
     name = "parameter_server_client",
     srcs = ["parameter_server_client.py"],
-    srcs_version = "PY3",
+    srcs_version = "PY2AND3",
     deps = [
         ":client",
         "//tensorflow/python/distribute:parameter_server_strategy_v2",
@@ -20,7 +20,7 @@ py_library(
 py_library(
     name = "client",
     srcs = ["client.py"],
-    srcs_version = "PY3",
+    srcs_version = "PY2AND3",
     deps = [
         ":metric_utils",
         "//tensorflow/python:errors",
@@ -84,7 +84,7 @@ tf_py_test(
 py_library(
     name = "metric_utils",
     srcs = ["metric_utils.py"],
-    srcs_version = "PY3",
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python/eager:monitoring",
     ],

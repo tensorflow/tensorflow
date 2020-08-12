@@ -222,6 +222,56 @@ TEST(NNAPIDelegate, ResizeInputTensorsWorks) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1.0, 1.3, 1.1, 1.5}));
 }
 
+TEST(NNAPIDelegate, ResizeDynamicBatchInputTensorsWorks) {
+  StatefulNnApiDelegate::Options options;
+  options.allow_dynamic_dimensions = true;
+
+  FloatAddOpModel m(options,
+                    {TensorType_FLOAT32, /*shape=*/{1, 3, 2, 1}, /*min=*/0.0f,
+                     /*max=*/0.0f, /*scale=*/0.0f,
+                     /*zero_point=*/0, /*per_channel_quantization=*/false,
+                     /*per_channel_quantization_scales=*/{},
+                     /*per_channel_quantization_offsets=*/{},
+                     /*channel_index=*/0, /*traversal_order=*/{},
+                     /*format=*/{},
+                     /*block_size=*/{}, /*block_map=*/{},
+                     /*shape_signature=*/{1, -1, 2, 1}},
+                    {TensorType_FLOAT32, /*shape=*/{1, 3, 2, 1}, /*min=*/0.0f,
+                     /*max=*/0.0f, /*scale=*/0.0f,
+                     /*zero_point=*/0, /*per_channel_quantization=*/false,
+                     /*per_channel_quantization_scales=*/{},
+                     /*per_channel_quantization_offsets=*/{},
+                     /*channel_index=*/0, /*traversal_order=*/{},
+                     /*format=*/{},
+                     /*block_size=*/{}, /*block_map=*/{},
+                     /*shape_signature=*/{1, -1, 2, 1}},
+                    {TensorType_FLOAT32, /*shape=*/{}, /*min=*/0.0f,
+                     /*max=*/0.0f, /*scale=*/0.0f,
+                     /*zero_point=*/0, /*per_channel_quantization=*/false,
+                     /*per_channel_quantization_scales=*/{},
+                     /*per_channel_quantization_offsets=*/{},
+                     /*channel_index=*/0, /*traversal_order=*/{},
+                     /*format=*/{},
+                     /*block_size=*/{}, /*block_map=*/{},
+                     /*shape_signature=*/{1, -1, 2, 1}},
+                    ActivationFunctionType_NONE);
+  EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 3, 2, 1}), kTfLiteOk);
+  EXPECT_EQ(m.ResizeInputTensor(m.input2(), {1, 3, 2, 1}), kTfLiteOk);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
+  m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8, 0.9, 0.7});
+  m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5, 0.2, 0.8});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3, 1.1, 1.5}));
+
+  EXPECT_EQ(m.ResizeInputTensor(m.input1(), {1, 2, 2, 1}), kTfLiteOk);
+  EXPECT_EQ(m.ResizeInputTensor(m.input2(), {1, 2, 2, 1}), kTfLiteOk);
+  EXPECT_EQ(m.AllocateTensors(), kTfLiteOk);
+  m.PopulateTensor<float>(m.input1(), {0.7, 0.8, 0.9, 0.7});
+  m.PopulateTensor<float>(m.input2(), {0.3, 0.5, 0.2, 0.8});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1.0, 1.3, 1.1, 1.5}));
+}
+
 // Sanity check for the state-ful NNAPI delegate.
 TEST(NNAPIDelegate, StatefulDelegate) {
   StatefulNnApiDelegate::Options options;

@@ -40,7 +40,7 @@ port::StatusOr<OwningDeviceMemory> TfAllocatorAdapter::Allocate(
     int64 memory_space) {
   CHECK_EQ(memory_space, 0);
   tensorflow::AllocationAttributes attrs;
-  attrs.no_retry_on_failure = !retry_on_failure;
+  attrs.retry_on_failure = retry_on_failure;
   void *data = nullptr;
   if (size != 0) {
     data = wrapped_->AllocateRaw(tensorflow::Allocator::kAllocatorAlignment,

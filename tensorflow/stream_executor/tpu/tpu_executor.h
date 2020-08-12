@@ -96,8 +96,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   void DequeueOutfeed(int32 outfeed_queue_index, absl::Span<uint8> bytes,
                       StatusCallback done);
 
-  Status EnqueueInfeed(int32 infeed_queue_index,
-                       absl::Span<const uint8> bytes);
+  Status EnqueueInfeed(int32 infeed_queue_index, absl::Span<const uint8> bytes);
 
   absl::optional<stream_executor::AllocatorStats> GetAllocatorStats() override;
 
@@ -175,10 +174,6 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
     LOG(FATAL) << "Not yet implemented";
   }
 
-  stream_executor::SharedMemoryConfig GetDeviceSharedMemoryConfig() override {
-    LOG(FATAL) << "not yet implemented";
-  }
-
   void* GetSubBuffer(DeviceMemoryBase* parent, uint64 offset,
                      uint64 size) override {
     LOG(FATAL) << "not yet implemented";
@@ -197,10 +192,7 @@ class TpuExecutor : public tensorflow::tpu::TpuExecutorInterface {
   bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override {
     LOG(FATAL) << "not yet implemented";
   }
-  Status SetDeviceSharedMemoryConfig(
-      stream_executor::SharedMemoryConfig config) override {
-    LOG(FATAL) << "not yet implemented";
-  }
+
   void* HostMemoryAllocate(uint64 size) override {
     LOG(FATAL) << "not yet implemented";
   }

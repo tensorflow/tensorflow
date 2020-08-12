@@ -118,7 +118,7 @@ TEST_F(OpenCLOperationTest, ConcatChannels) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConcatZ operation =
-          CreateConcatZ(op_def, {1, 2, 3}, env_.GetDevicePtr()->GetInfo());
+          CreateConcatZ(op_def, {1, 2, 3}, env_.GetDevicePtr()->info_);
       ASSERT_OK(ExecuteGPUOperation({src0, src1, src2}, creation_context_,
                                     &operation, BHWC(1, 2, 1, 6), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -152,7 +152,7 @@ TEST_F(OpenCLOperationTest, ConcatChannelsAlignedx4) {
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
       ConcatZ operation =
-          CreateConcatZ(op_def, {4, 4}, env_.GetDevicePtr()->GetInfo());
+          CreateConcatZ(op_def, {4, 4}, env_.GetDevicePtr()->info_);
       ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
                                     BHWC(1, 2, 1, 8), &dst_tensor));
       EXPECT_THAT(

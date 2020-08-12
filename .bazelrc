@@ -18,8 +18,10 @@
 #
 # Compiler options:
 #     cuda_clang:             Use clang when building CUDA code.
-#     c++17:                  Build with C++17 options
-#     c++1z:                  Build with C++17 options
+#     c++17:                  Build with C++17 options (links with libc++)
+#     c++1z:                  Build with C++17 options (links with libc++)
+#     c++17_gcc:              Build with C++17 options (links with stdlibc++)
+#     c++1z_gcc:              Build with C++17 options (links with stdlibc++)
 #     avx_linux:              Build with avx instruction set on linux.
 #     avx2_linux:             Build with avx2 instruction set on linux.
 #     native_arch_linux:      Build with instruction sets available to the host machine on linux
@@ -278,6 +280,8 @@ build:dynamic_kernels --copt=-DAUTOLOAD_DYNAMIC_KERNELS
 build:c++17 --cxxopt=-std=c++1z
 build:c++17 --cxxopt=-stdlib=libc++
 build:c++1z --config=c++17
+build:c++17_gcc --cxxopt=-std=c++1z
+build:c++1z_gcc --config=c++17_gcc
 
 # Enable using platform specific build settings, except when cross-compiling for
 # mobile platforms.
@@ -368,7 +372,6 @@ build --config=v2
 test --config=v2
 
 # Enable XLA
-build:xla --action_env=TF_ENABLE_XLA=1
 build:xla --define=with_xla_support=true
 
 # BEGIN TF REMOTE BUILD EXECUTION OPTIONS

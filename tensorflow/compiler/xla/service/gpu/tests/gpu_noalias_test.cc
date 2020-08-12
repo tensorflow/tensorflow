@@ -50,6 +50,7 @@ TEST_F(GpuNoAliasTest, Concat) {
   auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(std::move(computation));
 
+<<<<<<< HEAD
   auto expected_ir = is_built_with_rocm_ ? R"(
 ; CHECK-LABEL: define amdgpu_kernel void @fusion
 ; CHECK-SAME: i8* noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %[[OUTPUT_ALLOC:[a-z0-9]*]]
@@ -62,6 +63,12 @@ TEST_F(GpuNoAliasTest, Concat) {
 )";
 
   CompileAndVerifyIr(std::move(hlo_module), expected_ir,
+=======
+  CompileAndVerifyIr(std::move(hlo_module),
+                     R"(CHECK-LABEL: define{{.*}}void @fusion
+                        CHECK-SAME: i8* noalias align {{[0-9]*}} dereferenceable({{[0-9]*}}) %[[OUTPUT_ALLOC:[a-z0-9]*]]
+                        CHECK: %fusion.raw = {{.*}} %[[OUTPUT_ALLOC]])",
+>>>>>>> google-upstream/master
                      /*match_optimized_ir=*/false);
 }
 

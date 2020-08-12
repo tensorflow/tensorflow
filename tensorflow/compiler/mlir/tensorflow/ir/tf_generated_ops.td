@@ -1350,48 +1350,6 @@ then the output will be
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CaseOp : TF_Op<"Case", []> {
-  let summary = [{
-An n-way switch statement which calls a single branch function.
-  }];
-
-  let description = [{
-An n-way switch statement, implementing the following:
-    ```
-    switch (branch_index) {
-      case 0:
-        output = branches[0](input);
-        break;
-      case 1:
-        output = branches[1](input);
-        break;
-      ...
-      case [[nbranches-1]]:
-      default:
-        output = branches[nbranches-1](input);
-        break;
-    }
-    ```
-  }];
-
-  let arguments = (ins
-    I32Tensor:$branch_index,
-    Variadic<TF_Tensor>:$input,
-
-    Confined<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
-    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes
-  );
-
-  let results = (outs
-    Variadic<TF_Tensor>:$output
-  );
-
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
-
-  let hasCanonicalizer = 1;
-}
-
 def TF_CastOp : TF_Op<"Cast", [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "Cast x of type SrcT to y of DstT.";
 
@@ -5860,6 +5818,30 @@ def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape, TF
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_MergeSummaryOp : TF_Op<"MergeSummary", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Merges summaries.";
+
+  let description = [{
+This op creates a
+[`Summary`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto)
+protocol buffer that contains the union of all the values in the input
+summaries.
+
+When the Op is run, it reports an `InvalidArgument` error if multiple values
+in the summaries to merge use the same tag.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_StrTensor>:$inputs
+  );
+
+  let results = (outs
+    TF_StrTensor:$summary
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
 def TF_MergeV2CheckpointsOp : TF_Op<"MergeV2Checkpoints", []> {
   let summary = [{
 V2 format specific: merges the metadata files of sharded checkpoints.  The
@@ -8712,7 +8694,7 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
     return Verify(*this);
   }];
 
-  let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def TF_ShardedFilenameOp : TF_Op<"ShardedFilename", [NoSideEffect]> {

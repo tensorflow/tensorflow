@@ -771,12 +771,17 @@ class FunctionWithRemoteInputsTest : public EagerServiceImplTest {
                                                   &close_context_response));
   }
 
-  void CheckOutputsAndClose(const int64 op_id) {
+  void CheckOutputsAndClose(const std::vector<FunctionRet>& outputs,
+                            const int64 op_id) {
     const tensorflow::Tensor* t = nullptr;
     tensorflow::TensorHandle* tensor_handle;
     TF_ASSERT_OK(eager_service_impl_.GetTensorHandle(
         context_id_, RemoteTensorHandleInternal(2, 0), &tensor_handle));
     TF_ASSERT_OK(tensor_handle->Tensor(&t));
+    EXPECT_EQ(outputs.size(), 1);
+    EXPECT_EQ(outputs.at(0).index(), 1);
+    const TensorShape& shape = absl::get<TensorShape>(outputs.at(0));
+    EXPECT_EQ(shape, t->shape());
     CheckOutputTensorAndClose(*t);
   }
 
@@ -845,11 +850,7 @@ TEST_F(FunctionWithRemoteInputsTest, EagerPFLRTest) {
                    });
   done.WaitForNotification();
   TF_ASSERT_OK(status);
-  EXPECT_EQ(outputs.size(), 1);
-  EXPECT_EQ(outputs.at(0).index(), 1);
-  const TensorShape& shape = absl::get<TensorShape>(outputs.at(0));
-  EXPECT_EQ(shape, TensorShape({2, 2}));
-  CheckOutputsAndClose(op_id);
+  CheckOutputsAndClose(outputs, op_id);
 }
 
 // Test executes a remote function with local input and output tensors.
@@ -940,13 +941,13 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncTest) {
         *handle = remote_handles.at(index);
         return Status::OK();
       });
-  std::vector<Tensor> outputs;
+  std::vector<FunctionRet> outputs;
 
   TF_ASSERT_OK(kernel->Run(/*step_container=*/nullptr, inputs, &outputs,
                            /*cancellation_manager=*/nullptr,
                            /*remote_func_params=*/absl::nullopt));
 
-  CheckOutputsAndClose(op_id);
+  CheckOutputsAndClose(outputs, op_id);
 }
 
 // Test executes a remote function through KernelAndDeviceFunc::RunAsync.
@@ -987,7 +988,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
         *handle = remote_handles.at(index);
         return Status::OK();
       });
-  std::vector<Tensor> outputs;
+  std::vector<FunctionRet> outputs;
 
   Status status;
   Notification n;
@@ -1000,7 +1001,7 @@ TEST_F(FunctionWithRemoteInputsTest, KernelAndDeviceFuncAsyncTest) {
                    });
   n.WaitForNotification();
   TF_ASSERT_OK(status);
-  CheckOutputsAndClose(op_id);
+  CheckOutputsAndClose(outputs, op_id);
 }
 
 // Test creates a context and attempts to send a tensor (using the RPC), and

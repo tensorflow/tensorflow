@@ -3295,8 +3295,8 @@ def _fake_gradient_tape_context_manager():
       def watch(self, x):
         pass
 
-      def gradient(self, y, x):
-        result = gradients_impl.gradients(y, x)
+      def gradient(self, y, x, grad_ys=None):
+        result = gradients_impl.gradients(y, x, grad_ys)
 
         # Unlike `tape.gradient()`, `tf.gradients()` returns a list for a single
         # element. So unpack if needed to match `tape.gradient()` behavior.

@@ -136,8 +136,10 @@ class HloCompareInstruction : public HloInstruction {
  public:
   explicit HloCompareInstruction(const Shape& shape, HloInstruction* lhs,
                                  HloInstruction* rhs,
-                                 ComparisonDirection direction);
+                                 ComparisonDirection direction,
+                                 absl::optional<Comparison::Type> type);
   ComparisonDirection direction() const { return compare_.GetDirection(); }
+  Comparison::Type type() const { return compare_.GetType(); }
   HloInstructionProto ToProto() const override;
 
  private:

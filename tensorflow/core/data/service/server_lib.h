@@ -34,10 +34,9 @@ class GrpcDataServerBase {
  public:
   // Constructs a tf.data server with the specified port. If the port is 0, the
   // server will find an available port in `Start()`. The chosen port can be
-  // found in the output of `Target()`.
-  //
-  // dispatcher_address is only needed for worker data servers.
-  GrpcDataServerBase(int requested_port, const std::string& protocol);
+  // found by calling `BoundPort()`.
+  GrpcDataServerBase(int requested_port, const std::string& protocol,
+                     const std::string server_type);
   virtual ~GrpcDataServerBase() {}
 
   // Starts the server running asynchronously.
@@ -62,6 +61,7 @@ class GrpcDataServerBase {
 
   const int requested_port_;
   const std::string protocol_;
+  const std::string server_type_;
 
  private:
   int bound_port_;

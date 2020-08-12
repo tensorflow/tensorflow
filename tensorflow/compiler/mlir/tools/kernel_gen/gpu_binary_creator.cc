@@ -295,6 +295,7 @@ tensorflow::kernel_gen::GenerateGpuBinaryForTfCode(
 
   mlir::OwningModuleRef kernel_module =
       xla::mlir_gpu::ExtractKernelModule(*module).ValueOrDie();
+<<<<<<< HEAD:tensorflow/compiler/mlir/tools/kernel_gen/gpu_binary_creator.cc
 
 #if TENSORFLOW_USE_ROCM
   auto llvmModule = mlir::translateModuleToROCDLIR(*kernel_module);
@@ -314,6 +315,10 @@ tensorflow::kernel_gen::GenerateGpuBinaryForTfCode(
                                           libdevice_dir);
 #elif GOOGLE_CUDA
   auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module);
+=======
+  llvm::LLVMContext llvmContext;
+  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module, llvmContext);
+>>>>>>> google-upstream/master:tensorflow/compiler/mlir/tools/kernel_gen/cubin_creator.cc
   if (!llvmModule) {
     return InternalError("Could not translate MLIR module to NVVM");
   }

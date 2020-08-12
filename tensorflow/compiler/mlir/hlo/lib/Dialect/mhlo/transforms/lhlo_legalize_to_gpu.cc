@@ -147,9 +147,9 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
       BlockAndValueMapping mapping;
-      mapping.map(reduce_op.body().front().getArgument(0), accumulator);
-      mapping.map(reduce_op.body().front().getArgument(1), rhs);
-      mapping.map(reduce_op.body().front().getArgument(2), accumulator);
+      mapping.map(reduce_op.body().getArgument(0), accumulator);
+      mapping.map(reduce_op.body().getArgument(1), rhs);
+      mapping.map(reduce_op.body().getArgument(2), accumulator);
       for (auto& nested : reduce_op.body().front().without_terminator()) {
         auto clone = rewriter.clone(nested, mapping);
         for (auto pair : llvm::zip(nested.getResults(), clone->getResults())) {
