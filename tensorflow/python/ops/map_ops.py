@@ -74,7 +74,7 @@ def InsertGrad(op, dmap):
 
 @ops.RegisterGradient("TensorMapErase")
 def EraseGrad(op, dmap):
-  m, k = op.inputs
+  _, k = op.inputs
   key_grad = None
-  map_grad = dmap #tensor_map_insert(dmap, k, v)
+  map_grad = dmap
   return map_grad, key_grad
