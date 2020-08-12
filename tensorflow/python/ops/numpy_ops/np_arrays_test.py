@@ -158,7 +158,6 @@ class ArrayTest(test.TestCase):
       else:
         self.assertAllEqual(out, o)
 
-
   def testAdd(self):
     self._testBinOp([1, 2], [3, 4], [4, 6], lambda a, b: a.__add__(b))
 
