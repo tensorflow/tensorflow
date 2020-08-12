@@ -17,13 +17,12 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
+#include "tensorflow/core/kernels/depthtospace_op.h"
+
 #include <memory>
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/kernels/depthtospace_op.h"
-
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -34,12 +33,14 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
+// Generic class template, no explicit GPUDevice references
 template <typename Device, typename T>
 class DepthToSpaceOp : public OpKernel {
  public:
@@ -112,29 +113,98 @@ class DepthToSpaceOp : public OpKernel {
     auto Tinput = input.tensor<T, kDims>();
     auto Toutput = outputs_tensor->tensor<T, kDims>();
 
-    if (std::is_same<Device, GPUDevice>::value) {
-      if (is_int8x4) {
-        // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
-        auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();
-        auto Toutput_v = outputs_tensor->reinterpret_last_dimension<int32, 4>();
-        functor::DepthToSpaceOpFunctor<GPUDevice, int32, FORMAT_NCHW> functor;
-        functor(context->eigen_device<GPUDevice>(), Tinput_v, block_size_,
-                Toutput_v);
-        return;
-      } else if (data_format_ == FORMAT_NCHW) {
-        functor::DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> functor;
-        functor(context->eigen_device<GPUDevice>(), Tinput, block_size_,
-                Toutput);
-        return;
-      }
-    }
-
     // NOTE: Assumes data_format_ == FORMAT_NHWC here, since we have rejected
     // (CPU && data_format_ != FORMAT_NHWC) in the constructor.
 
     if (!is_int8x4) {
       functor::DepthToSpaceOpFunctor<Device, T, FORMAT_NHWC> functor;
       functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
+    }
+  };
+
+ private:
+  int block_size_;
+  TensorFormat data_format_;
+};
+
+// Template specialization for GPUDevice, explicit referncing GPUDevice in code
+template <typename T>
+class DepthToSpaceOp<GPUDevice, T> : public OpKernel {
+ public:
+  explicit DepthToSpaceOp(OpKernelConstruction* context) : OpKernel(context) {
+    string data_format_str;
+    OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format_str));
+    OP_REQUIRES(context, FormatFromString(data_format_str, &data_format_),
+                errors::InvalidArgument("Invalid data format"));
+
+    OP_REQUIRES_OK(context, context->GetAttr("block_size", &block_size_));
+    OP_REQUIRES(context, block_size_ > 1,
+                errors::InvalidArgument("Block size should be > 1, but was: ",
+                                        block_size_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& input = context->input(0);
+    const int dims = input.dims();
+
+    // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
+    constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
+    OP_REQUIRES(context, (is_int8x4 == (data_format_ == FORMAT_NCHW_VECT_C)),
+                errors::InvalidArgument(
+                    "qint8 should be used with data_format NCHW_VECT_C."));
+
+    constexpr int kVect = is_int8x4 ? 4 : 1;
+    constexpr int kDims = is_int8x4 ? 5 : 4;
+    OP_REQUIRES(context, kDims == dims,
+                errors::InvalidArgument("Input rank should be: ", kDims,
+                                        " instead of: ", dims));
+
+    constexpr int kNumSpatialDims = 2;
+    const int batch_size =
+        input.dim_size(GetTensorDimIndex<kNumSpatialDims>(data_format_, 'N'));
+    const int input_height =
+        input.dim_size(GetTensorDimIndex<kNumSpatialDims>(data_format_, 'H'));
+    const int input_width =
+        input.dim_size(GetTensorDimIndex<kNumSpatialDims>(data_format_, 'W'));
+    const int input_depth =
+        input.dim_size(GetTensorDimIndex<kNumSpatialDims>(data_format_, 'C')) *
+        kVect;
+
+    const int block_size_sq = block_size_ * block_size_;
+
+    // The depth must be divisible by block_size_ * block_size_
+    OP_REQUIRES(
+        context, input_depth % block_size_sq == 0,
+        errors::InvalidArgument("Input depth dimension ", input_depth,
+                                " should be divisible by: ", block_size_sq));
+
+    const int output_depth = input_depth / block_size_sq;
+    const int output_width = input_width * block_size_;
+    const int output_height = input_height * block_size_;
+
+    // Allocate output tensor.
+    Tensor* outputs_tensor = nullptr;
+    OP_REQUIRES_OK(context,
+                   context->allocate_output(
+                       0,
+                       ShapeFromFormat(data_format_, batch_size, output_height,
+                                       output_width, output_depth),
+                       &outputs_tensor));
+    auto Tinput = input.tensor<T, kDims>();
+    auto Toutput = outputs_tensor->tensor<T, kDims>();
+
+    if (is_int8x4) {
+      // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
+      auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();
+      auto Toutput_v = outputs_tensor->reinterpret_last_dimension<int32, 4>();
+      functor::DepthToSpaceOpFunctor<GPUDevice, int32, FORMAT_NCHW> functor;
+      functor(context->eigen_device<GPUDevice>(), Tinput_v, block_size_,
+              Toutput_v);
+      return;
+    } else if (data_format_ == FORMAT_NCHW) {
+      functor::DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> functor;
+      functor(context->eigen_device<GPUDevice>(), Tinput, block_size_, Toutput);
+      return;
     }
   };
 
