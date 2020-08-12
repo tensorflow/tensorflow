@@ -1175,6 +1175,10 @@ class MulOperationParser : public TFLiteOperationParser {
       Tensor<Scalar, DataType::FLOAT32> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
       attr.param = tensor.data[0];
+    } else if (constant_dims->size == 3) {
+      Tensor<HWC, DataType::FLOAT32> tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
+      attr.param = std::move(tensor);
     } else {
       Tensor<Linear, DataType::FLOAT32> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
