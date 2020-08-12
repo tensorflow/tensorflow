@@ -365,6 +365,8 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   return a
 
 
+setattr(np_arrays.ndarray, 'diagonal', diagonal)
+
 @np_utils.np_doc('diagflat')
 def diagflat(v, k=0):
   v = asarray(v)
@@ -401,6 +403,10 @@ def any(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
   a = asarray(a, dtype=bool)
   return np_utils.tensor_to_ndarray(
       math_ops.reduce_any(input_tensor=a.data, axis=axis, keepdims=keepdims))
+
+
+setattr(np_arrays.ndarray, 'all', all)
+setattr(np_arrays.ndarray, 'any', any)
 
 
 @np_utils.np_doc('compress')

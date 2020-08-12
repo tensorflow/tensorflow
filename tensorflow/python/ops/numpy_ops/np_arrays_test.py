@@ -31,11 +31,24 @@ from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_math_ops  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+from tensorflow.python.ops.numpy_ops import np_array_ops
 
 t2a = np_arrays.tensor_to_ndarray
 
 
 class ArrayTest(test.TestCase):
+  data = [
+    1,
+    5.5,
+    7,
+    (8, 10.),
+    ((1, 4), (2, 8)),
+    [7],
+    [8, 10.],
+    [[1, 4], [2, 8]],
+    ([1, 4], [2, 8]),
+    [(1, 4), (2, 8)]
+  ]
 
   def testDtype(self):
     a = t2a(array_ops.zeros(shape=[1, 2], dtype=dtypes.int64))
@@ -69,6 +82,60 @@ class ArrayTest(test.TestCase):
     a = t2a(ops.convert_to_tensor(value=[1.0, 2.0]))
     self.assertAllEqual([-1.0, -2.0], -a)
 
+  def testSum(self):
+    for d in self.data:
+      np_array = np.array(d)
+      test_array = np_array_ops.array(d)
+      self.assertAllClose(np_array.sum(), test_array.sum())
+
+      if hasattr(test_array, 'shape'):
+        ndims = len(test_array.shape)
+      else:
+        ndims = np_array_ops.array(arr, copy=False).ndim
+      
+      for axis in range(-ndims, ndims):
+        self.assertAllClose(
+            test_array.sum(axis=axis), np_array.sum(axis=axis))
+
+  def testArgmaxArgmax(self):
+    for d in self.data:
+      np_array = np.array(d)
+      test_array = np_array_ops.array(d)
+      self.assertAllClose(test_array.argmax(), np_array.argmax())
+      self.assertAllClose(test_array.argmin(), np_array.argmin())
+      if hasattr(test_array, 'shape'):
+        ndims = len(test_array.shape)
+      else:
+        ndims = np_array_ops.array(arr, copy=False).ndim
+      
+      for axis in range(-ndims, ndims):
+        self.assertAllClose(
+            test_array.argmax(axis=axis), np_array.argmax(axis=axis))
+        self.assertAllClose(
+            test_array.argmin(axis=axis), np_array.argmin(axis=axis))
+
+  def testAnyAll(self):
+    for d in self.data:
+      np_array = np.array(d)
+      test_array = np_array_ops.array(d)
+      self.assertAllClose(test_array.any(), np_array.any())
+      self.assertAllClose(test_array.all(), np_array.all())
+  
+  def testClip(self):
+    for d in self.data:
+      np_array = np.array(d)
+      test_array = np_array_ops.array(d)
+      self.assertAllClose(test_array.clip(1, 5), np_array.clip(1, 5))
+
+  def testDiagonal(self):
+    for d in self.data:
+      np_array = np.array(d).ravel()
+      test_array = np_array_ops.array(d).ravel()
+      # diag requires an array of at least two dimensions
+      if len(test_array.shape) <= 1:
+        continue
+      self.assertAllClose(test_array.diagonal(), np_array.diagonal())
+
   def _testBinOp(self, a, b, out, f, types=None):
     a = t2a(ops.convert_to_tensor(value=a, dtype=np.int32))
     b = t2a(ops.convert_to_tensor(value=b, dtype=np.int32))
@@ -91,8 +158,6 @@ class ArrayTest(test.TestCase):
       else:
         self.assertAllEqual(out, o)
 
-  def testSum(self):
-    self._testBinOp([1, 2], [3, 4], [4, 6], lambda a, b: a.sum(b))
 
   def testAdd(self):
     self._testBinOp([1, 2], [3, 4], [4, 6], lambda a, b: a.__add__(b))
