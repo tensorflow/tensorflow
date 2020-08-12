@@ -35,6 +35,7 @@ from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.ops import variables as variables_module
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.platform import gfile
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -98,6 +99,10 @@ def save_model_to_hdf5(model, filepath, overwrite=True, include_optimizer=True):
       proceed = ask_to_proceed_with_overwrite(filepath)
       if not proceed:
         return
+
+    # Try creating dir if not exist
+    dirpath = os.path.dirname(filepath)
+    gfile.MakeDirs(dirpath)
 
     f = h5py.File(filepath, mode='w')
     opened_new_file = True
