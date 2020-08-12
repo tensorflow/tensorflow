@@ -8694,7 +8694,7 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
     return Verify(*this);
   }];
 
-  let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def TF_ShardedFilenameOp : TF_Op<"ShardedFilename", [NoSideEffect]> {

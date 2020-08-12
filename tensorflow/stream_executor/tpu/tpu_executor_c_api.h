@@ -189,6 +189,24 @@ void TpuTransferManager_LinearizeToBuffers(
     int64_t** buffers_size, int64_t* buffers_array_size, SE_Status* status);
 void TpuTransferManager_FreeBuffers(char** buffers_array, int64_t* buffers_size,
                                     int64_t buffers_array_size);
+void TpuTransferManager_TransferLiteralToInfeed(XLA_TransferManager* manager,
+                                                SE_StreamExecutor* executor,
+                                                XLA_Literal* c_literal,
+                                                SE_Status* status);
+void TpuTransferManager_TransferBuffersToInfeed(XLA_TransferManager* manager,
+                                                SE_StreamExecutor* executor,
+                                                uint32_t** buffers_array,
+                                                int64_t* buffers_size_in_uint32,
+                                                int64_t buffers_array_size,
+                                                SE_Status* status);
+void TpuTransferManager_TransferLiteralFromOutfeed(XLA_TransferManager* manager,
+                                                   SE_StreamExecutor* executor,
+                                                   XLA_Shape* shape,
+                                                   XLA_Literal* c_literal,
+                                                   SE_Status* status);
+void TpuTransferManager_ResetDevices(XLA_TransferManager* manager,
+                                     SE_StreamExecutor** executors,
+                                     int64_t num_executors, SE_Status* status);
 
 XLA_ComputationPlacer* TpuComputationPlacer_New();
 void TpuComputationPlacer_Free(XLA_ComputationPlacer* placer);
@@ -354,6 +372,10 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetInfeedLayout);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_LinearizeToBuffers);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_FreeBuffers);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralToInfeed);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferBuffersToInfeed);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromOutfeed);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_ResetDevices);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_Free);

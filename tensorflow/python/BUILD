@@ -3447,10 +3447,10 @@ cuda_py_test(
     srcs = ["ops/collective_ops_gpu_test.py"],
     python_version = "PY3",
     tags = [
-        "guitar",
         "multi_gpu",
         "no_rocm",
         "no_windows",
+        "noguitar",  # b/163673583
     ],
     tfrt_enabled = True,
     deps = [

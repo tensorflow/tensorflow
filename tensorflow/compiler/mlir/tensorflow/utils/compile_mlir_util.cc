@@ -318,6 +318,7 @@ Status ConvertMLIRToXlaComputation(
   for (auto& target_pass : custom_legalization_passes) {
     tf2xla.addNestedPass<mlir::FuncOp>(std::move(target_pass));
   }
+  tf2xla.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // Run shape inference pass to propagate shapes through tensor_cast operations
   // from static to dynamic shapes. This could be generated if the shape

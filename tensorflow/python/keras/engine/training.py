@@ -25,8 +25,6 @@ import os
 import six
 
 from tensorflow.python.autograph.lang import directives
-from tensorflow.python.distribute import distribute_coordinator as dc
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import values as ds_values
@@ -93,26 +91,6 @@ try:
 except ImportError:
   yaml = None
 # pylint: enable=g-import-not-at-top
-
-
-def enable_multi_worker(method):
-  """Decorator that handles running `method` with multi-worker strategy."""
-
-  def _method_wrapper(self, *args, **kwargs):
-    if not self._in_multi_worker_mode():  # pylint: disable=protected-access
-      return method(self, *args, **kwargs)
-
-    # Running inside `run_distribute_coordinator` already.
-    if dc_context.get_current_worker_context():
-      return method(self, *args, **kwargs)
-
-    return dc.run_distribute_coordinator(
-        lambda _: method(self, *args, **kwargs),
-        self.distribute_strategy,
-        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
-
-  return tf_decorator.make_decorator(
-      target=method, decorator_func=_method_wrapper)
 
 
 def disable_multi_worker(method):
@@ -824,7 +802,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.train_function = train_function
     return self.train_function
 
-  @enable_multi_worker
   def fit(self,
           x=None,
           y=None,
@@ -1246,7 +1223,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.test_function = test_function
     return self.test_function
 
-  @enable_multi_worker
   def evaluate(self,
                x=None,
                y=None,

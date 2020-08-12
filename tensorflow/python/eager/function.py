@@ -54,7 +54,6 @@ from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -2705,8 +2704,10 @@ def _is_ndarray(value):
   """Tests whether the given value is an ndarray (and not a TF tensor/var)."""
   # TODO(tomhennigan) Support __array_interface__ too.
   return hasattr(value, "__array__") and not (
-      resource_variable_ops.is_resource_variable(value)
-      or tensor_util.is_tensor(value)
+      isinstance(value, ops.Tensor)
+      or isinstance(value, resource_variable_ops.BaseResourceVariable)
+      or hasattr(value, "_should_act_as_resource_variable")
+
       # For legacy reasons we do not automatically promote Numpy strings.
       or isinstance(value, np.str_)
       # NumPy dtypes have __array__ as unbound methods.
