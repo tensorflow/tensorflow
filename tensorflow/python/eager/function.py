@@ -2459,7 +2459,7 @@ class FunctionSpec(object):
 
     self._num_tot_args = len(self._arg_names)
     self._num_req_args = (self._num_tot_args -
-                          len(self._fullargspec.defaults or [])
+                          len(self._fullargspec.defaults or []))
 
     if input_signature is None:
       self._input_signature = None
