@@ -68,6 +68,8 @@ auto* eager_context_created =
     monitoring::Gauge<bool, 0>::New("/tensorflow/core/eager_context_created",
                                     "True if an eager context was created.");
 
+size_t MAX_KERNEL_CACHE_SIZE = 10000;
+
 }  // namespace
 
 EagerContext::EagerContext(
@@ -391,6 +393,7 @@ void EagerContext::ClearCachesAndDefaultExecutor() {
   mutex_lock ml(cache_mu_);
   default_executor_.WaitForAllPendingNodes().IgnoreError();
   kernel_cache_.clear();
+  kernel_cache_lru_list_.clear();
   for (auto& entry : registered_functions_) {
     entry.second->cached_kernel_keys->clear();
   }
@@ -779,7 +782,7 @@ Status EagerContext::RemoveFunction(const string& func) {
     is_last_ref = registered_function->RefCountIsOne();
     if (is_last_ref) {
       for (auto& key : *registered_function->cached_kernel_keys) {
-        kernel_cache_.erase(key);
+        RemoveKernelFromCache(key);
       }
       registered_functions_.erase(func);
     }
@@ -847,23 +850,56 @@ core::RefCountPtr<KernelAndDevice> EagerContext::GetCachedKernel(
   if (iter == kernel_cache_.end()) {
     return nullptr;
   }
-  core::RefCountPtr<KernelAndDevice> new_ref(iter->second.get());
+  // Each entry in kernel_cache_ points to an iterator over
+  // kernel_cache_lru_list_, which is a list of (key, value) pairs.
+  core::RefCountPtr<KernelAndDevice> new_ref(iter->second->second.get());
   new_ref->Ref();
+
+  // Update LRU list to reflect this usage of the kernel.
+  kernel_cache_lru_list_.splice(kernel_cache_lru_list_.begin(),
+                                kernel_cache_lru_list_, iter->second);
+  kernel_cache_[cache_key] = kernel_cache_lru_list_.begin();
+
   return new_ref;
 }
 
 void EagerContext::AddKernelToCache(Fprint128 cache_key,
                                     KernelAndDevice* kernel) {
   mutex_lock ml(cache_mu_);
+  if (kernel_cache_.find(cache_key) != kernel_cache_.end()) {
+    // Replace any existing entry for this key with the new value.
+    // TODO: Should we raise an error instead?
+    RemoveKernelFromCache(cache_key);
+  }
+  if (kernel_cache_lru_list_.size() >= MAX_KERNEL_CACHE_SIZE) {
+    // Ran out of space; remove least-recently-used kernel.
+    auto key_to_remove = kernel_cache_lru_list_.back().first;
+    RemoveKernelFromCache(key_to_remove);
+  }
   core::RefCountPtr<KernelAndDevice> new_ref(kernel);
   new_ref->Ref();
-  kernel_cache_[cache_key] = std::move(new_ref);
+  kernel_cache_lru_list_.push_front(
+      lru_list_entry_t(cache_key, std::move(new_ref)));
+  kernel_cache_[cache_key] = kernel_cache_lru_list_.begin();
   auto* registered_function =
       gtl::FindPtrOrNull(registered_functions_, kernel->name());
   // The kernel name can be either a primitive op or a function.
   if (registered_function != nullptr) {
     registered_function->cached_kernel_keys->emplace_back(cache_key);
   }
+}
+
+void EagerContext::RemoveKernelFromCache(Fprint128 cache_key) {
+  mutex_lock ml(cache_mu_);
+  auto iter = kernel_cache_.find(cache_key);
+  if (iter == kernel_cache_.end()) {
+    // Make removal idempotent to simplify code elsewhere.
+    return;
+  }
+  // Each entry in kernel_cache_ points to an iterator over
+  // kernel_cache_lru_list_.
+  kernel_cache_lru_list_.erase(iter->second);
+  kernel_cache_.erase(iter);
 }
 
 bool EagerContext::ShouldStoreGraphs() { return should_store_graphs_.load(); }

@@ -288,6 +288,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   core::RefCountPtr<KernelAndDevice> GetCachedKernel(Fprint128 cache_key);
 
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
+  void RemoveKernelFromCache(Fprint128 cache_key);
 
   bool LogDevicePlacement() const { return log_device_placement_; }
   void SetLogDevicePlacement(bool enable) { log_device_placement_ = enable; }
@@ -609,9 +610,15 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
     std::unique_ptr<std::vector<Fprint128>> cached_kernel_keys;
   };
-  std::unordered_map<Fprint128, core::RefCountPtr<KernelAndDevice>,
-                     Fprint128Hasher>
+  // List of kernel cache entries, from most to least recently used.
+  typedef std::pair<Fprint128, core::RefCountPtr<KernelAndDevice>>
+      lru_list_entry_t;
+  typedef std::list<lru_list_entry_t> lru_list_t;
+  lru_list_t kernel_cache_lru_list_ TF_GUARDED_BY(cache_mu_);
+  // Each entry in this map points to an element of the LRU list.
+  std::unordered_map<Fprint128, lru_list_t::iterator, Fprint128Hasher>
       kernel_cache_ TF_GUARDED_BY(cache_mu_);
+
   std::unordered_map<string, RegisteredFunction*> registered_functions_
       TF_GUARDED_BY(cache_mu_);
 
