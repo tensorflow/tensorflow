@@ -560,6 +560,14 @@ func @testSelectElseUnranked(%arg0: tensor<3xi1>, %arg1: tensor<3x2xf16>, %arg2:
   return %0: tensor<*xf16>
 }
 
+// CHECK-LABEL: testTileMultiplesAllOnes
+func @testTileMultiplesAllOnes(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = constant dense <[1, 1]> : tensor<2xi32>
+  // CHECK: return %arg0
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
+  return %0: tensor<2x3xf32>
+}
+
 // CHECK-LABEL: testLogicalNotOfEqual
 func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>

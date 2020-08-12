@@ -10925,9 +10925,9 @@ array([[1, 2, 3, 1, 2, 3],
   TF_DerivedOperandTypeAttr Tmultiples = TF_DerivedOperandTypeAttr<1>;
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 
-  // TODO(parkers): Add folds for multiples = [1,...].
-  // TODO(parkers): Add errors for negative multiples and multiples.size() !=
-  // input.rank()
+  let verifier = [{ return Verify(*this); }];
+
+  let hasFolder = 1;
 }
 
 def TF_ToBoolOp : TF_Op<"ToBool", [NoSideEffect]> {
