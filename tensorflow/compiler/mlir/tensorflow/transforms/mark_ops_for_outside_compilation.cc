@@ -33,6 +33,7 @@ namespace TFDevice {
 namespace {
 
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
+constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
 
 // This pass marks unsupported ops in a device cluster with
 // `_xla_outside_compilation` attribute so the operations will run on the host
@@ -152,6 +153,13 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
 
   auto result = module.walk([&](tf_device::ClusterOp cluster) {
+    // Only if `allow_soft_placement` attribute is true should we mark ops
+    // for outside compilation.
+    auto soft_placement_attr =
+        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
+      return WalkResult::advance();
+    }
     if (failed(
             MarkUncompilableOps(tf_dialect, &cluster.GetBody(), supported_ops)))
       return WalkResult::interrupt();
