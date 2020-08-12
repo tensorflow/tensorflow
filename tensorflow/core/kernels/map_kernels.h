@@ -152,8 +152,8 @@ class TensorMapErase : public OpKernel {
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
                 errors::InvalidArgument("Trying to erase non-existent item."));
 
-    const Tensor& t = m->tensors().find(key)->second;
-    c->set_output(1, t);
+    //const Tensor& t = m->tensors().find(key)->second;
+    //c->set_output(1, t);
 
     TensorMap* output_map = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
@@ -179,7 +179,8 @@ class TensorMapHasKey : public OpKernel {
 template <typename Device>
 Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
                           const TensorMap& b, TensorMap* out) {
-  // binary add returns a union of keys, values with keys in the intersection are added
+  // Binary add returns a map containing the union of keys.
+  // Values with keys in the intersection are added.
   out->tensors() = a.tensors();
   for (const std::pair<TensorKey,Tensor>& p : b.tensors()) {
     absl::flat_hash_map<TensorKey,Tensor>::iterator it = out->tensors().find(p.first);
@@ -197,7 +198,7 @@ Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
 
 template <typename Device>
 Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x, TensorMap* y) {
-  // zeros like returns an empty map
+  // Zeros like returns an empty map.
   return Status::OK();
 }
 
