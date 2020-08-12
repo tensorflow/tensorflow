@@ -1358,8 +1358,6 @@ class ModelCheckpoint(Callback):
           raise IOError('Please specify a non-directory filepath for '
                         'ModelCheckpoint. Filepath used is an existing '
                         'directory: {}'.format(filepath))
-        # Re-throw the error for any other causes.
-        raise e
 
   def _get_file_path(self, epoch, logs):
     """Returns the file path for checkpoint."""
