@@ -21,6 +21,7 @@ from __future__ import print_function
 import threading
 
 from tensorflow.python import _pywrap_parallel_device
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.parallel_device import gen_parallel_device_ops
 from tensorflow.python.distribute.parallel_device import saving
 from tensorflow.python.eager import context
@@ -52,7 +53,7 @@ class ParallelDevice(object):
       A string with the name of the newly created device.
     """
     global _next_device_number, _next_device_number_lock
-    self.components = tuple(components)
+    self.components = tuple(device_util.canonicalize(d) for d in components)
     ctx = context.context()
     with _next_device_number_lock:
       # TODO(allenl): Better names for parallel devices (right now "CUSTOM" is
