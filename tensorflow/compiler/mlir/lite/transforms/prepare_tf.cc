@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -686,6 +687,48 @@ struct ConvertTFStridedSlice : public RewritePattern {
   }
 };
 
+struct ConvertTFBroadcastTo : public RewritePattern {
+  explicit ConvertTFBroadcastTo(MLIRContext *context)
+      : RewritePattern(TF::BroadcastToOp::getOperationName(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
+    auto input_type = tf_broadcast_to_op.input().getType().cast<ShapedType>();
+    auto output_type = tf_broadcast_to_op.output().getType().cast<ShapedType>();
+    auto shape_type = tf_broadcast_to_op.shape().getType().cast<ShapedType>();
+    Type element_type = input_type.getElementType();
+
+    // Allow lowering when low dimension inputs are given and its type is F32 or
+    // I32.
+    if (!((output_type.hasRank() && output_type.getRank() <= 4) ||
+          (shape_type.hasStaticShape() && shape_type.getRank() == 1 &&
+           shape_type.getDimSize(0) <= 4)))
+      return failure();
+
+    if (!((element_type.getKind() == mlir::StandardTypes::F32) ||
+          (element_type.getKind() == mlir::StandardTypes::BF16) ||
+          (element_type.getKind() == mlir::StandardTypes::Integer &&
+           element_type.cast<mlir::IntegerType>().getWidth() == 32)))
+      return failure();
+
+    auto status_or_const_op =
+        CreateConstOpWithSingleValue(&rewriter, op->getLoc(), input_type, 1);
+    if (!status_or_const_op.ok()) {
+      return failure();
+    }
+
+    auto tf_fill_op = rewriter.create<TF::FillOp>(
+        op->getLoc(), output_type, tf_broadcast_to_op.shape(),
+        status_or_const_op.ValueOrDie());
+
+    auto mul_op = rewriter.create<TF::MulOp>(
+        op->getLoc(), output_type, tf_broadcast_to_op.input(), tf_fill_op);
+    rewriter.replaceOp(op, mul_op.getResult());
+    return success();
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_prepare_tf.inc"
 
 // Returns success if all the operations in the `op`'s regions including `op`
@@ -767,7 +810,7 @@ void PrepareTFPass::runOnFunction() {
     patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                     TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);
   }
-  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFConv2D,
+  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFConv2D,
                   ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
   applyPatternsAndFoldGreedily(func, patterns);
 }
