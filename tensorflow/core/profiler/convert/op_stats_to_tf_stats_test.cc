@@ -127,6 +127,8 @@ block_z:1)MULTI";
       ConvertXSpaceToOpStats(space, {OP_METRICS_DB, KERNEL_STATS_DB});
   const TfStatsDatabase tf_stats = ConvertOpStatsToTfStats(op_stats);
 
+  EXPECT_EQ(tf_stats.device_type(), op_stats.run_environment().device_type());
+
   // TfOp1, TfOp3, TfOp2, Idle
   EXPECT_EQ(4, tf_stats.with_idle().tf_stats_record_size());
 

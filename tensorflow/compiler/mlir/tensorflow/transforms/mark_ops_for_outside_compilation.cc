@@ -48,9 +48,21 @@ struct MarkOpsForOutsideCompilation
 // added.
 void AddSupportedControlFlowOps(MLIRContext* context,
                                 llvm::DenseSet<OperationName>* supported_ops) {
-  supported_ops->insert(OperationName("tf.IfRegion", context));
-  supported_ops->insert(OperationName("tf.WhileRegion", context));
-  supported_ops->insert(OperationName("tf.Yield", context));
+  supported_ops->insert(
+      OperationName(TF::IfRegionOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::WhileRegionOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::YieldOp::getOperationName(), context));
+}
+
+// These embedding ops are rewritten when running TPUCompileOp.
+void AddRewrittenEmbeddingOps(MLIRContext* context,
+                              llvm::DenseSet<OperationName>* supported_ops) {
+  supported_ops->insert(OperationName(
+      TF::RecvTPUEmbeddingActivationsOp::getOperationName(), context));
+  supported_ops->insert(OperationName(
+      TF::SendTPUEmbeddingGradientsOp::getOperationName(), context));
 }
 
 bool HasStringOperand(Operation& op) {
@@ -137,6 +149,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     supported_ops.insert(*pattern->getRootKind());
   }
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
+  AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
 
   auto result = module.walk([&](tf_device::ClusterOp cluster) {
     if (failed(

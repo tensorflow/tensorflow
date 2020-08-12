@@ -38,7 +38,7 @@ tf_cc_binary(
             "//tensorflow/core:portable_tensorflow_lib",
             # cc:android_tensorflow_image_op is for including jpeg/gif/png
             # decoder to enable real-image evaluation on Android
-            "//tensorflow/core/kernels:android_tensorflow_image_op",
+            "//tensorflow/core/kernels/image:android_tensorflow_image_op",
         ],
         "//conditions:default": [
             "//tensorflow/cc:cc_ops",

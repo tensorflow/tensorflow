@@ -22,6 +22,7 @@
     * Code that uses `tf.map_fn`/`tf.cond`/`tf.while_loop`/control flow as op layers and happens to work before TF 2.4. These will explicitly be unsupported now. Converting these ops to Functional API op layers was unreliable before TF 2.4, and prone to erroring incomprehensibly or being silently buggy.
     * Code that directly asserts on a Keras symbolic value in cases where ops like `tf.rank` used to return a static or symbolic value depending on if the input had a fully static shape or not. Now these ops always return symbolic values.
     * Code already susceptible to leaking tensors outside of graphs becomes slightly more likely to do so now.
+    * Code that tries directly getting gradients with respect to symbolic Keras inputs/outputs. Use GradientTape on the actual Tensors passed to the already-constructed model instead.
     * Code that requires very tricky shape manipulation via converted op layers in order to work, where the Keras symbolic shape inference proves insufficient.
     * Code that tries manually walking a `tf.keras.Model` layer by layer and assumes layers only ever have one positional argument. This assumption doesn't hold true before TF 2.4 either, but is more likely to cause issues know.
     * Code that manually enters `keras.backend.get_graph()` before building a functional model. This is no longer needed.
@@ -33,6 +34,9 @@
   shape assumptions (note that you can pass shapes with `None` entries for axes
   that are meant to be dynamic). You can also disable the input checking
   entirely by setting `model.input_spec = None`.
+* XLA:CPU and XLA:GPU devices are no longer registered by default. Use
+  `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them (to be
+  removed).
 
 ## Known Caveats
 
@@ -86,9 +90,11 @@
       option.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
-      `tf.image.random_*` function. Given the same seed, the stateless functions
-      produce the same results independent of how many times the function is
-      called, and independent of global seed settings.
+      `tf.image.random_*` function. Added a new op
+      `stateless_sample_distorted_bounding_box` which is a determinstic
+      version of `sample_distorted_bounding_box` op. Given the same seed, these
+      stateless functions/ops produce the same results independent of how many
+      times the function is called, and independent of global seed settings.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 * `tf.keras`:

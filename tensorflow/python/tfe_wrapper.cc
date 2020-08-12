@@ -444,6 +444,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_EnableMlirBridge", [](bool enabled) {
     tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge = enabled;
   });
+  m.def("TF_EnableXlaDevices", [] {
+    tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
+  });
 
   // // TFE_Context Logic
   m.def(

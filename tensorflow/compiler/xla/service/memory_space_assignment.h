@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/heap_simulator.h"
 #include "tensorflow/compiler/xla/service/hlo_cost_analysis.h"
+#include "tensorflow/compiler/xla/service/memory_space_assignment_repacking.h"
 
 namespace xla {
 
@@ -379,6 +380,9 @@ class MemorySpaceAssignment {
   // space and a fast and small alternate memory space.
   enum class MemorySpace { kDefault, kAlternate };
 
+  // Forward declaration for Allocation.
+  class Allocation;
+
   // The different options to be passed to the Run() API.
   struct Options {
     // Backend-specific integer value that describes the alternate memory.
@@ -423,6 +427,15 @@ class MemorySpaceAssignment {
     // value in case prefetching failed due to running out of asynchronous
     // copies or asynchronous copy ordering.
     int64 max_retries = 1;
+
+    // The maximum number of repacks that we are willing to perform in case we
+    // can't allocate a buffer due to running out of memory. If this value is
+    // greater than 0, repacker must be non-nullptr.
+    int64 max_repacks = 0;
+
+    // The repacking algorithm to reduce fragmentation. Must be non-null if
+    // max_repacks is greater than 0.
+    MemorySpaceAssignmentRepacker<Allocation*>* repacker = nullptr;
 
     // If true, tries allocating buffers across (e.g., before and inside a while
     // loop body) sequential calls (kWhile, kCall, and kConditional).
@@ -511,6 +524,7 @@ class MemorySpaceAssignment {
     const std::vector<HloUse>& uses() const { return uses_; }
     MemorySpace memory_space() const { return memory_space_; }
     Chunk chunk() const { return *chunk_; }
+    Chunk* mutable_chunk() { return &*chunk_; }
     void set_start_time(int64 start_time) { start_time_ = start_time; }
     int64 start_time() const { return start_time_; }
     int64 end_time() const { return end_time_; }
@@ -929,6 +943,9 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   HeapSimulator::Result Finish() override;
 
  private:
+  using RepackAllocationBlock = MemorySpaceAssignmentRepacker<
+      MemorySpaceAssignment::Allocation*>::AllocationBlock;
+
   // An allocation request for a use segment. A use segment is the time segment
   // between the definition and the first use, and the time segment between the
   // uses of a buffer. For example, the time between the definition and Use1, is
@@ -1149,6 +1166,16 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   absl::optional<AsynchronousCopy> ViolatesAsyncCopyOrdering(
       int64 start_time, int64 end_time) const;
 
+  // Exports the allocations for repacking and puts them into the vector in the
+  // parameter.
+  void ExportAllocationsForRepacking(
+      std::vector<RepackAllocationBlock*>& allocations);
+
+  // Imports repacked allocations and updates the internal data structures
+  // consistent with the new packing.
+  void ImportRepackedAllocations(
+      absl::Span<RepackAllocationBlock*> repacked_allocations);
+
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
                     MemorySpace memory_space, absl::optional<Chunk> chunk,
@@ -1197,6 +1224,11 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   BufferIntervalTree prefetch_interval_tree_;
   BufferIntervalTree eviction_interval_tree_;
   AsynchronousCopyOrdering async_copy_ordering_;
+  // A list of RepackAllocationBlock objects that mirrors allocation sequences,
+  // used for repacking. We use a list here because we need pointer stability
+  // for aliased allocations.
+  std::list<RepackAllocationBlock> repack_allocation_blocks_;
+  int64 num_repacks_ = 0;
   std::vector<std::pair<BufferInterval, ChunkCandidate>> pending_chunks_;
   std::vector<AsynchronousCopy> pending_async_copies_;
   std::vector<std::pair<const HloValue*, RequiredMemoryAssignment>>

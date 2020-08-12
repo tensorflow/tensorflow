@@ -66,22 +66,18 @@ class PerFunctionResult {
       : alias_analysis_(alias_analysis) {}
 
   // Returns the recorded device assignment for a resource, if any.
-  llvm::Optional<llvm::StringRef> DeviceForResource(
-      const Value resource) const {
-    llvm::Optional<llvm::StringRef> result;
-    if (alias_analysis_.IsUnknownResource(resource)) return result;
+  Optional<StringRef> DeviceForResource(Value resource) const {
+    Optional<StringRef> result;
+    if (alias_analysis_.IsUnknownResource(resource)) return llvm::None;
     for (int64_t id : alias_analysis_.GetResourceUniqueIds(resource)) {
       auto it = resource_id_to_device_.find(id);
       if (it == resource_id_to_device_.end()) continue;
-      if (!result) {
+      if (!result || result == it->second) {
         result = it->getSecond();
         continue;
       }
-      if (result != it->getSecond()) {
-        // Got conflicting assignments, clear the result.
-        result.reset();
-        return result;
-      }
+      // Got conflicting assignments
+      return llvm::None;
     }
     return result;
   }
@@ -90,7 +86,7 @@ class PerFunctionResult {
   // conflicts with an existing one, returns an error.
   //
   // If `changed` is provided, assign *changed to true if anything is modified.
-  LogicalResult AddResourceDevice(const Value resource, llvm::StringRef device,
+  LogicalResult AddResourceDevice(Value resource, StringRef device,
                                   bool* changed = nullptr) {
     if (alias_analysis_.IsUnknownResource(resource)) return success();
     for (int64_t id : alias_analysis_.GetResourceUniqueIds(resource)) {
@@ -106,13 +102,12 @@ class PerFunctionResult {
   }
 
  private:
-  llvm::SmallDenseMap<int64_t, llvm::StringRef, 8> resource_id_to_device_;
+  llvm::SmallDenseMap<int64_t, StringRef, 8> resource_id_to_device_;
   const TF::ResourceAliasAnalysis::Info& alias_analysis_;
 };
 
 // Tries to record device assignment for a resource.
-LogicalResult AddResourceDeviceAndEmitError(const Value resource,
-                                            llvm::StringRef device,
+LogicalResult AddResourceDeviceAndEmitError(Value resource, StringRef device,
                                             Operation* error_reporting_op,
                                             PerFunctionResult* result,
                                             bool* changed = nullptr) {
@@ -124,18 +119,27 @@ LogicalResult AddResourceDeviceAndEmitError(const Value resource,
   return res;
 }
 
+// Extracts and canonicalizes the device attribute.
+inline StringRef GetDeviceAttr(FuncOp func, int arg_no) {
+  auto device_attr =
+      func.getArgAttrOfType<mlir::StringAttr>(arg_no, kFuncDeviceAttr);
+  return device_attr ? device_attr.getValue() : "";
+}
+
+// Extracts and canonicalizes the device attribute.
+inline StringRef GetDeviceAttr(Operation* op) {
+  auto device_attr = op->getAttrOfType<mlir::StringAttr>(kDeviceAttr);
+  return device_attr ? device_attr.getValue() : "";
+}
+
 // Propagates device assignment inside a function.
 LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
                                                   PerFunctionResult* result) {
   OpBuilder builder(func_op);
   // Function arguments.
-  for (auto arg : func_op.getArguments()) {
-    if (!mlir::getElementTypeOrSelf(arg.getType()).isa<TF::ResourceType>()) {
-      continue;
-    }
-    auto device_attr = func_op.getArgAttrOfType<mlir::StringAttr>(
-        arg.getArgNumber(), kFuncDeviceAttr);
-    if (!device_attr || device_attr.getValue() == "") {
+  for (auto arg : filter_resources(func_op.getArguments())) {
+    StringRef device_attr = GetDeviceAttr(func_op, arg.getArgNumber());
+    if (device_attr.empty()) {
       // If device_attr does not exist, try to construct it from any recorded
       // assignment.
       if (auto device = result->DeviceForResource(arg)) {
@@ -145,48 +149,27 @@ LogicalResult ComputeResourceDevicesInComputation(FuncOp func_op,
       continue;
     }
     // Record the attribute.
-    auto res = AddResourceDeviceAndEmitError(arg, device_attr.getValue(),
-                                             func_op, result);
+    auto res = AddResourceDeviceAndEmitError(arg, device_attr, func_op, result);
     if (failed(res)) return res;
   }
+
   auto walk_res = func_op.walk([&](Operation* op) {
-    if (auto var_handle = llvm::dyn_cast<TF::VarHandleOp>(op)) {
+    if (auto var_handle = dyn_cast<VarHandleOp>(op)) {
       // Record VarHandleOp's device attribute.
-      auto device_attr =
-          var_handle.getAttrOfType<mlir::StringAttr>(kDeviceAttr);
-      if (!device_attr || device_attr.getValue().empty()) {
-        return WalkResult::advance();
-      }
-      auto res = AddResourceDeviceAndEmitError(
-          var_handle.resource(), device_attr.getValue(), op, result);
+      StringRef device_attr = GetDeviceAttr(op);
+      if (device_attr.empty()) return WalkResult::advance();
+      auto res = AddResourceDeviceAndEmitError(var_handle.resource(),
+                                               device_attr, op, result);
       if (failed(res)) return WalkResult::interrupt();
     }
-    if (auto identity = llvm::dyn_cast<TF::IdentityOp>(op)) {
+    if (auto identity = dyn_cast<IdentityOp>(op)) {
       // Try to construct IdentityOp's attribute from recorded assignment.
-      if (!mlir::getElementTypeOrSelf(identity.output().getType())
-               .isa<TF::ResourceType>()) {
-        return WalkResult::advance();
-      }
-      if (auto device = result->DeviceForResource(identity.output())) {
-        auto device_attr =
-            identity.getAttrOfType<mlir::StringAttr>(kDeviceAttr);
-        if (!device_attr || device_attr.getValue().empty()) {
+      if (!GetDeviceAttr(op).empty()) return WalkResult::advance();
+      for (auto output : filter_resources(op->getResults())) {
+        if (auto device = result->DeviceForResource(output))
           identity.setAttr(kDeviceAttr, builder.getStringAttr(*device));
-        }
       }
       return WalkResult::advance();
-    }
-    // Propagate and record output device assignment for other ops based on
-    // existing recording. E.g., IdentityN.
-    for (auto output : op->getResults()) {
-      if (!mlir::getElementTypeOrSelf(output.getType())
-               .isa<TF::ResourceType>()) {
-        continue;
-      }
-      if (auto device = result->DeviceForResource(output)) {
-        auto res = AddResourceDeviceAndEmitError(output, *device, op, result);
-        if (failed(res)) return WalkResult::interrupt();
-      }
     }
     return WalkResult::advance();
   });
@@ -198,13 +181,13 @@ void ResourceDeviceInference::runOnOperation() {
   const auto& resource_alias_analysis =
       getAnalysis<TF::ResourceAliasAnalysis>();
 
-  llvm::SmallDenseMap<Operation*, PerFunctionResult, 4> per_function_results;
+  llvm::SmallDenseMap<FuncOp, PerFunctionResult, 4> per_function_results;
   llvm::SetVector<FuncOp> worklist;
-  module.walk([&](FuncOp func_op) {
+  for (auto func_op : module.getOps<FuncOp>()) {
     worklist.insert(func_op);
     per_function_results.try_emplace(
         func_op, func_op, resource_alias_analysis.GetAnalysisForFunc(func_op));
-  });
+  }
   // Helper that propagates an op's recorded operand device assignments to its
   // called function's arguments.
   auto propagate_operands_to_callee_arguments =
@@ -214,50 +197,51 @@ void ResourceDeviceInference::runOnOperation() {
           assert(callee);
           auto& callee_res = per_function_results.find(callee)->getSecond();
           bool callee_needs_recompute = false;
-          for (auto operand_and_argument :
-               llvm::zip(caller_operands, callee.getArguments())) {
-            if (!mlir::getElementTypeOrSelf(
-                     std::get<0>(operand_and_argument).getType())
-                     .isa<TF::ResourceType>()) {
-              continue;
-            }
-            auto device =
-                caller_res.DeviceForResource(std::get<0>(operand_and_argument));
+          for (BlockArgument arg : filter_resources(callee.getArguments())) {
+            Value arg_operand = caller_operands[arg.getArgNumber()];
+            auto device = caller_res.DeviceForResource(arg_operand);
             if (!device) continue;
-            if (failed(AddResourceDeviceAndEmitError(
-                    std::get<1>(operand_and_argument), *device, caller,
-                    &callee_res, &callee_needs_recompute))) {
+            if (failed(AddResourceDeviceAndEmitError(arg, *device, caller,
+                                                     &callee_res,
+                                                     &callee_needs_recompute)))
               return failure();
-            }
           }
           // If the callee recording is modified, make sure that it will be
           // reprocessed.
-          if (callee_needs_recompute) {
-            worklist.insert(callee);
-          }
+          if (callee_needs_recompute) worklist.insert(callee);
         }
         return success();
       };
 
   while (!worklist.empty()) {
-    auto func_op = worklist.back();
-    worklist.pop_back();
+    auto func_op = worklist.pop_back_val();
     auto& func_res = per_function_results.find(func_op)->getSecond();
     // In-function propagation.
-    if (failed(ComputeResourceDevicesInComputation(func_op, &func_res))) {
+    if (failed(ComputeResourceDevicesInComputation(func_op, &func_res)))
       return signalPassFailure();
-    }
+
     // Propagation to callees.
     auto walk_res = func_op.walk([&](Operation* op) {
-      if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
+      if (auto while_op = dyn_cast<WhileOp>(op)) {
         if (failed(propagate_operands_to_callee_arguments(
                 while_op, while_op.getOperands(),
                 {while_op.body_func(), while_op.cond_func()}, func_res)))
           return WalkResult::interrupt();
-      } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(op)) {
+      } else if (auto if_op = dyn_cast<IfOp>(op)) {
         if (failed(propagate_operands_to_callee_arguments(
                 if_op, if_op.input(), {if_op.then_func(), if_op.else_func()},
                 func_res)))
+          return WalkResult::interrupt();
+      } else if (auto call = dyn_cast<CallOpInterface>(op)) {
+        auto func = dyn_cast<FuncOp>(call.resolveCallable());
+        if (!func) {
+          op->emitError(
+              "Cannot propagate device attribute to callee: Unable to resolve "
+              "call");
+          return WalkResult::interrupt();
+        }
+        if (failed(propagate_operands_to_callee_arguments(
+                call, call.getArgOperands(), {func}, func_res)))
           return WalkResult::interrupt();
       }
       return WalkResult::advance();
@@ -266,15 +250,15 @@ void ResourceDeviceInference::runOnOperation() {
   }
 }
 
+PassRegistration<ResourceDeviceInference> pass(
+    "tf-resource-device-inference",
+    "Propagates the device attribute on resources from callers to callees.");
+
 }  // namespace
 
 std::unique_ptr<OperationPass<ModuleOp>> CreateResourceDeviceInferencePass() {
   return std::make_unique<ResourceDeviceInference>();
 }
-
-static PassRegistration<ResourceDeviceInference> pass(
-    "tf-resource-device-inference",
-    "Propagates the device attribute on resources from callers to callees.");
 
 }  // namespace TF
 }  // namespace mlir

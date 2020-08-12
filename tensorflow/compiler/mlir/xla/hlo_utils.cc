@@ -83,9 +83,6 @@ StatusOr<llvm::SmallVector<AffineMap, 1>> GetPermutationIfAvailable(
     strides[dim] = accumulated_stride;
     accumulated_stride *= shape.dimensions(dim);
   }
-  if (accumulated_stride == 0) {
-    return llvm::SmallVector<AffineMap, 1>{};
-  }
   return llvm::SmallVector<AffineMap, 1>{
       makeStridedLinearLayoutMap(strides, /*offset=*/0, builder.getContext())};
 }

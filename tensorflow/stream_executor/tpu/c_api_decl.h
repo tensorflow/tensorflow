@@ -31,6 +31,12 @@ enum TpuCoreTypeEnum {
   kEmbeddingV2,
 };
 
+enum TpuVersionEnum {
+  kUnknownTpuVersion,
+  kTpuV2,
+  kTpuV3,
+};
+
 typedef struct SE_Status SE_Status;
 
 typedef struct SE_Platform SE_Platform;

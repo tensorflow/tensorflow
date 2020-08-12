@@ -812,47 +812,6 @@ port::Status GpuExecutor::EnablePeerAccessTo(StreamExecutorInterface* other) {
   return GpuDriver::EnablePeerAccess(context_, cuda_other->context_);
 }
 
-SharedMemoryConfig GpuExecutor::GetDeviceSharedMemoryConfig() {
-  port::StatusOr<CUsharedconfig> cuda_config =
-      GpuDriver::ContextGetSharedMemConfig(context_);
-  if (!cuda_config.ok()) {
-    // Don't log; the failed call will log necessary output.
-    return SharedMemoryConfig::kDefault;
-  }
-
-  switch (cuda_config.ValueOrDie()) {
-    case CU_SHARED_MEM_CONFIG_DEFAULT_BANK_SIZE:
-      return SharedMemoryConfig::kDefault;
-    case CU_SHARED_MEM_CONFIG_FOUR_BYTE_BANK_SIZE:
-      return SharedMemoryConfig::kFourByte;
-    case CU_SHARED_MEM_CONFIG_EIGHT_BYTE_BANK_SIZE:
-      return SharedMemoryConfig::kEightByte;
-    default:
-      LOG(FATAL) << "Invalid shared memory configuration returned: "
-                 << cuda_config.ValueOrDie();
-  }
-}
-
-port::Status GpuExecutor::SetDeviceSharedMemoryConfig(
-    SharedMemoryConfig config) {
-  CUsharedconfig cuda_config;
-  switch (config) {
-    case SharedMemoryConfig::kDefault:
-      cuda_config = CU_SHARED_MEM_CONFIG_DEFAULT_BANK_SIZE;
-      break;
-    case SharedMemoryConfig::kFourByte:
-      cuda_config = CU_SHARED_MEM_CONFIG_FOUR_BYTE_BANK_SIZE;
-      break;
-    case SharedMemoryConfig::kEightByte:
-      cuda_config = CU_SHARED_MEM_CONFIG_EIGHT_BYTE_BANK_SIZE;
-      break;
-    default:
-      LOG(FATAL) << "Invalid shared memory configuration specified: "
-                 << static_cast<int>(config);
-  }
-  return GpuDriver::ContextSetSharedMemConfig(context_, cuda_config);
-}
-
 bool GpuExecutor::DeviceMemoryUsage(int64* free, int64* total) const {
   return GpuDriver::GetDeviceMemoryInfo(context_, free, total);
 }

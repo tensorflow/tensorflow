@@ -27,10 +27,6 @@ TfLiteStatus MinMaxOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
   int b_tensor_id = inputs->data[1];
   const auto& a_tensor = context->tensors[a_tensor_id];
   const auto& b_tensor = context->tensors[b_tensor_id];
-  if (a_tensor.allocation_type == kTfLiteMmapRo)
-    graph_builder_->AddConstNodeWithData(a_tensor_id, a_tensor);
-  if (b_tensor.allocation_type == kTfLiteMmapRo)
-    graph_builder_->AddConstNodeWithData(b_tensor_id, b_tensor);
   AddInput(graph_builder_->GetHexagonTensorId(a_tensor_id));
   AddInput(graph_builder_->GetHexagonTensorId(b_tensor_id));
 

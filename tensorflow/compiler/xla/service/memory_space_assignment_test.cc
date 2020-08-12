@@ -71,19 +71,22 @@ class MemorySpaceAssignmentTest : public HloTestBase,
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64 max_outstanding_async_copies = -1,
-      int64 max_prefetch_interval = 10, int64 min_prefetch_interval = 2) {
+      int64 max_prefetch_interval = 10, int64 min_prefetch_interval = 2,
+      absl::optional<MemorySpaceAssignment::Options> options = absl::nullopt) {
     InstructionCountPrefetchIntervalPicker prefetch_interval_picker(
         min_prefetch_interval, max_prefetch_interval);
     return AssignMemorySpace(module, max_outstanding_async_copies,
                              /*buffer_interval_compare=*/{},
-                             &prefetch_interval_picker);
+                             &prefetch_interval_picker, options);
   }
 
   std::unique_ptr<PresetAssignments> AssignMemorySpace(
       HloModule* module, int64 max_outstanding_async_copies,
       absl::optional<MemorySpaceAssignment::BufferIntervalCompare>
           buffer_interval_compare,
-      PrefetchIntervalPicker* prefetch_interval_picker) {
+      PrefetchIntervalPicker* prefetch_interval_picker,
+      absl::optional<MemorySpaceAssignment::Options>
+          memory_space_assignment_options = absl::nullopt) {
     auto size_fn = [](const BufferValue& buffer) {
       return ShapeUtil::ByteSizeOf(buffer.shape(), /*pointer_size=*/8);
     };
@@ -117,9 +120,15 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     }
 
     MemorySpaceAssignment::Options options;
+    if (memory_space_assignment_options) {
+      options = *memory_space_assignment_options;
+    } else {
+      options.max_size_in_bytes = 128;
+      options.alignment_in_bytes = 8;
+      options.verify = true;
+    }
+
     options.alternate_memory_space = kAlternateMemorySpace;
-    options.max_size_in_bytes = 128;
-    options.alignment_in_bytes = 8;
     options.buffer_interval_compare = buffer_interval_compare;
     options.prefetch_interval_picker = prefetch_interval_picker;
     options.size_fn = size_fn;
@@ -127,7 +136,6 @@ class MemorySpaceAssignmentTest : public HloTestBase,
     options.max_outstanding_prefetches = max_outstanding_async_copies;
     options.max_outstanding_evictions = max_outstanding_async_copies;
     options.allocate_across_sequential_calls = GetParam();
-    options.verify = true;
 
     auto alias_analysis = HloAliasAnalysis::Run(module).ValueOrDie();
     std::unique_ptr<HloLiveRange> hlo_live_range =
@@ -4056,6 +4064,169 @@ TEST_P(MemorySpaceAssignmentTest, MoveCopyDoneEarlier) {
   };
   EXPECT_GT(find_schedule_index(sin->operand(0)),
             find_schedule_index(cos->operand(0)));
+}
+
+// A mock MemorySpaceAssignmentRepacker class that accepst a map of
+// (start_time,offset) -> new_offset values. Using this map, the repacker
+// repacks the allocations to the new_offset.
+class FakeMemorySpaceAssignmentRepacker
+    : public MemorySpaceAssignmentRepacker<MemorySpaceAssignment::Allocation*> {
+ public:
+  FakeMemorySpaceAssignmentRepacker(
+      absl::flat_hash_map<std::pair<int64, int64>, int64>& repack_map)
+      : repack_map_(repack_map) {}
+
+  StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override {
+    bool modified = false;
+    for (AllocationBlock* block : allocations) {
+      VLOG(1) << "Alloc time: [" << block->start_time << ", " << block->end_time
+              << "] size: " << block->size
+              << " init offset: " << block->initial_offset;
+      auto it = repack_map_.find({block->start_time, block->initial_offset});
+      if (it != repack_map_.end()) {
+        modified = true;
+        block->offset = it->second;
+      } else {
+        block->offset = block->initial_offset;
+      }
+      for (AllocationBlock* colocation : block->colocations) {
+        VLOG(1) << "  [" << colocation->start_time << ", "
+                << colocation->end_time << "]";
+        if (it != repack_map_.end()) {
+          colocation->offset = it->second;
+        } else {
+          colocation->offset = colocation->initial_offset;
+        }
+      }
+    }
+
+    return modified;
+  }
+
+ private:
+  // A map from (start_time, offset) to new_offset.
+  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map_;
+};
+
+TEST_P(MemorySpaceAssignmentTest, Repack) {
+  // We initially perform the following allocations at these offsets.
+  //
+  //    Max memory
+  //  -------------------------------------------
+  //
+  //
+  //
+  //
+  //      +------------+
+  //      |     b      |
+  //      +------------+
+  //  +-------+                 +------------+
+  //  |   a   |                 |     n      |
+  //  +-------+                 +------------+
+  //  -------------------------------------------
+  //    Min memory          time ->
+  //
+  // Next up, we try to allocate the prefetch for m. However due to
+  // fragmentation, this won't be possible:
+  //
+  //    Max memory
+  //  -------------------------------------------
+  //
+  //
+  //
+  //                +---------+
+  //      +------------+      |
+  //      |     b   |  |      |
+  //      +------------+      |
+  //  +-------+     |         | +------------+
+  //  |   a   |     |    d    | |     n      |
+  //  +-------+     +---------+ +------------+
+  //  -------------------------------------------
+  //    Min memory          time ->
+  //
+  // We then call repack to repack the existing allocations which allows us to
+  // allocate the prefetch for m:
+  //
+  //    Max memory
+  //  -------------------------------------------
+  //                +---------+
+  //                |         |
+  //                |         |
+  //                |         |
+  //  +-------+     |         |
+  //  |   a   |     |    d    |
+  //  +-------+     +---------+
+  //      +------------+        +------------+
+  //      |      b     |        |     n      |
+  //      +------------+        +------------+
+  //  -------------------------------------------
+  //    Min memory          time ->
+  absl::string_view hlo_string = R"(
+  HloModule bug, is_scheduled=true
+
+  ENTRY Entry {
+    param0 = f32[8,3] parameter(0)
+    param1 = f32[2,4] parameter(1)
+    a = f32[2,4] sine(param1)
+    b = f32[2,4] cosine(param1)
+    c = f32[8,3] negate(param0)
+    j = f32[2,4] negate(a)
+    d = f32[8,3] tanh(param0)
+    k = f32[2,4] negate(j)
+    l = f32[2,4] add(b, k)
+    m = f32[8,3] negate(d)
+    n = f32[2,4] sine(l)
+    o = f32[8,3] negate(m)
+    p = f32[2,4] negate(n)
+    q = f32[8,3] negate(m)
+    ROOT tuple = (f32[2,4], f32[8,3], f32[8,3]) tuple(p, q, o)
+  }
+  )";
+
+  MemorySpaceAssignment::BufferIntervalCompare buffer_interval_compare =
+      [](const MemorySpaceAssignment::BufferInterval& a,
+         const MemorySpaceAssignment::BufferInterval& b) {
+        auto get_opcode_priority = [](const HloOpcode& opcode) {
+          switch (opcode) {
+            case HloOpcode::kSin:
+              return 0;
+            case HloOpcode::kCos:
+              return 1;
+            case HloOpcode::kTanh:
+              return 2;
+            default:
+              return 3;
+          }
+        };
+
+        return get_opcode_priority(a.buffer->defining_instruction()->opcode()) <
+               get_opcode_priority(b.buffer->defining_instruction()->opcode());
+      };
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  InstructionCountPrefetchIntervalPicker prefetch_interval_picker(2, 10);
+  absl::flat_hash_map<std::pair<int64, int64>, int64> repack_map;
+  // Move "a" from offset 0 to 32.
+  repack_map[{2, 0}] = 32;
+  // Move "b" from offset 32 to 0.
+  repack_map[{3, 32}] = 0;
+  FakeMemorySpaceAssignmentRepacker repacker =
+      FakeMemorySpaceAssignmentRepacker(repack_map);
+  MemorySpaceAssignment::Options options;
+  options.max_size_in_bytes = 128;
+  options.alignment_in_bytes = 8;
+  options.verify = true;
+  options.max_repacks = 1;
+  options.repacker = &repacker;
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    buffer_interval_compare, &prefetch_interval_picker,
+                    options);
+
+  // If repacking succeeds, we should find the buffer for d in alternate memory.
+  const HloInstruction* d =
+      module->entry_computation()->GetInstructionWithName("d");
+  EXPECT_EQ(d->shape().layout().memory_space(), kAlternateMemorySpace);
 }
 
 TEST_P(MemorySpaceAssignmentTest, Determinism) {

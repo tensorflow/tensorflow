@@ -129,6 +129,18 @@ Status ConvertTFExecutorToTFLOrFlatbuffer(
     bool emit_select_tf_ops, bool emit_custom_ops,
     const mlir::TFL::QuantizationSpecs& quant_specs, std::string* result,
     mlir::PassManager* pass_manager) {
+  // Register a warning handler only log to std out.
+  mlir::ScopedDiagnosticHandler s(
+      module.getContext(), [](mlir::Diagnostic& diag) {
+        if (diag.getSeverity() == mlir::DiagnosticSeverity::Warning) {
+          for (auto& note : diag.getNotes()) {
+            std::cout << note.str() << "\n";
+            LOG(WARNING) << note.str() << "\n";
+          }
+        }
+        return mlir::failure();
+      });
+
   mlir::StatusScopedDiagnosticHandler statusHandler(module.getContext(),
                                                     /*propagate=*/true);
 

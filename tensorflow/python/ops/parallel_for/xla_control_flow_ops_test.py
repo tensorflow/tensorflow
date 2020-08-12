@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.compiler.tf2xla.python import xla as xla_ops
 from tensorflow.python.compiler.xla import jit
 from tensorflow.python.compiler.xla import xla
+from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
@@ -38,6 +39,10 @@ from tensorflow.python.platform import test
 
 @test_util.run_all_in_graph_and_eager_modes
 class PForTest(PForTestCase):
+
+  def __init__(self, method_name="runTest"):
+    super(PForTest, self).__init__(method_name)
+    context.context().enable_xla_devices()
 
   def test_xla_einsum(self):
     num_loop = 10

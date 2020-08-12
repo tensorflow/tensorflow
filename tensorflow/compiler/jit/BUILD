@@ -206,6 +206,7 @@ cc_library(
         "xla_device.cc",
         "xla_device_context.cc",
         "xla_device_ops.cc",
+        "xla_ops_on_regular_devices.cc",
         "xla_platform_info.cc",
     ],
     hdrs = [

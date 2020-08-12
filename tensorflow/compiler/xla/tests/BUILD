@@ -728,6 +728,7 @@ xla_test(
     name = "array_elementwise_ops_test",
     srcs = ["array_elementwise_ops_test.cc"],
     shard_count = 25,
+    tags = ["no_oss"],  # b/163416869
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",

@@ -63,6 +63,15 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kCompression;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kReaderFunc;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kShardFunc;
+/* static */ constexpr const char* const
+    SnapshotDatasetV2Op::kReaderFuncTarguments;
+/* static */ constexpr const char* const
+    SnapshotDatasetV2Op::kShardFuncTarguments;
+/* static */ constexpr const int SnapshotDatasetV2Op::kFileFormatVersion;
+
 // ==== Snapshot Implementation ====
 
 /* The current snapshot on-disk layout is as follows:
