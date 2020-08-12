@@ -75,7 +75,6 @@ cuda_py_test(
     srcs = ["csr_sparse_matrix_sparse_mat_mul_grad_test.py"],
     main = "csr_sparse_matrix_sparse_mat_mul_grad_test.py",
     shard_count = 50,
-    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python/ops/linalg/sparse",
     ],
