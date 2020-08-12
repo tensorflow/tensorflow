@@ -154,13 +154,13 @@ TF::IfRegionOp CloneEmptyIfWithPredicate(Value predicate, bool is_stateless,
   auto& then_branch = host_side_if.then_branch();
   builder->setInsertionPoint(&then_branch.front(), then_branch.front().begin());
   builder->createBlock(&then_branch);
-  builder->create<TF::YieldOp>(loc, llvm::SmallVector<mlir::Value, 4>({}));
+  builder->create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
 
   // Create empty else branch region.
   auto& else_branch = host_side_if.else_branch();
   builder->setInsertionPoint(&else_branch.front(), else_branch.front().begin());
   builder->createBlock(&else_branch);
-  builder->create<TF::YieldOp>(loc, llvm::SmallVector<mlir::Value, 4>({}));
+  builder->create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
   return host_side_if;
 }
 
@@ -300,10 +300,9 @@ tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
     llvm::StringRef host_device) {
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated TPUReplicateMetadata op.
-  llvm::SmallVector<Type, 8> result_types;
   auto launch_op = builder->create<tf_device::LaunchOp>(
       last_cluster_op->getLoc(), builder->getStringAttr(host_device),
-      result_types);
+      /*result_types=*/ArrayRef<Type>{});
 
   launch_op.body().push_back(new Block);
 
