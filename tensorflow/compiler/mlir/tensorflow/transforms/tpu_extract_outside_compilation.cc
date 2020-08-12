@@ -152,14 +152,14 @@ TF::IfRegionOp CloneEmptyIfWithPredicate(Value predicate, bool is_stateless,
 
   // Create empty then branch region.
   auto& then_branch = host_side_if.then_branch();
-  builder->setInsertionPoint(&then_branch.front(), then_branch.front().begin());
-  builder->createBlock(&then_branch);
+  then_branch.push_back(new Block);
+  builder->setInsertionPointToEnd(&then_branch.front());
   builder->create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
 
   // Create empty else branch region.
   auto& else_branch = host_side_if.else_branch();
-  builder->setInsertionPoint(&else_branch.front(), else_branch.front().begin());
-  builder->createBlock(&else_branch);
+  else_branch.push_back(new Block);
+  builder->setInsertionPointToEnd(&else_branch.front());
   builder->create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
   return host_side_if;
 }
