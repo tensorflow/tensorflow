@@ -1372,7 +1372,7 @@ class NoisyDense(Layer):
     self.built = True
 
   @staticmethod
-  def f(x):
+  def _scale_noise(x):
     return tf.sign(x)*tf.sqrt(tf.abs(x))
 
   def call(self, inputs):
@@ -1384,7 +1384,8 @@ class NoisyDense(Layer):
     ε_i = tf.random.normal([self.last_dim, self.units])
     ε_j = tf.random.normal([self.units,])
 
-    f = NoisyDense.f
+    # Creates the factorised Gaussian noise
+    f = NoisyDense._scale_noise
     ε_kernel = f(ε_i) * f(ε_j)
     ε_bias = f(ε_j)
 
