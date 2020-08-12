@@ -60,12 +60,10 @@ REGISTER_OP("TensorMapErase")
     .Input("input_handle: variant")
     .Input("key: key_dtype")
     .Output("output_handle: variant")
-    //.Output("value: value_dtype")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->Scalar());        // output map
-      //c->set_output(1, c->UnknownShape());  // removed element
       return Status::OK();
     });
 
