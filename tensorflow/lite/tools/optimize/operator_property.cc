@@ -913,6 +913,7 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};
       property.version = 2;
+      property.restrict_same_input_output_scale = true;
       break;
     case BuiltinOperator_SUM:
       property.inputs = {{0, {}}};

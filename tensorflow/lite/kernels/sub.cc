@@ -236,7 +236,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // 8bit -> 8bit general quantized path, with general rescalings
   // as well as, 16bit -> 16bit with general rescalings
-  bool pot_scale_int16 = true;
+
+  // There are two implementations of SUB operator in case of
+  // 16bit input depending on whether the scale parameter is
+  // the power of 2 or not. Currently only implementation for
+  // general case is used, but we need to use another implementation
+  // for older versions.
+  bool general_scale_int16 = false;
 
   bool input1_scale_is_pot = false;
   bool input2_scale_is_pot = false;
@@ -248,31 +254,30 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
       output->type == kTfLiteInt16) {
-    // In case of 16-bit, there are two implementation:
-    // the scale parameter is a general number
-    // the scale parameter is POT and
-    // zero_point is zero for inputs/output.
-    pot_scale_int16 = (input1->params.zero_point == 0) &&
-                      (input2->params.zero_point == 0) &&
-                      (output->params.zero_point == 0);
+    general_scale_int16 = !params || !params->pot_scale_int16;
 
-    input1_scale_is_pot =
-        CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
+    if (!general_scale_int16) {
+      // Do preparation in the case of the scale parameter is power of 2.
+      input1_scale_is_pot =
+          CheckedLog2(input1->params.scale, &input1_scale_log2_rounded);
 
-    input2_scale_is_pot =
-        CheckedLog2(input2->params.scale, &input2_scale_log2_rounded);
+      input2_scale_is_pot =
+          CheckedLog2(input2->params.scale, &input2_scale_log2_rounded);
 
-    output_scale_is_pot =
-        CheckedLog2(output->params.scale, &output_scale_log2_rounded);
+      output_scale_is_pot =
+          CheckedLog2(output->params.scale, &output_scale_log2_rounded);
 
-    pot_scale_int16 &=
-        input1_scale_is_pot && input2_scale_is_pot && output_scale_is_pot;
+      general_scale_int16 =
+          !input1_scale_is_pot || !input2_scale_is_pot ||
+          !output_scale_is_pot || input1->params.zero_point != 0 ||
+          input2->params.zero_point != 0 || output->params.zero_point != 0;
+    }
   }
 
-  data->pot_scale_int16 = pot_scale_int16;
+  data->pot_scale_int16 = !general_scale_int16;
 
   if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
-      !pot_scale_int16) {
+      general_scale_int16) {
     TF_LITE_ENSURE_OK(context, PrepareGeneralSubOp(context, input1, input2,
                                                    output, params, data, -1));
   } else if (output->type == kTfLiteInt16) {
@@ -388,7 +393,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     }
   } else if (!data->pot_scale_int16) {
     if (need_broadcast) {
-      TF_LITE_SUB(reference_ops, BroadcastAdd4DSlow, int16_t);
+      TF_LITE_SUB(reference_ops, BroadcastSubSlow, int16_t);
     } else {
       reference_ops::Add(op_params, GetTensorShape(input1),
                          GetTensorData<int16_t>(input1), GetTensorShape(input2),

@@ -583,8 +583,8 @@ table ConcatenationOptions {
 
 table AddOptions {
   fused_activation_function:ActivationFunctionType;
-  // Parameters supported by version 4.
-  pot_scale_int16:bool = true;
+  // Parameters supported by version 3.
+  pot_scale_int16:bool = false;
 }
 
 table MulOptions {
@@ -707,7 +707,7 @@ table DepthToSpaceOptions {
 table SubOptions {
   fused_activation_function:ActivationFunctionType;
   // Parameters supported by version 5
-  pot_scale_int16:bool = true;
+  pot_scale_int16:bool = false;
 }
 
 table DivOptions {
