@@ -196,6 +196,15 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       result = broadcast_send_recv(self.device.device_ids)
     self.assertAllClose([[2], [6]], self.device.unpack(result))
 
+  def test_use_in_graph_error_is_informative(self):
+    @def_function.function
+    def uses_parallel():
+      with self.device:
+        return self.device.unpack(array_ops.ones([]))
+
+    with self.assertRaisesRegex(NotImplementedError, "inside `tf.function`"):
+      uses_parallel()
+
   def test_checkpointing(self):
     self.skipTest(
         "Disable saving until SaveableObject's methods are traceable.")

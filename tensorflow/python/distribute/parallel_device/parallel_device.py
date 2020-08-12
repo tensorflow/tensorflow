@@ -78,6 +78,7 @@ class ParallelDevice(object):
     Returns:
       A single tensor placed on the ParallelDevice.
     """
+    self._assert_eager()
     with ops.device(self._name):
       return tpu_ops.tpu_replicated_input(inputs=tensors)
 
@@ -90,6 +91,7 @@ class ParallelDevice(object):
     Returns:
       A flat list of tensors, one per `self.components`.
     """
+    self._assert_eager()
     with ops.device(self._name):
       return tpu_ops.tpu_replicated_output(
           parallel_tensor, num_replicas=len(self.components))
@@ -106,11 +108,20 @@ class ParallelDevice(object):
     """
     return self._device_ids
 
+  def _assert_eager(self):
+    """Verifies that tracing is not active."""
+    if not context.executing_eagerly():
+      raise NotImplementedError(
+          "ParallelDevice is currently not supported inside `tf.function`. It "
+          "can however run calls to a `tf.function` in parallel:\n\n"
+          "with ParallelDevice() as p:\n  f()")
+
   def __enter__(self):
     """Runs ops in parallel, makes variables which save independent buffers."""
     if (self._device_scope is not None or self._saving_scope is not None):
       raise AssertionError(
           "Re-entered a ParallelDevice scope without first exiting it.")
+    self._assert_eager()
     self._device_scope = ops.device(self._name)
     self._saving_scope = saving.independent_buffers(self)
     self._device_scope.__enter__()
