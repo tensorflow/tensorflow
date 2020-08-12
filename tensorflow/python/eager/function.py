@@ -2457,6 +2457,10 @@ class FunctionSpec(object):
     self._args_to_indices = {arg: i for i, arg in enumerate(args)}
     self._arg_names = args
 
+    self._num_tot_args = len(self._arg_names)
+    self._num_req_args = (self._num_tot_args -
+                          len(self._fullargspec.defaults or [])
+
     if input_signature is None:
       self._input_signature = None
     else:
@@ -2524,9 +2528,8 @@ class FunctionSpec(object):
     """
     args = list(self._arg_names)
     if default_values:
-      offset = len(args) - len(self._fullargspec.defaults or [])
       for i, default in enumerate(self._fullargspec.defaults):
-        args[offset + i] += "={}".format(default)
+        args[self._num_req_args + i] += "={}".format(default)
     if self._fullargspec.kwonlyargs:
       args.append("*")
       for arg_name in self._fullargspec.kwonlyargs:
@@ -2629,36 +2632,36 @@ class FunctionSpec(object):
               "{} got keyword argument `{}` that was not included in "
               "input_signature".format(self.signature_summary(), arg))
 
-    num_req_args = len(self._arg_names) - len(self._fullargspec.defaults or [])
-
     if not kwargs:
       inputs = args
       if self._fullargspec.defaults:
-        if len(args) < num_req_args:
-          missing_args = self._arg_names[len(args):num_req_args]
+        if len(args) < self._num_req_args:
+          missing_args = self._arg_names[len(args):self._num_req_args]
           raise TypeError("{} missing required arguments: {}".format(
               self.signature_summary(), ", ".join(missing_args)))
-        inputs += tuple(self._fullargspec.defaults[len(args) - num_req_args:])
+        inputs += tuple(
+            self._fullargspec.defaults[len(args) - self._num_req_args:])
 
       if self._fullargspec.kwonlydefaults:
         kwargs.update(self._fullargspec.kwonlydefaults)
     else:
-      add_args = [None] * (len(self._arg_names) - len(args))
+      add_args = [None] * (self._num_tot_args - len(args))
 
-      for i in range(len(args), len(self._arg_names)):
+      for i in range(len(args), self._num_tot_args):
         arg_name = self._arg_names[i]
         if arg_name in kwargs:
           add_args[i - len(args)] = kwargs[arg_name]
           del kwargs[arg_name]
         else:
-          if i < num_req_args:
+          if i < self._num_req_args:
             missing_args = [arg_name]
-            for j in range(i + 1, num_req_args):
+            for j in range(i + 1, self._num_req_args):
               if self._arg_names[j] not in kwargs:
                 missing_args.append(self._arg_names[j])
             raise TypeError("{} missing required arguments: {}".format(
                 self.signature_summary(), ", ".join(missing_args)))
-          add_args[i - len(args)] = self._fullargspec.defaults[i - num_req_args]
+          add_args[i - len(args)] = \
+              self._fullargspec.defaults[i - self._num_req_args]
       # After this point, `kwargs` will only contain keyword_only arguments,
       # and all positional_or_keyword arguments have been moved to `inputs`.
 
