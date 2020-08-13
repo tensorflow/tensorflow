@@ -101,7 +101,6 @@ TEST(TensorMapTest, Replace) {
   Tensor v1 = Tensor(22);
   Tensor v2 = Tensor(23);
   tm[k] = v2;
-
   absl::flat_hash_map<TensorKey, Tensor>::iterator map_it = tm.find(k);
   EXPECT_EQ(map_it->first, k);
   test::ExpectTensorEqual<int32>(map_it->second, v2);
@@ -116,7 +115,7 @@ TEST(TensorMapTest, ListKeys) {
   tm.insert(k, v);
   tm.insert(k2, v2);
   std::vector<Tensor> keys = tm.keys();
-  
+
   // Extract and sort double value for each key Tensor.
   std::vector<std::pair<double, int>> key_doubles;
   for (int i=0; i<keys.size(); i++) {
@@ -125,6 +124,7 @@ TEST(TensorMapTest, ListKeys) {
     key_doubles.push_back(p);
   }
   sort(key_doubles.begin(), key_doubles.end());
+
   // Check number of keys and each key.
   EXPECT_EQ(keys.size(), 2);
   EXPECT_EQ(key_doubles[0].first, 11.0);

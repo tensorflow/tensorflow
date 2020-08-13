@@ -63,7 +63,7 @@ REGISTER_OP("TensorMapErase")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->Scalar());        // output map
+      c->set_output(0, c->Scalar()); // output map
       return Status::OK();
     });
 

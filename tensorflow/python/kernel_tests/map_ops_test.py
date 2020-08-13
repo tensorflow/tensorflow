@@ -152,6 +152,10 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected = constant_op.constant([1.0, 2.0, 3.0])
     self.assertAllClose(array_ops.shape(keys), array_ops.shape(expected))
     self.assertAllClose(sort_ops.sort(keys), expected)
+  
+  def testStackKeysEmpty(self):
+    m = map_ops.empty_tensor_map()
+    
 
   def testInsertLookupGrad(self):
     with backprop.GradientTape() as tape:
