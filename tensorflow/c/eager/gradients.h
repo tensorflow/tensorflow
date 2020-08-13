@@ -55,18 +55,25 @@ struct Context {
  public:
   AbstractContext* ctx;
 };
+
+class IncomingGradients {
+ public:
+  virtual AbstractTensorHandle* operator[](int i) const = 0;
+  virtual size_t size() const = 0;
+  virtual ~IncomingGradients() {}
+};
+
 class GradientFunction {
  public:
   // TODO(srbs): How we support CompositeTensors e.g. IndexedSlices in
   // `grad_inputs`.
-  virtual Status Compute(Context* ctx,
-                         absl::Span<AbstractTensorHandle* const> grad_inputs,
+  virtual Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                          std::vector<AbstractTensorHandle*>* grad_outputs) = 0;
   virtual ~GradientFunction() {}
 };
 
 // Metadata from the forward operation that is made available to the
-// gradient registerer to instantiate a GradientFunction.
+// gradient registerer to instantiate a BackwardFunction.
 struct ForwardOperation {
  public:
   string op_name;
@@ -76,18 +83,86 @@ struct ForwardOperation {
   AbstractContext* ctx;
 };
 
-using GradientFunctionFactory =
-    std::function<GradientFunction*(const ForwardOperation& op)>;
-
-// Map from op name to a `GradientFunctionFactory`.
-class GradientRegistry {
+// Interface for building default zeros gradients for op outputs which are
+// missing incoming gradients. Custom implementations of this can be used to
+// control which of the forward op's output tensors/their metadata needs to
+// be kept around in memory to build the default zeros grad.
+//
+// Some common helper implementations are provided below.
+class DefaultGradientFunction {
  public:
-  Status Register(const string& op, GradientFunctionFactory factory);
-  Status Lookup(const ForwardOperation& op,
-                std::unique_ptr<GradientFunction>* grad_fn) const;
+  virtual AbstractTensorHandle* get(
+      Context* ctx, absl::Span<AbstractTensorHandle* const> grad_inputs,
+      int i) = 0;
+  virtual ~DefaultGradientFunction() {}
+};
+
+// Returns zeros for any `nullptr` in `grad_inputs`.
+//
+// This may require keeping track of all of forward op's output
+// tensors and hence may incur a higher memory footprint. Use sparingly.
+//
+// Multiple calls to `AllZerosDefaultGradients::get` return the same tensor
+// handle.
+//
+// The destructor of this class `Unref`'s any cached tensor handles so users of
+// those tensor handles should `Ref` them in order to keep them alive if needed.
+class AllZerosDefaultGradients : public DefaultGradientFunction {
+ public:
+  explicit AllZerosDefaultGradients(const ForwardOperation& op);
+  AbstractTensorHandle* get(Context* ctx,
+                            absl::Span<AbstractTensorHandle* const> grad_inputs,
+                            int i) override;
 
  private:
-  absl::flat_hash_map<string, GradientFunctionFactory> registry_;
+  // TODO(srbs): We do not always need to keep the tensors around. In immediate
+  // execution mode we just need to store the shape and dtype. During tracing
+  // we may need to keep the tensor around if the shape is not full defined.
+  std::vector<AbstractTensorHandle*> outputs_;
+  std::vector<AbstractTensorHandlePtr> cached_default_grads_;
+};
+
+// Passes through `grad_inputs` as-is. The `GradientFunction`
+// will be expected to deal with nullptr in `grad_inputs` if any.
+class PassThroughDefaultGradients : public DefaultGradientFunction {
+ public:
+  explicit PassThroughDefaultGradients(const ForwardOperation& op);
+  AbstractTensorHandle* get(Context* ctx,
+                            absl::Span<AbstractTensorHandle* const> grad_inputs,
+                            int i) override;
+};
+
+// A `BackwardFunction` wraps a `GradientFunction` and a
+// `DefaultGradientFunction`. Both are owned by this class' instance.
+class BackwardFunction {
+ public:
+  BackwardFunction(GradientFunction* gradient_function,
+                   DefaultGradientFunction* default_gradients)
+      : gradient_function_(gradient_function),
+        default_gradients_(default_gradients) {}
+  GradientFunction* GetGradientFunction() { return gradient_function_.get(); }
+  DefaultGradientFunction* GetDefaultGradientFunction() {
+    return default_gradients_.get();
+  }
+
+ private:
+  std::unique_ptr<GradientFunction> gradient_function_;
+  std::unique_ptr<DefaultGradientFunction> default_gradients_;
+};
+
+using BackwardFunctionFactory =
+    std::function<BackwardFunction*(const ForwardOperation& op)>;
+
+// Map from op name to a `BackwardFunctionFactory`.
+class GradientRegistry {
+ public:
+  Status Register(const string& op,
+                  BackwardFunctionFactory backward_function_factory);
+  Status Lookup(const ForwardOperation& op,
+                std::unique_ptr<BackwardFunction>* backward_function) const;
+
+ private:
+  absl::flat_hash_map<string, BackwardFunctionFactory> registry_;
 };
 
 // Returns a unique id for the tensor which is used by the tape to build
@@ -106,9 +181,16 @@ int64 ToId(AbstractTensorHandle* t);
 // allow us to trace the data dependencies between operations and hence compute
 // gradients.
 //
-// This also implements `ZerosLike` and `OnesLike` to create the default
+// This also implements `OnesLike` to create the default
 // incoming gradients for tensors which do not already have an incoming
 // gradient.
+//
+// `ZerosLike` is not expected to be called and returns a nullptr. The creation
+// of default zeros grads is handled by the `DefaultGradientFunction` registered
+// for each op.
+// TODO(srbs): We need to define `ZerosLike` here to keep the compiler happy.
+// Figure out a way to avoid this.
+// TODO(srbs): Should ZerosLike check-fail instead of returning nullptr?
 class TapeTensor {
  public:
   TapeTensor(AbstractTensorHandle* handle, AbstractContext* ctx);
@@ -123,7 +205,7 @@ class TapeTensor {
 
  private:
   AbstractTensorHandle* handle_;
-  // The context where OnesLike and ZerosLike ops are to be created.
+  // The context where OnesLike ops are to be created.
   AbstractContext* ctx_;
 };
 
@@ -132,7 +214,7 @@ class TapeTensor {
 // gradient and for performing gradient aggregation.
 // See `tensorflow::eager::VSpace` for more details.
 class TapeVSpace
-    : public eager::VSpace<AbstractTensorHandle, GradientFunction, TapeTensor> {
+    : public eager::VSpace<AbstractTensorHandle, BackwardFunction, TapeTensor> {
  public:
   explicit TapeVSpace(AbstractContext* ctx) : ctx_(ctx) {}
   ~TapeVSpace() override {}
@@ -147,7 +229,7 @@ class TapeVSpace
 
   // Calls the passed-in backward function.
   Status CallBackwardFunction(
-      GradientFunction* backward_function,
+      BackwardFunction* backward_function,
       const std::vector<int64>& unneeded_gradients,
       gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
       std::vector<AbstractTensorHandle*>* result) const override;
@@ -168,8 +250,14 @@ class TapeVSpace
 };
 
 // A tracing/immediate-execution agnostic tape.
+//
+// Gradient functions defined for this library support handling null incoming
+// gradients. `Tape::ComputeGradient` should be called with
+// `build_default_zeros_grads=false`. Calling with
+// `build_default_zeros_grads=true` (the default) is equivalent but just results
+// in extra work because `TapeTensor::ZerosLike` returns a `nullptr` anyway.
 using Tape = tensorflow::eager::GradientTape<AbstractTensorHandle,
-                                             GradientFunction, TapeTensor>;
+                                             BackwardFunction, TapeTensor>;
 
 }  // namespace gradients
 }  // namespace tensorflow
