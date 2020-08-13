@@ -106,7 +106,8 @@
       * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be clearer and easier to understand.
     * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
       as an alternative to accepting a `callable` loss.
-    * Added `beta` parameter to FTRL optimizer to match paper.
+    * Added `beta` hyperparameter to FTRL optimizer classes (Keras and others)
+      to match FTRL paper (https://research.google.com/pubs/archive/41159.pdf).
     * Added `mobilenet_v3` to keras application model.
     * `Optimizer.__init__` now accepts a `gradient_aggregator` to allow for
       customization of how gradients are aggregated across devices, as well as
