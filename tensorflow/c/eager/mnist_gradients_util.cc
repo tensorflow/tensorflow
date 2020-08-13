@@ -506,55 +506,6 @@ Status CreateParamsForInputs(AbstractContext* ctx,
   return Status::OK();
 }
 
-// Runs `model` maybe wrapped in a function.
-// Status RunModel(Model model, AbstractContext* ctx,
-//                 absl::Span<AbstractTensorHandle* const> inputs,
-//                 absl::Span<AbstractTensorHandle*> outputs, bool use_function,
-//                 const GradientRegistry& registry) {
-//   if (use_function) {
-//     const char* fn_name = "test_fn";
-//     std::unique_ptr<AbstractFunction> scoped_func;
-//     {
-//       AbstractContextPtr func_ctx(BuildFunction(fn_name));
-//       vector<AbstractTensorHandle*> func_inputs;
-//       func_inputs.reserve(inputs.size());
-//       TF_RETURN_IF_ERROR(
-//           CreateParamsForInputs(func_ctx.get(), inputs, &func_inputs));
-//       OutputList output_list;
-//       output_list.expected_num_outputs = outputs.size();
-//       output_list.outputs.resize(outputs.size());
-//       TF_RETURN_IF_ERROR(model(func_ctx.get(), absl::MakeSpan(func_inputs),
-//                                absl::MakeSpan(output_list.outputs), registry));
-
-//       for (auto func_input : func_inputs) {
-//         func_input->Unref();
-//       }
-//       AbstractFunction* func = nullptr;
-//       TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
-//                              ->Finalize(&output_list, &func));
-//       scoped_func.reset(func);
-
-//       for (auto output : output_list.outputs) {
-//         output->Unref();
-//       }
-
-//       TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
-//     }
-
-//     AbstractOperationPtr fn_op(ctx->CreateOperation());
-//     TF_RETURN_IF_ERROR(fn_op->Reset(fn_name, /*raw_device_name=*/nullptr));
-//     for (auto input : inputs) {
-//       TF_RETURN_IF_ERROR(fn_op->AddInput(input));
-//     }
-//     int retvals = outputs.size();
-//     TF_RETURN_IF_ERROR(fn_op->Execute(outputs, &retvals));
-//     TF_RETURN_IF_ERROR(ctx->RemoveFunction(fn_name));
-//     return Status::OK();
-//   } else {
-//     return model(ctx, inputs, outputs, registry);
-//   }
-// }
-
 Status RunModel(Model model, AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, bool use_function,
