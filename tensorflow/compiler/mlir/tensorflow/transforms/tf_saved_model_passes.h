@@ -47,7 +47,7 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateLiftVariablesPass(
     ::tensorflow::Session* session);
 
 // Creates a pass that removes duplicate 'tf_saved_model.bound_input' bindings.
-std::unique_ptr<OperationPass<ModuleOp>> CreateDedupBoundInputBindingPass();
+std::unique_ptr<OperationPass<FuncOp>> CreateDedupBoundInputBindingPass();
 
 }  // namespace tf_saved_model
 }  // namespace mlir

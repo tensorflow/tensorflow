@@ -337,7 +337,7 @@ tf_cuda_library(
         ],
         "//tensorflow:windows": KERNEL_AND_DEVICE_DEPS,
         "//conditions:default": KERNEL_AND_DEVICE_DEPS + [
-            "//tensorflow/compiler/jit:xla_kernel_creator_util",
+            "//tensorflow/compiler/jit:xla_kernel_creator",
         ],
     }),
 )

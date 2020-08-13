@@ -29,7 +29,9 @@ MaxUnpooling::MaxUnpooling(const OperationDef& definition,
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, 0, 0),
       padding_(attr.padding.appended.w, attr.padding.appended.h, 0, 0),
-      kernel_size_(attr.kernel.w, attr.kernel.h, 0, 0) {}
+      kernel_size_(attr.kernel.w, attr.kernel.h, 0, 0) {
+  code_ = GetMaxUnpoolingKernelCode(definition_);
+}
 
 MaxUnpooling::MaxUnpooling(const OperationDef& definition,
                            const MaxUnpooling3DAttributes& attr)
@@ -37,7 +39,9 @@ MaxUnpooling::MaxUnpooling(const OperationDef& definition,
       stride_(attr.strides.w, attr.strides.h, attr.strides.d, 0),
       padding_(attr.padding.appended.w, attr.padding.appended.h,
                attr.padding.appended.d, 0),
-      kernel_size_(attr.kernel.w, attr.kernel.h, attr.kernel.d, 0) {}
+      kernel_size_(attr.kernel.w, attr.kernel.h, attr.kernel.d, 0) {
+  code_ = GetMaxUnpoolingKernelCode(definition_);
+}
 
 MaxUnpooling::MaxUnpooling(MaxUnpooling&& kernel)
     : GPUOperation(std::move(kernel)),
@@ -55,16 +59,16 @@ MaxUnpooling& MaxUnpooling::operator=(MaxUnpooling&& kernel) {
   return *this;
 }
 
-std::string MaxUnpooling::GetMaxUnpoolingKernelCode(const OperationDef& op_def,
-                                                    const CLDevice& device) {
+std::string MaxUnpooling::GetMaxUnpoolingKernelCode(
+    const OperationDef& op_def) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
   AddSrcTensor("src_tensor", src_desc);
   auto src_ind_desc = op_def.src_tensors[1];
-  src_ind_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_ind_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_ind_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -167,20 +171,6 @@ std::string MaxUnpooling::GetMaxUnpoolingKernelCode(const OperationDef& op_def,
   c += "}\n";
 
   return c;
-}
-
-absl::Status MaxUnpooling::Compile(const CreationContext& creation_context) {
-  std::string code =
-      GetMaxUnpoolingKernelCode(definition_, *creation_context.device);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status MaxUnpooling::BindArguments() {

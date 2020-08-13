@@ -29,11 +29,19 @@ namespace cl {
 
 DepthwiseConv3x3::DepthwiseConv3x3(const OperationDef& definition,
                                    bool weights_are_buffer,
-                                   bool local_mem_uploads)
+                                   bool local_mem_uploads,
+                                   const DeviceInfo& device_info)
     : GPUOperation(definition),
       weights_are_buffer_(weights_are_buffer),
       local_mem_uploads_(local_mem_uploads) {
   work_group_size_ = int3(8, 4, 1);
+  code_ = GenerateDepthwiseConvCode(definition_, weights_are_buffer_,
+                                    local_mem_uploads_);
+
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+  }
 }
 
 DepthwiseConv3x3::DepthwiseConv3x3(DepthwiseConv3x3&& operation)
@@ -51,10 +59,10 @@ DepthwiseConv3x3& DepthwiseConv3x3::operator=(DepthwiseConv3x3&& operation) {
 }
 
 std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
-    const OperationDef& op_def, const CLDevice& device, bool weights_are_buffer,
+    const OperationDef& op_def, bool weights_are_buffer,
     bool local_mem_uploads) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
@@ -281,28 +289,6 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
   return c;
 }
 
-absl::Status DepthwiseConv3x3::Compile(
-    const CreationContext& creation_context) {
-  std::string code =
-      GenerateDepthwiseConvCode(definition_, *creation_context.device,
-                                weights_are_buffer_, local_mem_uploads_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsPowerVR()) {
-    options.push_back(CompilerOptions::POWERVR_FP16);
-  }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
 absl::Status DepthwiseConv3x3::BindArguments() {
   RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
   return args_.SetObjectRef("dst_tensor", dst_[0]);
@@ -315,12 +301,15 @@ int3 DepthwiseConv3x3::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status DepthwiseConv3x3::Tune(const TuningParameters& params) {
+void DepthwiseConv3x3::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
   if (local_mem_uploads_) {
-    return absl::OkStatus();
+    work_groups->push_back(work_group_size_);
+  } else {
+    GetPossibleWorkGroups(tuning_type, device_info, kernel_info, grid_size_,
+                          work_groups);
   }
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
 }
 
 bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr) {
@@ -343,7 +332,8 @@ absl::Status CreateDepthwiseConv3x3(
       creation_context.device->IsPowerVR() || creation_context.device->IsMali();
   bool local_mem_uploads =
       weights_are_buffer && creation_context.device->IsPowerVR();
-  *result = DepthwiseConv3x3(definition, weights_are_buffer, local_mem_uploads);
+  *result = DepthwiseConv3x3(definition, weights_are_buffer, local_mem_uploads,
+                             creation_context.device->info_);
   return result->UploadWeightsAndBiases(attr.weights, attr.bias,
                                         creation_context.context);
 }

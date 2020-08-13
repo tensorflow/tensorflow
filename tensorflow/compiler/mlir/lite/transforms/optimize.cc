@@ -160,6 +160,31 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
   return false;
 }
 
+// Retuns true if we can eliminate the GatherNdOp or ScatterNdOp. When the value
+// of `indices` are from 0 to n-1, the output tensor are identical to the
+// `params`.
+bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
+                                              DenseIntElementsAttr indices) {
+  auto params_type = params.getType().dyn_cast<RankedTensorType>();
+  auto indices_type = indices.getType().dyn_cast<RankedTensorType>();
+  // Checks the shape of `params` is [n, ...], shape of `indices` is [n, 1]. 2D
+  // `indices` means it gets the first row of `params`. As long as indices
+  // iterate the first row of `params`, the output is identical to input.
+  if (!params_type || !indices_type || indices_type.getRank() != 2 ||
+      indices_type.getDimSize(0) != params_type.getDimSize(0) ||
+      indices_type.getDimSize(1) != 1)
+    return false;
+
+  // Checks the value in `indices` is from 0 to n-1.
+  int cur_value = 0;
+  for (const auto &v : indices.getValues<APInt>()) {
+    if (v.getSExtValue() != cur_value) return false;
+    ++cur_value;
+  }
+
+  return true;
+}
+
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
 // Which dimension depends on 'is_depthwise' is true or false.
 ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {

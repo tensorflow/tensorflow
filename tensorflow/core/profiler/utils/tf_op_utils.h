@@ -59,6 +59,9 @@ std::string TfOpEventName(absl::string_view tf_op_fullname);
 // Trace event name for dataset ops.
 std::string DatasetOpEventName(absl::string_view full_name);
 
+// Returns the iterator name without prefix and parent iterator names.
+std::string IteratorName(absl::string_view full_name);
+
 // Returns true if the given name is a TensorFlow Dataset Op.
 inline bool IsDatasetOp(absl::string_view tf_op_type) {
   return tf_op_type == kDatasetOp;
@@ -100,6 +103,9 @@ bool IsTfOpType(absl::string_view op_type);
 
 // Returns true if the given string matches JAX pattern.
 bool IsJaxOpType(absl::string_view op_type);
+
+// Returns true if the given strings match JAX pattern.
+bool IsJaxOpNameAndType(absl::string_view op_name, absl::string_view op_type);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -38,7 +38,6 @@ namespace cl {
 class DepthwiseConvolution : public GPUOperation {
  public:
   DepthwiseConvolution() = default;
-  absl::Status Compile(const CreationContext& creation_context) override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -83,8 +82,7 @@ class DepthwiseConvolution : public GPUOperation {
   std::string GenerateDepthwiseConvolutionCode(const OperationDef& op_def,
                                                bool stride_correction,
                                                int channel_multiplier,
-                                               bool weights_are_buffer,
-                                               const CLDevice& device);
+                                               bool weights_are_buffer);
 
   bool weights_are_buffer_;
 

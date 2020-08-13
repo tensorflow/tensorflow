@@ -57,6 +57,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/public/session_options.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -1314,12 +1315,21 @@ Status MasterSession::CreateWorkerSessions(
     }
   });
 
+  string task_name;
+  string local_device_name;
+  DeviceNameUtils::SplitDeviceName(devices_->client_device()->name(),
+                                   &task_name, &local_device_name);
+  const int64 client_device_incarnation =
+      devices_->client_device()->attributes().incarnation();
+
   Status status = Status::OK();
   // Create all the workers & kick off the computations.
   for (size_t i = 0; i < worker_names.size(); ++i) {
     workers[i].name = &worker_names[i];
     workers[i].worker = worker_cache->GetOrCreateWorker(worker_names[i]);
     workers[i].request.set_session_handle(handle_);
+    workers[i].request.set_master_task(task_name);
+    workers[i].request.set_master_incarnation(client_device_incarnation);
     if (session_opts_.config.share_cluster_devices_in_session() ||
         session_opts_.config.experimental()
             .share_cluster_devices_in_session()) {

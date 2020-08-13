@@ -17,6 +17,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/lite/c/c_api_internal.h"
+#include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/error_reporter.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
@@ -123,11 +124,16 @@ TfLiteInterpreter* TfLiteInterpreterCreate(
   }
 
   if (optional_options) {
-    interpreter->UseNNAPI(optional_options->use_nnapi);
-
     if (optional_options->num_threads !=
         TfLiteInterpreterOptions::kDefaultNumThreads) {
       interpreter->SetNumThreads(optional_options->num_threads);
+    }
+
+    if (optional_options->use_nnapi) {
+      if (interpreter->ModifyGraphWithDelegate(tflite::NnApiDelegate()) !=
+          kTfLiteOk) {
+        return nullptr;
+      }
     }
 
     for (auto* delegate : optional_options->delegates) {

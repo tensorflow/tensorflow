@@ -69,9 +69,6 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
   static TokenType get(MLIRContext *context) {
     return Base::get(context, HLOTypes::Token);
   }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == HLOTypes::Token; }
 };
 
 // Shape derivation function that computes the shape of the result based on

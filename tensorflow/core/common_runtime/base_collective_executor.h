@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/buf_rendezvous.h"
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 
 namespace tensorflow {
 class CollectiveImplementation;
@@ -97,12 +98,14 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   BaseCollectiveExecutor(CollectiveExecutorMgrInterface* cem,
                          PerStepCollectiveRemoteAccess* remote_access,
                          int64 step_id, const DeviceMgr* dev_mgr,
-                         const string* gpu_ring_order)
+                         const string* gpu_ring_order,
+                         std::shared_ptr<UnboundedWorkQueue> work_queue)
       : CollectiveExecutor(cem),
         step_id_(step_id),
         dev_mgr_(dev_mgr),
         remote_access_(remote_access),
-        gpu_ring_order_(gpu_ring_order) {}
+        gpu_ring_order_(gpu_ring_order),
+        work_queue_(std::move(work_queue)) {}
 
   ~BaseCollectiveExecutor() override;
 
@@ -119,31 +122,8 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
     return remote_access_.get();
   }
 
-  void RecvFromPeer(const string& peer_device, const string& peer_task,
-                    bool peer_is_local, const string& key, Device* to_device,
-                    DeviceContext* to_device_ctx,
-                    const AllocatorAttributes& to_alloc_attr, Tensor* to_tensor,
-                    const DeviceLocality& client_locality, int stream_index,
-                    const StatusCallback& done) override {
-    remote_access_->RecvFromPeer(
-        peer_device, peer_task, peer_is_local, key, to_device, to_device_ctx,
-        to_alloc_attr, to_tensor, client_locality, stream_index, done);
-  }
-
-  void PostToPeer(const string& peer_device, const string& peer_task,
-                  const string& key, Device* from_device,
-                  DeviceContext* from_device_ctx,
-                  const AllocatorAttributes& from_alloc_attr,
-                  const Tensor* from_tensor,
-                  const DeviceLocality& client_locality,
-                  const StatusCallback& done) override {
-    remote_access_->PostToPeer(peer_device, peer_task, key, from_device,
-                               from_device_ctx, from_alloc_attr, from_tensor,
-                               client_locality, done);
-  }
-
   void RunClosure(std::function<void()> closure) override {
-    remote_access_->RunClosure(std::move(closure));
+    work_queue_->Schedule(std::move(closure));
   }
 
   // If we need to enforce an ordering on any portion of collective
@@ -161,6 +141,9 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   const DeviceMgr* dev_mgr_;  // Not owned.
   std::unique_ptr<PerStepCollectiveRemoteAccess> remote_access_;
   const string* gpu_ring_order_;  // Not owned.
+  // Ownership of `work_queue_` is shared between `this` and
+  // `CollectiveExecutorMgr`.
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   mutex launch_mu_;
   condition_variable launch_cv_;
   // collective instance key -> number of local devices for which NCCL ops have

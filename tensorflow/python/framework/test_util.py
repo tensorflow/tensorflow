@@ -3295,8 +3295,8 @@ def _fake_gradient_tape_context_manager():
       def watch(self, x):
         pass
 
-      def gradient(self, y, x):
-        result = gradients_impl.gradients(y, x)
+      def gradient(self, y, x, grad_ys=None):
+        result = gradients_impl.gradients(y, x, grad_ys)
 
         # Unlike `tape.gradient()`, `tf.gradients()` returns a list for a single
         # element. So unpack if needed to match `tape.gradient()` behavior.
@@ -3318,16 +3318,16 @@ class AbstractGradientTape:
   duplicating tests.
   """
 
-  def __init__(self, use_tape):
+  def __init__(self, use_tape, persistent=False):
     self._use_tape = use_tape
+    self._persistent = persistent
 
   def __enter__(self):
     if self._use_tape:
-      self._tape_impl = backprop.GradientTape()
+      self._tape_impl = backprop.GradientTape(persistent=self._persistent)
     else:
       self._tape_impl = _fake_gradient_tape_context_manager()
     return self._tape_impl.__enter__()
 
   def __exit__(self, exc_type, exc_val, exc_tb):
     self._tape_impl.__exit__(exc_type, exc_val, exc_tb)
-

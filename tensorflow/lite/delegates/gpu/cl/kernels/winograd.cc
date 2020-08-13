@@ -32,6 +32,21 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+Winograd4x4To36::Winograd4x4To36(const OperationDef& definition,
+                                 const Padding2D& padding,
+                                 const DeviceInfo& device_info)
+    : GPUOperation(definition), padding_(padding) {
+  work_group_size_ = int3(32, 1, 1);
+  code_ = GetWinograd4x4To36Code(definition_);
+  if (device_info.IsAdreno()) {
+    compiler_options_.push_back(CompilerOptions::ADRENO_MORE_WAVES);
+  }
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+  }
+}
+
 Winograd4x4To36::Winograd4x4To36(Winograd4x4To36&& operation)
     : GPUOperation(std::move(operation)), padding_(operation.padding_) {}
 
@@ -219,30 +234,6 @@ std::string Winograd4x4To36::GetWinograd4x4To36Code(
   return c;
 }
 
-absl::Status Winograd4x4To36::Compile(const CreationContext& creation_context) {
-  std::vector<CompilerOptions> options;
-  if (creation_context.device->IsAdreno()) {
-    options.push_back(CompilerOptions::ADRENO_MORE_WAVES);
-  }
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsPowerVR()) {
-    options.push_back(CompilerOptions::POWERVR_FP16);
-  }
-  RETURN_IF_ERROR(UploadBt(creation_context.context));
-  std::string code = GetWinograd4x4To36Code(definition_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_));
-  work_group_size_ = SelectBestWorkGroup();
-  return absl::OkStatus();
-}
-
 absl::Status Winograd4x4To36::UploadBt(CLContext* context) {
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> bt_aligned;
   bt_aligned.shape = Linear(6 * 8);
@@ -268,11 +259,11 @@ absl::Status Winograd4x4To36::UploadBt(CLContext* context) {
   return absl::OkStatus();
 }
 
-int3 Winograd4x4To36::SelectBestWorkGroup() {
+int3 Winograd4x4To36::SelectBestWorkGroup(const KernelInfo& kernel_info) const {
   const std::vector<int3> wgs = {{8, 6, 4}, {8, 6, 2}, {4, 6, 2},
                                  {4, 6, 2}, {2, 6, 2}, {2, 6, 1},
                                  {1, 6, 1}, {1, 3, 1}, {1, 1, 1}};
-  return GetFirstSuitableWorkGroup(wgs, kernel_.GetMaxWorkGroupSize());
+  return GetFirstSuitableWorkGroup(wgs, kernel_info.max_work_group_size);
 }
 
 absl::Status Winograd4x4To36::BindArguments() {
@@ -295,15 +286,18 @@ int3 Winograd4x4To36::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status Winograd4x4To36::Tune(const TuningParameters& params) {
-  switch (params.tuning_type) {
+void Winograd4x4To36::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  switch (tuning_type) {
     case TuningType::EXHAUSTIVE:
-      RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-      return GetBestWorkGroup(params, kernel_, grid_size_, &work_group_size_);
+      GetPossibleWorkGroups(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
+      return;
     case TuningType::FAST:
     default:
-      work_group_size_ = SelectBestWorkGroup();
-      return absl::OkStatus();
+      work_groups->push_back(SelectBestWorkGroup(kernel_info));
+      return;
   }
 }
 
@@ -311,8 +305,20 @@ absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
                                    const OperationDef& definition,
                                    const Padding2D& padding,
                                    Winograd4x4To36* result) {
-  *result = Winograd4x4To36(definition, padding);
+  *result =
+      Winograd4x4To36(definition, padding, creation_context.device->info_);
   return result->UploadBt(creation_context.context);
+}
+
+Winograd36To4x4::Winograd36To4x4(const OperationDef& definition,
+                                 const DeviceInfo& device_info)
+    : GPUOperation(definition) {
+  work_group_size_ = int3(32, 1, 1);
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+  }
+  code_ = GetWinograd36To4x4Code(definition_);
 }
 
 Winograd36To4x4::Winograd36To4x4(Winograd36To4x4&& operation)
@@ -434,26 +440,6 @@ std::string Winograd36To4x4::GetWinograd36To4x4Code(
   return c;
 }
 
-absl::Status Winograd36To4x4::Compile(const CreationContext& creation_context) {
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsPowerVR()) {
-    options.push_back(CompilerOptions::POWERVR_FP16);
-  }
-  std::string code = GetWinograd36To4x4Code(definition_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_));
-  work_group_size_ = SelectBestWorkGroup();
-  return absl::OkStatus();
-}
-
 absl::Status Winograd36To4x4::UploadAt(CLContext* context) {
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> at_aligned;
   at_aligned.shape = Linear(4 * 8);
@@ -478,11 +464,11 @@ absl::Status Winograd36To4x4::UploadAt(CLContext* context) {
   return absl::OkStatus();
 }
 
-int3 Winograd36To4x4::SelectBestWorkGroup() {
+int3 Winograd36To4x4::SelectBestWorkGroup(const KernelInfo& kernel_info) const {
   const std::vector<int3> wgs = {{32, 4, 2}, {16, 4, 2}, {16, 4, 1},
                                  {8, 4, 1},  {4, 4, 1},  {2, 4, 1},
                                  {1, 4, 1},  {1, 2, 1},  {1, 1, 1}};
-  return GetFirstSuitableWorkGroup(wgs, kernel_.GetMaxWorkGroupSize());
+  return GetFirstSuitableWorkGroup(wgs, kernel_info.max_work_group_size);
 }
 
 absl::Status Winograd36To4x4::BindArguments() {
@@ -502,24 +488,26 @@ int3 Winograd36To4x4::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status Winograd36To4x4::Tune(const TuningParameters& params) {
-  switch (params.tuning_type) {
+void Winograd36To4x4::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  switch (tuning_type) {
     case TuningType::EXHAUSTIVE:
-      RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-      return GetBestWorkGroup(params, kernel_, grid_size_, &work_group_size_);
+      GetPossibleWorkGroups(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
+      return;
     case TuningType::FAST:
     default:
-      work_group_size_ = SelectBestWorkGroup();
-      return absl::OkStatus();
+      work_groups->push_back(SelectBestWorkGroup(kernel_info));
+      return;
   }
 }
-
 
 absl::Status CreateWinograd36To4x4(
     const CreationContext& creation_context, const OperationDef& definition,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
     Winograd36To4x4* result) {
-  *result = Winograd36To4x4(definition);
+  *result = Winograd36To4x4(definition, creation_context.device->info_);
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();

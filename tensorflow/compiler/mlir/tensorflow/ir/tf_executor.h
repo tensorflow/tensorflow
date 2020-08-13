@@ -35,6 +35,7 @@ namespace tf_executor {
 
 class TensorFlowExecutorDialect : public Dialect {
  public:
+  static StringRef getDialectNamespace() { return "tf_executor"; }
   explicit TensorFlowExecutorDialect(MLIRContext *context);
 
   // Parses a type registered to this dialect.
@@ -60,9 +61,6 @@ class ControlType : public Type::TypeBase<ControlType, Type, TypeStorage> {
   static ControlType get(MLIRContext *context) {
     return Base::get(context, TFTypes::Control);
   }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == TFTypes::Control; }
 };
 
 class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
@@ -72,9 +70,6 @@ class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
   static TokenType get(MLIRContext *context) {
     return Base::get(context, TFTypes::Token);
   }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == TFTypes::Token; }
 };
 
 // Declares the operations for this dialect using the generated header.

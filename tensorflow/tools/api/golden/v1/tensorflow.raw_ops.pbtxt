@@ -266,7 +266,7 @@ tf_module {
   }
   member_method {
     name: "AutoShardDataset"
-    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'auto_shard_policy\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'None\'], "
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\', \'auto_shard_policy\', \'num_replicas\', \'name\'], varargs=None, keywords=None, defaults=[\'0\', \'0\', \'None\'], "
   }
   member_method {
     name: "AvgPool"
@@ -1426,7 +1426,7 @@ tf_module {
   }
   member_method {
     name: "ExperimentalIgnoreErrorsDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'log_warning\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "ExperimentalIteratorGetDevice"
@@ -1870,7 +1870,7 @@ tf_module {
   }
   member_method {
     name: "IgnoreErrorsDataset"
-    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input_dataset\', \'output_types\', \'output_shapes\', \'log_warning\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
     name: "Imag"
@@ -4551,6 +4551,10 @@ tf_module {
   member_method {
     name: "StatelessRandomUniformInt"
     argspec: "args=[\'shape\', \'seed\', \'minval\', \'maxval\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "StatelessSampleDistortedBoundingBox"
+    argspec: "args=[\'image_size\', \'bounding_boxes\', \'min_object_covered\', \'seed\', \'aspect_ratio_range\', \'area_range\', \'max_attempts\', \'use_image_if_no_bounding_boxes\', \'name\'], varargs=None, keywords=None, defaults=[\'[0.75, 1.33]\', \'[0.05, 1]\', \'100\', \'False\', \'None\'], "
   }
   member_method {
     name: "StatelessTruncatedNormal"

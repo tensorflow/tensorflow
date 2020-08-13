@@ -32,10 +32,7 @@ namespace tf_framework {
 
 namespace TFFrameworkTypes {
 enum Kind {
-  // TODO(pifon): Replace enum value with
-  // OpKernelContextType = Type::FIRST_TF_FRAMEWORK_TYPE,
-  // after DialectSymbolRegistry.def is updated.
-  OpKernelContextType = Type::FIRST_PRIVATE_EXPERIMENTAL_0_TYPE,
+  OpKernelContextType = Type::FIRST_TF_FRAMEWORK_TYPE,
 };
 }  // namespace TFFrameworkTypes
 
@@ -48,11 +45,6 @@ class OpKernelContextType
 
   static OpKernelContextType get(MLIRContext *context) {
     return Base::get(context, TFFrameworkTypes::Kind::OpKernelContextType);
-  }
-
-  /// Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) {
-    return kind == TFFrameworkTypes::Kind::OpKernelContextType;
   }
 };
 

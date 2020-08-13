@@ -66,6 +66,8 @@ def LHLO_PredOrIntBuffer : MemRefOf<[HLO_Int, HLO_Pred]>;
 
 def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
 
+def LHLO_ExtentBuffer : MemRefRankOf<[AnySignlessInteger, Index], [1]>;
+
 //===----------------------------------------------------------------------===//
 // LMHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -467,7 +469,7 @@ def ReshapeMemRefCastOp: Op<LHLO_Dialect, "reshape_memref_cast", [
 
   let arguments = (ins
     AnyRankedOrUnrankedMemRef:$operand,
-    MemRefRankOf<[AnySignlessInteger], [1]>:$shape
+    LHLO_ExtentBuffer:$shape
   );
   let results = (outs AnyRankedOrUnrankedMemRef:$result);
 

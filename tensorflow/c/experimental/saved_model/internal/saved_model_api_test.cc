@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
-#include "tensorflow/c/experimental/saved_model/public/tensorhandle_list.h"
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/io/path.h"

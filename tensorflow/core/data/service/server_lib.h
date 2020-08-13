@@ -19,6 +19,7 @@ limitations under the License.
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 
 namespace tensorflow {
@@ -34,10 +35,9 @@ class GrpcDataServerBase {
  public:
   // Constructs a tf.data server with the specified port. If the port is 0, the
   // server will find an available port in `Start()`. The chosen port can be
-  // found in the output of `Target()`.
-  //
-  // dispatcher_address is only needed for worker data servers.
-  GrpcDataServerBase(int requested_port, const std::string& protocol);
+  // found by calling `BoundPort()`.
+  GrpcDataServerBase(int requested_port, const std::string& protocol,
+                     const std::string server_type);
   virtual ~GrpcDataServerBase() {}
 
   // Starts the server running asynchronously.
@@ -53,7 +53,8 @@ class GrpcDataServerBase {
   int BoundPort();
 
  protected:
-  virtual void AddServiceToBuilder(::grpc::ServerBuilder* builder) = 0;
+  virtual void AddDataServiceToBuilder(::grpc::ServerBuilder* builder) = 0;
+  void AddProfilerServiceToBuilder(::grpc::ServerBuilder* builder);
   // Starts the service. This will be called after building the service, so
   // bound_port() will return the actual bound port.
   virtual Status StartServiceInternal() = 0;
@@ -62,13 +63,16 @@ class GrpcDataServerBase {
 
   const int requested_port_;
   const std::string protocol_;
+  const std::string server_type_;
 
  private:
   int bound_port_;
   bool started_ = false;
   bool stopped_ = false;
 
-  std::unique_ptr<grpc::Server> server_;
+  std::unique_ptr<::grpc::Server> server_;
+  // TensorFlow profiler service implementation.
+  std::unique_ptr<grpc::ProfilerService::Service> profiler_service_ = nullptr;
 };
 
 class DispatchGrpcDataServer : public GrpcDataServerBase {
@@ -80,8 +84,8 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
   Status NumWorkers(int* num_workers);
 
  protected:
-  void AddServiceToBuilder(grpc::ServerBuilder* builder) override;
-  Status StartServiceInternal() override { return Status::OK(); }
+  void AddDataServiceToBuilder(::grpc::ServerBuilder* builder) override;
+  Status StartServiceInternal() override;
 
  private:
   const experimental::DispatcherConfig config_;
@@ -95,7 +99,7 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   ~WorkerGrpcDataServer() override;
 
  protected:
-  void AddServiceToBuilder(grpc::ServerBuilder* builder) override;
+  void AddDataServiceToBuilder(::grpc::ServerBuilder* builder) override;
   Status StartServiceInternal() override;
 
  private:

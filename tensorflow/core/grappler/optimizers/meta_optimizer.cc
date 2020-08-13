@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -88,7 +89,8 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "loop_optimizer" || name == "auto_mixed_precision";
+         name == "loop_optimizer" || name == "auto_mixed_precision" ||
+         name == "auto_mixed_precision_mkl";
 }
 
 bool IsTFDataFunction(const FunctionDef& func) {
@@ -826,14 +828,21 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   return Status::OK();
 }
 
-void MetaOptimizer::PrintResult() {
+string MetaOptimizer::GetResultString() const {
+  std::string result_string;
   for (const GraphOptimizationResult& graph_result : optimization_results_) {
-    LOG(INFO) << "Optimization results for grappler item: " << graph_result.id;
+    absl::StrAppend(&result_string,
+                    "Optimization results for grappler item: ", graph_result.id,
+                    "\n");
     for (const OptimizerResult& result : graph_result.results) {
-      LOG(INFO) << "  " << result.optimizer_name << ": " << result.message;
+      absl::StrAppend(&result_string, "  ", result.optimizer_name, ": ",
+                      result.message, "\n");
     }
   }
+  return result_string;
 }
+
+void MetaOptimizer::PrintResult() { LOG(INFO) << GetResultString(); }
 
 bool MetaOptimizerEnabled(const ConfigProto& cfg) {
   const auto& rewrite_cfg = cfg.graph_options().rewrite_options();

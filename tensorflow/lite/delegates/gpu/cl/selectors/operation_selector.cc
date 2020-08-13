@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/types/any.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/elementwise.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/mean_stddev_normalization.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/convolution_transposed_selector.h"
 #include "tensorflow/lite/delegates/gpu/cl/selectors/default_selector.h"
@@ -74,14 +75,14 @@ absl::Status WinogradFromNode(const CreationContext& creation_context,
   const BHWC shape_1{input_shape.b, 36, tiles_x * tiles_y, output_shape.c};
   TensorDescriptor td_0;
   td_0.storage_type = SelectBestStorageType(
-      *creation_context.context, *creation_context.device, shape_0,
+      creation_context.device->info_, shape_0,
       op_def.src_tensors[0].storage_type, op_def.src_tensors[0].data_type,
       op_def.src_tensors[0].layout);
   td_0.data_type = op_def.src_tensors[0].data_type;
   td_0.layout = op_def.src_tensors[0].layout;
   TensorDescriptor td_1;
   td_1.storage_type = SelectBestStorageType(
-      *creation_context.context, *creation_context.device, shape_1,
+      creation_context.device->info_, shape_1,
       op_def.src_tensors[0].storage_type, op_def.src_tensors[0].data_type,
       op_def.src_tensors[0].layout);
   td_1.data_type = op_def.src_tensors[0].data_type;
@@ -143,9 +144,9 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       if (inputs.size() == 2 &&
           (inputs[0]->tensor.shape.c == inputs[1]->tensor.shape.c ||
            inputs[1]->tensor.shape.c == 1)) {
-        ElementwiseTwoInput operation =
+        GPUOperation operation =
             CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
-        *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
+        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       } else if (inputs.size() >= 2) {
         auto output = outputs[0];
@@ -156,36 +157,13 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         SelectAdd(op_def, channels, output->tensor.shape.c, gpu_op);
         return absl::OkStatus();
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
-        auto attr = absl::any_cast<AddAttributes>(node.operation.attributes);
-        const float* scalar = absl::get_if<float>(&attr.param);
-        const auto* linear_tensor =
-            absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-                &attr.param);
-        const auto* hwc_tensor =
-            absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
-                &attr.param);
-        if (scalar) {
-          ElementwiseOneRuntimeOneScalar operation =
-              CreateElementwiseOneRuntimeOneScalar(creation_context, op_def,
-                                                   op_type, *scalar);
-          *gpu_op = absl::make_unique<ElementwiseOneRuntimeOneScalar>(
-              std::move(operation));
-          return absl::OkStatus();
-        } else if (linear_tensor) {
-          ElementwiseTwoInput operation;
-          RETURN_IF_ERROR(CreateElementwiseTwoInput(
-              creation_context, op_def, op_type, *linear_tensor, &operation));
-          *gpu_op =
-              absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-          return absl::OkStatus();
-        } else if (hwc_tensor) {
-          ElementwiseTwoInput operation;
-          RETURN_IF_ERROR(CreateElementwiseTwoInput(
-              creation_context, op_def, op_type, *hwc_tensor, &operation));
-          *gpu_op =
-              absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-          return absl::OkStatus();
-        }
+        auto attr =
+            absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
+        GPUOperation operation;
+        RETURN_IF_ERROR(CreateElementwise(creation_context, op_def, op_type,
+                                          attr, &operation));
+        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
       }
       return absl::UnimplementedError(absl::StrCat(
           "No support of ", node.operation.type, " with this parameters"));
@@ -197,7 +175,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         channels[i] = inputs[i]->tensor.shape.c;
       }
       return SelectConcat(attr, channels, op_def,
-                          creation_context.device->GetInfo(), gpu_op);
+                          creation_context.device->info_, gpu_op);
     }
     case OperationType::CONVOLUTION_2D: {
       auto attr =
@@ -270,7 +248,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
                                   inputs[0]->tensor.shape.b, gpu_op);
     }
     case OperationType::LSTM: {
-      SelectLSTM(op_def, gpu_op);
+      SelectLSTM(op_def, creation_context.device->info_, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::MAX_UNPOOLING_2D: {
@@ -281,49 +259,13 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
-      return SelectMean(attr, op_def, gpu_op);
+      return SelectMean(attr, op_def, creation_context.device->info_, gpu_op);
     }
-    case OperationType::MUL: {
-      if (inputs.size() == 2) {
-        ElementwiseTwoInput operation =
-            CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
-        *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-        return absl::OkStatus();
-      } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
-        auto attr =
-            absl::any_cast<MultiplyAttributes>(node.operation.attributes);
-        const float* scalar = absl::get_if<float>(&attr.param);
-        const auto* linear_tensor =
-            absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-                &attr.param);
-        const auto* hwc_tensor =
-            absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
-                &attr.param);
-        if (scalar) {
-          ElementwiseOneRuntimeOneScalar operation =
-              CreateElementwiseOneRuntimeOneScalar(creation_context, op_def,
-                                                   op_type, *scalar);
-          *gpu_op = absl::make_unique<ElementwiseOneRuntimeOneScalar>(
-              std::move(operation));
-          return absl::OkStatus();
-        } else if (linear_tensor) {
-          ElementwiseTwoInput operation;
-          RETURN_IF_ERROR(CreateElementwiseTwoInput(
-              creation_context, op_def, op_type, *linear_tensor, &operation));
-          *gpu_op =
-              absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-          return absl::OkStatus();
-        } else if (hwc_tensor) {
-          ElementwiseTwoInput operation;
-          RETURN_IF_ERROR(CreateElementwiseTwoInput(
-              creation_context, op_def, op_type, *hwc_tensor, &operation));
-          *gpu_op =
-              absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-          return absl::OkStatus();
-        }
-      }
-      return absl::UnimplementedError(absl::StrCat(
-          "No support of ", node.operation.type, " with this parameters"));
+    case OperationType::MEAN_STDDEV_NORMALIZATION: {
+      MeanStdDevNormalization operation = CreateMeanStdDevNormalization(op_def);
+      *gpu_op =
+          absl::make_unique<MeanStdDevNormalization>(std::move(operation));
+      return absl::OkStatus();
     }
     case OperationType::PAD: {
       auto attr = absl::any_cast<PadAttributes>(node.operation.attributes);
@@ -343,8 +285,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::QUANTIZE_AND_DEQUANTIZE: {
       auto attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
           node.operation.attributes);
-      return SelectQuantizeAndDequantize(attr, creation_context, op_def,
-                                         gpu_op);
+      SelectQuantizeAndDequantize(attr, creation_context, op_def, gpu_op);
+      return absl::OkStatus();
     }
     case OperationType::RELU: {
       auto attr = absl::any_cast<ReLUAttributes>(node.operation.attributes);
@@ -395,54 +337,30 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::SQRT:
     case OperationType::SQUARE:
     case OperationType::TANH: {
-      ElementwiseOneInput operation =
-          CreateElementwiseOneInput(op_def, op_type);
-      *gpu_op = absl::make_unique<ElementwiseOneInput>(std::move(operation));
+      GPUOperation operation = CreateElementwiseOneInput(op_def, op_type);
+      *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
       return absl::OkStatus();
     }
     case OperationType::DIV:
     case OperationType::MAXIMUM:
     case OperationType::MINIMUM:
+    case OperationType::MUL:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB: {
       if (inputs.size() == 2) {
-        ElementwiseTwoInput operation =
+        GPUOperation operation =
             CreateElementwiseTwoInput(op_def, op_type, inputs[1]->tensor.shape);
-        *gpu_op = absl::make_unique<ElementwiseTwoInput>(std::move(operation));
+        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
         auto attr =
             absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-        const float* scalar = absl::get_if<float>(&attr.param);
-        const auto* linear_tensor =
-            absl::get_if<tflite::gpu::Tensor<Linear, DataType::FLOAT32>>(
-                &attr.param);
-        const auto* hwc_tensor =
-            absl::get_if<tflite::gpu::Tensor<HWC, DataType::FLOAT32>>(
-                &attr.param);
-        if (scalar) {
-          ElementwiseOneRuntimeOneScalar operation =
-              CreateElementwiseOneRuntimeOneScalar(creation_context, op_def,
-                                                   op_type, *scalar);
-          *gpu_op = absl::make_unique<ElementwiseOneRuntimeOneScalar>(
-              std::move(operation));
-          return absl::OkStatus();
-        } else if (linear_tensor) {
-          ElementwiseTwoInput operation;
-          RETURN_IF_ERROR(CreateElementwiseTwoInput(
-              creation_context, op_def, op_type, *linear_tensor, &operation));
-          *gpu_op =
-              absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-          return absl::OkStatus();
-        } else if (hwc_tensor) {
-          ElementwiseTwoInput operation;
-          RETURN_IF_ERROR(CreateElementwiseTwoInput(
-              creation_context, op_def, op_type, *hwc_tensor, &operation));
-          *gpu_op =
-              absl::make_unique<ElementwiseTwoInput>(std::move(operation));
-          return absl::OkStatus();
-        }
+        GPUOperation operation;
+        RETURN_IF_ERROR(CreateElementwise(creation_context, op_def, op_type,
+                                          attr, &operation));
+        *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
+        return absl::OkStatus();
       }
       return absl::UnimplementedError(absl::StrCat(
           "No support of ", node.operation.type, " with this parameters"));

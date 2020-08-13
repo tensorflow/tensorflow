@@ -1952,6 +1952,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "ParallelDynamicStitch",
                                      "ParameterizedTruncatedNormal",
                                      "PartitionedCall",
+                                     "PopulationCount",
                                      "Qr",
                                      "QuantizeAndDequantizeV2",
                                      "QuantizeAndDequantizeV3",

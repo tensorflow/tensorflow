@@ -28,11 +28,9 @@ namespace cl {
 
 class Reshapex4 : public GPUOperation {
  public:
-  explicit Reshapex4(const OperationDef& definition)
-      : GPUOperation(definition) {}
+  explicit Reshapex4(const OperationDef& definition);
 
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Reshapex4(Reshapex4&& operation);

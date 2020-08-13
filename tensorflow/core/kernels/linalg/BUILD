@@ -10,25 +10,18 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
-# Description:
-# Op kernel implementations for TensorFlow.
-#
-# Note: Any test that uses GPU support and which we would like to
-# benchmark should be linked statically so that it can be executed
-# from a py_binary or cuda_py_test test logger.  For such a test,
-# append "_gpu" to the test name to invoke the GPU benchmarks.  Example:
-#
-#   # for CPU tests
-#   $ bazel test --config opt //third_party/tensorflow/core/kernels:my_op_test
-#   # for GPU benchmarks
-#   $ bazel run --config opt --config=cuda //third_party/tensorflow/core/kernels:my_op_test_gpu -- --benchmarks=..
-#
 package(
     default_visibility = [
         "//tensorflow:__subpackages__",
         "//tensorflow:internal",
     ],
     licenses = ["notice"],  # Apache 2.0
+)
+
+# TODO(rmlarsen): Remove ASAP.
+package_group(
+    name = "friends",
+    packages = ["//tensorflow/..."],
 )
 
 # Export a few files for use on Android.
@@ -85,13 +78,13 @@ cc_library(
 
 LINALG_DEPS = [
     ":linalg_ops_common",
-    ":eye_functor",
     "//third_party/eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core/kernels:cast_op",
     "//tensorflow/core/kernels:fill_functor",
 ] + if_cuda([
+    ":eye_functor",
     "//tensorflow/core/util:cuda_solvers",
     "//tensorflow/core/kernels:transpose_functor",
 ]) + if_rocm([
@@ -173,6 +166,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_inverse_op",
     prefix = "matrix_inverse_op",
+    visibility = [":friends"],
     deps = LINALG_DEPS,
 )
 
@@ -252,8 +246,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "svd_op",
     prefix = "svd_op",
-    deps = LINALG_DEPS + if_cuda([
-    ]),
+    deps = LINALG_DEPS,
 )
 
 tf_kernel_library(
@@ -350,4 +343,21 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:ops_testutil",
         "//tensorflow/core/kernels:ops_util",
     ],
+)
+
+# A file group which contains all operators which are known to work on mobile.
+filegroup(
+    name = "android_all_op_kernels",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = [
+            "*test.cc",
+            "*test.h",
+            "*_test_*",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )

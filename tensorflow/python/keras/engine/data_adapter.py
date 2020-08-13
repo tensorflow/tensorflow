@@ -37,12 +37,12 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -1296,7 +1296,7 @@ def _make_class_weight_map_fn(class_weight):
       raise ValueError("`class_weight` not supported for "
                        "3+ dimensional targets.")
 
-    y_classes = control_flow_util.smart_cond(
+    y_classes = smart_cond.smart_cond(
         y.shape.rank == 2 and backend.shape(y)[1] > 1,
         lambda: backend.argmax(y, axis=1),
         lambda: math_ops.cast(backend.reshape(y, (-1,)), dtypes.int64))

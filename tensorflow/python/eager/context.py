@@ -42,6 +42,7 @@ from tensorflow.python.framework import device as pydev
 from tensorflow.python.util import compat
 from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 GRAPH_MODE = 0
@@ -1254,12 +1255,7 @@ class Context(object):
           p: i for i, p in enumerate(self._physical_devices)
       }
 
-      # Construct the visible device list from all physical devices but ignore
-      # XLA devices
-      self._visible_device_list = [
-          d for d in self._physical_devices
-          if not d.device_type.startswith("XLA")
-      ]
+      self._visible_device_list = list(self._physical_devices)
       self._memory_growth_map = {
           d: None for d in self._physical_devices if d.device_type == "GPU"
       }
@@ -1413,6 +1409,12 @@ class Context(object):
 
     self._visible_device_list = visible_device_list
 
+  def get_total_memory_usage(self, dev):
+    """Returns total memory usage in bytes for the current device."""
+    self._initialize_physical_devices()
+    self.ensure_initialized()
+    return pywrap_tfe.TFE_GetTotalMemoryUsage(self._context_handle, dev)
+
   def get_memory_growth(self, dev):
     """Get if memory growth is enabled for a PhysicalDevice."""
     self._initialize_physical_devices()
@@ -1486,6 +1488,12 @@ class Context(object):
           "Virtual devices cannot be modified after being initialized")
 
     self._virtual_device_map[dev] = virtual_devices
+
+  @deprecated(
+      None, "XLA:CPU and XLA:GPU devices are deprecated", warn_once=True)
+  def enable_xla_devices(self):
+    """Enables XLA:CPU and XLA:GPU devices registration."""
+    pywrap_tfe.TF_EnableXlaDevices()
 
   @property
   def enable_mlir_bridge(self):

@@ -906,13 +906,38 @@ bool MatchesAnyVersionRE(StringPiece op_prefix, StringPiece op_to_match) {
 }
 
 std::vector<tstring> SelectOptimizations(
-    const string& job_name, const string& opt_ins_raw,
-    const string& opt_outs_raw,
+    const string& job_name,
     const absl::flat_hash_map<string, uint64>& live_experiments,
     const std::vector<tstring>& optimizations_enabled,
     const std::vector<tstring>& optimizations_disabled,
     const std::vector<tstring>& optimizations_default,
     std::function<uint64(const string&)> hash_func) {
+  std::vector<tstring> optimizations;
+  if (job_name.empty()) {
+    // If `job_name` is empty, apply the enabled and default optimizations
+    // directly.
+    optimizations.insert(optimizations.end(), optimizations_enabled.begin(),
+                         optimizations_enabled.end());
+    optimizations.insert(optimizations.end(), optimizations_default.begin(),
+                         optimizations_default.end());
+    return optimizations;
+  }
+
+  // If `job_name` is non-empty, we determine which optimizations to apply to
+  // this job based on the enable/disable settings from tf.data.Options, the
+  // opt in/out settings from environment variables, and rollout condition from
+  // `live_experiments`.
+  const char* opt_ins_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
+  const char* opt_outs_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
+  string opt_ins_raw;
+  if (opt_ins_raw_cs != nullptr) {
+    opt_ins_raw = string(opt_ins_raw_cs);
+  }
+  string opt_outs_raw;
+  if (opt_outs_raw_cs != nullptr) {
+    opt_outs_raw = string(opt_outs_raw_cs);
+  }
+
   // Creates a set of optimizations.
   absl::flat_hash_set<tstring> optimizations_set;
 
@@ -1018,18 +1043,6 @@ std::vector<tstring> SelectOptimizations(
     }
   }
 
-  // Log the experiments that will be applied.
-  if (VLOG_IS_ON(1)) {
-    for (auto& pair : live_experiments) {
-      string experiment = pair.first;
-      if (std::find(optimizations_set.begin(), optimizations_set.end(),
-                    experiment) != optimizations_set.end()) {
-        VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
-      }
-    }
-  }
-
-  std::vector<tstring> optimizations;
   optimizations.insert(optimizations.end(), optimizations_set.begin(),
                        optimizations_set.end());
   return optimizations;

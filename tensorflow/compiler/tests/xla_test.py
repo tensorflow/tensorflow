@@ -83,6 +83,8 @@ class XLATestCase(test.TestCase):
 
   def __init__(self, method_name='runTest'):
     super(XLATestCase, self).__init__(method_name)
+    if 'XLA' in FLAGS.test_device:
+      context.context().enable_xla_devices()
     context.context().enable_mlir_bridge = test_util.is_mlir_bridge_enabled()
 
     self.device = FLAGS.test_device

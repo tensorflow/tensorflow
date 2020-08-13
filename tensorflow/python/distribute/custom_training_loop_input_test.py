@@ -35,6 +35,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
@@ -658,6 +659,39 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
     # This assumes that there are exactly 2 replicas
     self.assertAllEqual([1.5, 2.], run(next(input_iterator)))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]))
+  def testMapFnWithDynamicInputs(self, distribution):
+
+    def dataset_fn(_):
+      data = array_ops.zeros((20, 300, 32), dtype=dtypes.int32)
+      dataset = get_dataset_from_tensor_slices(data)
+      dataset = dataset.batch(16)
+      return dataset
+
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(dataset_fn))
+
+    def embedding_lookup(inputs):
+      embedding_weights = array_ops.zeros((1, 128))
+      flat_inputs = array_ops.reshape(inputs, [-1])
+      embeddings = array_ops.gather(embedding_weights, flat_inputs)
+      embeddings = array_ops.reshape(embeddings, inputs.shape.as_list() + [128])
+      return embeddings
+
+    @def_function.function
+    def step_fn(example):
+      return map_fn.map_fn(
+          embedding_lookup, example, fn_output_signature=dtypes.float32)
+
+    # This assumes that there are exactly 2 replicas
+    outputs = distribution.experimental_local_results(
+        distribution.run(step_fn, args=(next(input_iterator),)))
+    self.assertAllEqual((16, 300, 32, 128), outputs[0].shape)
+    self.assertAllEqual((4, 300, 32, 128), outputs[1].shape)
 
   @combinations.generate(
       combinations.combine(

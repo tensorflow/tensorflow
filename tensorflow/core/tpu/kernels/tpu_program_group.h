@@ -109,6 +109,8 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   TpuProgramGroup(TpuProgramGroup&& other);
   TpuProgramGroup& operator=(TpuProgramGroup&&) = delete;
 
+  bool has_sharding_program() const override;
+
   size_t program_count() const override;
 
   int64_t program_size() const override;
@@ -124,13 +126,14 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   void set_may_modify_variables(const std::vector<bool>& may_modify_variables);
 
   const std::vector<XLA_TpuProgram*>& tpu_programs() const;
+  std::vector<XLA_TpuProgram*> tpu_programs(TpuProgramShardingType type) const;
   const XLA_TpuProgram* tpu_program(int index) const;
   void set_tpu_programs(absl::Span<XLA_TpuProgram* const> tpu_programs);
 
   const TPUExecutableInfoProto& executable_info(int index) const;
 
   const TPUHostTransferInfoProto& host_transfer_info(int index) const;
-  void set_hlo_metadata(const xla::HloProto& hlo_metadata);
+  void set_hlo_metadatas(absl::Span<const xla::HloProto> hlo_metadatas);
   const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
 

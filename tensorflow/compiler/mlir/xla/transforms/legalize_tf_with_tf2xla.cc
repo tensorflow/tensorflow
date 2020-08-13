@@ -74,12 +74,8 @@ limitations under the License.
 
 namespace mlir {
 namespace mhlo {
-namespace {
 
-template <typename T, size_t N>
-using InlinedVector = tensorflow::gtl::InlinedVector<T, N>;  // non-absl ok
-
-static bool IsOpAllowlisted(Operation* op) {
+bool IsOpAllowedTf2XlaFallback(Operation* op) {
   // Allowlisted TensorFlow ops are known to have well behaved tf2xla kernels
   // building valid MLIR using MlirHloBuilder.
   // TODO(hinsu): Drop explicit allowlist when MLIR based bridge is enabled for
@@ -104,6 +100,10 @@ static bool IsOpAllowlisted(Operation* op) {
     TypeID::get<TF::AtanhOp>(),
     TypeID::get<TF::AtanOp>(),
     TypeID::get<TF::BatchMatMulV2Op>(),
+    TypeID::get<TF::BatchToSpaceNDOp>(),
+    TypeID::get<TF::BatchToSpaceOp>(),
+    TypeID::get<TF::BesselI0eOp>(),
+    TypeID::get<TF::BesselI1eOp>(),
     TypeID::get<TF::BiasAddGradOp>(),
     TypeID::get<TF::BiasAddOp>(),
     TypeID::get<TF::BitwiseAndOp>(),
@@ -156,9 +156,12 @@ static bool IsOpAllowlisted(Operation* op) {
     TypeID::get<TF::LogicalOrOp>(),
     TypeID::get<TF::LogOp>(),
     TypeID::get<TF::MatMulOp>(),
+    TypeID::get<TF::MatrixDiagV3Op>(),
+    TypeID::get<TF::MatrixSetDiagV3Op>(),
     TypeID::get<TF::MirrorPadOp>(),
     TypeID::get<TF::MulOp>(),
     TypeID::get<TF::NegOp>(),
+    TypeID::get<TF::NonMaxSuppressionV4Op>(),
     TypeID::get<TF::NotEqualOp>(),
     TypeID::get<TF::PadOp>(),
     TypeID::get<TF::PlaceholderWithDefaultOp>(),
@@ -178,6 +181,7 @@ static bool IsOpAllowlisted(Operation* op) {
     TypeID::get<TF::RintOp>(),
     TypeID::get<TF::RoundOp>(),
     TypeID::get<TF::SelectV2Op>(),
+    TypeID::get<TF::SelfAdjointEigV2Op>(),
     TypeID::get<TF::SeluGradOp>(),
     TypeID::get<TF::SeluOp>(),
     TypeID::get<TF::SigmoidGradOp>(),
@@ -186,6 +190,8 @@ static bool IsOpAllowlisted(Operation* op) {
     TypeID::get<TF::SoftplusGradOp>(),
     TypeID::get<TF::SoftsignGradOp>(),
     TypeID::get<TF::SoftsignOp>(),
+    TypeID::get<TF::SpaceToBatchNDOp>(),
+    TypeID::get<TF::SpaceToBatchOp>(),
     TypeID::get<TF::SparseToDenseOp>(),
     TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),
@@ -212,6 +218,11 @@ static bool IsOpAllowlisted(Operation* op) {
   if (!abstractOp) return false;
   return ops.count(abstractOp->typeID);
 }
+
+namespace {
+
+template <typename T, size_t N>
+using InlinedVector = tensorflow::gtl::InlinedVector<T, N>;  // non-absl ok
 
 static std::unique_ptr<tensorflow::StaticDeviceMgr> CreateDeviceMgr(
     const std::string& device_type) {
@@ -490,12 +501,14 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
 
 class Tf2XlaRewritePattern : public RewritePattern {
  public:
+  // Set benefit to 0 (= least benefit) so this pattern is only used as a
+  // fallback.
   explicit Tf2XlaRewritePattern(const std::string& device_type)
-      : RewritePattern(1, MatchAnyOpTypeTag()), device_type_(device_type) {}
+      : RewritePattern(0, MatchAnyOpTypeTag()), device_type_(device_type) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {
-    if (!IsOpAllowlisted(op)) return failure();
+    if (!IsOpAllowedTf2XlaFallback(op)) return failure();
     return Tf2XlaRewriter::RewriteOp(op, rewriter, device_type_);
   }
 
@@ -525,8 +538,7 @@ class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   // global device type for all TensorFlow ops.
   Option<std::string> device_type_{
       *this, "device-type",
-      llvm::cl::desc("XLA device type for execution of TensorFlow ops. "
-                     "Supports XLA_CPU_JIT and XLA_TPU_JIT for now.")};
+      llvm::cl::desc("XLA device type for execution of TensorFlow ops.")};
 };
 
 static PassRegistration<LegalizeTF> pass(

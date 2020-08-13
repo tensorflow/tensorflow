@@ -24,6 +24,12 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+Softmax1x1::Softmax1x1(const OperationDef& definition)
+    : GPUOperation(definition) {
+  work_group_size_ = int3(32, 1, 1);
+  code_ = GetSoftmaxKernelCode(definition_);
+}
+
 Softmax1x1::Softmax1x1(Softmax1x1&& kernel) : GPUOperation(std::move(kernel)) {}
 
 Softmax1x1& Softmax1x1::operator=(Softmax1x1&& kernel) {
@@ -101,20 +107,6 @@ std::string Softmax1x1::GetSoftmaxKernelCode(const OperationDef& op_def) {
   c += "  } while (s < args.slices_x32);\n";
   c += "}\n";
   return c;
-}
-
-absl::Status Softmax1x1::Compile(const CreationContext& creation_context) {
-  std::string code = GetSoftmaxKernelCode(definition_);
-  std::string element_wise_code;
-  work_group_size_ = int3(32, 1, 1);
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status Softmax1x1::BindArguments() {

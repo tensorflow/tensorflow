@@ -89,11 +89,13 @@ void RearrangeFCWeightsToIOO4I4(const tflite::gpu::Tensor<OHWI, T>& weights,
 class FullyConnected : public GPUOperation {
  public:
   FullyConnected() = default;
-  absl::Status Tune(const TuningParameters& params) override {
-    return absl::OkStatus();
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
   }
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   FullyConnected(FullyConnected&& kernel);
@@ -102,7 +104,7 @@ class FullyConnected : public GPUOperation {
   FullyConnected& operator=(const FullyConnected&) = delete;
 
  private:
-  explicit FullyConnected(const OperationDef& definition);
+  FullyConnected(const OperationDef& definition, const DeviceInfo& device_info);
   friend absl::Status CreateFullyConnected(
       const CreationContext& creation_context, const OperationDef& definition,
       const FullyConnectedAttributes& attr, FullyConnected* result);

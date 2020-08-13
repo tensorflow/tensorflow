@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 
 #include <cstdint>
-#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -110,6 +110,8 @@ std::string ToString(enum OperationType op) {
       return "max_unpooling";
     case OperationType::MEAN:
       return "mean";
+    case OperationType::MEAN_STDDEV_NORMALIZATION:
+      return "mean_stddev_normalization";
     case OperationType::MINIMUM:
       return "minimum";
     case OperationType::MUL:
@@ -156,15 +158,14 @@ std::string ToString(enum OperationType op) {
       return "tanh";
     case OperationType::TRANSPOSE:
       return "transpose";
-    default:
-      break;
+    case OperationType::UNKNOWN:
+      return "unknown_operation";
   }
-  return "unknown_operation";
 }
 
 OperationType OperationTypeFromString(const std::string& name) {
   static const auto operations =
-      new std::unordered_map<std::string, OperationType>({
+      new absl::flat_hash_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
@@ -185,6 +186,8 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"maximum", OperationType::MAXIMUM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
           {"mean", OperationType::MEAN},
+          {"mean_stddev_normalization",
+           OperationType::MEAN_STDDEV_NORMALIZATION},
           {"minimum", OperationType::MINIMUM},
           {"mul", OperationType::MUL},
           {"pad", OperationType::PAD},

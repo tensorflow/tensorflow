@@ -37,10 +37,12 @@ namespace cl {
 class ConvolutionTransposed3x3 : public GPUOperation {
  public:
   ConvolutionTransposed3x3() = default;
-  absl::Status Tune(const TuningParameters& params) override {
-    return absl::OkStatus();
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
   }
-  absl::Status Compile(const CreationContext& creation_context) override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 

@@ -21,10 +21,12 @@ from __future__ import print_function
 
 import six
 
+from google.protobuf import text_format
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import tensor_pb2
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.core.framework import types_pb2
+from tensorflow.python import _pywrap_utils
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import op_def_registry
@@ -788,3 +790,13 @@ def _apply_op_helper(op_type_name, name=None, **keywords):  # pylint: disable=in
         outputs = callback_outputs
 
     return output_structure, op_def.is_stateful, op, outputs
+
+
+# The following symbols are used by op_def_util.cc.
+_pywrap_utils.RegisterPyObject("tf.dtypes.DType", dtypes.DType)
+_pywrap_utils.RegisterPyObject("tf.dtypes.as_dtype", dtypes.as_dtype)
+_pywrap_utils.RegisterPyObject("tf.TensorShape", tensor_shape.TensorShape)
+_pywrap_utils.RegisterPyObject("tf.as_shape", tensor_shape.as_shape)
+_pywrap_utils.RegisterPyObject("tf.TensorProto", tensor_pb2.TensorProto)
+_pywrap_utils.RegisterPyObject("text_format.Parse", text_format.Parse)
+_pywrap_utils.RegisterPyObject("tf.convert_to_tensor", ops.convert_to_tensor)

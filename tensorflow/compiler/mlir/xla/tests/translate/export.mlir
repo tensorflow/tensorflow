@@ -1087,3 +1087,15 @@ func @main(%arg: tensor<3x4xf32>, %token: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK-NOT:  frontend_attributes
+
+// -----
+
+// Checks exporting rng-bit-generator.
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>> {
+// CHECK: %[[ARG0:.*]] = u64[3] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %[[ARG0]]), algorithm=rng_philox
+  %0 = "mhlo.rng_bit_generator"(%arg) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
+  return %0 : tuple<tensor<3xui64>, tensor<2x2xui32>>
+}

@@ -25,6 +25,12 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+Transpose::Transpose(const OperationDef& definition,
+                     const TransposeAttributes& attr)
+    : GPUOperation(definition), attr_(attr) {
+  code_ = GetTransposeCode(definition_, attr_);
+}
+
 Transpose::Transpose(Transpose&& operation)
     : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
 
@@ -105,19 +111,6 @@ std::string Transpose::GetTransposeCode(const OperationDef& op_def,
   c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
   c += "}\n";
   return c;
-}
-
-absl::Status Transpose::Compile(const CreationContext& creation_context) {
-  std::string code = GetTransposeCode(definition_, attr_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 int3 Transpose::GetGridSize() const {

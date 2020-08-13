@@ -192,6 +192,7 @@ class FuncGraph(ops.Graph):
     self.structured_outputs = None
     self._weak_variables = []
     self._watched_variables = object_identity.ObjectIdentityWeakSet()
+    self.is_control_flow_graph = False
 
     outer_graph = ops.get_default_graph()
     self._weak_outer_graph = weakref.ref(outer_graph)

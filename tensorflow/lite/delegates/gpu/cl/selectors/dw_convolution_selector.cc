@@ -69,7 +69,7 @@ absl::Status SelectDWConvolutionMali(
   const auto storage_type = op_def.src_tensors[0].storage_type;
   bool buffer_type = storage_type == TensorStorageType::BUFFER ||
                      storage_type == TensorStorageType::IMAGE_BUFFER;
-  MaliInfo mali_info = creation_context.device->GetInfo().mali_info;
+  MaliInfo mali_info = creation_context.device->info_.mali_info;
   if (IsDepthwiseConv3x3Supported(attr) && !mali_info.IsMidgard() &&
       !buffer_type && op_def.precision != CalculationsPrecision::F32) {
     DepthwiseConv3x3 dw_conv;
@@ -90,15 +90,15 @@ absl::Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
                                  const CreationContext& creation_context,
                                  const OperationDef& op_def,
                                  std::unique_ptr<GPUOperation>* ptr) {
-  switch (creation_context.device->vendor()) {
-    case Vendor::QUALCOMM:
-      return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
-    case Vendor::POWERVR:
-      return SelectDWConvolutionPowerVR(attr, creation_context, op_def, ptr);
-    case Vendor::MALI:
-      return SelectDWConvolutionMali(attr, creation_context, op_def, ptr);
-    default:
-      return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
+  const auto& device_info = creation_context.device->info_;
+  if (device_info.IsAdreno()) {
+    return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
+  } else if (device_info.IsPowerVR()) {
+    return SelectDWConvolutionPowerVR(attr, creation_context, op_def, ptr);
+  } else if (device_info.IsMali()) {
+    return SelectDWConvolutionMali(attr, creation_context, op_def, ptr);
+  } else {
+    return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
   }
 }
 

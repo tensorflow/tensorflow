@@ -377,19 +377,20 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     graph_rewrites = options._graph_rewrites()
     graph_rewrite_configs = options._graph_rewrite_configs()
     # pylint: enable=protected-access
-    if graph_rewrites.enabled or graph_rewrites.default:
-      if self._has_captured_ref():
+    if self._has_captured_ref():
+      if graph_rewrites.enabled or graph_rewrites.default:
         warnings.warn(
             "tf.data graph rewrites are not compatible with tf.Variable. "
             "The following rewrites will be disabled: %s. To enable "
             "rewrites, use resource variables instead by calling "
             "`tf.enable_resource_variables()` at the start of the program." %
             ", ".join(graph_rewrites.enabled + graph_rewrites.default))
-      else:
-        dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
-                                   graph_rewrites.disabled,
-                                   graph_rewrites.default,
-                                   graph_rewrite_configs)
+    elif (graph_rewrites.enabled or graph_rewrites.default or
+          (options.experimental_optimization.apply_default_optimizations  # pylint: disable=g-bool-id-comparison
+           is not False)):
+      dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
+                                 graph_rewrites.disabled,
+                                 graph_rewrites.default, graph_rewrite_configs)
 
     # (3) Apply autotune options
     autotune, algorithm, cpu_budget = options._autotune_settings()  # pylint: disable=protected-access

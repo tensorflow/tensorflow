@@ -49,7 +49,13 @@ string Hostname() {
   return name;
 }
 
-string JobName() { return ""; }
+string JobName() {
+  const char* job_name_cs = std::getenv("TF_JOB_NAME");
+  if (job_name_cs != nullptr) {
+    return string(job_name_cs);
+  }
+  return "";
+}
 
 int NumSchedulableCPUs() {
   SYSTEM_INFO system_info;

@@ -40,11 +40,12 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-# List of exported proto source files.
+# List of exported source files.
 exports_files(
     srcs = [
         "event.proto",
         "example_proto_fast_parsing_test.proto",
+        "image_resizer_state.h",
         "memmapped_file_system.proto",
         "saved_tensor_slice.proto",
     ],
@@ -519,6 +520,7 @@ cc_library(
         "//tensorflow/core/lib/gtl:array_slice",
         "//tensorflow/core/lib/gtl:inlined_vector",
         "//tensorflow/core/platform:types",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -588,7 +590,7 @@ tf_kernel_library(
     }),
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        #        "//tensorflow/core:framework",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform/default/build_config:cublas_plugin",
         "//tensorflow/stream_executor/cuda:cublas_lib",
@@ -602,8 +604,8 @@ tf_kernel_library(
     hdrs = ["rocm_solvers.h"],
     visibility = ["//tensorflow/core/kernels:friends"],
     deps = [
-        #        "//tensorflow/core:framework",
-        #        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform:dso_loader",
@@ -620,7 +622,7 @@ tf_kernel_library(
     hdrs = ["cuda_sparse.h"],
     deps = [
         ":cuda_solvers",
-        #        "//tensorflow/core:framework",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ] + if_cuda([
         "//tensorflow/stream_executor/cuda:cusparse_lib",
@@ -630,8 +632,18 @@ tf_kernel_library(
     ]),
 )
 
-# Tests.
+cc_library(
+    name = "image_resizer_state",
+    hdrs = ["image_resizer_state.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:bounds_check",
+        "//third_party/eigen3",
+    ],
+)
 
+# Tests.
 tf_cc_test(
     name = "overflow_test",
     size = "small",

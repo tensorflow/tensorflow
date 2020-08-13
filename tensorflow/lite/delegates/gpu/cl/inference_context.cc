@@ -21,9 +21,10 @@ limitations under the License.
 #include <map>
 #include <memory>
 #include <string>
-#include <unordered_set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
@@ -49,7 +50,7 @@ namespace gpu {
 namespace cl {
 
 namespace {
-bool IsReady(const std::unordered_set<ValueId>& ready_tensors,
+bool IsReady(const absl::flat_hash_set<ValueId>& ready_tensors,
              const CLNode& node) {
   for (const ValueId in_id : node.inputs) {
     if (ready_tensors.find(in_id) == ready_tensors.end()) {
@@ -202,7 +203,7 @@ absl::Status InferenceContext::InitFromGraph(
 
   TuningParameters tuning_parameters;
   tuning_parameters.queue = env->profiling_queue();
-  tuning_parameters.info = env->device().GetInfoPtr();
+  tuning_parameters.info = &env->device().info_;
   if (create_info.hints.Check(ModelHints::kFastTuning)) {
     tuning_parameters.tuning_type = TuningType::FAST;
   }
@@ -243,14 +244,13 @@ void InferenceContext::ReserveGraphTensors(
     if (graph.IsGraphInput(t->id) || graph.IsGraphOutput(t->id)) {
       if (shape.c < 4 &&
           CanCreateTensorWithShape(
-              *creation_context.context, *creation_context.device, shape,
+              creation_context.device->info_, shape,
               TensorDescriptor{data_type, TensorStorageType::SINGLE_TEXTURE_2D,
                                layout})) {
         storage_type = TensorStorageType::SINGLE_TEXTURE_2D;
       }
     }
-    storage_type = SelectBestStorageType(*creation_context.context,
-                                         *creation_context.device, shape,
+    storage_type = SelectBestStorageType(creation_context.device->info_, shape,
                                          storage_type, data_type, layout);
     tensor_reserver_.Add(
         t->id, {shape, TensorDescriptor{data_type, storage_type, layout}});
@@ -325,7 +325,7 @@ absl::Status InferenceContext::ConvertOperations(
                                            inputs, outputs, node,
                                            &gpu_subgraph));
     }
-    std::unordered_map<int, ValueId> mapping_to_global_ids;
+    absl::flat_hash_map<int, ValueId> mapping_to_global_ids;
     for (int j = 0; j < gpu_subgraph.new_tensors.size(); ++j) {
       const auto& t = gpu_subgraph.new_tensors[j];
       auto global_id = tensor_reserver_.Add({t.first, t.second});
@@ -364,7 +364,7 @@ absl::Status InferenceContext::ConvertOperations(
 }
 
 void InferenceContext::Merge() {
-  std::unordered_set<ValueId> ready_tensors;
+  absl::flat_hash_set<ValueId> ready_tensors;
   for (const auto& input_id : input_ids_) {
     ready_tensors.insert(input_id);
   }
@@ -390,9 +390,7 @@ void InferenceContext::Merge() {
       continue;
     }
     auto& linkable_node = nodes_[next_nodes[0]];
-    auto* elementwise =
-        dynamic_cast<ElementwiseOperation*>(linkable_node.operations[0].get());
-    if (!elementwise || !elementwise->IsLinkable() ||
+    if (!linkable_node.operations[0]->IsLinkable() ||
         linkable_node.outputs.size() != 1 ||
         !IsReady(ready_tensors, linkable_node)) {
       continue;
@@ -410,9 +408,7 @@ void InferenceContext::Merge() {
   }
   for (auto& node : nodes_) {
     for (int j = 1; j < node.operations.size(); ++j) {
-      auto* elementwise =
-          dynamic_cast<ElementwiseOperation*>(node.operations[j].get());
-      node.operations[0]->AddOperation(elementwise);
+      node.operations[0]->AddOperation(node.operations[j].get());
     }
   }
 }

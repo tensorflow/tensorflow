@@ -72,9 +72,10 @@ class BatchResource : public serving::BatchResourceBase {
         fhandle_(fhandle) {}
 
   void ProcessFuncBatchImpl(
-      OpKernelContext* last_task_context, absl::Span<const Tensor> inputs,
+      const BatchTask& last_task, absl::Span<const Tensor> inputs,
       std::vector<Tensor>* combined_outputs,
       std::function<void(const Status&)> done) const override {
+    auto* last_task_context = last_task.context;
     FunctionLibraryRuntime::Options opts;
     opts.step_container = last_task_context->step_container();
     opts.cancellation_manager = last_task_context->cancellation_manager();

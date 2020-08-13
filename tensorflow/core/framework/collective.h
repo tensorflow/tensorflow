@@ -43,6 +43,7 @@ enum CollectiveType {
   REDUCTION_COLLECTIVE = 0,
   BROADCAST_COLLECTIVE,
   GATHER_COLLECTIVE,
+  PERMUTE_COLLECTIVE,
   UNDEFINED_COLLECTIVE,
 };
 
@@ -89,6 +90,7 @@ struct CollImplDetails {
 };
 
 // Data common to all members of a collective instance.
+// TODO(b/163171014) Refactor this struct to not be a union of all fields.
 struct CollInstanceParams {
   // Identifies all participating graph nodes.
   int32 instance_key = -1;
@@ -109,6 +111,16 @@ struct CollInstanceParams {
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
+  std::vector<string> devices;  // permuter only
+
+  // For permuter only
+  // Each rank in the permutation is a receiver.
+  // Indices of each rank means a sender to that rank.
+  // Example: permutation = {2,0,1} means
+  //   rank 0 sends to rank 2
+  //   rank 1 sends to rank 0
+  //   rank 2 sends to rank 1
+  std::vector<int> permutation;
 };
 
 // Data common to all instance members in the same task.
@@ -266,16 +278,13 @@ class PeerAccessInterface {
                           const Tensor* from_tensor,
                           const DeviceLocality& client_locality,
                           const StatusCallback& done) = 0;
-
-  // Runs the potentially-blocking closure/expensive callback.
-  virtual void RunClosure(std::function<void()> closure) = 0;
 };
 
 class PerStepCollectiveRemoteAccess;
 
 // A step-specific object that can execute a collective operation completely
 // described by a CollectiveParams object.
-class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
+class CollectiveExecutor : public core::RefCounted {
  public:
   virtual void StartAbort(const Status& s) {}
 
@@ -294,6 +303,9 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
         "A collective Op has been called in a context in which "
         "a CollectiveExecutor has not been provided."));
   }
+
+  // Runs the potentially-blocking closure/expensive callback.
+  virtual void RunClosure(std::function<void()> closure) = 0;
 
   virtual PerStepCollectiveRemoteAccess* remote_access() { return nullptr; }
 

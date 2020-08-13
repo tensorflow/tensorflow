@@ -47,7 +47,8 @@ void AddGraphExportLoweringPasses(OpPassManager &pm) {
 
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
   add_pass(TFDevice::CreateParallelizeEmbeddingParamsOpsPass());
-  add_pass(TFDevice::CreateReplicateToIslandPass());
+  pm.addPass(TFDevice::CreateReplicateToIslandPass());
+  pm.addPass(CreateBreakUpIslandsPass());
   add_pass(TFDevice::CreateParallelExecuteToIslandsPass());
   add_pass(TFDevice::CreateLaunchToDeviceAttributePass());
 }
@@ -85,8 +86,8 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   // Encode this in its own scope so that func_pm is not mistakenly used
   // later on.
   {
+    pm.addPass(CreateTPUClusterFormationPass());
     OpPassManager &func_pm = pm.nest<FuncOp>();
-    func_pm.addPass(CreateTPUClusterFormationPass());
     // Place DecomposeResourceOpsPass before TFExecutorConstantSinking pass
     // because DecomposeResourceOpsPass uses pattern rewriter which hoists
     // changed constants out of tf_device.Launch.

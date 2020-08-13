@@ -35,14 +35,16 @@ namespace data {
 //
 class GrpcDispatcherImpl : public DispatcherService::Service {
  public:
-  explicit GrpcDispatcherImpl(grpc::ServerBuilder* server_builder,
+  explicit GrpcDispatcherImpl(::grpc::ServerBuilder* server_builder,
                               const experimental::DispatcherConfig& config);
   ~GrpcDispatcherImpl() override {}
 
-#define HANDLER(method)                               \
-  grpc::Status method(grpc::ServerContext* context,   \
-                      const method##Request* request, \
-                      method##Response* response) override;
+  Status Start();
+
+#define HANDLER(method)                                 \
+  ::grpc::Status method(::grpc::ServerContext* context, \
+                        const method##Request* request, \
+                        method##Response* response) override;
   HANDLER(RegisterWorker);
   HANDLER(WorkerUpdate);
   HANDLER(GetOrRegisterDataset);

@@ -486,7 +486,8 @@ void EagerServiceImpl::RunComponentFunction(
       });
 }
 
-Status EagerServiceImpl::ExecuteOp(const Operation& operation,
+Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
+                                   const Operation& operation,
                                    EagerContext* eager_context,
                                    EagerExecutor* eager_executor,
                                    QueueResponse* queue_response) {
@@ -494,6 +495,12 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   int num_retvals = 0;
   TF_RETURN_IF_ERROR(GetEagerOperationAndNumRetvals(
       operation, eager_context, eager_executor, &op, &num_retvals));
+
+  auto cm = std::make_shared<CancellationManager>();
+  if (call_opts) {
+    op.SetCancellationManager(cm.get());
+    call_opts->SetCancelCallback([cm] { cm->StartCancel(); });
+  }
 
   absl::FixedArray<tensorflow::TensorHandle*> retvals(num_retvals);
   VLOG(3) << "ServerContext: Calling EagerExecute for op " << operation.id();
@@ -509,7 +516,8 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
       [queue_response] { return queue_response->add_shape(); });
 }
 
-Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
+Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
+                                 const EnqueueRequest* request,
                                  EnqueueResponse* response, uint64 stream_id) {
   profiler::TraceMe activity(
       [&] {
@@ -530,7 +538,7 @@ Status EagerServiceImpl::Enqueue(const EnqueueRequest* request,
   for (const auto& item : request->queue()) {
     auto* queue_response = response->add_queue_response();
     if (item.has_operation()) {
-      s = ExecuteOp(item.operation(), context->Context(), &executor,
+      s = ExecuteOp(call_opts, item.operation(), context->Context(), &executor,
                     queue_response);
     } else if (item.has_handle_to_decref()) {
       auto handle_to_decref = absl::make_unique<RemoteTensorHandleInternal>(

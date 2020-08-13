@@ -409,7 +409,7 @@ func @cluster_with_case(%arg0: tensor<i32>) -> tensor<4xf32> {
   // CHECK: %[[CLUSTER:.*]]:2 = "tf_device.cluster"()
   %2 = "tf_device.cluster"() ( {
     // CHECK: %[[CASE:.*]]:2 = "tf.Case"(%[[ARG0]], %[[READ0]], %[[READ1]])
-    %3:2 = "tf.Case"(%arg0, %0, %1) {branches = [@branch_0, @branch_1, @branch_2]}
+    %3:2 = "tf.Case"(%arg0, %0, %1) {branches = [@branch_0, @branch_1, @branch_2], is_stateless = false}
       : (tensor<i32>, tensor<*x!tf.resource<tensor<4xf32>>>, tensor<*x!tf.resource<tensor<4xf32>>>)
       -> (tensor<*x!tf.resource<tensor<4xf32>>>, tensor<4xf32>)
     // CHECK-NEXT: %[[ADD:.*]] = "tf.AddV2"(%[[CASE]]#1, %[[CASE]]#0)

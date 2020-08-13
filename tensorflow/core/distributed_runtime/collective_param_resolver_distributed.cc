@@ -304,10 +304,15 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
   }
 }
 
-bool CollectiveParamResolverDistributed::InstanceIsCached(int32 instance_key) {
+bool CollectiveParamResolverDistributed::InstanceIsCached(int32 group_key,
+                                                          int32 instance_key) {
   mutex_lock l(instance_mu_);
-  const auto& it = instance_table_.find(instance_key);
-  return it != instance_table_.end();
+  auto group_it = instance_table_.find(group_key);
+  if (group_it == instance_table_.end()) {
+    return false;
+  }
+  auto instance_it = group_it->second.find(instance_key);
+  return instance_it != group_it->second.end();
 }
 
 void CollectiveParamResolverDistributed::UpdateInstanceCache(
@@ -374,7 +379,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
   if (group_leader_.empty()) {
     // This is the group leader so resolution is local.
     return CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
-  } else if (InstanceIsCached(cp->instance.instance_key)) {
+  } else if (InstanceIsCached(gr->group.group_key, cp->instance.instance_key)) {
     return CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
   } else {
     CompleteInstanceCall* call = new CompleteInstanceCall(

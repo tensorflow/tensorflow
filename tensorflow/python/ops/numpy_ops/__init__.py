@@ -24,6 +24,9 @@ NumPy" section.
 
 ## Getting Started
 
+Please also see [TensorFlow NumPy Guide](
+https://www.tensorflow.org/guide/tf_numpy).
+
 In the code snippets below, we will assume that `tf.experimental.numpy` is
 imported as `tnp` and NumPy is imported as `np`
 
@@ -125,7 +128,7 @@ during runtime. Some differences are:
     may need to change to explicit shape operations or control flow
     constructs.
 *   Also note the [autograph limitations](
-https://www.tensorflow.org/code/tensorflow/python/autograph/g3doc/reference/limitations.md).
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md).
 
 
 ## Mutation and Variables
@@ -181,17 +184,17 @@ from tensorflow.python.ops.numpy_ops.np_utils import result_type
 
 
 # pylint: disable=redefined-builtin,undefined-variable
-@np_utils.np_doc("max")
+@np_utils.np_doc("max", link=np_utils.AliasOf("maximum"))
 def max(a, axis=None, keepdims=None):
   return amax(a, axis=axis, keepdims=keepdims)
 
 
-@np_utils.np_doc("min")
+@np_utils.np_doc("min", link=np_utils.AliasOf("minimum"))
 def min(a, axis=None, keepdims=None):
   return amin(a, axis=axis, keepdims=keepdims)
 
 
-@np_utils.np_doc("round")
+@np_utils.np_doc("round", link=np_utils.AliasOf("around"))
 def round(a, decimals=0):
   return around(a, decimals=decimals)
 # pylint: enable=redefined-builtin,undefined-variable

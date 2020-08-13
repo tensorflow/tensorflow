@@ -36,13 +36,16 @@ class TpuProgramGroupInterface {
  public:
   virtual ~TpuProgramGroupInterface() = default;
 
+  // Check if whether sharding/unsharding program exists.
+  virtual bool has_sharding_program() const = 0;
+
   // Computes program count.
   virtual size_t program_count() const = 0;
 
   // Computes total program size.
   virtual int64_t program_size() const = 0;
 
-  // Unloads and destroys safely Tpu programs.
+  // Unloads and destroys safely TPU programs.
   virtual void UnloadAndDestroyPrograms() = 0;
 
   // Logs program memory summary.

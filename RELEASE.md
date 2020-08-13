@@ -22,10 +22,21 @@
     * Code that uses `tf.map_fn`/`tf.cond`/`tf.while_loop`/control flow as op layers and happens to work before TF 2.4. These will explicitly be unsupported now. Converting these ops to Functional API op layers was unreliable before TF 2.4, and prone to erroring incomprehensibly or being silently buggy.
     * Code that directly asserts on a Keras symbolic value in cases where ops like `tf.rank` used to return a static or symbolic value depending on if the input had a fully static shape or not. Now these ops always return symbolic values.
     * Code already susceptible to leaking tensors outside of graphs becomes slightly more likely to do so now.
+    * Code that tries directly getting gradients with respect to symbolic Keras inputs/outputs. Use GradientTape on the actual Tensors passed to the already-constructed model instead.
     * Code that requires very tricky shape manipulation via converted op layers in order to work, where the Keras symbolic shape inference proves insufficient.
     * Code that tries manually walking a `tf.keras.Model` layer by layer and assumes layers only ever have one positional argument. This assumption doesn't hold true before TF 2.4 either, but is more likely to cause issues know.
     * Code that manually enters `keras.backend.get_graph()` before building a functional model. This is no longer needed.
-
+* Start enforcing input shape assumptions when calling Functional API Keras
+  models. This may potentially break some users, in case there is a mismatch
+  between the shape used when creating `Input` objects in a Functional model,
+  and the shape of the data passed to that model. You can fix this mismatch by
+  either calling the model with correctly-shaped data, or by relaxing `Input`
+  shape assumptions (note that you can pass shapes with `None` entries for axes
+  that are meant to be dynamic). You can also disable the input checking
+  entirely by setting `model.input_spec = None`.
+* XLA:CPU and XLA:GPU devices are no longer registered by default. Use
+  `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them (to be
+  removed).
 
 ## Known Caveats
 
@@ -65,6 +76,11 @@
      `tf.data.experimental.service.from_dataset_id` APIs to enable one process
       to register a dataset with the tf.data service, and another process to
       consume data from the dataset.
+    * Added support for tf.data service dispatcher fault tolerance. To enable
+      fault tolerance, configure a `work_dir` when running your dispatcher
+      server and set `dispatcher_fault_tolerance=True`. The dispatcher will
+      store its state to `work_dir`, so that on restart it can continue from its
+      previous state after restart.
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
       the complement of `select_cols`; at most one of these should be specified.
     * We have implemented an optimization which reorders data-discarding
@@ -74,9 +90,11 @@
       option.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
-      `tf.image.random_*` function. Given the same seed, the stateless functions
-      produce the same results independent of how many times the function is
-      called, and independent of global seed settings.
+      `tf.image.random_*` function. Added a new op
+      `stateless_sample_distorted_bounding_box` which is a determinstic
+      version of `sample_distorted_bounding_box` op. Given the same seed, these
+      stateless functions/ops produce the same results independent of how many
+      times the function is called, and independent of global seed settings.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 * `tf.keras`:
@@ -88,24 +106,53 @@
       * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be clearer and easier to understand.
     * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
       as an alternative to accepting a `callable` loss.
+    * Added `beta` hyperparameter to FTRL optimizer classes (Keras and others)
+      to match FTRL paper (https://research.google.com/pubs/archive/41159.pdf).
+    * Added `mobilenet_v3` to keras application model.
+    * `Optimizer.__init__` now accepts a `gradient_aggregator` to allow for
+      customization of how gradients are aggregated across devices, as well as
+      `gradients_transformers` to allow for custom gradient transformations
+      (such as gradient clipping).
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
     performance.
   * Added support for `iter(DistributedDataset)` in AutoGraph `for` loops.
+  * AutoGraph now allows creating new symbols inside a TensorFLow loop, if
+    the values of these symbols at an iteration does not depend on the previous
+    iteration. These types of loops must run at least one iteration, and will
+    raise a runtime error otherwise.
+
+    Example:
+
+    ```
+    for batch in data:
+      outputs = train_step(batch)
+    tf.print('final outputs', outputs)
+    ```
+    See tensorflow/python/autograph/g3doc/reference/limitations.md for more
+    info.
 *   `tf.lite`:
     * `DynamicBuffer::AddJoinedString()` will now add a separator if the first
       string to be joined is empty.
     * `TFLiteConverter`:
       * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`).
+    * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
+      * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
+    * Add NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
 *   Math and Linear Algebra:
     * <ADD RELEASE NOTES HERE>
 *   TPU Enhancements:
+    * Added support for the `beta` parameter of the FTRL optimizer for TPU
+      embeddings. Users of other TensorFlow platforms can implement equivalent
+      behavior by adjusting the `l2` parameter.
     * <ADD RELEASE NOTES HERE>
 *   XLA Support:
+    * xla.experimental.compile is deprecated, use
+      `tf.function(experimental_compile=True)` instead
     * <ADD RELEASE NOTES HERE>
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>

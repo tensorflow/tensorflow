@@ -435,7 +435,7 @@ class HostLapackInfo : public ScratchSpace<int> {
  public:
   HostLapackInfo(OpKernelContext* context, int64 size,
                  const std::string& debug_info)
-      : ScratchSpace<int>(context, size, debug_info, /* on_host */ true){};
+      : ScratchSpace<int>(context, size, debug_info, /* on_host */ true) {}
 };
 
 class DeviceLapackInfo : public ScratchSpace<int> {

@@ -68,6 +68,52 @@ class TF_TensorListInitOp<string mnemonic> : TF_Op<mnemonic, [NoSideEffect]> {
   }];
 }
 
+def TF_CaseOp : TF_Op<"Case", []> {
+  let summary = [{
+An n-way switch statement which calls a single branch function.
+  }];
+
+  let description = [{
+An n-way switch statement, implementing the following:
+    ```
+    switch (branch_index) {
+      case 0:
+        output = branches[0](input);
+        break;
+      case 1:
+        output = branches[1](input);
+        break;
+      ...
+      case [[nbranches-1]]:
+      default:
+        output = branches[nbranches-1](input);
+        break;
+    }
+    ```
+  }];
+
+  let arguments = (ins
+    I32Tensor:$branch_index,
+    Variadic<TF_Tensor>:$input,
+
+    Confined<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
+
+    // Used to map StatelessCase and Case op defined in TensorFlow to a common
+    // op.
+    BoolAttr:$is_stateless
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
+
+  let hasCanonicalizer = 1;
+}
+
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
 // its type encoding the tensor's shape and data type.
 def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
@@ -292,10 +338,6 @@ else_branch: A region that computes the outputs of the op if cond = false.
   let results = (outs
     Variadic<TF_Tensor>:$output
   );
-
-  TF_DerivedOperandTypeAttr Tcond = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 
   let regions = (region SizedRegion<1>:$then_branch, SizedRegion<1>:$else_branch);
 
@@ -709,8 +751,6 @@ def TL_WhileRegionOp : TF_Op<"WhileRegion",
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
   );
   let results = (outs Variadic<AnyTensor>:$output);
-
-  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
@@ -1295,6 +1335,7 @@ So, for example, in the following code
           batch_timeout_micros=100000,  # 100ms
           allowed_batch_sizes=[3, 10],
           batching_queue="")
+  ```
 
 If more than one session.run call is simultaneously trying to compute `b`
 the values of `a` will be gathered, non-deterministically concatenated

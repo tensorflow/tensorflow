@@ -67,8 +67,7 @@ def HLO_ConstOp : HLO_Op<"constant",
     "OpBuilder &builder, OperationState &result, Attribute value"
   >];
 
-  let printer = [{ return Print(*this, &p); }];
-  let parser = [{ return ParseConstOp(&parser, &result); }];
+  let assemblyFormat = "attr-dict $value";
 
   let hasFolder = 1;
 
@@ -664,13 +663,14 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
-  let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+  let arguments = (ins Variadic<HLO_TensorOrTokenOrTuple>:$val);
   let results = (outs HLO_Tuple);
 
   let builders = [OpBuilder<
                   "OpBuilder &builder, OperationState &results, "
                   "ValueRange values">];
 
+  let hasCanonicalizer = 1;
 }
 
 def HLO_CompareOp: HLO_Op<"compare",
@@ -1075,7 +1075,10 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
     HLO_Tensor:$operand,
     I32Attr:$dimension
   );
-  let results = (outs HLO_IntTensor);
+  // TODO(hinsu): Allow 64-bit result types once XLA HLO dialect based on the
+  // XLA semantics is available. This limitation is because of the current XLA
+  // implementation.
+  let results = (outs I32Tensor);
 }
 
 def HLO_MapOp: HLO_Op<"map",
@@ -1326,8 +1329,9 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 }
 
 //===----------------------------------------------------------------------===//
-// MHLO RngUniform Operator.
+// MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
+
 def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let arguments = (ins
     HLO_PredIntOrFpTensor:$a,
@@ -1349,6 +1353,19 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
 
   let results = (outs HLO_FpTensor);
 
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]>, BASE_HLO_RngBitGeneratorOp {
+  let arguments = (ins
+    // TODO(jpienaar): This could be an enum instead.
+    I32Attr:$rng_algorithm,
+    HLO_IntOrFpTensor:$initial_state
+  );
+
+  let results = (outs HLO_TensorOrTuple:$result);
+
+  // TODO(jpienaar): This should not be needed.
   let hasCustomHLOConverter = 1;
 }
 

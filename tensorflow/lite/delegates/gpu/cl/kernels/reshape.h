@@ -27,10 +27,9 @@ namespace cl {
 
 class Reshape : public GPUOperation {
  public:
-  explicit Reshape(const OperationDef& definition) : GPUOperation(definition) {}
+  explicit Reshape(const OperationDef& definition);
 
   int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
 
   // Move only
   Reshape(Reshape&& operation);

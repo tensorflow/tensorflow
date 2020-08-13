@@ -117,7 +117,7 @@ Status DataServiceDispatcherClient::GetTasks(int64 job_id,
   GetTasksRequest req;
   req.set_job_id(job_id);
   GetTasksResponse resp;
-  grpc_impl::ClientContext ctx;
+  grpc::ClientContext ctx;
   grpc::Status s = stub_->GetTasks(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get tasks", s);
@@ -135,7 +135,7 @@ Status DataServiceDispatcherClient::GetWorkers(
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetWorkersRequest req;
   GetWorkersResponse resp;
-  grpc_impl::ClientContext ctx;
+  grpc::ClientContext ctx;
   grpc::Status s = stub_->GetWorkers(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get workers", s);
@@ -163,7 +163,7 @@ Status DataServiceWorkerClient::GetElement(int64 task_id,
   GetElementRequest req;
   req.set_task_id(task_id);
   GetElementResponse resp;
-  grpc_impl::ClientContext ctx;
+  grpc::ClientContext ctx;
   grpc::Status s = stub_->GetElement(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get element", s);

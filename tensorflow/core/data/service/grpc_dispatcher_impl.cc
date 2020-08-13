@@ -24,7 +24,6 @@ namespace data {
 
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
-using ::grpc::Status;
 
 GrpcDispatcherImpl::GrpcDispatcherImpl(
     ServerBuilder* server_builder, const experimental::DispatcherConfig& config)
@@ -33,11 +32,13 @@ GrpcDispatcherImpl::GrpcDispatcherImpl(
   VLOG(1) << "Registered data service dispatcher";
 }
 
-#define HANDLER(method)                                             \
-  Status GrpcDispatcherImpl::method(ServerContext* context,         \
-                                    const method##Request* request, \
-                                    method##Response* response) {   \
-    return ToGrpcStatus(impl_.method(request, response));           \
+Status GrpcDispatcherImpl::Start() { return impl_.Start(); }
+
+#define HANDLER(method)                                                   \
+  grpc::Status GrpcDispatcherImpl::method(ServerContext* context,         \
+                                          const method##Request* request, \
+                                          method##Response* response) {   \
+    return ToGrpcStatus(impl_.method(request, response));                 \
   }
 HANDLER(RegisterWorker);
 HANDLER(WorkerUpdate);

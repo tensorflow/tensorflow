@@ -93,7 +93,7 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
   }
   bool can_use_flt8 = (shape.w * shape.b) % 2 == 0 &&
                       definition.precision != CalculationsPrecision::F32;
-  bool is_midgard = device.IsMali() && device.GetInfo().mali_info.IsMidgard();
+  bool is_midgard = device.IsMali() && device.info_.mali_info.IsMidgard();
   if (is_midgard) {
     if (can_use_flt8) {
       conv_params.element_size = 8;
@@ -105,8 +105,8 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
   }
 
   int task_size = shape.w * shape.b * shape.h * dst_depth;
-  int block_size =
-      GetRecommendedBlockSizeForConv(device, definition.precision, task_size);
+  int block_size = GetRecommendedBlockSizeForConv(
+      device.info_, definition.precision, task_size);
 
   if (!can_use_flt8 && block_size > 4) {
     block_size = 4;
@@ -141,7 +141,7 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
   conv_params.element_size = 4;
   conv_params.block_size = int3(1, 1, 1);
   if (device.IsMali() && definition.precision == CalculationsPrecision::F16 &&
-      device.GetInfo().compute_units_count <= 4) {
+      device.info_.compute_units_count <= 4) {
     conv_params.block_size.x *= 2;
   }
   return conv_params;
@@ -151,7 +151,10 @@ ConvBuffer1x1::ConvParams GetBestParams(const CLDevice& device,
 
 ConvBuffer1x1::ConvBuffer1x1(const OperationDef& definition,
                              const ConvParams& conv_params)
-    : GPUOperation(definition), conv_params_(conv_params) {}
+    : GPUOperation(definition), conv_params_(conv_params) {
+  code_ = GenerateConvBuffer1x1(definition_, conv_params_, &args_);
+  work_group_size_ = int3(2, 4, 1);
+}
 
 ConvBuffer1x1::ConvBuffer1x1(ConvBuffer1x1&& operation)
     : GPUOperation(std::move(operation)),
@@ -300,21 +303,6 @@ std::string ConvBuffer1x1::GenerateConvBuffer1x1(
   return c;
 }
 
-absl::Status ConvBuffer1x1::Compile(const CreationContext& creation_context) {
-  std::string code = GenerateConvBuffer1x1(definition_, conv_params_, &args_);
-  work_group_size_ = conv_params_.work_group_size;
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_));
-  return absl::OkStatus();
-}
-
 int3 ConvBuffer1x1::GetGridSize() const {
   const int dst_width_elements = DivideRoundUp(
       dst_[0]->Width() * dst_[0]->Batch(), (conv_params_.element_size / 4));
@@ -327,12 +315,11 @@ int3 ConvBuffer1x1::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvBuffer1x1::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
-                                       &conv_params_.work_group_size));
-  work_group_size_ = conv_params_.work_group_size;
-  return absl::OkStatus();
+void ConvBuffer1x1::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
 bool IsConvBuffer1x1Supported(const OperationDef& definition,

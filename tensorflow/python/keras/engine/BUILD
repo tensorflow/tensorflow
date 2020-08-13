@@ -546,6 +546,23 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "input_layer_test",
+    size = "medium",
+    srcs = ["input_layer_test.py"],
+    python_version = "PY3",
+    shard_count = 3,
+    tags = [
+        "nomac",  # TODO(mihaimaruseac): b/127695564
+    ],
+    deps = [
+        ":base_layer",
+        ":engine",
+        "//tensorflow/python/keras:testing_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
+    ],
+)
+
+tf_py_test(
     name = "functional_test",
     size = "medium",
     srcs = ["functional_test.py"],

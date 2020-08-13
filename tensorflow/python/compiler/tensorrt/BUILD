@@ -172,7 +172,6 @@ cuda_py_test(
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
         "no_pip",
         "no_rocm",
-        "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",
     ],

@@ -43,26 +43,33 @@ class UtilTest(test_util.TensorFlowTestCase):
 
   def testConvertDtype(self):
     self.assertEqual(
-        util.convert_dtype_to_tflite_type(lite_constants.FLOAT),
-        _types_pb2.FLOAT)
-    self.assertEqual(
         util.convert_dtype_to_tflite_type(dtypes.float32), _types_pb2.FLOAT)
     self.assertEqual(
+        util.convert_dtype_to_tflite_type(dtypes.float16), _types_pb2.FLOAT16)
+    self.assertEqual(
         util.convert_dtype_to_tflite_type(dtypes.int32), _types_pb2.INT32)
+    self.assertEqual(
+        util.convert_dtype_to_tflite_type(dtypes.uint8),
+        _types_pb2.QUANTIZED_UINT8)
     self.assertEqual(
         util.convert_dtype_to_tflite_type(dtypes.int64), _types_pb2.INT64)
     self.assertEqual(
         util.convert_dtype_to_tflite_type(dtypes.string), _types_pb2.STRING)
     self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.uint8),
-        _types_pb2.QUANTIZED_UINT8)
+        util.convert_dtype_to_tflite_type(dtypes.bool), _types_pb2.BOOL)
+    self.assertEqual(
+        util.convert_dtype_to_tflite_type(dtypes.int16),
+        _types_pb2.QUANTIZED_INT16)
     self.assertEqual(
         util.convert_dtype_to_tflite_type(dtypes.complex64),
         _types_pb2.COMPLEX64)
     self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.half), _types_pb2.FLOAT16)
+        util.convert_dtype_to_tflite_type(dtypes.int8), _types_pb2.INT8)
     self.assertEqual(
-        util.convert_dtype_to_tflite_type(dtypes.bool), _types_pb2.BOOL)
+        util.convert_dtype_to_tflite_type(dtypes.float64), _types_pb2.FLOAT64)
+    self.assertEqual(
+        util.convert_dtype_to_tflite_type(dtypes.complex128),
+        _types_pb2.COMPLEX128)
 
   def testConvertEnumToDtype(self):
     self.assertEqual(
@@ -81,17 +88,19 @@ class UtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(util._convert_tflite_enum_type_to_tf_type(9), dtypes.int8)
     self.assertEqual(
         util._convert_tflite_enum_type_to_tf_type(10), dtypes.float64)
-    with self.assertRaises(ValueError) as error:
-      util._convert_tflite_enum_type_to_tf_type(11)
     self.assertEqual(
-        "Unsupported enum 11. The valid map of enum to tf.dtypes is : "
+        util._convert_tflite_enum_type_to_tf_type(11), dtypes.complex128)
+    with self.assertRaises(ValueError) as error:
+      util._convert_tflite_enum_type_to_tf_type(20)
+    self.assertEqual(
+        "Unsupported enum 20. The valid map of enum to tf types is : "
         "{0: tf.float32, 1: tf.float16, 2: tf.int32, 3: tf.uint8, 4: tf.int64, "
         "5: tf.string, 6: tf.bool, 7: tf.int16, 8: tf.complex64, 9: tf.int8, "
-        "10: tf.float64}", str(error.exception))
+        "10: tf.float64, 11: tf.complex128}", str(error.exception))
 
   def testTensorName(self):
     with ops.Graph().as_default():
-      in_tensor = array_ops.placeholder(shape=[4], dtype=dtypes.float32)
+      in_tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[4])
       out_tensors = array_ops.split(
           value=in_tensor, num_or_size_splits=[1, 1, 1, 1], axis=0)
 
@@ -103,7 +112,7 @@ class UtilTest(test_util.TensorFlowTestCase):
   @test_util.enable_control_flow_v2
   def testRemoveLowerUsingSwitchMerge(self):
     with ops.Graph().as_default():
-      i = array_ops.placeholder(shape=(), dtype=dtypes.int32)
+      i = array_ops.placeholder(dtype=dtypes.int32, shape=())
       c = lambda i: math_ops.less(i, 10)
       b = lambda i: math_ops.add(i, 1)
       control_flow_ops.while_loop(c, b, [i])
@@ -116,7 +125,7 @@ class UtilTest(test_util.TensorFlowTestCase):
       if node.op == "While" or node.op == "StatelessWhile":
         if not node.attr["_lower_using_switch_merge"].b:
           lower_using_switch_merge_is_removed = True
-    self.assertEqual(lower_using_switch_merge_is_removed, True)
+    self.assertTrue(lower_using_switch_merge_is_removed)
 
   def testConvertBytes(self):
     source, header = util.convert_bytes_to_c_source(
@@ -154,7 +163,7 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
   def testGetTensorsValid(self):
     with ops.Graph().as_default():
       in_tensor = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+          dtype=dtypes.float32, shape=[1, 16, 16, 3])
       _ = in_tensor + in_tensor
       sess = session.Session()
 
@@ -164,7 +173,7 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
   def testGetTensorsInvalid(self):
     with ops.Graph().as_default():
       in_tensor = array_ops.placeholder(
-          shape=[1, 16, 16, 3], dtype=dtypes.float32)
+          dtype=dtypes.float32, shape=[1, 16, 16, 3])
       _ = in_tensor + in_tensor
       sess = session.Session()
 
@@ -175,52 +184,51 @@ class TensorFunctionsTest(test_util.TensorFlowTestCase):
 
   def testSetTensorShapeValid(self):
     with ops.Graph().as_default():
-      tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+      tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[None, 3, 5])
+    self.assertAllEqual([None, 3, 5], tensor.shape)
 
     util.set_tensor_shapes([tensor], {"Placeholder": [5, 3, 5]})
-    self.assertEqual([5, 3, 5], tensor.shape.as_list())
+    self.assertAllEqual([5, 3, 5], tensor.shape)
 
   def testSetTensorShapeNoneValid(self):
     with ops.Graph().as_default():
       tensor = array_ops.placeholder(dtype=dtypes.float32)
-    self.assertEqual(None, tensor.shape)
 
     util.set_tensor_shapes([tensor], {"Placeholder": [1, 3, 5]})
-    self.assertEqual([1, 3, 5], tensor.shape.as_list())
+    self.assertAllEqual([1, 3, 5], tensor.shape)
 
   def testSetTensorShapeArrayInvalid(self):
     # Tests set_tensor_shape where the tensor name passed in doesn't exist.
     with ops.Graph().as_default():
-      tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+      tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[None, 3, 5])
+    self.assertAllEqual([None, 3, 5], tensor.shape)
 
     with self.assertRaises(ValueError) as error:
       util.set_tensor_shapes([tensor], {"invalid-input": [5, 3, 5]})
     self.assertEqual(
         "Invalid tensor 'invalid-input' found in tensor shapes map.",
         str(error.exception))
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+    self.assertAllEqual([None, 3, 5], tensor.shape)
 
   def testSetTensorShapeDimensionInvalid(self):
     # Tests set_tensor_shape where the shape passed in is incompatible.
     with ops.Graph().as_default():
-      tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+      tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[None, 3, 5])
+    self.assertAllEqual([None, 3, 5], tensor.shape)
 
     with self.assertRaises(ValueError) as error:
       util.set_tensor_shapes([tensor], {"Placeholder": [1, 5, 5]})
     self.assertIn("The shape of tensor 'Placeholder' cannot be changed",
                   str(error.exception))
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+    self.assertAllEqual([None, 3, 5], tensor.shape)
 
   def testSetTensorShapeEmpty(self):
     with ops.Graph().as_default():
-      tensor = array_ops.placeholder(shape=[None, 3, 5], dtype=dtypes.float32)
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+      tensor = array_ops.placeholder(dtype=dtypes.float32, shape=[None, 3, 5])
+    self.assertAllEqual([None, 3, 5], tensor.shape)
 
     util.set_tensor_shapes([tensor], {})
-    self.assertEqual([None, 3, 5], tensor.shape.as_list())
+    self.assertAllEqual([None, 3, 5], tensor.shape)
 
 
 def _generate_integer_tflite_model():
@@ -355,7 +363,7 @@ class UtilModifyIntegerQuantizedModelIOTypeTest(
     output_io_data = _run_tflite_inference(model_io, in_tftype, out_tftype)
 
      # Validate that both the outputs are the same
-    self.assertTrue(np.allclose(output_data, output_io_data, atol=1.0))
+    self.assertAllClose(output_data, output_io_data, atol=1.0)
 
 
 if __name__ == "__main__":

@@ -205,49 +205,49 @@ class GpuSparse {
   // Solves tridiagonal system of equations.
   // See: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2
   template <typename Scalar>
-  Status Gtsv2(int m, int n, const Scalar *dl, const Scalar *d,
-               const Scalar *du, Scalar *B, int ldb, void *pBuffer) const;
+  Status Gtsv2(int m, int n, const Scalar* dl, const Scalar* d,
+               const Scalar* du, Scalar* B, int ldb, void* pBuffer) const;
 
   // Computes the size of a temporary buffer used by Gtsv2.
   // See: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2_bufferSize
   template <typename Scalar>
-  Status Gtsv2BufferSizeExt(int m, int n, const Scalar *dl, const Scalar *d,
-                            const Scalar *du, const Scalar *B, int ldb,
-                            size_t *bufferSizeInBytes) const;
+  Status Gtsv2BufferSizeExt(int m, int n, const Scalar* dl, const Scalar* d,
+                            const Scalar* du, const Scalar* B, int ldb,
+                            size_t* bufferSizeInBytes) const;
 
   // Solves tridiagonal system of equations without partial pivoting.
   // See: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2_nopivot
   template <typename Scalar>
-  Status Gtsv2NoPivot(int m, int n, const Scalar *dl, const Scalar *d,
-                      const Scalar *du, Scalar *B, int ldb,
-                      void *pBuffer) const;
+  Status Gtsv2NoPivot(int m, int n, const Scalar* dl, const Scalar* d,
+                      const Scalar* du, Scalar* B, int ldb,
+                      void* pBuffer) const;
 
   // Computes the size of a temporary buffer used by Gtsv2NoPivot.
   // See:
   // https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2_nopivot_bufferSize
   template <typename Scalar>
-  Status Gtsv2NoPivotBufferSizeExt(int m, int n, const Scalar *dl,
-                                   const Scalar *d, const Scalar *du,
-                                   const Scalar *B, int ldb,
-                                   size_t *bufferSizeInBytes) const;
+  Status Gtsv2NoPivotBufferSizeExt(int m, int n, const Scalar* dl,
+                                   const Scalar* d, const Scalar* du,
+                                   const Scalar* B, int ldb,
+                                   size_t* bufferSizeInBytes) const;
 
   // Solves a batch of tridiagonal systems of equations. Doesn't support
   // multiple right-hand sides per each system. Doesn't do pivoting.
   // See: https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2stridedbatch
   template <typename Scalar>
-  Status Gtsv2StridedBatch(int m, const Scalar *dl, const Scalar *d,
-                           const Scalar *du, Scalar *x, int batchCount,
-                           int batchStride, void *pBuffer) const;
+  Status Gtsv2StridedBatch(int m, const Scalar* dl, const Scalar* d,
+                           const Scalar* du, Scalar* x, int batchCount,
+                           int batchStride, void* pBuffer) const;
 
   // Computes the size of a temporary buffer used by Gtsv2StridedBatch.
   // See:
   // https://docs.nvidia.com/cuda/cusparse/index.html#gtsv2stridedbatch_bufferSize
   template <typename Scalar>
-  Status Gtsv2StridedBatchBufferSizeExt(int m, const Scalar *dl,
-                                        const Scalar *d, const Scalar *du,
-                                        const Scalar *x, int batchCount,
+  Status Gtsv2StridedBatchBufferSizeExt(int m, const Scalar* dl,
+                                        const Scalar* d, const Scalar* du,
+                                        const Scalar* x, int batchCount,
                                         int batchStride,
-                                        size_t *bufferSizeInBytes) const;
+                                        size_t* bufferSizeInBytes) const;
 
   // Compresses the indices of rows or columns. It can be interpreted as a
   // conversion from COO to CSR sparse storage format. See:
@@ -448,7 +448,7 @@ class GpuSparse {
 
  private:
   bool initialized_;
-  OpKernelContext *context_;  // not owned.
+  OpKernelContext* context_;  // not owned.
   gpuStream_t gpu_stream_;
   gpusparseHandle_t* gpusparse_handle_;  // not owned.
 

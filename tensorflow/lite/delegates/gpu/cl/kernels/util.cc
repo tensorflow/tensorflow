@@ -69,17 +69,6 @@ std::string GetCommonDefines(CalculationsPrecision precision) {
       result += "#define TO_ACCUM_FLT convert_float\n";
       break;
   }
-
-  result +=
-      "__constant sampler_t smp_edge = CLK_NORMALIZED_COORDS_FALSE | "
-      "CLK_ADDRESS_CLAMP_TO_EDGE | CLK_FILTER_NEAREST;\n";
-  result +=
-      "__constant sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | "
-      "CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;\n";
-  result +=
-      "__constant sampler_t smp_zero = CLK_NORMALIZED_COORDS_FALSE | "
-      "CLK_ADDRESS_CLAMP | CLK_FILTER_NEAREST;\n";
-
   return result;
 }
 
@@ -93,11 +82,6 @@ std::string GetXStrideCorrected(const std::string& src_x,
   // return p0 * stride_x * batch_size + b0 + padding_x;\n";
   return absl::Substitute("((($0) / $1) * $2 * $1 + (($0) % $1) + $3)", src_x,
                           batch_size, stride_x, padding_x);
-}
-
-TextureAddressMode GetFastestZeroMode(const CLDevice& device) {
-  return device.IsAdreno3xx() ? TextureAddressMode::DONT_CARE
-                              : TextureAddressMode::ZERO;
 }
 
 float4 GetMaskForLastPlane(int channels) {
@@ -119,19 +103,19 @@ int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size) {
   return {1, 1, 1};
 }
 
-int GetRecommendedBlockSizeForConv(const CLDevice& device,
+int GetRecommendedBlockSizeForConv(const DeviceInfo& device_info,
                                    CalculationsPrecision precision,
                                    int task_size) {
   const float task_size_per_cu =
-      task_size / static_cast<float>(device.GetInfo().compute_units_count);
+      task_size / static_cast<float>(device_info.compute_units_count);
   int block_size = 1;
   float threshold_1 = FLT_MAX;
   float threshold_2 = FLT_MAX;
   float threshold_4 = FLT_MAX;
-  if (!device.IsMali()) {
+  if (!device_info.IsMali()) {
     return 1;
   }
-  MaliInfo mali_info = device.GetInfo().mali_info;
+  MaliInfo mali_info = device_info.mali_info;
   switch (precision) {
     case CalculationsPrecision::F16:
       if (mali_info.IsBifrostGen1()) {

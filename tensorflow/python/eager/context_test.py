@@ -26,6 +26,8 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
@@ -107,6 +109,27 @@ class ContextTest(test.TestCase):
 
     with self.assertRaises(errors.NotFoundError):
       _ = context.get_function_def('this_should_not_be_found')
+
+  @test_util.run_gpu_only
+  def testGetMemoryUsage(self):
+    array_ops.zeros([10]) # Allocate some memory on the GPU.
+    self.assertGreater(
+        context.context().get_total_memory_usage('GPU:0'), 0)
+
+  def testGetMemoryUsageCPU(self):
+    with self.assertRaisesRegex(ValueError, 'CPU does not support'):
+      context.context().get_total_memory_usage('CPU:0')
+
+  def testGetMemoryUsageUnknownDevice(self):
+    with self.assertRaisesRegex(ValueError, 'Failed parsing device name'):
+      context.context().get_total_memory_usage('unknown_device')
+
+  @test_util.run_gpu_only
+  def testGetMemoryUsageAmbiguousDevice(self):
+    if len(context.context().list_physical_devices('GPU')) < 2:
+      self.skipTest('Need at least 2 GPUs')
+    with self.assertRaisesRegex(ValueError, 'Multiple devices'):
+      context.context().get_total_memory_usage('GPU')
 
 
 if __name__ == '__main__':

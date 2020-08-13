@@ -37,10 +37,12 @@ namespace cl {
 class ConvolutionTransposed4x4 : public GPUOperation {
  public:
   ConvolutionTransposed4x4() = default;
-  absl::Status Tune(const TuningParameters& params) override {
-    return absl::OkStatus();
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
   }
-  absl::Status Compile(const CreationContext& creation_context) override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -73,8 +75,7 @@ class ConvolutionTransposed4x4 : public GPUOperation {
                             absl::Span<T> dst);
 
   std::string GenerateConvolutionTransposedCode(
-      const OperationDef& op_def,
-      ConvolutionTransposed4x4::WeightsUploadType weights_upload_type);
+      const OperationDef& op_def, WeightsUploadType weights_upload_type);
 
   WeightsUploadType weights_upload_type_;
 };

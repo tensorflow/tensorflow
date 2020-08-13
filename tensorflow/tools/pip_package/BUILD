@@ -150,6 +150,10 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/docs:generate_lib",
     "//tensorflow/tools/docs:parser",
     "//tensorflow/tools/docs:py_guide_parser",
+    "//tensorflow/python/distribute/client:client",
+    "//tensorflow/python/distribute/client:parameter_server_client",
+    "//tensorflow/python/distribute/client:remote_eager_lib",
+    "//tensorflow/python/distribute/client:metric_utils",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
