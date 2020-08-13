@@ -98,8 +98,9 @@ An n-way switch statement, implementing the following:
 
     Confined<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
 
-    // Used to map StatelessCase and Case to a common op.
-    DefaultValuedAttr<BoolAttr, "false">:$is_stateless
+    // Used to map StatelessCase and Case op defined in TensorFlow to a common
+    // op.
+    BoolAttr:$is_stateless
   );
 
   let results = (outs
