@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import math
 import string
 
@@ -37,6 +36,7 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -236,7 +236,7 @@ class MultiHeadAttention(Layer):
     self._kernel_constraint = constraints.get(kernel_constraint)
     self._bias_constraint = constraints.get(bias_constraint)
     if attention_axes is not None and not isinstance(attention_axes,
-                                                     collections.abc.Sized):
+                                                     collections_abc.Sized):
       self._attention_axes = (attention_axes,)
     else:
       self._attention_axes = attention_axes
@@ -348,7 +348,7 @@ class MultiHeadAttention(Layer):
       # it support mult-head einsum computations.
       self._build_attention(output_rank)
       if self._output_shape:
-        if not isinstance(self._output_shape, collections.abc.Sized):
+        if not isinstance(self._output_shape, collections_abc.Sized):
           output_shape = [self._output_shape]
         else:
           output_shape = self._output_shape
@@ -460,4 +460,3 @@ class MultiHeadAttention(Layer):
     if return_attention_scores:
       return attention_output, attention_scores
     return attention_output
-
