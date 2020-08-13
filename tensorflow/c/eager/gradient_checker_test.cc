@@ -219,6 +219,18 @@ TEST_P(GradientCheckerTest, TestGradCheck) {
     ctx.reset(ctx_raw);
   }
 
+  // float eps = 1e-7;
+
+  // float xf = 1.2f + eps;
+  // double xd = 1.2 + eps;
+  // double d = 3.14159265358979;
+  // std::cout << "xf: " << xf << std::endl;
+  // std::cout.precision(17);
+  // std::cout << "xf: " << std::fixed << xf << std::endl;
+
+  // std::cout << "d = " << xd <<", f = " << xf <<std::endl;
+
+
   float A_vals[] = {1.0f, 2.0f, 3.0f, 4.0f};
   int64_t A_dims[] = {2, 2};
   float B_vals[] = {.5f, -1.0f, 1.0f, 1.0f};
