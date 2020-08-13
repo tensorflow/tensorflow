@@ -174,10 +174,10 @@ class TensorListGetItem : public OpKernel {
                                         " but list elements ",
                                         DataTypeString(l->element_dtype)));
     int32 index = c->input(1).scalar<int32>()();
-    OP_REQUIRES(c, index < l->tensors().size(),
-                errors::InvalidArgument("Trying to access element ", index,
-                                        " in a list with ", l->tensors().size(),
-                                        " elements."));
+    OP_REQUIRES(
+        c, index < l->tensors().size(),
+        errors::InvalidArgument("Tried to read from index ", index,
+                                " but array size is: ", l->tensors().size()));
     if (l->tensors()[index].dtype() != DT_INVALID) {
       c->set_output(0, l->tensors()[index]);
     } else {

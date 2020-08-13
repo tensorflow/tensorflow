@@ -493,18 +493,14 @@ class TensorArrayTest(test.TestCase):
 
       if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
           not context.executing_eagerly()):
-        error_msg = "Trying to access element -1 in a list with 3 elements."
+        error_msg = "Tried to read from index -1 but array size is: 3"
       else:
         error_msg = "index -1"
       # Test reading from a negative index, which is not allowed
       with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.read(-1))
 
-      if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
-          not context.executing_eagerly()):
-        error_msg = "Trying to access element 3 in a list with 3 elements."
-      else:
-        error_msg = "Tried to read from index 3 but array size is: 3"
+      error_msg = "Tried to read from index 3 but array size is: 3"
       # Test reading from too large an index
       with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.read(3))
@@ -1793,6 +1789,36 @@ class TensorArrayTest(test.TestCase):
     ta = tensor_array_ops.TensorArray(dtypes.float32, size=42)
     ta = ta.write(0, [0])
     self.assertEqual([42, 1], ta.stack().shape.as_list())
+
+  def testUnstackShouldNotAffectSize(self):
+    with ops.Graph().as_default() as g:
+      with session_lib.Session(graph=g) as sess:
+        a = constant_op.constant([1., 2.])
+        ta = tensor_array_ops.TensorArray(
+            dtypes.float32, size=10, dynamic_size=True, clear_after_read=False)
+        error_msg = "Tried to read from index 10 but array size is: 10"
+        with self.assertRaisesOpError(error_msg):
+          sess.run(ta.read(10))
+        ua = ta.unstack(a)
+        self.assertAllEqual(sess.run(ua.read(9)), 0.)
+        with self.assertRaisesOpError(error_msg):
+          sess.run(ua.read(10))
+
+  @test_util.disable_control_flow_v2("b/122315734: Requires scatter in XLA")
+  @test_util.run_v1_only("b/122315734: Requires scatter in XLA")
+  def testUnstackShouldPreserveOldValues(self):
+    with ops.Graph().as_default() as g:
+      with session_lib.Session(graph=g) as sess:
+        ta = tensor_array_ops.TensorArray(
+            dtypes.float32, size=2, dynamic_size=True, clear_after_read=False)
+        error_msg = "Tried to read from index 2 but array size is: 2"
+        with self.assertRaisesOpError(error_msg):
+          sess.run(ta.read(2))
+        ua = ta.scatter([2], [2.])
+        self.assertAllEqual(sess.run(ua.read(2)), 2.)
+        b = constant_op.constant([0., 1.])
+        ub = ua.unstack(b)
+        self.assertAllEqual(sess.run(ub.read(2)), 2.)
 
 
 class TensorArrayBenchmark(test.Benchmark):
