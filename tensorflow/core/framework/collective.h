@@ -111,8 +111,16 @@ struct CollInstanceParams {
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
-  std::vector<string> devices;   // all_permute only
-  std::vector<int> permutation;  // all_permute only
+  std::vector<string> devices;  // permuter only
+
+  // For permuter only
+  // Each rank in the permutation is a receiver.
+  // Indices of each rank means a sender to that rank.
+  // Example: permutation = {2,0,1} means
+  //   rank 0 sends to rank 2
+  //   rank 1 sends to rank 0
+  //   rank 2 sends to rank 1
+  std::vector<int> permutation;
 };
 
 // Data common to all instance members in the same task.

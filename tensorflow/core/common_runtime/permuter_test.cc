@@ -294,6 +294,7 @@ class PermuterTest : public ::testing::Test {
                              actual.template flat<T>()(i))
                 << "Mismatch at device " << di << " index " << i;
             break;
+          case DT_BOOL:
           case DT_INT32:
           case DT_INT64:
             EXPECT_EQ(expected[(di * tensor_len) + i],
@@ -443,6 +444,9 @@ class PermuterTest : public ::testing::Test {
          DaTy##B##_DevTy##T##_Wkr##W##_Dev##D##_Sdiv##S##_Len##L##_Abrt##A) { \
     DataType dtype = DT_##B;                                                  \
     switch (dtype) {                                                          \
+      case DT_BOOL: {                                                         \
+        RunTest<bool>(dtype, DEVICE_##T, W, D, L, A);                         \
+      } break;                                                                \
       case DT_FLOAT: {                                                        \
         RunTest<float>(dtype, DEVICE_##T, W, D, L, A);                        \
       } break;                                                                \
@@ -471,6 +475,10 @@ DEF_TEST(FLOAT, CPU, 2, 1, 128, 0)
 DEF_TEST(FLOAT, CPU, 2, 4, 128, 0)
 DEF_TEST(FLOAT, CPU, 2, 8, 4095, 0)
 DEF_TEST(FLOAT, CPU, 4, 4, 1045991, 0)
+
+DEF_TEST(BOOL, CPU, 1, 4, 1, 0)
+DEF_TEST(BOOL, CPU, 2, 4, 1, 0)
+DEF_TEST(BOOL, CPU, 2, 4, 1001, 0)
 
 DEF_TEST(DOUBLE, CPU, 2, 4, 128, 0)
 DEF_TEST(INT32, CPU, 2, 4, 128, 0)

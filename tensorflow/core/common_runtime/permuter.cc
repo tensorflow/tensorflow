@@ -64,15 +64,16 @@ Status Permuter::InitializeCollectiveContext(
 }
 
 void Permuter::Run(StatusCallback done) {
+  if (col_params_->instance.permutation.size() !=
+      col_params_->instance.devices.size()) {
+    done(errors::Internal("Permutation must be the same size as devices"));
+  }
   done_ = std::move(done);
-  for (int i = 0; i < col_params_->instance.devices.size(); ++i) {
-    if (col_ctx_->device_name == col_params_->instance.devices[i]) {
-      DispatchSend(i, col_params_->instance.permutation[i], col_ctx_->input,
-                   HalfDone());
-      continue;
-    }
-    if (col_ctx_->device_name ==
-        col_params_->instance.devices[col_params_->instance.permutation[i]]) {
+  DispatchSend(col_params_->default_rank,
+               col_params_->instance.permutation[col_params_->default_rank],
+               col_ctx_->input, HalfDone());
+  for (int i = 0; i < col_params_->instance.permutation.size(); ++i) {
+    if (col_params_->default_rank == col_params_->instance.permutation[i]) {
       DispatchRecv(i, col_params_->instance.permutation[i], col_ctx_->output,
                    HalfDone());
     }
