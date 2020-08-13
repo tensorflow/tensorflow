@@ -124,6 +124,7 @@ void GPUOperation::SetDst(Tensor* ptr, int index) {
 GPUOperation::GPUOperation(GPUOperation&& operation)
     : args_(std::move(operation.args_)),
       code_(std::move(operation.code_)),
+      tensor_to_grid_(operation.tensor_to_grid_),
       elementwise_(operation.elementwise_),
       linkable_(operation.linkable_),
       check_src_channels_size_(operation.check_src_channels_size_),
@@ -142,6 +143,7 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
   if (this != &operation) {
     args_ = std::move(operation.args_);
     code_ = std::move(operation.code_);
+    tensor_to_grid_ = operation.tensor_to_grid_;
     elementwise_ = operation.elementwise_;
     linkable_ = operation.linkable_;
     check_src_channels_size_ = operation.check_src_channels_size_;
@@ -277,14 +279,19 @@ absl::Status GPUOperation::Tune(const TuningParameters& params) {
 }
 
 int3 GPUOperation::GetGridSize() const {
-  if (elementwise_) {
+  if (elementwise_ || tensor_to_grid_ == TensorToGrid::kWBToX_HDToY_SToZ) {
     const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-    const int grid_y = dst_[0]->Height();
+    const int grid_y = dst_[0]->Height() * dst_[0]->Depth();
     const int grid_z = dst_[0]->Slices();
     return int3(grid_x, grid_y, grid_z);
-  } else {
-    return int3(0, 0, 0);
   }
+  if (tensor_to_grid_ == TensorToGrid::kWBToX_HDToY_ZIs1) {
+    const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
+    const int grid_y = dst_[0]->Height() * dst_[0]->Depth();
+    const int grid_z = 1;
+    return int3(grid_x, grid_y, grid_z);
+  }
+  return int3(0, 0, 0);
 }
 
 void GPUOperation::AddUniquePostfix(const std::string& unique_postfix) {

@@ -51,7 +51,7 @@ TEST_F(OpenCLOperationTest, ConcatWidth) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConcatXY operation = CreateConcatXY(op_def, attr);
+      GPUOperation operation = CreateConcatXY(op_def, attr);
       ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
                                     BHWC(1, 2, 3, 2), &dst_tensor));
       EXPECT_THAT(
@@ -83,7 +83,7 @@ TEST_F(OpenCLOperationTest, ConcatHeight) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConcatXY operation = CreateConcatXY(op_def, attr);
+      GPUOperation operation = CreateConcatXY(op_def, attr);
       ASSERT_OK(ExecuteGPUOperation({src0, src1}, creation_context_, &operation,
                                     BHWC(1, 3, 1, 2), &dst_tensor));
       EXPECT_THAT(
