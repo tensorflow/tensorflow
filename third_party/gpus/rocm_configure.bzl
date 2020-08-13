@@ -457,7 +457,7 @@ def _find_libs(repository_ctx, rocm_config):
     """
     return {
         "hip": _find_rocm_lib(
-            "hip_hcc",
+            _if_hipcc_is_hipclang(repository_ctx, rocm_config, "amdhip64", "hip_hcc"),
             repository_ctx,
             rocm_config.rocm_toolkit_path,
         ),
@@ -832,7 +832,7 @@ def _create_local_rocm_repository(repository_ctx):
             "%{rocr_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
             "%{rocr_runtime_library}": "hsa-runtime64",
             "%{hip_runtime_path}": rocm_config.rocm_toolkit_path + "/hip/lib",
-            "%{hip_runtime_library}": "hip_hcc",
+            "%{hip_runtime_library}": _if_hipcc_is_hipclang(repository_ctx, rocm_config, "amdhip64", "hip_hcc"),
             "%{hcc_runtime_path}": rocm_config.rocm_toolkit_path + "/hcc/lib",
             "%{hcc_runtime_library}": "mcwamp",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),

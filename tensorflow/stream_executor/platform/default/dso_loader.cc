@@ -134,7 +134,13 @@ port::StatusOr<void*> GetRocrandDsoHandle() {
   return GetDsoHandle("rocrand", "");
 }
 
-port::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("hip_hcc", ""); }
+port::StatusOr<void*> GetHipDsoHandle() {
+#if TENSORFLOW_COMPILER_IS_HIP_CLANG
+  return GetDsoHandle("amdhip64", "");
+#else
+  return GetDsoHandle("hip_hcc", "");
+#endif
+}
 
 }  // namespace DsoLoader
 
