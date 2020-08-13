@@ -132,7 +132,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllClose(l, v)
     self.assertAllClose(l2, default_value)
 
-  def testListKeys(self):
+  def testStackKeys(self):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
     k2 = constant_op.constant(2.0)
@@ -142,13 +142,13 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v3 = constant_op.constant(23.0)
     m = map_ops.tensor_map_insert(m, k, v)
     m = map_ops.tensor_map_insert(m, k2, v2)
-    keys = map_ops.tensor_map_list_keys(m, k.dtype)
+    keys = map_ops.tensor_map_stack_keys(m, k.dtype)
     expected = constant_op.constant([1.0, 2.0])
     self.assertAllClose(array_ops.shape(keys), array_ops.shape(expected))
     self.assertAllClose(sort_ops.sort(keys), expected)
 
     m = map_ops.tensor_map_insert(m, k3, v3)
-    keys = map_ops.tensor_map_list_keys(m, k.dtype)
+    keys = map_ops.tensor_map_stack_keys(m, k.dtype)
     expected = constant_op.constant([1.0, 2.0, 3.0])
     self.assertAllClose(array_ops.shape(keys), array_ops.shape(expected))
     self.assertAllClose(sort_ops.sort(keys), expected)

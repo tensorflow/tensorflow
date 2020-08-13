@@ -174,13 +174,12 @@ class TensorMapHasKey : public OpKernel {
   }
 };
 
-<<<<<<< HEAD
-class TensorMapListKeys : public OpKernel {
+class TensorMapStackKeys : public OpKernel {
  public:
-  explicit TensorMapListKeys(OpKernelConstruction* c) : OpKernel(c) {
+  explicit TensorMapStackKeys(OpKernelConstruction* c) : OpKernel(c) {
     OP_REQUIRES_OK(c, c->GetAttr("key_dtype", &key_dtype_));
   }
-  ~TensorMapListKeys() override {}
+  ~TensorMapStackKeys() override {}
 
   void Compute(OpKernelContext* c) override {
     const TensorMap* m = nullptr;
@@ -203,8 +202,6 @@ class TensorMapListKeys : public OpKernel {
   DataType key_dtype_;
 };
 
-=======
->>>>>>> erase_change
 template <typename Device>
 Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
                           const TensorMap& b, TensorMap* out) {
