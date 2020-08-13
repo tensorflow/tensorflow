@@ -1535,6 +1535,10 @@ class ConcreteFunction(object):
               inputs=self.inputs,
               captured=self._captured_inputs,
               closures=self._captured_closures))
+
+    self._captured_inputs += nest.flatten(
+        [x() for x in self._captured_closures], expand_composites=True)
+
     self._output_shapes = tuple(
         output.shape for output in self._func_graph.outputs)
     self._attrs = _parse_func_attrs(attrs or {})
@@ -2033,9 +2037,7 @@ class ConcreteFunction(object):
 
     self.__call__(*args) passes `args + self.captured_inputs` to the function.
     """
-    from_closures = nest.flatten([x() for x in self._captured_closures],
-                                 expand_composites=True)
-    return self._captured_inputs + from_closures
+    return self._captured_inputs
 
   @property
   def function_def(self):
