@@ -33,16 +33,20 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
+#include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
+#include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/util.h"
 
@@ -74,26 +78,8 @@ StatusOr<std::unique_ptr<HloModule>> HloModuleFromProto(
 
 // Convert the MLIR `module` from HLO dialect to LHLO dialect using XLA for the
 // given platform.
-Status ConvertModule(ModuleOp module, StringRef platform_name) {
-  SymbolTable symbol_table(module);
-  if (!symbol_table.lookup("main")) {
-    return ::xla::InvalidArgument(
-        "conversion to HLO module failed: missing main()");
-  }
-  HloProto hlo_proto;
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      ConvertMlirHloToHlo(module, &hlo_proto,
-                          /*use_tuple_args=*/false,
-                          /*return_tuple=*/false,
-                          /*shape_representation_fn=*/nullptr),
-      "conversion to XLA HLO proto failed");
-
-  auto statusOrHloModule = HloModuleFromProto(hlo_proto);
-  TF_RETURN_WITH_CONTEXT_IF_ERROR(statusOrHloModule.status(),
-                                  "parsing HLO proto to HLO module failed");
-  std::unique_ptr<HloModule> hlo_module =
-      std::move(statusOrHloModule.ValueOrDie());
-
+Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
+                     StringRef platform_name) {
   auto platform = ::xla::se::MultiPlatformManager::PlatformWithName(
       StringRefToView(platform_name));
   if (!platform.ok()) {
@@ -155,7 +141,29 @@ class XlaHloToLhloPass
  private:
   void runOnOperation() final {
     ModuleOp module = getOperation();
-    Status status = ConvertModule(module, platform_);
+
+    auto status = [&module, this]() -> Status {
+      SymbolTable symbol_table(module);
+      if (!symbol_table.lookup("main")) {
+        return ::xla::InvalidArgument(
+            "conversion to HLO module failed: missing main()");
+      }
+      HloProto hlo_proto;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(
+          ConvertMlirHloToHlo(module, &hlo_proto,
+                              /*use_tuple_args=*/false,
+                              /*return_tuple=*/false,
+                              /*shape_representation_fn=*/nullptr),
+          "conversion to XLA HLO proto failed");
+
+      auto statusOrHloModule = HloModuleFromProto(hlo_proto);
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(statusOrHloModule.status(),
+                                      "parsing HLO proto to HLO module failed");
+      std::unique_ptr<HloModule> hlo_module =
+          std::move(statusOrHloModule.ValueOrDie());
+
+      return ConvertModule(std::move(hlo_module), module, platform_);
+    }();
     if (!status.ok()) {
       module.emitError() << status.ToString();
       return signalPassFailure();
@@ -190,51 +198,51 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   using ::xla::HloOpcode;
   switch (instr->opcode()) {
     case HloOpcode::kAbs:
-      return CreateOpWithoutAttrs<xla_lhlo::AbsOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AbsOp>(instr).status();
     case HloOpcode::kAdd:
-      return CreateOpWithoutAttrs<xla_lhlo::AddOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AddOp>(instr).status();
     case HloOpcode::kAnd:
-      return CreateOpWithoutAttrs<xla_lhlo::AndOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::AndOp>(instr).status();
     case HloOpcode::kCeil:
-      return CreateOpWithoutAttrs<xla_lhlo::CeilOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CeilOp>(instr).status();
     case HloOpcode::kComplex:
-      return CreateOpWithoutAttrs<xla_lhlo::ComplexOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ComplexOp>(instr).status();
     case HloOpcode::kCopy:
-      return CreateOpWithoutAttrs<xla_lhlo::CopyOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CopyOp>(instr).status();
     case HloOpcode::kCos:
-      return CreateOpWithoutAttrs<xla_lhlo::CosOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::CosOp>(instr).status();
     case HloOpcode::kDivide:
-      return CreateOpWithoutAttrs<xla_lhlo::DivOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::DivOp>(instr).status();
     case HloOpcode::kExp:
-      return CreateOpWithoutAttrs<xla_lhlo::ExpOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ExpOp>(instr).status();
     case HloOpcode::kImag:
-      return CreateOpWithoutAttrs<xla_lhlo::ImagOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::ImagOp>(instr).status();
     case HloOpcode::kLog:
-      return CreateOpWithoutAttrs<xla_lhlo::LogOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::LogOp>(instr).status();
     case HloOpcode::kMaximum:
-      return CreateOpWithoutAttrs<xla_lhlo::MaxOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MaxOp>(instr).status();
     case HloOpcode::kMinimum:
-      return CreateOpWithoutAttrs<xla_lhlo::MinOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MinOp>(instr).status();
     case HloOpcode::kMultiply:
-      return CreateOpWithoutAttrs<xla_lhlo::MulOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::MulOp>(instr).status();
     case HloOpcode::kNegate:
-      return CreateOpWithoutAttrs<xla_lhlo::NegOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::NegOp>(instr).status();
     case HloOpcode::kReal:
-      return CreateOpWithoutAttrs<xla_lhlo::RealOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RealOp>(instr).status();
     case HloOpcode::kRemainder:
-      return CreateOpWithoutAttrs<xla_lhlo::RemOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RemOp>(instr).status();
     case HloOpcode::kRsqrt:
-      return CreateOpWithoutAttrs<xla_lhlo::RsqrtOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::RsqrtOp>(instr).status();
     case HloOpcode::kSelect:
-      return CreateOpWithoutAttrs<xla_lhlo::SelectOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SelectOp>(instr).status();
     case HloOpcode::kSign:
-      return CreateOpWithoutAttrs<xla_lhlo::SignOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SignOp>(instr).status();
     case HloOpcode::kSqrt:
-      return CreateOpWithoutAttrs<xla_lhlo::SqrtOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SqrtOp>(instr).status();
     case HloOpcode::kSubtract:
-      return CreateOpWithoutAttrs<xla_lhlo::SubOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::SubOp>(instr).status();
     case HloOpcode::kTanh:
-      return CreateOpWithoutAttrs<xla_lhlo::TanhOp>(instr).status();
+      return CreateOpWithoutAttrs<lmhlo::TanhOp>(instr).status();
     default:
       llvm::errs() << instr->ToString();
       return tensorflow::errors::Internal(
@@ -246,7 +254,7 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
 
 StatusOr<mlir::Operation*> LhloDialectEmitter::EmitSortOp(
     HloInstruction* instr) {
-  TF_ASSIGN_OR_RETURN(auto sort, CreateOpWithoutAttrs<xla_lhlo::SortOp>(instr));
+  TF_ASSIGN_OR_RETURN(auto sort, CreateOpWithoutAttrs<lmhlo::SortOp>(instr));
   auto* sort_instr = ::xla::Cast<::xla::HloSortInstruction>(instr);
   sort.dimensionAttr(builder_.getI64IntegerAttr(sort_instr->sort_dimension()));
   sort.is_stableAttr(builder_.getBoolAttr(sort_instr->is_stable()));
@@ -272,7 +280,6 @@ Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
     }
     return Status::OK();
   }
-
   TF_ASSIGN_OR_RETURN(Type out_type, ::xla::ConvertShapeToType<MemRefType>(
                                          current_shape, builder_));
   TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
@@ -283,11 +290,35 @@ Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
     return Status::OK();
   }
 
+  auto out_memref_type = out_type.dyn_cast<MemRefType>();
+  if (!out_memref_type)
+    return tensorflow::errors::Internal(
+        "Expected memref type when creating a view for leaf type of a tuple.");
+
   Value byte_shift =
       builder_.create<ConstantIndexOp>(alloc.getLoc(), slice.offset());
-  values->push_back(builder_.create<ViewOp>(builder_.getUnknownLoc(), out_type,
-                                            alloc, byte_shift,
-                                            /*sizes=*/ValueRange{}));
+
+  xla::Shape physical_shape =
+      xla::ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
+          current_shape);
+  TF_ASSIGN_OR_RETURN(
+      Type physical_out_type,
+      ::xla::ConvertShapeToType<MemRefType>(physical_shape, builder_));
+
+  // TODO(timshen): revisit location handling.
+  Location loc = builder_.getUnknownLoc();
+
+  // ViewOp only takes memrefs without affine maps (layouts). Let ViewOp produce
+  // the physical shape (where dimensions are ordered in major to minor) first,
+  // then follow up with a StaticMemRefCastOp to cast the resulting memref to
+  // the original layout.
+  Value result =
+      builder_.create<ViewOp>(loc, physical_out_type, alloc, byte_shift,
+                              /*sizes=*/ValueRange{});
+  if (physical_out_type != out_type)
+    result = builder_.create<lmhlo::StaticMemRefCastOp>(loc, out_memref_type,
+                                                        result);
+  values->push_back(result);
   return Status::OK();
 }
 
@@ -296,19 +327,17 @@ Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
 // create another view to adjust the slice for the shape of the instruction.
 Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
                                            SmallVectorImpl<Value>* values) {
-  // In terms of cache key, we have several choices:
-  // * Use `instr`. It's the easiest, but it creates different cache entries for
-  // aliased buffers, which could have been deduplicated.
-  // * Use the actual content as the key, aka a tree of allocation slices.
-  // * Somewhere in the middle, use the allocation slice for the instruction. If
-  // `instr` is a tuple, the key is the allocated buffer for the tuple itself
-  // (an array of pointers).
+  // Cache generated ViewOp and StaticMemRefCastOp by instruction. We could have
+  // gone fancier to do the following cacheing:
+  //   %range = ViewOp(%allocation, %offset) : memref<i8xSIZE>
+  //   %typed_range = ViewOp(%range) : memref<f32x...>
   //
-  // We choose the third approach for simplicity.
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                      assignment_.GetUniqueTopLevelSlice(instr));
-  SliceKey slice_key(slice.allocation(), slice.offset(), slice.size());
-  auto result = slices_.try_emplace(slice_key, llvm::SmallVector<Value, 4>{});
+  // where %range is cached. This in theory gives easier time for alias
+  // analysis, since the identity of %range defines alias. However,
+  // %typed_range can't be cached, as different buffers with different types and
+  // shapes may still alias. Creating two ViewOps doesn't seem to worth the
+  // effort for a slightly easier aliasing, so we don't over optimize here.
+  auto result = slices_.try_emplace(instr, llvm::SmallVector<Value, 4>{});
   llvm::SmallVectorImpl<Value>& new_values = result.first->second;
   if (result.second) {
     ::xla::ShapeIndex shape_index;
@@ -333,40 +362,43 @@ Status LhloDialectEmitter::Initialize() {
   for (const BufferAllocation& alloc : assignment_.Allocations())
     ordered_allocations.push_back(&alloc);
 
-  // Sort the rather arbitrarily ordered allocations to match the input/output
-  // parameters. Specifically We want to sort buffer allocations in the
-  // following order:
-  // * Parameters always order before non-parameters.
-  // * Different parameters order by parameter number.
-  // * Different allocations for the same parameter order by the shape index.
-  //
-  // TODO(timshen): there should be only one non-parameter buffer, the temp
-  // buffer. Check on that.
-  const auto allocation_comparator = [](const BufferAllocation* lhs,
-                                        const BufferAllocation* rhs) {
-    if (lhs->is_entry_computation_parameter() !=
-        rhs->is_entry_computation_parameter()) {
-      return lhs->is_entry_computation_parameter() >
-             rhs->is_entry_computation_parameter();
-    }
-    if (lhs->is_entry_computation_parameter()) {
-      return std::tuple<int, const ::xla::ShapeIndex&>(
-                 lhs->parameter_number(), lhs->param_shape_index()) <
-             std::tuple<int, const ::xla::ShapeIndex&>(
-                 rhs->parameter_number(), rhs->param_shape_index());
-    }
-    return false;
-  };
+  if (computation_.IsEntryComputation()) {
+    // Sort the rather arbitrarily ordered allocations to match the input/output
+    // parameters. Specifically We want to sort buffer allocations in the
+    // following order:
+    // * Parameters always order before non-parameters.
+    // * Different parameters order by parameter number.
+    // * Different allocations for the same parameter order by the shape index.
+    //
+    // TODO(timshen): there should be only one non-parameter buffer, the temp
+    // buffer. Check on that.
+    const auto allocation_comparator = [](const BufferAllocation* lhs,
+                                          const BufferAllocation* rhs) {
+      if (lhs->is_entry_computation_parameter() !=
+          rhs->is_entry_computation_parameter()) {
+        return lhs->is_entry_computation_parameter() >
+               rhs->is_entry_computation_parameter();
+      }
+      if (lhs->is_entry_computation_parameter()) {
+        return std::tuple<int, const ::xla::ShapeIndex&>(
+                   lhs->parameter_number(), lhs->param_shape_index()) <
+               std::tuple<int, const ::xla::ShapeIndex&>(
+                   rhs->parameter_number(), rhs->param_shape_index());
+      }
+      return false;
+    };
 
-  std::stable_sort(ordered_allocations.begin(), ordered_allocations.end(),
-                   allocation_comparator);
+    std::stable_sort(ordered_allocations.begin(), ordered_allocations.end(),
+                     allocation_comparator);
+  }
 
   // The function signature will be composed of:
   // - one memref for each of the parameters.
   // - one memref for each other buffer allocation.
   llvm::SmallVector<MutableDictionaryAttr, 8> args_attrs;
   for (const BufferAllocation* alloc : ordered_allocations) {
-    if (alloc->is_entry_computation_parameter()) {
+    if (computation_.IsEntryComputation() &&
+        alloc->is_entry_computation_parameter()) {
       const ::xla::Shape& buffer_shape = ::xla::ShapeUtil::GetSubshape(
           computation_.parameter_instruction(alloc->parameter_number())
               ->shape(),
@@ -379,16 +411,18 @@ Status LhloDialectEmitter::Initialize() {
       block->addArgument(arg_type);
       allocations_[alloc] = block->getArguments().back();
       args_attrs.emplace_back();
-      args_attrs.back().set(builder_.getIdentifier("xla_lhlo.params"),
+      args_attrs.back().set(builder_.getIdentifier("lmhlo.alloc"),
+                            builder_.getIndexAttr(alloc->index()));
+      args_attrs.back().set(builder_.getIdentifier("lmhlo.params"),
                             builder_.getIndexAttr(alloc->parameter_number()));
     } else {
       block->addArgument(MemRefType::get({alloc->size()}, i8_type_));
       allocations_[alloc] = block->getArguments().back();
       args_attrs.emplace_back();
-      args_attrs.back().set(builder_.getIdentifier("xla_lhlo.alloc"),
+      args_attrs.back().set(builder_.getIdentifier("lmhlo.alloc"),
                             builder_.getIndexAttr(alloc->index()));
       if (alloc->maybe_live_out())
-        args_attrs.back().set(builder_.getIdentifier("xla_lhlo.liveout"),
+        args_attrs.back().set(builder_.getIdentifier("lmhlo.liveout"),
                               builder_.getBoolAttr(true));
     }
   }
@@ -425,6 +459,22 @@ Status HloToLhloModule(const BufferAssignment& assignment,
     return ::xla::Unimplemented("Missing sequential order for the computation");
   const std::vector<HloInstruction*>& ordering = schedule->instructions();
   return computation->AcceptOrdered(&emitter, ordering);
+}
+
+mlir::OwningModuleRef HloTextToLhloTranslateFunction(
+    llvm::StringRef input, mlir::MLIRContext* context) {
+  StatusOr<std::unique_ptr<HloModule>> maybe_module =
+      xla::ParseAndReturnUnverifiedModule(
+          absl::string_view(input.data(), input.size()));
+  TF_CHECK_OK(maybe_module.status());
+
+  mlir::OwningModuleRef module =
+      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+
+  TF_CHECK_OK(
+      ConvertModule(maybe_module.ConsumeValueOrDie(), module.get(), "Host"));
+
+  return module;
 }
 
 static PassRegistration<XlaHloToLhloPass> registration(

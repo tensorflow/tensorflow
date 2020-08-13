@@ -169,7 +169,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":loss_scale",
-        "//tensorflow/python:loss_scale",
         "//tensorflow/python/distribute:collective_all_reduce_strategy",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:mirrored_strategy",

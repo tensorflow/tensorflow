@@ -22,6 +22,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import central_storage_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
@@ -38,6 +39,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import distributed_training_utils
+from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
@@ -280,40 +282,40 @@ def strategy_and_optimizer_combinations():
       strategy_minus_tpu_combinations(),
       combinations.combine(
           optimizer=[
-              strategy_combinations.adagrad_optimizer_v1_fn,
-              strategy_combinations.adam_optimizer_v1_fn,
-              strategy_combinations.gradient_descent_optimizer_v1_fn,
-              strategy_combinations.rmsprop_optimizer_v1_fn,
-              strategy_combinations.adadelta_optimizer_keras_v2_fn,
-              strategy_combinations.adagrad_optimizer_keras_v2_fn,
-              strategy_combinations.adam_optimizer_keras_v2_fn,
-              strategy_combinations.adamax_optimizer_keras_v2_fn,
-              strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-              strategy_combinations.nadam_optimizer_keras_v2_fn,
-              strategy_combinations.rmsprop_optimizer_keras_v2_fn,
-              strategy_combinations.ftrl_optimizer_keras_v2_fn
+              optimizer_combinations.adagrad_optimizer_v1_fn,
+              optimizer_combinations.adam_optimizer_v1_fn,
+              optimizer_combinations.gradient_descent_optimizer_v1_fn,
+              optimizer_combinations.rmsprop_optimizer_v1_fn,
+              optimizer_combinations.adadelta_optimizer_keras_v2_fn,
+              optimizer_combinations.adagrad_optimizer_keras_v2_fn,
+              optimizer_combinations.adam_optimizer_keras_v2_fn,
+              optimizer_combinations.adamax_optimizer_keras_v2_fn,
+              optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+              optimizer_combinations.nadam_optimizer_keras_v2_fn,
+              optimizer_combinations.rmsprop_optimizer_keras_v2_fn,
+              optimizer_combinations.ftrl_optimizer_keras_v2_fn
           ]))
   tpu_strategies_graph = combinations.combine(
       distribution=tpu_strategies,
       mode=['graph'],
       optimizer=[
-          strategy_combinations.adagrad_optimizer_v1_fn,
-          strategy_combinations.adam_optimizer_v1_fn,
-          strategy_combinations.gradient_descent_optimizer_v1_fn,
-          strategy_combinations.rmsprop_optimizer_v1_fn,
-          strategy_combinations.adagrad_optimizer_keras_v2_fn,
-          strategy_combinations.adam_optimizer_keras_v2_fn,
-          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-          strategy_combinations.rmsprop_optimizer_keras_v2_fn
+          optimizer_combinations.adagrad_optimizer_v1_fn,
+          optimizer_combinations.adam_optimizer_v1_fn,
+          optimizer_combinations.gradient_descent_optimizer_v1_fn,
+          optimizer_combinations.rmsprop_optimizer_v1_fn,
+          optimizer_combinations.adagrad_optimizer_keras_v2_fn,
+          optimizer_combinations.adam_optimizer_keras_v2_fn,
+          optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+          optimizer_combinations.rmsprop_optimizer_keras_v2_fn
       ])
   tpu_strategies_eager = combinations.combine(
       distribution=tpu_strategies,
       mode=['eager'],
       optimizer=[
-          strategy_combinations.adagrad_optimizer_keras_v2_fn,
-          strategy_combinations.adam_optimizer_keras_v2_fn,
-          strategy_combinations.gradient_descent_optimizer_keras_v2_fn,
-          strategy_combinations.rmsprop_optimizer_keras_v2_fn
+          optimizer_combinations.adagrad_optimizer_keras_v2_fn,
+          optimizer_combinations.adam_optimizer_keras_v2_fn,
+          optimizer_combinations.gradient_descent_optimizer_keras_v2_fn,
+          optimizer_combinations.rmsprop_optimizer_keras_v2_fn
       ])
   return non_tpu_strategies + tpu_strategies_eager + tpu_strategies_graph
 
@@ -1238,7 +1240,7 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
       dataset = dataset.repeat(100)
       dataset = dataset.batch(10)
 
-      with self.assertRaisesRegex(ValueError, 'incompatible with the layer'):
+      with self.assertRaisesRegex(ValueError, 'is incompatible with'):
         model.fit(dataset, epochs=1, steps_per_epoch=2, verbose=0)
 
   @combinations.generate(
@@ -1861,6 +1863,69 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.predict(x, batch_size=2, callbacks=[bc])
     self.assertEqual(bc.predict_begin_batches, [0])
     self.assertEqual(bc.predict_end_batches, [24])
+
+  @combinations.generate(
+      combinations.combine(distribution=all_strategies, mode=['eager']))
+  def test_gradient_clipping(self, distribution):
+
+    class MyLayer(keras.layers.Layer):
+
+      def build(self, _):
+        self.v1 = variables.Variable(1.)
+        self.v2 = variables.Variable(1.)
+
+      def call(self, x):
+        return 3 * self.v1 - 3 * self.v2
+
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+
+    with distribution.scope():
+      layer = MyLayer()
+      model = keras.Sequential([layer])
+      optimizer = gradient_descent_keras.SGD(1., clipnorm=2., clipvalue=2.)
+    model.compile(optimizer, 'mae')
+
+    if isinstance(distribution,
+                  central_storage_strategy.CentralStorageStrategy):
+      with self.assertRaisesRegex(ValueError, 'not supported'):
+        model.fit(x, y, batch_size=10, epochs=1)
+    else:
+      model.fit(x, y, batch_size=10, epochs=1)
+      self.assertAllClose(self.evaluate(layer.v1), 3.)
+      self.assertAllClose(self.evaluate(layer.v2), -1.)
+
+  @combinations.generate(
+      combinations.combine(distribution=all_strategies, mode=['eager']))
+  def test_custom_gradient_transformation(self, distribution):
+    if isinstance(distribution,
+                  central_storage_strategy.CentralStorageStrategy):
+      self.skipTest('Not supported with `CentralStorageStrategy`')
+
+    class MyLayer(keras.layers.Layer):
+
+      def build(self, _):
+        self.v1 = variables.Variable(1.)
+        self.v2 = variables.Variable(-1.)
+
+      def call(self, x):
+        return x + self.v1 + self.v2
+
+    def custom_transform(grads_and_vars):
+      # Always set gradients to 1.
+      return [(array_ops.ones_like(g), v) for g, v in grads_and_vars]
+
+    x, y = np.ones((10, 1)), np.ones((10, 1))
+
+    with distribution.scope():
+      layer = MyLayer()
+      model = keras.Sequential([layer])
+      optimizer = gradient_descent_keras.SGD(
+          1., gradient_transformers=[custom_transform])
+    model.compile(optimizer, 'mae')
+
+    model.fit(x, y, batch_size=10, epochs=1)
+    self.assertAllClose(self.evaluate(layer.v1), 0.)
+    self.assertAllClose(self.evaluate(layer.v2), -2.)
 
   @combinations.generate(
       combinations.times(

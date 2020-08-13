@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import functools
 import threading
 
 from absl.testing import parameterized
@@ -51,7 +50,6 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients
-from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import resource_variable_ops
@@ -452,10 +450,8 @@ class ParameterServerStrategyTestBase(
          self.cached_session(target=master_target,
                              config=sess_config) as sess, \
          d.scope():
-      initializer = functools.partial(
-          init_ops_v2.GlorotUniform(), (1, 1), dtype=dtypes.float32)
-      kernel = variables.Variable(
-          initial_value=initializer, name='kernel', trainable=True)
+      kernel = strategy_test_lib.create_variable_like_keras_layer(
+          'kernel', (1, 1), dtypes.float32,)
 
       def loss_fn(x):
         y = array_ops.reshape(

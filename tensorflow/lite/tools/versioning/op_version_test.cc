@@ -67,6 +67,18 @@ void SimpleVersioningTest(BuiltinOperator op) {
   EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 1);
 }
 
+// Similar to SimpleVersioningTest function, but
+// op has 3 versions and the input type includes TensorType_INT16.
+void SimpleVersioningTestExtended(BuiltinOperator op) {
+  OpSignature fake_op_sig = {
+      .op = op,
+      .input_types = std::vector<TensorType>{TensorType_INT16},
+  };
+  EXPECT_EQ(GetBuiltinOperatorVersion(fake_op_sig), 3);
+
+  SimpleVersioningTest(op);
+}
+
 // Test version for a simple Op with 2 versions and the output type controls the
 void SimpleOutputVersioningTest(BuiltinOperator op) {
   OpSignature fake_op_sig = {
@@ -281,7 +293,7 @@ TEST(OpVersionTest, VersioningMinTest) {
 }
 
 TEST(OpVersionTest, VersioningMeanTest) {
-  SimpleVersioningTest(BuiltinOperator_MEAN);
+  SimpleVersioningTestExtended(BuiltinOperator_MEAN);
 }
 
 TEST(OpVersionTest, VersioningSumTest) {

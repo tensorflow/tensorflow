@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/cache_ops.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/kernels/data/name_utils.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -641,57 +642,6 @@ class CacheDatasetOp::FileDatasetV2 : public CacheDatasetOp::FileDatasetBase {
   const Tensor resource_handle_;
 };
 
-namespace {
-template <typename T, typename FullNameFn>
-Status SaveCache(IteratorStateWriter* writer, T* cache, FullNameFn full_name) {
-  size_t cache_size = cache->size();
-  TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCacheSize), cache_size));
-  for (size_t i = 0; i < cache_size; i++) {
-    auto& element = cache->at(i);
-    TF_RETURN_IF_ERROR(writer->WriteScalar(
-        full_name(strings::StrCat(kCache, "[", i, "]", kSizeSuffix)),
-        element.size()));
-    for (size_t j = 0; j < element.size(); ++j) {
-      TF_RETURN_IF_ERROR(writer->WriteTensor(
-          full_name(strings::StrCat(kCache, "[", i, "][", j, "]")),
-          element[j]));
-    }
-  }
-  return Status::OK();
-}
-
-template <typename T, typename FullNameFn>
-Status RestoreCache(IteratorContext* ctx, IteratorStateReader* reader, T* cache,
-                    FullNameFn full_name) {
-  size_t cache_size;
-  {
-    int64 temp;
-    TF_RETURN_IF_ERROR(reader->ReadScalar(full_name(kCacheSize), &temp));
-    cache_size = static_cast<size_t>(temp);
-  }
-  for (size_t i = 0; i < cache_size; ++i) {
-    std::vector<Tensor> element;
-    size_t element_size;
-    {
-      int64 temp;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(kCache, "[", i, "]", kSizeSuffix)), &temp));
-      element_size = static_cast<size_t>(temp);
-    }
-    element.reserve(element_size);
-    for (size_t j = 0; j < element_size; ++j) {
-      element.emplace_back();
-      TF_RETURN_IF_ERROR(reader->ReadTensor(
-          full_name(strings::StrCat(kCache, "[", i, "][", j, "]")),
-          &element.back()));
-    }
-    cache->emplace_back(std::move(element));
-  }
-  return Status::OK();
-}
-
-}  // namespace
-
 class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
  public:
   explicit MemoryDatasetBase(OpKernelContext* ctx, const DatasetBase* input,
@@ -764,8 +714,8 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       mutex_lock l(mu_);
       if (cache_->IsCompleted()) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCacheCompleted), ""));
-        TF_RETURN_IF_ERROR(SaveCache(
-            writer, cache_, [this](const string& s) { return full_name(s); }));
+        TF_RETURN_IF_ERROR(
+            WriteElementsToCheckpoint(writer, prefix(), cache_->data()));
       }
       return SaveInput(ctx, writer, iterator_);
     }
@@ -778,8 +728,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
       if (reader->Contains(full_name(kCacheCompleted))) {
         std::vector<std::vector<Tensor>> temp_cache;
         TF_RETURN_IF_ERROR(
-            RestoreCache(ctx, reader, &temp_cache,
-                         [this](const string& s) { return full_name(s); }));
+            ReadElementsFromCheckpoint(reader, prefix(), &temp_cache));
         cache_->Complete(std::move(temp_cache));
       }
       TF_RETURN_IF_ERROR(InitializeIterator(ctx));
@@ -846,8 +795,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         mutex_lock l(mu_);
         if (!cache_->IsCompleted()) {
           TF_RETURN_IF_ERROR(
-              SaveCache(writer, &temp_cache_,
-                        [this](const string& s) { return full_name(s); }));
+              WriteElementsToCheckpoint(writer, prefix(), temp_cache_));
         }
         return SaveInput(ctx, writer, input_impl_);
       }
@@ -857,8 +805,7 @@ class CacheDatasetOp::MemoryDatasetBase : public DatasetBase {
         mutex_lock l(mu_);
         if (!reader->Contains(full_name(kCacheCompleted))) {
           TF_RETURN_IF_ERROR(
-              RestoreCache(ctx, reader, &temp_cache_,
-                           [this](const string& s) { return full_name(s); }));
+              ReadElementsFromCheckpoint(reader, prefix(), &temp_cache_));
         }
         return RestoreInput(ctx, reader, input_impl_);
       }

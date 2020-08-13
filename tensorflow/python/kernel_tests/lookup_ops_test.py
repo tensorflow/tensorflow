@@ -45,6 +45,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
@@ -213,6 +214,25 @@ class StaticHashTableTest(BaseLookupTableTest):
     self.assertAllEqual(sp_indices, out_indices)
     self.assertAllEqual(sp_shape, out_shape)
 
+  def testStaticHashTableWithRaggedTensorInput(self):
+    default_val = constant_op.constant(-1, dtypes.int64)
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = self.getHashTable()(
+        lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
+    self.initialize_table(table)
+
+    row_splits = [0, 2, 3]
+    input_tensor = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant(["brain", "salad", "tank"]),
+        constant_op.constant(row_splits, dtypes.int64))
+    output = table.lookup(input_tensor)
+
+    out = self.evaluate(output)
+
+    self.assertAllEqual([0, 1, -1], out.values)
+    self.assertAllEqual(row_splits, out.row_splits)
+
   def testSignatureMismatch(self):
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
@@ -306,7 +326,7 @@ class StaticHashTableTest(BaseLookupTableTest):
     # Init the table in the second session and verify that we do not get a
     # "Table already initialized" error.
     with session2:
-      table.initializer.run()
+      self.evaluate(table.initializer)
       self.assertAllEqual(3, self.evaluate(table.size()))
 
   @test_util.run_v2_only
@@ -812,7 +832,7 @@ class InitializeTableFromFileOpTest(BaseLookupTableTest):
       # Initialize with non existing file (old_file.txt) should fail.
       # TODO(yleon): Update message, which might change per FileSystem.
       with self.assertRaisesOpError("old_file.txt"):
-        table.initializer.run()
+        self.evaluate(table.initializer)
 
       # Initialize the model feeding the vocabulary file.
       filenames = ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS)
@@ -1081,6 +1101,28 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
 
+  def testRaggedTensor(self):
+    vocab_file = self._createVocabFile("feat_to_id_7.txt")
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant(["brain", "salad", "brain", "surgery", "tarkus"],
+                             dtypes.string),
+        constant_op.constant(input_row_splits, dtypes.int64))
+
+    table = self.getVocabularyTable()(lookup_ops.TextFileIdTableInitializer(
+        vocab_file, vocab_size=3), 1)
+    self.initialize_table(table)
+
+    ragged_ids = table.lookup(ragged_features)
+
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
+
   def testInt32SparseTensor(self):
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
@@ -1107,6 +1149,29 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
 
+  def testInt32RaggedTensor(self):
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant([42, 1, 42, -1000, 11], dtypes.int32),
+        constant_op.constant(input_row_splits, dtypes.int64))
+
+    table = self.getVocabularyTable()(
+        lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
+                                             dtypes.int64, dtypes.int64),
+        1,
+        lookup_key_dtype=dtypes.int32)
+    self.initialize_table(table)
+
+    ragged_ids = table.lookup(ragged_features)
+
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
+
   def testInt64SparseTensor(self):
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
@@ -1129,6 +1194,26 @@ class StaticVocabularyTableTest(BaseLookupTableTest):
     self.assertAllEqual(input_indices, sp_ids_ind)
     self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
     self.assertAllEqual(input_shape, sp_ids_shape)
+
+  def testInt64RaggedTensor(self):
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant([42, 1, 42, -1000, 11], dtypes.int64),
+        constant_op.constant(input_row_splits, dtypes.int64))
+
+    table = self.getVocabularyTable()(lookup_ops.KeyValueTensorInitializer(
+        (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), 1)
+    self.initialize_table(table)
+
+    ragged_ids = table.lookup(ragged_features)
+
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
 
   def testStaticVocabularyTableNoInnerTable(self):
     table = self.getVocabularyTable()(None, num_oov_buckets=1)
@@ -1690,7 +1775,7 @@ class DenseHashTableOpTest(test.TestCase):
           [[11, 12], [11, 14], [11, 15], [13, 14], [13, 15]], dtypes.int64)
       output = table.lookup(input_string)
       self.assertAllEqual([[0, 1], [2, 3], [-1, -2], [4, 5], [-1, -2]],
-                          output.eval())
+                          self.evaluate(output))
 
   @test_util.run_v1_only("Saver V1 only")
   def testVectorScalarSaveRestore(self):
@@ -2430,170 +2515,156 @@ class IdTableWithHashBucketsTest(test.TestCase):
       f.write("\n".join(values) + "\n")
     return vocabulary_file
 
-  @test_util.run_deprecated_v1
   def testStringIdTableWithHashBuckets(self):
     vocab_file = self._createVocabFile("feat_to_id_1.txt")
-    with self.cached_session():
-      default_value = -1
-      vocab_size = 3
-      oov_buckets = 1
-      table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.StaticHashTable(
-              lookup_ops.TextFileIdTableInitializer(
-                  vocab_file, vocab_size=vocab_size), default_value),
-          oov_buckets)
+    default_value = -1
+    vocab_size = 3
+    oov_buckets = 1
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(
+                vocab_file, vocab_size=vocab_size), default_value),
+        oov_buckets)
 
-      table.initializer.run()
+    self.evaluate(table.initializer)
 
-      input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
+    input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
 
-      out = table.lookup(input_string)
-      self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
-      self.assertEqual(vocab_size + oov_buckets, table.size().eval())
+    out = table.lookup(input_string)
+    self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
+    self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
 
-  @test_util.run_deprecated_v1
   def testInt32IdTableWithHashBuckets(self):
     vocab_file = self._createVocabFile("feat_to_id_2.txt", ("42", "1", "-1000"))
-    with self.cached_session():
-      default_value = -1
-      vocab_size = 3
-      oov_buckets = 1
-      table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.StaticHashTable(
-              lookup_ops.TextFileIdTableInitializer(
-                  vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
-              default_value),
-          oov_buckets,
-          key_dtype=dtypes.int32)
+    default_value = -1
+    vocab_size = 3
+    oov_buckets = 1
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(
+                vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
+            default_value),
+        oov_buckets,
+        key_dtype=dtypes.int32)
 
-      table.initializer.run()
+    self.evaluate(table.initializer)
 
-      values = constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int32)
+    values = constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int32)
 
-      out = table.lookup(values)
-      self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
-      self.assertEqual(vocab_size + oov_buckets, table.size().eval())
+    out = table.lookup(values)
+    self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
+    self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
 
-  @test_util.run_deprecated_v1
   def testInt64IdTableWithHashBuckets(self):
     vocab_file = self._createVocabFile("feat_to_id_3.txt", ("42", "1", "-1000"))
-    with self.cached_session():
-      default_value = -1
-      vocab_size = 3
-      oov_buckets = 1
-      table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.StaticHashTable(
-              lookup_ops.TextFileIdTableInitializer(
-                  vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
-              default_value), oov_buckets)
+    default_value = -1
+    vocab_size = 3
+    oov_buckets = 1
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(
+                vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
+            default_value), oov_buckets)
 
-      table.initializer.run()
+    self.evaluate(table.initializer)
 
-      values = constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int64)
+    values = constant_op.constant((42, 1, -1000, 11), dtype=dtypes.int64)
 
-      out = table.lookup(values)
-      self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
-      self.assertEqual(vocab_size + oov_buckets, table.size().eval())
+    out = table.lookup(values)
+    self.assertAllEqual([0, 1, 2, 3], self.evaluate(out))
+    self.assertEqual(vocab_size + oov_buckets, self.evaluate(table.size()))
 
-  @test_util.run_deprecated_v1
   def testStringIdTableWithOnlyHashBucket(self):
-    with self.cached_session():
-      oov_buckets = 5
+    oov_buckets = 5
 
-      # Set a table that only uses hash buckets, for each input value returns
-      # an id calculated by fingerprint("input") mod oov_buckets.
-      table = lookup_ops.IdTableWithHashBuckets(None, oov_buckets)
-      table.initializer.run()
+    # Set a table that only uses hash buckets, for each input value returns
+    # an id calculated by fingerprint("input") mod oov_buckets.
+    table = lookup_ops.IdTableWithHashBuckets(None, oov_buckets)
+    self.evaluate(table.initializer)
 
-      values = constant_op.constant(("brain", "salad", "surgery"))
+    values = constant_op.constant(("brain", "salad", "surgery"))
 
-      out = table.lookup(values)
-      self.assertAllEqual(
-          [
-              3,  # fingerprint("brain") mod 5.
-              1,  # fingerprint("salad") mod 5.
-              4  # fingerprint("surgery") mod 5
-          ],
-          self.evaluate(out))
-      self.assertEqual(oov_buckets, table.size().eval())
+    out = table.lookup(values)
+    self.assertAllEqual(
+        [
+            3,  # fingerprint("brain") mod 5.
+            1,  # fingerprint("salad") mod 5.
+            4  # fingerprint("surgery") mod 5
+        ],
+        self.evaluate(out))
+    self.assertEqual(oov_buckets, self.evaluate(table.size()))
 
-  @test_util.run_deprecated_v1
   def testInt32IdTableWithOnlyHashBucket(self):
-    with self.cached_session():
-      oov_buckets = 5
+    oov_buckets = 5
 
-      # Set a table that only uses hash buckets, for each input value returns
-      # an id calculated by fingerprint("input") mod oov_buckets.
-      table = lookup_ops.IdTableWithHashBuckets(
-          None, oov_buckets, key_dtype=dtypes.int32)
-      table.initializer.run()
+    # Set a table that only uses hash buckets, for each input value returns
+    # an id calculated by fingerprint("input") mod oov_buckets.
+    table = lookup_ops.IdTableWithHashBuckets(
+        None, oov_buckets, key_dtype=dtypes.int32)
+    self.evaluate(table.initializer)
 
-      input_string = constant_op.constant([42, 1, -1000], dtype=dtypes.int32)
+    input_string = constant_op.constant([42, 1, -1000], dtype=dtypes.int32)
 
-      out = table.lookup(input_string)
-      self.assertAllEqual(
-          [
-              1,  # fingerprint("42") mod 5.
-              4,  # fingerprint("1") mod 5.
-              2  # fingerprint("-1000") mod 5
-          ],
-          self.evaluate(out))
-      self.assertEqual(oov_buckets, table.size().eval())
+    out = table.lookup(input_string)
+    self.assertAllEqual(
+        [
+            1,  # fingerprint("42") mod 5.
+            4,  # fingerprint("1") mod 5.
+            2  # fingerprint("-1000") mod 5
+        ],
+        self.evaluate(out))
+    self.assertEqual(oov_buckets, self.evaluate(table.size()))
 
   def testFloat64IdTableWithOnlyHashBucket(self):
-    with self.cached_session():
-      with self.assertRaisesRegex(TypeError, "Invalid key_dtype"):
-        lookup_ops.IdTableWithHashBuckets(
-            None, num_oov_buckets=5, key_dtype=dtypes.float64)
+    with self.assertRaisesRegex(TypeError, "Invalid key_dtype"):
+      lookup_ops.IdTableWithHashBuckets(
+          None, num_oov_buckets=5, key_dtype=dtypes.float64)
 
   def testBoolIdTableWithOnlyHashBucket(self):
-    with self.cached_session():
-      with self.assertRaisesRegex(TypeError, "Invalid key_dtype"):
-        lookup_ops.IdTableWithHashBuckets(
-            None, num_oov_buckets=5, key_dtype=dtypes.bool)
+    with self.assertRaisesRegex(TypeError, "Invalid key_dtype"):
+      lookup_ops.IdTableWithHashBuckets(
+          None, num_oov_buckets=5, key_dtype=dtypes.bool)
 
-  @test_util.run_deprecated_v1
   def testIdTableWithHashBucketsWithMultipleInitializers(self):
     vocab_file = self._createVocabFile("feat_to_id_4.txt")
-    with self.cached_session() as sess:
-      default_value = -1
-      vocab_size = 3
-      oov_buckets = 3
+    default_value = -1
+    vocab_size = 3
+    oov_buckets = 3
 
-      vocab_table = lookup_ops.StaticHashTable(
-          lookup_ops.TextFileIdTableInitializer(
-              vocab_file, vocab_size=vocab_size), default_value)
-      table1 = lookup_ops.IdTableWithHashBuckets(
-          vocab_table,
-          oov_buckets,
-          hasher_spec=lookup_ops.FastHashSpec,
-          name="table1")
+    vocab_table = lookup_ops.StaticHashTable(
+        lookup_ops.TextFileIdTableInitializer(
+            vocab_file, vocab_size=vocab_size), default_value)
+    table1 = lookup_ops.IdTableWithHashBuckets(
+        vocab_table,
+        oov_buckets,
+        hasher_spec=lookup_ops.FastHashSpec,
+        name="table1")
 
-      table2 = lookup_ops.IdTableWithHashBuckets(
-          vocab_table,
-          oov_buckets,
-          hasher_spec=lookup_ops.StrongHashSpec((1, 2)),
-          name="table2")
+    table2 = lookup_ops.IdTableWithHashBuckets(
+        vocab_table,
+        oov_buckets,
+        hasher_spec=lookup_ops.StrongHashSpec((1, 2)),
+        name="table2")
 
-      lookup_ops.tables_initializer().run()
+    self.evaluate(lookup_ops.tables_initializer())
 
-      input_string = constant_op.constant(
-          ["fruit", "brain", "salad", "surgery", "UNK"])
+    input_string = constant_op.constant(
+        ["fruit", "brain", "salad", "surgery", "UNK"])
 
-      out1 = table1.lookup(input_string)
-      out2 = table2.lookup(input_string)
+    out1 = table1.lookup(input_string)
+    out2 = table2.lookup(input_string)
 
-      out1, out2 = self.evaluate([out1, out2])
-      self.assertAllEqual([5, 0, 1, 2, 5], out1)
-      self.assertAllEqual([5, 0, 1, 2, 3], out2)
-      self.assertEqual(vocab_size + oov_buckets, table1.size().eval())
-      self.assertEqual(vocab_size + oov_buckets, table2.size().eval())
+    out1, out2 = self.evaluate([out1, out2])
+    self.assertAllEqual([5, 0, 1, 2, 5], out1)
+    self.assertAllEqual([5, 0, 1, 2, 3], out2)
+    self.assertEqual(vocab_size + oov_buckets, self.evaluate(table1.size()))
+    self.assertEqual(vocab_size + oov_buckets, self.evaluate(table2.size()))
+    if not context.executing_eagerly():
       test_util.assert_ops_in_graph({
           "table1_Lookup/hash_bucket": "StringToHashBucketFast",
           "table2_Lookup/hash_bucket": "StringToHashBucketStrong",
-      }, sess.graph)
+      }, ops.get_default_graph())
 
-  @test_util.run_deprecated_v1
   def testIdTableWithHashBucketsInitializationAcrossSessions(self):
     vocab_file = self._createVocabFile("feat_to_id_5.txt")
     with self.cached_session():
@@ -2606,7 +2677,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
                   vocab_file, vocab_size=vocab_size), default_value),
           oov_buckets)
 
-      table1.initializer.run()
+      self.evaluate(table1.initializer)
 
       input_string_1 = constant_op.constant(
           ["brain", "salad", "surgery", "UNK"])
@@ -2614,7 +2685,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       out1 = table1.lookup(input_string_1)
 
       self.assertAllEqual([0, 1, 2, 3], self.evaluate(out1))
-      self.assertEqual(vocab_size + oov_buckets, table1.size().eval())
+      self.assertEqual(vocab_size + oov_buckets, self.evaluate(table1.size()))
 
     with self.cached_session():
       default_value = -1
@@ -2622,7 +2693,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       oov_buckets = 1
 
       # Underlying lookup table already initialized in previous session.
-      # No need to call table2.initializer.run()
+      # No need to call self.evaluate(table2.initializer)
       table2 = lookup_ops.IdTableWithHashBuckets(
           lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(
@@ -2634,129 +2705,192 @@ class IdTableWithHashBucketsTest(test.TestCase):
       out2 = table2.lookup(input_string_2)
 
       self.assertAllEqual([3, 1, 3], self.evaluate(out2))
-      self.assertEqual(vocab_size + oov_buckets, table2.size().eval())
+      self.assertEqual(vocab_size + oov_buckets, self.evaluate(table2.size()))
 
-  @test_util.run_deprecated_v1
   def testIdTableWithHashBucketsWithMultipleInitializersDifferentDefault(self):
     vocab_file = self._createVocabFile("feat_to_id_6.txt")
-    with self.cached_session() as sess:
-      default_value1 = -1
-      vocab_size = 3
-      oov_buckets = 0
-      table1 = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.StaticHashTable(
-              lookup_ops.TextFileIdTableInitializer(
-                  vocab_file, vocab_size=vocab_size), default_value1),
-          oov_buckets)
+    default_value1 = -1
+    vocab_size = 3
+    oov_buckets = 0
+    table1 = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(
+                vocab_file, vocab_size=vocab_size), default_value1),
+        oov_buckets)
 
-      default_value2 = -2
-      table2 = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.StaticHashTable(
-              lookup_ops.TextFileIdTableInitializer(
-                  vocab_file, vocab_size=vocab_size), default_value2),
-          oov_buckets)
+    default_value2 = -2
+    table2 = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(
+                vocab_file, vocab_size=vocab_size), default_value2),
+        oov_buckets)
 
-      lookup_ops.tables_initializer().run()
+    self.evaluate(lookup_ops.tables_initializer())
 
-      input_string_1 = constant_op.constant(
-          ["brain", "salad", "surgery", "UNK"])
-      input_string_2 = constant_op.constant(["fruit", "salad", "UNK"])
+    input_string_1 = constant_op.constant(
+        ["brain", "salad", "surgery", "UNK"])
+    input_string_2 = constant_op.constant(["fruit", "salad", "UNK"])
 
-      out1 = table1.lookup(input_string_1)
-      out2 = table2.lookup(input_string_2)
+    out1 = table1.lookup(input_string_1)
+    out2 = table2.lookup(input_string_2)
 
-      out1, out2 = self.evaluate([out1, out2])
-      self.assertAllEqual([0, 1, 2, -1], out1)
-      self.assertAllEqual([-2, 1, -2], out2)
-      self.assertEqual(vocab_size + oov_buckets, table1.size().eval())
-      self.assertEqual(vocab_size + oov_buckets, table2.size().eval())
+    out1, out2 = self.evaluate([out1, out2])
+    self.assertAllEqual([0, 1, 2, -1], out1)
+    self.assertAllEqual([-2, 1, -2], out2)
+    self.assertEqual(vocab_size + oov_buckets, self.evaluate(table1.size()))
+    self.assertEqual(vocab_size + oov_buckets, self.evaluate(table2.size()))
 
-  @test_util.run_deprecated_v1
   def testSparseTensor(self):
     vocab_file = self._createVocabFile("feat_to_id_7.txt")
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
-    with self.cached_session() as sess:
-      sp_features = sparse_tensor.SparseTensor(
-          constant_op.constant(input_indices, dtypes.int64),
-          constant_op.constant(["brain", "salad", "brain", "surgery", "tarkus"],
-                               dtypes.string),
-          constant_op.constant(input_shape, dtypes.int64))
+    sp_features = sparse_tensor.SparseTensor(
+        constant_op.constant(input_indices, dtypes.int64),
+        constant_op.constant(["brain", "salad", "brain", "surgery", "tarkus"],
+                             dtypes.string),
+        constant_op.constant(input_shape, dtypes.int64))
 
-      table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.StaticHashTable(
-              lookup_ops.TextFileIdTableInitializer(vocab_file, vocab_size=3),
-              -1), 1)
-      table.initializer.run()
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(vocab_file, vocab_size=3),
+            -1), 1)
+    self.evaluate(table.initializer)
 
-      sp_ids = table.lookup(sp_features)
+    sp_ids = table.lookup(sp_features)
 
-      self.assertAllEqual([5], sp_ids.values._shape_as_list())
+    self.assertAllEqual([5], sp_ids.values._shape_as_list())
 
-      sp_ids_ind, sp_ids_val, sp_ids_shape = sess.run(
-          [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
+    sp_ids_ind, sp_ids_val, sp_ids_shape = self.evaluate(
+        [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
 
-      self.assertAllEqual(input_indices, sp_ids_ind)
-      self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
-      self.assertAllEqual(input_shape, sp_ids_shape)
+    self.assertAllEqual(input_indices, sp_ids_ind)
+    self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
+    self.assertAllEqual(input_shape, sp_ids_shape)
 
-  @test_util.run_deprecated_v1
+  def testRaggedTensor(self):
+    vocab_file = self._createVocabFile("feat_to_id_7.txt")
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant(["brain", "salad", "brain", "surgery", "tarkus"],
+                             dtypes.string),
+        constant_op.constant(input_row_splits, dtypes.int64))
+
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.TextFileIdTableInitializer(vocab_file, vocab_size=3),
+            -1), 1)
+    self.evaluate(table.initializer)
+
+    ragged_ids = table.lookup(ragged_features)
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
+
   def testInt32SparseTensor(self):
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
-    with self.cached_session() as sess:
-      sp_features = sparse_tensor.SparseTensor(
-          constant_op.constant(input_indices, dtypes.int64),
-          constant_op.constant([42, 1, 42, -1000, 11], dtypes.int32),
-          constant_op.constant(input_shape, dtypes.int64))
+    sp_features = sparse_tensor.SparseTensor(
+        constant_op.constant(input_indices, dtypes.int64),
+        constant_op.constant([42, 1, 42, -1000, 11], dtypes.int32),
+        constant_op.constant(input_shape, dtypes.int64))
 
-      table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.StaticHashTable(
-              lookup_ops.KeyValueTensorInitializer(
-                  (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
-          1,
-          key_dtype=dtypes.int32)
-      table.initializer.run()
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.KeyValueTensorInitializer(
+                (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
+        1,
+        key_dtype=dtypes.int32)
+    self.evaluate(table.initializer)
 
-      sp_ids = table.lookup(sp_features)
+    sp_ids = table.lookup(sp_features)
 
-      self.assertAllEqual([5], sp_ids.values._shape_as_list())
+    self.assertAllEqual([5], sp_ids.values._shape_as_list())
 
-      sp_ids_ind, sp_ids_val, sp_ids_shape = sess.run(
-          [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
+    sp_ids_ind, sp_ids_val, sp_ids_shape = self.evaluate(
+        [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
 
-      self.assertAllEqual(input_indices, sp_ids_ind)
-      self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
-      self.assertAllEqual(input_shape, sp_ids_shape)
+    self.assertAllEqual(input_indices, sp_ids_ind)
+    self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
+    self.assertAllEqual(input_shape, sp_ids_shape)
 
-  @test_util.run_deprecated_v1
+  def testInt32RaggedTensor(self):
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant([42, 1, 42, -1000, 11], dtypes.int32),
+        constant_op.constant(input_row_splits, dtypes.int32))
+
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.KeyValueTensorInitializer(
+                (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
+        1,
+        key_dtype=dtypes.int32)
+    self.evaluate(table.initializer)
+
+    ragged_ids = table.lookup(ragged_features)
+
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
+
   def testInt64SparseTensor(self):
     input_indices = [[0, 0], [0, 1], [2, 0], [2, 2], [3, 0]]
     input_shape = [4, 4]
-    with self.cached_session() as sess:
-      sp_features = sparse_tensor.SparseTensor(
-          constant_op.constant(input_indices, dtypes.int64),
-          constant_op.constant([42, 1, 42, -1000, 11], dtypes.int64),
-          constant_op.constant(input_shape, dtypes.int64))
+    sp_features = sparse_tensor.SparseTensor(
+        constant_op.constant(input_indices, dtypes.int64),
+        constant_op.constant([42, 1, 42, -1000, 11], dtypes.int64),
+        constant_op.constant(input_shape, dtypes.int64))
 
-      table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.StaticHashTable(
-              lookup_ops.KeyValueTensorInitializer(
-                  (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
-          1,
-          key_dtype=dtypes.int64)
-      table.initializer.run()
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.KeyValueTensorInitializer(
+                (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
+        1,
+        key_dtype=dtypes.int64)
+    self.evaluate(table.initializer)
 
-      sp_ids = table.lookup(sp_features)
+    sp_ids = table.lookup(sp_features)
 
-      self.assertAllEqual([5], sp_ids.values._shape_as_list())
+    self.assertAllEqual([5], sp_ids.values._shape_as_list())
 
-      sp_ids_ind, sp_ids_val, sp_ids_shape = sess.run(
-          [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
+    sp_ids_ind, sp_ids_val, sp_ids_shape = self.evaluate(
+        [sp_ids.indices, sp_ids.values, sp_ids.dense_shape])
 
-      self.assertAllEqual(input_indices, sp_ids_ind)
-      self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
-      self.assertAllEqual(input_shape, sp_ids_shape)
+    self.assertAllEqual(input_indices, sp_ids_ind)
+    self.assertAllEqual([0, 1, 0, 2, 3], sp_ids_val)
+    self.assertAllEqual(input_shape, sp_ids_shape)
+
+  def testInt64RaggedTensor(self):
+    input_row_splits = [0, 2, 4, 5]
+    ragged_features = ragged_tensor.RaggedTensor.from_row_splits(
+        constant_op.constant([42, 1, 42, -1000, 11], dtypes.int64),
+        constant_op.constant(input_row_splits, dtypes.int64))
+
+    table = lookup_ops.IdTableWithHashBuckets(
+        lookup_ops.StaticHashTable(
+            lookup_ops.KeyValueTensorInitializer(
+                (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
+        1,
+        key_dtype=dtypes.int64)
+    self.evaluate(table.initializer)
+
+    ragged_ids = table.lookup(ragged_features)
+
+    self.assertAllEqual([5], ragged_ids.values._shape_as_list())
+
+    ragged_ids_val, ragged_ids_row_splits = self.evaluate(
+        [ragged_ids.values, ragged_ids.row_splits])
+
+    self.assertAllEqual([0, 1, 0, 2, 3], ragged_ids_val)
+    self.assertAllEqual(input_row_splits, ragged_ids_row_splits)
 
   def testIdTableWithHashBucketsWithInvalidHashers(self):
     vocab_file = self._createVocabFile("feat_to_id_4.txt")

@@ -38,10 +38,12 @@ namespace cl {
 class ConvolutionTransposed3D : public GPUOperation {
  public:
   ConvolutionTransposed3D() = default;
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
-  absl::Status Compile(const CreationContext& creation_context) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
+  absl::Status BindArguments() override;
+  int3 GetGridSize() const override;
 
   // Move only
   ConvolutionTransposed3D(ConvolutionTransposed3D&& operation);
@@ -56,7 +58,7 @@ class ConvolutionTransposed3D : public GPUOperation {
       ConvolutionTransposed3D* result);
   ConvolutionTransposed3D(const OperationDef& definition,
                           const ConvolutionTransposed3DAttributes& attr,
-                          const CLDevice& device);
+                          const DeviceInfo& device_info);
   template <DataType T>
   absl::Status UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
                              CLContext* context);
@@ -65,8 +67,9 @@ class ConvolutionTransposed3D : public GPUOperation {
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
                             absl::Span<T> dst);
 
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
+  std::string GenerateConvolutionTransposed3DCode(const OperationDef& op_def,
+                                                  bool weights_are_buffer,
+                                                  const int4& block_size);
 
   bool weights_are_buffer_;
 
@@ -75,9 +78,6 @@ class ConvolutionTransposed3D : public GPUOperation {
   int3 padding_;
 
   int4 block_size_ = int4(1, 1, 1, 1);  // WHDS
-
-  CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
 };
 
 template <DataType T>

@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
-import collections
 import threading
 import warnings
 
@@ -41,6 +40,7 @@ from tensorflow.python.ops import gen_experimental_dataset_ops
 from tensorflow.python.training.saver import BaseSaverBuilder
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -432,6 +432,15 @@ class Iterator(trackable.Trackable):
         name=name)
     return structure.from_tensor_list(self._element_spec, flat_ret)
 
+  def get_next_as_optional(self):
+    # pylint: disable=protected-access
+    return optional_ops._OptionalImpl(
+        gen_dataset_ops.iterator_get_next_as_optional(
+            self._iterator_resource,
+            output_types=structure.get_flat_tensor_types(self.element_spec),
+            output_shapes=structure.get_flat_tensor_shapes(
+                self.element_spec)), self.element_spec)
+
   def string_handle(self, name=None):
     """Returns a string-valued `tf.Tensor` that represents this iterator.
 
@@ -522,6 +531,8 @@ class IteratorResourceDeleter(object):
   object is part of a reference cycle, the cycle will be collectable.
   """
 
+  __slots__ = ["_deleter", "_handle", "_device", "_eager_mode"]
+
   def __init__(self, handle, device, deleter):
     self._deleter = deleter
     self._handle = handle
@@ -543,7 +554,7 @@ class IteratorResourceDeleter(object):
 
 @tf_export("data.Iterator", v1=[])
 @six.add_metaclass(abc.ABCMeta)
-class IteratorBase(collections.Iterator, trackable.Trackable,
+class IteratorBase(collections_abc.Iterator, trackable.Trackable,
                    composite_tensor.CompositeTensor):
   """Represents an iterator of a `tf.data.Dataset`.
 
@@ -732,8 +743,8 @@ class OwnedIterator(IteratorBase):
   def __iter__(self):
     return self
 
-  def __next__(self):  # For Python 3 compatibility
-    return self.next()
+  def next(self):  # For Python 2 compatibility
+    return self.__next__()
 
   def _next_internal(self):
     if not context.executing_eagerly():
@@ -767,7 +778,7 @@ class OwnedIterator(IteratorBase):
   def _type_spec(self):
     return IteratorSpec(self.element_spec)
 
-  def next(self):
+  def __next__(self):
     try:
       return self._next_internal()
     except errors.OutOfRangeError:

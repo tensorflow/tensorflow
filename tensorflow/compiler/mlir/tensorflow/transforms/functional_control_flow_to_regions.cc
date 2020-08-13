@@ -15,7 +15,7 @@ limitations under the License.
 
 // This transformation pass transforms functional control flow operations in the
 // TensorFlow dialect to their region based counterparts, i.e.,
-// tf.If -> tf.IfRegion
+// tf.If -> tf.IfRegion and tf.While -> tf.WhileRegion
 
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
@@ -31,7 +31,10 @@ limitations under the License.
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+
+#define DEBUG_TYPE "tf-functional-cf-to-region"
 
 namespace mlir {
 namespace TF {
@@ -44,24 +47,36 @@ struct FunctionalControlFlowToRegions
   void runOnOperation() override;
 };
 
-// Create a call to function `fn` with arguments `args` and return the CallOp.
-// The arguments are cast to the required type before the call.
-CallOp CreateCall(Location loc, Operation::operand_range args, FuncOp fn,
-                  OpBuilder* builder) {
-  FunctionType fn_type = fn.getType();
-  llvm::SmallVector<Value, 4> operands;
-  int num_operands = fn_type.getNumInputs();
-  operands.reserve(num_operands);
-  for (const auto& ArgAndType : zip(args, fn_type.getInputs())) {
+// Creates a call to function `func` in region `caller_region`. Use `args` as
+// the call arguments, and terminate the region with a yield. The arguments are
+// cast to the required type before the call. `use_region_args` control whether
+// the input arguments are used as is (for IfOp) or block arguments of the same
+// type as the input arguments are created and then used as call arguments (for
+// While).
+void CreateCall(Operation* op, FuncOp func, Region& caller_region,
+                ValueRange args, bool use_region_args) {
+  assert(caller_region.empty() &&
+         "Expected empty region for newly created ops");
+  OpBuilder builder(caller_region);
+  Block* entry = builder.createBlock(&caller_region);
+
+  if (use_region_args) {
+    entry->addArguments(args.getType());
+    args = entry->getArguments();
+  }
+  llvm::SmallVector<Value, 4> casted_args;
+  casted_args.reserve(func.getNumArguments());
+  for (const auto& ArgAndType : zip(args, func.getType().getInputs())) {
     Value arg = std::get<0>(ArgAndType);
     Type expected_type = std::get<1>(ArgAndType);
     if (arg.getType() != expected_type) {
-      arg = builder->create<CastOp>(loc, expected_type, arg,
-                                    /*Truncate=*/builder->getBoolAttr(false));
+      arg = builder.create<CastOp>(op->getLoc(), expected_type, arg,
+                                   /*Truncate=*/builder.getBoolAttr(false));
     }
-    operands.push_back(arg);
+    casted_args.push_back(arg);
   }
-  return builder->create<CallOp>(loc, fn, operands);
+  auto call = builder.create<CallOp>(op->getLoc(), func, casted_args);
+  builder.create<YieldOp>(op->getLoc(), call.getResults());
 }
 
 // Transform a functional IfOp to a region based IfRegionOp.
@@ -69,23 +84,33 @@ LogicalResult ConvertIfOp(IfOp if_op) {
   auto if_region = OpBuilder(if_op).create<TF::IfRegionOp>(
       if_op.getLoc(), if_op.getResultTypes(), if_op.cond(),
       if_op.is_stateless());
+  CopyUnderscoredAttributes(if_op, if_region);
 
-  // Insert call to the given function into the 'region'.
-  auto create_region_with_call = [&if_op](FlatSymbolRefAttr symbol,
-                                          Region& region) {
-    OpBuilder builder(region);
-    builder.createBlock(&region);
-    auto func = if_op.getParentOfType<ModuleOp>().lookupSymbol<FuncOp>(
-        symbol.getValue());
-    auto call = CreateCall(if_op.getLoc(), if_op.input(), func, &builder);
-    builder.create<YieldOp>(if_op.getLoc(), call.getResults());
-  };
-
-  create_region_with_call(if_op.then_branchAttr(), if_region.then_branch());
-  create_region_with_call(if_op.else_branchAttr(), if_region.else_branch());
-
+  CreateCall(if_op, if_op.then_func(),
+             /*caller_region=*/if_region.then_branch(), if_op.input(),
+             /*use_region_args=*/false);
+  CreateCall(if_op, if_op.else_func(),
+             /*caller_region=*/if_region.else_branch(), if_op.input(),
+             /*use_region_args=*/false);
   if_op.replaceAllUsesWith(if_region.getResults());
   if_op.erase();
+  return success();
+}
+
+LogicalResult ConvertWhileOp(WhileOp while_op) {
+  auto while_region = OpBuilder(while_op).create<TF::WhileRegionOp>(
+      while_op.getLoc(), while_op.getResultTypes(), while_op.input(),
+      while_op.is_stateless(), while_op.parallel_iterations());
+  CopyUnderscoredAttributes(while_op, while_region);
+
+  CreateCall(while_op, while_op.cond_func(),
+             /*caller_region=*/while_region.cond(), while_op.input(),
+             /*use_region_args=*/true);
+  CreateCall(while_op, while_op.body_func(),
+             /*caller_region=*/while_region.body(), while_op.input(),
+             /*use_region_args=*/true);
+  while_op.replaceAllUsesWith(while_region.getResults());
+  while_op.erase();
   return success();
 }
 
@@ -94,7 +119,12 @@ void FunctionalControlFlowToRegions::runOnOperation() {
   auto result = module.walk([](Operation* op) {
     if (IfOp if_op = llvm::dyn_cast<IfOp>(op)) {
       if (failed(ConvertIfOp(if_op))) {
-        if_op.emitOpError() << " failed to convert to region form";
+        op->emitOpError() << "failed to convert to region form";
+        return WalkResult::interrupt();
+      }
+    } else if (auto while_op = llvm::dyn_cast<WhileOp>(op)) {
+      if (failed(ConvertWhileOp(while_op))) {
+        op->emitOpError() << "failed to convert to region form";
         return WalkResult::interrupt();
       }
     }

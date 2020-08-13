@@ -124,11 +124,11 @@ class MlirHloBuilder : public XlaBuilder {
                               FftType fft_type,
                               absl::Span<const int64> fft_length) override;
 
-  StatusOr<XlaOp> CustomCallInternal(const string& call_target_name,
-                                     absl::Span<const XlaOp> operands,
-                                     const Shape& shape, const string& opaque,
-                                     absl::optional<absl::Span<const Shape>>
-                                         operand_shapes_with_layout) override;
+  StatusOr<XlaOp> CustomCallInternal(
+      const string& call_target_name, absl::Span<const XlaOp> operands,
+      const Shape& shape, const string& opaque,
+      absl::optional<absl::Span<const Shape>> operand_shapes_with_layout,
+      bool has_side_effect) override;
 
   StatusOr<XlaOp> ReduceInternal(
       const Shape& shape, absl::Span<const XlaOp> all_operands,
@@ -142,12 +142,25 @@ class MlirHloBuilder : public XlaBuilder {
 
   XlaOp Iota(const Shape& shape, int64 iota_dimension) override;
 
+  StatusOr<XlaOp> BitcastConvertTypeInternal(const Shape& shape,
+                                             XlaOp operand) override;
+
   StatusOr<XlaOp> TransposeInternal(
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> permutation) override;
 
   StatusOr<XlaOp> RevInternal(const Shape& shape, XlaOp operand,
                               absl::Span<const int64> dimensions) override;
+
+  StatusOr<XlaOp> SortInternal(const Shape& shape,
+                               absl::Span<const XlaOp> operands,
+                               const XlaComputation& comparator,
+                               int64 dimension, bool is_stable) override;
+
+  StatusOr<XlaOp> WhileInternal(const Shape& shape,
+                                const XlaComputation& condition,
+                                const XlaComputation& body,
+                                XlaOp init) override;
 
   StatusOr<XlaOp> GatherInternal(
       const Shape& shape, XlaOp input, XlaOp start_indices,

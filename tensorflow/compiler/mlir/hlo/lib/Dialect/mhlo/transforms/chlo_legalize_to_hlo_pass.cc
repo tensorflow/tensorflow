@@ -13,15 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/Shape/IR/Shape.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
-namespace xla_chlo {
+namespace mhlo {
 
 namespace {
 
@@ -31,14 +33,15 @@ struct TestChloLegalizeToHloPass
     ConversionTarget conversionTarget(getContext());
     OwningRewritePatternList conversionPatterns;
 
-    conversionTarget.addIllegalDialect<XlaHloClientDialect>();
+    conversionTarget.addIllegalDialect<chlo::HloClientDialect>();
     // Consider the mhlo dialect legal for tests.
-    conversionTarget.addLegalDialect<mhlo::XlaHloDialect>();
+    conversionTarget.addLegalDialect<mhlo::MhloDialect>();
     // The conversion uses helpers from the Standard dialect.
     conversionTarget.addLegalDialect<mlir::StandardOpsDialect>();
     conversionTarget.addLegalDialect<mlir::shape::ShapeDialect>();
+    conversionTarget.addLegalDialect<mlir::scf::SCFDialect>();
 
-    PopulateLegalizeChloToHloPatterns(&getContext(), &conversionPatterns);
+    chlo::PopulateLegalizeChloToHloPatterns(&getContext(), &conversionPatterns);
 
     if (failed(applyPartialConversion(getFunction(), conversionTarget,
                                       conversionPatterns))) {
@@ -49,9 +52,10 @@ struct TestChloLegalizeToHloPass
 
 }  // namespace
 
-}  // namespace xla_chlo
+std::unique_ptr<FunctionPass> createTestChloLegalizeToHloPass() {
+  return std::make_unique<TestChloLegalizeToHloPass>();
+}
+
+}  // namespace mhlo
 }  // namespace mlir
 
-static mlir::PassRegistration<mlir::xla_chlo::TestChloLegalizeToHloPass> pass(
-    "test-xla-chlo-legalize-to-hlo",
-    "Test pass for applying chlo -> hlo legalization patterns");

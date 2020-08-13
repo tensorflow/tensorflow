@@ -194,6 +194,7 @@ class HloParserImpl : public HloParser {
     kBracedHloComputationList,
     kFftType,
     kComparisonDirection,
+    kComparisonType,
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
@@ -327,6 +328,7 @@ class HloParserImpl : public HloParser {
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
+  bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParseRandomAlgorithm(RandomAlgorithm* result);
@@ -547,10 +549,11 @@ bool HloParserImpl::ParseAliasing(AliasingData* data) {
     }
     std::string errmsg =
         "Expected format: <output_shape_index>: (<input_param>, "
-        "<input_param_shape_index>)";
+        "<input_param_shape_index>) OR <output_shape_index>: <input_param>";
     if (!ParseToken(TokKind::kColon, errmsg)) {
       return false;
     }
+
     if (!ParseToken(TokKind::kLparen, errmsg)) {
       return false;
     }
@@ -563,21 +566,23 @@ bool HloParserImpl::ParseAliasing(AliasingData* data) {
     if (!ParseShapeIndex(&param_idx)) {
       return false;
     }
+
     HloInputOutputAliasConfig::AliasKind alias_kind =
-        HloInputOutputAliasConfig::kUserAlias;
+        HloInputOutputAliasConfig::kMayAlias;
     if (EatIfPresent(TokKind::kComma)) {
       std::string type;
       ParseName(&type);
-      if (type == "SYSTEM") {
-        alias_kind = HloInputOutputAliasConfig::kSystemAlias;
-      } else if (type == "USER") {
-        alias_kind = HloInputOutputAliasConfig::kUserAlias;
+      if (type == "must-alias") {
+        alias_kind = HloInputOutputAliasConfig::kMustAlias;
+      } else if (type == "may-alias") {
+        alias_kind = HloInputOutputAliasConfig::kMayAlias;
       } else {
         return TokenError("Unexpected aliasing kind; expected SYSTEM or USER");
       }
     }
+
     data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
-                  std::forward_as_tuple(alias_kind, param_num, param_idx));
+                  std::forward_as_tuple(param_num, param_idx, alias_kind));
     if (!ParseToken(TokKind::kRparen, errmsg)) {
       return false;
     }
@@ -1359,14 +1364,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kCompare: {
       optional<ComparisonDirection> direction;
+      optional<Comparison::Type> type;
       attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
                             &direction};
+      attrs["type"] = {/*required=*/false, AttrTy::kComparisonType, &type};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateCompare(
-          shape, operands[0], operands[1], *direction));
+          shape, operands[0], operands[1], *direction, type));
       break;
     }
     case HloOpcode::kCholesky: {
@@ -2133,6 +2140,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
   LocTy loc = lexer_.GetLoc();
   bool maximal = false;
   bool replicated = false;
+  bool last_tile_dim_replicate = false;
   std::vector<int64> devices;
   std::vector<int64> tile_assignment_dimensions;
   while (lexer_.GetKind() != TokKind::kRbrace) {
@@ -2184,6 +2192,10 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
         }
         break;
       }
+      case TokKind::kw_last_tile_dim_replicate:
+        last_tile_dim_replicate = true;
+        lexer_.Lex();
+        break;
       case TokKind::kRbrace:
         break;
       default:
@@ -2222,6 +2234,7 @@ bool HloParserImpl::ParseSingleSharding(OpSharding* sharding,
     for (int64 device : devices) {
       sharding->add_tile_assignment_devices(device);
     }
+    sharding->set_replicate_on_last_tile_dim(last_tile_dim_replicate);
   }
 
   lexer_.Lex();
@@ -2678,7 +2691,9 @@ struct MinMaxFiniteValue<Eigen::half> {
 
 template <>
 struct MinMaxFiniteValue<bfloat16> {
-  static double max() { return static_cast<double>(bfloat16::highest()); }
+  static double max() {
+    return static_cast<double>(Eigen::NumTraits<Eigen::bfloat16>::highest());
+  }
   static double min() { return -max(); }
 };
 
@@ -3005,6 +3020,14 @@ bool HloParserImpl::ParseAttributeHelper(
         }
         static_cast<optional<ComparisonDirection>*>(attr_out_ptr)
             ->emplace(result);
+        return true;
+      }
+      case AttrTy::kComparisonType: {
+        Comparison::Type result;
+        if (!ParseComparisonType(&result)) {
+          return false;
+        }
+        static_cast<optional<Comparison::Type>*>(attr_out_ptr)->emplace(result);
         return true;
       }
       case AttrTy::kEnum: {
@@ -3601,7 +3624,7 @@ bool HloParserImpl::ParseHloComputationList(
     if (!ParseHloComputation(&computation)) {
       return false;
     }
-    LOG(INFO) << "parsed computation " << computation->name();
+    VLOG(3) << "parsed computation " << computation->name();
     result->push_back(computation);
     return true;
   };
@@ -4119,7 +4142,7 @@ bool HloParserImpl::ParseFftType(FftType* result) {
 }
 
 bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
-  VLOG(1) << "ParseComparisonDirection";
+  VLOG(3) << "ParseComparisonDirection";
   if (lexer_.GetKind() != TokKind::kIdent) {
     return TokenError("expects comparison direction");
   }
@@ -4128,6 +4151,21 @@ bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects comparison direction but sees: %s", val));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseComparisonType(Comparison::Type* result) {
+  VLOG(1) << "ParseComparisonType";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects comparison type");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToComparisonType(val);
+  if (!status_or_result.ok()) {
+    return TokenError(StrFormat("expects comparison type but sees: %s", val));
   }
   *result = status_or_result.ValueOrDie();
   lexer_.Lex();

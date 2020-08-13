@@ -15,9 +15,11 @@ limitations under the License.
 
 // This transformation pass transforms region bases control flow operations in
 // the TensorFlow dialect to their functional counterparts, i.e.,
-// tf.IfRegion ->  tf.If
+// tf.IfRegion ->  tf.If and tf.WhileRegion -> tf.While
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -34,7 +36,10 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/attribute_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+
+#define DEBUG_TYPE "tf-region-cf-to-functional"
 
 namespace mlir {
 namespace TF {
@@ -48,6 +53,7 @@ struct RegionControlFlowToFunctional
 
  private:
   LogicalResult ConvertIfOp(IfRegionOp if_region);
+  LogicalResult ConvertWhileOp(WhileRegionOp while_region);
 
   // Get unique name by using the loc to name mapping.
   std::string GetName(Operation* op, StringRef suffix);
@@ -61,20 +67,20 @@ std::string RegionControlFlowToFunctional::GetName(Operation* op,
   return (mapper.GetUniqueName(op) + suffix).str();
 }
 
-// Returns all the external values referenced from the given set of regions. If
-// the external value is a constant, sink it into the region instead (and do not
+// Returns all the external values referenced from the given regions. If the
+// external value is a constant, sink it into the region instead (and do not
 // add it to the returned vector).
-llvm::SmallVector<Value, 4> CollectExternValues(ArrayRef<Region*> regions) {
-  llvm::SetVector<Value> extern_values_set;
+llvm::SmallVector<Value, 4> CollectExternValues(Region& first, Region& second) {
+  llvm::SetVector<Value> extern_values;
 
-  for (auto region : regions) {
+  for (Region* region : {&first, &second}) {
     llvm::SetVector<Value> region_extern_values;
     getUsedValuesDefinedAbove(*region, region_extern_values);
 
     // Sink down constants into the functions.
     for (auto extern_value : region_extern_values) {
       if (!matchPattern(extern_value, m_Constant())) {
-        extern_values_set.insert(extern_value);
+        extern_values.insert(extern_value);
         continue;
       }
       // Add constant at start of region.
@@ -85,28 +91,43 @@ llvm::SmallVector<Value, 4> CollectExternValues(ArrayRef<Region*> regions) {
     }
   }
 
-  return {extern_values_set.begin(), extern_values_set.end()};
+  return llvm::to_vector<4>(extern_values);
 }
 
 // Extracts the contents of a region with a single block into a new function.
 // `extern_values` is the set of external values that the region refers to.
 //
-// Any inputs to the terminator of the region are converted to return values of
-// the function. If any of these values is not exact type as the function's
-// return type, appropriate cast operations will be inserted
-void ExtractSingleBlockRegion(Region& region, FunctionType type, StringRef name,
+// Inputs to the terminator of the region are converted to return values of
+// the function. If `extern_values_passthrough` is true, all the extern values
+// are also added as return values from the function
+void ExtractSingleBlockRegion(Region& region, StringRef name,
                               llvm::SmallVectorImpl<Value>& extern_values,
-                              llvm::SmallVectorImpl<FuncOp>& worklist) {
+                              llvm::SmallVectorImpl<FuncOp>& worklist,
+                              bool extern_values_passthrough) {
   ModuleOp module = region.getParentOfType<ModuleOp>();
   auto builder = OpBuilder::atBlockBegin(module.getBody());
   auto loc = region.getParentOp()->getLoc();
+  Block& entry = region.front();
+  int num_region_arguments = entry.getNumArguments();
+  Operation* terminator = entry.getTerminator();
+
+  // Build the function type. Region arguments and extern values together
+  // become the function arguments, with region arguments going first.
+  auto input_types = llvm::to_vector<4>(entry.getArgumentTypes());
+  for (auto input : extern_values) input_types.push_back(input.getType());
+
+  // Terminator operands and pass through extern values (if enabled) together
+  // become the function return values.
+  auto return_types = llvm::to_vector<4>(terminator->getOperandTypes());
+  if (extern_values_passthrough)
+    for (auto input : extern_values) return_types.push_back(input.getType());
+
+  auto type = FunctionType::get(input_types, return_types, region.getContext());
 
   // Create new function and extract region body into the function.
-  auto outlined_func =
-      builder.create<FuncOp>(loc, name, type, ArrayRef<NamedAttribute>{});
-
-  outlined_func.getBody().takeBody(region);
+  auto outlined_func = builder.create<FuncOp>(loc, name, type);
   Region& func_region = outlined_func.getBody();
+  func_region.takeBody(region);
   Block& first_block = func_region.front();
 
   // Replace all external uses with function arguments.
@@ -115,27 +136,24 @@ void ExtractSingleBlockRegion(Region& region, FunctionType type, StringRef name,
     replaceAllUsesInRegionWith(it.value(), arg, func_region);
   }
 
-  // Replace the existing terminator with a return.
-  Operation* terminator = outlined_func.getBody().front().getTerminator();
-  builder.setInsertionPoint(terminator);
+  // Function return values are all the terminator operands + pass through
+  // extern values (if enabled).
+  auto return_values = llvm::to_vector<4>(terminator->getOperands());
+  if (extern_values_passthrough)
+    return_values.insert(return_values.end(),
+                         first_block.args_begin() + num_region_arguments,
+                         first_block.args_end());
 
-  SmallVector<Value, 4> return_values;
-  return_values.reserve(terminator->getNumOperands());
-  for (auto it : llvm::enumerate(type.getResults())) {
-    Value ret_val = terminator->getOperand(it.index());
-    // Add a cast operation if types do not match.
-    if (ret_val.getType() != it.value()) {
-      ret_val =
-          builder.create<CastOp>(terminator->getLoc(), it.value(), ret_val);
-    }
-    return_values.push_back(ret_val);
-  }
+  // Replace the existing terminator with a return.
+  terminator = first_block.getTerminator();
+  builder.setInsertionPoint(terminator);
   builder.create<ReturnOp>(terminator->getLoc(), return_values);
   terminator->erase();
+
   outlined_func.setVisibility(FuncOp::Visibility::Private);
 
   // Add the outlined function to the worklist in case its body has
-  // IfRegion ops that need to converted.
+  // IfRegion or WhileRegion ops that need to converted.
   worklist.push_back(outlined_func);
 }
 
@@ -170,17 +188,29 @@ llvm::Optional<CallOp> IsSingleCallRegion(Region& region) {
   return call;
 }
 
-// Returns whether the arguments of the given call are same as the given list of
-// arguments (after looking through cast ops).
-bool MatchCallArgs(CallOp call, llvm::SmallVectorImpl<Value>& args) {
-  if (call.getNumOperands() != args.size()) return false;
+using MatcherFn = function_ref<bool(Value, Region&, Value, Region&)>;
 
-  for (auto it : llvm::enumerate(args)) {
-    Value arg = call.getOperand(it.index());
-    if (auto cast = dyn_cast_or_null<CastOp>(arg.getDefiningOp()))
-      arg = cast.getOperand();
+// Returns whether the arguments of the given 2 calls are match (after looking
+// through cast ops). `matcher` is the predicate used to check if two arguments
+// match.
+bool MatchCallArgs(CallOp first, CallOp second, MatcherFn matcher) {
+  if (first.getNumOperands() != second.getNumOperands()) return false;
 
-    if (arg != it.value()) return false;
+  Region& first_region = *first.getParentRegion();
+  Region& second_region = *second.getParentRegion();
+
+  for (auto it : llvm::zip(first.getArgOperands(), second.getArgOperands())) {
+    // Get the defining Op, skipping over casts.
+    auto get_defining_op = [](Value value) {
+      while (llvm::isa_and_nonnull<CastOp>(value.getDefiningOp()))
+        value = cast<CastOp>(value.getDefiningOp()).getOperand();
+      return value;
+    };
+    Value first_arg = get_defining_op(std::get<0>(it));
+    Value second_arg = get_defining_op(std::get<1>(it));
+
+    if (!matcher(first_arg, first_region, second_arg, second_region))
+      return false;
   }
   return true;
 }
@@ -193,11 +223,10 @@ struct TrivialTransformInfo {
   bool can_transform = false;
 
   // List of callee names (one for each region).
-  llvm::SmallVector<StringRef, 4> callee_names;
+  llvm::SmallVector<StringRef, 2> callee_names;
 
-  // List of arguments used in these call (each call uses the same arguments
-  // potentially through casts).
-  llvm::SmallVector<Value, 4> call_args;
+  // Constructor will analyze the 2 regions.
+  TrivialTransformInfo(Region& first, Region& second, MatcherFn matcher);
 };
 
 // Analyzes the given set of regions (attached to the same parent op) to check
@@ -206,88 +235,62 @@ struct TrivialTransformInfo {
 // regions are single call regions and the all the calls have the same
 // arguments.
 //
-// If this trivial transformation is possible, return the relevant information
-// needed for the transformation (in `TrivialTransformInfo`), else indicate that
-// a trivial transformation is not possible by setting `can_transform` false.
-TrivialTransformInfo AnalyzeForTrivialTransform(ArrayRef<Region*> regions) {
-  const TrivialTransformInfo cannot_transform;
+// If such a trivial transformation is possible, stash the relevant information
+// needed for the transformation, else indicate that a trivial transformation is
+// not possible by setting `can_transform` to false.
+TrivialTransformInfo::TrivialTransformInfo(Region& first, Region& second,
+                                           MatcherFn matcher) {
+  auto call0 = IsSingleCallRegion(first);
+  auto call1 = IsSingleCallRegion(second);
+  if (!call0 || !call1) return;
 
-  if (regions.empty()) return cannot_transform;
+  if (!MatchCallArgs(call0.getValue(), call1.getValue(), matcher)) return;
 
-  llvm::SmallVector<CallOp, 2> calls;
-  calls.reserve(regions.size());
-
-  // Verify each region is a single call and collect these calls.
-  for (Region* region : regions) {
-    auto call = IsSingleCallRegion(*region);
-    if (!call.hasValue()) return cannot_transform;
-    calls.push_back(call.getValue());
-  }
-
-  llvm::SmallVector<StringRef, 4> callees;
-  callees.reserve(regions.size());
-
-  CallOp call0 = calls[0];
-  int num_args = call0.getNumOperands();
-
-  // Collect arguments of the first call.
-  llvm::SmallVector<Value, 4> call0_args;
-  call0_args.reserve(num_args);
-  for (Value arg : call0.getArgOperands()) {
-    if (auto cast = dyn_cast_or_null<CastOp>(arg.getDefiningOp()))
-      arg = cast.getOperand();
-    call0_args.push_back(arg);
-  }
-
-  // Match arguments of rest of the calls with those of the first call.
-  for (auto call : calls) {
-    if (call != call0 && !MatchCallArgs(call, call0_args))
-      return cannot_transform;
-    callees.push_back(call.getCallee());
-  }
-
-  return {true, callees, call0_args};
+  can_transform = true;
+  callee_names = {call0.getValue().getCallee(), call1.getValue().getCallee()};
 }
 
 // Transform IfRegionOp to IfOp.
 LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
-  const TrivialTransformInfo tti = AnalyzeForTrivialTransform(
-      {&if_region.then_branch(), &if_region.else_branch()});
+  llvm::SmallVector<Value, 4> extern_values;
+
+  // For IfOp, arguments of calls in the then and else regions match if they
+  // are the same value.
+  auto if_matcher = [&](Value first, Region&, Value second, Region&) {
+    if (first != second) return false;
+
+    // collect the call arguments post lookup through cast Op's
+    extern_values.push_back(first);
+    return true;
+  };
+
+  const TrivialTransformInfo tti(if_region.then_branch(),
+                                 if_region.else_branch(), if_matcher);
 
   std::string then_name, else_name;
-  llvm::SmallVector<Value, 4> extern_values;
 
   if (tti.can_transform) {
     // We can transform to functional form trivially without outlining.
     then_name = tti.callee_names[0].str();
     else_name = tti.callee_names[1].str();
-    extern_values = tti.call_args;
   } else {
     // Collect external values that are used within the else and then bodies.
-    extern_values = CollectExternValues(
-        {&if_region.then_branch(), &if_region.else_branch()});
+    extern_values =
+        CollectExternValues(if_region.then_branch(), if_region.else_branch());
 
     // These external values need to be added as inputs to the generated If. The
     // order is determined by the order of these values the `extern_vales`.
-
-    // Build the type for the outlined function.
-    llvm::SmallVector<Type, 4> input_types;
-    input_types.reserve(extern_values.size());
-    for (auto input : extern_values) input_types.push_back(input.getType());
-
-    FunctionType func_type = FunctionType::get(
-        input_types, if_region.getResultTypes(), if_region.getContext());
 
     // Create 2 new functions with the input signature matching this order,
     // and outline the `then` and `else` regions by moving the bodies of these
     // regions into these functions. Replace tf.yield with a regular return.
     then_name = GetName(if_region, "_then");
-    ExtractSingleBlockRegion(if_region.then_branch(), func_type, then_name,
-                             extern_values, worklist);
+    ExtractSingleBlockRegion(if_region.then_branch(), then_name, extern_values,
+                             worklist, /*extern_values_passthrough=*/false);
 
     else_name = GetName(if_region, "_else");
-    ExtractSingleBlockRegion(if_region.else_branch(), func_type, else_name,
-                             extern_values, worklist);
+    ExtractSingleBlockRegion(if_region.else_branch(), else_name, extern_values,
+                             worklist, /*extern_values_passthrough=*/false);
   }
 
   // Once we have the `then` and `else` functions ready (either outlined or
@@ -297,8 +300,91 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
   auto if_op = builder.create<IfOp>(
       if_region.getLoc(), if_region.getResultTypes(), if_region.cond(),
       extern_values, then_name, else_name, if_region.is_stateless());
+  CopyUnderscoredAttributes(if_region, if_op);
   if_region.replaceAllUsesWith(if_op.getResults());
   if_region.erase();
+  return success();
+}
+
+// Transform WhileRegion to WhileOp.
+LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
+    WhileRegionOp while_region) {
+  // For While, the arguments of the calls in the body and cond regions match
+  // if they are region arguments with the same region argument numbers. If the
+  // 2 calls have the same value (an extern value) used an an argument, we
+  // cannot do a trivial transformation because post transform, we will need to
+  // pass this extern value as an argument to the function, so we cannot use the
+  // existing function as is.
+  auto while_matcher = [](Value first, Region& first_region, Value second,
+                          Region& second_region) {
+    if (!first.isa<BlockArgument>() || !second.isa<BlockArgument>())
+      return false;
+    BlockArgument first_block_arg = first.cast<BlockArgument>();
+    BlockArgument second_block_arg = second.cast<BlockArgument>();
+
+    // 2 block arguments will match if they are the same argument number, and
+    // are block arguments of the corresponding containing regions.
+    return first_block_arg.getArgNumber() == second_block_arg.getArgNumber() &&
+           first_block_arg.getParentBlock() == &first_region.front() &&
+           second_block_arg.getParentBlock() == &second_region.front();
+  };
+
+  const TrivialTransformInfo tti(while_region.cond(), while_region.body(),
+                                 while_matcher);
+
+  // All existing inputs to while region are inputs to the functional while.
+  auto new_inputs = llvm::to_vector<4>(while_region.getOperands());
+
+  // All existing results will also be generated by the functional while.
+  auto new_result_types = llvm::to_vector<4>(while_region.getResultTypes());
+
+  std::string cond_name, body_name;
+  if (tti.can_transform) {
+    // We can transform to functional form trivially without outlining.
+    cond_name = tti.callee_names[0].str();
+    body_name = tti.callee_names[1].str();
+  } else {
+    // The WhileRegion regions can refer to either arguments of the region, or
+    // external values implicitly captured by the region. When converting to
+    // functional form, all such external values need to become function
+    // arguments of the outlined functions, and become pass through values in
+    // the outlined body function. So when outlining the while body, in addition
+    // to the region arguments, all these external references need to be added
+    // as function arguments.
+    llvm::SmallVector<Value, 4> extern_values =
+        CollectExternValues(while_region.cond(), while_region.body());
+
+    // Outline the `cond` and `body` regions by moving the bodies of these
+    // regions into new functions. Replace tf.yield with a regular return.
+    cond_name = GetName(while_region, "_cond");
+    ExtractSingleBlockRegion(while_region.cond(), cond_name, extern_values,
+                             worklist, /*extern_values_passthrough=*/false);
+
+    body_name = GetName(while_region, "_body");
+    ExtractSingleBlockRegion(while_region.body(), body_name, extern_values,
+                             worklist, /*extern_values_passthrough=*/true);
+
+    // All extern values become additional inputs and additional output types
+    // for the functional while.
+    new_inputs.append(extern_values.begin(), extern_values.end());
+    for (auto ext : extern_values) new_result_types.push_back(ext.getType());
+  }
+
+  // Once we have the `cond` and `body` functions ready (either outlined or
+  // existing ones), replace the region based op with a functional op.
+  OpBuilder builder(while_region);
+  auto while_op = builder.create<WhileOp>(
+      while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
+      while_region.parallel_iterations(), while_region.is_stateless());
+  CopyUnderscoredAttributes(while_region, while_op);
+
+  // Redirect old results to new results.
+  for (auto it : llvm::zip(
+           while_region.getResults(),
+           while_op.getResults().take_front(while_region.getNumResults())))
+    std::get<0>(it).replaceAllUsesWith(std::get<1>(it));
+
+  while_region.erase();
   return success();
 }
 
@@ -307,14 +393,18 @@ void RegionControlFlowToFunctional::runOnOperation() {
 
   // Seed worklist with all functions in the module.
   worklist = llvm::to_vector<4>(module.getOps<FuncOp>());
-
   while (!worklist.empty()) {
     FuncOp function = worklist.pop_back_val();
 
     auto result = function.walk([&](Operation* op) {
-      if (IfRegionOp if_region = llvm::dyn_cast<IfRegionOp>(op)) {
+      if (auto if_region = llvm::dyn_cast<IfRegionOp>(op)) {
         if (failed(ConvertIfOp(if_region))) {
-          if_region.emitOpError() << " failed to convert to functional form";
+          op->emitOpError() << "failed to convert to functional form";
+          return WalkResult::interrupt();
+        }
+      } else if (auto while_region = llvm::dyn_cast<WhileRegionOp>(op)) {
+        if (failed(ConvertWhileOp(while_region))) {
+          op->emitOpError() << "failed to convert to functional form";
           return WalkResult::interrupt();
         }
       }

@@ -62,7 +62,7 @@ class IsBinaryOpSupportedTest : public testing::Test {
     }
   }
 
-  TfLiteContext context_;
+  TfLiteContext context_ = {};
   TfLiteNode node_;
   std::vector<TfLiteTensor> tensors_;
 };

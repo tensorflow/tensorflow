@@ -100,19 +100,16 @@ class _VirtualDeviceTestCase(test.TestCase):
         context.LogicalDeviceConfiguration()
     ])
 
-    # TODO(allenl): Make CPU:0 and CPU:1 work (right now "CPU:1" soft-places
-    # onto CPU:0, which seems wrong).
-    components = [
-        "/job:localhost/replica:0/task:0/device:CPU:0",
-        "/job:localhost/replica:0/task:0/device:CPU:1"
-    ]
-    self.device = parallel_device.ParallelDevice(components)
+    self.device = parallel_device.ParallelDevice(
+        components=["/job:localhost/device:CPU:0", "CPU:1"])
+    self.assertIn("CPU:0", self.device.components[0])
+    self.assertIn("CPU:1", self.device.components[1])
 
 
 class ParallelDeviceTests(_VirtualDeviceTestCase):
 
   def test_register_parallel_device(self):
-    with ops.device(self.device.name):
+    with self.device:
       c = constant_op.constant(1.)
       d = constant_op.constant(2.)
       e = c + d
@@ -129,7 +126,7 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], device_ids[1].backing_device)
 
   def test_collective_reduce(self):
-    with ops.device(self.device.name):
+    with self.device:
       x = self.device.pack(
           [constant_op.constant(-1.5),
            constant_op.constant(3.5)])
@@ -142,7 +139,7 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
   def test_collective_reduce_async_scope(self):
     # Note that ops on the parallel device currently don't execute
     # asynchronously. The test is just that we don't get deadlocks.
-    with context.async_scope(), ops.device(self.device.name):
+    with context.async_scope(), self.device:
       x = self.device.pack(
           [constant_op.constant(-1.5),
            constant_op.constant(3.5)])
@@ -160,7 +157,7 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       self.setUp()
       # Note that ops on the parallel device currently don't execute
       # asynchronously. The test is just that we don't get deadlocks.
-      with ops.device(self.device.name):
+      with self.device:
         x = self.device.pack(
             [constant_op.constant(-1.5),
              constant_op.constant(3.5)])
@@ -195,31 +192,38 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       return control_flow_ops.switch_case(
           device_id, branch_fns={0: send, 1: recv})
 
-    with ops.device(self.device.name):
+    with self.device:
       result = broadcast_send_recv(self.device.device_ids)
     self.assertAllClose([[2], [6]], self.device.unpack(result))
 
+  def test_use_in_graph_error_is_informative(self):
+    @def_function.function
+    def uses_parallel():
+      with self.device:
+        return self.device.unpack(array_ops.ones([]))
+
+    with self.assertRaisesRegex(NotImplementedError, "inside `tf.function`"):
+      uses_parallel()
+
   def test_checkpointing(self):
-    self.skipTest(
-        "Disable saving until SaveableObject's methods are traceable.")
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
-    with self.device.scope():
+    with self.device:
       different_values = self.device.pack(
           [constant_op.constant(-1.),
            constant_op.constant(3.)])
       v = variables.Variable(different_values)
       checkpoint = tracking.Checkpoint(v=v)
     save_path = checkpoint.save(prefix)
-    with ops.device(self.device.name):
+    with self.device:
       v.assign(constant_op.constant(0.))
     checkpoint.restore(save_path).assert_consumed()
-    with ops.device(self.device.name):
+    with self.device:
       outputs = self.device.unpack(v)
     self.assertAllClose([-1., 3.], outputs)
 
   def _assert_close_to_non_parallel(self, computation):
     """Asserts that replication of `computation` works and is equivalent."""
-    with ops.device(self.device.name):
+    with self.device:
       parallel_result = computation()
     non_parallel_result = computation()
     # The computations should have the same number and structure of Tensor
@@ -230,8 +234,8 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     parallel_flat = nest.flatten(parallel_result)
     self.assertGreater(len(parallel_flat), 0)
     for non_parallel, parallel in zip(non_parallel_flat, parallel_flat):
-      self.assertEqual(self.device.name, parallel.device)
-      self.assertNotEqual(self.device.name, non_parallel.device)
+      self.assertEqual(self.device._name, parallel.device)
+      self.assertNotEqual(self.device._name, non_parallel.device)
       for parallel_component in self.device.unpack(parallel):
         self.assertAllClose(non_parallel, parallel_component)
 
@@ -257,7 +261,7 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
 class LayerTests(_VirtualDeviceTestCase):
 
   def test_layer_forward(self):
-    with ops.device(self.device.name):
+    with self.device:
       layer = _Dense(5)
       x = constant_op.constant([[2.]])
       y = layer(x)
@@ -268,7 +272,7 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
     # With different Layer inputs we get different outputs
-    with ops.device(self.device.name):
+    with self.device:
       x = self.device.pack(
           [constant_op.constant([[-0.5]]),
            constant_op.constant([[0.5]])])
@@ -280,7 +284,7 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], outputs[1].backing_device)
 
   def test_layer_sync_training(self):
-    with ops.device(self.device.name):
+    with self.device:
       layer = _Dense(5)
 
       with backprop.GradientTape() as tape:
@@ -305,7 +309,7 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], final_kernels[1].backing_device)
 
   def test_layer_divergent_buffer_training(self):
-    with ops.device(self.device.name):
+    with self.device:
       layer = _Dense(5)
 
       with backprop.GradientTape() as tape:
@@ -329,8 +333,6 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], final_kernels[1].backing_device)
 
   def test_training_loop(self):
-    self.skipTest(
-        "Disable saving until SaveableObject's methods are traceable.")
     for _ in range(5):
       layer = _Dense(5)
       checkpoint = tracking.Checkpoint(layer=layer)
@@ -339,7 +341,7 @@ class LayerTests(_VirtualDeviceTestCase):
       manager.restore_or_initialize()
 
       for _ in range(10):
-        with self.device.scope():
+        with self.device:
           with backprop.GradientTape() as tape:
             x = self.device.pack(
                 [constant_op.constant([[-0.5]]),

@@ -13,32 +13,32 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering XLA dialect to Standard dialect.
+// This file implements logic for lowering MHLO dialect to Standard dialect.
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Block.h"
+#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/LogicalResult.h"
 
 using mlir::PassRegistration;
 
 namespace mlir {
 namespace mhlo {
 namespace {
-struct LegalizeControlFlow
-    : public mlir::PassWrapper<LegalizeControlFlow, FunctionPass> {
+struct LegalizeControlFlowPass
+    : public mlir::PassWrapper<LegalizeControlFlowPass, FunctionPass> {
   // Perform the lowering to MLIR control flow.
   void runOnFunction() override;
 };
@@ -107,8 +107,8 @@ LogicalResult LowerIfOp(mlir::mhlo::IfOp if_op) {
 }
 
 LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
-  // Converts an XLA while loop into control flow. This generates a set of MLIR
-  // blocks and branches, along with inlining the regions provided by the XLA
+  // Converts a MHLO while loop into control flow. This generates a set of MLIR
+  // blocks and branches, along with inlining the regions provided by the MHLO
   // while loop. The structure should be similar to below:
   //
   //   <prior operations>
@@ -206,7 +206,7 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   return success();
 }
 
-void LegalizeControlFlow::runOnFunction() {
+void LegalizeControlFlowPass::runOnFunction() {
   auto func = getFunction();
   llvm::SmallVector<IfOp, 4> if_ops;
   func.walk([&](IfOp op) { if_ops.push_back(op); });
@@ -228,9 +228,5 @@ void LegalizeControlFlow::runOnFunction() {
 
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 mlir::mhlo::createLegalizeControlFlowPass() {
-  return std::make_unique<LegalizeControlFlow>();
+  return std::make_unique<LegalizeControlFlowPass>();
 }
-
-static PassRegistration<mlir::mhlo::LegalizeControlFlow> legalize_cf_pass(
-    "xla-legalize-control-flow",
-    "Legalize from XLA control flow to MLIR control flow");

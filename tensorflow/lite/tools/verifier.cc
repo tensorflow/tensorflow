@@ -106,9 +106,10 @@ bool VerifyStringTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     return false;
   }
   offset += sizeof(int32_t);
-  for (int i = 1; i <= num_strings; i++, offset += sizeof(int32_t)) {
+  for (int i = 1, end = num_strings; i <= end; i++, offset += sizeof(int32_t)) {
     int string_offset = *GetIntPtr(buffer_ptr + offset);
-    if (string_offset < prev_ptr || string_offset > buffer_size) {
+    if (string_offset < static_cast<int>(prev_ptr) ||
+        string_offset > static_cast<int>(buffer_size)) {
       ReportError(error_reporter,
                   "String tensor %s buffer is invalid: index %d",
                   NameOrEmptyString(tensor.name()), i);
@@ -221,7 +222,7 @@ absl::optional<uint64_t> VerifyAndCountElements(
         }
       }
 
-      if (num_elements != array_segments_size - 1) {
+      if (static_cast<int>(num_elements) != array_segments_size - 1) {
         return absl::nullopt;
       }
 
@@ -254,16 +255,20 @@ absl::optional<uint64_t> VerifyAndCountSparseElements(const Tensor& tensor) {
 
   const int total_dims = sparsity->traversal_order()->size();
   const int original_rank = tensor.shape()->size();
-
-  if (total_dims < original_rank ||
-      sparsity->dim_metadata()->size() != total_dims) {
+  const int sparsity_dim_metadata_size = sparsity->dim_metadata()->size();
+  if (total_dims < original_rank || sparsity_dim_metadata_size != total_dims) {
     return absl::nullopt;
   }
 
   const int block_rank = total_dims - original_rank;
-  if (block_rank > 0 && (sparsity->block_map() == nullptr ||
-                         sparsity->block_map()->size() != block_rank)) {
-    return absl::nullopt;
+  if (block_rank > 0) {
+    if (sparsity->block_map() == nullptr) {
+      return absl::nullopt;
+    }
+    const int sparse_rank = sparsity->block_map()->size();
+    if (sparse_rank != block_rank) {
+      return absl::nullopt;
+    }
   }
 
   // For a n-dimensional tensor (d0, ..., dn-1) with k-dimensional block (dn,
@@ -384,6 +389,9 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
     case TensorType_COMPLEX64:
       bytes_required *= sizeof(std::complex<float>);
       break;
+    case TensorType_COMPLEX128:
+      bytes_required *= sizeof(std::complex<double>);
+      break;
     default:
       ReportError(error_reporter, "Tensor %s invalid type: %d",
                   NameOrEmptyString(tensor.name()), tensor.type());
@@ -443,7 +451,7 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
   absl::flat_hash_set<int> subgraph_input_tensors, constant_tensors,
       variable_tensors, output_tensors;
   if (subgraph.tensors()) {
-    for (int i = 0; i < subgraph.tensors()->size(); ++i) {
+    for (int i = 0, end = subgraph.tensors()->size(); i < end; ++i) {
       const auto* tensor = subgraph.tensors()->Get(i);
       if (IsConstantTensor(*tensor, model)) {
         constant_tensors.insert(i);
@@ -459,7 +467,8 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
   }
 
   if (subgraph.operators()) {
-    for (int op_idx = 0; op_idx < subgraph.operators()->size(); ++op_idx) {
+    for (int op_idx = 0, end = subgraph.operators()->size(); op_idx < end;
+         ++op_idx) {
       const auto* op = subgraph.operators()->Get(op_idx);
       if (!model.operator_codes() ||
           (op->opcode_index() >= model.operator_codes()->size())) {

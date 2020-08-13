@@ -35,29 +35,36 @@ namespace internal {
 // A helper class to encapsulate the implementation of APIs in Context.
 // context->impl_ points to an instance of this class.
 // Check tensorflow/lite/c/common.h for detailed descriptions.
+// TODO(b/16157777): Consider rolling this class into MicroInterpreter.
 class ContextHelper {
  public:
   explicit ContextHelper(ErrorReporter* error_reporter,
-                         MicroAllocator* allocator)
-      : allocator_(allocator), error_reporter_(error_reporter) {}
+                         MicroAllocator* allocator, const Model* model);
 
-  static TfLiteStatus AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes,
-                                               void** ptr);
-
+  // Functions that will be assigned to function pointers on TfLiteContext:
+  static void* AllocatePersistentBuffer(TfLiteContext* ctx, size_t bytes);
   static TfLiteStatus RequestScratchBufferInArena(TfLiteContext* ctx,
                                                   size_t bytes,
                                                   int* buffer_idx);
-
   static void* GetScratchBuffer(TfLiteContext* ctx, int buffer_idx);
-
   static void ReportOpError(struct TfLiteContext* context, const char* format,
                             ...);
+  static TfLiteTensor* GetTensor(const struct TfLiteContext* context,
+                                 int tensor_idx);
+  static TfLiteEvalTensor* GetEvalTensor(const struct TfLiteContext* context,
+                                         int tensor_idx);
 
-  void SetNodeIndex(int idx) { current_node_idx_ = idx; }
+  // Sets the current node index to assist with scratch buffer allocations:
+  void SetNodeIndex(int idx);
+
+  // Sets the pointer to a list of TfLiteEvalTensor instances.
+  void SetTfLiteEvalTensors(TfLiteEvalTensor* eval_tensors);
 
  private:
   MicroAllocator* allocator_;
   ErrorReporter* error_reporter_;
+  const Model* model_;
+  TfLiteEvalTensor* eval_tensors_;
   int current_node_idx_ = -1;
 };
 
@@ -170,7 +177,7 @@ class MicroInterpreter {
   // error reporting during initialization.
   void Init(tflite::Profiler* profiler);
 
-  void CorrectTensorEndianness(TfLiteTensor* tensorCorr);
+  void CorrectTensorEndianness(TfLiteEvalTensor* tensorCorr);
 
   template <class T>
   void CorrectTensorDataEndianness(T* data, int32_t size);
@@ -187,7 +194,13 @@ class MicroInterpreter {
   TfLiteStatus initialization_status_;
 
   const SubGraph* subgraph_;
+  TfLiteEvalTensor* eval_tensors_;
   internal::ContextHelper context_helper_;
+
+  // TODO(b/160894903): Clean these pointers up when all APIs are updated to new
+  // TfLiteEvalTensor buffers.
+  TfLiteTensor* input_tensor_;
+  TfLiteTensor* output_tensor_;
 };
 
 }  // namespace tflite

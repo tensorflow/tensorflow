@@ -24,6 +24,7 @@ py_test(
         "//tensorflow/tools/api/golden:api_golden_v2",
         "//tensorflow/tools/api/tests:API_UPDATE_WARNING.txt",
         "//tensorflow/tools/api/tests:README.txt",
+        "//third_party/py/numpy/tf_numpy_api:api_golden",
     ],
     python_version = "PY3",
     srcs_version = "PY2AND3",

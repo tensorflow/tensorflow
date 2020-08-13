@@ -723,7 +723,7 @@ bool SchedulingPass(Cluster* cluster, std::unique_ptr<GraphMemory>* memory_ptr,
     // Rewrite the AddN node as a DestroyTemporaryVariable ops
     node->set_op("DestroyTemporaryVariable");
     node->clear_input();
-    node->clear_attr();
+    EraseRegularNodeAttributes(node);
     (*node->mutable_attr())["T"].set_type(dtype);
     (*node->mutable_attr())["var_name"].set_s(tmp_var->name());
     *node->add_input() = initialize->name();

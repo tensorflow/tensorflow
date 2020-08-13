@@ -47,7 +47,7 @@ __kernel void main_function(__write_only image2d_array_t dst) {
 absl::Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
                                                       bool* result) {
   // No bug on Adreno 6xx
-  if (env->device().GetInfo().adreno_info.gpu_version >= 600) {
+  if (env->device().info_.adreno_info.gpu_version >= 600) {
     *result = true;
     return absl::OkStatus();
   }
@@ -198,6 +198,19 @@ std::vector<TensorStorageType> Environment::GetSupportedStorages() const {
   return storage_types;
 }
 
+std::vector<TensorStorageType>
+Environment::GetSupportedStoragesWithHWZeroClampSupport() const {
+  std::vector<TensorStorageType> storage_types;
+  for (auto storage_type :
+       {TensorStorageType::TEXTURE_2D, TensorStorageType::TEXTURE_ARRAY,
+        TensorStorageType::TEXTURE_3D}) {
+    if (IsSupported(storage_type)) {
+      storage_types.push_back(storage_type);
+    }
+  }
+  return storage_types;
+}
+
 bool Environment::IsSupported(TensorStorageType storage_type) const {
   switch (storage_type) {
     case TensorStorageType::TEXTURE_2D:
@@ -229,7 +242,7 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu) {
   } else if (gpu.IsPowerVR()) {
     return TensorStorageType::TEXTURE_2D;
   } else if (gpu.IsMali()) {
-    const MaliInfo mali_info = gpu.GetInfo().mali_info;
+    const MaliInfo mali_info = gpu.info_.mali_info;
     if (mali_info.IsMaliT8xx() || mali_info.IsBifrostGen3() ||
         mali_info.IsValhall()) {
       return TensorStorageType::TEXTURE_2D;

@@ -112,7 +112,8 @@ struct TensorData {
              std::vector<int64_t> per_channel_quantization_offsets = {},
              int32_t channel_index = 0, std::vector<int> traversal_order = {},
              std::vector<TfLiteDimensionType> format = {},
-             std::vector<int> block_size = {}, std::vector<int> block_map = {})
+             std::vector<int> block_size = {}, std::vector<int> block_map = {},
+             std::vector<int> shape_signature = {})
       : type(type),
         shape(shape),
         min(min),
@@ -128,7 +129,8 @@ struct TensorData {
         traversal_order(traversal_order),
         format(format),
         block_size(block_size),
-        block_map(block_map) {}
+        block_map(block_map),
+        shape_signature(shape_signature) {}
   TensorType type;
   std::vector<int> shape;
   float min;
@@ -143,6 +145,7 @@ struct TensorData {
   std::vector<TfLiteDimensionType> format;
   std::vector<int> block_size;
   std::vector<int> block_map;
+  std::vector<int> shape_signature;
 };
 
 class SingleOpResolver : public OpResolver {
@@ -513,8 +516,7 @@ class SingleOpModel {
     resolver_ = std::move(resolver);
   }
 
-  // Enables NNAPI delegate application during interpreter creation.
-  static void SetForceUseNnapi(bool use_nnapi);
+  // Indicate whether the test has the NNAPI delegate applied.
   static bool GetForceUseNnapi();
   int CountOpsExecutedByCpuKernel();
 
@@ -583,10 +585,11 @@ class SingleOpModel {
       buffers_.push_back(CreateBuffer(builder_, data_buffer));
     }
 
-    tensors_.push_back(CreateTensor(builder_,
-                                    builder_.CreateVector<int>(t.shape), t.type,
-                                    /*buffer=*/buffer_id,
-                                    /*name=*/0, q_params, is_variable));
+    tensors_.push_back(CreateTensor(
+        builder_, builder_.CreateVector<int>(t.shape), t.type,
+        /*buffer=*/buffer_id,
+        /*name=*/0, q_params, is_variable,
+        /*sparsity=*/0, builder_.CreateVector<int>(t.shape_signature)));
 
     tensor_data_[id] = t;
 
@@ -767,6 +770,7 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;
+  int num_applied_delegates_ = 0;
 };
 
 // Populate string tensors.
@@ -897,7 +901,6 @@ class MultiOpModel : public SingleOpModel {
     return AddTensor<T>(t, {}, false);
   }
 };
-
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_

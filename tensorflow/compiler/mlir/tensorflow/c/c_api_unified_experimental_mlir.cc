@@ -93,7 +93,14 @@ class MlirTensor : public TracingTensorHandle {
   explicit MlirTensor(Value value)
       : TracingTensorHandle(kMlir), value_(value) {}
 
-  void Release() override { delete this; }
+  tensorflow::DataType DataType() const override {
+    tensorflow::DataType type;
+    Status s = ConvertToDataType(value_.getType(), &type);
+    if (!s.ok()) {
+      return tensorflow::DT_INVALID;
+    }
+    return type;
+  }
 
   Value getValue() { return value_; }
 
@@ -127,7 +134,7 @@ class MlirAbstractOp : public TracingOperation {
   Status SetDeviceName(const char* name) override;
 
   Status AddInput(AbstractTensorHandle* input) override;
-  Status AddInputList(absl::Span<AbstractTensorHandle*> inputs) override;
+  Status AddInputList(absl::Span<AbstractTensorHandle* const> inputs) override;
   Status Execute(absl::Span<AbstractTensorHandle*> retvals,
                  int* num_retvals) override;
 
@@ -451,6 +458,7 @@ Status MlirAbstractOp::Create(ArrayRef<Value> operands,
       }
     }
   }
+  for (auto& it : attrs_) state_->addAttribute(it.first(), it.second);
   *state = state_.get();
   return Status::OK();
 }
@@ -464,7 +472,8 @@ Status MlirAbstractOp::SetDeviceName(const char* name) {
   return Status::OK();
 }
 
-Status MlirAbstractOp::AddInputList(absl::Span<AbstractTensorHandle*> inputs) {
+Status MlirAbstractOp::AddInputList(
+    absl::Span<AbstractTensorHandle* const> inputs) {
   return tensorflow::errors::Unimplemented(
       "AddInputList has not been implemented yet.");
 }
@@ -554,7 +563,7 @@ Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
   }
   PassManager pm(func_.getContext());
   pm.addNestedPass<FuncOp>(CreateFunctionalToExecutorDialectConversionPass());
-  pm.addNestedPass<FuncOp>(CreateBreakUpIslandsPass());
+  pm.addPass(CreateBreakUpIslandsPass());
 
   // In case of failure, the `diag_handler` converts MLIR errors emitted to
   // the MLIRContext into a tensorflow::Status.

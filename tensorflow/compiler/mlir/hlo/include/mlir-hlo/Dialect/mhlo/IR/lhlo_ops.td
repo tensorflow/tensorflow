@@ -13,9 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is the operation definition file for LXLA.
+// This is the operation definition file for LMHLO, the "late" MHLO variant of
+// the dialect, which operates on buffers instead of tensors.
 //
-// This file largely overlaps with hlo_ops.td at a logic level. It's tempting to
+// This file largely overlaps with mhlo_ops.td at a logic level. It's tempting to
 // merge these two files together, but we need to consider the following
 // obstacles:
 // * We need to have a common representation for arguments. That is to say,
@@ -38,12 +39,12 @@ include "mlir/Interfaces/ViewLikeInterface.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
 
 def LHLO_Dialect : Dialect {
-  let name = "xla_lhlo";
-  let cppNamespace = "xla_lhlo";
+  let name = "lmhlo";
+  let cppNamespace = "lmhlo";
 }
 
 //===----------------------------------------------------------------------===//
-// XLA type definitions.
+// LMHLO type definitions.
 //===----------------------------------------------------------------------===//
 
 // Any integer tensor types
@@ -65,8 +66,10 @@ def LHLO_PredOrIntBuffer : MemRefOf<[HLO_Int, HLO_Pred]>;
 
 def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
 
+def LHLO_ExtentBuffer : MemRefRankOf<[AnySignlessInteger, Index], [1]>;
+
 //===----------------------------------------------------------------------===//
-// XLA nullary op definitions.
+// LMHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
 
 class LHLO_Op<string mnemonic, list<OpTrait> traits> :
@@ -86,7 +89,7 @@ def LHLO_IotaOp : LHLO_Op<"iota", []>, BASE_HLO_IotaOp {
 }
 
 //===----------------------------------------------------------------------===//
-// XLA unary elementwise op definitions.
+// LMHLO unary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
@@ -157,7 +160,7 @@ def LHLO_SinOp: LHLO_UnaryElementwiseOp<"sine", LHLO_FpOrComplexBuffer>, BASE_HL
 def LHLO_TanhOp: LHLO_UnaryElementwiseOp<"tanh", LHLO_FpOrComplexBuffer>, BASE_HLO_TanhOp;
 
 //===----------------------------------------------------------------------===//
-// XLA binary elementwise op definitions.
+// LMHLO binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
@@ -212,7 +215,7 @@ def LHLO_SubOp : LHLO_BinaryElementwiseOp<"subtract">, BASE_HLO_SubOp;
 def LHLO_XorOp : LHLO_BinaryElementwiseOp<"xor", LHLO_PredOrIntBuffer>, BASE_HLO_XorOp;
 
 //===----------------------------------------------------------------------===//
-// XLA control flow op definitions.
+// LMHLO control flow op definitions.
 //===----------------------------------------------------------------------===//
 
 // TODO(b/139813999): specify required function signature in a type-safe way.
@@ -253,7 +256,7 @@ def LHLO_ReduceWindowOp: LHLO_Op<"reduce_window", [
 
 // TODO(timshen): Add a custom parser to hide operand_segment_sizes. For example,
 // A tuple-like pattern match syntax could work:
-// xla_lhlo.case %index, (%input0, %input1, %input2), (%output0, %output1) {
+// lmhlo.case %index, (%input0, %input1, %input2), (%output0, %output1) {
 //   ...
 // }, {
 //   ...
@@ -284,7 +287,7 @@ def LHLO_WhileOp: LHLO_Op<"while", [SameVariadicOperandSize]>,
 }
 
 //===----------------------------------------------------------------------===//
-// XLA tuple op definitions.
+// LMHLO tuple op definitions.
 //===----------------------------------------------------------------------===//
 
 def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
@@ -298,7 +301,7 @@ def LHLO_CompareOp: LHLO_Op<"compare", []>, BASE_HLO_CompareOp {
 }
 
 //===----------------------------------------------------------------------===//
-// XLA Slice definitions.
+// LMHLO Slice definitions.
 //===----------------------------------------------------------------------===//
 
 def LHLO_SliceOp: LHLO_Op<
@@ -337,7 +340,7 @@ def HLO_StaticMemRefCastOp: Op<LHLO_Dialect, "static_memref_cast",
     Example:
     ```mlir
     %buf_transformed =
-        xla_lhlo.static_memref_cast %buf
+        lmhlo.static_memref_cast %buf
         : memref<1x5xf32> -> memref<5xf32, offset: 2, strides: [1]>
 
     // The result of the op is a rank-1 memref with `[5]` shape, stride 1 and
@@ -379,7 +382,7 @@ def HLO_DynamicMemRefCastOp: Op<LHLO_Dialect, "dynamic_memref_cast",
     Example:
     ```mlir
     %buf_transformed =
-        xla_lhlo.dynamic_memref_cast %buf(%size_X, %size_Y)[%step_X, %step_Y]
+        lmhlo.dynamic_memref_cast %buf(%size_X, %size_Y)[%step_X, %step_Y]
         : memref<?x?xf32> -> memref<?x?xf32, offset: 0, strides: [?, ?]>
     // The result of the op is a type-erased memref with `[%size_X, %size_Y]`
     // shape and `[%step_X, %step_Y]` strides. The offset will be inherited
@@ -466,17 +469,9 @@ def ReshapeMemRefCastOp: Op<LHLO_Dialect, "reshape_memref_cast", [
 
   let arguments = (ins
     AnyRankedOrUnrankedMemRef:$operand,
-    MemRefRankOf<[AnySignlessInteger], [1]>:$shape
+    LHLO_ExtentBuffer:$shape
   );
   let results = (outs AnyRankedOrUnrankedMemRef:$result);
-
-  let builders = [OpBuilder<
-    "OpBuilder &builder, OperationState &result, MemRefType resultType, " #
-    "Value operand, Value shape", [{
-       result.addOperands(operand);
-       result.addOperands(shape);
-       result.types.push_back(resultType);
-     }]>];
 
   let extraClassDeclaration = [{
     MemRefType getType() { return getResult().getType().cast<MemRefType>(); }
@@ -491,7 +486,7 @@ def ReshapeMemRefCastOp: Op<LHLO_Dialect, "reshape_memref_cast", [
 
 
 //===----------------------------------------------------------------------===//
-// XLA Other op definitions.
+// LMHLO Other op definitions.
 //===----------------------------------------------------------------------===//
 
 def LHLO_BatchNormGradOp : LHLO_Op<"batch_norm_grad", []>,

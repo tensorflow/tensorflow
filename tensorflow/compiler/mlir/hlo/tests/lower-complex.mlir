@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -test-xla-chlo-legalize-to-hlo -test-xla-lower-complex | FileCheck %s
+// RUN: mlir-hlo-opt %s -mhlo-test-chlo-legalize-to-hlo -mhlo-test-lower-complex | FileCheck %s
 
 // CHECK-LABEL: @add
 func @add(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>, %arg2 : tensor<2xf32>, %arg3 : tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>) {
@@ -182,11 +182,10 @@ func @abs(%arg0 : tensor<2xf32>, %arg1 : tensor<2xf32>) -> (tensor<2xf32>) {
   // CHECK-DAG: [[VAL1:%.+]] = mhlo.multiply %arg1, %arg1
   // CHECK-DAG: [[VAL2:%.+]] = mhlo.add [[VAL0]], [[VAL1]]
   // CHECK-DAG: [[VAL3:%.+]] = "mhlo.sqrt"([[VAL2]])
-  %1 = "mhlo.abs"(%0) : (tensor<2xcomplex<f32>>) -> (tensor<2xcomplex<f32>>)
-  %2 = "mhlo.real"(%1) : (tensor<2xcomplex<f32>>) -> (tensor<2xf32>)
+  %1 = "mhlo.abs"(%0) : (tensor<2xcomplex<f32>>) -> (tensor<2xf32>)
 
   // CHECK: return [[VAL3]]
-  return %2 : tensor<2xf32>
+  return %1 : tensor<2xf32>
 }
 
 // CHECK-LABEL: @exp

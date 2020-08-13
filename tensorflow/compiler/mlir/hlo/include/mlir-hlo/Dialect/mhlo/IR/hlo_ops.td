@@ -13,10 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This is the operation definition file for XLA HLO ops which map to the
-// traditional definition in xla_data.proto (or are aligned with the goals
-// thereof).
-// See: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/compiler/xla/xla_data.proto
+// This is the operation definition file for MHLO ops.
 
 #ifndef HLO_OPS
 #define HLO_OPS
@@ -43,8 +40,16 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
   let verifier = [{ return Verify(*this); }];
 }
 
+def HLO_LOOP_FUSION : StrEnumAttrCase<"kLoop">;
+def HLO_INPUT_FUSION : StrEnumAttrCase<"kInput">;
+def HLO_OUTPUT_FUSION : StrEnumAttrCase<"kOutput">;
+def HLO_CUSTOM_FUSION : StrEnumAttrCase<"kCustom">;
+def HLO_FusionKindAttr : StrEnumAttr<"FusionKind", "fusion kind", [
+    HLO_LOOP_FUSION, HLO_INPUT_FUSION, HLO_OUTPUT_FUSION, HLO_CUSTOM_FUSION
+]>;
+
 //===----------------------------------------------------------------------===//
-// XLA nullary op definitions.
+// MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
 
 def HLO_ConstOp : HLO_Op<"constant",
@@ -55,15 +60,14 @@ def HLO_ConstOp : HLO_Op<"constant",
   );
 
   let results = (outs
-    HLO_Tensor:$output
+    HLO_StaticShapeTensor:$output
   );
 
   let builders = [OpBuilder<
     "OpBuilder &builder, OperationState &result, Attribute value"
   >];
 
-  let printer = [{ return Print(*this, &p); }];
-  let parser = [{ return ParseConstOp(&parser, &result); }];
+  let assemblyFormat = "attr-dict $value";
 
   let hasFolder = 1;
 
@@ -78,6 +82,8 @@ def HLO_IotaOp : HLO_Op<"iota", [NoSideEffect]>, BASE_HLO_IotaOp {
 
   // TODO(b/130357376): Iota has special conversion logic to HLO.
   let hasCustomHLOConverter = 1;
+  let hasCanonicalizer = 1;
+  let hasFolder = 1;
 }
 
 def HLO_DynamicIotaOp: HLO_Op<"dynamic_iota", [NoSideEffect]> {
@@ -112,7 +118,7 @@ def HLO_CreateTokenOp : HLO_Op<"create_token", [NoSideEffect]> {
 }
 
 //===----------------------------------------------------------------------===//
-// XLA unary elementwise op definitions.
+// MHLO unary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_unary_functions
 
@@ -263,7 +269,7 @@ def HLO_TanhOp: HLO_UnaryElementwiseOp<"tanh",
     HLO_FpOrComplexTensor>, BASE_HLO_TanhOp;
 
 //===----------------------------------------------------------------------===//
-// XLA binary elementwise op definitions.
+// MHLO binary elementwise op definitions.
 //===----------------------------------------------------------------------===//
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
 
@@ -362,7 +368,7 @@ def HLO_SubOp : HLO_BinaryElementwiseOp<"subtract",
 }
 
 //===----------------------------------------------------------------------===//
-// XLA binary logical elementwise op definitions.
+// MHLO binary logical elementwise op definitions.
 //===----------------------------------------------------------------------===//
 
 // See https://www.tensorflow.org/xla/operation_semantics#element-wise_binary_arithmetic_operations
@@ -380,7 +386,7 @@ def HLO_OrOp: HLO_BinaryLogicalElementwiseOp<"or">, BASE_HLO_OrOp;
 def HLO_XorOp : HLO_BinaryLogicalElementwiseOp<"xor">, BASE_HLO_XorOp;
 
 //===----------------------------------------------------------------------===//
-// XLA communication op definitions.
+// MHLO communication op definitions.
 //===----------------------------------------------------------------------===//
 
 // InfeedOp corresponds to 'InfeedWithToken' xla client API and not 'Infeed'.
@@ -480,7 +486,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 }
 
 //===----------------------------------------------------------------------===//
-// XLA parallelism related op definitions.
+// MHLO parallelism related op definitions.
 //===----------------------------------------------------------------------===//
 
 def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect]>,
@@ -491,7 +497,7 @@ def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect]>,
 }
 
 //===----------------------------------------------------------------------===//
-// XLA control flow op definitions.
+// MHLO control flow op definitions.
 //===----------------------------------------------------------------------===//
 
 def HLO_AfterAllOp : HLO_Op<"after_all", [NoSideEffect]> {
@@ -639,7 +645,7 @@ def HLO_ReduceOp: HLO_Op<"reduce", [
 }
 
 //===----------------------------------------------------------------------===//
-// XLA tuple op definitions.
+// MHLO tuple op definitions.
 //===----------------------------------------------------------------------===//
 def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO_GetTupleElementOp {
   let arguments = (ins
@@ -657,13 +663,14 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
-  let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+  let arguments = (ins Variadic<HLO_TensorOrTokenOrTuple>:$val);
   let results = (outs HLO_Tuple);
 
   let builders = [OpBuilder<
                   "OpBuilder &builder, OperationState &results, "
                   "ValueRange values">];
 
+  let hasCanonicalizer = 1;
 }
 
 def HLO_CompareOp: HLO_Op<"compare",
@@ -683,7 +690,7 @@ def HLO_CompareOp: HLO_Op<"compare",
 }
 
 //===----------------------------------------------------------------------===//
-// XLA Slice definitions.
+// MHLO Slice definitions.
 //===----------------------------------------------------------------------===//
 
 def HLO_SliceOp: HLO_Op<
@@ -744,7 +751,7 @@ def HLO_DynamicUpdateSliceOp: HLO_Op<"dynamic-update-slice",
 
 
 //===----------------------------------------------------------------------===//
-// XLA Other op definitions.
+// MHLO Other op definitions.
 //===----------------------------------------------------------------------===//
 
 def HLO_BatchNormGradOp : HLO_Op<"batch_norm_grad", [NoSideEffect]>,
@@ -1068,7 +1075,10 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
     HLO_Tensor:$operand,
     I32Attr:$dimension
   );
-  let results = (outs HLO_IntTensor);
+  // TODO(hinsu): Allow 64-bit result types once XLA HLO dialect based on the
+  // XLA semantics is available. This limitation is because of the current XLA
+  // implementation.
+  let results = (outs I32Tensor);
 }
 
 def HLO_MapOp: HLO_Op<"map",
@@ -1319,13 +1329,14 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 }
 
 //===----------------------------------------------------------------------===//
-// XLA RngUniform Operator.
+// MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
+
 def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let arguments = (ins
     HLO_PredIntOrFpTensor:$a,
     HLO_PredIntOrFpTensor:$b,
-    I64Tensor:$shape
+    HLO_DimensionTensor:$shape
   );
 
   let results = (outs HLO_PredIntOrFpTensor);
@@ -1337,7 +1348,7 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
   let arguments = (ins
     HLO_FpTensor:$mu,
     HLO_FpTensor:$sigma,
-    I64Tensor:$shape
+    HLO_DimensionTensor:$shape
   );
 
   let results = (outs HLO_FpTensor);
@@ -1345,8 +1356,21 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
   let hasCustomHLOConverter = 1;
 }
 
+def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]>, BASE_HLO_RngBitGeneratorOp {
+  let arguments = (ins
+    // TODO(jpienaar): This could be an enum instead.
+    I32Attr:$rng_algorithm,
+    HLO_IntOrFpTensor:$initial_state
+  );
+
+  let results = (outs HLO_TensorOrTuple:$result);
+
+  // TODO(jpienaar): This should not be needed.
+  let hasCustomHLOConverter = 1;
+}
+
 //===----------------------------------------------------------------------===//
-// XLA Quantize Operator.
+// MHLO Quantize Operator.
 //===----------------------------------------------------------------------===//
 def HLO_DequantizeOp : HLO_Op<"dequantize", [NoSideEffect]>,
     BASE_HLO_DequantizeOp {
@@ -1376,7 +1400,8 @@ def HLO_FusionOp : HLO_Op<"fusion", []> {
   let regions = (region SizedRegion<1>:$fused_computation);
 
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$operands
+    Variadic<HLO_TensorOrTuple>:$operands,
+    OptionalAttr<HLO_FusionKindAttr>:$fusion_kind
   );
 
   let results = (outs

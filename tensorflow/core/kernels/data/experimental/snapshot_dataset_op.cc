@@ -63,6 +63,15 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kCompression;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kReaderFunc;
+/* static */ constexpr const char* const SnapshotDatasetV2Op::kShardFunc;
+/* static */ constexpr const char* const
+    SnapshotDatasetV2Op::kReaderFuncTarguments;
+/* static */ constexpr const char* const
+    SnapshotDatasetV2Op::kShardFuncTarguments;
+/* static */ constexpr const int SnapshotDatasetV2Op::kFileFormatVersion;
+
 // ==== Snapshot Implementation ====
 
 /* The current snapshot on-disk layout is as follows:
@@ -596,8 +605,8 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::WriteMetadataFile(
 
   experimental::SnapshotMetadataRecord metadata;
   metadata.set_creation_timestamp(EnvTime::NowMicros());
-  metadata.set_graph_hash(strings::Printf("%llu", dataset()->hash_));
-  metadata.set_run_id(strings::Printf("%llu", run_id_));
+  metadata.set_graph_hash(strings::StrCat(dataset()->hash_));
+  metadata.set_run_id(strings::StrCat(run_id_));
   metadata.set_version(kFileFormatVersion);
   for (const auto& output_dtype : dataset()->output_dtypes()) {
     metadata.add_dtype(output_dtype);
@@ -1122,9 +1131,7 @@ class SnapshotDatasetOp : public UnaryDatasetOpKernel {
       // Initialize at first and at that point we don't know which iterator
       // (Reader / Writer / Passthrough) we need to restore as this info is part
       // of the checkpoint.
-      Status Initialize(IteratorContext* ctx) override {
-        return Status::OK();
-      }
+      Status Initialize(IteratorContext* ctx) override { return Status::OK(); }
 
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,

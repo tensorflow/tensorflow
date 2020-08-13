@@ -379,6 +379,15 @@ class StringFormatOpTest(test.TestCase):
         format_output = string_ops.string_format("{}", (tensor, tensor))
         self.evaluate(format_output)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testTensorAndFormatUnicode(self):
+    with self.cached_session():
+      tensor = constant_op.constant("😊")
+      format_output = string_ops.string_format("😊:{}", tensor)
+      out = self.evaluate(format_output)
+      expected = '😊:"😊"'
+      self.assertEqual(compat.as_text(out), expected)
+
 
 if __name__ == "__main__":
   test.main()

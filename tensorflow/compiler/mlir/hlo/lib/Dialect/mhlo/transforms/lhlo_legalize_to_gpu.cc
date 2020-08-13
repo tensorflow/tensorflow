@@ -17,28 +17,27 @@ limitations under the License.
 
 #include <cstdint>
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
-#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/map_xla_to_scalar_op.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir/Dialect/GPU/GPUDialect.h"
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 // A simple translation of LHLO reduce operations to a corresponding gpu
@@ -148,9 +147,9 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
       BlockAndValueMapping mapping;
-      mapping.map(reduce_op.body().front().getArgument(0), accumulator);
-      mapping.map(reduce_op.body().front().getArgument(1), rhs);
-      mapping.map(reduce_op.body().front().getArgument(2), accumulator);
+      mapping.map(reduce_op.body().getArgument(0), accumulator);
+      mapping.map(reduce_op.body().getArgument(1), rhs);
+      mapping.map(reduce_op.body().getArgument(2), accumulator);
       for (auto& nested : reduce_op.body().front().without_terminator()) {
         auto clone = rewriter.clone(nested, mapping);
         for (auto pair : llvm::zip(nested.getResults(), clone->getResults())) {
@@ -168,12 +167,13 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
   };
 };
 
-struct LhloLegalizeToGpu : public PassWrapper<LhloLegalizeToGpu, FunctionPass> {
+struct LhloLegalizeToGpuPass
+    : public PassWrapper<LhloLegalizeToGpuPass, FunctionPass> {
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           gpu::GPUDialect, scf::SCFDialect, XlaLhloDialect>();
+                           gpu::GPUDialect, scf::SCFDialect, LmhloDialect>();
     target.addIllegalOp<ReduceOp>();
     auto func = getFunction();
     patterns.insert<LhloReduceToGPULaunchConverter>(func.getContext());
@@ -185,12 +185,9 @@ struct LhloLegalizeToGpu : public PassWrapper<LhloLegalizeToGpu, FunctionPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLegalizeToGpuPass() {
-  return absl::make_unique<LhloLegalizeToGpu>();
+std::unique_ptr<FunctionPass> createLegalizeToGpuPass() {
+  return std::make_unique<LhloLegalizeToGpuPass>();
 }
 
-static PassRegistration<LhloLegalizeToGpu> legalize_pass(
-    "lhlo-legalize-to-gpu", "Legalize from LHLO dialect to GPU dialect");
-
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

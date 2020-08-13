@@ -39,11 +39,10 @@ class GemmThunk : public Thunk {
  public:
   // Constructs a thunk that computes "output = (lhs <dot> rhs) * alpha" using
   // BLAS gemm (alpha is stored in the instruction GemmBackendConfig).
-  GemmThunk(const BufferAllocation::Slice& lhs_buffer,
+  GemmThunk(ThunkInfo thunk_info, const BufferAllocation::Slice& lhs_buffer,
             const BufferAllocation::Slice& rhs_buffer,
             const BufferAllocation::Slice& output_buffer,
             bool implements_whole_instruction,
-            const HloInstruction* hlo_instruction,
             const GemmBackendConfig& backend_config);
 
   GemmThunk(const GemmThunk&) = delete;
@@ -52,6 +51,7 @@ class GemmThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   const BufferAllocation::Slice lhs_buffer_;
   const BufferAllocation::Slice rhs_buffer_;
   const BufferAllocation::Slice output_buffer_;
@@ -72,7 +72,8 @@ Status RunGemm(
     const HloInstruction* gemm, const GemmBackendConfig& backend_config,
     se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
     se::DeviceMemoryBase output_buffer, se::Stream* stream,
-    bool implements_whole_instruction, HloExecutionProfiler* profiler = nullptr,
+    bool implements_whole_instruction, absl::optional<int64> profile_index,
+    HloExecutionProfiler* profiler = nullptr,
     se::blas::ProfileResult* profile_result = nullptr,
     absl::optional<se::blas::AlgorithmType> algorithm = absl::nullopt);
 

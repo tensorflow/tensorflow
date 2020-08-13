@@ -31,24 +31,6 @@ limitations under the License.
 
 namespace stream_executor {
 
-#if TENSORFLOW_USE_ROCM || defined(PLATFORM_WINDOWS)
-
-port::StatusOr<std::vector<uint8>> CompileGpuAsm(int device_ordinal,
-                                                 const char* ptx_contents,
-                                                 GpuAsmOpts options) {
-  // TODO(b/134675935): Subprocess invocation not supported on Windows.
-  return port::InternalError(
-      "Invoking GPU asm compilation is supported on Cuda non-Windows "
-      "platforms only");
-}
-
-port::StatusOr<absl::Span<const uint8>> CompileGpuAsmOrGetCached(
-    int device_ordinal, const char* ptx, GpuAsmOpts compilation_options) {
-  return CompileGpuAsm(device_ordinal, ptx, compilation_options);
-}
-
-#else
-
 // Prints a warning if the ptxas at ptxas_path has known bugs.
 //
 // Only prints a warning the first time it's called for a particular value of
@@ -163,9 +145,14 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
                                                  GpuAsmOpts options) {
   std::string ptxas_path;
   auto env = tensorflow::Env::Default();
+  std::string ptxas_binary_name = "ptxas";
+#if defined(PLATFORM_WINDOWS)
+  ptxas_binary_name += ".exe";
+#endif
+
   for (const std::string& cuda_root :
        tensorflow::CandidateCudaRoots(options.preferred_cuda_dir)) {
-    ptxas_path = tensorflow::io::JoinPath(cuda_root, "bin", "ptxas");
+    ptxas_path = tensorflow::io::JoinPath(cuda_root, "bin", ptxas_binary_name);
     VLOG(2) << "Looking for ptxas at " << ptxas_path;
     if (env->FileExists(ptxas_path).ok()) {
       break;
@@ -173,7 +160,7 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   }
   if (!env->FileExists(ptxas_path).ok()) {
     // Rely on subprocess invocation to find the correct binary.
-    ptxas_path = "ptxas";
+    ptxas_path = ptxas_binary_name;
   }
   VLOG(2) << "Using ptxas at " << ptxas_path;
 
@@ -244,7 +231,5 @@ port::StatusOr<std::vector<uint8>> CompileGpuAsm(int cc_major, int cc_minor,
   std::vector<uint8> cubin_vector(cubin.begin(), cubin.end());
   return cubin_vector;
 }
-
-#endif
 
 }  // namespace stream_executor

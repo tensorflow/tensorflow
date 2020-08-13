@@ -1,7 +1,16 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
-licenses(["notice"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
+
+package_group(
+    name = "friends",
+    includes = ["//third_party/mlir:subpackages"],
+    packages = ["//tensorflow/compiler/mlir/..."],
+)
 
 cc_library(
     name = "cubin_creator",
@@ -25,8 +34,8 @@ cc_library(
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
-        "//tensorflow/compiler/mlir/hlo:xla_materialize_broadcasts",  # buildcleaner: keep
-        "//tensorflow/compiler/mlir/hlo:xla_unfuse_batch_norm",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
@@ -48,5 +57,35 @@ tf_cc_binary(
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "kernel-gen-opt",
+    srcs = ["tools/kernel-gen-opt/kernel-gen-opt.cc"],
+    visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__pkg__"],
+    deps = [
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_dialect_registration",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:MlirOptMain",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+exports_files(["tf_framework_c_interface.h"])
+
+cc_library(
+    name = "tf_framework_c_interface",
+    srcs = ["tf_framework_c_interface.cc"],
+    hdrs = ["tf_framework_c_interface.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@llvm-project//mlir:mlir_runner_utils",
     ],
 )

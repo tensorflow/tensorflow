@@ -88,6 +88,9 @@ tf_cc_test(
     srcs = ["graph_properties_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
     data = [":graph_properties_testdata"],
+    tags = [
+        "nomsan",  # TODO(b/160921160): broken by NOAUTOROLLBACK CL
+    ],
     deps = [
         ":graph_properties",
         "//tensorflow/cc:cc_ops",
@@ -97,9 +100,9 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/framework:tensor_testutil",
         "//tensorflow/core/grappler:grappler_item",
         "//tensorflow/core/grappler/clusters:single_machine",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
@@ -188,10 +191,10 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "//tensorflow/core/framework:tensor_testutil",
     ],
 )
 
@@ -334,6 +337,7 @@ cc_library(
 tf_cc_test(
     name = "op_level_cost_estimator_test",
     srcs = ["op_level_cost_estimator_test.cc"],
+    tags = ["no_oss"],  # b/163222310
     deps = [
         ":op_level_cost_estimator",
         "//tensorflow/core:framework",

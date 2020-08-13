@@ -191,6 +191,20 @@ func @concatenate_const_2D_horizontal() -> tensor<2x2xi32> {
   return %2 : tensor<2x2xi32>
 }
 
+// CHECK-LABEL: constant_like_constant
+func @constant_like_constant(%arg0: tensor<3x4xi32>) -> tensor<3x4xf32> {
+  // CHECK: mhlo.constant dense<3.200000e+00>
+  %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<3x4xi32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// CHECK-LABEL: constant_like_constant_dynamic
+func @constant_like_constant_dynamic(%arg0: tensor<*xi32>) -> tensor<*xf32> {
+  // CHECK: chlo.constant_like
+  %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<*xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: dynamic_slice_variable_start
 func @dynamic_slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
   // CHECK: "mhlo.dynamic-slice"
@@ -365,6 +379,43 @@ func @dynamic_broadcast_in_dim_op_not_actually_dynamic(%arg0: tensor<4xf32>, %ar
   return %0 : tensor<5x4xf32>
 }
 
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_1
+func @dynamic_broadcast_in_dim_to_same_shape_1(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<?xf32>
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
+  %2 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %0) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: return %[[ARG]] : tensor<?xf32>
+  return %2 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_2
+func @dynamic_broadcast_in_dim_to_same_shape_2(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<?xf32>
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> !shape.shape
+  %1 = shape.to_extent_tensor %0 : !shape.shape -> tensor<1xindex>
+  %2 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %1) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: return %[[ARG]] : tensor<?xf32>
+  return %2 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @broadcast_in_dim_constant_fold_0d
+func @broadcast_in_dim_constant_fold_0d() -> tensor<1x64x224x224xf32> {
+  %cst = mhlo.constant dense<0.000000e+00> : tensor<f32>
+  %b = "mhlo.broadcast_in_dim"(%cst) {broadcast_dimensions = dense<[]> : tensor<0xi64>} : (tensor<f32>) -> tensor<1x64x224x224xf32>
+  return %b : tensor<1x64x224x224xf32>
+}
+// CHECK-NEXT: %[[CST:.*]] = mhlo.constant dense<0.000000e+00> : tensor<1x64x224x224xf32>
+// CHECK-NEXT: return %[[CST]] : tensor<1x64x224x224xf32>
+
+// CHECK-LABEL: func @broadcast_in_dim_constant_fold
+func @broadcast_in_dim_constant_fold() -> tensor<1x64x4x4xf32> {
+  %cst = mhlo.constant dense<0.000000e+00> : tensor<4x4xf32>
+  %b = "mhlo.broadcast_in_dim"(%cst) {broadcast_dimensions = dense<[2, 3]> : tensor<2xi64>} : (tensor<4x4xf32>) -> tensor<1x64x4x4xf32>
+  return %b : tensor<1x64x4x4xf32>
+}
+// CHECK-NEXT: %[[CST:.*]] = mhlo.constant dense<0.000000e+00> : tensor<1x64x4x4xf32>
+// CHECK-NEXT: return %[[CST]] : tensor<1x64x4x4xf32>
+
 // CHECK-LABEL: @complex_expand_fold
 func @complex_expand_fold(%arg0: tensor<4xf32>, %arg1: tensor<4xf32>) -> (tensor<4xf32>, tensor<4xf32>) {
   %0 = "mhlo.complex"(%arg0, %arg1) : (tensor<4xf32>, tensor<4xf32>) -> (tensor<4xcomplex<f32>>)
@@ -391,12 +442,81 @@ func @dynamic_iota_is_static(%arg0 : tensor<1xindex>) -> tensor<4xi32> {
   return %0 : tensor<4xi32>
 }
 
+// CHECK-LABEL: @dynamic_iota_broadcast
+func @dynamic_iota_broadcast(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
+  // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
+  // CHECK: [[BROADCAST:%.+]] = "mhlo.dynamic_broadcast_in_dim"([[IOTA]], %arg0) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<5xi32>, tensor<2xindex>) -> tensor<5x?xi32>
+  %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<2xindex>) -> tensor<5x?xi32>
+
+  // CHECK: return [[BROADCAST]]
+  return %0 : tensor<5x?xi32>
+}
+
+// CHECK-LABEL: @dynamic_iota_broadcast_second
+func @dynamic_iota_broadcast_second(%arg0 : tensor<2xindex>) -> tensor<5x?xi32> {
+  // CHECK-NEXT: [[CAST1:%.+]] = index_cast %arg0 : tensor<2xindex> to tensor<2xi64>
+  // CHECK-NEXT: [[SLICE:%.+]] = "mhlo.slice"([[CAST1]]) {limit_indices = dense<2> : tensor<1xi64>, start_indices = dense<1> : tensor<1xi64>, strides = dense<1> : tensor<1xi64>} : (tensor<2xi64>) -> tensor<1xi64>
+  // CHECK-NEXT: [[CAST2:%.+]] = index_cast [[SLICE]] : tensor<1xi64> to tensor<1xindex>
+  // CHECK-NEXT: [[IOTA:%.+]] = "mhlo.dynamic_iota"([[CAST2]]) {iota_dimension = 0 : i64} : (tensor<1xindex>) -> tensor<?xi32>
+  // CHECK-NEXT: [[BROADCAST:%.+]] = "mhlo.dynamic_broadcast_in_dim"([[IOTA]], %arg0) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<?xi32>, tensor<2xindex>) -> tensor<5x?xi32>
+  %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 1 : i64} : (tensor<2xindex>) -> tensor<5x?xi32>
+
+  // CHECK: return [[BROADCAST]]
+  return %0 : tensor<5x?xi32>
+}
+
+// CHECK-LABEL: @dynamic_iota_constant
+func @dynamic_iota_constant(%arg0 : tensor<2xindex>) -> tensor<1x?xi32> {
+  // CHECK: [[IOTA:%.+]] = mhlo.constant dense<0> : tensor<1xi32>
+  // CHECK: [[BROADCAST:%.+]] = "mhlo.dynamic_broadcast_in_dim"([[IOTA]], %arg0) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<1xi32>, tensor<2xindex>) -> tensor<1x?xi32>
+  %0 = "mhlo.dynamic_iota"(%arg0) {iota_dimension = 0 : i64} : (tensor<2xindex>) -> tensor<1x?xi32>
+
+  // CHECK: return [[BROADCAST]]
+  return %0 : tensor<1x?xi32>
+}
+
+// CHECK-LABEL: @iota_constant
+func @iota_constant() -> tensor<1xi32> {
+  // CHECK: [[CONST:%.+]] = mhlo.constant dense<0> : tensor<1xi32>
+  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<1xi32>
+
+  // CHECK: return [[CONST]] : tensor<1xi32>
+  return %0 : tensor<1xi32>
+}
+
+// CHECK-LABEL: @iota_constant_multi
+func @iota_constant_multi() -> tensor<1x4xi32> {
+  // CHECK: [[CONST:%.+]] = mhlo.constant dense<0> : tensor<1x4xi32>
+  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<1x4xi32>
+
+  // CHECK: return [[CONST]] : tensor<1x4xi32>
+  return %0 : tensor<1x4xi32>
+}
+
 // CHECK-LABEL: @iota_not_lowered_to_constant
 func @iota_not_lowered_to_constant() -> tensor<4xi32> {
   // CHECK: [[RESULT:%.*]] = "mhlo.iota"
   // CHECK: return [[RESULT]]
   %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xi32>
   return %0 : tensor<4xi32>
+}
+
+// CHECK-LABEL: @iota_broadcast
+func @iota_broadcast() -> tensor<5x4xi32> {
+  // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5xi32>
+  // CHECK: [[RESULT:%.+]] = "mhlo.broadcast_in_dim"([[IOTA]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<5xi32>) -> tensor<5x4xi32>
+  %0 = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<5x4xi32>
+
+  return %0 : tensor<5x4xi32>
+}
+
+// CHECK-LABEL: @iota_broadcast
+func @iota_broadcast_second() -> tensor<5x4xi32> {
+  // CHECK: [[IOTA:%.+]] = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<4xi32>
+  // CHECK: [[RESULT:%.+]] = "mhlo.broadcast_in_dim"([[IOTA]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<4xi32>) -> tensor<5x4xi32>
+  %0 = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> tensor<5x4xi32>
+
+  return %0 : tensor<5x4xi32>
 }
 
 // CHECK-LABEL: @unary_einsum
@@ -454,4 +574,26 @@ func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
   }) : (tensor<i64>) -> tensor<i64>
 
   return %arg0 : tensor<i64>
+}
+
+// CHECK-LABEL: unpack_repack_same_tuple
+// CHECK-SAME: ([[ARG0:%.*]]: tuple<tensor<i32>, !mhlo.token, tensor<f32>>)
+func @unpack_repack_same_tuple(%arg0: tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> tuple<tensor<i32>, !mhlo.token, tensor<f32>> {
+  %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> tensor<i32>
+  %1 = "mhlo.get_tuple_element"(%arg0) {index = 1 : i32} : (tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> !mhlo.token
+  %2 = "mhlo.get_tuple_element"(%arg0) {index = 2 : i32} : (tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> tensor<f32>
+  %3 = "mhlo.tuple"(%0, %1, %2) : (tensor<i32>, !mhlo.token, tensor<f32>) -> tuple<tensor<i32>, !mhlo.token, tensor<f32>>
+
+  // CHECK: return [[ARG0]]
+  return %3 : tuple<tensor<i32>, !mhlo.token, tensor<f32>>
+}
+
+// CHECK-LABEL: unpack_repack_same_tuple_single_element
+// CHECK-SAME: ([[ARG0:%.*]]: tuple<tensor<i32>>)
+func @unpack_repack_same_tuple_single_element(%arg0: tuple<tensor<i32>>) -> tuple<tensor<i32>> {
+  %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<i32>>) -> tensor<i32>
+  %3 = "mhlo.tuple"(%0) : (tensor<i32>) -> tuple<tensor<i32>>
+
+  // CHECK: return [[ARG0]]
+  return %3 : tuple<tensor<i32>>
 }

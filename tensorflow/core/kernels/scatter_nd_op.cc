@@ -100,29 +100,31 @@ class ScatterNdOp : public OpKernel {
     const int64 outer_dims = indices.shape().dims() - 1;
 
     for (int i = 0; i < outer_dims; ++i) {
-      OP_REQUIRES(c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
-                  errors::InvalidArgument(
-                      "Outer dimensions of indices and update must match. "
-                      "Indices shape: ",
-                      indices.shape().DebugString(),
-                      ", updates shape:", updates.shape().DebugString()));
+      OP_REQUIRES(
+          c, indices.shape().dim_size(i) == updates.shape().dim_size(i),
+          errors::InvalidArgument(
+              "Dimensions [0,", outer_dims,
+              ") of indices[shape=", indices.shape().DebugString(),
+              "] must match dimensions [0,", outer_dims,
+              ") of updates[shape=", updates.shape().DebugString(), "]"));
     }
 
     const int64 ix = indices.shape().dim_size(outer_dims);
-    OP_REQUIRES(
-        c, updates.shape().dims() - outer_dims == shape.dims() - ix,
-        errors::InvalidArgument("Inner dimensions of output shape must match "
-                                "inner dimensions of updates shape. Output: ",
-                                shape.DebugString(),
-                                " updates: ", updates.shape().DebugString()));
+    OP_REQUIRES(c, updates.shape().dims() - outer_dims == shape.dims() - ix,
+                errors::InvalidArgument(
+                    "Dimensions [", ix, ",", shape.dims(), ") of input[shape=",
+                    shape.DebugString(), "] must match dimensions [",
+                    outer_dims, ",", updates.shape().dims(),
+                    ") of updates[shape=", updates.shape().DebugString(), "]"));
+
     for (int i = 0; i + outer_dims < updates.shape().dims(); ++i) {
       OP_REQUIRES(
           c, updates.shape().dim_size(i + outer_dims) == shape.dim_size(ix + i),
-          errors::InvalidArgument(
-              "The inner ", shape.dims() - ix,
-              " dimensions of output.shape=", shape.DebugString(),
-              " must match the inner ", updates.shape().dims() - outer_dims,
-              " dimensions of updates.shape=", updates.shape().DebugString()));
+          errors::InvalidArgument("Dimensions [", ix, ",", shape.dims(),
+                                  ") of input[shape=", shape.DebugString(),
+                                  "] must match dimensions [", outer_dims, ",",
+                                  updates.shape().dims(), ") of updates[shape=",
+                                  updates.shape().DebugString(), "]"));
     }
     OP_REQUIRES(c, shape_input.dims() == 1,
                 errors::InvalidArgument("Shape must be a vector"));
@@ -513,7 +515,7 @@ TF_CALL_COMPLEX_TYPES(REGISTER_SCATTER_ND_ALL_GPU);
 #define REGISTER_SCATTER_ND_UPDATE_SYCL(type) \
   REGISTER_SCATTER_ND_UPDATE(type, SYCL);
 
-#define REGISTER_SCATTER_ND_MIN_MAX_GPU(type) \
+#define REGISTER_SCATTER_ND_MIN_MAX_SYCL(type) \
   REGISTER_SCATTER_ND_MIN_MAX(type, SYCL);
 
 TF_CALL_int32(REGISTER_SCATTER_ND_ADD_SUB_SYCL);
@@ -602,30 +604,35 @@ Status ValidateUpdateShape(const TensorShape& params_shape,
       (indices.dims() > 1) ? indices.dim_size(indices.dims() - 1) : 1;
   const int64 batch_dim = (indices.dims() > 1) ? indices.dims() - 1 : 1;
 
-  auto shape_err = [&]() {
+  auto shape_err_prefix = [&]() {
     return errors::InvalidArgument(
-        "Must have updates.shape = indices.shape[:batch_dim] + ",
-        "params_shape[slice_dim:], got updates.shape: ",
-        updates.shape().DebugString(),
-        ", indices.shape: ", indices.shape().DebugString(),
-        ", params_shape: ", params_shape.DebugString(),
-        ", slice_dim: ", slice_dim, ", and batch_dim: ", batch_dim);
+        "Dimensions [0,", batch_dim,
+        ") of indices[shape=", indices.shape().DebugString(),
+        "] must match dimensions [0,", batch_dim,
+        ") of updates[shape=", updates.shape().DebugString(), "]");
+  };
+  auto shape_err_suffix = [&]() {
+    return errors::InvalidArgument(
+        "Dimensions [", slice_dim, ",", params_shape.dims(),
+        ") of input[shape=", params_shape.DebugString(),
+        "] must match dimensions [", slice_dim, ",", updates.dims(),
+        ") of updates[shape=", updates.shape().DebugString(), "]");
   };
 
-  if (updates.dims() < batch_dim) return shape_err();
+  if (updates.dims() < batch_dim) return shape_err_prefix();
   if (params_shape.dims() < slice_dim + (updates.dims() - batch_dim)) {
-    return shape_err();
+    return shape_err_suffix();
   }
   if (updates.dims() != batch_dim + params_shape.dims() - slice_dim) {
-    return shape_err();
+    return shape_err_suffix();
   }
   for (int d = 0; d < batch_dim; ++d) {
-    if (updates.dim_size(d) != indices.dim_size(d)) return shape_err();
+    if (updates.dim_size(d) != indices.dim_size(d)) return shape_err_prefix();
   }
   for (int d = 0; d < updates.dims() - batch_dim; ++d) {
     if (updates.dim_size(d + batch_dim) !=
         params_shape.dim_size(d + slice_dim)) {
-      return shape_err();
+      return shape_err_suffix();
     }
   }
   return Status::OK();
@@ -654,9 +661,9 @@ Status PrepareAndValidateInputs(const TensorShape& params_shape,
 
   if (updates.dim_size(0) != indices.dim_size(0)) {
     return errors::InvalidArgument(
-        "The outermost dimension of updates and indices ",
-        "must match. Got indices.shape ", indices_shape.DebugString(),
-        ", updates.shape ", updates_shape.DebugString());
+        "Dimensions [0,1) of indices[shape=", indices_shape.DebugString(),
+        "] = ", indices.dim_size(0), " must match dimensions [0,1) of updates[",
+        "shape=", updates_shape.DebugString(), "] = ", updates.dim_size(0));
   }
   TF_RETURN_IF_ERROR(ValidateUpdateShape(params_shape, indices, updates));
 

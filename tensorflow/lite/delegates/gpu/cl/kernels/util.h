@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
@@ -83,19 +83,6 @@ void RearrangeWeightsToOHWIOGroupI4O4(
   }
 }
 
-// Returns fastest TextureAddressMode that return ZERO for out-of-range image
-// coordinates.
-//
-// Unfortunately, CLK_ADDRESS_CLAMP is very slow on Adreno3xx and
-// we can observe huge register overhead when compared to other modes.
-
-// While using CLK_ADDRESS_NONE with out-of-range image coordinates is undefined
-// in the OpenCL specification, we have observed that CLK_ADDRESS_NONE works
-// like CLK_ADDRESS_CLAMP for out-of-range image coordinates for RGBA F16/F32
-// textures on Adreno3xx devices. Using CLK_ADDRESS_NONE is significantly faster
-// than CLK_ADDRESS_CLAMP on Adreno 3xx.
-TextureAddressMode GetFastestZeroMode(const CLDevice& device);
-
 // Returns float4 mask for last plane(batch of 4 channels)
 // assumes that plane size is 4;
 // for example we have 7 channels, in our data structures we align it to 8
@@ -108,7 +95,7 @@ float4 GetMaskForLastPlane(int channels);
 int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
 
 // task_size as amount of FLT4 processed elements.
-int GetRecommendedBlockSizeForConv(const CLDevice& device,
+int GetRecommendedBlockSizeForConv(const DeviceInfo& device,
                                    CalculationsPrecision precision,
                                    int task_size);
 }  // namespace cl

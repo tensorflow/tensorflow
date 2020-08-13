@@ -25,19 +25,22 @@ def NullArrayAttr : NativeCodeCall<"ArrayAttr()">;
 def CastIntElementsAttr : NativeCodeCall<"$0.cast<DenseIntElementsAttr>()">;
 
 class ConstantSplat<string value> : NativeCodeCall<
-    "xla::getSplat(&$_builder, $0, " # value # ")">;
+    "hlo::getSplat(&$_builder, $0, " # value # ")">;
+
+class HLO_ConstantLike<string value> : NativeCodeCall<
+    "chlo::getConstantLike($_builder, " # value # ", $0)">;
 
 def NullDenseIntElementsAttr : NativeCodeCall<"DenseIntElementsAttr()">;
 
 def BinBroadcastDimensions : NativeCodeCall<
-    "xla::getBroadcastDimensionsAttr(&$_builder, $0, $1)">;
+    "hlo::getBroadcastDimensionsAttr(&$_builder, $0, $1)">;
 
 def BinBroadcastDimensionsNonEmpty : NativeCodeCall<
-    "xla::getBroadcastDimensionsAttr(&$_builder, $0, $1, /*allow_empty=*/false)">;
+    "hlo::getBroadcastDimensionsAttr(&$_builder, $0, $1, /*allow_empty=*/false)">;
 
 // Here, the element type can be any integer or float type. But, note that only
 // 32 bit integers are supported for the value.
 class GetScalarOfType<int value> : NativeCodeCall<
-  "xla::GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
+  "hlo::GetScalarOfType(getElementTypeOrSelf($0)," # value # ")">;
 
 #endif // HLO_UTILS

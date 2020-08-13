@@ -35,7 +35,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "WorkerProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.distruntime";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -70,6 +70,17 @@ message CreateWorkerSessionRequest {
 
   // The device attributes of all the devices in the cluster.
   repeated DeviceAttributes cluster_device_attributes = 4;
+
+  // The master task name from which the request is sent.
+  string master_task = 5;
+
+  // The incarnation ID of the master task local CPU device.
+  // If the target worker already has a WorkerSession created previously with
+  // the same master task name but a different incarnation, it usually indicates
+  // that the previous master failed before deleting the WorkerSession on the
+  // worker. To prevent memory leaks, the worker should garbage collect the old
+  // WorkerSessions.
+  int64 master_incarnation = 6;
 }
 
 message CreateWorkerSessionResponse {}

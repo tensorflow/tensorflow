@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <type_traits>
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
 namespace mlir {
 namespace mhlo {
@@ -34,7 +34,7 @@ using HloToLhloOp = typename HloToLhloOpImpl<HloOpTy>::Type;
 #define MAP_HLO_TO_LHLO(OpName)          \
   template <>                            \
   struct HloToLhloOpImpl<mhlo::OpName> { \
-    using Type = xla_lhlo::OpName;       \
+    using Type = lmhlo::OpName;          \
   }
 
 MAP_HLO_TO_LHLO(AbsOp);

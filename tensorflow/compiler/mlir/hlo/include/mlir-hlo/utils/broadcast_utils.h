@@ -13,21 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_XLA_IR_BROADCAST_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_XLA_IR_BROADCAST_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_
 
 // Utilities relating to implementing HLO broadcasting.
 // Note: This file should not depend on any non-MLIR TensorFlow libraries.
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Location.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
+#include "mlir/Support/LLVM.h"
 
 namespace mlir {
-namespace xla {
+namespace hlo {
 
 // Checks whether the given operand types and broadcast_dims attr represent a
 // legal combination for "numpy" style broadcasting (where 1-dims are prepended
@@ -38,12 +38,14 @@ bool IsLegalNumpyRankedBroadcast(Value lhs, Value rhs,
 
 // Emits shape dialect ops to compute the result shape for a broadcasting
 // binary elementwise op which broadcasts according to "numpy" semantics
-// (see above), returning an extents tensor of the resulting shape.
-Value ComputeBinaryElementwiseBroadcastingResultExtents(Location loc, Value lhs,
-                                                        Value rhs,
-                                                        OpBuilder& builder);
+// (see above), returning a `shape.shape` or an extent tensor of the resulting
+// shape. The result should only be an extent tensor in contexts that ensure
+// both operands to be broadcastable.
+Value ComputeBinaryElementwiseBroadcastingResultExtents(
+    Location loc, Value lhs, Value rhs, OpBuilder& builder,
+    bool unsafe_as_extent_tensor);
 
-}  // namespace xla
+}  // namespace hlo
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_XLA_IR_BROADCAST_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_BROADCAST_UTILS_H_

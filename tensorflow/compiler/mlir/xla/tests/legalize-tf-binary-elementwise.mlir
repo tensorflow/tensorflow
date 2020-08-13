@@ -48,8 +48,8 @@ func @add_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?x?xi32>) -> tensor<?x?xi3
   // CHECK-NEXT: shape.assuming %[[WITNESS:.+]]
   // CHECK-DAG:    %[[LHS_SHAPE:.+]] = shape.shape_of %arg0
   // CHECK-DAG:    %[[RHS_SHAPE:.+]] = shape.shape_of %arg1
-  // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = "shape.broadcast"(%[[LHS_SHAPE]], %[[RHS_SHAPE]])
-  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
+  // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = shape.broadcast %[[LHS_SHAPE]], %[[RHS_SHAPE]] : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
+  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor_cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<2xindex>
   // CHECK-NEXT:   %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<1> : tensor<1xi64>}
   // CHECK-NEXT:   %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<[0, 1]> : tensor<2xi64>}
   // CHECK-NEXT:   %[[RESULT:.+]] = mhlo.add %[[LHS_BCAST]], %[[RHS_BCAST]] : tensor<?x?xi32>
@@ -195,17 +195,18 @@ func @equal(%arg0: tensor<2xi32>) -> tensor<2xi1> {
 
 // CHECK-LABEL: func @equal_dynamic
 func @equal_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<1xi32>) -> tensor<?xi1> {
-  // CHECK-DAG:  %[[LHS_SHAPE:.+]] = shape.shape_of %arg0
-  // CHECK-DAG:  %[[RHS_SHAPE:.+]] = shape.const_shape [1]
-  // CHECK-NEXT: %[[WITNESS:.+]] = shape.cstr_broadcastable %[[LHS_SHAPE]], %[[RHS_SHAPE]]
-  // CHECK-NEXT: shape.assuming %[[WITNESS]] -> (tensor<?xi1>) {
-  // CHECK-DAG:    %[[LHS_SHAPE1:.+]] = shape.shape_of %arg0
-  // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = "shape.broadcast"(%[[LHS_SHAPE1]], %[[RHS_SHAPE]])
-  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
-  // CHECK-DAG:    %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // CHECK-DAG:    %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
-  // CHECK-NEXT:   %[[RESULT:.+]] = "mhlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = "EQ"}
-  // CHECK-NEXT:   shape.assuming_yield %[[RESULT]]
+  // TODO(jpienaar): Uncomment below when fallout from https://reviews.llvm.org/D83194 fixed.
+  // NOT-CHECK-DAG:  %[[LHS_SHAPE:.+]] = shape.shape_of %arg0
+  // NOT-CHECK-DAG:  %[[RHS_SHAPE:.+]] = shape.const_shape [1]
+  // NOT-CHECK-NEXT: %[[WITNESS:.+]] = shape.cstr_broadcastable %[[LHS_SHAPE]], %[[RHS_SHAPE]]
+  // NOT-CHECK-NEXT: shape.assuming %[[WITNESS]] -> (tensor<?xi1>) {
+  // NOT-CHECK-DAG:    %[[LHS_SHAPE1:.+]] = shape.shape_of %arg0
+  // NOT-CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = shape.broadcast %[[LHS_SHAPE1]], %[[RHS_SHAPE]] : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
+  // NOT-CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor_cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<1xindex>
+  // NOT-CHECK-DAG:    %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // NOT-CHECK-DAG:    %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
+  // NOT-CHECK-NEXT:   %[[RESULT:.+]] = "mhlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = "EQ"}
+  // NOT-CHECK-NEXT:   shape.assuming_yield %[[RESULT]]
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<?xi32>, tensor<1xi32>) -> tensor<?xi1>
   return %0: tensor<?xi1>
 }
@@ -289,8 +290,8 @@ func @greater_dynamic(%arg0: tensor<?xi32>, %arg1: tensor<?xi32>) -> tensor<?xi1
   // CHECK-NEXT: shape.assuming %[[WITNESS]]
   // CHECK-DAG:    %[[LHS_SHAPE1:.+]] = shape.shape_of %arg0
   // CHECK-DAG:    %[[RHS_SHAPE1:.+]] = shape.shape_of %arg1
-  // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = "shape.broadcast"(%[[LHS_SHAPE1]], %[[RHS_SHAPE1]])
-  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = shape.to_extent_tensor %[[RESULT_SHAPE]]
+  // CHECK-NEXT:   %[[RESULT_SHAPE:.+]] = shape.broadcast %[[LHS_SHAPE1]], %[[RHS_SHAPE1]] : tensor<?xindex>, tensor<?xindex> -> tensor<?xindex>
+  // CHECK-NEXT:   %[[RESULT_EXTENTS:.+]] = tensor_cast %[[RESULT_SHAPE]] : tensor<?xindex> to tensor<1xindex>
   // CHECK-DAG:    %[[LHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg0, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK-DAG:    %[[RHS_BCAST:.+]] = "mhlo.dynamic_broadcast_in_dim"(%arg1, %[[RESULT_EXTENTS]]) {broadcast_dimensions = dense<0> : tensor<1xi64>}
   // CHECK-NEXT:   "mhlo.compare"(%[[LHS_BCAST]], %[[RHS_BCAST]]) {comparison_direction = "GT"}

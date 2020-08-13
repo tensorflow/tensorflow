@@ -126,7 +126,13 @@ def build_tensor_info_from_op(op):
 
   Returns:
     A TensorInfo protocol buffer constructed based on the supplied argument.
+
+  Raises:
+    RuntimeError: If eager execution is enabled.
   """
+  if context.executing_eagerly():
+    raise RuntimeError(
+        "build_tensor_info_from_op is not supported in Eager mode.")
   return meta_graph_pb2.TensorInfo(
       dtype=types_pb2.DT_INVALID,
       tensor_shape=tensor_shape.unknown_shape().as_proto(),

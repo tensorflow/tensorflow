@@ -230,7 +230,7 @@ R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module
 ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f32[4] {
   %v1 = f32[4]{0} parameter(0), sharding={maximal device=1}
   %v2 = f32[4]{0} parameter(1), sharding={maximal device=1}
-  %greater-than = pred[4]{0} compare(f32[4]{0} %v1, f32[4]{0} %v2), direction=GT, sharding={replicated}
+  %greater-than = pred[4]{0} compare(f32[4]{0} %v1, f32[4]{0} %v2), direction=GT, type=TOTALORDER, sharding={replicated}
   ROOT %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2), sharding={}
 }
 
@@ -512,7 +512,7 @@ R"(HloModule R4F32OverlapSmall_module
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)
-  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE, type=TOTALORDER
 }
 
 %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {
@@ -2399,7 +2399,7 @@ ENTRY c2 {
 
 TEST_F(HloParserTest, SimpleAliasing) {
   const string original = R"(
-HloModule Module, input_output_alias={ {0}: (0, {0}, USER), {1}: (0, {1}, USER) }
+HloModule Module, input_output_alias={ {0}: (0, {0}, must-alias), {1}: (0, {1}) }
 
 ENTRY entry {
   %p = (f32[], f32[]) parameter(0)
@@ -2413,28 +2413,13 @@ ENTRY entry {
   std::unique_ptr<HloModule> parsed_module = module.ConsumeValueOrDie();
   EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
             ShapeIndex{0});
+
+  EXPECT_TRUE(
+      parsed_module->input_output_alias_config().ParameterMustAlias(0, {0}));
   EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {1}),
             ShapeIndex{1});
-}
-
-TEST_F(HloParserTest, SimpleAliasingShortForm) {
-  const string original = R"(
-HloModule Module, input_output_alias={ {0}: (0, {0}), {1}: (0, {1}) }
-
-ENTRY entry {
-  %p = (f32[], f32[]) parameter(0)
-  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
-  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
-  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
-}
-  )";
-  auto module = ParseAndReturnVerifiedModule(original);
-  TF_ASSERT_OK(module.status());
-  std::unique_ptr<HloModule> parsed_module = module.ConsumeValueOrDie();
-  EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {0}),
-            ShapeIndex{0});
-  EXPECT_EQ(parsed_module->input_output_alias_config().GetAliasedOutput(0, {1}),
-            ShapeIndex{1});
+  EXPECT_FALSE(
+      parsed_module->input_output_alias_config().ParameterMustAlias(0, {1}));
 }
 
 TEST_F(HloParserTest, NestedAliasing) {
@@ -2539,22 +2524,6 @@ ENTRY entry {
       "expects integer");
 }
 
-TEST_F(HloParserTest, AliasingUnexpectedKind) {
-  const string original = R"(
-HloModule Module, input_output_alias={ {0}: (0, {0}, UNKNOWN), {1}: (0, {1}, UNKNOWN) }
-
-ENTRY entry {
-  %p = (f32[], f32[]) parameter(0)
-  %p0 = f32[] get-tuple-element((f32[], f32[]) %p), index=0
-  %p1 = f32[] get-tuple-element((f32[], f32[]) %p), index=1
-  ROOT %out = (f32[], f32[]) tuple(%p0, %p1)
-}
-  )";
-  ExpectHasSubstr(
-      ParseAndReturnUnverifiedModule(original).status().error_message(),
-      "Unexpected aliasing kind");
-}
-
 TEST_F(HloParserTest, MultipleRoots) {
   const string original = R"(HloModule multiple_roots:
 ENTRY consts {
@@ -2626,6 +2595,21 @@ TEST_F(HloParserTest, ParseSharding) {
   const string original = "{maximal device=42}";
   TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
   EXPECT_EQ(sharding.ToString(), original);
+}
+
+TEST_F(HloParserTest, ParseShardingPartialReplication) {
+  const string original = "{devices=[2,2]0,1,2,3 last_tile_dim_replicate}";
+  TF_ASSERT_OK_AND_ASSIGN(HloSharding sharding, ParseSharding(original));
+  EXPECT_EQ(sharding.ToString(), original);
+  Array<int64> group_tiling({2});
+  group_tiling(0) = 0;
+  group_tiling(1) = 1;
+  std::vector<int64> group0_members({0, 1});
+  std::vector<int64> group1_members({2, 3});
+  EXPECT_EQ(
+      HloSharding::PartialTile(group_tiling, {group0_members, group1_members})
+          .ToString(),
+      original);
 }
 
 TEST_F(HloParserTest, ParseFrontendAttributes) {

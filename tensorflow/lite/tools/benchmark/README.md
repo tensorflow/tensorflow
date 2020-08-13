@@ -34,13 +34,6 @@ and the following optional parameters:
 *   `run_delay`: `float` (default=-1.0) \
     The delay in seconds between subsequent benchmark runs. Non-positive values
     mean use no delay.
-*   `use_legacy_nnapi`: `bool` (default=false) \
-    Whether to use the legacy
-    [Android NNAPI](https://developer.android.com/ndk/guides/neuralnetworks/)
-    TFLite path, which requires the graph to be fully compatible with NNAPI.
-    This is available on recent Android devices. Note that some Android P
-    devices will fail to use NNAPI for models in `/data/local/tmp/` and this
-    benchmark tool will not correctly use NNAPI.
 *   `enable_op_profiling`: `bool` (default=false) \
     Whether to enable per-operator profiling measurement.
 *   `enable_platform_tracing`: `bool` (default=false) \
@@ -65,8 +58,7 @@ The following simply lists the names of these parameters and additional notes
 where applicable. For details about each parameter, please refer to
 [this page](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tools/delegates/README.md#tflite-delegate-registrar).
 #### Common parameters
-* `max_delegated_partitions`: `int` (default=0) \
-Note when `use_legacy_nnapi` is selected, this parameter won't work.
+* `max_delegated_partitions`: `int` (default=0)
 * `min_nodes_per_partition`:`int` (default=0)
 
 #### GPU delegate
@@ -77,14 +69,15 @@ Note when `use_legacy_nnapi` is selected, this parameter won't work.
 * `gpu_wait_type`: `str` (default="")
 
 #### NNAPI delegate
+
 *   `use_nnapi`: `bool` (default=false) \
     Note some Android P devices will fail to use NNAPI for models in
     `/data/local/tmp/` and this benchmark tool will not correctly use NNAPI.
 *   `nnapi_execution_preference`: `str` (default="")
 *   `nnapi_execution_priority`: `str` (default="") \
-    Note this requires Anroid 11+.
+    Note this requires Android 11+.
 *   `nnapi_accelerator_name`: `str` (default="") \
-    Note this requires Anroid 10+.
+    Note this requires Android 10+.
 *   `disable_nnapi_cpu`: `bool` (default=false)
 *   `nnapi_allow_fp16`: `bool` (default=false)
 
@@ -297,3 +290,28 @@ some additional parameters as detailed below.
 *   `random_shuffle_benchmark_runs`: `bool` (default=true) \
     Whether to perform all benchmark runs, each of which has different
     performance options, in a random order.
+
+## Build the benchmark tool with Tensorflow ops support
+
+You can build the benchmark tool with [Tensorflow operators support](https://www.tensorflow.org/lite/guide/ops_select).
+
+### How to build
+
+To build the tool, you need to use 'benchmark_model_plus_flex' target with
+'--config=monolithic' option.
+
+```
+bazel build -c opt \
+  --config=monolithic \
+  tensorflow/lite/tools/benchmark:benchmark_model_plus_flex
+```
+
+### How to benchmark tflite model with Tensorflow ops
+
+Tensorflow ops support just works the benchmark tool is built with Tensorflow
+ops support. It doesn't require any additional option to use it.
+
+```
+bazel-bin/tensorflow/lite/tools/benchmark/benchmark_model_plus_flex \
+  --graph=model_converted_with_TF_ops.tflite \
+```

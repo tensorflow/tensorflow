@@ -18,9 +18,9 @@ limitations under the License.
 
 #include <memory>
 
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
 class LLVMTypeConverter;
@@ -38,8 +38,15 @@ void PopulateGeneralDotOpLoweringPatterns(OwningRewritePatternList *patterns,
 void PopulateComplexLoweringPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
-void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
-                              MLIRContext *ctx);
+void PopulateOptimizeMHLOPatterns(MLIRContext *context,
+                                  OwningRewritePatternList *patterns);
+
+// Rewrite patterns for gather to equivalent torch index select legalization.
+void PopulateGatherToTorchIndexSelectPatterns(
+    mlir::MLIRContext *context, OwningRewritePatternList *patterns);
+
+void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
+                               MLIRContext *ctx);
 
 // Collection of rewrite patterns for lowering of HLO to LHLO dialect.
 void populateHLOToLHLOConversionPattern(
@@ -73,34 +80,30 @@ void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
 void PopulateUnfuseBatchNormPatterns(MLIRContext *context,
                                      OwningRewritePatternList *patterns);
 
+// Populates a pattern that translates the standard TanhOp to an approximation
+// that does not use intrinsics.
+void PopulateTanhToApproximationPatterns(MLIRContext *context,
+                                         OwningRewritePatternList *patterns);
+
 }  // namespace mhlo
 
-namespace xla_lhlo {
+namespace lmhlo {
 
 /// Collect a set of patterns to convert from the LHLO dialect to LLVM.
-void PopulateLhloToLLVMConversionPatterns(const LowerToLLVMOptions &options,
-                                          LLVMTypeConverter *converter,
+void PopulateLhloToLLVMConversionPatterns(LLVMTypeConverter *converter,
                                           OwningRewritePatternList *patterns);
 
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 
-namespace xla_chlo {
+namespace chlo {
 
 // Populates a collection of conversion patterns for legalizing client-HLO to
 // HLO.
 void PopulateLegalizeChloToHloPatterns(MLIRContext *context,
                                        OwningRewritePatternList *patterns);
 
-}  // namespace xla_chlo
+}  // namespace chlo
 
-namespace xla {
-
-// Populates a pattern that translates the standard TanhOp to an approximation
-// that does not use intrinsics.
-void PopulateTanhToApproximationPatterns(MLIRContext *context,
-                                         OwningRewritePatternList *patterns);
-
-}  // namespace xla
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_DIALECT_MHLO_TRANSFORMS_REWRITERS_H_

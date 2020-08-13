@@ -92,12 +92,13 @@ void CheckInputOutputPrimitivetypeAreValid(const HloInstruction* hlo) {
 }  // namespace
 
 CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
-    const BufferAllocation::Slice& operand,
+    ThunkInfo thunk_info, const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& offset,
     const BufferAllocation::Slice& mean,
     const BufferAllocation::Slice& variance, float epsilon, int64 feature_index,
-    const BufferAllocation::Slice& output, const HloInstruction* hlo)
-    : Thunk(Thunk::Kind::kCudnnBatchNormForwardInference, hlo),
+    const BufferAllocation::Slice& output)
+    : Thunk(Thunk::Kind::kCudnnBatchNormForwardInference, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       operand_(operand),
       scale_(scale),
       offset_(offset),
@@ -106,6 +107,7 @@ CudnnBatchNormForwardInferenceThunk::CudnnBatchNormForwardInferenceThunk(
       epsilon_(epsilon),
       feature_index_(feature_index),
       output_(output) {
+  const auto* hlo = hlo_instruction_;
   CHECK_EQ(hlo->opcode(), HloOpcode::kCustomCall);
   CHECK_EQ(hlo->custom_call_target(),
            kCudnnBatchNormForwardInferenceCallTarget);
@@ -118,7 +120,7 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
     const ExecuteParams& params) {
   auto& buffer_allocations = *params.buffer_allocations;
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   se::DeviceMemoryBase output_base =
       buffer_allocations.GetDeviceAddress(output_);
   se::DeviceMemoryBase operand = buffer_allocations.GetDeviceAddress(operand_);
@@ -129,7 +131,7 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
       buffer_allocations.GetDeviceAddress(variance_));
   auto& stream = *params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormForwardInference(
-      hlo_instruction(), operand, output_base, scale, offset, mean, variance,
+      hlo_instruction_, operand, output_base, scale, offset, mean, variance,
       epsilon_, feature_index_, &stream));
 
   if (!stream.ok()) {
@@ -139,14 +141,15 @@ Status CudnnBatchNormForwardInferenceThunk::ExecuteOnStream(
 }
 
 CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
-    const BufferAllocation::Slice& operand,
+    ThunkInfo thunk_info, const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& offset,
     float epsilon, int64 feature_index,
     const BufferAllocation::Slice& output_data,
     const BufferAllocation::Slice& output_mean,
     const BufferAllocation::Slice& output_inv_stddev,
-    const BufferAllocation::Slice& output_tuple, const HloInstruction* hlo)
-    : Thunk(Thunk::Kind::kCudnnBatchNormForwardTraining, hlo),
+    const BufferAllocation::Slice& output_tuple)
+    : Thunk(Thunk::Kind::kCudnnBatchNormForwardTraining, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       operand_(operand),
       scale_(scale),
       offset_(offset),
@@ -156,6 +159,7 @@ CudnnBatchNormForwardTrainingThunk::CudnnBatchNormForwardTrainingThunk(
       output_mean_(output_mean),
       output_inv_stddev_(output_inv_stddev),
       output_tuple_(output_tuple) {
+  const auto* hlo = hlo_instruction_;
   CHECK_EQ(hlo->opcode(), HloOpcode::kCustomCall);
   CHECK_EQ(hlo->custom_call_target(), kCudnnBatchNormForwardTrainingCallTarget);
   CHECK_EQ(hlo->shape().tuple_shapes_size(), 3);
@@ -178,10 +182,10 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
 
   se::DeviceMemory<float> null_device_ptr(nullptr);
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   auto& stream = *params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormForwardTraining(
-      hlo_instruction(), operand, output_data, output_mean, output_inv_stddev,
+      hlo_instruction_, operand, output_data, output_mean, output_inv_stddev,
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(offset_)),
       epsilon_, feature_index_, &stream));
@@ -203,15 +207,16 @@ Status CudnnBatchNormForwardTrainingThunk::ExecuteOnStream(
 }
 
 CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
-    const BufferAllocation::Slice& operand,
+    ThunkInfo thunk_info, const BufferAllocation::Slice& operand,
     const BufferAllocation::Slice& scale, const BufferAllocation::Slice& mean,
     const BufferAllocation::Slice& inv_stddev,
     const BufferAllocation::Slice& grad_output, float epsilon,
     int64 feature_index, const BufferAllocation::Slice& output_grad_data,
     const BufferAllocation::Slice& output_grad_scale,
     const BufferAllocation::Slice& output_grad_offset,
-    const BufferAllocation::Slice& output_tuple, const HloInstruction* hlo)
-    : Thunk(Thunk::Kind::kCudnnBatchNormBackward, hlo),
+    const BufferAllocation::Slice& output_tuple)
+    : Thunk(Thunk::Kind::kCudnnBatchNormBackward, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       operand_(operand),
       scale_(scale),
       mean_(mean),
@@ -223,6 +228,7 @@ CudnnBatchNormBackwardThunk::CudnnBatchNormBackwardThunk(
       output_grad_scale_(output_grad_scale),
       output_grad_offset_(output_grad_offset),
       output_tuple_(output_tuple) {
+  const auto* hlo = hlo_instruction_;
   CHECK_EQ(hlo->opcode(), HloOpcode::kCustomCall);
   CHECK_EQ(hlo->custom_call_target(), kCudnnBatchNormBackwardCallTarget);
   CHECK_EQ(hlo->shape().tuple_shapes_size(), 3);
@@ -247,10 +253,10 @@ Status CudnnBatchNormBackwardThunk::ExecuteOnStream(
       buffer_allocations.GetDeviceAddress(output_grad_offset_));
 
   auto op_profiler =
-      params.profiler->MakeScopedInstructionProfiler(hlo_instruction());
+      params.profiler->MakeScopedInstructionProfiler(profile_index());
   se::Stream* stream = params.stream;
   TF_RETURN_IF_ERROR(RunCudnnBatchNormBackward(
-      hlo_instruction(), operand, output_grad_data, grad_output,
+      hlo_instruction_, operand, output_grad_data, grad_output,
       output_grad_scale, output_grad_offset,
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(scale_)),
       se::DeviceMemory<float>(buffer_allocations.GetDeviceAddress(mean_)),

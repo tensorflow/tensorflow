@@ -511,17 +511,19 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // generate unique names.
   if (!output_names.empty()) {
     const int num_data_results = graph_op.getNumResults();
-    TF_RET_CHECK(output_names.size() == num_data_results)
+    const int64 output_names_size = output_names.size();
+    TF_RET_CHECK(output_names_size == num_data_results)
         << "output names (" << output_names.size()
         << ") != terminator operands (" << num_data_results << ")";
     llvm::DenseMap<Operation*, llvm::StringRef> output_op_to_name;
     llvm::StringMap<Operation*> name_to_op;
     for (const auto& it : llvm::enumerate(graph_op.GetFetch().getOperands())) {
       // Skip control rets.
-      if (it.index() >= num_data_results) break;
+      const int64 index = it.index();
+      if (index >= num_data_results) break;
       // TODO(jpienaar): If there is a result index specified, ensure only one
       // and that it matches the result index of the op.
-      std::string orig_name(output_names[it.index()]);
+      std::string orig_name(output_names[index]);
       auto tensor_id = ParseTensorName(orig_name);
       auto name = LegalizeNodeName(
           llvm::StringRef(tensor_id.node().data(), tensor_id.node().size()));
@@ -576,9 +578,8 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
   // Adds nodes for operations.
   for (Operation& inst : graph_op.GetBody()) {
     for (auto type : inst.getResultTypes())
-      if (!type.isa<mlir::TensorType>() &&
-          !type.isa<mlir::tf_executor::ControlType>() &&
-          !type.isa<mlir::tf_executor::TokenType>())
+      if (!type.isa<mlir::TensorType, mlir::tf_executor::ControlType,
+                    mlir::tf_executor::TokenType>())
         return errors::InvalidArgument(
             "Values must be of tensor type, TensorFlow control type, or "
             "TensorFlow token type. Found ",

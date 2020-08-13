@@ -32,6 +32,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/nnapi/acceleration_test_util.h"
@@ -39,12 +40,13 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
 #include "tensorflow/lite/kernels/register.h"
-#include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
@@ -52,26 +54,6 @@ namespace tflite {
 
 using ::testing::FloatNear;
 using ::testing::Matcher;
-
-namespace {
-
-// Whether to enable (global) use of NNAPI. Note that this will typically
-// be set via a command-line flag.
-static bool force_use_nnapi = false;
-
-TfLiteDelegate* TestNnApiDelegate() {
-  static TfLiteDelegate* delegate = [] {
-    StatefulNnApiDelegate::Options options;
-    // In Android Q, the NNAPI delegate avoids delegation if the only device
-    // is the reference CPU. However, for testing purposes, we still want
-    // delegation coverage, so force use of this reference path.
-    options.accelerator_name = "nnapi-reference";
-    return new StatefulNnApiDelegate(options);
-  }();
-  return delegate;
-}
-
-}  // namespace
 
 std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
                                            float max_abs_error) {
@@ -219,14 +201,23 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 }
 
 TfLiteStatus SingleOpModel::ApplyDelegate() {
-  if (force_use_nnapi) {
-    delegate_ = TestNnApiDelegate();
-  }
-
   if (delegate_) {
-    return interpreter_->ModifyGraphWithDelegate(delegate_);
+    TFLITE_LOG(WARN) << "Having a manually-set TfLite delegate, and bypassing "
+                        "KernelTestDelegateProviders";
+    TF_LITE_ENSURE_STATUS(interpreter_->ModifyGraphWithDelegate(delegate_));
+    ++num_applied_delegates_;
+  } else {
+    auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
+    for (auto& one : delegate_providers->CreateAllDelegates()) {
+      // The raw ptr always points to the actual TfLiteDegate object.
+      auto* delegate_raw_ptr = one.get();
+      TF_LITE_ENSURE_STATUS(
+          interpreter_->ModifyGraphWithDelegate(std::move(one)));
+      // Note: 'delegate_' is always set to the last successfully applied one.
+      delegate_ = delegate_raw_ptr;
+      ++num_applied_delegates_;
+    }
   }
-
   return kTfLiteOk;
 }
 
@@ -242,12 +233,14 @@ void SingleOpModel::BuildInterpreter(
 }
 
 // static
-void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {
-  force_use_nnapi = use_nnapi;
+bool SingleOpModel::GetForceUseNnapi() {
+  const auto& delegate_params =
+      tflite::KernelTestDelegateProviders::Get()->ConstParams();
+  // It's possible this library isn't linked with the nnapi delegate provider
+  // lib.
+  return delegate_params.HasParam("use_nnapi") &&
+         delegate_params.Get<bool>("use_nnapi");
 }
-
-// static
-bool SingleOpModel::GetForceUseNnapi() { return force_use_nnapi; }
 
 int32_t SingleOpModel::GetTensorSize(int index) const {
   TfLiteTensor* t = interpreter_->tensor(index);
@@ -327,20 +320,27 @@ void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
     return;
   }
 
-  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Validating acceleration");
+  // If we have multiple delegates applied, we would skip this check at the
+  // moment.
+  if (num_applied_delegates_ > 1) {
+    TFLITE_LOG(WARN) << "Skipping ExpectOpAcceleratedWithNnapi as "
+                     << num_applied_delegates_
+                     << " delegates have been successfully applied.";
+    return;
+  }
+  TFLITE_LOG(INFO) << "Validating acceleration";
   const NnApi* nnapi = NnApiImplementation();
   if (nnapi && nnapi->nnapi_exists &&
       nnapi->android_sdk_version >=
           validation_params.value().MinAndroidSdkVersion()) {
-    EXPECT_EQ(
-        CountPartitionsDelegatedTo(interpreter_.get(), TestNnApiDelegate()), 1)
+    EXPECT_EQ(CountPartitionsDelegatedTo(interpreter_.get(), delegate_), 1)
         << "Expecting operation to be accelerated but cannot find a partition "
            "associated to the NNAPI delegate";
   }
 }
 
 void SingleOpModel::ValidateAcceleration() {
-  if (force_use_nnapi) {
+  if (GetForceUseNnapi()) {
     ExpectOpAcceleratedWithNnapi(GetCurrentTestId());
   }
 }
@@ -378,5 +378,4 @@ void MultiOpModel::AddCustomOp(
       builder_.CreateVector<uint8_t>(custom_option),
       CustomOptionsFormat_FLEXBUFFERS));
 }
-
 }  // namespace tflite

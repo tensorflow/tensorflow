@@ -4,7 +4,7 @@
 func @testShape(tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0xi32>, tensor<?xi32>, tensor<?xi32>) {
 ^bb0(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>):
 
-  // CHECK: tf.Const{{.*}} dense<[]> : tensor<0xi32>
+  // CHECK: tf.Const{{.*}} dense<> : tensor<0xi32>
   %0 = "tf.Shape"(%arg0) {T = "tfdtype$DT_FLOAT", output = "tfdtype$DT_INT32"} : (tensor<f32>) -> tensor<0xi32>
 
   // Result shape need not be static. Folding harness uses TensorFlow constant
@@ -89,16 +89,45 @@ func @testEmptybf16() -> (tensor<5xbf16>) {
 }
 
 // CHECK-LABEL: func @testShapeN
-func @testShapeN(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>) -> (tensor<0xi64>, tensor<4xi64>, tensor<4xi64>, tensor<?xi64>) {
+func @testShapeN(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>) -> (tensor<0xi64>, tensor<4xi64>) {
 
-  // CHECK: "tf.Const"() {value = dense<[]> : tensor<0xi64>
-  // CHECK: "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi64>}
+  // CHECK: %[[SHAPE0:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>}
+  // CHECK: %[[SHAPE1:.*]] = "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi64>}
   %0:2 = "tf.ShapeN"(%arg0, %arg1) : (tensor<f32>, tensor<1x32x32x16xf32>) -> (tensor<0xi64>, tensor<4xi64>)
 
-  // CHECK: tf.ShapeN
-  %1:2 = "tf.ShapeN"(%arg1, %arg2) : (tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<4xi64>, tensor<?xi64>)
+  // CHECK: return %[[SHAPE0]], %[[SHAPE1]]
+  return %0#0, %0#1 : tensor<0xi64>, tensor<4xi64>
+}
 
-  return %0#0, %0#1, %1#0, %1#1 : tensor<0xi64>, tensor<4xi64>, tensor<4xi64>, tensor<?xi64>
+// CHECK-LABEL: func @testShapeNPartialStatic
+func @testShapeNPartialStatic(%arg0: tensor<f32>, %arg1: tensor<2x?x3xf32>, %arg2: tensor<1x32x32x16xf32>, %arg3: tensor<*xf32>) -> (tensor<0xi64>, tensor<3xi64>, tensor<4xi64>, tensor<?xi64>) {
+  // CHECK: %[[SHAPE0:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>}
+  // CHECK: %[[SHAPE2:.*]] = "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi64>}
+  // CHECK: %[[SHAPE13:.*]]:2 = "tf.ShapeN"(%arg1, %arg3) : (tensor<2x?x3xf32>, tensor<*xf32>) -> (tensor<3xi64>, tensor<?xi64>)
+  %0:4 = "tf.ShapeN"(%arg0, %arg1, %arg2, %arg3) : (tensor<f32>, tensor<2x?x3xf32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0xi64>, tensor<3xi64>, tensor<4xi64>, tensor<?xi64>)
+
+  // CHECK: return %[[SHAPE0]], %[[SHAPE13]]#0, %[[SHAPE2]], %[[SHAPE13]]#1
+  return %0#0, %0#1, %0#2, %0#3 : tensor<0xi64>, tensor<3xi64>, tensor<4xi64>, tensor<?xi64>
+}
+
+// CHECK-LABEL: func @testShapeNOneDynamic
+func @testShapeNOneDynamic(%arg0: tensor<f32>, %arg1: tensor<1x32x32x16xf32>, %arg2: tensor<*xf32>) -> (tensor<0xi64>, tensor<4xi64>, tensor<?xi64>) {
+  // CHECK: %[[SHAPE0:.*]] = "tf.Const"() {value = dense<> : tensor<0xi64>}
+  // CHECK: %[[SHAPE1:.*]] = "tf.Const"() {value = dense<[1, 32, 32, 16]> : tensor<4xi64>}
+  // CHECK: %[[SHAPE2:.*]] = "tf.Shape"(%arg2) : (tensor<*xf32>) -> tensor<?xi64>
+  %0:3 = "tf.ShapeN"(%arg0, %arg1, %arg2) : (tensor<f32>, tensor<1x32x32x16xf32>, tensor<*xf32>) -> (tensor<0xi64>, tensor<4xi64>, tensor<?xi64>)
+
+  // CHECK: return %[[SHAPE0]], %[[SHAPE1]], %[[SHAPE2]]
+  return %0#0, %0#1, %0#2 : tensor<0xi64>, tensor<4xi64>, tensor<?xi64>
+}
+
+// CHECK-LABEL: func @testShapeNToShape
+func @testShapeNToShape(%arg0: tensor<*xf32>) -> tensor<?xi64> {
+  // CHECK: %[[SHAPE0:.*]] = "tf.Shape"(%arg0) : (tensor<*xf32>) -> tensor<?xi64>
+  %0:1 = "tf.ShapeN"(%arg0) : (tensor<*xf32>) -> tensor<?xi64>
+
+  // CHECK: return %[[SHAPE0]]
+  return %0#0 : tensor<?xi64>
 }
 
 // CHECK-LABEL: func @testLeakyRelu
@@ -442,3 +471,24 @@ func @DontRemoveTrivialMul(%arg0: tensor<1x6x8x1xf32>) -> tensor<1x6x8x1xf32> {
   // CHECK: %[[RESULT:.*]] = "tf.Mul"(%arg0, %[[CONST]]) : (tensor<1x6x8x1xf32>, tensor<f32>) -> tensor<1x6x8x1xf32>
   // CHECK: return %[[RESULT]] : tensor<1x6x8x1xf32>
 }
+
+// Do not fold if total result size is large (>256 KB) and more than 2 times
+// the size of operands.
+
+// LINT.IfChange(folding-policy-test)
+// CHECK-LABEL: DontFoldTile
+func @DontFoldTile() -> (tensor<8x10000xi32>) {
+  %const_10000 = "tf.Const"() {value = dense<10000> : tensor<i32>} : () -> tensor<i32>
+  %const_0 = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %const_1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  %const_8_1 = "tf.Const"() {value = dense<[8, 1]> : tensor<2xi32>} : () -> tensor<2xi32>
+  %1 = "tf.Range"(%const_0, %const_10000, %const_1) : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<10000xi32>
+  %2 = "tf.ExpandDims"(%1, %const_0) : (tensor<10000xi32>, tensor<i32>) -> tensor<1x10000xi32>
+  %3 = "tf.Tile"(%2, %const_8_1) : (tensor<1x10000xi32>, tensor<2xi32>) -> tensor<8x10000xi32>
+  // CHECK-NOT: tf.Range
+  // CHECK-NOT: tf.ExpandDims
+  // CHECK: [[TILE:%.*]] = "tf.Tile"
+  // CHECK: return [[TILE]]
+  return %3 : tensor<8x10000xi32>
+}
+// LINT.ThenChange(../transforms/constant_fold.cc:folding-policy)

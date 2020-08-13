@@ -27,3 +27,4 @@ out/
 .navigation/
 /captures
 .externalNativeBuild
+.cxx

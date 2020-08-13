@@ -22,7 +22,7 @@ limitations under the License.
 //
 // The typical use of this dialect is for client libraries to be able to emit
 // less constrained ops and rely on the conversion framework to lower any
-// xla_chlo ops to canonical mhlo ops.
+// chlo ops to canonical mhlo ops.
 //
 // See: https://www.tensorflow.org/xla/operation_semantics
 
@@ -33,12 +33,13 @@ include "mlir/IR/OpBase.td"
 include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "mlir-hlo/Dialect/mhlo/IR/hlo_ops_base.td"
+include "mlir-hlo/Dialect/mhlo/IR/infer_fusibility_op_interface.td"
 
 def HLOClient_Dialect : Dialect {
-  let name = "xla_chlo";
-  let cppNamespace = "xla_chlo";
+  let name = "chlo";
+  let cppNamespace = "chlo";
   let summary = [{
-    XLA Client HLO Ops
+    Client HLO Ops
   }];
 
   let description = [{
@@ -60,7 +61,7 @@ class HLOClient_Op<string mnemonic, list<OpTrait> traits> :
 }
 
 //===----------------------------------------------------------------------===//
-// XLA binary elementwise op definitions.
+// CHLO binary elementwise op definitions.
 // From the client perspective, each of these support both explicit rank
 // broadcasting (via the broadcast_dimensions attribute) and implicit degenerate
 // shape broadcasting.
@@ -336,6 +337,49 @@ def HLOClient_BroadcastComplexOp : HLOClient_BroadcastBinaryElementwiseOp<
     OptionalAttr<BroadcastDimAttr>:$broadcast_dimensions
   );
   let results = (outs HLO_ComplexTensor);
+}
+
+//===----------------------------------------------------------------------===//
+// Unary op
+//===----------------------------------------------------------------------===//
+
+class HLOClient_UnaryElementwiseOp<string mnemonic, list<OpTrait> traits,
+    Type TensorType>: HLOClient_Op<mnemonic,
+      !listconcat(traits, [InferFusibilityOpInterface])> {
+  let arguments = (ins TensorType:$operand);
+  let results = (outs TensorType);
+}
+
+def HLOClient_AcosOp: HLOClient_UnaryElementwiseOp<"acos",
+    [NoSideEffect, SameOperandsAndResultType], HLO_FpOrComplexTensor> {
+  let summary = "Acos operator";
+
+  let description = [{
+    Returns `Acos(operand)` element-wise.
+
+    $$
+    \acos(x) = 2 * \atan(\sqrt(1 - x^2) / (1 + x)) if x != -1
+             = pi                                  if x == -1
+    $$
+  }];
+}
+
+def HLOClient_ConstantLikeOp: HLOClient_Op<"constant_like",
+    [NoSideEffect, SameOperandsAndResultShape,
+     InferTypeOpInterface,
+     DeclareOpInterfaceMethods<InferShapedTypeOpInterface>,
+     NativeOpTrait<"InferTensorType">]> {
+  let summary = "Constant like operator";
+
+  let description = [{
+    Returns a splat constant of the same shape as the operand.
+  }];
+
+  // TODO(jpienaar): value's type could be tightened.
+  let arguments = (ins AnyAttr:$value, HLO_Tensor:$operand);
+  let results = (outs HLO_Tensor);
+
+  let hasCanonicalizer = 1;
 }
 
 //===----------------------------------------------------------------------===//

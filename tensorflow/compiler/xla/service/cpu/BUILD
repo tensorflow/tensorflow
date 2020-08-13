@@ -8,6 +8,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_openmp_copts")
 load(":build_defs.bzl", "runtime_copts")
+load("//tensorflow/core/platform:build_config.bzl", "if_llvm_system_z_available")
 
 package(
     default_visibility = [":friends"],
@@ -48,6 +49,7 @@ filegroup(
         "runtime_single_threaded_conv2d.cc",
         "runtime_single_threaded_fft.cc",
         "runtime_single_threaded_matmul.cc",
+        "runtime_topk.cc",
     ],
     visibility = [":friends"],
 )
@@ -63,6 +65,7 @@ filegroup(
         "runtime_single_threaded_conv2d.h",
         "runtime_single_threaded_fft.h",
         "runtime_single_threaded_matmul.h",
+        "runtime_topk.h",
     ],
     visibility = [":friends"],
 )
@@ -133,13 +136,16 @@ cc_library(
         "//tensorflow/compiler/xla/service:copy_insertion",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:dump",
+        "//tensorflow/compiler/xla/service:topk_rewriter",
         "//tensorflow/compiler/xla/service:map_inliner",
         "//tensorflow/compiler/xla/service:rng_bit_generator_expander",
         "//tensorflow/compiler/xla/service:tree_reduction_rewriter",
         "//tensorflow/compiler/xla/service:hlo_get_dimension_size_rewriter",
+        "//tensorflow/compiler/xla/service:conditional_canonicalizer",
         "//tensorflow/compiler/xla/service:conditional_to_select",
         "//tensorflow/compiler/xla/service:slow_operation_alarm",
         "//tensorflow/compiler/xla/service:scatter_expander",
+        "//tensorflow/compiler/xla/service:comparison_expander",
         "//tensorflow/compiler/xla/service:slice_sinker",
         "//tensorflow/compiler/xla:cpu_function_runtime",
         "//tensorflow/compiler/xla:literal",
@@ -178,6 +184,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo_verifier",
         "//tensorflow/compiler/xla/service:indexed_array_analysis",
         "//tensorflow/compiler/xla/service:llvm_compiler",
+        "//tensorflow/compiler/xla/service:gather_expander",
         "//tensorflow/compiler/xla/service:reshape_mover",
         "//tensorflow/compiler/xla/service:rng_expander",
         "//tensorflow/compiler/xla/service:sort_simplifier",
@@ -203,7 +210,9 @@ cc_library(
         ],
         "//conditions:default": [
         ],
-    }),
+    }) + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]),
     alwayslink = True,  # Contains compiler registration
 )
 
@@ -226,6 +235,7 @@ cc_library(
         ":runtime_fft",
         ":runtime_fork_join",
         ":runtime_key_value_sort",
+        ":runtime_topk",
         ":runtime_matmul",
         ":runtime_matmul_mkl",
         ":runtime_single_threaded_conv2d",
@@ -612,7 +622,8 @@ cc_library(
     deps = [
         ":runtime_lightweight_check",
         "//tensorflow/compiler/xla:executable_run_options",
-        "//tensorflow/core/kernels:eigen_helpers_no_mkl",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
+        "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:mutex",
         "//tensorflow/core/platform:types",
@@ -700,6 +711,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":runtime_lightweight_check",
+        "//tensorflow/core/kernels:eigen_contraction_kernel",
         "//tensorflow/core/kernels:eigen_helpers",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:types",
@@ -750,6 +762,19 @@ cc_library(
         "//tensorflow/core/platform:macros",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
+    ],
+)
+
+cc_library(
+    name = "runtime_topk",
+    srcs = ["runtime_topk.cc"],
+    hdrs = ["runtime_topk.h"],
+    copts = runtime_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core/platform:dynamic_annotations",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:types",
     ],
 )
 

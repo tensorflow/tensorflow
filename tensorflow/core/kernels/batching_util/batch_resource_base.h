@@ -1,0 +1,202 @@
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+#ifndef TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_RESOURCE_BASE_H_
+#define TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_RESOURCE_BASE_H_
+
+#include <map>
+
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/resource_mgr.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/batching_util/batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/shared_batch_scheduler.h"
+#include "tensorflow/core/kernels/batching_util/threadsafe_status.h"
+#include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/platform/thread_annotations.h"
+
+namespace tensorflow {
+namespace serving {
+
+// Base class for resource that encapsulating the state and logic for batching
+// tensors.
+class BatchResourceBase : public ResourceBase {
+ public:
+  // Given a BatchTask (from one op invocation) with 'num_outputs'== M and
+  // splitted into N sub tasks, TensorMatrix is a N X M matrix.
+  // Namely, TensorMatrix[i][j] indicates the i-th split tensor of j-th output;
+  // concatenating tensors along the 2nd dimension gives a output tensor.
+  typedef std::vector<std::vector<Tensor>> TensorMatrix;
+
+  // Ingests data from one invocation of the batch op. The data is enqueued to
+  // be combined with others into a batch, asynchronously.
+  Status RegisterInput(int64 guid, OpKernelContext* context,
+                       const string& batcher_queue_name,
+                       AsyncOpKernel::DoneCallback done_callback);
+
+ protected:
+  // One task to be batched, corresponds to a `slice` of input from one batch-op
+  // invocation.
+  //
+  // Given input from one batch-op invocation, a `slice` of this input is:
+  // 1) Split each Tensor in `BatchTask::inputs` along the 0th dimension.
+  // 2) 'split_index' is calculated along the 0-th dimension.
+  //
+  // Note input from one batch-op invocation is valid and considered a
+  // specialized `slice`.
+  struct BatchTask : public tensorflow::serving::BatchTask {
+    // A unique ID to identify this invocation of Batch.
+    int64 guid;
+
+    Context propagated_context;
+
+    std::vector<Tensor> inputs;
+    std::vector<Tensor> captured_inputs;
+    OpKernelContext* context;
+    AsyncOpKernel::DoneCallback done_callback;
+
+    // The index of this split, along the 0-th dimension of input from op
+    // invocation.
+    int split_index = 0;
+
+    // Two-dimensional tensor matrix, ownership shared by:
+    // 1) each split of task (to fill one row in this matrix)
+    // and
+    // 2) callback that runs to merge output of individual splits for an op
+    // invocation, after all splits complete.
+    std::shared_ptr<TensorMatrix> output;
+
+    // 'status' records error (could be from any split) if at least one split
+    // returns error, OK otherwise.
+    // Ownership is shared by individual splits and callback.
+    std::shared_ptr<ThreadSafeStatus> status;
+
+    bool is_partial = false;
+
+    size_t size() const override { return inputs[0].shape().dim_size(0); }
+
+    uint64 start_time;
+  };
+
+  // Appending a T suffix to make the type alias different to those in
+  // tensorflow::serving namespace, because some versions of compiler complain
+  // about changing meaning of the symbols.
+  using BatcherT = SharedBatchScheduler<BatchResourceBase::BatchTask>;
+  using BatcherQueueT = BatchScheduler<BatchResourceBase::BatchTask>;
+  using BatchT = Batch<BatchResourceBase::BatchTask>;
+
+  BatchResourceBase(bool has_process_batch_function,
+                    std::shared_ptr<BatcherT> batcher,
+                    const BatcherT::QueueOptions& batcher_queue_options,
+                    std::vector<int32> allowed_batch_sizes)
+      : has_process_batch_function_(has_process_batch_function),
+        batcher_(std::move(batcher)),
+        batcher_queue_options_(batcher_queue_options),
+        allowed_batch_sizes_(std::move(allowed_batch_sizes)) {}
+
+  static BatcherT::QueueOptions GetBatcherQueueOptions(
+      int32 num_batch_threads, int32 max_batch_size, int32 batch_timeout_micros,
+      int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
+      bool enable_large_batch_splitting);
+
+ private:
+  // Implementation of calling the process batch function.
+  virtual void ProcessFuncBatchImpl(
+      const BatchResourceBase::BatchTask& last_task,
+      absl::Span<const Tensor> inputs, std::vector<Tensor>* combined_outputs,
+      std::function<void(const Status&)> done) const = 0;
+
+  // Factory method for creating a BatchTask, overridable by subclasses.
+  virtual Status CreateBatchTask(
+      OpKernelContext* context,
+      std::unique_ptr<BatchResourceBase::BatchTask>* output) const;
+
+  // Validates that it's legal to combine the tasks in 'batch' into a batch.
+  // Assumes the batch is non-empty.
+  static Status ValidateBatch(const BatchT& batch);
+
+  // Returns the smallest entry in 'allowed_batch_sizes_' that is greater than
+  // or equal to 'batch_size'. If 'allowed_batch_sizes_' is empty, simply
+  // returns 'batch_size'.
+  int RoundToLowestAllowedBatchSize(int batch_size) const;
+
+  Status ConcatInputTensors(const BatchT& batch, OpKernelContext* context,
+                            std::vector<Tensor>* concatenated_tensors) const;
+
+  // Split 'input' of 'input_task_ptr' along 0th dimension, into a list of
+  // 'output_tasks'.
+  // Task sizes are determined by
+  // 1) open_batch_remaining_slot
+  // 2) max_batch_size
+  // 3) size-of-input-task
+  // in a way that
+  // 1) Task sizes add up to `size-of-input-task`.
+  // 2) Task sizes from left to right are like
+  //    [open_batch_remaining_slot, max_batch_size, max_batch_size, ...,
+  //    `size-of-input-task` - `sum-of-previous-elements`].
+  //
+  // REQUIRES:
+  // Caller should make sure size-of-input-task is greater than
+  // open_batch_remaining_slot.
+  static Status SplitInputTask(
+      std::unique_ptr<BatchTask>* input_task_ptr, int open_batch_remaining_slot,
+      int max_batch_size,
+      std::vector<std::unique_ptr<BatchTask>>* output_tasks);
+
+  Status SplitOutputTensors(const std::vector<Tensor>& combined_outputs,
+                            BatchT* batch) const;
+
+  void ProcessFuncBatch(std::unique_ptr<BatchT> batch) const;
+
+  // Processes a batch of one or more BatchTask entries.
+  void ProcessBatch(std::unique_ptr<BatchT> batch) const;
+
+  // Emits an index tensor, which the Unbatch op will use to un-concatenate
+  // the tensor and attribute the pieces to the right batch keys. The index
+  // tensor contains, for each input: [batch_key, start_offset, end_offset]
+  // where start_offset and end_offset represent the range of entries in the
+  // concatenated tensors that belong to that input.
+  //
+  // Emits the result to the output at 'output_index' using 'context'.
+  static Status EmitIndexTensor(OpKernelContext* context, const BatchT& batch,
+                                int output_index);
+
+  // Looks up the batcher queue for 'queue_name'. If it did't previously exist,
+  // creates it.
+  Status LookupOrCreateBatcherQueue(const string& queue_name,
+                                    BatcherQueueT** queue);
+
+  // True if user specified a batch processing function for this resource.
+  const bool has_process_batch_function_;
+  // A batch scheduler, and options for creating queues.
+  std::shared_ptr<BatcherT> batcher_;
+  BatcherT::QueueOptions batcher_queue_options_;
+
+  // A collection of batcher queues, keyed on queue name.
+  // TODO(olston): Garbage-collect unused queues (perhaps simply remove empty
+  // ones (with a time delay?); it's okay if they get recreated later).
+  mutable mutex batcher_queues_mu_;
+  std::map<string, std::unique_ptr<BatcherQueueT>> batcher_queues_
+      TF_GUARDED_BY(batcher_queues_mu_);
+
+  std::vector<int32> allowed_batch_sizes_;
+};
+
+}  // namespace serving
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_BATCHING_UTIL_BATCH_RESOURCE_BASE_H_

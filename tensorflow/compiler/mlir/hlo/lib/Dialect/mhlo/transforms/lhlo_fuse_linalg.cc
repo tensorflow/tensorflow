@@ -16,27 +16,28 @@ limitations under the License.
 // This file implements logic for fusing linalg ops obtained after LHLO
 // lowering.
 
-#include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
-#include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/Dialect/Linalg/Transforms/Transforms.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/FoldUtils.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir/Dialect/Linalg/Analysis/DependenceAnalysis.h"
+#include "mlir/Dialect/Linalg/Transforms/Transforms.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/FoldUtils.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 using linalg::LinalgOp;
 
-class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
+class LhloFuseLinalgPass
+    : public PassWrapper<LhloFuseLinalgPass, FunctionPass> {
  public:
-  LhloFuseLinalg() = default;
-  LhloFuseLinalg(const LhloFuseLinalg&) {}
-  LhloFuseLinalg(bool use_parallel_loops, llvm::ArrayRef<unsigned> tile_sizes) {
+  LhloFuseLinalgPass() = default;
+  LhloFuseLinalgPass(const LhloFuseLinalgPass&) {}
+  LhloFuseLinalgPass(bool use_parallel_loops,
+                     llvm::ArrayRef<unsigned> tile_sizes) {
     tile_sizes_ = tile_sizes;
     use_parallel_loops_.setValue(use_parallel_loops);
   }
@@ -138,14 +139,10 @@ class LhloFuseLinalg : public PassWrapper<LhloFuseLinalg, FunctionPass> {
 
 }  // namespace
 
-std::unique_ptr<OperationPass<FuncOp>> createLhloFuseLinalg(
+std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
     bool use_parallel_loops, ArrayRef<unsigned> tile_sizes) {
-  return absl::make_unique<LhloFuseLinalg>(use_parallel_loops, tile_sizes);
+  return std::make_unique<LhloFuseLinalgPass>(use_parallel_loops, tile_sizes);
 }
 
-static PassRegistration<LhloFuseLinalg> legalize_pass(
-    "lhlo-fuse-linalg",
-    "Greedily fuse linalg ops obtained after LHLO lowering.");
-
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

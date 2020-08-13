@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
@@ -35,6 +36,9 @@ limitations under the License.
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_attributes.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_op_interfaces.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_n_z.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_traits.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -58,6 +62,12 @@ class TensorFlowDialect : public Dialect {
   // This attribute marks if a function is stateful.
   // Returns the string description of stateful attribute.
   static StringRef GetStatefulAttrName() { return "tf.signature.is_stateful"; }
+
+  // Returns true if the op can be duplicated during transformations.
+  static bool CanDuplicate(Operation *op);
+
+  // Returns true if the op can have side effects.
+  static bool CanHaveSideEffects(Operation *op);
 
   Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
 
@@ -111,17 +121,6 @@ class TensorFlowDialect : public Dialect {
   // These are invoked at construction time.
   static std::vector<AdditionalOpFunction> *additional_operation_hooks_;
 };
-
-// TODO(b/131258166): TensorFlow's mutex.h defines a `mutex_lock` macro, whose
-// purpose is to catch bug on `tensorflow::mutex_lock`. We don't use
-// `tensorflow::mutex_lock` here but we have ops (`tf.MutexLock` and
-// `tf.ConsumeMutexLock`) with getter methods named as `mutex_lock()`. Need to
-// undefine here to avoid expanding the getter symbol as macro when including
-// both mutex.h and this header file.
-#undef mutex_lock
-
-#define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h.inc"
 
 }  // namespace TF
 }  // namespace mlir

@@ -13,20 +13,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "absl/memory/memory.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/Linalg/IR/LinalgOps.h"  // from @llvm-project
-#include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/SCF/SCF.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Transforms/DialectConversion.h"
 
 namespace mlir {
-namespace xla_lhlo {
+namespace lmhlo {
 namespace {
 
 // Clones and adapts the code in `lhlo_block` that works on buffers and has a
@@ -154,14 +153,14 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
   return b->create<scf::ParallelOp>(loc, lower, upper, step);
 }
 
-// Converts `xla_lhlo.ReduceOp` into two scf::ParallelOp and a scf::ReduceOp.
+// Converts `lmhlo.ReduceOp` into two scf::ParallelOp and a scf::ReduceOp.
 // The outper `ParallelOp` refers to the parallel loops if there are
 // any. The inner `ParalleOp` refers to the reduction loops and `ReduceOp`
 // contains the reduction operator.
 //
 // Example:
 //
-//  "xla_lhlo.reduce"(%buffer, %init_buf, %result) ( {
+//  "lmhlo.reduce"(%buffer, %init_buf, %result) ( {
 //    ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
 //      <LHLO ops>
 //    } ) {dimensions = dense<[1]> : tensor<1xi64>}
@@ -187,27 +186,27 @@ scf::ParallelOp MakeLoopOverShape(Location loc, Value shaped_value,
 //    } : f32
 //    scf.yield
 //  }
-class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
+class ReduceOpConverter : public OpConversionPattern<lmhlo::ReduceOp> {
  public:
-  using OpConversionPattern<xla_lhlo::ReduceOp>::OpConversionPattern;
+  using OpConversionPattern<lmhlo::ReduceOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      xla_lhlo::ReduceOp xla_reduce_op, ArrayRef<Value> /*args*/,
+      lmhlo::ReduceOp reduce_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
     // TODO(b/137624192) Implement variadic reduce.
-    if (xla_reduce_op.out().size() != 1) return failure();
+    if (reduce_op.out().size() != 1) return failure();
 
-    scf::ReduceOp reduce_op =
-        CreateReduceOpInNestedParallelLoops(xla_reduce_op, &rewriter);
-    ConvertToReductionOperator(xla_reduce_op.getLoc(), reduce_op,
-                               &xla_reduce_op.body().front(), &rewriter);
-    rewriter.replaceOp(xla_reduce_op, llvm::None);
+    scf::ReduceOp scf_reduce_op =
+        CreateReduceOpInNestedParallelLoops(reduce_op, &rewriter);
+    ConvertToReductionOperator(reduce_op.getLoc(), scf_reduce_op,
+                               &reduce_op.body().front(), &rewriter);
+    rewriter.replaceOp(reduce_op, llvm::None);
     return success();
   }
 
  private:
   // Creates nested `scf.parallel` ops with `scf.reduce`. The outer ParallelOp
-  // refers to the parallel dimensions of `xla_reduce_op` if any and the inner
+  // refers to the parallel dimensions of `reduce_op` if any and the inner
   // ParallelOp refers to the reduction dimensions. The scf.reduce op is
   // returned.
   //
@@ -226,16 +225,15 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
   //    scf.yield
   //  }
   scf::ReduceOp CreateReduceOpInNestedParallelLoops(
-      xla_lhlo::ReduceOp xla_reduce_op,
-      ConversionPatternRewriter* rewriter) const {
-    auto loc = xla_reduce_op.getLoc();
+      lmhlo::ReduceOp reduce_op, ConversionPatternRewriter* rewriter) const {
+    auto loc = reduce_op.getLoc();
     DenseSet<int> reducing_dims;
-    for (const auto& rdim : xla_reduce_op.dimensions().getIntValues()) {
+    for (const auto& rdim : reduce_op.dimensions().getIntValues()) {
       reducing_dims.insert(rdim.getSExtValue());
     }
 
-    Value operand = *xla_reduce_op.operands().begin();
-    Value out = *xla_reduce_op.out().begin();
+    Value operand = *reduce_op.operands().begin();
+    Value out = *reduce_op.out().begin();
     SmallVector<Value, 2> parallel_lower, parallel_upper, parallel_step;
     SmallVector<Value, 2> reduce_lower, reduce_upper, reduce_step;
     auto operand_shape = operand.getType().cast<MemRefType>().getShape();
@@ -252,7 +250,7 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
     }
     // Load initial value from memref<element_type>.
     SmallVector<Value, 1> init_value = {
-        rewriter->create<LoadOp>(loc, *xla_reduce_op.init_values().begin())};
+        rewriter->create<LoadOp>(loc, *reduce_op.init_values().begin())};
     // Outer ParallelOp is not needed if it is a reduction across all dims.
     scf::ParallelOp outer;
     if (!parallel_lower.empty()) {
@@ -293,7 +291,7 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
 
     rewriter->setInsertionPointToStart(inner.getBody());
     Value elem = rewriter->create<mlir::LoadOp>(
-        loc, *xla_reduce_op.operands().begin(), indices);
+        loc, *reduce_op.operands().begin(), indices);
     return rewriter->create<scf::ReduceOp>(loc, elem);
   }
 };
@@ -314,7 +312,7 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
 //     accumulator = reduction_operator(output[O], value)
 //   output[O] = accumulator
 //
-// Converts `xla_lhlo.ReduceWindowOp` into two scf::ParallelOp and a
+// Converts `lmhlo.ReduceWindowOp` into two scf::ParallelOp and a
 // scf::ReduceOp.
 // The outper `ParallelOp` refers to the parallel loops that traverese output
 // buffer. The inner `ParalleOp` refers to the reduction loops that traverse
@@ -325,11 +323,11 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
 // func @reduce_window(%arg: memref<112x112xf32>,
 //              %init: memref<f32>,
 //              %result: memref<56x56xf32>) {
-//   "xla_lhlo.reduce_window"(%arg, %init, %result) ( {
+//   "lmhlo.reduce_window"(%arg, %init, %result) ( {
 //     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
-//       "xla_lhlo.maximum"(%lhs, %rhs, %res)
+//       "lmhlo.maximum"(%lhs, %rhs, %res)
 //         : (memref<f32>, memref<f32>, memref<f32>) -> ()
-//       "xla_lhlo.terminator"() : () -> ()
+//       "lmhlo.terminator"() : () -> ()
 //     }) {
 //       padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
 //       window_dimensions = dense<[3, 3]> : tensor<2xi64>,
@@ -359,47 +357,47 @@ class ReduceOpConverter : public OpConversionPattern<xla_lhlo::ReduceOp> {
 //    return
 //  }
 class ReduceWindowOpConverter
-    : public OpConversionPattern<xla_lhlo::ReduceWindowOp> {
+    : public OpConversionPattern<lmhlo::ReduceWindowOp> {
  public:
-  using OpConversionPattern<xla_lhlo::ReduceWindowOp>::OpConversionPattern;
+  using OpConversionPattern<lmhlo::ReduceWindowOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      xla_lhlo::ReduceWindowOp xla_reduce_window_op, ArrayRef<Value> /*args*/,
+      lmhlo::ReduceWindowOp reduce_window_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
     scf::ParallelOp output_loop, window_loop;
     std::tie(output_loop, window_loop) =
-        CreateParallelLoopsToTraverseOutputAndWindow(xla_reduce_window_op,
+        CreateParallelLoopsToTraverseOutputAndWindow(reduce_window_op,
                                                      &rewriter);
 
     scf::ReduceOp reduce_op = CreateReduceOpInNestedParallelLoops(
-        xla_reduce_window_op, output_loop, window_loop, &rewriter);
+        reduce_window_op, output_loop, window_loop, &rewriter);
 
-    ConvertToReductionOperator(xla_reduce_window_op.getLoc(), reduce_op,
-                               &xla_reduce_window_op.body().front(), &rewriter);
-    rewriter.replaceOp(xla_reduce_window_op, llvm::None);
+    ConvertToReductionOperator(reduce_window_op.getLoc(), reduce_op,
+                               &reduce_window_op.body().front(), &rewriter);
+    rewriter.replaceOp(reduce_window_op, llvm::None);
     return success();
   }
 
  private:
   std::pair<scf::ParallelOp, scf::ParallelOp>
   CreateParallelLoopsToTraverseOutputAndWindow(
-      xla_lhlo::ReduceWindowOp xla_reduce_window_op,
+      lmhlo::ReduceWindowOp reduce_window_op,
       ConversionPatternRewriter* rewriter) const {
-    auto loc = xla_reduce_window_op.getLoc();
+    auto loc = reduce_window_op.getLoc();
     Value init_value =
-        rewriter->create<LoadOp>(loc, xla_reduce_window_op.init_value());
+        rewriter->create<LoadOp>(loc, reduce_window_op.init_value());
 
     Value zero = rewriter->create<ConstantIndexOp>(loc, 0);
     Value one = rewriter->create<ConstantIndexOp>(loc, 1);
 
     // Create an outer parallel loop that spans the output of ReduceWindowOp.
-    Value xla_output = xla_reduce_window_op.out();
-    auto output_loop = MakeLoopOverShape(loc, xla_output, rewriter);
+    Value output = reduce_window_op.out();
+    auto output_loop = MakeLoopOverShape(loc, output, rewriter);
 
     // Create a nested loop that traverses the window.
     SmallVector<Value, 2> window_lower, window_upper, window_step;
     rewriter->setInsertionPointToStart(output_loop.getBody());
-    for (const auto& window_dim : xla_reduce_window_op.window_dimensions()) {
+    for (const auto& window_dim : reduce_window_op.window_dimensions()) {
       window_step.push_back(one);
       window_lower.push_back(zero);
       window_upper.push_back(
@@ -410,39 +408,38 @@ class ReduceWindowOpConverter
 
     Value reduction_result = *window_loop.getResults().begin();
     auto output_ivs = output_loop.getInductionVars();
-    rewriter->create<StoreOp>(loc, reduction_result, xla_output, output_ivs);
+    rewriter->create<StoreOp>(loc, reduction_result, output, output_ivs);
     return std::make_pair(output_loop, window_loop);
   }
 
   scf::ReduceOp CreateReduceOpInNestedParallelLoops(
-      xla_lhlo::ReduceWindowOp xla_reduce_window_op,
-      scf::ParallelOp output_loop, scf::ParallelOp window_loop,
-      ConversionPatternRewriter* rewriter) const {
+      lmhlo::ReduceWindowOp reduce_window_op, scf::ParallelOp output_loop,
+      scf::ParallelOp window_loop, ConversionPatternRewriter* rewriter) const {
     rewriter->setInsertionPointToStart(window_loop.getBody());
-    auto loc = xla_reduce_window_op.getLoc();
+    auto loc = reduce_window_op.getLoc();
 
-    if (xla_reduce_window_op.base_dilations().hasValue() ||
-        xla_reduce_window_op.window_dilations().hasValue()) {
-      xla_reduce_window_op.emitRemark(
+    if (reduce_window_op.base_dilations().hasValue() ||
+        reduce_window_op.window_dilations().hasValue()) {
+      reduce_window_op.emitRemark(
           "Lowering to parallel loops does not support `base_dilations` or "
           "`window_dilations` attributes yet. The attributes will be ignored.");
     }
 
-    Value xla_operand = xla_reduce_window_op.operand();
-    auto xla_operand_type = xla_operand.getType().cast<MemRefType>();
+    Value operand = reduce_window_op.operand();
+    auto operand_type = operand.getType().cast<MemRefType>();
 
     // Compute ivs in 'arg' buffer and whether these ivs are in pad area or not.
-    MappedIvs mapped_ivs = MapWindowIvsToInput(
-        xla_reduce_window_op, output_loop.getInductionVars(),
-        window_loop.getInductionVars(), rewriter);
+    MappedIvs mapped_ivs =
+        MapWindowIvsToInput(reduce_window_op, output_loop.getInductionVars(),
+                            window_loop.getInductionVars(), rewriter);
 
     auto elem_or_init = rewriter->create<scf::IfOp>(
-        loc, xla_operand_type.getElementType(), mapped_ivs.in_bounds,
+        loc, operand_type.getElementType(), mapped_ivs.in_bounds,
         /*withElseRegion=*/true);
 
     OpBuilder then_builder = elem_or_init.getThenBodyBuilder();
     Value elem = then_builder.create<mlir::LoadOp>(
-        loc, xla_reduce_window_op.operand(), mapped_ivs.ivs);
+        loc, reduce_window_op.operand(), mapped_ivs.ivs);
     then_builder.create<scf::YieldOp>(loc, elem);
 
     OpBuilder else_builder = elem_or_init.getElseBodyBuilder();
@@ -481,12 +478,12 @@ class ReduceWindowOpConverter
 //              initialized_flag = true
 //    output(selected_index) = scatter(output(selected_index), source(S))
 class SelectAndScatterOpConverter
-    : public OpConversionPattern<xla_lhlo::SelectAndScatterOp> {
+    : public OpConversionPattern<lmhlo::SelectAndScatterOp> {
  public:
-  using OpConversionPattern<xla_lhlo::SelectAndScatterOp>::OpConversionPattern;
+  using OpConversionPattern<lmhlo::SelectAndScatterOp>::OpConversionPattern;
 
   LogicalResult matchAndRewrite(
-      xla_lhlo::SelectAndScatterOp s_and_s_op, ArrayRef<Value> /*args*/,
+      lmhlo::SelectAndScatterOp s_and_s_op, ArrayRef<Value> /*args*/,
       ConversionPatternRewriter& rewriter) const final {
     auto loc = s_and_s_op.getLoc();
     InitializeOutput(s_and_s_op, &rewriter);
@@ -515,7 +512,7 @@ class SelectAndScatterOpConverter
   }
 
  private:
-  void InitializeOutput(xla_lhlo::SelectAndScatterOp s_and_s_op,
+  void InitializeOutput(lmhlo::SelectAndScatterOp s_and_s_op,
                         OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
     Value init_value = b->create<LoadOp>(loc, s_and_s_op.init_value());
@@ -533,7 +530,7 @@ class SelectAndScatterOpConverter
     SmallVector<Value, 2> window_ivs;
     scf::ForOp inner_loop;
   };
-  WindowLoops InsertWindowLoops(xla_lhlo::SelectAndScatterOp s_and_s_op,
+  WindowLoops InsertWindowLoops(lmhlo::SelectAndScatterOp s_and_s_op,
                                 scf::ParallelOp loop_over_src,
                                 OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
@@ -598,7 +595,7 @@ class SelectAndScatterOpConverter
     SmallVector<Value, 4> ivs_val_flag_;
   };
 
-  SmallVector<Value, 2> SelectIvs(xla_lhlo::SelectAndScatterOp s_and_s_op,
+  SmallVector<Value, 2> SelectIvs(lmhlo::SelectAndScatterOp s_and_s_op,
                                   scf::ParallelOp loop_over_src,
                                   OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
@@ -636,9 +633,10 @@ class SelectAndScatterOpConverter
     return window_loops.selected_ivs;
   }
 
-  SmallVector<Value, 4> SelectOrInitialize(
-      xla_lhlo::SelectAndScatterOp s_and_s_op, ArrayRef<Value> operand_ivs,
-      IterArgs* ivs_val_flag, OpBuilder* b) const {
+  SmallVector<Value, 4> SelectOrInitialize(lmhlo::SelectAndScatterOp s_and_s_op,
+                                           ArrayRef<Value> operand_ivs,
+                                           IterArgs* ivs_val_flag,
+                                           OpBuilder* b) const {
     auto loc = s_and_s_op.getLoc();
     Value true_i1 = b->create<mlir::ConstantOp>(
         loc, b->getI1Type(), b->getIntegerAttr(b->getI1Type(), 1));
@@ -691,8 +689,8 @@ class SelectAndScatterOpConverter
   }
 };
 
-struct LhloLegalizeToParallelLoops
-    : public PassWrapper<LhloLegalizeToParallelLoops, FunctionPass> {
+struct LhloLegalizeToParallelLoopsPass
+    : public PassWrapper<LhloLegalizeToParallelLoopsPass, FunctionPass> {
   void runOnFunction() override {
     auto func = getFunction();
 
@@ -707,25 +705,20 @@ struct LhloLegalizeToParallelLoops
 
     ConversionTarget target(getContext());
     target.addLegalDialect<linalg::LinalgDialect, StandardOpsDialect,
-                           scf::SCFDialect, XlaLhloDialect>();
-    target.addIllegalOp<xla_lhlo::ReduceOp, xla_lhlo::ReduceWindowOp,
-                        xla_lhlo::SelectAndScatterOp>();
+                           scf::SCFDialect, LmhloDialect>();
+    target.addIllegalOp<lmhlo::ReduceOp, lmhlo::ReduceWindowOp,
+                        lmhlo::SelectAndScatterOp>();
 
     if (failed(applyPartialConversion(func, target, patterns))) {
       signalPassFailure();
     }
   }
 };
-
 }  // namespace
 
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeLhloToParallelLoopsPass() {
-  return absl::make_unique<LhloLegalizeToParallelLoops>();
+  return std::make_unique<LhloLegalizeToParallelLoopsPass>();
 }
 
-static PassRegistration<LhloLegalizeToParallelLoops> legalize_lhlo_pass(
-    "lhlo-legalize-to-parallel-loops",
-    "Legalize from LHLO dialect to parallel loops.");
-
-}  // namespace xla_lhlo
+}  // namespace lmhlo
 }  // namespace mlir

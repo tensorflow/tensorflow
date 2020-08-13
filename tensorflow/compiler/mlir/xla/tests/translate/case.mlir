@@ -1,4 +1,4 @@
-// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FileCheck %s
+// RUN: tf-mlir-translate -split-input-file -mlir-hlo-to-hlo-text %s | FILECHECK_OPTS="" FileCheck %s
 
 func @main() -> tensor<f32> {
   %cst = constant  {name = "constant"} dense<1> : tensor<i32>

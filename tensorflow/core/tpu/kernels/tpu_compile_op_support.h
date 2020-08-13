@@ -18,10 +18,10 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
-#include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
+#include "absl/strings/string_view.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
@@ -31,15 +31,49 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/protobuf/tpu/compile_metadata.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compile.pb.h"
 
 namespace tensorflow {
 namespace tpu {
 
 namespace se = ::stream_executor;
+
+// List of parameters for lowering Mlir to HLO IR.
+struct MlirToHloArgs {
+  const std::string& mlir_module;
+};
+
+// Variant of guaranteed constant tensors types.
+using GuaranteedConsts = absl::variant<absl::Span<const TensorProto* const>,
+                                       const OpInputList* const>;
+
+// List of parameters for lowering function library definition to HLO IR.
+struct FunctionToHloArgs {
+  const NameAttrList* const function;
+  const FunctionLibraryDefinition* const flib_def;
+  int graph_def_version;
+  GuaranteedConsts guaranteed_constants;
+};
+
+// Persistent cache for compiled TPU program and the related compiler metadata
+// intended for TPU inference.
+// TODO(henrytan): there is an opportunity to consolidate the interface with the
+// `TpuCompilationCacheInterface` once `TpuPersistentCompilationCache` is
+// converted into a ref count based class.
+class TpuPersistentCompilationCacheInterface {
+ public:
+  virtual ~TpuPersistentCompilationCacheInterface() = default;
+
+  // Returns the location where cache entries are stored.
+  virtual std::string cache_location() const = 0;
+};
 
 // Describes the position of an argument or return value after the computation
 // has been partitioned into cores.
@@ -115,6 +149,24 @@ CreateTpuAotCompilationRequest(
     const std::vector<std::vector<std::pair<int, bool>>>&
         per_core_variable_indices,
     const absl::optional<xla::DeviceAssignment>& device_assignment);
+
+se::port::StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
+    const absl::variant<MlirToHloArgs, FunctionToHloArgs>& computation,
+    const TPUCompileMetadataProto& metadata,
+    const std::vector<TensorShape>& arg_shapes);
+
+se::port::Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
+                                              TPUCompileMetadataProto* metadata,
+                                              NameAttrList* function_name,
+                                              std::string* mlir_module);
+
+// Computes shapes for each argument. Uses both the static shape from the
+// metadata, and the dynamic shapes where the static shape is not
+// defined. There must be one dynamic_shape for each argument with a
+// partially defined shape, in index order.
+Status ComputeArgumentShapes(const TPUCompileMetadataProto& metadata,
+                             const std::vector<TensorShape>& dynamic_shapes,
+                             std::vector<TensorShape>* arg_shapes);
 }  // namespace tpu
 }  // namespace tensorflow
 

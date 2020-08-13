@@ -58,7 +58,7 @@ using ::xla::gpu::Thunk;
 using ::xla::gpu::ThunkEmitter;
 using ::xla::gpu::ThunkSequence;
 
-namespace lhlo = ::mlir::xla_lhlo;
+namespace lhlo = ::mlir::lmhlo;
 
 // TODO(b/137624192) Use tablegen for this.
 Status InsertMlirOp(HloOpcode opcode, OpBuilder func_builder, Location loc,
@@ -202,15 +202,14 @@ LhloDialectEmitter::LhloDialectEmitter(
       mlir_module_(mlir_module),
       builder_(mlir_module_.getContext()),
       buffer_assignment_(assignment),
-      platform_(platform),
-      thunk_sequence_(new ThunkSequence()) {
+      platform_(platform) {
   LLVMDialect* llvmDialect =
       mlir_module.getContext()->getRegisteredDialect<LLVMDialect>();
-  pointer_size_ = llvmDialect->getLLVMModule().getDataLayout().getPointerSize();
+  pointer_size_ = llvmDialect->getDataLayout().getPointerSize();
 }
 
 void LhloDialectEmitter::AddThunkToThunkSequence(std::unique_ptr<Thunk> thunk) {
-  thunk_sequence_->push_back(std::move(thunk));
+  thunk_sequence_.push_back(std::move(thunk));
 }
 
 StatusOr<BufferAllocation::Slice> LhloDialectEmitter::MaybeGetAllocationSlice(
@@ -224,10 +223,6 @@ int64 LhloDialectEmitter::ByteSizeOf(const Shape& shape) const {
 
 absl::string_view LhloDialectEmitter::platform_name() const {
   return platform_->Name();
-}
-
-Status LhloDialectEmitter::EmitComputation(const HloComputation& computation) {
-  return computation.root_instruction()->Accept(this);
 }
 
 StatusOr<FuncOp> LhloDialectEmitter::CreateFunction(

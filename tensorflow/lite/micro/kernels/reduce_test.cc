@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -38,60 +39,23 @@ static const int kOutputElements = 4;
 static const int kOutputShape[] = {4, 2, 1, 1, 2};
 static const float kGoldenData[] = {6, 7, 18, 19};
 
-static TfLiteReducerParams params = {
-    true  // keep_dims
-};
-
 template <typename T>
 TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
                                    const T* expected_output_data,
                                    T* output_data, int output_length,
                                    TfLiteReducerParams* params,
                                    float tolerance = 1e-5) {
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_MEAN);
-
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
-
   int inputs_array_data[] = {2, 0, 1};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(params);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_MEAN();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, params, micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TfLiteStatus return_val = registration->invoke(&context, &node);
-  if (return_val != kTfLiteOk) {
-    return return_val;
-  }
-
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   for (int i = 0; i < output_length; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i],
@@ -177,11 +141,15 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(MeanFloat4DKeepDims) {
   float output_data[tflite::testing::kOutputElements];
 
+  TfLiteReducerParams params = {
+      true  // keep_dims
+  };
+
   tflite::testing::TestMeanFloatInput4D(
       tflite::testing::kInputShape4D, tflite::testing::kInputData4D,
       tflite::testing::kAxisShape, tflite::testing::kAxisData,
       tflite::testing::kOutputShape, tflite::testing::kGoldenData, output_data,
-      &tflite::testing::params);
+      &params);
 }
 
 TF_LITE_MICRO_TEST(MeanInt84DKeepDims) {

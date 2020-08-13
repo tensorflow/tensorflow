@@ -24,7 +24,6 @@ exports_files(
         "concrete_function_list.h",
         "function_metadata.h",
         "saved_model_api.h",
-        "tensorhandle_list.h",
     ],
     visibility = ["//tensorflow/c/experimental/saved_model/internal:__pkg__"],
 )
@@ -40,7 +39,6 @@ cc_library(
         ":concrete_function_list",
         ":function_metadata",
         ":saved_model_api",
-        ":tensorhandle_list",
     ],
 )
 
@@ -62,9 +60,4 @@ alias(
 alias(
     name = "saved_model_api",
     actual = "//tensorflow/c/experimental/saved_model/internal:saved_model_api",
-)
-
-alias(
-    name = "tensorhandle_list",
-    actual = "//tensorflow/c/experimental/saved_model/internal:tensorhandle_list",
 )

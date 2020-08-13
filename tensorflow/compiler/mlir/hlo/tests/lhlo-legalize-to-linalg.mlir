@@ -1,10 +1,10 @@
-// RUN: mlir-hlo-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -lhlo-legalize-to-linalg -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @element_wise
 func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
                    %result: memref<2x2xf32>) {
-  "xla_lhlo.add"(%lhs, %rhs, %result)
+  "lmhlo.add"(%lhs, %rhs, %result)
       : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -19,7 +19,7 @@ func @element_wise(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 func @element_wise_with_dynamic_shape(%lhs: memref<?x?xf32>,
                                        %rhs: memref<?x?xf32>,
                                        %result: memref<?x?xf32>) {
-  "xla_lhlo.add"(%lhs, %rhs, %result)
+  "lmhlo.add"(%lhs, %rhs, %result)
       : (memref<?x?xf32>, memref<?x?xf32>, memref<?x?xf32>) -> ()
   return
 }
@@ -33,7 +33,7 @@ func @element_wise_with_dynamic_shape(%lhs: memref<?x?xf32>,
 // CHECK-LABEL: func @element_wise_scalar
 func @element_wise_scalar(%lhs: memref<f32>, %rhs: memref<f32>,
                           %result: memref<f32>) {
-  "xla_lhlo.add"(%lhs, %rhs, %result)
+  "lmhlo.add"(%lhs, %rhs, %result)
       : (memref<f32>, memref<f32>, memref<f32>) -> ()
   return
 }
@@ -48,7 +48,7 @@ func @element_wise_scalar(%lhs: memref<f32>, %rhs: memref<f32>,
 // CHECK-LABEL: func @minf
 func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
            %result: memref<2x2xf32>) {
-  "xla_lhlo.minimum"(%lhs, %rhs, %result)
+  "lmhlo.minimum"(%lhs, %rhs, %result)
       : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -63,7 +63,7 @@ func @minf(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 // CHECK-LABEL: func @maxi
 func @maxi(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
            %result: memref<2x2xi32>) {
-  "xla_lhlo.maximum"(%lhs, %rhs, %result)
+  "lmhlo.maximum"(%lhs, %rhs, %result)
       : (memref<2x2xi32>, memref<2x2xi32>, memref<2x2xi32>) -> ()
   return
 }
@@ -78,7 +78,7 @@ func @maxi(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 // CHECK-LABEL: func @and
 func @and(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
           %result: memref<2x2xi32>) {
-  "xla_lhlo.and"(%lhs, %rhs, %result)
+  "lmhlo.and"(%lhs, %rhs, %result)
       : (memref<2x2xi32>, memref<2x2xi32>, memref<2x2xi32>) -> ()
   return
 }
@@ -91,7 +91,7 @@ func @and(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 
 // CHECK-LABEL: func @exp
 func @exp(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.exponential"(%input, %result)
+  "lmhlo.exponential"(%input, %result)
       : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -104,7 +104,7 @@ func @exp(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @log
 func @log(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.log"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.log"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -116,7 +116,7 @@ func @log(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @copy
 func @copy(%in: memref<2x4x8xf32>, %out: memref<2x4x8xf32>) {
-  "xla_lhlo.copy"(%in, %out) : (memref<2x4x8xf32>, memref<2x4x8xf32>) -> ()
+  "lmhlo.copy"(%in, %out) : (memref<2x4x8xf32>, memref<2x4x8xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -128,7 +128,7 @@ func @copy(%in: memref<2x4x8xf32>, %out: memref<2x4x8xf32>) {
 // CHECK-LABEL: func @float_cmp
 func @float_cmp(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
                 %result: memref<2x2xi1>) {
-  "xla_lhlo.compare"(%lhs, %rhs, %result) {comparison_direction = "EQ"}
+  "lmhlo.compare"(%lhs, %rhs, %result) {comparison_direction = "EQ"}
       : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xi1>) -> ()
   return
 }
@@ -142,7 +142,7 @@ func @float_cmp(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 // CHECK-LABEL: func @int_cmp
 func @int_cmp(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
           %result: memref<2x2xi1>) {
-  "xla_lhlo.compare"(%lhs, %rhs, %result) {comparison_direction = "LT"}
+  "lmhlo.compare"(%lhs, %rhs, %result) {comparison_direction = "LT"}
       : (memref<2x2xi32>, memref<2x2xi32>, memref<2x2xi1>) -> ()
   return
 }
@@ -156,7 +156,7 @@ func @int_cmp(%lhs: memref<2x2xi32>, %rhs: memref<2x2xi32>,
 // CHECK-LABEL: func @select
 func @select(%pred: memref<2x2xi1>, %lhs: memref<2x2xf32>,
              %rhs: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.select"(%pred, %lhs, %rhs, %result)
+  "lmhlo.select"(%pred, %lhs, %rhs, %result)
     : (memref<2x2xi1>, memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -170,7 +170,7 @@ func @select(%pred: memref<2x2xi1>, %lhs: memref<2x2xf32>,
 // CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @iota
 func @iota(%out: memref<7x10xf32>) {
-  "xla_lhlo.iota"(%out) {iota_dimension = 1 : i64} : (memref<7x10xf32>) -> ()
+  "lmhlo.iota"(%out) {iota_dimension = 1 : i64} : (memref<7x10xf32>) -> ()
   return
 }
 // CHECK: linalg.indexed_generic
@@ -186,7 +186,7 @@ func @iota(%out: memref<7x10xf32>) {
 // CHECK-DAG: #[[RESULT_MAP:.+]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
 // CHECK-LABEL: func @broadcast_scalar
 func @broadcast_scalar(%operand: memref<f32>, %result: memref<4x2x1xf32>) {
-  "xla_lhlo.broadcast"(%operand, %result) {
+  "lmhlo.broadcast"(%operand, %result) {
     broadcast_sizes = dense<[4, 2, 1]> : tensor<3xi64>
   } : (memref<f32>, memref<4x2x1xf32>) -> ()
   return
@@ -203,7 +203,7 @@ func @broadcast_scalar(%operand: memref<f32>, %result: memref<4x2x1xf32>) {
 // CHECK-LABEL: func @broadcast
 func @broadcast(%operand: memref<4x?x16xf32>,
                 %result: memref<4x2x1x4x?x16xf32>) {
-  "xla_lhlo.broadcast"(%operand, %result) {
+  "lmhlo.broadcast"(%operand, %result) {
     broadcast_sizes = dense<[4, 2, 1]> : tensor<3xi64>
   } : (memref<4x?x16xf32>, memref<4x2x1x4x?x16xf32>) -> ()
   return
@@ -220,7 +220,7 @@ func @broadcast(%operand: memref<4x?x16xf32>,
 // CHECK-LABEL: func @dynamic_broadcast_in_dim
 func @dynamic_broadcast_in_dim(%operand: memref<?x?x?xf32>,
                                %result: memref<?x?x?x?x?xf32>) {
-  "xla_lhlo.broadcast_in_dim"(%operand, %result) {
+  "lmhlo.broadcast_in_dim"(%operand, %result) {
     broadcast_dimensions = dense<[4,0,2]> : tensor<3xi64>
   } : (memref<?x?x?xf32>, memref<?x?x?x?x?xf32>) -> ()
   return
@@ -237,7 +237,7 @@ func @dynamic_broadcast_in_dim(%operand: memref<?x?x?xf32>,
 // CHECK-LABEL: func @static_broadcast_in_dim_no_expansion
 func @static_broadcast_in_dim_no_expansion(%operand: memref<5xf32>,
                                            %result: memref<5x10xf32>) {
-  "xla_lhlo.broadcast_in_dim"(%operand, %result) {
+  "lmhlo.broadcast_in_dim"(%operand, %result) {
     broadcast_dimensions = dense<[0]> : tensor<1xi64>
   } : (memref<5xf32>, memref<5x10xf32>) -> ()
   return
@@ -255,7 +255,7 @@ func @static_broadcast_in_dim_no_expansion(%operand: memref<5xf32>,
 // CHECK-LABEL: func @static_broadcast_in_dim_expansion
 func @static_broadcast_in_dim_expansion(%operand: memref<1x5xf32>,
                                         %result: memref<5x10x100xf32>) {
-  "xla_lhlo.broadcast_in_dim"(%operand, %result) {
+  "lmhlo.broadcast_in_dim"(%operand, %result) {
     broadcast_dimensions = dense<[2, 0]> : tensor<2xi64>
   } : (memref<1x5xf32>, memref<5x10x100xf32>) -> ()
   return
@@ -274,7 +274,7 @@ func @static_broadcast_in_dim_expansion(%operand: memref<1x5xf32>,
 // CHECK-LABEL: func @static_broadcast_in_dim_scalar
 func @static_broadcast_in_dim_scalar(%operand: memref<f32>,
                                      %result: memref<5x10xf32>) {
-  "xla_lhlo.broadcast_in_dim"(%operand, %result) {
+  "lmhlo.broadcast_in_dim"(%operand, %result) {
     broadcast_dimensions = dense<[]> : tensor<0xi64>
   } : (memref<f32>, memref<5x10xf32>) -> ()
   return
@@ -291,7 +291,7 @@ func @static_broadcast_in_dim_scalar(%operand: memref<f32>,
 // CHECK-LABEL: func @static_broadcast_in_dim_with_one_to_one
 func @static_broadcast_in_dim_with_one_to_one(%operand: memref<1xf32>,
                                               %result: memref<1x5xf32>) {
-  "xla_lhlo.broadcast_in_dim"(%operand, %result) {
+  "lmhlo.broadcast_in_dim"(%operand, %result) {
     broadcast_dimensions = dense<[0]> : tensor<1xi64>
   } : (memref<1xf32>, memref<1x5xf32>) -> ()
   return
@@ -307,7 +307,7 @@ func @static_broadcast_in_dim_with_one_to_one(%operand: memref<1xf32>,
 // CHECK-LABEL: func @static_broadcast_in_dim_with_one_to_many
 func @static_broadcast_in_dim_with_one_to_many(%operand: memref<1xf32>,
                                                %result: memref<5x5xf32>) {
-  "xla_lhlo.broadcast_in_dim"(%operand, %result) {
+  "lmhlo.broadcast_in_dim"(%operand, %result) {
     broadcast_dimensions = dense<[1]> : tensor<1xi64>
   } : (memref<1xf32>, memref<5x5xf32>) -> ()
   return
@@ -323,19 +323,19 @@ func @static_broadcast_in_dim_with_one_to_many(%operand: memref<1xf32>,
 
 // CHECK-LABEL: func @constant
 func @constant(%value: memref<i32>) {
-  "xla_lhlo.constant"(%value) {
+  "lmhlo.constant"(%value) {
     value = dense<10> : tensor<i32>
   } : (memref<i32>) -> ()
   return
 }
 // CHECK: %[[CONSTANT:.*]] = constant 10 : i32
-// CHECK: store %[[CONSTANT]], %{{.*}}[] : memref<i32>
+// CHECK: affine.store %[[CONSTANT]], %{{.*}}[] : memref<i32>
 
 // -----
 
 // CHECK-LABEL: func @absf
 func @absf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.abs"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.abs"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -348,7 +348,7 @@ func @absf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 // CHECK-LABEL: func @absi
 func @absi(%input: memref<2x2xi32>,
           %result: memref<2x2xi32>) {
-  "xla_lhlo.abs"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
+  "lmhlo.abs"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
   return
 }
 
@@ -364,7 +364,7 @@ func @absi(%input: memref<2x2xi32>,
 
 // CHECK-LABEL: func @ceil
 func @ceil(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.ceil"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.ceil"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -376,7 +376,7 @@ func @ceil(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @convert_i32_to_f32
 func @convert_i32_to_f32(%input: memref<2x2xi32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.convert"(%input, %result) : (memref<2x2xi32>, memref<2x2xf32>) -> ()
+  "lmhlo.convert"(%input, %result) : (memref<2x2xi32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -389,7 +389,7 @@ func @convert_i32_to_f32(%input: memref<2x2xi32>, %result: memref<2x2xf32>) {
 // CHECK-LABEL: func @convert_i16_to_i32
 func @convert_i16_to_i32(%input: memref<2x2xi16>,
           %result: memref<2x2xi32>) {
-  "xla_lhlo.convert"(%input, %result) : (memref<2x2xi16>, memref<2x2xi32>) -> ()
+  "lmhlo.convert"(%input, %result) : (memref<2x2xi16>, memref<2x2xi32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -401,7 +401,7 @@ func @convert_i16_to_i32(%input: memref<2x2xi16>,
 
 // CHECK-LABEL: func @convert_i32_to_i16
 func @convert_i32_to_i16(%input: memref<2x2xi32>, %result: memref<2x2xi16>) {
-  "xla_lhlo.convert"(%input, %result) : (memref<2x2xi32>, memref<2x2xi16>) -> ()
+  "lmhlo.convert"(%input, %result) : (memref<2x2xi32>, memref<2x2xi16>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -413,7 +413,7 @@ func @convert_i32_to_i16(%input: memref<2x2xi32>, %result: memref<2x2xi16>) {
 
 // CHECK-LABEL: func @convert_f32_to_f64
 func @convert_f32_to_f64(%input: memref<2x2xf32>, %result: memref<2x2xf64>) {
-  "xla_lhlo.convert"(%input, %result) : (memref<2x2xf32>, memref<2x2xf64>) -> ()
+  "lmhlo.convert"(%input, %result) : (memref<2x2xf32>, memref<2x2xf64>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -425,7 +425,7 @@ func @convert_f32_to_f64(%input: memref<2x2xf32>, %result: memref<2x2xf64>) {
 
 // CHECK-LABEL: func @convert_f64_to_f32
 func @convert_f64_to_f32(%input: memref<2x2xf64>, %result: memref<2x2xf32>) {
-  "xla_lhlo.convert"(%input, %result) : (memref<2x2xf64>, memref<2x2xf32>) -> ()
+  "lmhlo.convert"(%input, %result) : (memref<2x2xf64>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -437,7 +437,7 @@ func @convert_f64_to_f32(%input: memref<2x2xf64>, %result: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @convert_i32_to_i32
 func @convert_i32_to_i32(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
-  "xla_lhlo.convert"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
+  "lmhlo.convert"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -448,7 +448,7 @@ func @convert_i32_to_i32(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
 
 // CHECK-LABEL: func @convert_f32_to_f32
 func @convert_f32_to_f32(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.convert"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.convert"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -459,7 +459,7 @@ func @convert_f32_to_f32(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @convert_f32_to_i32
 func @convert_f32_to_i32(%input: memref<2x2xf32>, %result: memref<2x2xi32>) {
-  "xla_lhlo.convert"(%input, %result)
+  "lmhlo.convert"(%input, %result)
       : (memref<2x2xf32>, memref<2x2xi32>) -> ()
   return
 }
@@ -472,7 +472,7 @@ func @convert_f32_to_i32(%input: memref<2x2xf32>, %result: memref<2x2xi32>) {
 
 // CHECK-LABEL: func @cos
 func @cos(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.cosine"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.cosine"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -485,7 +485,7 @@ func @cos(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 // CHECK-LABEL: func @sin
 func @sin(%input: memref<2x2xf32>,
           %result: memref<2x2xf32>) {
-  "xla_lhlo.sine"(%input, %result)
+  "lmhlo.sine"(%input, %result)
       : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -498,7 +498,7 @@ func @sin(%input: memref<2x2xf32>,
 
 // CHECK-LABEL: func @negf
 func @negf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.negate"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.negate"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -510,7 +510,7 @@ func @negf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @negi
 func @negi(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
-  "xla_lhlo.negate"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
+  "lmhlo.negate"(%input, %result) : (memref<2x2xi32>, memref<2x2xi32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -524,7 +524,7 @@ func @negi(%input: memref<2x2xi32>, %result: memref<2x2xi32>) {
 // CHECK-LABEL: func @rem
 func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
                 %result: memref<2x2xf32>) {
-  "xla_lhlo.remainder"(%lhs, %rhs, %result)
+  "lmhlo.remainder"(%lhs, %rhs, %result)
       : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
@@ -537,7 +537,7 @@ func @remainder(%lhs: memref<2x2xf32>, %rhs: memref<2x2xf32>,
 
 // CHECK-LABEL: func @rsqrt
 func @rsqrt(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.rsqrt"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.rsqrt"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -549,7 +549,7 @@ func @rsqrt(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @sign
 func @sign(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.sign"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.sign"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -562,7 +562,7 @@ func @sign(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @sqrt
 func @sqrt(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.sqrt"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.sqrt"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -574,7 +574,7 @@ func @sqrt(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // CHECK-LABEL: func @tanh
 func @tanh(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
-  "xla_lhlo.tanh"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  "lmhlo.tanh"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
   return
 }
 // CHECK: linalg.generic
@@ -588,7 +588,7 @@ func @tanh(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
 func @complex(%real: memref<2x2xf32>,
               %imag: memref<2x2xf32>,
               %cplx: memref<2x2xcomplex<f32>>) {
-  "xla_lhlo.complex"(%real, %imag, %cplx)
+  "lmhlo.complex"(%real, %imag, %cplx)
       : (memref<2x2xf32>, memref<2x2xf32>, memref<2x2xcomplex<f32>>) -> ()
   return
 }
@@ -602,7 +602,7 @@ func @complex(%real: memref<2x2xf32>,
 // CHECK-LABEL: func @real
 func @real(%cplx: memref<2x2xcomplex<f32>>,
            %real: memref<2x2xf32>) {
-  "xla_lhlo.real"(%cplx, %real)
+  "lmhlo.real"(%cplx, %real)
       : (memref<2x2xcomplex<f32>>, memref<2x2xf32>) -> ()
   return
 }
@@ -616,7 +616,7 @@ func @real(%cplx: memref<2x2xcomplex<f32>>,
 // CHECK-LABEL: func @imag
 func @imag(%cplx: memref<2x2xcomplex<f32>>,
            %imag: memref<2x2xf32>) {
-  "xla_lhlo.imag"(%cplx, %imag)
+  "lmhlo.imag"(%cplx, %imag)
       : (memref<2x2xcomplex<f32>>, memref<2x2xf32>) -> ()
   return
 }
@@ -629,7 +629,7 @@ func @imag(%cplx: memref<2x2xcomplex<f32>>,
 
 // CHECK: func @slice(%[[IN:.*]]: memref<?x?xf32>, %[[OUT:.*]]: memref<?x?xf32>)
 func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
-  "xla_lhlo.slice"(%operand, %result) {
+  "lmhlo.slice"(%operand, %result) {
     start_indices = dense<[0,1]> : tensor<2xi64>,
     limit_indices = dense<[2,3]> : tensor<2xi64>,
     strides = dense<[1,1]> : tensor<2xi64>
@@ -653,7 +653,7 @@ func @slice(%operand: memref<?x?xf32>, %result: memref<?x?xf32>) {
 // CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2) -> (d2)>
 // CHECK-LABEL: func @reshape_3D_2D
 func @reshape_3D_2D(%arg0: memref<12x1x42xi32>, %arg1 : memref<12x42xi32>) {
-  "xla_lhlo.reshape"(%arg0, %arg1)
+  "lmhlo.reshape"(%arg0, %arg1)
     : (memref<12x1x42xi32>, memref<12x42xi32>) -> ()
   return
 }
@@ -666,7 +666,7 @@ func @reshape_3D_2D(%arg0: memref<12x1x42xi32>, %arg1 : memref<12x42xi32>) {
 // CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d1, d2, d3)>
 // CHECK-LABEL: func @reshape_4D_2D
 func @reshape_4D_2D(%arg0: memref<12x42x1x1xi32>, %arg1 : memref<12x42xi32>) {
-  "xla_lhlo.reshape"(%arg0, %arg1)
+  "lmhlo.reshape"(%arg0, %arg1)
     : (memref<12x42x1x1xi32>, memref<12x42xi32>) -> ()
   return
 }
@@ -679,7 +679,7 @@ func @reshape_4D_2D(%arg0: memref<12x42x1x1xi32>, %arg1 : memref<12x42xi32>) {
 // CHECK-DAG: #[[MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d2, d3)>
 // CHECK-LABEL: func @reshape_2D_4D
 func @reshape_2D_4D(%arg0: memref<12x42xi32>, %arg1 : memref<12x1x42x1xi32>) {
-  "xla_lhlo.reshape"(%arg0, %arg1)
+  "lmhlo.reshape"(%arg0, %arg1)
     : (memref<12x42xi32>, memref<12x1x42x1xi32>) -> ()
   return
 }
@@ -692,7 +692,7 @@ func @reshape_2D_4D(%arg0: memref<12x42xi32>, %arg1 : memref<12x1x42x1xi32>) {
 // CHECK-DAG: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @reverse
 func @reverse(%arg0: memref<2x3xf32>, %arg1: memref<2x3xf32>) {
-  "xla_lhlo.reverse"(%arg0, %arg1) {
+  "lmhlo.reverse"(%arg0, %arg1) {
     dimensions = dense<1> : tensor<1xi64>
   } : (memref<2x3xf32>, memref<2x3xf32>) -> ()
   return
@@ -710,15 +710,15 @@ func @conv(%input: memref<3x5x5x3xf32>, %filter: memref<2x2x3x4xf32>, %output: m
   // CHECK-SAME: padding = dense<{{\[\[}}0, 1], [0, 1]]> : tensor<2x2xi64>
   // CHECK-SAME: strides = [2, 1]}
   // With all atributes explicitly specified.
-  "xla_lhlo.convolution"(%filter, %input, %0) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>, rhs_dilation = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()
+  "lmhlo.convolution"(%filter, %input, %0) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>, rhs_dilation = dense<[1, 2]> : tensor<2xi64>, window_strides = dense<[2, 1]> : tensor<2xi64>} : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()
 
   // Dilation left unspecified, sets default dilation since linalg expects it.
   // CHECK: linalg.conv(%{{.+}}, %{{.+}}, %{{.+}})
   // CHECK-SAME: dilations = [1, 1]
   // Padding is not set if it's zero.
   // CHECK-NOT: padding
-  "xla_lhlo.convolution"(%filter, %input, %0) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, window_strides = dense<[2, 1]> : tensor<2xi64>} : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()
+  "lmhlo.convolution"(%filter, %input, %0) {batch_group_count = 1 : i64, dimension_numbers = {input_batch_dimension = 0 : i64, input_feature_dimension = 3 : i64, input_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>, kernel_input_feature_dimension = 2 : i64, kernel_output_feature_dimension = 3 : i64, kernel_spatial_dimensions = dense<[0, 1]> : tensor<2xi64>, output_batch_dimension = 0 : i64, output_feature_dimension = 3 : i64, output_spatial_dimensions = dense<[1, 2]> : tensor<2xi64>}, feature_group_count = 1 : i64, window_strides = dense<[2, 1]> : tensor<2xi64>} : (memref<2x2x3x4xf32>, memref<3x5x5x3xf32>, memref<3x5x5x4xf32>) -> ()
 
-  "xla_lhlo.copy"(%0, %output) : (memref<3x5x5x4xf32>, memref<3x5x5x4xf32>) -> ()
-  "xla_lhlo.terminator"() : () -> ()
+  "lmhlo.copy"(%0, %output) : (memref<3x5x5x4xf32>, memref<3x5x5x4xf32>) -> ()
+  "lmhlo.terminator"() : () -> ()
 }

@@ -48,7 +48,7 @@ class XlaBuilderTest : public ::testing::Test {
         xla_builder_(name_, builder_, module_->getLoc()) {}
 
   string SetupTest() {
-    mlir::registerDialect<mlir::mhlo::XlaHloDialect>();
+    mlir::registerDialect<mlir::mhlo::MhloDialect>();
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 

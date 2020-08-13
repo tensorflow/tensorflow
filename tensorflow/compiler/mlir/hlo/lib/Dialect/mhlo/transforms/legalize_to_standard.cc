@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// This file implements logic for lowering XLA dialect to Standard dialect.
+// This file implements logic for lowering MHLO dialect to Standard dialect.
 
 #include "llvm/ADT/StringSwitch.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
 namespace {
-#include "tensorflow/compiler/mlir/hlo/lib/Dialect/mhlo/transforms/generated_legalize_to_standard.inc"
+#include "generated_legalize_to_standard.inc"
 }  // end anonymous namespace
 namespace mhlo {
 namespace {
@@ -176,32 +176,29 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 }  // end anonymous namespace
 
 namespace {
-struct LegalizeToStandard
-    : public PassWrapper<LegalizeToStandard, FunctionPass> {
+struct LegalizeToStandardPass
+    : public PassWrapper<LegalizeToStandardPass, FunctionPass> {
   /// Perform the lowering to Standard dialect.
   void runOnFunction() override;
 };
 }  // end anonymous namespace
 
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>> createLegalizeToStdPass() {
-  return std::make_unique<LegalizeToStandard>();
+  return std::make_unique<LegalizeToStandardPass>();
 }
 
-void PopulateXlaToStdPatterns(OwningRewritePatternList *patterns,
-                              mlir::MLIRContext *ctx) {
+void PopulateMhloToStdPatterns(OwningRewritePatternList *patterns,
+                               mlir::MLIRContext *ctx) {
   mlir::populateWithGenerated(ctx, patterns);
   patterns->insert<CompareFConvert, CompareIConvert, ConvertIotaOp>(ctx);
 }
 
 /// Perform the lowering to standard dialect.
-void LegalizeToStandard::runOnFunction() {
+void LegalizeToStandardPass::runOnFunction() {
   OwningRewritePatternList patterns;
-  mlir::mhlo::PopulateXlaToStdPatterns(&patterns, &getContext());
+  mlir::mhlo::PopulateMhloToStdPatterns(&patterns, &getContext());
   applyPatternsAndFoldGreedily(getFunction(), patterns);
 }
-
-static PassRegistration<LegalizeToStandard> legalize_pass(
-    "xla-legalize-to-std", "Legalize from XLA dialect to standard dialect");
 
 }  // end namespace mhlo
 }  // end namespace mlir

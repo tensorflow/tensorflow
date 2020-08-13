@@ -46,18 +46,17 @@ constexpr int kKeywordModelNodeAndRegistrationCount = 15;
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
 //
-// Run this test with '--copt=-DTF_LITE_MICRO_OPTIMIZED_RUNTIME' to get
-// optimized memory runtime values:
+// Run this test with '--copt=-DTF_LITE_STATIC_MEMORY' to get optimized memory
+// runtime values:
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kKeywordModelTotalSize = 18112;
-constexpr int kKeywordModelTailSize = 17440;
+constexpr int kKeywordModelTotalSize = 14336;
+constexpr int kKeywordModelTailSize = 13664;
 #else
-constexpr int kKeywordModelTotalSize = 21072;
-constexpr int kKeywordModelTailSize = 20400;
+constexpr int kKeywordModelTotalSize = 14704;
+constexpr int kKeywordModelTailSize = 14032;
 #endif
 constexpr int kKeywordModelHeadSize = 672;
 constexpr int kKeywordModelTfLiteTensorVariableBufferDataSize = 10240;
-constexpr int kKeywordModelTfLiteTensorQuantizationDataSize = 1728;
 constexpr int kKeywordModelOpRuntimeDataSize = 148;
 
 constexpr int kTestConvModelArenaSize = 12 * 1024;
@@ -69,14 +68,13 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
 #ifdef TF_LITE_STATIC_MEMORY
-constexpr int kTestConvModelTotalSize = 10816;
-constexpr int kTestConvModelTailSize = 3072;
+constexpr int kTestConvModelTotalSize = 9552;
+constexpr int kTestConvModelTailSize = 1808;
 #else
-constexpr int kTestConvModelTotalSize = 11712;
-constexpr int kTestConvModelTailSize = 3968;
+constexpr int kTestConvModelTotalSize = 9712;
+constexpr int kTestConvModelTailSize = 1968;
 #endif
 constexpr int kTestConvModelHeadSize = 7744;
-constexpr int kTestConvModelTfLiteTensorQuantizationDataSize = 768;
 constexpr int kTestConvModelOpRuntimeDataSize = 136;
 
 struct ModelAllocationThresholds {
@@ -86,7 +84,6 @@ struct ModelAllocationThresholds {
   size_t head_alloc_size = 0;
   size_t tail_alloc_size = 0;
   size_t tensor_variable_buffer_data_size = 0;
-  size_t tensor_quantization_data_size = 0;
   size_t op_runtime_data_size = 0;
 };
 
@@ -95,7 +92,8 @@ void EnsureAllocatedSizeThreshold(const char* allocation_type, size_t actual,
   // TODO(b/158651472): Better auditing of non-64 bit systems:
   if (kIs64BitSystem) {
     // 64-bit systems should check floor and ceiling to catch memory savings:
-    TF_LITE_MICRO_EXPECT_NEAR(actual, expected, kAllocationThreshold);
+    TF_LITE_MICRO_EXPECT_NEAR(actual, expected,
+                              expected * kAllocationThreshold);
     if (actual != expected) {
       TF_LITE_REPORT_ERROR(micro_test::reporter,
                            "%s threshold failed: %d != %d", allocation_type,
@@ -123,12 +121,12 @@ void ValidateModelAllocationThresholds(
       "Tail", allocator.GetSimpleMemoryAllocator()->GetTailUsedBytes(),
       thresholds.tail_alloc_size);
   EnsureAllocatedSizeThreshold(
-      "TfLiteTensor",
+      "TfLiteEvalTensor",
       allocator
           .GetRecordedAllocation(
-              tflite::RecordedAllocationType::kTfLiteTensorArray)
+              tflite::RecordedAllocationType::kTfLiteEvalTensorData)
           .used_bytes,
-      sizeof(TfLiteTensor) * thresholds.tensor_count);
+      sizeof(TfLiteEvalTensor) * thresholds.tensor_count);
   EnsureAllocatedSizeThreshold(
       "VariableBufferData",
       allocator
@@ -137,12 +135,19 @@ void ValidateModelAllocationThresholds(
           .used_bytes,
       thresholds.tensor_variable_buffer_data_size);
   EnsureAllocatedSizeThreshold(
-      "QuantizationData",
+      "PersistentTfLiteTensor",
+      allocator
+          .GetRecordedAllocation(
+              tflite::RecordedAllocationType::kPersistentTfLiteTensorData)
+          .used_bytes,
+      0);
+  EnsureAllocatedSizeThreshold(
+      "PersistentTfliteTensorQuantizationData",
       allocator
           .GetRecordedAllocation(tflite::RecordedAllocationType::
-                                     kTfLiteTensorArrayQuantizationData)
+                                     kPersistentTfLiteTensorQuantizationData)
           .used_bytes,
-      thresholds.tensor_quantization_data_size);
+      0);
   EnsureAllocatedSizeThreshold(
       "NodeAndRegistration",
       allocator
@@ -158,8 +163,7 @@ void ValidateModelAllocationThresholds(
       thresholds.op_runtime_data_size);
 
   // Ensure tail allocation recording is not missing any large chunks:
-  size_t tail_est_length = sizeof(TfLiteTensor) * thresholds.tensor_count +
-                           thresholds.tensor_quantization_data_size +
+  size_t tail_est_length = sizeof(TfLiteEvalTensor) * thresholds.tensor_count +
                            thresholds.tensor_variable_buffer_data_size +
                            sizeof(tflite::NodeAndRegistration) *
                                thresholds.node_and_registration_count +
@@ -190,8 +194,6 @@ TF_LITE_MICRO_TEST(TestKeywordModelMemoryThreshold) {
   thresholds.tail_alloc_size = kKeywordModelTailSize;
   thresholds.tensor_variable_buffer_data_size =
       kKeywordModelTfLiteTensorVariableBufferDataSize;
-  thresholds.tensor_quantization_data_size =
-      kKeywordModelTfLiteTensorQuantizationDataSize;
   thresholds.op_runtime_data_size = kKeywordModelOpRuntimeDataSize;
 
   ValidateModelAllocationThresholds(interpreter.GetMicroAllocator(),
@@ -213,8 +215,6 @@ TF_LITE_MICRO_TEST(TestConvModelMemoryThreshold) {
   thresholds.total_alloc_size = kTestConvModelTotalSize;
   thresholds.head_alloc_size = kTestConvModelHeadSize;
   thresholds.tail_alloc_size = kTestConvModelTailSize;
-  thresholds.tensor_quantization_data_size =
-      kTestConvModelTfLiteTensorQuantizationDataSize;
   thresholds.op_runtime_data_size = kTestConvModelOpRuntimeDataSize;
 
   ValidateModelAllocationThresholds(interpreter.GetMicroAllocator(),

@@ -1,13 +1,13 @@
-// RUN: mlir-hlo-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -lhlo-legalize-to-parallel-loops -canonicalize -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
 func @reduce(%arg: memref<100x10x5xf32>,
              %init: memref<f32>,
              %result: memref<100x5xf32>) {
-  "xla_lhlo.reduce"(%arg, %init, %result) ( {
+  "lmhlo.reduce"(%arg, %init, %result) ( {
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
-      "xla_lhlo.add"(%lhs, %rhs, %res)
+      "lmhlo.add"(%lhs, %rhs, %res)
         : (memref<f32>, memref<f32>, memref<f32>) -> ()
-      "xla_lhlo.terminator"() : () -> ()
+      "lmhlo.terminator"() : () -> ()
     } ) {dimensions = dense<[1]> : tensor<1xi64>}
       : (memref<100x10x5xf32>, memref<f32>, memref<100x5xf32>) -> ()
   return
@@ -35,7 +35,7 @@ func @reduce(%arg: memref<100x10x5xf32>,
 // CHECK:        [[ACC_OUT_BUF:%.*]] = alloc() : memref<f32>
 // CHECK:        store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:        store [[ACC]], [[ACC_BUF]][] : memref<f32>
-// CHECK:        "xla_lhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
+// CHECK:        "lmhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
 // CHECK:        [[ACC_RESULT:%.*]] = load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:        scf.reduce.return [[ACC_RESULT]] : f32
 // CHECK:      }
@@ -49,11 +49,11 @@ func @reduce(%arg: memref<100x10x5xf32>,
 func @reduce_no_outer_loop(%arg: memref<100xf32>,
                            %init: memref<f32>,
                            %result: memref<1xf32>) {
-  "xla_lhlo.reduce"(%arg, %init, %result) ( {
+  "lmhlo.reduce"(%arg, %init, %result) ( {
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
-      "xla_lhlo.add"(%lhs, %rhs, %res)
+      "lmhlo.add"(%lhs, %rhs, %res)
         : (memref<f32>, memref<f32>, memref<f32>) -> ()
-      "xla_lhlo.terminator"() : () -> ()
+      "lmhlo.terminator"() : () -> ()
     } ) {dimensions = dense<[0]> : tensor<1xi64>}
       : (memref<100xf32>, memref<f32>, memref<1xf32>) -> ()
   return
@@ -76,7 +76,7 @@ func @reduce_no_outer_loop(%arg: memref<100xf32>,
 // CHECK:          [[ACC_OUT_BUF:%.*]] = alloc() : memref<f32>
 // CHECK:          store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:          store [[ACC]], [[ACC_BUF]][] : memref<f32>
-// CHECK:          "xla_lhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
+// CHECK:          "lmhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
 // CHECK:          [[ACC_RESULT:%.*]] = load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:          scf.reduce.return [[ACC_RESULT]]
 // CHECK:        }
@@ -88,11 +88,11 @@ func @reduce_no_outer_loop(%arg: memref<100xf32>,
 func @dynamic_reduce(%arg: memref<?x?x?xf32>,
                      %init: memref<f32>,
                      %result: memref<?x?xf32>) {
-  "xla_lhlo.reduce"(%arg, %init, %result) ( {
+  "lmhlo.reduce"(%arg, %init, %result) ( {
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
-      "xla_lhlo.add"(%lhs, %rhs, %res)
+      "lmhlo.add"(%lhs, %rhs, %res)
         : (memref<f32>, memref<f32>, memref<f32>) -> ()
-      "xla_lhlo.terminator"() : () -> ()
+      "lmhlo.terminator"() : () -> ()
     } ) {dimensions = dense<[1]> : tensor<1xi64>}
       : (memref<?x?x?xf32>, memref<f32>, memref<?x?xf32>) -> ()
   return
@@ -121,7 +121,7 @@ func @dynamic_reduce(%arg: memref<?x?x?xf32>,
 // CHECK:        [[ACC_OUT_BUF:%.*]] = alloc() : memref<f32>
 // CHECK:        store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:        store [[ACC]], [[ACC_BUF]][] : memref<f32>
-// CHECK:        "xla_lhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
+// CHECK:        "lmhlo.add"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
 // CHECK:        [[ACC_RESULT:%.*]] = load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:        scf.reduce.return [[ACC_RESULT]] : f32
 // CHECK:      }
@@ -135,11 +135,11 @@ func @dynamic_reduce(%arg: memref<?x?x?xf32>,
 func @reduce_window(%arg: memref<112x112xf32>,
              %init: memref<f32>,
              %result: memref<56x56xf32>) {
-  "xla_lhlo.reduce_window"(%arg, %init, %result) ( {
+  "lmhlo.reduce_window"(%arg, %init, %result) ( {
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %res: memref<f32>):
-      "xla_lhlo.maximum"(%lhs, %rhs, %res)
+      "lmhlo.maximum"(%lhs, %rhs, %res)
         : (memref<f32>, memref<f32>, memref<f32>) -> ()
-      "xla_lhlo.terminator"() : () -> ()
+      "lmhlo.terminator"() : () -> ()
     }) {
       padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
       window_dimensions = dense<[3, 3]> : tensor<2xi64>,
@@ -189,7 +189,7 @@ func @reduce_window(%arg: memref<112x112xf32>,
 // CHECK:            [[ACC_OUT_BUF:%.*]] = alloc() : memref<f32>
 // CHECK:            store [[ELEM]], [[ELEM_BUF]][] : memref<f32>
 // CHECK:            store [[ACC]], [[ACC_BUF]][] : memref<f32>
-// CHECK:            "xla_lhlo.maximum"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
+// CHECK:            "lmhlo.maximum"([[ELEM_BUF]], [[ACC_BUF]], [[ACC_OUT_BUF]])
 // CHECK:            [[ACC_RESULT:%.*]] = load [[ACC_OUT_BUF]][] : memref<f32>
 // CHECK:            scf.reduce.return [[ACC_RESULT]] : f32
 // CHECK:          }

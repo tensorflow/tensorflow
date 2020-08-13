@@ -101,7 +101,8 @@ bool BlockWrapsSingleOp(Block* block) {
 }  // end anonymous namespace
 
 TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
-    : Dialect(/*name=*/"tf_device", context) {
+    : Dialect(/*name=*/"tf_device", context,
+              TypeID::get<TensorFlowDeviceDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.cc.inc"
@@ -117,31 +118,6 @@ TensorFlowDeviceDialect::TensorFlowDeviceDialect(MLIRContext* context)
 // Checks if a tf_device.launch wraps a single operation and the single
 // operation results are perfectly forwarded to the launch return.
 bool LaunchOp::WrapsSingleOp() { return BlockWrapsSingleOp(&GetBody()); }
-
-//===----------------------------------------------------------------------===//
-// tf_device.return
-//===----------------------------------------------------------------------===//
-
-namespace {
-ParseResult ParseReturnOp(OpAsmParser* parser, OperationState* state) {
-  llvm::SmallVector<OpAsmParser::OperandType, 2> op_info;
-  llvm::SmallVector<Type, 2> types;
-  llvm::SMLoc loc = parser->getCurrentLocation();
-  return failure(parser->parseOperandList(op_info) ||
-                 (!op_info.empty() && parser->parseColonTypeList(types)) ||
-                 parser->resolveOperands(op_info, types, loc, state->operands));
-}
-
-void Print(ReturnOp op, OpAsmPrinter* p) {
-  *p << op.getOperationName();
-  if (op.getNumOperands() > 0) {
-    *p << ' ';
-    p->printOperands(op.getOperands());
-    *p << " : ";
-    interleaveComma(op.getOperandTypes(), *p);
-  }
-}
-}  // anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // tf_device.parallel_execute
@@ -569,8 +545,10 @@ void BuildReplicateOp(
 
   // Add derived `operand_segment_sizes` attribute.
   int32_t num_replicated_inputs = replicated_inputs.size() * n;
-  auto operand_segment_sizes = DenseIntElementsAttr::get(
-      VectorType::get({2}, builder->getI32Type()), {num_replicated_inputs, 0});
+  int32_t num_packed_inputs = packed_inputs.size();
+  auto operand_segment_sizes =
+      DenseIntElementsAttr::get(VectorType::get({2}, builder->getI32Type()),
+                                {num_replicated_inputs, num_packed_inputs});
   state->addAttribute(kOperandSegmentSizesAttr, operand_segment_sizes);
 
   for (const auto& output_type : replica_output_types)
@@ -598,6 +576,65 @@ void ReplicateOp::build(
     Operation::result_type_range replica_output_types) {
   BuildReplicateOp(&builder, &state, n, devices, replicated_inputs,
                    packed_inputs, replica_output_types);
+}
+
+// Returns the number of packed block arguments.
+unsigned ReplicateOp::GetNumPackedBlockArguments() {
+  return packed_inputs().size();
+}
+
+// Returns the number of replicated block arguments.
+unsigned ReplicateOp::GetNumReplicatedBlockArguments() {
+  return GetBody().getNumArguments() - GetNumPackedBlockArguments();
+}
+
+// Returns the replicated block arguments. A copy should be made if the
+// replicate op is being modified.
+llvm::ArrayRef<BlockArgument> ReplicateOp::GetReplicatedBlockArguments() {
+  return GetBody().getArguments().drop_back(GetNumPackedBlockArguments());
+}
+
+// Returns the packed block arguments. A copy should be made if the replicate op
+// is being modified.
+llvm::ArrayRef<BlockArgument> ReplicateOp::GetPackedBlockArguments() {
+  return GetBody().getArguments().take_back(GetNumPackedBlockArguments());
+}
+
+// Checks if a block argument is replicated (forwarding replicated inputs).
+bool ReplicateOp::IsReplicatedBlockArgument(BlockArgument block_arg) {
+  assert(block_arg.getOwner() == &GetBody());
+  return block_arg.getArgNumber() < GetNumReplicatedBlockArguments();
+}
+
+// Checks if a block argument is packed (forwarding a packed input).
+bool ReplicateOp::IsPackedBlockArgument(BlockArgument block_arg) {
+  return !IsReplicatedBlockArgument(block_arg);
+}
+
+// Returns the operand index of the operand being forwarded as a
+// replicated/packed block argument for a given replica. This assumes a valid
+// block argument (of the replicate op) and a valid replica is provided.
+unsigned ReplicateOp::GetReplicaOperandIndexForBlockArgument(
+    BlockArgument block_arg, unsigned replica) {
+  const int32_t num_replicas = nAttr().getInt();
+  assert(replica < num_replicas && block_arg.getOwner() == &GetBody());
+
+  const unsigned num_replicated_args = GetNumReplicatedBlockArguments();
+  if (block_arg.getArgNumber() < num_replicated_args)
+    return block_arg.getArgNumber() * num_replicas + replica;
+
+  return block_arg.getArgNumber() - num_replicated_args +
+         replicated_inputs().size();
+}
+
+// Returns the operand being forwarded as a replicated/packed block argument for
+// a given replica. This assumes a valid block argument (of the replicate op)
+// and a valid replica is provided.
+Value ReplicateOp::GetReplicaOperandForBlockArgument(BlockArgument block_arg,
+                                                     unsigned replica) {
+  const unsigned operand_index =
+      GetReplicaOperandIndexForBlockArgument(block_arg, replica);
+  return getOperand(operand_index);
 }
 
 //===----------------------------------------------------------------------===//

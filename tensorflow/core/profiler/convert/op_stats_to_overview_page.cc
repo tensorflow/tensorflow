@@ -25,13 +25,16 @@ limitations under the License.
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
+#include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
 #include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_function.pb.h"
 #include "tensorflow/core/profiler/utils/diagnostics.h"
+#include "tensorflow/core/profiler/utils/hardware_type_utils.h"
 #include "tensorflow/core/profiler/utils/html_utils.h"
+#include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
@@ -162,6 +165,8 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   OverviewPageAnalysis analysis;
   OpMetricsDb device_tf_op_metrics_db = CreateTfMetricsDbFromDeviceOpMetricsDb(
       op_stats.device_op_metrics_db(), /*with_idle=*/false);
+  KernelStatsByOpName kernel_stats_by_op_name =
+      GroupKernelReportsByOpName(op_stats.kernel_stats_db());
   uint64 total_device_time_ps = device_tf_op_metrics_db.total_time_ps();
   constexpr int kNumTopOpsShown = 10;
   double device_cumulative_fraction = 0.0;
@@ -176,6 +181,12 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
     op->set_cumulative_time_fraction(device_cumulative_fraction);
     op->set_flop_rate(
         SafeDivide(metrics->flops(), PicosToNanos(metrics->time_ps())));
+    auto iter = kernel_stats_by_op_name.find(op->name());
+    if (iter != kernel_stats_by_op_name.end()) {
+      op->set_is_op_tensorcore_eligible(
+          iter->second.is_op_tensor_core_eligible);
+      op->set_is_op_using_tensorcore(iter->second.tensor_core_duration_ns != 0);
+    }
   }
   uint64 total_device_compute_ps =
       op_stats.device_op_metrics_db().precision_stats().compute_16bit_ps() +
@@ -289,7 +300,7 @@ std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db) {
   auto num_functions_shown = std::min(
       static_cast<decltype(candidates)::size_type>(3), candidates.size());
 
-  for (auto i = 0; i < num_functions_shown; i++) {
+  for (decltype(candidates)::size_type i = 0; i < num_functions_shown; i++) {
     if (i > 0) absl::StrAppend(&expensive_functions, ", ");
     absl::StrAppend(&expensive_functions, "\"", candidates[i].function_name,
                     "\"");
@@ -316,14 +327,13 @@ std::string EagerRecommendationHtml(double host_op_time_eager_percent,
   return recommendation;
 }
 
-OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
-                                          HardwareType hardware_type) {
+OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats) {
   OverviewPage overview_page;
   *overview_page.mutable_run_environment() =
       ComputeRunEnvironment(op_stats.run_environment());
   *overview_page.mutable_analysis() = ComputeAnalysisResult(op_stats);
   *overview_page.mutable_input_analysis() =
-      ConvertOpStatsToInputPipelineAnalysis(op_stats, hardware_type);
+      ConvertOpStatsToInputPipelineAnalysis(op_stats);
   BottleneckAnalysis bottleneck = ComputeBottleneckAnalysis(
       overview_page.input_analysis().input_time_breakdown(),
       overview_page.input_analysis().step_details());
@@ -331,7 +341,8 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
       bottleneck, op_stats.device_op_metrics_db().precision_stats());
   SetCommonRecommendation(
       bottleneck.input_classification(), bottleneck.input_statement(), "",
-      hardware_type, TfFunctionRecommendationHtml(op_stats.tf_function_db()),
+      ParseHardwareType(op_stats.run_environment().device_type()),
+      TfFunctionRecommendationHtml(op_stats.tf_function_db()),
       EagerRecommendationHtml(
           overview_page.analysis().host_op_time_eager_percent(),
           overview_page.analysis().device_op_time_eager_percent()),

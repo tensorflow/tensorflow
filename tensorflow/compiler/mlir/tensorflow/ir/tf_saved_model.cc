@@ -113,7 +113,8 @@ static LogicalResult Verify(SessionInitializerOp session_initializer) {
 //===----------------------------------------------------------------------===//
 
 TensorFlowSavedModelDialect::TensorFlowSavedModelDialect(MLIRContext *context)
-    : Dialect(/*name=*/"tf_saved_model", context) {
+    : Dialect(/*name=*/"tf_saved_model", context,
+              TypeID::get<TensorFlowSavedModelDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"
@@ -337,6 +338,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
     if (auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
             i, "tf_saved_model.bound_input")) {
       if (!unique_bound_inputs.insert(attr.getValue()).second) {
+        if (module.getAttr("tf_saved_model.under_construction")) continue;
         return func.emitError()
                << "duplicate 'tf_saved_model.bound_input' binding";
       }
@@ -356,7 +358,7 @@ LogicalResult VerifyExportedFunc(FuncOp func) {
 LogicalResult TensorFlowSavedModelDialect::verifyOperationAttribute(
     Operation *op, NamedAttribute named_attr) {
   if (named_attr.first == "tf_saved_model.exported_names") {
-    if (!isa<FuncOp>(op) && !isa<GlobalTensorOp>(op)) {
+    if (!isa<FuncOp, GlobalTensorOp>(op)) {
       return op->emitError() << "'tf_saved_model.exported_names' must be on a "
                                 "'func' or 'tf_saved_model.global_tensor' op";
     }
@@ -415,12 +417,12 @@ bool HasTfSavedModelSemantics(ModuleOp module) {
   return module.getAttr("tf_saved_model.semantics") != nullptr;
 }
 
-GlobalTensorOp LookupBoundInput(FuncOp func, int arg_index,
-                                const SymbolTable &symbol_table) {
+Operation *LookupBoundInput(FuncOp func, int arg_index,
+                            const SymbolTable &symbol_table) {
   auto attr = func.getArgAttrOfType<FlatSymbolRefAttr>(
       arg_index, "tf_saved_model.bound_input");
   if (!attr) return nullptr;
-  return symbol_table.lookup<GlobalTensorOp>(attr.getValue());
+  return symbol_table.lookup(attr.getValue());
 }
 
 SessionInitializerOp GetSessionInitializerOp(mlir::ModuleOp op) {

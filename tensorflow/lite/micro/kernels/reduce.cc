@@ -22,6 +22,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace ops {
@@ -78,7 +80,7 @@ TfLiteStatus PrepareMeanOrSum(TfLiteContext* context, TfLiteNode* node) {
   }
 
   TF_LITE_ENSURE_OK(context, PrepareSimple(context, node));
-  // TODO(b/144955155): Support uint8(b/144955155) and int8(b/144955018)
+  // TODO(b/144955155): Support uint8_t(b/144955155) and int8_t(b/144955018)
   return kTfLiteOk;
 }
 
@@ -86,7 +88,7 @@ void ResolveAxis(const int* axis_data, int axis_count,
                  tflite::MeanParams* op_params) {
   int i = 0;
   for (; i < axis_count; ++i) {
-    op_params->axis[i] = static_cast<int16>(axis_data[i]);
+    op_params->axis[i] = static_cast<int16_t>(axis_data[i]);
   }
   for (; i < 4; ++i) {
     op_params->axis[i] = 1;
@@ -95,14 +97,14 @@ void ResolveAxis(const int* axis_data, int axis_count,
 }
 
 TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  const TfLiteTensor* axis = GetInput(context, node, 1);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  const TfLiteEvalTensor* axis = tflite::micro::GetEvalInput(context, node, 1);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
   TfLiteReducerParams* params =
       reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
   OpData* op_data = reinterpret_cast<OpData*>(node->user_data);
 
-  int num_axis = static_cast<int>(NumElements(axis));
+  int num_axis = static_cast<int>(ElementCount(*axis->dims));
   int temp_index[kMaxNumberOfAxis];
   int resolved_axis[kMaxNumberOfReducedAxis];
 
@@ -124,18 +126,20 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       // reference method.
       // Defer to specialized implementation for 4D Mean across axes 1 & 2.
       if (params->keep_dims) {
-        reference_ops::Mean(op_params, GetTensorShape(input),
-                            GetTensorData<float>(input), GetTensorShape(output),
-                            GetTensorData<float>(output));
+        reference_ops::Mean(op_params, tflite::micro::GetTensorShape(input),
+                            tflite::micro::GetTensorData<float>(input),
+                            tflite::micro::GetTensorShape(output),
+                            tflite::micro::GetTensorData<float>(output));
       } else {
         TF_LITE_ENSURE(
             context,
-            reference_ops::Mean(GetTensorData<float>(input), input->dims->data,
-                                input->dims->size, GetTensorData<float>(output),
-                                output->dims->data, output->dims->size,
-                                GetTensorData<int>(axis), num_axis,
-                                params->keep_dims, temp_index, resolved_axis,
-                                GetTensorData<float>(output)));
+            reference_ops::Mean(
+                tflite::micro::GetTensorData<float>(input), input->dims->data,
+                input->dims->size, tflite::micro::GetTensorData<float>(output),
+                output->dims->data, output->dims->size,
+                tflite::micro::GetTensorData<int>(axis), num_axis,
+                params->keep_dims, temp_index, resolved_axis,
+                tflite::micro::GetTensorData<float>(output)));
       }
     } break;
     case kTfLiteInt8: {
@@ -203,7 +207,7 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     default:
-      // TODO(b/144955155): Support uint8(b/144955155) and int8(b/144955018)
+      // TODO(b/144955155): Support uint8_t(b/144955155) and int8_t(b/144955018)
       TF_LITE_ENSURE_MSG(context, false,
                          "Currently, only float32, int8 or uint8 input type "
                          "is supported.");

@@ -1,6 +1,6 @@
 // GenericAtomicRMWOp should contain only ops with no side effects.
 // Unfortunately, the legalization pattern for SelectAndScatterOp has to adapt
-// to XLA LHLO dialect using allocs/deallocs inside of GenericAtomicRMWOp body.
+// to LMHLO dialect using allocs/deallocs inside of GenericAtomicRMWOp body.
 // Lowering to STD dialect and store forwarding pass would be required to get
 // rid of them. This is exactly what is done in the real MLIR GPU pipeline, but
 // here we disable verification with `verify-each=0` to check the output IR.
@@ -10,18 +10,18 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
                          %src: memref<56x56xf32>,
                          %init: memref<f32>,
                          %result: memref<112x112xf32>) {
-  "xla_lhlo.select_and_scatter"(%arg, %src, %init, %result) ( {
+  "lmhlo.select_and_scatter"(%arg, %src, %init, %result) ( {
     // select
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %pred: memref<i1>):
-      "xla_lhlo.compare"(%lhs, %rhs, %pred) {comparison_direction = "GE"} :
+      "lmhlo.compare"(%lhs, %rhs, %pred) {comparison_direction = "GE"} :
           (memref<f32>, memref<f32>, memref<i1>) -> ()
-      "xla_lhlo.terminator"() : () -> ()
+      "lmhlo.terminator"() : () -> ()
   }, {
     // scatter
     ^bb0(%lhs: memref<f32>, %rhs: memref<f32>, %out: memref<f32>):
-      "xla_lhlo.add"(%lhs, %rhs, %out) :
+      "lmhlo.add"(%lhs, %rhs, %out) :
           (memref<f32>, memref<f32>, memref<f32>) -> ()
-      "xla_lhlo.terminator"() : () -> ()
+      "lmhlo.terminator"() : () -> ()
   }) {
     padding = dense<[[0, 1], [0, 1]]> : tensor<2x2xi64>,
     window_dimensions = dense<[3, 3]> : tensor<2xi64>,
@@ -29,7 +29,7 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
   } : (memref<112x112xf32>,
        memref<56x56xf32>,
        memref<f32>, memref<112x112xf32>) -> ()
-  "xla_lhlo.terminator"() : () -> ()
+  "lmhlo.terminator"() : () -> ()
 }
 // CHECK-LABEL: func @select_and_scatter(
 // CHECK-SAME:   [[ARG_BUF:%.*]]: memref<112x112xf32>,
@@ -121,7 +121,7 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
     // CHECK:  store [[SEL_VAL]], [[SEL_VAL_BUF]][] : memref<f32>
 
     // Compute PRED.
-    // CHECK:  "xla_lhlo.compare"(
+    // CHECK:  "lmhlo.compare"(
     // CHECK-SAME:     [[ARG_ELEM_BUF]], [[SEL_VAL_BUF]], [[PRED_BUF]])
     // CHECK:      [[PRED:%.*]] = load [[PRED_BUF]][] : memref<i1>
 
@@ -182,7 +182,7 @@ func @select_and_scatter(%arg: memref<112x112xf32>,
 // CHECK:  store [[CUR_RES]], [[CUR_RES_BUF]][] : memref<f32>
 
 // Compute scatter value.
-// CHECK:  "xla_lhlo.add"([[SRC_ELEM_BUF]], [[CUR_RES_BUF]], [[RES_BUF]]) :
+// CHECK:  "lmhlo.add"([[SRC_ELEM_BUF]], [[CUR_RES_BUF]], [[RES_BUF]]) :
 // CHECK-SAME: (memref<f32>, memref<f32>, memref<f32>) -> ()
 // CHECK:  [[RES:%.*]] = load [[RES_BUF]][] : memref<f32>
 

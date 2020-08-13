@@ -27,7 +27,6 @@ import six
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
 from tensorflow.core.framework import attr_value_pb2
-from tensorflow.python import pywrap_tfe
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function as function_lib
 from tensorflow.python.eager import lift_to_graph
@@ -53,6 +52,8 @@ FREQUENT_TRACING_WARNING_THRESHOLD = 5
 
 class _CallCounter(object):
   """Class keeping track of how many recent calls triggered tracing."""
+
+  __slots__ = ["_max_call_history", "_calls_per_tracings", "call_count"]
 
   def __init__(self, max_call_history):
     self._max_call_history = max_call_history
@@ -83,6 +84,8 @@ class _CallCounter(object):
 
 class _FrequentTracingDetector(object):
   """Class for frequent retracing detection and warning."""
+
+  __slots__ = ["_counters", "_lock"]
 
   def __init__(self):
     self._counters = weakref.WeakKeyDictionary()  # GUARDED_BY(self._lock)
@@ -428,6 +431,8 @@ def functions_run_eagerly():
 
 class FunctionDeleter(object):
 
+  __slots__ = ["func_graph"]
+
   def __init__(self, func_graph):
     self.func_graph = func_graph
 
@@ -456,7 +461,8 @@ class Function(object):
                experimental_implements=None,
                experimental_autograph_options=None,
                experimental_relax_shapes=False,
-               experimental_compile=None):
+               experimental_compile=None,
+               experimental_follow_type_hints=None):
     """Initializes a `Function`.
 
     Args:
@@ -512,6 +518,8 @@ class Function(object):
         executor). Set this value to `False` when directly running a
         multi-device function on TPUs (e.g. two TPU cores, one TPU core and its
         host CPU).
+      experimental_follow_type_hints: See the documentation for `tf.function`.
+
     Raises:
       ValueError: if `input_signature` is not None and the `python_function`'s
         argspec has keyword arguments.
@@ -519,7 +527,9 @@ class Function(object):
     self._lock = threading.Lock()
     self._python_function = python_function
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
-        python_function, input_signature)
+        python_function,
+        input_signature,
+        experimental_follow_type_hints=experimental_follow_type_hints)
     self._implements = experimental_implements
     # If `True`, the function uses the rendezvous of the parent. This is only
     # needed to support code where raw send/recv operations are inserted and
@@ -529,6 +539,9 @@ class Function(object):
     self._experimental_autograph_options = experimental_autograph_options
     self._experimental_relax_shapes = experimental_relax_shapes
     self._experimental_compile = experimental_compile
+    if experimental_follow_type_hints is None:
+      experimental_follow_type_hints = False
+    self._experimental_follow_type_hints = experimental_follow_type_hints
     self._created_variables = None  # GUARDED_BY(self._lock)
     self._stateful_fn = None  # GUARDED_BY(self._lock)
     self._stateless_fn = None  # GUARDED_BY(self._lock)
@@ -641,14 +654,6 @@ class Function(object):
       attributes.update(_XlaMustCompile=bool(self._experimental_compile))
       if self._experimental_compile:
         attributes.update(_noinline=True)
-        # TODO(b/149755889): Until XLA is always linked, we have to do a runtime
-        # check.
-        if not pywrap_tfe.TF_IsXlaEnabled():
-          raise ValueError(
-              "Attempting to use experimental_compile, "
-              "but XLA support is not linked in. "
-              "Is the dependency to tensorflow/compiler/jit:xla_gpu_jit "
-              "(or xla_cpu_jit) present?")
     if not attributes:
       attributes = None
     return function_lib.defun_with_attributes(
@@ -658,6 +663,7 @@ class Function(object):
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options,
         experimental_compile=self._experimental_compile,
+        experimental_follow_type_hints=self._experimental_follow_type_hints,
         experimental_relax_shapes=self._experimental_relax_shapes)
 
   def _initialize(self, args, kwds, add_initializers_to=None):
@@ -716,7 +722,8 @@ class Function(object):
         experimental_implements=self._implements,
         experimental_autograph_options=self._experimental_autograph_options,
         experimental_relax_shapes=self._experimental_relax_shapes,
-        experimental_compile=self._experimental_compile)
+        experimental_compile=self._experimental_compile,
+        experimental_follow_type_hints=self._experimental_follow_type_hints)
 
     if self._shared_rendezvous:
       f._shared_rendezvous = self._shared_rendezvous  # pylint: disable=protected-access
@@ -839,13 +846,13 @@ class Function(object):
         # stateless function.
         return self._stateless_fn(*args, **kwds)
     else:
-      canon_args, canon_kwds = \
+      _, _, flat_args, flat_kwds = \
           self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
               *args, **kwds)
       # If we did not create any variables the trace we have is good enough.
-      return self._concrete_stateful_fn._filtered_call(canon_args, canon_kwds)  # pylint: disable=protected-access
+      return self._concrete_stateful_fn._filtered_call(flat_args, flat_kwds)  # pylint: disable=protected-access
 
-    def fn_with_cond(*inner_args, **inner_kwds):
+    def fn_with_cond(inner_args, inner_kwds, inner_flat_args, inner_flat_kwds):
       """Conditionally runs initialization if it's needed."""
       condition = True
       for wr in self._created_variables:
@@ -893,15 +900,18 @@ class Function(object):
       return control_flow_ops.cond(
           condition,
           lambda: self._stateless_fn(*inner_args, **inner_kwds),
-          functools.partial(self._concrete_stateful_fn._filtered_call,  # pylint: disable=protected-access
-                            inner_args, inner_kwds))
+          functools.partial(
+              self._concrete_stateful_fn._filtered_call,  # pylint: disable=protected-access
+              inner_flat_args,
+              inner_flat_kwds))
 
     # We've created variables and are unable to lift the initialization graphs,
     # so we fall back to initializing with conds while running the function.
-    canon_args, canon_kwds = \
+    canon_args, canon_kwds, flat_args, flat_kwds = \
         self._stateful_fn._function_spec.canonicalize_function_inputs(  # pylint: disable=protected-access
             *args, **kwds)
-    return function_lib.defun(fn_with_cond)(*canon_args, **canon_kwds)
+    return function_lib.defun(fn_with_cond)(canon_args, canon_kwds, flat_args,
+                                            flat_kwds)
 
   @property
   def python_function(self):
@@ -1203,7 +1213,8 @@ def function(func=None,
              experimental_implements=None,
              experimental_autograph_options=None,
              experimental_relax_shapes=False,
-             experimental_compile=None):
+             experimental_compile=None,
+             experimental_follow_type_hints=None):
   """Compiles a function into a callable TensorFlow graph.
 
   `tf.function` constructs a callable that executes a TensorFlow graph
@@ -1366,6 +1377,33 @@ def function(func=None,
   In general, it is recommended to create stateful objects like `tf.Variable`
   outside of `tf.function` and passing them as arguments.
 
+  _Using type annotations to improve performance_
+
+  'experimental_follow_type_hints` can be used along with type annotations to
+  improve performance by reducing the number of expensive graph retracings.
+  For example, an argument annotated with `tf.Tensor` is converted to Tensor
+  even when the input is a non-Tensor value.
+
+  >>> @tf.function(experimental_follow_type_hints=True)
+  ... def f_with_hints(x: tf.Tensor):
+  ...   print('Tracing')
+  ...   return x
+  >>> @tf.function(experimental_follow_type_hints=False)
+  ... def f_no_hints(x: tf.Tensor):
+  ...   print('Tracing')
+  ...   return x
+  >>> f_no_hints(1)
+  Tracing
+  <tf.Tensor: shape=(), dtype=int32, numpy=1>
+  >>> f_no_hints(2)
+  Tracing
+  <tf.Tensor: shape=(), dtype=int32, numpy=2>
+  >>> f_with_hints(1)
+  Tracing
+  <tf.Tensor: shape=(), dtype=int32, numpy=1>
+  >>> f_with_hints(2)
+  <tf.Tensor: shape=(), dtype=int32, numpy=2>
+
   Args:
     func: the function to be compiled. If `func` is None, `tf.function` returns
       a decorator that can be invoked with a single argument - `func`. In other
@@ -1406,6 +1444,10 @@ def function(func=None,
     experimental_compile: If True, the function is always compiled by
       [XLA](https://www.tensorflow.org/xla). XLA may be more efficient in some
       cases (e.g. TPU, XLA_GPU, dense tensor computations).
+    experimental_follow_type_hints: When True, the function may use type
+      annotations from `func` to optimize the tracing performance. For example,
+      arguments annotated with `tf.Tensor` will automatically be converted
+      to a Tensor.
 
   Returns:
      If `func` is not None, returns a callable that will execute the compiled
@@ -1417,8 +1459,11 @@ def function(func=None,
      ValueError when attempting to use experimental_compile, but XLA support is
      not enabled.
   """
+  # TODO(mdan): Link to `tf.types` section once published.
   if input_signature is not None:
     function_lib.validate_signature(input_signature)
+  if experimental_follow_type_hints is None:
+    experimental_follow_type_hints = False
 
   def decorated(inner_function):
     try:
@@ -1436,7 +1481,8 @@ def function(func=None,
             experimental_autograph_options=experimental_autograph_options,
             experimental_relax_shapes=experimental_relax_shapes,
             experimental_compile=experimental_compile,
-            experimental_implements=experimental_implements))
+            experimental_implements=experimental_implements,
+            experimental_follow_type_hints=experimental_follow_type_hints))
 
   # This code path is for the `foo = tf.function(foo, ...)` use case
   if func is not None:

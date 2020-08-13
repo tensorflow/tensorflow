@@ -64,6 +64,7 @@ REGISTER_OP("AutoShardDataset")
     .Attr("auto_shard_policy: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("num_replicas: int = 0")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalAutoShardDataset")
@@ -144,6 +145,11 @@ REGISTER_OP("UncompressElement")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::DatasetIteratorShape);
+
+REGISTER_OP("ComputeBatchSize")
+    .Input("input_dataset : variant")
+    .Output("batch_size : int64")
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("CSVDataset")
     .Input("filenames: string")
@@ -432,6 +438,7 @@ REGISTER_OP("IgnoreErrorsDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("log_warning: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("ExperimentalIgnoreErrorsDataset")
@@ -439,6 +446,7 @@ REGISTER_OP("ExperimentalIgnoreErrorsDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .Attr("log_warning: bool = false")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("IteratorGetDevice")
@@ -785,6 +793,15 @@ REGISTER_OP("RebatchDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_fallback: bool = true")
+    .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("RebatchDatasetV2")
+    .Input("input_dataset: variant")
+    .Input("batch_sizes: int64")
+    .Input("drop_remainder: bool")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("SamplingDataset")

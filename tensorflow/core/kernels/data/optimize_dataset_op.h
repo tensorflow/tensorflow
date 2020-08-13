@@ -25,10 +25,18 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
   static constexpr const char* const kDatasetType = "Optimize";
   static constexpr const char* const kInputDataset = "input_dataset";
   static constexpr const char* const kOptimizations = "optimizations";
+  static constexpr const char* const kOptimizationsEnabled =
+      "optimizations_enabled";
+  static constexpr const char* const kOptimizationsDisabled =
+      "optimizations_disabled";
+  static constexpr const char* const kOptimizationsDefault =
+      "optimizations_default";
   static constexpr const char* const kOutputTypes = "output_types";
   static constexpr const char* const kOutputShapes = "output_shapes";
   static constexpr const char* const kOptimizationConfigs =
       "optimization_configs";
+  static constexpr const char* const kOptimizeDatasetV1 = "OptimizeDataset";
+  static constexpr const char* const kOptimizeDatasetV2 = "OptimizeDatasetV2";
 
   explicit OptimizeDatasetOp(OpKernelConstruction* ctx);
 
@@ -41,6 +49,7 @@ class OptimizeDatasetOp : public UnaryDatasetOpKernel {
                                      std::vector<string> optimizations_configs);
 
   std::vector<string> optimization_configs_;
+  int op_version_ = 0;
 };
 
 }  // namespace data

@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import sys
 
@@ -53,6 +52,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute as distribute_types
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
@@ -143,7 +143,7 @@ def get_distributed_datasets_from_function(dataset_fn,
 
 
 @tf_export("distribute.DistributedIterator", v1=[])
-class DistributedIteratorInterface(collections.Iterator,
+class DistributedIteratorInterface(collections_abc.Iterator,
                                    distribute_types.Iterator):
   """An iterator over `tf.distribute.DistributedDataset`.
 
@@ -165,7 +165,7 @@ class DistributedIteratorInterface(collections.Iterator,
 
     Example use:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> dataset = tf.data.Dataset.range(100).batch(2)
     >>> dist_dataset = strategy.experimental_distribute_dataset(dataset)
     >>> dist_dataset_iterator = iter(dist_dataset)
@@ -176,18 +176,8 @@ class DistributedIteratorInterface(collections.Iterator,
     >>> for _ in range(step_num):
     ...   strategy.run(one_step, args=(dist_dataset_iterator.get_next(),))
     >>> strategy.experimental_local_results(dist_dataset_iterator.get_next())
-    (<tf.Tensor: shape=(2,), dtype=int64, numpy=array([10, 11])>,)
-
-    The above example corresponds to the case where you have only one device. If
-    you have two devices, for example,
-    ```python
-    strategy = tf.distribute.MirroredStrategy(['/gpu:0', '/gpu:1'])
-    ```
-    Then the final line will print out:
-    ```python
     (<tf.Tensor: shape=(1,), dtype=int64, numpy=array([10])>,
      <tf.Tensor: shape=(1,), dtype=int64, numpy=array([11])>)
-    ```
 
     Returns:
       A single `tf.Tensor` or a `tf.distribute.DistributedValues` which contains
@@ -207,25 +197,14 @@ class DistributedIteratorInterface(collections.Iterator,
     Example usage:
 
     >>> global_batch_size = 16
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> dataset = tf.data.Dataset.from_tensors(([1.],[2])).repeat(100).batch(global_batch_size)
     >>> distributed_iterator = iter(strategy.experimental_distribute_dataset(dataset))
     >>> distributed_iterator.element_spec
-    (TensorSpec(shape=(None, 1), dtype=tf.float32, name=None),
-     TensorSpec(shape=(None, 1), dtype=tf.int32, name=None))
-
-    The above example corresponds to the case where you have only one device. If
-    you have two devices, for example,
-    ```python
-    strategy = tf.distribute.MirroredStrategy(['/gpu:0', '/gpu:1'])
-    ```
-    Then the final line will print out:
-    ```python
     (PerReplicaSpec(TensorSpec(shape=(None, 1), dtype=tf.float32, name=None),
                     TensorSpec(shape=(None, 1), dtype=tf.float32, name=None)),
      PerReplicaSpec(TensorSpec(shape=(None, 1), dtype=tf.int32, name=None),
                     TensorSpec(shape=(None, 1), dtype=tf.int32, name=None)))
-    ```
 
     Returns:
       A nested structure of `tf.TypeSpec` objects matching the structure of an
@@ -237,6 +216,7 @@ class DistributedIteratorInterface(collections.Iterator,
         "DistributedIterator.element_spec() must be implemented in descendants")
 
   def get_next_as_optional(self):
+    # pylint: disable=line-too-long
     """Returns a `tf.experimental.Optional` that contains the next value for all replicas.
 
     If the `tf.distribute.DistributedIterator` has reached the end of the
@@ -244,13 +224,14 @@ class DistributedIteratorInterface(collections.Iterator,
 
     Example usage:
 
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> global_batch_size = 2
     >>> steps_per_loop = 2
     >>> dataset = tf.data.Dataset.range(10).batch(global_batch_size)
     >>> distributed_iterator = iter(
     ...     strategy.experimental_distribute_dataset(dataset))
     >>> def step_fn(x):
+    ...   # train the model with inputs
     ...   return x
     >>> @tf.function
     ... def train_fn(distributed_iterator):
@@ -258,21 +239,23 @@ class DistributedIteratorInterface(collections.Iterator,
     ...     optional_data = distributed_iterator.get_next_as_optional()
     ...     if not optional_data.has_value():
     ...       break
-    ...     tf.print(strategy.run(step_fn, args=(optional_data.get_value(),)))
+    ...     per_replica_results = strategy.run(step_fn, args=(optional_data.get_value(),))
+    ...     tf.print(strategy.experimental_local_results(per_replica_results))
     >>> train_fn(distributed_iterator)
-    ... # ([0 1],)
-    ... # ([2 3],)
+    ... # ([0 1], [2 3])
+    ... # ([4], [])
 
     Returns:
       An `tf.experimental.Optional` object representing the next value from the
       `tf.distribute.DistributedIterator` (if it has one) or no value.
     """
+    # pylint: enable=line-too-long
     raise NotImplementedError(
         "get_next_as_optional() not implemented in descendants")
 
 
 @tf_export("distribute.DistributedDataset", v1=[])
-class DistributedDatasetInterface(collections.Iterable,
+class DistributedDatasetInterface(collections_abc.Iterable,
                                   distribute_types.Iterable):
   # pylint: disable=line-too-long
   """Represents a dataset distributed among devices and machines.
@@ -312,8 +295,8 @@ class DistributedDatasetInterface(collections.Iterable,
 
     * use a pythonic for-loop construct:
 
-      >>> global_batch_size = 2
-      >>> strategy = tf.distribute.MirroredStrategy()
+      >>> global_batch_size = 4
+      >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
       >>> dataset = tf.data.Dataset.from_tensors(([1.],[1.])).repeat(4).batch(global_batch_size)
       >>> dist_dataset = strategy.experimental_distribute_dataset(dataset)
       >>> @tf.function
@@ -324,12 +307,14 @@ class DistributedDatasetInterface(collections.Iterable,
       ...   # train_step trains the model using the dataset elements
       ...   loss = strategy.run(train_step, args=(x,))
       ...   print("Loss is", loss)
-      Loss is tf.Tensor(
+      Loss is PerReplica:{
+        0: tf.Tensor(
+      [[0.7]
+       [0.7]], shape=(2, 1), dtype=float32),
+        1: tf.Tensor(
       [[0.7]
        [0.7]], shape=(2, 1), dtype=float32)
-      Loss is tf.Tensor(
-      [[0.7]
-       [0.7]], shape=(2, 1), dtype=float32)
+      }
 
       Placing the loop inside a `tf.function` will give a performance boost.
       However `break` and `return` are currently not supported if the loop is
@@ -342,7 +327,7 @@ class DistributedDatasetInterface(collections.Iterable,
       `tf.distribute.DistributedIterator`
 
       >>> global_batch_size = 4
-      >>> strategy = tf.distribute.MirroredStrategy()
+      >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
       >>> train_dataset = tf.data.Dataset.from_tensors(([1.],[1.])).repeat(50).batch(global_batch_size)
       >>> train_dist_dataset = strategy.experimental_distribute_dataset(train_dataset)
       >>> @tf.function
@@ -362,10 +347,10 @@ class DistributedDatasetInterface(collections.Iterable,
       ...     total_loss += distributed_train_step(next(dist_dataset_iterator))
       ...     num_batches += 1
       ...   average_train_loss = total_loss / num_batches
-      ...   template = ("Epoch {}, Loss: {}")
+      ...   template = ("Epoch {}, Loss: {:.4f}")
       ...   print (template.format(epoch+1, average_train_loss))
-      Epoch 1, Loss: 0.10000000894069672
-      Epoch 2, Loss: 0.10000000894069672
+      Epoch 1, Loss: 0.2000
+      Epoch 2, Loss: 0.2000
 
 
     To achieve a performance improvement, you can also wrap the `strategy.run`
@@ -389,10 +374,10 @@ class DistributedDatasetInterface(collections.Iterable,
 
     For example:
 
-    >>> global_batch_size = 2
+    >>> global_batch_size = 4
     >>> epochs = 1
     >>> steps_per_epoch = 1
-    >>> mirrored_strategy = tf.distribute.MirroredStrategy()
+    >>> mirrored_strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> dataset = tf.data.Dataset.from_tensors(([2.])).repeat(100).batch(global_batch_size)
     >>> dist_dataset = mirrored_strategy.experimental_distribute_dataset(dataset)
     >>> @tf.function(input_signature=[dist_dataset.element_spec])
@@ -405,9 +390,14 @@ class DistributedDatasetInterface(collections.Iterable,
     ...   for _ in range(steps_per_epoch):
     ...     output = train_step(next(iterator))
     ...     print(output)
-    tf.Tensor(
+    PerReplica:{
+      0: tf.Tensor(
+    [[4.]
+     [4.]], shape=(2, 1), dtype=float32),
+      1: tf.Tensor(
     [[4.]
      [4.]], shape=(2, 1), dtype=float32)
+    }
 
 
   Visit the [tutorial](https://www.tensorflow.org/tutorials/distribute/input)
@@ -422,25 +412,14 @@ class DistributedDatasetInterface(collections.Iterable,
     Example usage:
 
     >>> global_batch_size = 4
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> dataset = tf.data.Dataset.from_tensor_slices([1, 2, 3, 4]).repeat().batch(global_batch_size)
     >>> distributed_iterator = iter(strategy.experimental_distribute_dataset(dataset))
     >>> print(next(distributed_iterator))
-    tf.Tensor([1 2 3 4], shape=(4,), dtype=int32)
-
-
-    The above example corresponds to the case where you have only one device. If
-    you have two devices, for example,
-    ```python
-    strategy = tf.distribute.MirroredStrategy(['/gpu:0', '/gpu:1'])
-    ```
-    Then the final line will print out:
-    ```python
     PerReplica:{
       0: tf.Tensor([1 2], shape=(2,), dtype=int32),
       1: tf.Tensor([3 4], shape=(2,), dtype=int32)
     }
-    ```
 
     Returns:
       An `tf.distribute.DistributedIterator` instance for the given
@@ -456,25 +435,14 @@ class DistributedDatasetInterface(collections.Iterable,
     Example usage:
 
     >>> global_batch_size = 16
-    >>> strategy = tf.distribute.MirroredStrategy()
+    >>> strategy = tf.distribute.MirroredStrategy(["GPU:0", "GPU:1"])
     >>> dataset = tf.data.Dataset.from_tensors(([1.],[2])).repeat(100).batch(global_batch_size)
     >>> dist_dataset = strategy.experimental_distribute_dataset(dataset)
     >>> dist_dataset.element_spec
-    (TensorSpec(shape=(None, 1), dtype=tf.float32, name=None),
-     TensorSpec(shape=(None, 1), dtype=tf.int32, name=None))
-
-    The above example corresponds to the case where you have only one device. If
-    you have two devices, for example,
-    ```python
-    strategy = tf.distribute.MirroredStrategy(['/gpu:0', '/gpu:1'])
-    ```
-    Then the final line will print out:
-    ```python
     (PerReplicaSpec(TensorSpec(shape=(None, 1), dtype=tf.float32, name=None),
                     TensorSpec(shape=(None, 1), dtype=tf.float32, name=None)),
      PerReplicaSpec(TensorSpec(shape=(None, 1), dtype=tf.int32, name=None),
                     TensorSpec(shape=(None, 1), dtype=tf.int32, name=None)))
-    ```
 
     Returns:
       A nested structure of `tf.TypeSpec` objects matching the structure of an
@@ -549,7 +517,7 @@ def _get_next_as_optional(iterator, strategy, name=None):
       # Collective all-reduce requires explicit devices for inputs.
       with ops.device("/cpu:0"):
         # Converting to integers for all-reduce.
-        worker_has_value = math_ops.cast(worker_has_value, dtypes.int32)
+        worker_has_value = math_ops.cast(worker_has_value, dtypes.int64)
         worker_devices.append(worker_has_value.device)
         worker_has_values.append(worker_has_value)
       # Make `replicas` a flat list of values across all replicas.
@@ -559,8 +527,8 @@ def _get_next_as_optional(iterator, strategy, name=None):
   # TODO(b/131423105): we should be able to short-cut the all-reduce in some
   # cases.
   if getattr(strategy.extended, "_support_per_replica_values", True):
-    # Slight hack: `reduce` expects a `PerReplica`, so we pass it one, even
-    # though it doesn't actually have a value per replica.
+    # `reduce` expects a `PerReplica`, so we pass it one, even
+    # though it doesn't actually have a value per replica
     worker_has_values = values.PerReplica(worker_has_values)
     global_has_value = strategy.reduce(
         reduce_util.ReduceOp.SUM, worker_has_values, axis=None)
@@ -624,16 +592,12 @@ class DistributedIteratorBase(DistributedIteratorInterface):
     # get_next_as_optional(). And we only enable get_next_as_optional when the
     # output shapes are not static.
     #
-    # TODO(yuefengz): Currently `experimental_enable_get_next_as_optional` is
-    # always set to False in CollectiveAllReduceStrategy. We want to have a way
-    # to distinguish multi workers/single worker between graph, so we can enable
-    # the behavior in single worker case.
-    #
     # TODO(rxsang): We want to always enable the get_next_as_optional behavior
     # when user passed input_fn instead of dataset.
     if getattr(
         strategy.extended, "experimental_enable_get_next_as_optional", False):
-      self._enable_get_next_as_optional = not static_shape
+      self._enable_get_next_as_optional = (
+          not static_shape) or strategy.extended._in_multi_worker_mode()
     else:
       self._enable_get_next_as_optional = False
 
@@ -904,9 +868,10 @@ class DistributedIterator(DistributedIteratorBase,
       self._iterators = components
       static_shape = _get_static_shape(self._iterators)
       self._strategy = strategy
-      if getattr(
-          strategy.extended, "experimental_enable_get_next_as_optional", False):
-        self._enable_get_next_as_optional = not static_shape
+      if getattr(strategy.extended,
+                 "experimental_enable_get_next_as_optional", False):
+        self._enable_get_next_as_optional = (
+            not static_shape) or strategy.extended._in_multi_worker_mode()
       else:
         self._enable_get_next_as_optional = False
     else:
@@ -1003,7 +968,7 @@ class DistributedDataset(_IterableInput):
       try:
         # pylint: disable=protected-access
         with ops.colocate_with(dataset._variant_tensor):
-          dataset = distribute._RebatchDataset(dataset, split_batch_by)
+          dataset = distribute._LegacyRebatchDataset(dataset, split_batch_by)
           # Add a prefetch to pipeline rebatching for performance.
           # TODO(rachelim): Instead of inserting an extra prefetch stage here,
           # leverage static graph rewrites to insert _RebatchDataset before
@@ -1067,6 +1032,13 @@ class DistributedDataset(_IterableInput):
       iterator = DistributedIterator(self._input_workers, worker_iterators,
                                      self._strategy)
     iterator._element_spec = self.element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   @property
@@ -1141,6 +1113,13 @@ class DistributedDatasetV1(DistributedDataset):
     iterator = DistributedIteratorV1(self._input_workers, worker_iterators,
                                      self._strategy)
     iterator._element_spec = self.element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   def __iter__(self):
@@ -1208,6 +1187,13 @@ class DistributedDatasetsFromFunction(_IterableInput):
         iterator = DistributedIterator(self._input_workers, iterators,
                                        self._strategy)
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+
+      # When async eager is enabled, sometimes the iterator may not finish
+      # initialization before passing to a multi device function, add a sync
+      # point here to make sure all underlying iterators are initialized.
+      if context.executing_eagerly():
+        context.async_wait()
+
       return iterator
 
     raise RuntimeError("__iter__() is only supported inside of tf.function "
@@ -1248,6 +1234,13 @@ class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
     iterator = DistributedIteratorV1(self._input_workers, iterators,
                                      self._strategy)
     iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   def __iter__(self):
@@ -1305,6 +1298,7 @@ class InputFunctionIterator(DistributedIteratorV1):
 
     super(InputFunctionIterator, self).__init__(input_workers, iterators,
                                                 strategy)
+    self._enable_get_next_as_optional = False
 
 
 # TODO(anjalisridhar): This class will soon be removed and users should move
