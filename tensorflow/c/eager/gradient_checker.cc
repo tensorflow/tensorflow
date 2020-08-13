@@ -113,13 +113,13 @@ AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
   return A;
 }
 
-void printArr(auto data [], int n){
+void printArr(auto data [], int n) {
+    std::cout.precision(17);
     std::cout<<"[";
     for (int i = 0; i < n-1; i++) {
-
-        std::cout << data[i] << ", ";
+        std::cout << std::fixed << data[i] << ", ";
     }
-    std::cout << data[n-1] << "]"<<std::endl;
+    std::cout << std::fixed << data[n-1] << "]"<<std::endl;
 }
 
 // Fills out_dims with the dimensions of the given tensor
@@ -146,7 +146,7 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
                      int gradIndex,
                      AbstractTensorHandle* dtheta){
     
-    float epsilon = 1e-6;
+    float epsilon = 1e-4;
     GradientRegistry registry;
 
     Status s;
@@ -181,13 +181,15 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
     //printArr(dims_to_sum, num_dims);
     AbstractTensorHandlePtr sum_dims = 
       GetTensorHandleUtilInt(ctx, dims_to_sum, dims_shape, 1);
-
+    
     for (int i = 0; i < num_elems; i++) {
         
         // initialize theta[i] + epsilon
         memcpy(&thetaPlus_data[0], TF_TensorData(theta_tensor),
                TF_TensorByteSize(theta_tensor)); 
         thetaPlus_data[i] += epsilon;
+        // std::cout << "thetaP: " <<std::endl;
+        // printArr(thetaPlus_data, num_elems);
 
         AbstractTensorHandlePtr thetaPlus =
           GetTensorHandleUtilFloat(ctx, thetaPlus_data, theta_dims, num_dims);
@@ -196,6 +198,8 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
         memcpy(&thetaMinus_data[0], TF_TensorData(theta_tensor),
                TF_TensorByteSize(theta_tensor)); 
         thetaMinus_data[i] -= epsilon;
+        // std::cout << "thetaM: " << std::endl;
+        // printArr(thetaMinus_data, num_elems);
 
         AbstractTensorHandlePtr thetaMinus =
           GetTensorHandleUtilFloat(ctx, thetaMinus_data, theta_dims, num_dims);
