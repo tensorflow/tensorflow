@@ -84,12 +84,12 @@ class PyTreeDef {
   PyTreeDef() = default;
 
   // Flattens a Pytree into a list of leaves and a PyTreeDef.
-  static std::pair<std::vector<pybind11::object>, std::unique_ptr<PyTreeDef>>
-  Flatten(pybind11::handle x);
+  static std::pair<pybind11::list, std::unique_ptr<PyTreeDef>> Flatten(
+      pybind11::handle x);
 
   // Recursive helper used to implement Flatten().
   void FlattenInto(pybind11::handle handle,
-                   std::vector<pybind11::object>& leaves);
+                   std::vector<pybind11::handle>& leaves);
 
   // Tests whether the given list is a flat list of leaves.
   static bool AllLeaves(const pybind11::iterable& x);

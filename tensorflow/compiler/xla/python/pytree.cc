@@ -107,7 +107,7 @@ bool PyTreeDef::operator==(const PyTreeDef& other) const {
 }
 
 void PyTreeDef::FlattenInto(py::handle handle,
-                            std::vector<py::object>& leaves) {
+                            std::vector<py::handle>& leaves) {
   Node node;
   int start_num_nodes = traversal_.size();
   int start_num_leaves = leaves.size();
@@ -158,19 +158,23 @@ void PyTreeDef::FlattenInto(py::handle handle,
     }
   } else {
     assert(node.kind == Kind::kLeaf);
-    leaves.push_back(py::reinterpret_borrow<py::object>(handle));
+    leaves.push_back(handle);
   }
   node.num_nodes = traversal_.size() - start_num_nodes + 1;
   node.num_leaves = leaves.size() - start_num_leaves;
   traversal_.push_back(std::move(node));
 }
 
-/*static*/ std::pair<std::vector<py::object>, std::unique_ptr<PyTreeDef>>
-PyTreeDef::Flatten(py::handle x) {
-  std::vector<py::object> leaves;
+/*static*/ std::pair<py::list, std::unique_ptr<PyTreeDef>> PyTreeDef::Flatten(
+    py::handle x) {
+  std::vector<py::handle> leaves;
   auto tree = absl::make_unique<PyTreeDef>();
   tree->FlattenInto(x, leaves);
-  return std::make_pair(std::move(leaves), std::move(tree));
+  py::list outputs(leaves.size());
+  for (int i = 0; i < leaves.size(); ++i) {
+    outputs[i] = py::reinterpret_borrow<py::object>(leaves[i]);
+  }
+  return std::make_pair(std::move(outputs), std::move(tree));
 }
 
 /*static*/ bool PyTreeDef::AllLeaves(const py::iterable& x) {
