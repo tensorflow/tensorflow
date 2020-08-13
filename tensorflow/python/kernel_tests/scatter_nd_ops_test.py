@@ -331,24 +331,24 @@ class StatefulScatterNdTest(test.TestCase):
       self.evaluate(ref.initializer)
       self.assertAllEqual(expected_result, self.evaluate(scatter_update))
 
-  @test_util.run_deprecated_v1
   def testRank3InvalidShape1(self):
     indices = array_ops.zeros([3, 2, 2], dtypes.int32)
     updates = array_ops.zeros([2, 2, 2], dtypes.int32)
     shape = np.array([2, 2, 2])
     ref = variables.Variable(array_ops.zeros(shape, dtypes.int32))
     with self.assertRaisesWithPredicateMatch(
-        ValueError, r"The outer \d+ dimensions of indices\.shape="):
+        (errors.InvalidArgumentError, ValueError),
+        r"Dimensions \[\d,\d\) of indices\[shape="):
       state_ops.scatter_nd_update(ref, indices, updates)
 
-  @test_util.run_deprecated_v1
   def testRank3InvalidShape2(self):
     indices = array_ops.zeros([2, 2, 1], dtypes.int32)
     updates = array_ops.zeros([2, 2], dtypes.int32)
     shape = np.array([2, 2, 2])
     ref = variables.Variable(array_ops.zeros(shape, dtypes.int32))
     with self.assertRaisesWithPredicateMatch(
-        ValueError, r"The inner \d+ dimensions of input\.shape="):
+        (errors.InvalidArgumentError, ValueError),
+        r"Dimensions \[\d,\d\) of input\[shape="):
       state_ops.scatter_nd_update(ref, indices, updates)
 
   def testConcurrentUpdates(self):
@@ -511,14 +511,14 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
       shape = array_ops.placeholder(dtypes.int32, shape=[None])
       self.scatter_nd(indices, updates, shape)
 
-  @test_util.run_deprecated_v1
   def testEmptyOutputShape1(self):
     indices = array_ops.zeros([2, 2, 2], dtypes.int32)
     updates = array_ops.zeros([2, 2, 2], dtypes.int32)
     shape = constant_op.constant([0, 3, 2], dtypes.int32)
 
     with self.assertRaisesWithPredicateMatch(
-        ValueError, "Indices and updates specified for empty output shape"):
+        (errors.InvalidArgumentError, ValueError),
+        "Indices and updates specified for empty"):
       self.scatter_nd(indices, updates, shape)
 
   def testEmptyOutputShape2(self):
@@ -529,7 +529,7 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
 
       with self.cached_session():
         with self.assertRaisesOpError(
-            "Indices and updates specified for empty output"):
+            "Indices and updates specified for empty (input|output)"):
           self.scatter_nd(indices, updates, shape).eval(
               feed_dict={
                   indices: np.zeros([2, 2, 2], dtype=np.int32),
@@ -545,22 +545,22 @@ class ScatterNdTest(test.TestCase, parameterized.TestCase):
     with self.cached_session():
       self.assertEqual(self.evaluate(scatter).size, 0)
 
-  @test_util.run_deprecated_v1
   def testRank3InvalidShape1(self):
     indices = array_ops.zeros([3, 2, 2], dtypes.int32)
     updates = array_ops.zeros([2, 2, 2], dtypes.int32)
     shape = np.array([2, 2, 2])
     with self.assertRaisesWithPredicateMatch(
-        ValueError, r"The outer \d+ dimensions of indices\.shape="):
+        (errors.InvalidArgumentError, ValueError),
+        r"Dimensions \[\d\,\d\) of indices\[shape="):
       self.scatter_nd(indices, updates, shape)
 
-  @test_util.run_deprecated_v1
   def testRank3InvalidShape2(self):
     indices = array_ops.zeros([2, 2, 1], dtypes.int32)
     updates = array_ops.zeros([2, 2], dtypes.int32)
     shape = np.array([2, 2, 2])
     with self.assertRaisesWithPredicateMatch(
-        ValueError, r"The inner \d+ dimensions of (input|output)\.shape="):
+        (errors.InvalidArgumentError, ValueError),
+        r"Dimensions \[\d\,\d\) of input\[shape="):
       self.scatter_nd(indices, updates, shape)
 
   @parameterized.parameters(set((True, context.executing_eagerly())))
