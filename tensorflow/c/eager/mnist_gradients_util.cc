@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -30,6 +31,9 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
+using std::vector;
+using tracing::TracingOperation;
+
 // ========================== Tape Ops ==============================
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
@@ -42,9 +46,9 @@ Status Add(AbstractContext* ctx, Tape* tape,
   forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(
       Reset(add_op.get(), "Add", /*raw_device_name=*/nullptr, &forward_op));
-  if (isa<tracing::TracingOperation>(add_op.get())) {
+  if (isa<TracingOperation>(add_op.get())) {
     TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(add_op.get())->SetOpName("my_add"));
+        dyn_cast<TracingOperation>(add_op.get())->SetOpName("my_add"));
   }
   TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[0], &forward_op));
   TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[1], &forward_op));
@@ -64,9 +68,9 @@ Status MatMul(AbstractContext* ctx, Tape* tape,
   forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(Reset(matmul_op.get(), "MatMul",
                            /*raw_device_name=*/nullptr, &forward_op));
-  if (isa<tracing::TracingOperation>(matmul_op.get())) {
+  if (isa<TracingOperation>(matmul_op.get())) {
     TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(matmul_op.get())->SetOpName(name));
+        dyn_cast<TracingOperation>(matmul_op.get())->SetOpName(name));
   }
 
   TF_RETURN_IF_ERROR(AddInput(matmul_op.get(), inputs[0], &forward_op));
@@ -90,9 +94,9 @@ Status Mul(AbstractContext* ctx, Tape* tape,
   forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(
       Reset(mul_op.get(), "Mul", /*raw_device_name=*/nullptr, &forward_op));
-  if (isa<tracing::TracingOperation>(mul_op.get())) {
+  if (isa<TracingOperation>(mul_op.get())) {
     TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(mul_op.get())->SetOpName(name));
+        dyn_cast<TracingOperation>(mul_op.get())->SetOpName(name));
   }
 
   TF_RETURN_IF_ERROR(AddInput(mul_op.get(), inputs[0], &forward_op));
@@ -113,9 +117,9 @@ Status Relu(AbstractContext* ctx, Tape* tape,
   forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(
       Reset(relu_op.get(), "Relu", /*raw_device_name=*/nullptr, &forward_op));
-  if (isa<tracing::TracingOperation>(relu_op.get())) {
+  if (isa<TracingOperation>(relu_op.get())) {
     TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(relu_op.get())->SetOpName(name));
+        dyn_cast<TracingOperation>(relu_op.get())->SetOpName(name));
   }
   TF_RETURN_IF_ERROR(AddInput(relu_op.get(), inputs[0], &forward_op));
   int num_retvals = 1;
@@ -138,9 +142,9 @@ Status SparseSoftmaxCrossEntropyLoss(
   forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(Reset(sm_op.get(), "SparseSoftmaxCrossEntropyWithLogits",
                            /*raw_device_name=*/nullptr, &forward_op));
-  if (isa<tracing::TracingOperation>(sm_op.get())) {
+  if (isa<TracingOperation>(sm_op.get())) {
     TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(sm_op.get())->SetOpName(name));
+        dyn_cast<TracingOperation>(sm_op.get())->SetOpName(name));
   }
 
   TF_RETURN_IF_ERROR(AddInput(sm_op.get(), scores, &forward_op));
@@ -164,13 +168,13 @@ Status AddGradModel(AbstractContext* ctx,
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch x.
   tape->Watch(ToId(inputs[1]));  // Watch y.
-  std::vector<AbstractTensorHandle*> add_outputs(1);
+  vector<AbstractTensorHandle*> add_outputs(1);
   TF_RETURN_IF_ERROR(Add(ctx, tape, inputs, absl::MakeSpan(add_outputs),
                          registry));  // Compute x+y.
   std::unordered_map<tensorflow::int64, TapeTensor>
       source_tensors_that_are_targets;
 
-  std::vector<AbstractTensorHandle*> out_grads;
+  vector<AbstractTensorHandle*> out_grads;
   TF_RETURN_IF_ERROR(tape->ComputeGradient(
       vspace, /*target_tensor_ids=*/{ToId(add_outputs[0])},
       /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
@@ -196,7 +200,7 @@ Status MatMulGradModel(AbstractContext* ctx,
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch x.
   tape->Watch(ToId(inputs[1]));  // Watch y.
-  std::vector<AbstractTensorHandle*> mm_outputs(1);
+  vector<AbstractTensorHandle*> mm_outputs(1);
   TF_RETURN_IF_ERROR(MatMul(ctx, tape, inputs, absl::MakeSpan(mm_outputs),
                             "matmul0", /*transpose_a=*/false,
                             /*transpose_b=*/false, registry));  // Compute x*y.
@@ -204,7 +208,7 @@ Status MatMulGradModel(AbstractContext* ctx,
   std::unordered_map<tensorflow::int64, TapeTensor>
       source_tensors_that_are_targets;
 
-  std::vector<AbstractTensorHandle*> out_grads;
+  vector<AbstractTensorHandle*> out_grads;
   TF_RETURN_IF_ERROR(tape->ComputeGradient(
       vspace, /*target_tensor_ids=*/{ToId(mm_outputs[0])},
       /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
@@ -248,7 +252,7 @@ Status MNISTForwardModel(AbstractContext* ctx,
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(W1));  // Watch W1.
   tape->Watch(ToId(W2));  // Watch W2.
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  vector<AbstractTensorHandle*> temp_outputs(1);
 
   TF_RETURN_IF_ERROR(MatMul(ctx, tape, {X, W1}, absl::MakeSpan(temp_outputs),
                             "matmul0", /*transpose_a=*/false,
@@ -288,7 +292,7 @@ Status MatMulTransposeModel(AbstractContext* ctx,
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(X));
   tape->Watch(ToId(W1));
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  vector<AbstractTensorHandle*> temp_outputs(1);
 
   TF_RETURN_IF_ERROR(MatMul(ctx, tape, {X, W1}, absl::MakeSpan(temp_outputs),
                             "matmul0", /*transpose_a=*/true,
@@ -307,14 +311,14 @@ Status ReluGradModel(AbstractContext* ctx,
   TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch X
-  std::vector<AbstractTensorHandle*> relu_outputs(1);
+  vector<AbstractTensorHandle*> relu_outputs(1);
   TF_RETURN_IF_ERROR(Relu(ctx, tape, inputs, absl::MakeSpan(relu_outputs),
                           "relu0", registry));  // Relu(X)
 
   std::unordered_map<tensorflow::int64, TapeTensor>
       source_tensors_that_are_targets;
 
-  std::vector<AbstractTensorHandle*> out_grads;
+  vector<AbstractTensorHandle*> out_grads;
   TF_RETURN_IF_ERROR(tape->ComputeGradient(
       vspace, /*target_tensor_ids=*/{ToId(relu_outputs[0])},
       /*source_tensor_ids=*/{ToId(inputs[0])}, source_tensors_that_are_targets,
@@ -337,14 +341,14 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch scores.
   tape->Watch(ToId(inputs[1]));  // Watch labels.
-  std::vector<AbstractTensorHandle*> sm_outputs(2);
+  vector<AbstractTensorHandle*> sm_outputs(2);
   TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
       ctx, tape, inputs, absl::MakeSpan(sm_outputs), "softmax0", registry));
 
   std::unordered_map<tensorflow::int64, TapeTensor>
       source_tensors_that_are_targets;
 
-  std::vector<AbstractTensorHandle*> out_grads;
+  vector<AbstractTensorHandle*> out_grads;
   TF_RETURN_IF_ERROR(tape->ComputeGradient(
       vspace, /*target_tensor_ids=*/{ToId(sm_outputs[0])},
       /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
@@ -371,7 +375,7 @@ Status MNISTGradModel(AbstractContext* ctx,
   tape->Watch(ToId(X));   // Watch X.
   tape->Watch(ToId(W1));  // Watch W1.
   tape->Watch(ToId(W2));  // Watch W1.
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  vector<AbstractTensorHandle*> temp_outputs(1);
   TF_RETURN_IF_ERROR(MatMul(ctx, tape, {X, W1}, absl::MakeSpan(temp_outputs),
                             "matmul0", /*transpose_a=*/false,
                             /*transpose_b=*/false, registry));  // Compute X*W1
@@ -401,7 +405,7 @@ Status MNISTGradModel(AbstractContext* ctx,
   std::unordered_map<tensorflow::int64, TapeTensor>
       source_tensors_that_are_targets;
 
-  std::vector<AbstractTensorHandle*> out_grads;
+  vector<AbstractTensorHandle*> out_grads;
   TF_RETURN_IF_ERROR(
       tape->ComputeGradient(vspace, /*target_tensor_ids=*/{ToId(loss)},
                             /*source_tensor_ids=*/{ToId(W1), ToId(W2)},
@@ -428,7 +432,7 @@ Status ScalarMulModel(AbstractContext* ctx,
 
   TapeVSpace vspace(ctx);
   auto tape = new Tape(/*persistent=*/false);
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  vector<AbstractTensorHandle*> temp_outputs(1);
 
   TF_RETURN_IF_ERROR(Mul(ctx, tape, {eta, A}, absl::MakeSpan(temp_outputs),
                          "scalarMul0", registry));  // Compute eta*A
@@ -442,8 +446,8 @@ Status ScalarMulModel(AbstractContext* ctx,
 // ============================= End Models ================================
 
 Status UpdateWeights(AbstractContext* ctx,
-                     std::vector<AbstractTensorHandle*>& grads,
-                     std::vector<AbstractTensorHandle*>& weights,
+                     vector<AbstractTensorHandle*>& grads,
+                     vector<AbstractTensorHandle*>& weights,
                      AbstractTensorHandle* learning_rate) {
   /* Update weights one by one using gradient update rule:
    *
@@ -454,7 +458,7 @@ Status UpdateWeights(AbstractContext* ctx,
 
   Status s;
   int num_grads = grads.size();
-  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  vector<AbstractTensorHandle*> temp_outputs(1);
   std::string update_str;
 
   // Negate learning rate for gradient descent
@@ -492,7 +496,7 @@ AbstractContext* BuildFunction(const char* fn_name) {
 
 Status CreateParamsForInputs(AbstractContext* ctx,
                              absl::Span<AbstractTensorHandle* const> inputs,
-                             std::vector<AbstractTensorHandle*>* params) {
+                             vector<AbstractTensorHandle*>* params) {
   tracing::TracingTensorHandle* handle = nullptr;
   for (auto input : inputs) {
     TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(ctx)->AddParameter(
@@ -503,6 +507,54 @@ Status CreateParamsForInputs(AbstractContext* ctx,
 }
 
 // Runs `model` maybe wrapped in a function.
+// Status RunModel(Model model, AbstractContext* ctx,
+//                 absl::Span<AbstractTensorHandle* const> inputs,
+//                 absl::Span<AbstractTensorHandle*> outputs, bool use_function,
+//                 const GradientRegistry& registry) {
+//   if (use_function) {
+//     const char* fn_name = "test_fn";
+//     std::unique_ptr<AbstractFunction> scoped_func;
+//     {
+//       AbstractContextPtr func_ctx(BuildFunction(fn_name));
+//       vector<AbstractTensorHandle*> func_inputs;
+//       func_inputs.reserve(inputs.size());
+//       TF_RETURN_IF_ERROR(
+//           CreateParamsForInputs(func_ctx.get(), inputs, &func_inputs));
+//       OutputList output_list;
+//       output_list.expected_num_outputs = outputs.size();
+//       output_list.outputs.resize(outputs.size());
+//       TF_RETURN_IF_ERROR(model(func_ctx.get(), absl::MakeSpan(func_inputs),
+//                                absl::MakeSpan(output_list.outputs), registry));
+
+//       for (auto func_input : func_inputs) {
+//         func_input->Unref();
+//       }
+//       AbstractFunction* func = nullptr;
+//       TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
+//                              ->Finalize(&output_list, &func));
+//       scoped_func.reset(func);
+
+//       for (auto output : output_list.outputs) {
+//         output->Unref();
+//       }
+
+//       TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
+//     }
+
+//     AbstractOperationPtr fn_op(ctx->CreateOperation());
+//     TF_RETURN_IF_ERROR(fn_op->Reset(fn_name, /*raw_device_name=*/nullptr));
+//     for (auto input : inputs) {
+//       TF_RETURN_IF_ERROR(fn_op->AddInput(input));
+//     }
+//     int retvals = outputs.size();
+//     TF_RETURN_IF_ERROR(fn_op->Execute(outputs, &retvals));
+//     TF_RETURN_IF_ERROR(ctx->RemoveFunction(fn_name));
+//     return Status::OK();
+//   } else {
+//     return model(ctx, inputs, outputs, registry);
+//   }
+// }
+
 Status RunModel(Model model, AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, bool use_function,
@@ -510,30 +562,42 @@ Status RunModel(Model model, AbstractContext* ctx,
   if (use_function) {
     const char* fn_name = "test_fn";
     std::unique_ptr<AbstractFunction> scoped_func;
+    // Returning null tensors from a tf.function is not supported, so we keep
+    // track of indices in the model's outputs are nullptr in this set.
+    // The FunctionDef only outputs the non-null tensors. We later pad the
+    // function op outputs to have nullptrs at the `null_indices`.
+    absl::flat_hash_set<int> null_indices;
     {
       AbstractContextPtr func_ctx(BuildFunction(fn_name));
-      std::vector<AbstractTensorHandle*> func_inputs;
+      vector<AbstractTensorHandle*> func_inputs;
       func_inputs.reserve(inputs.size());
       TF_RETURN_IF_ERROR(
           CreateParamsForInputs(func_ctx.get(), inputs, &func_inputs));
-      OutputList output_list;
-      output_list.expected_num_outputs = outputs.size();
-      output_list.outputs.resize(outputs.size());
+      vector<AbstractTensorHandle*> model_outputs;
+      model_outputs.resize(outputs.size());
       TF_RETURN_IF_ERROR(model(func_ctx.get(), absl::MakeSpan(func_inputs),
-                               absl::MakeSpan(output_list.outputs), registry));
-
+                               absl::MakeSpan(model_outputs), registry));
       for (auto func_input : func_inputs) {
         func_input->Unref();
       }
       AbstractFunction* func = nullptr;
+      OutputList output_list;
+      output_list.expected_num_outputs = 0;
+      output_list.outputs.reserve(outputs.size());
+      for (int i = 0; i < model_outputs.size(); i++) {
+        if (model_outputs[i]) {
+          output_list.outputs.emplace_back(model_outputs[i]);
+          output_list.expected_num_outputs += 1;
+        } else {
+          null_indices.insert(i);
+        }
+      }
       TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
                              ->Finalize(&output_list, &func));
       scoped_func.reset(func);
-
       for (auto output : output_list.outputs) {
         output->Unref();
       }
-
       TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
     }
 
@@ -542,8 +606,19 @@ Status RunModel(Model model, AbstractContext* ctx,
     for (auto input : inputs) {
       TF_RETURN_IF_ERROR(fn_op->AddInput(input));
     }
-    int retvals = outputs.size();
-    TF_RETURN_IF_ERROR(fn_op->Execute(outputs, &retvals));
+    int retvals = outputs.size() - null_indices.size();
+    vector<AbstractTensorHandle*> fn_outputs(retvals);
+    TF_RETURN_IF_ERROR(fn_op->Execute(
+        absl::Span<AbstractTensorHandle*>(fn_outputs.data(), fn_outputs.size()),
+        &retvals));
+    int skipped_indices = 0;
+    for (int i = 0; i < outputs.size(); i++) {
+      if (!null_indices.contains(i)) {
+        outputs[i] = fn_outputs[i - skipped_indices];
+      } else {
+        skipped_indices += 1;
+      }
+    }
     TF_RETURN_IF_ERROR(ctx->RemoveFunction(fn_name));
     return Status::OK();
   } else {

@@ -527,8 +527,8 @@ TEST_P(CppGradients, TestSoftmaxLossGrad) {
     ASSERT_NEAR(result_data[j], expected_dX[j], tolerance);
   }
 
+  // Only Unref() first output as 2nd is nullptr grad for labels
   outputs[0]->Unref();
-  outputs[1]->Unref();
   TF_DeleteTensor(dX_tensor);
 }
 

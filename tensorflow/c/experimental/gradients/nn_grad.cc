@@ -31,16 +31,16 @@ namespace {
 
 class ReluGradientFunction : public GradientFunction {
  public:
-  explicit ReluGradientFunction(std::vector<AbstractTensorHandle*> f_outputs)
+  explicit ReluGradientFunction(vector<AbstractTensorHandle*> f_outputs)
       : forward_outputs(f_outputs) {}
 
   Status Compute(Context* ctx,
                  absl::Span<AbstractTensorHandle* const> grad_inputs,
-                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
     AbstractTensorHandle* upstream_grad = grad_inputs[0];
     AbstractTensorHandle* activations = forward_outputs[0];
     grad_outputs->resize(1);
-    std::vector<AbstractTensorHandle*> relugrad_outputs(1);
+    vector<AbstractTensorHandle*> relugrad_outputs(1);
 
     // Calculate Grad
     std::string name = "relu_grad" + std::to_string(counter);
@@ -58,37 +58,32 @@ class ReluGradientFunction : public GradientFunction {
 
  private:
   int64_t counter;
-  std::vector<AbstractTensorHandle*> forward_outputs;
+  vector<AbstractTensorHandle*> forward_outputs;
 };
 
 class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
  public:
   explicit SparseSoftmaxCrossEntropyLossGradientFunction(
-      std::vector<AbstractTensorHandle*> f_inputs,
-      std::vector<AbstractTensorHandle*> f_outputs)
+      vector<AbstractTensorHandle*> f_inputs,
+      vector<AbstractTensorHandle*> f_outputs)
       : forward_inputs(f_inputs), forward_outputs(f_outputs) {}
 
   Status Compute(Context* ctx,
                  absl::Span<AbstractTensorHandle* const> grad_inputs,
-                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
     grad_outputs->resize(2);
 
     // Grad for Softmax Input
     std::string name = "Mul_Softmax_Grad_" + std::to_string(counter);
-    std::vector<AbstractTensorHandle*> mul_outputs(1);
+    vector<AbstractTensorHandle*> mul_outputs(1);
     TF_RETURN_IF_ERROR(
         ops::Mul(ctx->ctx, {grad_inputs[0], forward_outputs[1]},
                  absl::MakeSpan(mul_outputs),
                  name.c_str()));  // upstream_grad * local softmax grad
     (*grad_outputs)[0] = mul_outputs[0];
 
-    // Grad for labels
-    // TODO(amturati): check to see if ZerosLike is ok instead of nullptr
-    name = "Zeros_Softmax_Grad_" + std::to_string(counter);
-    std::vector<AbstractTensorHandle*> z_outputs(1);
-    TF_RETURN_IF_ERROR(ops::ZerosLike(ctx->ctx, {forward_inputs[1]},
-                                      absl::MakeSpan(z_outputs), name.c_str()));
-    (*grad_outputs)[1] = z_outputs[0];  // nullptr causes Mangled Stack Trace
+    // Grad for labels is null
+    (*grad_outputs)[1] = nullptr; 
 
     counter += 1;
     return Status::OK();
@@ -97,8 +92,8 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
 
  private:
   int64_t counter;
-  std::vector<AbstractTensorHandle*> forward_inputs;
-  std::vector<AbstractTensorHandle*> forward_outputs;
+  vector<AbstractTensorHandle*> forward_inputs;
+  vector<AbstractTensorHandle*> forward_outputs;
 };
 
 }  // namespace

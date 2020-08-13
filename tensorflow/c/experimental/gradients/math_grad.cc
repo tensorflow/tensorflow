@@ -38,7 +38,7 @@ class AddGradientFunction : public GradientFunction {
   Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
     grad_outputs->resize(2);
-    std::vector<AbstractTensorHandle*> identity_outputs(1);
+    vector<AbstractTensorHandle*> identity_outputs(1);
     // TODO(b/145674566): Handle name unification in tracing code.
     // TODO(b/161805092): Support broadcasting.
 
@@ -70,7 +70,7 @@ class ExpGradientFunction : public GradientFunction {
   }
   Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
-    std::vector<AbstractTensorHandle*> conj_outputs(1);
+    vector<AbstractTensorHandle*> conj_outputs(1);
     std::string name = "Conj_Exp_Grad_" + std::to_string(counter);
     TF_RETURN_IF_ERROR(Conj(ctx->ctx, {exp_.get()},
                             absl::MakeSpan(conj_outputs), name.c_str()));
@@ -91,13 +91,13 @@ class ExpGradientFunction : public GradientFunction {
 
 class MatMulGradientFunction : public GradientFunction {
  public:
-  explicit MatMulGradientFunction(std::vector<AbstractTensorHandle*> f_inputs,
+  explicit MatMulGradientFunction(vector<AbstractTensorHandle*> f_inputs,
                                   AttrBuilder f_attrs)
       : forward_inputs(f_inputs), attrs(f_attrs) {}
 
   Status Compute(Context* ctx,
                  absl::Span<AbstractTensorHandle* const> grad_inputs,
-                 std::vector<AbstractTensorHandle*>* grad_outputs) override {
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
     /* Given upstream grad U and a matmul op A*B, the gradients are:
      *
      *    dA = U * B.T
@@ -105,10 +105,10 @@ class MatMulGradientFunction : public GradientFunction {
      *
      *    where A.T means `transpose(A)`
      */
-
+    
     // TODO(amturati): figure why adding attrs to the function breaks the
     // counter
-
+    counter = std::rand();
     AbstractTensorHandle* upstream_grad = grad_inputs[0];
     grad_outputs->resize(2);
 
@@ -120,7 +120,7 @@ class MatMulGradientFunction : public GradientFunction {
     attrs.Get("transpose_b", &t_b);
 
     // Conj each input
-    std::vector<AbstractTensorHandle*> conj_outputs(1);
+    vector<AbstractTensorHandle*> conj_outputs(1);
     std::string name = "Conj_A_MatMul_Grad_" + std::to_string(counter);
     TF_RETURN_IF_ERROR(Conj(ctx->ctx, {forward_inputs[0]},
                             absl::MakeSpan(conj_outputs), name.c_str()));
@@ -134,8 +134,8 @@ class MatMulGradientFunction : public GradientFunction {
     AbstractTensorHandle* B = conj_outputs[0];
 
     // Calc Grad
-    std::vector<AbstractTensorHandle*> matmul_A_outputs(1);
-    std::vector<AbstractTensorHandle*> matmul_B_outputs(1);
+    vector<AbstractTensorHandle*> matmul_A_outputs(1);
+    vector<AbstractTensorHandle*> matmul_B_outputs(1);
     std::string name_grad_A = "MatMul_Grad_A_" + std::to_string(counter);
     std::string name_grad_B = "MatMul_Grad_B_" + std::to_string(counter);
     if (!t_a && !t_b) {
@@ -202,7 +202,7 @@ class MatMulGradientFunction : public GradientFunction {
 
  private:
   int64_t counter;
-  std::vector<AbstractTensorHandle*> forward_inputs;
+  vector<AbstractTensorHandle*> forward_inputs;
   AttrBuilder attrs;
 };
 
