@@ -172,6 +172,7 @@ class StackOpTest(test.TestCase):
           error = np.maximum(error, np.fabs(j_t - j_n).max())
         self.assertLess(error, 1e-6)
 
+  @test_util.run_in_graph_and_eager_modes
   def testZeroSizeCPU(self):
     # Verify that stack doesn't crash for zero size inputs
     with test_util.device(use_gpu=False):
@@ -184,6 +185,7 @@ class StackOpTest(test.TestCase):
           p = array_ops.parallel_stack(list(x))
           self.assertAllEqual(p, x)
 
+  @test_util.run_in_graph_and_eager_modes
   def testZeroSizeGPU(self):
     # Verify that stack doesn't crash for zero size inputs
     with test_util.device(use_gpu=True):
