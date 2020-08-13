@@ -591,19 +591,6 @@ class _GraphTensorArrayV2(object):
           value, preferred_dtype=self._dtype, name="value")
       _check_dtypes(value, self._dtype)
       self._check_element_shape(value.shape[1:])
-
-      # Pad the value with zeros in order to maintain the original list's size.
-      # As a result the behavior of TensorList in v2 vs v1 since the later uses
-      # scatter. Until b/122315734 is fixed users should call scatter directly
-      # if they require the same behavior.
-      if self._dtype != dtypes.variant:
-        num_elements = array_ops.shape(value)[0]
-        size = math_ops.maximum(num_elements, self.size())
-        element_rank = array_ops.rank(value) - 1
-        zeros = array_ops.zeros([element_rank, 2], dtype=dtypes.int32)
-        paddings = array_ops.concat([[[0, size - num_elements]], zeros], 0)
-        value = array_ops.pad(value, paddings)
-
       flow_out = list_ops.tensor_list_from_tensor(
           tensor=value, element_shape=value.shape[1:])
       return build_ta_with_new_flow(self, flow_out)
