@@ -279,7 +279,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   // Run on an unbounded work queue that can handle blocking work so as to not
   // starve executor threads.
   col_impl->Ref();
-  remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
+  RunClosure([col_impl, col_ctx, done_safe, ctx]() {
     core::ScopedUnref unref(col_impl);
     profiler::TraceMe activity(
         [ctx] {

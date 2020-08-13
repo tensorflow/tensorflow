@@ -270,16 +270,13 @@ class PeerAccessInterface {
                           const Tensor* from_tensor,
                           const DeviceLocality& client_locality,
                           const StatusCallback& done) = 0;
-
-  // Runs the potentially-blocking closure/expensive callback.
-  virtual void RunClosure(std::function<void()> closure) = 0;
 };
 
 class PerStepCollectiveRemoteAccess;
 
 // A step-specific object that can execute a collective operation completely
 // described by a CollectiveParams object.
-class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
+class CollectiveExecutor : public core::RefCounted {
  public:
   virtual void StartAbort(const Status& s) {}
 
@@ -298,6 +295,9 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
         "A collective Op has been called in a context in which "
         "a CollectiveExecutor has not been provided."));
   }
+
+  // Runs the potentially-blocking closure/expensive callback.
+  virtual void RunClosure(std::function<void()> closure) = 0;
 
   virtual PerStepCollectiveRemoteAccess* remote_access() { return nullptr; }
 
