@@ -20,10 +20,11 @@ limitations under the License.
 namespace xla {
 HloValue::Id PhiGraph::GetOptimizedId(const HloValue& value) {
   Node* node = value_id_to_node_[value.id()];
+  CHECK(!node->mark_as_dead);
   return node->value_id;
 }
 
-// Returns true if the input to a hlo value is the same as `inputs`.
+// Returns true if the inputs to a hlo value are the same as `inputs`.
 bool PhiGraph::InputsEqualTo(const HloValue& value,
                              absl::Span<const HloValue* const> inputs) {
   auto iter = value_id_to_node_.find(value.id());
@@ -42,6 +43,7 @@ bool PhiGraph::InputsEqualTo(const HloValue& value,
 HloValue::Id PhiGraph::FindOptimizedValue(const HloValue::Id id) {
   auto iter = value_id_to_node_.find(id);
   CHECK(iter != value_id_to_node_.end());
+  CHECK(!iter->second->mark_as_dead);
   return iter->second->value_id;
 }
 
@@ -66,6 +68,17 @@ PhiGraph::Node* PhiGraph::CreateOrReuseNode(const HloValue& value) {
 void PhiGraph::ReplaceNodeWith(PhiGraph::Node* node, PhiGraph::Node* replace) {
   // Update users.
   CHECK(node->is_phi);
+  if (node->mark_as_dead) {
+    // The node has already been replaced with another.
+    return;
+  }
+  if (replace->mark_as_dead) {
+    // The node we are placing with has already been replaced with another node.
+    auto iter = value_id_to_node_.find(replace->value_id);
+    CHECK(iter != value_id_to_node_.end());
+    return ReplaceNodeWith(node, iter->second);
+  }
+  CHECK(!replace->mark_as_dead);
   for (Node* user : node->users) {
     absl::c_replace(user->operands, node, replace);
   }
@@ -74,6 +87,7 @@ void PhiGraph::ReplaceNodeWith(PhiGraph::Node* node, PhiGraph::Node* replace) {
   for (Node* operand : node->operands) {
     absl::c_replace(operand->users, node, replace);
   }
+
   for (HloValue::Id value_id : node_to_value_id_[node]) {
     CHECK(value_id_to_node_.contains(value_id));
     value_id_to_node_[value_id] = replace;
@@ -115,6 +129,8 @@ std::string PhiGraph::ToString() {
 }
 
 void PhiGraph::Optimize() {
+  VLOG(2) << "Optimizing phi graph:";
+  XLA_VLOG_LINES(2, ToString());
   // Set up users for each node.
   for (auto& node : node_storage_) {
     for (Node* input : node->operands) {
@@ -140,6 +156,8 @@ void PhiGraph::Optimize() {
       }
 
       Node* node_ptr = node.get();
+
+      VLOG(2) << "Optimizing: " << node_ptr->value_id;
 
       CHECK_GE(node_ptr->operands.size(), 1);
 
@@ -167,6 +185,9 @@ void PhiGraph::Optimize() {
           [&](Node* elem) { return elem == node_ptr->operands[0]; });
 
       if (all_inputs_are_same) {
+        VLOG(1) << "All inputs to node " << node_ptr->value_id
+                << " are the same, replacing it with "
+                << node_ptr->operands[0]->value_id;
         ReplaceNodeWith(node_ptr, node_ptr->operands[0]);
         changed = true;
         continue;
@@ -223,6 +244,8 @@ void PhiGraph::Optimize() {
             CHECK_EQ(node, non_phi);
             continue;
           }
+          VLOG(1) << "Replace node " << node->value_id
+                  << " in the closure with node " << non_phi->value_id;
           ReplaceNodeWith(node, non_phi);
           changed = true;
         }

@@ -1,4 +1,4 @@
-// RUN: xla-gpu-opt %s | FileCheck %s -dump-input-on-failure
+// RUN: xla-gpu-opt %s | FileCheck %s
 HloModule AddReduce
 
 %add (x: f32[], y: f32[]) -> f32[] {
@@ -14,11 +14,11 @@ ENTRY %AddReduce (x: f32[100,10], c: f32[]) -> f32[100] {
 }
 
 //  CHECK: func @reduce(%[[ARG:.*]]: [[ARGT:.*]], %[[CST:.*]]: memref<f32>, %[[RES:.*]]: [[REST:.*]]) {
-//  CHECK:   "xla_lhlo.reduce"(%[[ARG]], %[[CST]], %[[RES]]) ( {
+//  CHECK:   "lmhlo.reduce"(%[[ARG]], %[[CST]], %[[RES]]) ( {
 //  CHECK:   ^bb0(%[[FARG0:.*]]: memref<f32>, %[[FARG1:.*]]: memref<f32>, %[[FRES:.*]]: memref<f32>):
 //  CHECK:      %[[LHS:.*]] = tensor_load %[[FARG0]] : memref<f32>
 //  CHECK:      %[[RHS:.*]] = tensor_load %[[FARG1]] : memref<f32>
-//  CHECK:      %[[RES:.*]] = xla_hlo.add %[[LHS]], %[[RHS]] : tensor<f32>
+//  CHECK:      %[[RES:.*]] = mhlo.add %[[LHS]], %[[RHS]] : tensor<f32>
 //  CHECK:      tensor_store %[[RES]], %[[FRES]] : memref<f32>
-//  CHECK:     "xla_lhlo.terminator"() : () -> ()
+//  CHECK:     "lmhlo.terminator"() : () -> ()
 //  CHECK-NEXT: }) {dimensions = dense<1> : tensor<1xi64>} : ([[ARGT]], memref<f32>, [[REST]]) -> ()

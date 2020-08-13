@@ -325,6 +325,15 @@ std::string Flag::GetTypeName() const {
     usage_text << "\t" << flag.usage_text_ << "\n";
   }
   return usage_text.str();
-}  // namespace tflite
+}
+
+/*static*/ std::string Flags::ArgsToString(int argc, const char** argv) {
+  std::string args;
+  for (int i = 1; i < argc; ++i) {
+    args.append(argv[i]);
+    if (i != argc - 1) args.append(" ");
+  }
+  return args;
+}
 
 }  // namespace tflite

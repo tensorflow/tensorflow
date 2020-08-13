@@ -17,6 +17,8 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import json
 import os
 
 from absl.testing import parameterized
@@ -70,6 +72,10 @@ def _model_setup(test_obj, file_format):
   return model, saving_filepath, train_ds, steps
 
 
+def _get_task_config():
+  return json.loads(os.environ['TF_CONFIG'])['task']
+
+
 class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
   @combinations.generate(
@@ -92,9 +98,10 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       # ensure every worker has a unique path. Note that in normal use case the
       # saving_filepath will be the same for all workers, but we use different
       # ones here just to test out chief saves checkpoint but non-chief doesn't.
+      task_config = _get_task_config()
       saving_filepath = os.path.join(
           test_obj.get_temp_dir(), 'checkpoint_%s_%d%s' %
-          (test_base.get_task_type(), test_base.get_task_index(), extension))
+          (task_config['type'], task_config['index'], extension))
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
       test_obj.assertFalse(checkpoint_exists(saving_filepath))
@@ -231,9 +238,10 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       # ensure every worker has a unique path. Note that in normal use case the
       # saving_filepath will be the same for all workers, but we use different
       # ones here just to test out chief saves summaries but non-chief doesn't.
+      task_config = _get_task_config()
       saving_filepath = os.path.join(
-          test_obj.get_temp_dir(), 'logfile_%s_%d' %
-          (test_base.get_task_type(), test_base.get_task_index()))
+          test_obj.get_temp_dir(),
+          'logfile_%s_%d' % (task_config['type'], task_config['index']))
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
       test_obj.assertFalse(file_io.file_exists(saving_filepath))
@@ -263,8 +271,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       model, _, train_ds, steps = _model_setup(test_obj, file_format='')
       num_epoch = 2
 
-      saving_filepath = os.path.join(test_obj.get_temp_dir(),
-                                     'logfile_%s' % (test_base.get_task_type()))
+      saving_filepath = os.path.join(
+          test_obj.get_temp_dir(), 'logfile_%s' % (_get_task_config()['type']))
 
       saving_filepath_for_temp = os.path.join(saving_filepath, 'workertemp_1')
       os.mkdir(saving_filepath)
@@ -345,4 +353,4 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
 
 if __name__ == '__main__':
-  multi_process_runner.test_main(barrier_parties=2)
+  multi_process_runner.test_main()

@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/kernels/tensor_map.h"
-#include "tensorflow/core/framework/tensor.h"
+
 #include "absl/container/flat_hash_map.h"
+#include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/variant.h"
-
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
@@ -50,10 +50,11 @@ TEST(TensorMapTest, Insert) {
   TensorKey k = Tensor(11);
   Tensor v = Tensor(22);
   tm.insert(k, v);
-  absl::flat_hash_map<TensorKey,Tensor> am;
+  absl::flat_hash_map<TensorKey, Tensor> am;
   am.try_emplace(k, v);
 
-  absl::flat_hash_map<TensorKey,Tensor>::iterator map_it = tm.tensors().begin();
+  absl::flat_hash_map<TensorKey, Tensor>::iterator map_it =
+      tm.tensors().begin();
   EXPECT_EQ(map_it->first, k);
   test::ExpectTensorEqual<int32>(map_it->second, v);
   map_it++;
@@ -65,7 +66,7 @@ TEST(TensorMapTest, Lookup) {
   TensorKey k = Tensor(11);
   Tensor v = Tensor(22);
   tm.insert(k, v);
-  absl::flat_hash_map<TensorKey,Tensor>::iterator map_it = tm.find(k);
+  absl::flat_hash_map<TensorKey, Tensor>::iterator map_it = tm.find(k);
   Tensor f = map_it->second;
 
   EXPECT_EQ(map_it->first, k);
@@ -90,7 +91,7 @@ TEST(TensorMapTest, SameKeyInsert) {
   bool b2 = tm.insert(k, v2);
   EXPECT_EQ(b1, true);
   EXPECT_EQ(b2, false);
-  absl::flat_hash_map<TensorKey,Tensor>::iterator map_it = tm.find(k);
+  absl::flat_hash_map<TensorKey, Tensor>::iterator map_it = tm.find(k);
   EXPECT_EQ(map_it->first, k);
   test::ExpectTensorEqual<int32>(map_it->second, v1);
 }
@@ -102,7 +103,7 @@ TEST(TensorMapTest, Replace) {
   Tensor v2 = Tensor(23);
   tm[k] = v2;
 
-  absl::flat_hash_map<TensorKey,Tensor>::iterator map_it = tm.find(k);
+  absl::flat_hash_map<TensorKey, Tensor>::iterator map_it = tm.find(k);
   EXPECT_EQ(map_it->first, k);
   test::ExpectTensorEqual<int32>(map_it->second, v2);
 }
@@ -143,7 +144,6 @@ TEST(TensorMapTest, EncodeDecode) {
   tm.Encode(&data);
   TensorMap tmc;
   tmc.Decode(data);
-  
   EXPECT_EQ(tm.size(), tmc.size());
   EXPECT_NE(tm.find(k), tm.tensors().end());
   EXPECT_NE(tmc.find(k), tmc.tensors().end());

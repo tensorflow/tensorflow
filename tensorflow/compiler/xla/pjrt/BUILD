@@ -59,6 +59,10 @@ cc_library(
     name = "tracked_device_buffer",
     srcs = ["tracked_device_buffer.cc"],
     hdrs = ["tracked_device_buffer.h"],
+    visibility = [
+        "//learning/pathways/data_parallel:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":event_pool",
         ":local_device_state",
@@ -141,12 +145,15 @@ cc_library(
         "//tensorflow/compiler/xla/service/gpu:gpu_executable_run_options",
         "//tensorflow/core:allocator",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
         "//tensorflow/stream_executor:event",
         "//tensorflow/stream_executor:stream",
         "//tensorflow/stream_executor/host:host_platform_id",
         "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/memory",
@@ -154,6 +161,7 @@ cc_library(
         "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -211,6 +219,7 @@ tf_cc_test(
         # TODO(phawkins): figure out TF test infra such that this only runs under GPU.
         "no_oss",
         "requires-gpu-nvidia",
+        "notap",
     ],
     deps = [
         ":nvidia_gpu_device",

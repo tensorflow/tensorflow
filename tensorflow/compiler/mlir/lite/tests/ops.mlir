@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -verify-diagnostics -tfl-runtime-verify %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -split-input-file -verify-diagnostics -tfl-runtime-verify %s | FileCheck %s
 
 // Unary math ops
 // -----
@@ -269,6 +269,14 @@ func @testSub(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   return %0#0 : tensor<? x i32>
 }
 
+// CHECK-LABEL: testSubInt64
+func @testSubInt64(tensor<? x i64>, tensor<? x i64>) -> tensor<? x i64> {
+^bb0(%arg0: tensor<? x i64>, %arg1: tensor<? x i64>):
+  // CHECK: tfl.sub %arg0, %arg1 {fused_activation_function = "RELU6"}
+  %0 = tfl.sub %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i64>
+  return %0#0 : tensor<? x i64>
+}
+
 // CHECK-LABEL: testMul
 func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
 ^bb0(%arg0: tensor<? x i32>, %arg1: tensor<? x i32>):
@@ -276,6 +284,52 @@ func @testMul(tensor<? x i32>, tensor<? x i32>) -> tensor<? x i32> {
   %0 = tfl.mul %arg0, %arg1 {fused_activation_function = "RELU6"} : tensor<? x i32>
   return %0#0 : tensor<? x i32>
 }
+
+// -----
+
+func @add_with_quantized_i16_broadcasting(tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>> {
+^bb0(%arg0: tensor<2x2xf32>, %arg1: tensor<1xf32>):
+  // expected-error @+1 {{Operands do not have valid shapes}}
+  %0 = "tfl.add"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<2x2xf32>, tensor<1xf32>) -> tensor<2x2x!quant.any<i16:f32>>
+  return %0#0 : tensor<2x2x!quant.any<i16:f32>>
+}
+// -----
+
+func @sub_with_quantized_i8_five_dim_broadcasting(tensor<1x1x1x1x1xf32>, tensor<1xf32>) -> tensor<1x1x1x1x1x!quant.any<i8:f32>> {
+^bb0(%arg0: tensor<1x1x1x1x1xf32>, %arg1: tensor<1xf32>):
+  // expected-error @+1 {{Operands do not have valid shapes}}
+  %0 = "tfl.sub"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xf32>, tensor<1xf32>) -> tensor<1x1x1x1x1x!quant.any<i8:f32>>
+  return %0#0 : tensor<1x1x1x1x1x!quant.any<i8:f32>>
+}
+
+// -----
+
+func @mul_with_i32_five_dim_broadcasting(tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32> {
+^bb0(%arg0: tensor<1x1x1x1x1xi32>, %arg1: tensor<1xi32>):
+  // expected-error @+1 {{Operands do not have valid shapes}}
+  %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1xi32>, tensor<1xi32>) -> tensor<1x1x1x1x1xi32>
+  return %0#0 : tensor<1x1x1x1x1xi32>
+}
+
+// -----
+
+func @mul_with_quantized_i16_five_dim_broadcasting(tensor<1x1x1x1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x1x1x1x!quant.any<i16:f32>> {
+^bb0(%arg0: tensor<1x1x1x1x1x!quant.any<i16:f32>>, %arg1: tensor<1x!quant.any<i16:f32>>):
+  // expected-error @+1 {{Operands do not have valid shapes}}
+  %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x1x1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x1x1x1x!quant.any<i16:f32>>
+  return %0#0 : tensor<1x1x1x1x1x!quant.any<i16:f32>>
+}
+
+// -----
+
+func @mul_with_quantized_i16_to_uint8_broadcasting(tensor<1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x!quant.any<ui8:f32>> {
+^bb0(%arg0: tensor<1x1x!quant.any<i16:f32>>, %arg1: tensor<1x!quant.any<i16:f32>>):
+  // expected-error @+1 {{Operands do not have valid shapes}}
+  %0 = "tfl.mul"(%arg0, %arg1) {fused_activation_function = "RELU6"} : (tensor<1x1x!quant.any<i16:f32>>, tensor<1x!quant.any<i16:f32>>) -> tensor<1x1x!quant.any<ui8:f32>>
+  return %0#0 : tensor<1x1x!quant.any<ui8:f32>>
+}
+
+// -----
 
 // CHECK-LABEL: testMulNonQuantizedOperandsandQuantizedResult
 func @testMulNonQuantizedOperandsandQuantizedResult(tensor<? x f32>, tensor<? x f32>) -> tensor<? x !quant.any<i16:f32>> {
@@ -540,6 +594,16 @@ func @testMaxPool2DWrongOperandStorageType(tensor<1x7x7x16x!quant.uniform<i9:f32
   // expected-error @+1 {{failed to verify that MaxPool2D operand and result types match specified constraints}}
   %0 = "tfl.max_pool_2d"(%arg0) {filter_height = 1 : i32, filter_width = 1 : i32, fused_activation_function = "RELU6", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<1x7x7x16x!quant.uniform<i9:f32, 0.1:128>>) -> tensor<1x7x7x16x!quant.uniform<i9:f32, 0.1:128>>
   return %0 : tensor<1x7x7x16x!quant.uniform<i9:f32, 0.1:128>>
+}
+
+// -----
+
+func @testTFLiteDetectionPostProcess(%arg0: tensor<1x64x64x32xf32>, %arg1: tensor<1x64x64x32xf32>, %arg2: tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>) {
+  %0, %1, %2, %3 = "tfl.custom_tf"(%arg0, %arg1, %arg2) ({
+    %4, %5, %6, %7 = "tf.TFLite_Detection_PostProcess"(%arg0, %arg1, %arg2) {_output_quantized = true, _output_types = [f32, f32, f32, f32], _support_output_type_float_in_quantized_op = true, detections_per_class = 100 : i64, device = "", h_scale = 5.000000e+00 : f32, max_classes_per_detection = 1 : i64, max_detections = 20 : i64, nms_iou_threshold = 6.000000e-01 : f32, nms_score_threshold = 3.000000e-01 : f32, num_classes = 90 : i64, use_regular_nms = false, w_scale = 5.000000e+00 : f32, x_scale = 1.000000e+01 : f32, y_scale = 1.000000e+01 : f32} : (tensor<1x64x64x32xf32>, tensor<1x64x64x32xf32>, tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
+    "tfl.yield"(%4, %5, %6, %7) : (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>) -> ()
+  }) : (tensor<1x64x64x32xf32>, tensor<1x64x64x32xf32>, tensor<1x64x64x32xf32>) -> (tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>)
+  return %0, %1 : tensor<1x32x32x32xf32>, tensor<1x32x32x32xf32>
 }
 
 // -----
@@ -1184,6 +1248,13 @@ func @testSpaceToBatchND(%arg0 : tensor<1x4x4x3xf32>, %arg1 : tensor<2xi32>, %ar
 
 // -----
 
+func @testBatchMatmulQuant(%arg0 : tensor<1x4x384x32x!quant.uniform<i8:f32, 0.06:-2>>, %arg1 : tensor<1x4x384x32x!quant.uniform<i8:f32, 0.11:-16>>) -> tensor<1x4x384x384x!quant.uniform<i8:f32, 1.02:-73>> {
+  // CHECK: "tfl.batch_matmul"(%arg0, %arg1)
+  %0 = "tfl.batch_matmul"(%arg0, %arg1) {adj_x = false, adj_y = true} : (tensor<1x4x384x32x!quant.uniform<i8:f32, 0.06:-2>>, tensor<1x4x384x32x!quant.uniform<i8:f32, 0.11:-16>>) -> tensor<1x4x384x384x!quant.uniform<i8:f32, 1.02:-73>>
+  return %0 : tensor<1x4x384x384x!quant.uniform<i8:f32, 1.02:-73>>
+}
+// -----
+
 func @testConcat(%arg0: tensor<1x2xi32>, %arg1: tensor<1x2xi32>) -> tensor<2x2xi32> {
   // CHECK: "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"}
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x2xi32>) -> tensor<2x2xi32>
@@ -1252,6 +1323,14 @@ func @testConcatInvalidOperandDimSizeComparedToPrevInput(%arg0: tensor<1x2xi32>,
   // expected-error @+1 {{'tfl.concatenation' op dimension size of dimension #1 of operand #1 must be equal to dimension size of dimension #1 of operand #0, expected 2, got 3}}
   %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 0 : i32, fused_activation_function = "NONE"} : (tensor<1x2xi32>, tensor<1x3xi32>) -> tensor<?x?xi32>
   return %0 : tensor<?x?xi32>
+}
+
+// -----
+
+func @testConcatInvalidScales(%arg0: tensor<*x!quant.uniform<i8:f32, 1.0>>, %arg1: tensor<*x!quant.uniform<i8:f32, 2.0>>) -> tensor<*x!quant.uniform<i8:f32, 1.0>> {
+  // expected-error @+1 {{'tfl.concatenation' op quantization parameters violate the same scale constraint: !quant.uniform<i8:f32, 1.000000e+00> vs. !quant.uniform<i8:f32, 2.000000e+00>}}
+  %0 = "tfl.concatenation"(%arg0, %arg1) {axis = 3 : i32, fused_activation_function = "NONE"} : (tensor<*x!quant.uniform<i8:f32, 1.0>>, tensor<*x!quant.uniform<i8:f32, 2.0>>) -> tensor<*x!quant.uniform<i8:f32, 1.0>>
+  return %0 : tensor<*x!quant.uniform<i8:f32, 1.0>>
 }
 
 // -----

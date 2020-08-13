@@ -28,6 +28,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import nested_structure_coder
@@ -269,8 +270,8 @@ class NestedStructureTest(test.TestCase):
     encoded = struct_pb2.StructuredValue()
     encoded.type_spec_value.type_spec_class = 0
     encoded.type_spec_value.type_spec_class_name = "FutureTensorSpec"
-    with self.assertRaisesRegexp(
-        ValueError, "The type 'FutureTensorSpec' is not supported"):
+    with self.assertRaisesRegex(ValueError,
+                                "The type 'FutureTensorSpec' is not supported"):
       self._coder.decode_proto(encoded)
 
   def testEncodeDecodeBoundedTensorSpec(self):
@@ -326,6 +327,14 @@ class NestedStructureTest(test.TestCase):
         {"rt": ragged_tensor.RaggedTensorSpec([10, None], dtypes.int32),
          "st": sparse_tensor.SparseTensorSpec([10, 20], dtypes.float32),
          "t": tensor_spec.TensorSpec([10, 8], dtypes.string)})]
+    self.assertTrue(self._coder.can_encode(structure))
+    encoded = self._coder.encode_structure(structure)
+    decoded = self._coder.decode_proto(encoded)
+    self.assertEqual(structure, decoded)
+
+  def testEncodeDecodeNdarraySpec(self):
+    structure = [np_arrays.NdarraySpec(
+        tensor_spec.TensorSpec([4, 2], dtypes.float32))]
     self.assertTrue(self._coder.can_encode(structure))
     encoded = self._coder.encode_structure(structure)
     decoded = self._coder.decode_proto(encoded)

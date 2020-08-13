@@ -124,6 +124,12 @@ class MathTest(test.TestCase, parameterized.TestCase):
       np_math_ops.matmul(
           np_array_ops.ones([2, 3], np.int32), np_array_ops.ones([], np.int32))
 
+  def testVDot(self):
+    operands = [([[1, 2], [3, 4]], [[3, 4], [6, 7]]),
+                ([[1, 2], [3, 4]], [3, 4, 6, 7])]
+    return self._testBinaryOp(
+        np_math_ops.vdot, np.vdot, 'vdot', operands=operands)
+
   def _testUnaryOp(self, math_fun, np_fun, name):
 
     def run_test(a):
@@ -159,7 +165,7 @@ class MathTest(test.TestCase, parameterized.TestCase):
         actual.shape, expected.shape,
         'Shape mismatch.\nActual: {}\nExpected: {}\n{}'.format(
             actual.shape, expected.shape, msg))
-    np.testing.assert_almost_equal(actual.tolist(), expected.tolist())
+    np.testing.assert_allclose(actual.tolist(), expected.tolist(), rtol=1e-6)
 
   def testArgsort(self):
     self._testUnaryOp(np_math_ops.argsort, np.argsort, 'argsort')
@@ -325,6 +331,21 @@ class MathTest(test.TestCase, parameterized.TestCase):
     run_test(0, -5, num=10)
     run_test(0, -5, endpoint=False)
     run_test(0, -5, base=2.0)
+
+  def testGeomSpace(self):
+
+    def run_test(start, stop, **kwargs):
+      arg1 = start
+      arg2 = stop
+      self.match(
+          np_math_ops.geomspace(arg1, arg2, **kwargs),
+          np.geomspace(arg1, arg2, **kwargs),
+          msg='geomspace({}, {})'.format(arg1, arg2))
+
+    run_test(1, 1000, num=5)
+    run_test(1, 1000, num=5, endpoint=False)
+    run_test(-1, -1000, num=5)
+    run_test(-1, -1000, num=5, endpoint=False)
 
 
 if __name__ == '__main__':

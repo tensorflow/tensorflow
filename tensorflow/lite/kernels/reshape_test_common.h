@@ -15,7 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_RESHAPE_TEST_COMMON_H_
 #define TENSORFLOW_LITE_KERNELS_RESHAPE_TEST_COMMON_H_
 
+#include <stdint.h>
+
+#include <initializer_list>
+#include <string>
+#include <vector>
+
 #include "tensorflow/lite/kernels/test_util.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 // There are three ways to specify the output shape of a Reshape

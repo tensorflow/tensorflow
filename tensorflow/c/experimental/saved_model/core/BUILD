@@ -3,6 +3,10 @@
 # Targets in this directory are pure C++ "Classes" underlying the C API types
 # under tf/c/experimental/saved_model/public/. They are subject to change and
 # have visibility limited to Tensorflow's implementation only.
+load(
+    "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+)
 
 package(
     default_visibility = [
@@ -15,17 +19,14 @@ package(
 
 cc_library(
     name = "concrete_function",
-    srcs = [
-        "concrete_function.cc",
-    ],
     hdrs = [
         "concrete_function.h",
     ],
     deps = [
         ":function_metadata",
-        "//tensorflow/c/eager:operation_interface",
-        "//tensorflow/c/eager:tensor_handle_interface",
-        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/c/eager:immediate_execution_operation",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -48,15 +49,88 @@ cc_library(
 )
 
 cc_library(
-    name = "tf_saved_model_impl",
+    name = "saved_model_utils",
     srcs = [
-        "tf_saved_model_impl.cc",
+        "saved_model_utils.cc",
     ],
-    hdrs = ["tf_saved_model_impl.h"],
+    hdrs = [
+        "saved_model_utils.h",
+    ],
+    deps = [
+        ":function_metadata",
+        "//tensorflow/c:tf_tensor_internal",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:tf_concrete_function",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:variable",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "test_utils",
+    testonly = True,
+    srcs = [
+        "test_utils.cc",
+    ],
+    hdrs = [
+        "test_utils.h",
+    ],
+    deps = [
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tf_concrete_function_test_protos",
+    testonly = True,
+    srcs = ["tf_concrete_function_test_protos.cc"],
+    hdrs = ["tf_concrete_function_test_protos.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "tf_saved_model_api",
+    srcs = [
+        "tf_saved_model_api.cc",
+    ],
+    hdrs = ["tf_saved_model_api.h"],
     deps = [
         ":concrete_function",
         ":saved_model_api",
+        ":saved_model_utils",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core/ops:restore_ops",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:tensorhandle_convertible",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:tf_concrete_function",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:variable",
+        "//tensorflow/cc/saved_model:bundle_v2",
+        "//tensorflow/cc/saved_model:constants",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -69,17 +143,117 @@ cc_library(
         "saved_model_api.h",
     ],
     visibility = ["//tensorflow/python:__pkg__"],
+    deps = [
+        "//tensorflow/c/eager:immediate_execution_operation",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
+    ],
 )
 
-filegroup(
-    name = "mobile_srcs_only_runtime",
+tf_cc_test(
+    name = "constant_loading_test",
     srcs = [
-        "concrete_function.cc",
-        "concrete_function.h",
-        "function_metadata.h",
-        "saved_model_api.h",
-        "tf_saved_model_impl.cc",
-        "tf_saved_model_impl.h",
+        "constant_loading_test.cc",
     ],
-    visibility = ["//tensorflow/core:__pkg__"],
+    deps = [
+        ":saved_model_utils",
+        ":test_utils",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
+    ],
+)
+
+tf_cc_test(
+    name = "object_graph_traversal_test",
+    srcs = [
+        "object_graph_traversal_test.cc",
+    ],
+    deps = [
+        ":saved_model_utils",
+        ":test_utils",
+        ":tf_concrete_function_test_protos",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "saved_variable_loading_test",
+    srcs = [
+        "saved_variable_loading_test.cc",
+    ],
+    deps = [
+        ":saved_model_utils",
+        ":test_utils",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
+    ],
+)
+
+tf_cc_test(
+    name = "signature_flattening_test",
+    srcs = [
+        "signature_flattening_test.cc",
+    ],
+    deps = [
+        ":saved_model_utils",
+        "//tensorflow/c/experimental/saved_model/core:tf_concrete_function_test_protos",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime/eager:core",
+    ],
+)
+
+tf_cc_test(
+    name = "tf_concrete_function_loading_test",
+    srcs = [
+        "tf_concrete_function_loading_test.cc",
+    ],
+    deps = [
+        ":saved_model_utils",
+        ":test_utils",
+        ":tf_concrete_function_test_protos",
+        "//tensorflow/c:tensor_interface",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:tensorhandle_convertible",
+        "//tensorflow/c/experimental/saved_model/core/revived_types:tf_concrete_function",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/common_runtime:core_cpu_lib",
+        "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
+    ],
 )

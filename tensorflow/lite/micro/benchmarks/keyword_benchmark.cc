@@ -18,11 +18,10 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/benchmarks/keyword_scrambled_model_data.h"
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
+#include "tensorflow/lite/micro/benchmarks/micro_benchmark.h"
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
-#include "tensorflow/lite/micro/testing/micro_benchmark.h"
 
 /*
  * Keyword Spotting Benchmark for performance optimizations. The model used in
@@ -33,20 +32,31 @@ limitations under the License.
 namespace {
 
 // Create an area of memory to use for input, output, and intermediate arrays.
-constexpr int tensor_arena_size = 73 * 1024;
-uint8_t tensor_arena[tensor_arena_size];
+// Align arena to 16 bytes to avoid alignment warnings on certain platforms.
+constexpr int tensor_arena_size = 21 * 1024;
+alignas(16) uint8_t tensor_arena[tensor_arena_size];
 // A random number generator seed to generate input values.
 constexpr int kRandomSeed = 42;
 
-// NOLINTNEXTLINE
-MicroBenchmarkRunner<int16_t> runner(g_keyword_scrambled_model_data,
-                                     tensor_arena, tensor_arena_size,
-                                     kRandomSeed);
+MicroBenchmarkRunner<int16_t>* benchmark_runner = nullptr;
 
-void KeywordRunTenIerations() {
-  // TODO(b/152644476): Add a way to run more than a single deterministic input.
-  for (int i = 0; i < 10; i++) {
-    runner.RunSingleIterationRandomInput();
+void InitializeBenchmarkRunner() {
+  // NOLINTNEXTLINE
+  static MicroBenchmarkRunner<int16_t> runner(g_keyword_scrambled_model_data,
+                                              tensor_arena, tensor_arena_size);
+  benchmark_runner = &runner;
+}
+
+// Initializes keyword runner and sets random inputs.
+void InitializeKeywordRunner() {
+  InitializeBenchmarkRunner();
+  benchmark_runner->SetRandomInput(kRandomSeed);
+}
+
+// This method assumes InitializeKeywordRunner has already been run.
+void KeywordRunNIerations(int iterations) {
+  for (int i = 0; i < iterations; i++) {
+    benchmark_runner->RunSingleIteration();
   }
 }
 
@@ -54,8 +64,10 @@ void KeywordRunTenIerations() {
 
 TF_LITE_MICRO_BENCHMARKS_BEGIN
 
-TF_LITE_MICRO_BENCHMARK(runner.RunSingleIterationRandomInput());
+TF_LITE_MICRO_BENCHMARK(InitializeKeywordRunner());
 
-TF_LITE_MICRO_BENCHMARK(KeywordRunTenIerations());
+TF_LITE_MICRO_BENCHMARK(KeywordRunNIerations(1));
+
+TF_LITE_MICRO_BENCHMARK(KeywordRunNIerations(10));
 
 TF_LITE_MICRO_BENCHMARKS_END

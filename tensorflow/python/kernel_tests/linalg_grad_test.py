@@ -52,7 +52,7 @@ class ShapeTest(test_lib.TestCase):
       determinants = linalg_ops.matrix_determinant(batch_identity)
       reduced = math_ops.reduce_sum(determinants)
       sum_grad = gradients_impl.gradients(reduced, batch_identity)[0]
-      self.assertAllClose(batch_identity.eval(), self.evaluate(sum_grad))
+      self.assertAllClose(batch_identity, self.evaluate(sum_grad))
 
 
 class MatrixUnaryFunctorGradientTest(test_lib.TestCase):
@@ -132,6 +132,44 @@ def _GetMatrixBinaryFunctorGradientTest(functor_,
   return Test
 
 
+def _GetBandedTriangularSolveGradientTest(
+    functor_,
+    dtype_,
+    shape_,
+    float32_tol_fudge=1.0,  # pylint: disable=redefined-outer-name
+    **kwargs_):
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def Test(self):
+    n = shape_[-1]
+
+    np.random.seed(1)
+    # Make sure invertible.
+    a_np = np.random.uniform(low=1.0, high=2.0, size=shape_).astype(dtype_)
+    a = constant_op.constant(a_np)
+
+    b_np = np.random.uniform(low=-1.0, high=1.0, size=[n, n]).astype(dtype_)
+    b = constant_op.constant(b_np)
+
+    epsilon = np.finfo(dtype_).eps
+    delta = epsilon**(1.0 / 3.0)
+    # tolerance obtained by looking at actual differences using
+    # np.linalg.norm(theoretical-numerical, np.inf) on -mavx build
+    tol = 1e-6 if dtype_ == np.float64 else float32_tol_fudge * 0.05
+
+    # check gradient w.r.t. left argument.
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        lambda x: functor_(x, b, **kwargs_), [a], delta=delta)
+    self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+
+    # check gradient w.r.t. right argument.
+    theoretical, numerical = gradient_checker_v2.compute_gradient(
+        lambda y: functor_(a, y, **kwargs_), [b], delta=delta)
+    self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+
+  return Test
+
+
 if __name__ == '__main__':
   # Tests for gradients of binary matrix operations.
   for dtype in np.float32, np.float64:
@@ -165,6 +203,20 @@ if __name__ == '__main__':
                          float32_tol_fudge=4.0,
                          adjoint=adjoint,
                          lower=lower))
+
+            band_shape = extra + (size // 2 + 1, size)
+            name = '%s_%s_adj_%s_low_%s' % (dtype.__name__, '_'.join(
+                map(str, band_shape)), str(adjoint), lower)
+            _AddTest(
+                MatrixBinaryFunctorGradientTest,
+                'BandedTriangularSolveGradient', name,
+                _GetBandedTriangularSolveGradientTest(
+                    linalg_ops.banded_triangular_solve,
+                    dtype,
+                    band_shape,
+                    float32_tol_fudge=4.0,
+                    adjoint=adjoint,
+                    lower=lower))
 
   # Tests for gradients of unary matrix operations.
   for dtype in np.float32, np.float64:

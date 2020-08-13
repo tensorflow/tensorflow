@@ -158,7 +158,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
   }
   member_method {
     name: "apply"
@@ -258,7 +258,7 @@ tf_class {
   }
   member_method {
     name: "load_weights"
-    argspec: "args=[\'self\', \'filepath\', \'by_name\', \'skip_mismatch\'], varargs=None, keywords=None, defaults=[\'False\', \'False\'], "
+    argspec: "args=[\'self\', \'filepath\', \'by_name\', \'skip_mismatch\', \'options\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "make_predict_function"
@@ -302,7 +302,7 @@ tf_class {
   }
   member_method {
     name: "save_weights"
-    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'save_format\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
+    argspec: "args=[\'self\', \'filepath\', \'overwrite\', \'save_format\', \'options\'], varargs=None, keywords=None, defaults=[\'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "set_weights"

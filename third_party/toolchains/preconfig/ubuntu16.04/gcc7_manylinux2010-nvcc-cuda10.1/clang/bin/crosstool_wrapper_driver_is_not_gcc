@@ -62,7 +62,7 @@ def GetOptionValue(argv, option):
 
   Args:
     argv: A list of strings, possibly the argv passed to main().
-    option: The option whose value to extract, without the leading '-'.
+    option: The option whose value to extract, with the leading '-'.
 
   Returns:
     A list of values, either directly following the option,
@@ -189,6 +189,8 @@ def InvokeNvcc(argv, log=False):
   nvcc_allowed_std_options = ["c++03", "c++11", "c++14"]
   std_options = ''.join([' -std=' + define
       for define in std_options if define in nvcc_allowed_std_options][-1:])
+  fatbin_options = ''.join([' --fatbin-options=' + option
+      for option in GetOptionValue(argv, '-Xcuda-fatbinary')])
 
   # The list of source files get passed after the -c option. I don't know of
   # any other reliable way to just get the list of source files to be compiled.
@@ -233,6 +235,7 @@ def InvokeNvcc(argv, log=False):
   nvccopts += std_options
   nvccopts += m_options
   nvccopts += warning_options
+  nvccopts += fatbin_options
 
   if depfiles:
     # Generate the dependency file

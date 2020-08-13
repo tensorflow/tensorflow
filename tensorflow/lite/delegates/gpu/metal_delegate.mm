@@ -26,6 +26,7 @@ limitations under the License.
 #include <thread>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/lite/builtin_ops.h"
 #include "tensorflow/lite/c/common.h"
@@ -205,6 +206,14 @@ class Delegate {
   }
 
   absl::Status BindBufferToTensor(id<MTLBuffer> buffer, int tensor_index) {
+    // The tensor index is expected to be an input or output tensor of the interpreter.
+    // For quantized model, the buffer should be linked with their dequantized counterpart.
+    if (quant_conversion_map_.find(tensor_index) != quant_conversion_map_.end()) {
+      tensor_index = quant_conversion_map_[tensor_index];
+      // remove [dequantized tensor ID] -> [quantized tensor ID] mapping, to prevent extra
+      // dequant/quant on in/outputs.
+      quant_conversion_map_.erase(tensor_index);
+    }
     for (auto& input : graph_inputs_) {
       if (input.tensor_id == tensor_index) {
         input_output_buffers_[input.id] = buffer;
@@ -605,7 +614,7 @@ class Delegate {
   // Whenever quantized inference is enabled, this maps the tensor index of each
   // originally quantized (8-bit) tensor to its float version added in
   // model_builder - and vice versa.
-  std::unordered_map<int, int> quant_conversion_map_;
+  absl::flat_hash_map<int, int> quant_conversion_map_;
 
   TFLInferenceContext* inference_context_;
   // input and output buffers are passed into Metal inference engine

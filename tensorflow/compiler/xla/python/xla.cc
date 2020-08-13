@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -73,7 +74,6 @@ namespace {
 
 namespace py = pybind11;
 
-using ::tensorflow::profiler::TraceMeWrapper;
 
 struct Uniquer {
   absl::Mutex mu;
@@ -160,6 +160,13 @@ Status PyRegisterCustomCallTarget(const std::string& fn_name,
   return Status::OK();
 }
 
+// Adds a trivial forwarding class so these Python bindings and TensorFlow's
+// bindings of the same thing don't register the same class with pybind11.
+class TraceMeWrapper : public tensorflow::profiler::TraceMeWrapper {
+ public:
+  using tensorflow::profiler::TraceMeWrapper::TraceMeWrapper;
+};
+
 void BuildProfilerSubmodule(py::module* m) {
   py::module profiler =
       m->def_submodule("profiler", "TensorFlow profiler integration");
@@ -188,6 +195,14 @@ void BuildProfilerSubmodule(py::module* m) {
            })
       .def("set_metadata", &TraceMeWrapper::SetMetadata)
       .def_static("is_enabled", &TraceMeWrapper::IsEnabled);
+}
+
+bool IsOptimizedBuild() {
+#if NDEBUG
+  return true;
+#else
+  return false;
+#endif  // NDEBUG
 }
 
 }  // namespace
@@ -501,6 +516,13 @@ PYBIND11_MODULE(xla_extension, m) {
       .value("PLATFORM", GpuAllocatorConfig::Kind::kPlatform)
       .value("BFC", GpuAllocatorConfig::Kind::kBFC);
 
+  py::enum_<PjRtBuffer::HostBufferSemantics>(m, "HostBufferSemantics")
+      .value("IMMUTABLE_ONLY_DURING_CALL",
+             PjRtBuffer::HostBufferSemantics::kImmutableOnlyDuringCall)
+      .value("IMMUTABLE_UNTIL_TRANSFER_COMPLETES",
+             PjRtBuffer::HostBufferSemantics::kImmutableUntilTransferCompletes)
+      .value("ZERO_COPY", PjRtBuffer::HostBufferSemantics::kZeroCopy);
+
   py::class_<PyClient, std::shared_ptr<PyClient>> py_local_client(m, "Client");
   py_local_client.def_property_readonly("platform", &PyClient::platform_name)
       .def("device_count", &PyClient::device_count)
@@ -518,10 +540,13 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyClient::CreateDeviceToHostChannelHandle)
       .def("create_host_to_device_channel_handle",
            &PyClient::CreateHostToDeviceChannelHandle)
-      .def("buffer_from_pyval", &PyClient::BufferFromPyal, py::arg("argument"),
-           py::arg("device") = nullptr, py::arg("force_copy") = false)
+      .def("buffer_from_pyval", &PyClient::BufferFromPyval, py::arg("argument"),
+           py::arg("device") = nullptr, py::arg("force_copy") = false,
+           py::arg("host_buffer_semantics") =
+               PjRtBuffer::HostBufferSemantics::kZeroCopy)
       .def("compile", &PyClient::Compile, py::arg("computation"),
-           py::arg("compile_options") = CompileOptions());
+           py::arg("compile_options") = CompileOptions())
+      .def("heap_profile", &PyClient::HeapProfile);
 
   m.def(
       "get_cpu_client",
@@ -562,8 +587,8 @@ PYBIND11_MODULE(xla_extension, m) {
                                frame.line_num);
       });
 
-  py::class_<Traceback> traceback(m, "Traceback",
-                                  "Represents a Python stack trace.");
+  py::class_<Traceback, std::shared_ptr<Traceback>> traceback(
+      m, "Traceback", "Represents a Python stack trace.");
   traceback.def_property_static(
       "enabled", [](py::object /* cls */) { return Traceback::enabled(); },
       [](py::object /* cls */, bool enabled) {
@@ -630,7 +655,7 @@ PYBIND11_MODULE(xla_extension, m) {
   PyTypeObject* buffer_type = reinterpret_cast<PyTypeObject*>(buffer.ptr());
   buffer_type->tp_as_buffer = PyBuffer::BufferProtocol();
 
-  py::class_<PyExecutable, std::unique_ptr<PyExecutable>> executable(
+  py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
       m, "Executable");
   executable.def_property_readonly("client", &PyExecutable::client)
       .def("local_logical_device_ids", &PyExecutable::local_logical_device_ids)
@@ -873,6 +898,7 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildOpsSubmodule(&m);
   BuildProfilerSubmodule(&m);
   BuildOutfeedReceiverSubmodule(&m);
+  BuildPytreeSubmodule(m);
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>
@@ -885,6 +911,8 @@ PYBIND11_MODULE(xla_extension, m) {
   m.def("get_distributed_runtime_client", &GetDistributedRuntimeClient);
 
   m.def("collect_garbage", []() { GlobalPyRefManager()->CollectGarbage(); });
+
+  m.def("is_optimized_build", &IsOptimizedBuild);
 }  // NOLINT(readability/fn_size)
 
 }  // namespace xla

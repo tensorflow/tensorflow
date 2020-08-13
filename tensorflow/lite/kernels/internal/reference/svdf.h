@@ -15,7 +15,10 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SVDF_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_SVDF_H_
 
+#include <stdint.h>
+
 #include <algorithm>
+#include <limits>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -265,20 +268,12 @@ inline void EvalHybridSVDF(
   std::fill_n(scratch_ptr, batch_size * num_filters, 0.0f);
 
   if (!tensor_utils::IsZeroVector(input_ptr, batch_size * input_size)) {
-    // Quantize input from float to int8.
+    // Quantize input from float to int8_t.
+    tensor_utils::BatchQuantizeFloats(input_ptr, batch_size, input_size,
+                                      quantized_input_ptr, scaling_factors_ptr,
+                                      zero_points_ptr,
+                                      params->asymmetric_quantize_inputs);
     for (int b = 0; b < batch_size; ++b) {
-      const int offset = b * input_size;
-      if (params->asymmetric_quantize_inputs) {
-        tensor_utils::AsymmetricQuantizeFloats(
-            input_ptr + offset, input_size, quantized_input_ptr + offset,
-            &scaling_factors_ptr[b], &zero_points_ptr[b]);
-      } else {
-        // Quantize input from float to int8.
-        float unused_min, unused_max;
-        tensor_utils::SymmetricQuantizeFloats(
-            input_ptr + offset, input_size, quantized_input_ptr + offset,
-            &unused_min, &unused_max, &scaling_factors_ptr[b]);
-      }
       scaling_factors_ptr[b] *= weights_feature_scale;
     }
 

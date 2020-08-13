@@ -22,6 +22,7 @@ kilobytes of Flash.
 -   [Deploy to SparkFun Edge](#deploy-to-sparkfun-edge)
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
+-   [Deploy to HIMAX WE1 EVB](#deploy-to-himax-we1-evb)
 -   [Run on macOS](#run-on-macos)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Train your own model](#train-your-own-model)
@@ -117,10 +118,10 @@ terminal.
 
 ## Deploy to Arduino
 
-The following instructions will help you build and deploy this sample
-to [Arduino](https://www.arduino.cc/) devices.
+The following instructions will help you build and deploy this example to
+[Arduino](https://www.arduino.cc/) devices.
 
-The sample has been tested with the following devices:
+The example has been tested with the following devices:
 
 - [Arduino Nano 33 BLE Sense](https://store.arduino.cc/usa/nano-33-ble-sense-with-headers)
 
@@ -174,11 +175,11 @@ If you don't see any output, repeat the process again.
 
 ## Deploy to ESP32
 
-The following instructions will help you build and deploy this sample to
+The following instructions will help you build and deploy this example to
 [ESP32](https://www.espressif.com/en/products/hardware/esp32/overview) devices
 using the [ESP IDF](https://github.com/espressif/esp-idf).
 
-The sample has been tested on ESP-IDF version 4.0 with the following devices: -
+The example has been tested on ESP-IDF version 4.0 with the following devices: -
 [ESP32-DevKitC](http://esp-idf.readthedocs.io/en/latest/get-started/get-started-devkitc.html) -
 [ESP-EYE](https://github.com/espressif/esp-who/blob/master/docs/en/get-started/ESP-EYE_Getting_Started_Guide.md)
 
@@ -229,7 +230,7 @@ monitor`
 
 ## Deploy to SparkFun Edge
 
-The following instructions will help you build and deploy this sample on the
+The following instructions will help you build and deploy this example on the
 [SparkFun Edge development board](https://sparkfun.com/products/15170).
 
 The program will toggle the blue LED on and off with each inference. It will
@@ -378,7 +379,7 @@ followed by the `K` key, then hit the `Y` key.
 
 ## Deploy to STM32F746
 
-The following instructions will help you build and deploy the sample to the
+The following instructions will help you build and deploy the example to the
 [STM32F7 discovery kit](https://os.mbed.com/platforms/ST-Discovery-F746NG/)
 using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
@@ -482,7 +483,7 @@ followed by the `K` key, then hit the `Y` key.
 
 ## Deploy to NXP FRDM K66F
 
-The following instructions will help you build and deploy the sample to the
+The following instructions will help you build and deploy the example to the
 [NXP FRDM K66F](https://www.nxp.com/design/development-boards/freedom-development-boards/mcu-boards/freedom-development-platform-for-kinetis-k66-k65-and-k26-mcus:FRDM-K66F)
 using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
@@ -561,6 +562,107 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 15. A loopback path from microphone to headset jack is enabled. Headset jack is
     in black color. If there is no output on the serial port, you can connect
     headphone to headphone port to check if audio loopback path is working.
+
+## Deploy to HIMAX WE1 EVB
+
+The following instructions will help you build and deploy this example to
+[HIMAX WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_board_brief)
+board. To undstand more about using this board, please check
+[HIMAX WE1 EVB user guide](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide).
+
+### Initial Setup
+
+To use the HIMAX WE1 EVB, please make sure following software are installed:
+
+#### MetaWare Development Toolkit
+
+See
+[Install the Synopsys DesignWare ARC MetaWare Development Toolkit](/tensorflow/lite/micro/tools/make/targets/arc/README.md#install-the-synopsys-designware-arc-metaware-development-toolkit)
+section for instructions on toolchain installation.
+
+#### Make Tool version
+
+A `'make'` tool is required for deploying Tensorflow Lite Micro applications on
+HIMAX WE1 EVB, See
+[Check make tool version](/tensorflow/lite/micro/tools/make/targets/arc/README.md#make-tool)
+section for proper environment.
+
+#### Serial Terminal Emulation Application
+
+There are 2 main purposes for HIMAX WE1 EVB Debug UART port
+
+-   print application output
+-   burn application to flash by using xmodem send application binary
+
+You can use any terminal emulation program (like [PuTTY](https://www.putty.org/)
+or [minicom](https://linux.die.net/man/1/minicom)).
+
+### Generate Example Project
+
+The example project for HIMAX WE1 EVB platform can be generated with the
+following command:
+
+Download related third party data
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile TARGET=himax_we1_evb third_party_downloads
+```
+
+Generate micro speech project
+
+```
+make -f tensorflow/lite/micro/tools/make/Makefile generate_micro_speech_make_project TARGET=himax_we1_evb
+```
+
+### Build and Burn Example
+
+Following the Steps to run micro speech example at HIMAX WE1 EVB platform.
+
+1.  Go to the generated example project directory.
+
+    ```
+    cd tensorflow/lite/micro/tools/make/gen/himax_we1_evb_arc/prj/micro_speech/make
+    ```
+
+2.  Build the example using
+
+    ```
+    make app
+    ```
+
+3.  After example build finish, copy ELF file and map file to image generate
+    tool directory. \
+    image generate tool directory located at
+    `'tensorflow/lite/micro/tools/make/downloads/himax_we1_sdk/image_gen_linux_v3/'`
+
+    ```
+    cp micro_speech.elf himax_we1_evb.map ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
+    ```
+
+4.  Go to flash image generate tool directory.
+
+    ```
+    cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
+    ```
+
+5.  run image generate tool, generate flash image file.
+
+    *   Before running image generate tool, by typing `sudo chmod +x image_gen`
+        and `sudo chmod +x sign_tool` to make sure it is executable.
+
+    ```
+    image_gen -e micro_speech.elf -m himax_we1_evb.map -o out.img
+    ```
+
+6.  Download flash image file to HIMAX WE1 EVB by UART:
+
+    *   more detail about download image through UART can be found at
+        [HIMAX WE1 EVB update Flash image](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide#flash-image-update)
+
+After these steps, press reset button on the HIMAX WE1 EVB, you will see
+application output in the serial terminal and lighting LED.
+
+![Animation on Himax WE1 EVB](https://raw.githubusercontent.com/HimaxWiseEyePlus/bsp_tflu/master/HIMAX_WE1_EVB_user_guide/images/tflm_example_micro_speech_int8_led.gif)
 
 ## Run on macOS
 

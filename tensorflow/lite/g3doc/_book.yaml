@@ -40,8 +40,10 @@ upper_tabs:
         status: external
 
       - heading: "Text"
-      - title: "Text classification"
+      - title: "Text classification with Model Maker"
         path: /lite/tutorials/model_maker_text_classification
+      - title: "Question Answer with Model Maker"
+        path: /lite/tutorials/model_maker_question_answer
 
       - heading: "Microcontrollers"
       - title: "Gesture recognition"
@@ -84,15 +86,23 @@ upper_tabs:
         path: /lite/convert/quantization
       - title: "Convert RNN models"
         path: /lite/convert/rnn
-      - title: "1.x compatibility"
-        path: /lite/convert/1x_compatibility
       - title: "Add metadata"
         path: /lite/convert/metadata
+      - title: "Composite operation fusion"
+        path: /lite/convert/operation_fusion
+      - title: "1.x compatibility"
+        path: /lite/convert/1x_compatibility
+
+      - heading: "Create a model"
+      - title: "TensorFlow Lite Model Maker"
         status: experimental
+        path: /lite/guide/model_maker
 
       - heading: "Inference"
       - title: "Overview"
         path: /lite/guide/inference
+      - title: "Integrate models with metadata"
+        path: /lite/guide/codegen
       - title: "Custom operators"
         path: /lite/guide/ops_custom
       - title: "Operator versions"
@@ -102,11 +112,10 @@ upper_tabs:
       - title: "Select operators from TensorFlow"
         path: /lite/guide/ops_select
         status: experimental
+      - title: "Process input and output data"
+        path: /lite/guide/lite_support
       - title: "List of hosted models"
         path: /lite/guide/hosted_models
-      - title: "Generate code from metadata"
-        path: /lite/guide/codegen
-        status: experimental
 
       - heading: "Performance"
       - title: "Best practices"
@@ -188,6 +197,9 @@ upper_tabs:
         path: /lite/models/smart_reply/overview
       - title: "Text classification"
         path: /lite/models/text_classification/overview
+      - heading: "Others"
+      - title: "Recommendation"
+        path: /lite/models/recommendation/overview
 
     - name: "API"
       skip_translation: true
@@ -198,6 +210,8 @@ upper_tabs:
       - title: "Overview"
         status: external
         path: /api_docs/python/tf/lite
+      - heading: "Android (Java)"
+      - include: /lite/api_docs/java/_toc.yaml
       - heading: "C++"
       - title: Overview
         path: /lite/api_docs/cc/

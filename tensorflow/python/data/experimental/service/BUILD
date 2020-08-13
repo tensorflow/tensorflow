@@ -18,7 +18,6 @@ tf_python_pybind_extension(
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python:pybind11_status",
         "//third_party/python_runtime:headers",
-        "@com_github_grpc_grpc//:grpc++_public_hdrs",
         "@pybind11",
     ],
 )
@@ -39,6 +38,7 @@ tf_py_test(
     srcs = ["server_lib_test.py"],
     deps = [
         ":server_lib",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform_test",
     ],
 )

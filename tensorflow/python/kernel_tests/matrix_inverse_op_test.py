@@ -186,7 +186,7 @@ class MatrixInverseBenchmark(test.Benchmark):
             ops.device("/cpu:0"):
           matrix = self._GenerateMatrix(shape)
           inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(inv),
@@ -200,7 +200,7 @@ class MatrixInverseBenchmark(test.Benchmark):
               ops.device("/gpu:0"):
             matrix = self._GenerateMatrix(shape)
             inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)
-            variables.global_variables_initializer().run()
+            self.evaluate(variables.global_variables_initializer())
             self.run_op_benchmark(
                 sess,
                 control_flow_ops.group(inv),

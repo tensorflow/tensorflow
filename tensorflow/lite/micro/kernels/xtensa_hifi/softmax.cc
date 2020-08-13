@@ -1,24 +1,24 @@
-/******************************************************************************
- * Copyright (C) 2019 Cadence Design Systems, Inc.
- *
- * Permission is hereby granted, free of charge, to any person obtaining
- * a copy of this software and associated documentation files (the
- * "Software"), to use this Software with Cadence processor cores only and
- * not with any other processors and platforms, subject to
- * the following conditions:
- *
- * The above copyright notice and this permission notice shall be included
- * in all copies or substantial portions of the Software.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
- * IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
- * CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
- * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
- * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
- ******************************************************************************/
+/*******************************************************************************
+* Copyright (c) 2019-2020 Cadence Design Systems, Inc.
+*
+* Permission is hereby granted, free of charge, to any person obtaining
+* a copy of this software and associated documentation files (the
+* "Software"), to use this Software with Cadence processor cores only and
+* not with any other processors and platforms, subject to
+* the following conditions:
+*
+* The above copyright notice and this permission notice shall be included
+* in all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+******************************************************************************/
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -43,7 +43,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
-#include "xtensa_tf_micro_common.h"
+#include "tensorflow/lite/micro/kernels/xtensa_hifi/xtensa_tf_micro_common.h"
 namespace tflite {
 namespace ops {
 namespace micro {
@@ -63,7 +63,8 @@ TfLiteStatus CalculateSoftmaxParams(TfLiteContext* context,
       TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
       if (output->type == kTfLiteInt16) {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point, -32768);
-        // NOTE: Current int16 softmax output does not require symmetric scaling
+        // NOTE: Current int16_t softmax output does not require symmetric
+        // scaling
         // - so no need to verify scale here.
       } else {
         TF_LITE_ENSURE_TYPES_EQ(context, output->type, kTfLiteInt8);
@@ -105,6 +106,7 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
 // Takes a tensor and performs softmax along the last dimension.
 TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
                           TfLiteTensor* output, const SoftmaxParams& op_data) {
+#if HIFI_VFPU
   const RuntimeShape& input_shape = GetTensorShape(input);
   const float* input_data = GetTensorData<float>(input);
   const RuntimeShape& output_shape = GetTensorShape(output);
@@ -133,6 +135,11 @@ TfLiteStatus SoftmaxFloat(TfLiteContext* context, const TfLiteTensor* input,
         xa_nn_vec_softmax_f32_f32(&output_data[i * depth], p_scratch, depth);
     CHECK_ERR_HIFI_NNLIB_KER(err, "xa_nn_vec_softmax_f32_f32 failed");
   }
+#else
+  tflite::reference_ops::Softmax(
+      op_data, GetTensorShape(input), GetTensorData<float>(input),
+      GetTensorShape(output), GetTensorData<float>(output));
+#endif /* HIFI_VFPU */
   return kTfLiteOk;
 }
 
@@ -205,16 +212,15 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }
 }  // namespace activations
 
-TfLiteRegistration* Register_SOFTMAX() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/activations::SoftmaxPrepare,
-                                 /*invoke=*/activations::SoftmaxEval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_SOFTMAX() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/activations::SoftmaxPrepare,
+          /*invoke=*/activations::SoftmaxEval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

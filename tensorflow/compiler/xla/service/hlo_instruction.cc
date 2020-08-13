@@ -174,8 +174,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             comparison_direction,
             StringToComparisonDirection(proto.comparison_direction()));
       }
-      instruction =
-          CreateCompare(shape, operands(0), operands(1), *comparison_direction);
+      auto comparison_type_str = proto.comparison_type();
+      if (!comparison_type_str.empty()) {
+        // If a comparison type is specified, it *must* be valid.
+        TF_ASSIGN_OR_RETURN(auto comparison_type,
+                            StringToComparisonType(comparison_type_str));
+        instruction = CreateCompare(shape, operands(0), operands(1),
+                                    *comparison_direction, comparison_type);
+      } else {
+        // Allow the specify of comparison type to be optional.
+        // The comparison type will be determined by the types of the operands.
+        instruction = CreateCompare(shape, operands(0), operands(1),
+                                    *comparison_direction);
+      }
       break;
     }
     case HloOpcode::kTriangularSolve: {
@@ -833,6 +844,7 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -925,8 +937,9 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    ComparisonDirection direction) {
-  return absl::make_unique<HloCompareInstruction>(shape, lhs, rhs, direction);
+    ComparisonDirection direction, absl::optional<Comparison::Type> type) {
+  return absl::make_unique<HloCompareInstruction>(shape, lhs, rhs, direction,
+                                                  type);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1615,6 +1628,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kPopulationCount:
     case HloOpcode::kReal:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -1748,10 +1762,10 @@ void HloInstruction::DetachFromOperandsAndUsers() {
   }
 }
 
-std::unique_ptr<HloInstruction> HloInstruction::Clone(
-    const string& suffix, HloCloneContext* context) const {
+std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewShape(
+    const Shape& shape, const string& suffix, HloCloneContext* context) const {
   std::unique_ptr<HloInstruction> clone =
-      CloneWithNewOperands(shape_, operands_, context);
+      CloneWithNewOperands(shape, operands_, context);
   if (suffix.empty()) {
     clone->name_ = name();
   } else {
@@ -1785,6 +1799,13 @@ std::unique_ptr<HloInstruction> HloInstruction::Clone(
       }
     }
   }
+  return clone;
+}
+
+std::unique_ptr<HloInstruction> HloInstruction::Clone(
+    const string& suffix, HloCloneContext* context) const {
+  std::unique_ptr<HloInstruction> clone =
+      CloneWithNewShape(shape_, suffix, context);
   return clone;
 }
 
@@ -1886,6 +1907,10 @@ Status HloInstruction::CopyAllControlDepsFrom(const HloInstruction* inst) {
 }
 
 void HloInstruction::AppendOperand(HloInstruction* operand) {
+  if (operand->parent() != nullptr) {
+    DCHECK(!operand->parent()->IsMarkedAsDead(operand))
+        << "Operand " << operand->name() << " is already marked dead";
+  }
   operands_.push_back(operand);
   operand->AddUser(this);
 }
@@ -1989,6 +2014,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -2179,6 +2205,27 @@ Status HloInstruction::ReplaceOperandWithDifferentShape(
     old_operand->RemoveUser(this);
   }
   new_operand->AddUser(this);
+  return Status::OK();
+}
+
+Status HloInstruction::ReplaceUsesWith(absl::Span<HloInstruction* const> users,
+                                       HloInstruction* new_producer) {
+  TF_RET_CHECK(
+      ShapeUtil::CompatibleIgnoringFpPrecision(shape(), new_producer->shape()))
+      << shape() << " is not compatible with " << new_producer->shape();
+  return ReplaceAllUsesWithDifferentShape(users, new_producer);
+}
+
+Status HloInstruction::ReplaceAllUsesWithDifferentShape(
+    absl::Span<HloInstruction* const> users, HloInstruction* new_producer) {
+  for (HloInstruction* user : users) {
+    TF_RETURN_IF_ERROR(ReplaceUseWithDifferentShape(user, new_producer));
+  }
+
+  if (parent_ && parent_->root_instruction() == this) {
+    parent_->set_root_instruction(new_producer,
+                                  /*accept_different_shape=*/true);
+  }
   return Status::OK();
 }
 
@@ -2436,6 +2483,7 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kRsqrt:
+    case HloOpcode::kLogistic:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
     case HloOpcode::kSqrt:
@@ -2831,7 +2879,8 @@ HloInstruction::HloInstruction(HloOpcode opcode, const Shape& shape)
     : unique_id_(-1),
       opcode_(opcode),
       shape_(shape),
-      name_(HloOpcodeString(opcode)) {
+      name_(HloOpcodeString(opcode)),
+      marked_as_dead_(false) {
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(shape_));
 }
 
@@ -2850,6 +2899,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleBatchNormInference(this);
     case HloOpcode::kBatchNormGrad:
       return visitor->HandleBatchNormGrad(this);
+    case HloOpcode::kLogistic:
+      return visitor->HandleLogistic(this);
     case HloOpcode::kSign:
       return visitor->HandleSign(this);
     case HloOpcode::kConstant:
@@ -3902,6 +3953,10 @@ const Shape& HloInstruction::outfeed_shape() const {
 
 const string& HloInstruction::outfeed_config() const {
   return Cast<HloOutfeedInstruction>(this)->outfeed_config();
+}
+
+void HloInstruction::set_outfeed_config(const string& config) {
+  return Cast<HloOutfeedInstruction>(this)->set_outfeed_config(config);
 }
 
 const std::vector<ReplicaGroup>& HloInstruction::replica_groups() const {

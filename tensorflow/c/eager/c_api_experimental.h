@@ -300,6 +300,14 @@ TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
                                                      bool use_tfrt);
 
+// Returns the context_id from the EagerContext which is used by the
+// EagerService to maintain consistency between client and worker. The
+// context_id is initialized with a dummy value and is later set when the worker
+// is initialized (either locally or remotely). The context_id can change during
+// the process lifetime although this should cause the worker to be
+// reinitialized (e.g. cleared caches) as well.
+TF_CAPI_EXPORT extern uint64_t TFE_GetContextId(TFE_Context* ctx);
+
 // -----------------------------------------------------------------------------
 // Cancellation APIs.
 

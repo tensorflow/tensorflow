@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -o - | FileCheck %s --dump-input=fail
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-graph-as-function -o - | FileCheck %s
 
 # Verify main graph was converted to a function, args/rets are mapped correctly,
 # and ops in the main graph are retained. In addition, check if subsequent

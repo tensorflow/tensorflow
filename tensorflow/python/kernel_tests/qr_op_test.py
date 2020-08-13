@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.eager import backprop
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -48,14 +49,14 @@ class QrOpTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
   def testWrongDimensions(self):
-    # The input to svd should be a tensor of at least rank 2.
+    # The input to qr should be a tensor of at least rank 2.
     scalar = constant_op.constant(1.)
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 "rank.* 2.*0"):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "rank.* 2.*0"):
       linalg_ops.qr(scalar)
     vector = constant_op.constant([1., 2.])
-    with self.assertRaisesRegexp((ValueError, errors_impl.InvalidArgumentError),
-                                 "rank.* 2.*1"):
+    with self.assertRaisesRegex((ValueError, errors_impl.InvalidArgumentError),
+                                "rank.* 2.*1"):
       linalg_ops.qr(vector)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
@@ -170,7 +171,23 @@ def _GetQrOpTest(dtype_, shape_, full_matrices_, use_static_shape_):
 
 
 class QrGradOpTest(test.TestCase):
-  pass
+
+  @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  def testNotImplementedCheck(self):
+    # Test that the correct message is issued
+    np.random.seed(42)
+    matrix = constant_op.constant(
+        np.random.uniform(low=-1.0, high=1.0, size=(5, 2)).astype(np.float32))
+
+    def _NoGrad(x):
+      with backprop.GradientTape() as tape:
+        tape.watch(x)
+        ret = linalg_ops.qr(x, full_matrices=True)
+      return tape.gradient(ret, x)
+
+    m = r"QrGrad not implemented when nrows > ncols and full_matrices is true."
+    with self.assertRaisesRegex(NotImplementedError, m):
+      _NoGrad(matrix)
 
 
 def _GetQrGradOpTest(dtype_, shape_, full_matrices_):
@@ -237,7 +254,7 @@ class QRBenchmark(test.Benchmark):
             low=-1.0, high=1.0, size=shape_).astype(np.float32)
         matrix = variables.Variable(matrix_value)
         q, r = linalg_ops.qr(matrix)
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         self.run_op_benchmark(
             sess,
             control_flow_ops.group(q, r),
@@ -252,7 +269,7 @@ class QRBenchmark(test.Benchmark):
               low=-1.0, high=1.0, size=shape_).astype(np.float32)
           matrix = variables.Variable(matrix_value)
           q, r = linalg_ops.qr(matrix)
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(q, r),
@@ -278,14 +295,13 @@ if __name__ == "__main__":
                                     use_static_shape))
 
   # TODO(pfau): Get working with complex types.
-  # TODO(pfau): Get working with full_matrices when rows != cols
-  # TODO(pfau): Get working when rows < cols
+  # TODO(pfau): Get working with full_matrices when rows > cols
   # TODO(pfau): Get working with shapeholders (dynamic shapes)
   for full_matrices in False, True:
     for dtype in np.float32, np.float64:
       for rows in 1, 2, 5, 10:
         for cols in 1, 2, 5, 10:
-          if rows == cols or (not full_matrices and rows > cols):
+          if rows <= cols or (not full_matrices and rows > cols):
             for batch_dims in [(), (3,)] + [(3, 2)] * (max(rows, cols) < 10):
               shape = batch_dims + (rows, cols)
               name = "%s_%s_full_%s" % (dtype.__name__,

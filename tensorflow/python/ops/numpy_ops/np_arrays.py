@@ -13,6 +13,9 @@
 # limitations under the License.
 # ==============================================================================
 """ndarray class."""
+
+# pylint: disable=g-direct-tensorflow-import
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -20,25 +23,80 @@ from __future__ import print_function
 import numpy as np
 import six
 
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
+from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 
 
-def convert_to_tensor(value, dtype=None):
+def convert_to_tensor(value, dtype=None, dtype_hint=None):
+  """Wrapper over `tf.convert_to_tensor`.
+
+  Args:
+    value: value to convert
+    dtype: (optional) the type we would like it to be converted to.
+    dtype_hint: (optional) soft preference for the type we would like it to be
+      converted to. `tf.convert_to_tensor` will attempt to convert value to this
+      type first, but will not fail if conversion is not possible falling back
+      to inferring the type instead.
+
+  Returns:
+    Value converted to tf.Tensor.
+  """
   # A safer version of `tf.convert_to_tensor` to work around b/149876037.
   # TODO(wangpeng): Remove this function once the bug is fixed.
   if (dtype is None and isinstance(value, six.integer_types) and
       value >= 2**63):
     dtype = dtypes.uint64
-  elif (dtype is None and isinstance(value, float)):
+  elif dtype is None and dtype_hint is None and isinstance(value, float):
     dtype = np_dtypes.default_float_type()
-  return ops.convert_to_tensor(value, dtype=dtype)
+  return ops.convert_to_tensor(value, dtype=dtype, dtype_hint=dtype_hint)
 
 
-class ndarray(object):  # pylint: disable=invalid-name
+class NdarraySpec(type_spec.BatchableTypeSpec):
+  """Type specification for a `tf.experiemntal.numpy.ndarray`."""
+
+  value_type = property(lambda self: ndarray)
+
+  def __init__(self, data_spec):
+    if not isinstance(data_spec, tensor_spec.TensorSpec):
+      raise ValueError('NdarraySpec.__init__ was expecting a tf.TypeSpec, '
+                       'but got a {} instead.'.format(type(data_spec)))
+    self._data_spec = data_spec
+    self._hash = None
+
+  @property
+  def _component_specs(self):
+    return self._data_spec
+
+  def _to_components(self, value):
+    return value.data
+
+  def _from_components(self, data):
+    return tensor_to_ndarray(data)
+
+  def _serialize(self):
+    return (self._data_spec,)
+
+  def _batch(self, batch_size):
+    return NdarraySpec(self._data_spec._batch(batch_size))  # pylint: disable=protected-access
+
+  def _unbatch(self):
+    return NdarraySpec(self._data_spec._unbatch())  # pylint: disable=protected-access
+
+  def __hash__(self):
+    if self._hash is None:
+      self._hash = hash((type(self), self._data_spec))
+    return self._hash
+
+
+@np_export.np_export('ndarray')  # pylint: disable=invalid-name
+class ndarray(composite_tensor.CompositeTensor):
   """Equivalent of numpy.ndarray backed by TensorFlow tensors.
 
   This does not support all features of NumPy ndarrays e.g. strides and
@@ -48,6 +106,8 @@ class ndarray(object):  # pylint: disable=invalid-name
   TODO(srbs): Clearly specify which attributes and methods are not supported
   or if there are any differences in behavior.
   """
+
+  __slots__ = ['_data', '_dtype', '_type_spec_internal']
 
   def __init__(self, shape, dtype=float, buffer=None):  # pylint: disable=redefined-builtin
     """Initializes an ndarray.
@@ -91,15 +151,32 @@ class ndarray(object):  # pylint: disable=invalid-name
         raise ValueError('Unexpected type for `buffer` {}. Must be an ndarray,'
                          ' Tensor or np.ndarray.'.format(type(buffer)))
 
-      if shape is not None and tuple(shape) != buffer._shape_tuple():  # pylint: disable=protected-access
-        # TODO(srbs): NumPy allows this. Investigate if/how to support this.
-        raise ValueError('shape arg must match buffer.shape.')
+      if shape is not None:
+        buffer.set_shape(shape)
 
     assert isinstance(buffer, ops.Tensor)
     if dtype and dtype != buffer.dtype:
-      buffer = array_ops.bitcast(buffer, dtype)
+      buffer = math_ops.cast(buffer, dtype)
     self._data = buffer
-    self.base = None
+    self._type_spec_internal = None
+    self._dtype = None
+
+  @classmethod
+  def from_tensor(cls, tensor):
+    o = cls.__new__(cls, None)
+    # pylint: disable=protected-access
+    o._data = tensor
+    o._dtype = None
+    o._type_spec_internal = None
+    # pylint: enable=protected-access
+    return o
+
+  @property
+  def _type_spec(self):
+    if self._type_spec_internal is None:
+      self._type_spec_internal = NdarraySpec(
+          type_spec.type_spec_from_value(self._data))
+    return self._type_spec_internal
 
   @property
   def data(self):
@@ -119,28 +196,48 @@ class ndarray(object):  # pylint: disable=invalid-name
 
   @property
   def shape(self):
-    """Returns a tuple of array dimensions."""
-    return self.data._shape_tuple()  # pylint: disable=protected-access
+    """Returns a tuple or tf.Tensor of array dimensions."""
+    shape = self.data.shape
+    if shape.is_fully_defined():
+      return tuple(shape.as_list())
+    else:
+      return array_ops.shape(self.data)
 
   @property
   def dtype(self):
-    return np.dtype(self.data.dtype.as_numpy_dtype)
+    if self._dtype is None:
+      self._dtype = np_dtypes._get_cached_dtype(self._data.dtype)  # pylint: disable=protected-access
+    return self._dtype
+
+  def _is_boolean(self):
+    return self._data.dtype == dtypes.bool
 
   @property
   def ndim(self):
-    return self.data.shape.ndims
+    ndims = self.data.shape.ndims
+    if ndims is None:
+      return array_ops.rank(self.data)
+    else:
+      return ndims
 
   @property
   def size(self):
     """Returns the number of elements in the array."""
-    return np.prod(self.shape)
+    shape = self.shape
+    if isinstance(shape, ops.Tensor):
+      return array_ops.size(self.data)
+    else:
+      return np.prod(self.shape)
 
   @property
   def T(self):  # pylint: disable=invalid-name
     return self.transpose()
 
   def __len__(self):
-    if self.shape:
+    shape = self.shape
+    if isinstance(shape, ops.Tensor):
+      raise TypeError('len() of symbolic tensor undefined')
+    elif shape:
       return self.shape[0]
     else:
       raise TypeError('len() of unsized object.')
@@ -166,18 +263,15 @@ class ndarray(object):  # pylint: disable=invalid-name
   def __float__(self):
     return float(self.data)
 
-  def __nonzero__(self):
+  def __bool__(self):
     return bool(self.data)
 
-  def __bool__(self):
-    return self.__nonzero__()
-
-  def __getitem__(self, slice_spec):
-    # TODO(srbs): Need to support better indexing.
-    result_t = self.data.__getitem__(slice_spec)
-    return tensor_to_ndarray(result_t)
+  def __nonzero__(self):
+    return self.__bool__()
 
   def __iter__(self):
+    if not isinstance(self.data, ops.EagerTensor):
+      raise TypeError('Iteration over symbolic tensor is not allowed')
     for i in range(self.shape[0]):
       result_t = self.data[i]
       yield tensor_to_ndarray(result_t)
@@ -197,7 +291,8 @@ class ndarray(object):  # pylint: disable=invalid-name
     """
     return np.asarray(self.data, dtype)
 
-  __array_priority__ = 110
+  # NOTE: we currently prefer interop with TF to allow TF to take precedence.
+  __array_priority__ = 90
 
   def __index__(self):
     """Returns a python scalar.
@@ -214,7 +309,9 @@ class ndarray(object):  # pylint: disable=invalid-name
       ValueError: If the array does not have size 1.
     """
     # TODO(wangpeng): Handle graph mode
-    return np.asscalar(self.data.numpy())
+    if not isinstance(self.data, ops.EagerTensor):
+      raise TypeError('Indexing using symbolic tensor is not allowed')
+    return self.data.numpy().item()
 
   def tolist(self):
     return self.data.numpy().tolist()
@@ -227,7 +324,7 @@ class ndarray(object):  # pylint: disable=invalid-name
 
 
 def tensor_to_ndarray(tensor):
-  return ndarray(tensor._shape_tuple(), dtype=tensor.dtype, buffer=tensor)  # pylint: disable=protected-access
+  return ndarray.from_tensor(tensor)
 
 
 def ndarray_to_tensor(arr, dtype=None, name=None, as_ref=False):
@@ -242,51 +339,3 @@ def ndarray_to_tensor(arr, dtype=None, name=None, as_ref=False):
 
 
 ops.register_tensor_conversion_function(ndarray, ndarray_to_tensor)
-
-
-# Don't use a namedtuple since nest considers that a tuple and unflattens and
-# flattens it.
-class ShardedNdArray(object):
-  """Wrapper over ndarray that can contain tensors on multiple devices.
-
-    This is returned by extensions.pmap, and contains the individual tensors on
-    different devices.
-  """
-
-  def __init__(self, tensors):
-    """Initializes the ShardedNdArray.
-
-    Note that the tensors should be ordered in the way the pmap producing these
-    tensors is run.
-
-    Args:
-      tensors: list or tuple of eager tensors, one for each device.
-    """
-
-    if not isinstance(tensors, (list, tuple)) or not tensors:
-      raise ValueError(
-          'Unable to create a ShardedNdArray without a list of tensors.')
-    self.tensors = tensors
-    self.n_devices = len(tensors)
-
-  def __getitem__(self, i):
-    return self.tensors[i]
-
-  @property
-  def shape(self):
-    return (self.n_devices,) + self.tensors[0]._shape_tuple()  # pylint: disable=protected-access
-
-  @property
-  def dtype(self):
-    return self.tensors[0].dtype
-
-
-def convert_sharded_tensor_to_eager_tensor(value, *args, **kwargs):
-  del args, kwargs
-  # TODO(nareshmodi): Consider a collective op to gather the tensors from the
-  # various devices for performance reasons.
-  return array_ops.stack(value.tensors)
-
-
-ops.register_tensor_conversion_function(ShardedNdArray,
-                                        convert_sharded_tensor_to_eager_tensor)

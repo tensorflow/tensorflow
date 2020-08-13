@@ -101,7 +101,7 @@ void RewriteTPUEmbeddingOps::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOps() {
+std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass() {
   return std::make_unique<RewriteTPUEmbeddingOps>();
 }
 

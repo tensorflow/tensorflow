@@ -427,6 +427,7 @@ def compute_average_loss(per_example_loss,
 
   with losses_util.check_per_example_loss_rank(per_example_loss):
     if sample_weight is not None:
+      sample_weight = ops.convert_to_tensor(sample_weight)
       per_example_loss = losses_util.scale_losses_by_sample_weight(
           per_example_loss, sample_weight)
     per_example_loss = math_ops.cast(per_example_loss, input_dtype)
@@ -508,15 +509,20 @@ def relu_layer(x, weights, biases, name=None):
     return nn_ops.relu(xw_plus_b, name=name)
 
 
-@tf_export("nn.swish")
+@tf_export("nn.silu", "nn.swish")
 @dispatch.add_dispatch_support
 @custom_gradient.custom_gradient
 def swish(features):
   # pylint: disable=g-doc-args
-  """Computes the Swish activation function: `x * sigmoid(x)`.
+  """Computes the SiLU or Swish activation function: `x * sigmoid(x)`.
 
-  Source: "Searching for Activation Functions" (Ramachandran et al. 2017)
-  https://arxiv.org/abs/1710.05941
+  The SiLU activation function was introduced in "Gaussian Error Linear Units
+  (GELUs)" [Hendrycks et al. 2016](https://arxiv.org/abs/1606.08415) and
+  "Sigmoid-Weighted Linear Units for Neural Network Function Approximation in
+  Reinforcement Learning"
+  [Elfwing et al. 2017](https://arxiv.org/abs/1702.03118) and was independently
+  discovered (and called swish) in "Searching for Activation Functions"
+  [Ramachandran et al. 2017](https://arxiv.org/abs/1710.05941)
 
   Args:
     features: A `Tensor` representing preactivation values.
@@ -1152,9 +1158,23 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
   an input that's optionally shifted. See:
   https://en.wikipedia.org/wiki/Algorithms_for_calculating_variance#Computing_shifted_data
 
+  For example:
+  >>> t = [[1, 2, 3], [4, 5, 6]]
+  >>> sufficient_statistics(t, [1])
+  (<tf.Tensor: shape=(), dtype=int32, numpy=3>, <tf.Tensor: shape=(2,),
+  dtype=int32, numpy=array([ 6, 15], dtype=int32)>, <tf.Tensor: shape=(2,),
+  dtype=int32, numpy=array([14, 77], dtype=int32)>, None)
+  >>> sufficient_statistics(t, [-1])
+  (<tf.Tensor: shape=(), dtype=int32, numpy=3>, <tf.Tensor: shape=(2,),
+  dtype=int32, numpy=array([ 6, 15], dtype=int32)>, <tf.Tensor: shape=(2,),
+  dtype=int32, numpy=array([14, 77], dtype=int32)>, None)
+
   Args:
     x: A `Tensor`.
-    axes: Array of ints. Axes along which to compute mean and variance.
+    axes: Array of ints. Axes along which to compute mean and variance. As in
+      Python, the axes can also be negative numbers. A negative axis is
+      interpreted as counting from the end of the rank, i.e., axis +
+      rank(values)-th dimension.
     shift: A `Tensor` containing the value by which to shift the data for
       numerical stability, or `None` if no shift is to be performed. A shift
       close to the true mean provides the most numerically stable results.
@@ -1185,8 +1205,11 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
         counts *= x_shape.dims[d].value
       counts = constant_op.constant(counts, dtype=x.dtype)
     else:  # shape needs to be inferred at runtime.
+      # Normalize axes to be positive. Required for gather.
+      rank = array_ops.rank(x)
+      positive_axes = [axis + rank if axis < 0 else axis for axis in axes]
       x_dims = array_ops.gather(
-          math_ops.cast(array_ops.shape(x), x.dtype), axes)
+          math_ops.cast(array_ops.shape(x), x.dtype), positive_axes)
       counts = math_ops.reduce_prod(x_dims, name="count")
     if shift is not None:
       shift = ops.convert_to_tensor(shift, name="shift")
@@ -1615,16 +1638,11 @@ def fused_batch_norm(
       [Ioffe et al., 2015](http://proceedings.mlr.press/v37/ioffe15.html)
       ([pdf](http://proceedings.mlr.press/v37/ioffe15.pdf))
   """
-  if is_training and exponential_avg_factor == 1.0:
-    if (mean is not None) or (variance is not None):
-      raise ValueError("Both 'mean' and 'variance' must be None when "
-                       "is_training is True and "
-                       "exponential_avg_factor == 1.0.")
-  else:
-    if (mean is None) or (variance is None):
-      raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
-                       "is_training is False or "
-                       "exponential_avg_factor != 1.0.")
+  if (not is_training or exponential_avg_factor != 1.0) and (
+      (mean is None) or (variance is None)):
+    raise ValueError("Both 'mean' and 'variance' must be a 1D tensor when "
+                     "is_training is False or "
+                     "exponential_avg_factor != 1.0.")
   x = ops.convert_to_tensor(x, name="input")
   scale = ops.convert_to_tensor(scale, name="scale")
   offset = ops.convert_to_tensor(offset, name="offset")

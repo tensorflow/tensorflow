@@ -47,8 +47,8 @@ inline void Tanh(const TanhParams&, const RuntimeShape& input_shape,
 }
 
 inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
-                 const int16* input_data, const RuntimeShape& output_shape,
-                 int16* output_data) {
+                 const int16_t* input_data, const RuntimeShape& output_shape,
+                 int16_t* output_data) {
   const int input_left_shift = params.input_left_shift;
   // Support for shifts is limited until we have a parameterized version of
   // SaturatingRoundingMultiplyByPOT().
@@ -77,6 +77,49 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
       F0 output = gemmlowp::tanh(input);
       output_data[i] = output.raw();
     }
+  }
+}
+
+inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
+                 const uint8_t* input_data, const RuntimeShape& output_shape,
+                 uint8_t* output_data) {
+  const int32_t input_zero_point = params.input_zero_point;
+  const int32_t input_range_radius = params.input_range_radius;
+  const int32_t input_multiplier = params.input_multiplier;
+  const int input_left_shift = params.input_left_shift;
+  const int32_t output_zero_point = 128;
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  for (int i = 0; i < flat_size; i++) {
+    const uint8_t input_val_u8 = input_data[i];
+    const int32_t input_val_centered =
+        static_cast<int32_t>(input_val_u8) - input_zero_point;
+    uint8_t output_val;
+    if (input_val_centered <= -input_range_radius) {
+      output_val = 0;
+    } else if (input_val_centered >= input_range_radius) {
+      output_val = 255;
+    } else {
+      const int32_t input_val_rescaled =
+          MultiplyByQuantizedMultiplierGreaterThanOne(
+              input_val_centered, input_multiplier, input_left_shift);
+      using FixedPoint4 = gemmlowp::FixedPoint<int32_t, 4>;
+      using FixedPoint0 = gemmlowp::FixedPoint<int32_t, 0>;
+      const FixedPoint4 input_val_f4 = FixedPoint4::FromRaw(input_val_rescaled);
+      const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
+      // Convert from Q0.31 to Q24.7.
+      using gemmlowp::RoundingDivideByPOT;
+      int32_t output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
+      output_val_s32 += output_zero_point;
+      if (output_val_s32 == 256) {
+        output_val_s32 = 255;
+      }
+      // Reinterpret as Q0.7, encoded in uint8_t.
+      TFLITE_DCHECK_GE(output_val_s32, 0);
+      TFLITE_DCHECK_LE(output_val_s32, 255);
+      output_val = static_cast<uint8_t>(output_val_s32);
+    }
+    output_data[i] = output_val;
   }
 }
 

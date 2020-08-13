@@ -17,12 +17,12 @@ limitations under the License.
 
 #include <utility>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_key.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/core/refcount.h"
-#include "absl/container/flat_hash_map.h"
 
 namespace tensorflow {
 
@@ -69,13 +69,11 @@ class TensorMap {
   TensorMap() : tensors_(new Tensors) {}
   ~TensorMap();
 
-  TensorMap(const TensorMap& other)
-      : tensors_(other.tensors_) {
+  TensorMap(const TensorMap& other) : tensors_(other.tensors_) {
     tensors_->Ref();
   }
 
-  TensorMap(TensorMap&& rhs)
-      : tensors_(rhs.tensors_) {
+  TensorMap(TensorMap&& rhs) : tensors_(rhs.tensors_) {
     rhs.tensors_ = nullptr;
   }
 
@@ -105,8 +103,13 @@ class TensorMap {
   string DebugString() const { return "TensorMap"; }
 
   // Access to the underlying tensor container.
-  absl::flat_hash_map<TensorKey,Tensor>& tensors() { return tensors_->values_; }
-  const absl::flat_hash_map<TensorKey,Tensor>& tensors() const { return tensors_->values_; }
+  absl::flat_hash_map<TensorKey, Tensor>& tensors() {
+    return tensors_->values_;
+  }
+
+  const absl::flat_hash_map<TensorKey, Tensor>& tensors() const {
+    return tensors_->values_;
+  }
 
   // Get a new TensorMap containing a copy of the underlying tensor container.
   TensorMap Copy() const {
@@ -124,32 +127,24 @@ class TensorMap {
   }
 
   // Lookup given key. Returns iterator to found key or end.
-  absl::flat_hash_map<TensorKey,Tensor>::iterator find(TensorKey key) {
+  absl::flat_hash_map<TensorKey, Tensor>::iterator find(TensorKey key) {
     return tensors_->values_.find(key);
   }
 
-  Tensor& lookup(TensorKey key) {
-    return tensors_->values_.find(key)->second;
-  }
+  Tensor& lookup(TensorKey key) { return tensors_->values_.find(key)->second; }
 
-  Tensor& operator[](TensorKey& k) {
-      return tensors_->values_[k];
-  }
+  Tensor& operator[](TensorKey& k) { return tensors_->values_[k]; }
 
   bool replace(const TensorKey& k, const Tensor& v) {
-      tensors_->values_[k] = v;
-      return true;
+    tensors_->values_[k] = v;
+    return true;
   }
 
   // Removes element with given key. Return size of removed element.
-  size_t erase(TensorKey key) {
-    return tensors_->values_.erase(key);
-  }
+  size_t erase(TensorKey key) { return tensors_->values_.erase(key); }
 
   // Size returns the number of elements in the map
-  size_t size() {
-    return tensors_->values_.size();
-  }
+  size_t size() { return tensors_->values_.size(); }
 
   std::vector<Tensor> keys() const {
     std::vector<Tensor> keys;
@@ -169,14 +164,15 @@ class TensorMap {
  private:
   class Tensors : public core::RefCounted {
    public:
-    absl::flat_hash_map<TensorKey,Tensor> values_;
+    absl::flat_hash_map<TensorKey, Tensor> values_;
   };
   Tensors* tensors_;
 };
 
 #if defined(PLATFORM_GOOGLE)
 // TODO(ebrevdo): Identify why Variant inline size is smaller on mobile devices.
-static_assert(Variant::CanInlineType<TensorMap>(),
+// For 32-bit devices, it's acceptable not to inline.
+static_assert(Variant::CanInlineType<TensorMap>() || sizeof(void*) < 8,
               "Must be able to inline TensorMap into a Variant");
 #endif
 }  // namespace tensorflow

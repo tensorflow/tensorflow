@@ -134,7 +134,7 @@ class KubernetesClusterResolverTest(test.TestCase):
             {'job-name=tensorflow': ret}))
 
     error_msg = 'Pod "tensorflow-abc123" is not running; phase: "Failed"'
-    with self.assertRaisesRegexp(RuntimeError, error_msg):
+    with self.assertRaisesRegex(RuntimeError, error_msg):
       cluster_resolver.cluster_spec()
 
   def testMultiplePodSelectorsAndWorkers(self):

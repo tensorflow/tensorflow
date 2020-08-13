@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <dlfcn.h>
 #include <jni.h>
 #include <stdio.h>
 #include <time.h>
@@ -20,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
 #include "tensorflow/lite/experimental/tflite_api_dispatcher/tflite_api_dispatcher.h"
 #include "tensorflow/lite/java/src/main/native/jni_utils.h"
 #include "tensorflow/lite/util.h"
@@ -100,6 +102,8 @@ int getDataType(TfLiteType data_type) {
       return 4;
     case kTfLiteString:
       return 5;
+    case kTfLiteBool:
+      return 6;
     default:
       return -1;
   }
@@ -321,6 +325,59 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_allowBufferHandleOutput(
       convertLongToInterpreter(env, handle);
   if (interpreter == nullptr) return;
   interpreter->SetAllowBufferHandleOutput(allow);
+}
+
+JNIEXPORT void JNICALL
+Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
+    JNIEnv* env, jclass clazz, jlong handle, jlong error_handle, jboolean state,
+    jint num_threads) {
+  // If not using xnnpack, simply don't apply the delegate.
+  if (!state) {
+    return;
+  }
+
+  tflite_api_dispatcher::Interpreter* interpreter =
+      convertLongToInterpreter(env, handle);
+  if (interpreter == nullptr) {
+    return;
+  }
+
+  BufferErrorReporter* error_reporter =
+      convertLongToErrorReporter(env, error_handle);
+  if (error_reporter == nullptr) {
+    return;
+  }
+
+  // We use dynamic loading to avoid taking a hard dependency on XNNPack.
+  // This allows clients that use trimmed builds to save on binary size.
+  auto xnnpack_options_default =
+      reinterpret_cast<decltype(TfLiteXNNPackDelegateOptionsDefault)*>(
+          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateOptionsDefault"));
+  auto xnnpack_create =
+      reinterpret_cast<decltype(TfLiteXNNPackDelegateCreate)*>(
+          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateCreate"));
+  auto xnnpack_delete =
+      reinterpret_cast<decltype(TfLiteXNNPackDelegateDelete)*>(
+          dlsym(RTLD_DEFAULT, "TfLiteXNNPackDelegateDelete"));
+
+  if (xnnpack_options_default && xnnpack_create && xnnpack_delete) {
+    TfLiteXNNPackDelegateOptions options = xnnpack_options_default();
+    if (num_threads > 0) {
+      options.num_threads = num_threads;
+    }
+    tflite_api_dispatcher::Interpreter::TfLiteDelegatePtr delegate(
+        xnnpack_create(&options), xnnpack_delete);
+    if (interpreter->ModifyGraphWithDelegate(std::move(delegate)) !=
+        kTfLiteOk) {
+      ThrowException(env, kIllegalArgumentException,
+                     "Internal error: Failed to apply XNNPACK delegate: %s",
+                     error_reporter->CachedErrorMessage());
+    }
+  } else {
+    ThrowException(env, kIllegalArgumentException,
+                   "Failed to load XNNPACK delegate from current runtime. "
+                   "Have you added the necessary dependencies?");
+  }
 }
 
 JNIEXPORT void JNICALL

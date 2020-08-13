@@ -149,7 +149,8 @@ Status GetTPUDevices(
            std::next(system_devices.begin()), system_devices.end())) {
     auto host_tpu_devices = lookup(device_spec);
     // Check number of TPU devices per host all match.
-    if (num_tpus_per_host != host_tpu_devices.size())
+    const int64 host_tpu_devices_size = host_tpu_devices.size();
+    if (num_tpus_per_host != host_tpu_devices_size)
       return errors::InvalidArgument(
           "expected the number of TPU devices per host to be ",
           num_tpus_per_host, ", got ", host_tpu_devices.size());
@@ -354,7 +355,8 @@ GetGeneralTPUExecutionDeviceAssignment(
 
   const int expected_device_assignment_size =
       num_replicas * num_cores_per_replica * kTPUTopologyRank;
-  if (device_assignment_attr.size() != expected_device_assignment_size)
+  const int device_assignment_attr_size = device_assignment_attr.size();
+  if (device_assignment_attr_size != expected_device_assignment_size)
     return errors::InvalidArgument(
         "length of '", kDeviceAssignmentAttr,
         "' must be 'num_replicas' * 'num_cores_per_replica' * ",
@@ -482,6 +484,61 @@ StatusOr<TPUDeviceAssignment> GetTPUCompilationAndExecutionDevices(
 
 std::string GetDeviceAliasForLogicalCore(int core_index) {
   return llvm::formatv("{0}_{1}", kTPUReplicatedCore, core_index).str();
+}
+
+mlir::LogicalResult GetHostDeviceOutsideComputation(
+    mlir::TF::RuntimeDevices devices, mlir::tf_device::ClusterOp cluster,
+    std::string* host_device) {
+  auto replicate = cluster.getParentOfType<mlir::tf_device::ReplicateOp>();
+  if (replicate) {
+    *host_device = tensorflow::kTPUReplicatedHost;
+    return mlir::success();
+  }
+
+  auto num_cores_per_replica_attr = cluster.getAttrOfType<mlir::IntegerAttr>(
+      tensorflow::kNumCoresPerReplicaAttr);
+  if (!num_cores_per_replica_attr)
+    return cluster.emitOpError(
+        "cluster op missing `num_cores_per_replica` attribute");
+
+  if (num_cores_per_replica_attr.getInt() != 1)
+    return cluster.emitOpError(
+        "outside compilation is not supported with model parallelism.");
+
+  auto topology_attr =
+      cluster.getAttrOfType<mlir::StringAttr>(tensorflow::kTopologyAttr);
+  if (!topology_attr)
+    return cluster.emitOpError("cluster op missing `topology` attribute");
+
+  auto device_assignment_attr =
+      cluster.getAttrOfType<mlir::ArrayAttr>(tensorflow::kDeviceAssignmentAttr);
+  if (!device_assignment_attr)
+    return cluster.emitOpError(llvm::formatv("requires attribute '{0}'",
+                                             tensorflow::kDeviceAssignmentAttr)
+                                   .str());
+
+  auto status_or_device_coodinates =
+      tensorflow::GetDeviceCoordinates(device_assignment_attr);
+
+  if (!status_or_device_coodinates.ok())
+    return cluster.emitError()
+           << "error in fetching tpu device coordinates: "
+           << status_or_device_coodinates.status().error_message();
+
+  // Determine compilation and execution devices.
+  auto status_or_tpu_device_assignment =
+      tensorflow::GetTPUCompilationAndExecutionDevices(
+          devices.device_names(), /*num_replicas=*/1,
+          /*num_cores_per_replica=*/1, topology_attr.getValue(),
+          status_or_device_coodinates.ConsumeValueOrDie());
+  if (!status_or_tpu_device_assignment.ok())
+    return cluster.emitError()
+           << "error in fetching TPU compilation/execution devices: "
+           << status_or_tpu_device_assignment.status().error_message();
+  auto& tpu_device_assignment = status_or_tpu_device_assignment.ValueOrDie();
+
+  *host_device = tpu_device_assignment.tpu_devices[0][0].host;
+  return mlir::success();
 }
 
 }  // namespace tensorflow

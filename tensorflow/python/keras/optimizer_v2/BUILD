@@ -28,6 +28,7 @@ py_library(
         "nadam.py",
         "optimizer_v2.py",
         "rmsprop.py",
+        "utils.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -39,6 +40,7 @@ py_library(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
+        "//tensorflow/python/distribute:central_storage_strategy",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:parameter_server_strategy",
         "//tensorflow/python/distribute:reduce_util",
@@ -273,6 +275,7 @@ cuda_py_test(
         "//tensorflow/python:training_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 

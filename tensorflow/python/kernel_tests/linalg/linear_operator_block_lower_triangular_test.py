@@ -219,7 +219,7 @@ class SquareLinearOperatorBlockLowerTriangularTest(
     self.assertFalse(operator.is_positive_definite)
     self.assertTrue(operator.is_non_singular)
 
-    with self.assertRaisesRegexp(ValueError, "always non-singular"):
+    with self.assertRaisesRegex(ValueError, "always non-singular"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular(
           [[operator_1], [operator_2, operator_3]], is_non_singular=False)
 
@@ -230,7 +230,7 @@ class SquareLinearOperatorBlockLowerTriangularTest(
     block_lower_triangular.LinearOperatorBlockLowerTriangular(
         [[operator_1], [operator_4, operator_2]], is_non_singular=True)
 
-    with self.assertRaisesRegexp(ValueError, "always singular"):
+    with self.assertRaisesRegex(ValueError, "always singular"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular(
           [[operator_1], [operator_2, operator_4]], is_non_singular=True)
 
@@ -240,7 +240,7 @@ class SquareLinearOperatorBlockLowerTriangularTest(
         [linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3)),
          linalg.LinearOperatorFullMatrix(rng.rand(2, 3, 3).astype(np.float32))]
     ]
-    with self.assertRaisesRegexp(TypeError, "same dtype"):
+    with self.assertRaisesRegex(TypeError, "same dtype"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular(operators)
 
   def test_non_square_operator_raises(self):
@@ -249,15 +249,15 @@ class SquareLinearOperatorBlockLowerTriangularTest(
         [linalg.LinearOperatorFullMatrix(rng.rand(4, 4)),
          linalg.LinearOperatorFullMatrix(rng.rand(4, 4))]
     ]
-    with self.assertRaisesRegexp(ValueError, "must be square"):
+    with self.assertRaisesRegex(ValueError, "must be square"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular(operators)
 
   def test_empty_operators_raises(self):
-    with self.assertRaisesRegexp(ValueError, "non-empty"):
+    with self.assertRaisesRegex(ValueError, "non-empty"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular([])
 
   def test_operators_wrong_length_raises(self):
-    with self.assertRaisesRegexp(ValueError, "must contain `i` blocks"):
+    with self.assertRaisesRegex(ValueError, "must contain `i` blocks"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular([
           [linalg.LinearOperatorFullMatrix(rng.rand(2, 2))],
           [linalg.LinearOperatorFullMatrix(rng.rand(2, 2))
@@ -269,7 +269,7 @@ class SquareLinearOperatorBlockLowerTriangularTest(
         [linalg.LinearOperatorFullMatrix(rng.rand(3, 4)),
          linalg.LinearOperatorFullMatrix(rng.rand(3, 3))]
     ]
-    with self.assertRaisesRegexp(ValueError, "must be equal"):
+    with self.assertRaisesRegex(ValueError, "must be equal"):
       block_lower_triangular.LinearOperatorBlockLowerTriangular(operators)
 
   def test_incompatible_input_blocks_raises(self):
@@ -286,7 +286,7 @@ class SquareLinearOperatorBlockLowerTriangularTest(
     x = np.random.rand(2, 4, 5).tolist()
     msg = ("dimension does not match" if context.executing_eagerly()
            else "input structure is ambiguous")
-    with self.assertRaisesRegexp(ValueError, msg):
+    with self.assertRaisesRegex(ValueError, msg):
       operator.matmul(x)
 
 

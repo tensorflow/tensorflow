@@ -112,19 +112,19 @@ int main(int argc, char** argv) {
   if (import_saved_model_object_graph) {
     mlir::MLIRContext context;
 
-    auto module = tensorflow::SavedModelObjectGraphToMlirImport(
+    auto module_or = tensorflow::SavedModelObjectGraphToMlirImport(
         input_filename, tags, exported_names, &context);
-    if (!module) return 1;
+    if (!module_or.status().ok()) return 1;
 
-    module->print(output->os());
+    module_or.ConsumeValueOrDie()->print(output->os());
   } else if (import_saved_model_signature_defs) {
     mlir::MLIRContext context;
 
-    auto module = tensorflow::SavedModelSignatureDefsToMlirImport(
-        input_filename, tags, exported_names, &context);
-    if (!module) return 1;
+    auto module_or = tensorflow::SavedModelSignatureDefsToMlirImport(
+        input_filename, tags, exported_names, &context, upgrade_legacy);
+    if (!module_or.status().ok()) return 1;
 
-    module->print(output->os());
+    module_or.ConsumeValueOrDie()->print(output->os());
   } else {
     auto input = mlir::openInputFile(input_filename, &error_message);
 

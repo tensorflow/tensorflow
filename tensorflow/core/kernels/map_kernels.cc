@@ -16,12 +16,12 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/map_kernels.h"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 
 namespace tensorflow {
-
 
 REGISTER_KERNEL_BUILDER(Name("EmptyTensorMap").Device(DEVICE_CPU),
                         EmptyTensorMap);
@@ -41,12 +41,9 @@ REGISTER_KERNEL_BUILDER(Name("TensorMapErase").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("TensorMapHasKey").Device(DEVICE_CPU),
                         TensorMapHasKey);
 
-REGISTER_KERNEL_BUILDER(Name("TensorMapListKeys").Device(DEVICE_CPU),
-                        TensorMapListKeys);
+#undef REGISTER_TENSOR_MAP_OPS_CPU
 
-#undef REGISTER_TENSOR_LIST_OPS_CPU
-
-#define REGISTER_TENSOR_LIST_OPS_CPU(T)
+#define REGISTER_TENSOR_MAP_OPS_CPU(T)
 
 REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
                                           TensorMap,
@@ -55,4 +52,5 @@ REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_CPU,
 REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, TensorMap,
                                          TensorMapZerosLike<CPUDevice>);
-}
+
+}  // namespace tensorflow

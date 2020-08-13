@@ -78,10 +78,11 @@ class GatherOp : public OpKernel {
       }
     }
 
+    int64 min_params_dim = axis < 0 ? -axis : axis + 1;
     OP_REQUIRES(
-        c, axis >= -params.dims() && axis < params.dims(),
-        errors::InvalidArgument("Expected axis in the range [", -params.dims(),
-                                ", ", params.dims(), "), but got ", axis));
+        c, params.dims() >= min_params_dim,
+        errors::InvalidArgument("Shape must be at least rank ", min_params_dim,
+                                " but is rank ", params.dims()));
 
     if (axis < 0) {
       axis = params.dims() + axis;
@@ -211,8 +212,6 @@ TF_CALL_ALL_TYPES(REGISTER_GATHER_CPU);
 TF_CALL_QUANTIZED_TYPES(REGISTER_GATHER_CPU);
 TF_CALL_quint16(REGISTER_GATHER_CPU);
 TF_CALL_qint16(REGISTER_GATHER_CPU);
-TF_CALL_uint32(REGISTER_GATHER_CPU);
-TF_CALL_uint64(REGISTER_GATHER_CPU);
 
 #undef REGISTER_GATHER_CPU
 
@@ -221,12 +220,9 @@ TF_CALL_uint64(REGISTER_GATHER_CPU);
 // Registration of the GPU implementations.
 #define REGISTER_GATHER_GPU(type) REGISTER_GATHER_ALL_INDICES(GPU, type)
 
-TF_CALL_bool(REGISTER_GATHER_GPU);
 TF_CALL_int32(REGISTER_GATHER_GPU);
 TF_CALL_int64(REGISTER_GATHER_GPU);
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GATHER_GPU);
-TF_CALL_complex64(REGISTER_GATHER_GPU);
-TF_CALL_complex128(REGISTER_GATHER_GPU);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GATHER_GPU);
 
 #undef REGISTER_GATHER_GPU
 

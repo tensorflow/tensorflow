@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_conversion_registry
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
 from tensorflow.python.types import internal
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -147,7 +148,7 @@ class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
     return "IndexedSlices(indices=%s, values=%s%s)" % (
         self._indices, self._values,
         (", dense_shape=%s" %
-         self._dense_shape) if self._dense_shape is not None else "")
+         (self._dense_shape,)) if self._dense_shape is not None else "")
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
@@ -344,7 +345,7 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
     RuntimeError: If a registered conversion function returns an invalid
       value.
   """
-  if not isinstance(values, collections.Iterable):
+  if not isinstance(values, collections_abc.Iterable):
     raise TypeError("values must be iterable.")
   ret = []
   for i, value in enumerate(values):

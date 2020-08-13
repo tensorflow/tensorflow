@@ -31,7 +31,7 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
   // just the shape) then the flat buffer representation shouldn't change.
   std::vector<int> old_major_index_ordering;
   std::vector<int> new_major_index_ordering;
-  for (int i = 0; i < in_shape.size(); i++) {
+  for (int i = 0, end = in_shape.size(); i < end; i++) {
     if (in_shape[i] != 1) {
       old_major_index_ordering.push_back(i);
     }
@@ -90,8 +90,9 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
   reshape_op->outputs = transpose_op->outputs;
 
   // Create a new input array for the shape input
-  string perm_array_name = transpose_op->inputs[1];
-  string shape_array_name = toco::AvailableArrayName(*model, perm_array_name);
+  std::string perm_array_name = transpose_op->inputs[1];
+  std::string shape_array_name =
+      toco::AvailableArrayName(*model, perm_array_name);
   Array& shape_array = model->GetOrCreateArray(shape_array_name);
   *(shape_array.mutable_shape()->mutable_dims()) = {
       1, static_cast<int>(output_dims.size())};

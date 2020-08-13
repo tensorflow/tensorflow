@@ -76,5 +76,6 @@ def tf_fuzz_target(
         deps = deps,  # TODO(mihaimaruseac): fuzzing lib?
         data = data,  # TODO(mihaimaruseac): dict, corpus, parsers??
         tags = tags,  # TODO(mihaimaruseac): fuzzing tags?
+        linkstatic = 1,
         **kwargs
     )

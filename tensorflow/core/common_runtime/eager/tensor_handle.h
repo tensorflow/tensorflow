@@ -31,7 +31,7 @@ limitations under the License.
 // clang-format on
 
 #include "absl/types/variant.h"
-#include "tensorflow/c/eager/tensor_handle_interface.h"
+#include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/eager/eager_executor.h"
 #include "tensorflow/core/common_runtime/eager/tensor_handle_data.h"
@@ -53,8 +53,7 @@ class EagerContext;
 // Associates a Tensor and a Device, used in the eager runtime. Internal version
 // of the TFE_TensorHandle struct and the python EagerTensor class
 // (unrelated to python TensorHandle).
-class TensorHandle : public AbstractTensorHandleInterface,
-                     public core::RefCounted {
+class TensorHandle : public ImmediateExecutionTensorHandle {
   // TensorHandle for dtype != DT_RESOURCE
   TensorHandle(tensorflow::Tensor&& t, Device* d, Device* op_device,
                Device* resource_device, EagerContext* ctx);
@@ -94,7 +93,7 @@ class TensorHandle : public AbstractTensorHandleInterface,
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                    const tensorflow::DataType dtype,
                                    const tensorflow::TensorShape& shape,
-                                   EagerContext* ctx,
+                                   const string& device_name, EagerContext* ctx,
                                    TensorHandle** packed_handle);
   static Status CreatePackedHandle(std::vector<TensorHandle*>&& handles,
                                    EagerContext* ctx,
@@ -121,7 +120,7 @@ class TensorHandle : public AbstractTensorHandleInterface,
   const char* BackingDeviceName(Status* status) const override;
   AbstractTensorInterface* Resolve(Status* status) override;
 
-  AbstractTensorHandleInterface* Copy() override;
+  ImmediateExecutionTensorHandle* Copy() override;
 
   // Return the Tensor from the default device.
   Status Tensor(const tensorflow::Tensor** t) const;
@@ -226,25 +225,24 @@ class TensorHandle : public AbstractTensorHandleInterface,
 
   string DebugString() const;
 
-  struct ResourceHandleInfo {
-    std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
-    std::vector<string> allowed_devices;
-  };
-
-  void SetResourceHandleInfo(ResourceHandleInfo&& resource_handle_info);
+  void SetResourceHandleDtypeAndShape(
+      std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes);
 
   // If this TensorHandle is 1) a local tensor, and 2) a resource handle,
-  // return data types, shapes and allowed devices of the underlying resource.
-  Status GetResourceHandleInfo(ResourceHandleInfo* result);
+  // return data types and shapes of the underlying resource.
   Status GetResourceHandleDtypesAndShapes(
       std::vector<DtypeAndPartialTensorShape>* result);
-  Status GetResourceAllowedDevices(std::vector<string>* result);
 
   // Returns the number of packed handles. 0 if the handle type is not PACKED.
   int NumPackedHandles() const;
   // It's called on a packed TensorHandle. Extract a handle with the given
   // index.
   Status ExtractPackedHandle(const int index, TensorHandle** handle) const;
+
+  // For LLVM style RTTI.
+  static bool classof(const AbstractTensorHandle* ptr) {
+    return ptr->getKind() == kEager;
+  }
 
  private:
   friend class PackedTensorHandleTest;
@@ -260,8 +258,6 @@ class TensorHandle : public AbstractTensorHandleInterface,
   // to either SetTensor or SetRemoteShape which replaces the underlying data
   // with a ready version of the tensor handle data.
   bool IsReady() const;
-
-  Status GetResourceHandleInfoImpl(std::function<void()> set_resource_info);
 
   VariantDevice const device_;
 
@@ -308,9 +304,9 @@ class TensorHandle : public AbstractTensorHandleInterface,
   Status is_poisoned_;
 
   // If this TensorHandle 1) is a local tensor, and 2) is a resource handle or
-  // refers to a remote resource handle, we store data types, shapes and allowed
-  // devices for the underlying resource.
-  ResourceHandleInfo resource_handle_info_;
+  // refers to a remote resource handle, we store data types and shapes for
+  // the underlying resource.
+  std::vector<DtypeAndPartialTensorShape> handle_dtypes_and_shapes_;
 
   // A handle data which refers to multiple TensorHandles of the same dtype and
   // shape.
@@ -372,12 +368,12 @@ const VariantDevice kVariantDeviceNull = static_cast<Device*>(nullptr);
 // Returns the device backing the resource. Else, returns nullptr.
 Device* GetResourceDevice(const ResourceHandle& handle, EagerContext* ctx);
 
-class TensorHandleInterface : public AbstractTensorHandleInterface {
+class TensorHandleInterface : public ImmediateExecutionTensorHandle {
  public:
 };
 
-inline TensorHandle* TensorHandleFromInterface(
-    AbstractTensorHandleInterface* handle) {
+template <typename T>
+inline TensorHandle* TensorHandleFromInterface(T* handle) {
   return down_cast<TensorHandle*>(handle);
 }
 

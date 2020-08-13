@@ -131,7 +131,7 @@ REGISTER_OP("BatchMatMulV2")
     .Input("y: T")
     .Output("output: T")
     .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
+        "T: {bfloat16, half, float, double, int16, int32, int64, complex64, "
         "complex128}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
@@ -142,9 +142,7 @@ REGISTER_OP("_MklBatchMatMul")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
-        "complex128}")
+    .Attr("T: {bfloat16, float}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulShape);
@@ -153,9 +151,7 @@ REGISTER_OP("_MklBatchMatMulV2")
     .Input("x: T")
     .Input("y: T")
     .Output("output: T")
-    .Attr(
-        "T: {bfloat16, half, float, double, int32, int64, complex64, "
-        "complex128}")
+    .Attr("T: {bfloat16, float}")
     .Attr("adj_x: bool = false")
     .Attr("adj_y: bool = false")
     .SetShapeFn(shape_inference::BatchMatMulV2Shape);
@@ -205,12 +201,12 @@ REGISTER_OP("ComplexAbs")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 // Declares cwise unary operations signature: 't -> 't
-#define UNARY()                                                          \
-  Input("x: T")                                                          \
-      .Output("y: T")                                                    \
-      .Attr(                                                             \
-          "T: {bfloat16, half, float, double, int32, int64, complex64, " \
-          "complex128}")                                                 \
+#define UNARY()                                                            \
+  Input("x: T")                                                            \
+      .Output("y: T")                                                      \
+      .Attr(                                                               \
+          "T: {bfloat16, half, float, double, int8, int16, int32, int64, " \
+          "complex64, complex128}")                                        \
       .SetShapeFn(shape_inference::UnchangedShape)
 
 #define UNARY_REAL()                              \
@@ -300,10 +296,6 @@ REGISTER_OP("Asin").UNARY();
 REGISTER_OP("Acos").UNARY();
 
 REGISTER_OP("Atan").UNARY();
-
-REGISTER_OP("BesselI0e").UNARY_REAL();
-
-REGISTER_OP("BesselI1e").UNARY_REAL();
 
 REGISTER_OP("_UnaryOpsComposition")
     .Input("x: T")
@@ -502,6 +494,7 @@ REGISTER_OP("TruncateDiv")
 REGISTER_OP("RealDiv").BINARY_MORE().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
+// Note SquaredDifference implements conj(x - y)*(x - y).
 REGISTER_OP("SquaredDifference")
     .BINARY_FEWER()
     .SetIsCommutative()
@@ -959,11 +952,7 @@ REGISTER_OP("_FusedMatMul")
     .Output("product: T")
     .Attr("transpose_a: bool = false")
     .Attr("transpose_b: bool = false")
-#if defined(INTEL_MKL) && defined(ENABLE_INTEL_MKL_BFLOAT16)
     .Attr("T: {bfloat16, float}")
-#else
-    .Attr("T: {float}")
-#endif
     .Attr("num_args: int >= 0")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ----------- //
@@ -971,6 +960,23 @@ REGISTER_OP("_FusedMatMul")
     // --------------------------------------------- //
     .SetShapeFn(shape_inference::MatMulShape)
     .Doc(R"doc(
+Performs a MatMul followed by a specified series of operations.
+
+The inputs to the MatMul are specified by `a` and `b`. The series of operations
+that follows is specified by the `fused_ops` attribute, which is a list of TF op
+names specified as strings (e.g. "Relu"). They are performed in order, where the
+(first) input to each op is the output of the preceding op. The first input and
+the output of each fused_op must be of type T.
+
+Currently supported fused_op combinations are: ["BiasAdd"] and ["BiasAdd",A],
+where A is one of {"Elu","Relu","Relu6"}.
+
+* The first input to BiasAdd is the Conv2D result, and the additional BiasAdd
+input is specified by `args`.
+* If there is an op A specified, the output of the BiasAdd is the input to op A,
+and op A produces the _FusedConv2D output. Otherwise, the BiasAdd produces the
+_FusedConv2D output.
+
 *NOTE*: Do not invoke this operator directly in Python. Grappler is
 expected to create these operators.
 )doc");
@@ -1437,9 +1443,11 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   }
 
   auto size = (std::is_integral<T>::value
-                   ? ((std::abs(limit - start) + std::abs(delta) - T(1)) /
-                      std::abs(delta))
-                   : (std::ceil(std::abs((limit - start) / delta))));
+                   ? ((Eigen::numext::abs(limit - start) +
+                       Eigen::numext::abs(delta) - T(1)) /
+                      Eigen::numext::abs(delta))
+                   : (Eigen::numext::ceil(
+                         Eigen::numext::abs((limit - start) / delta))));
   c->set_output(0, c->Vector(static_cast<int64>(size)));
   return Status::OK();
 }

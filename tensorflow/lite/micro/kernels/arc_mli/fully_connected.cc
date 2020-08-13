@@ -55,7 +55,7 @@ constexpr int kOutputTensor = 0;
 bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                      const TfLiteTensor* filter, const TfLiteTensor* bias,
                      const TfLiteFullyConnectedParams* params) {
-  // MLI optimized version only supports int8 dataype and no fused Relu and
+  // MLI optimized version only supports int8_t dataype and no fused Relu and
   // symmetric per-tensor quantization of weights (not per-axis)
   bool ret_val = (filter->type == kTfLiteInt8) &&
                  (input->type == kTfLiteInt8) && (bias->type == kTfLiteInt32) &&
@@ -111,7 +111,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   TF_LITE_ENSURE(context, data != nullptr);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_MSG(context, input->type == filter->type,
                      "Hybrid models are not supported on TFLite Micro.");
 
@@ -368,16 +368,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace fully_connected
 
-TfLiteRegistration* Register_FULLY_CONNECTED() {
-  static TfLiteRegistration r = {/*init=*/fully_connected::Init,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/fully_connected::Prepare,
-                                 /*invoke=*/fully_connected::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_FULLY_CONNECTED() {
+  return {/*init=*/fully_connected::Init,
+          /*free=*/nullptr,
+          /*prepare=*/fully_connected::Prepare,
+          /*invoke=*/fully_connected::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

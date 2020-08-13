@@ -30,6 +30,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import bincount_ops
@@ -130,6 +131,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
         compute_max_element=max_tokens is None,
         compute_idf=output_mode == TFIDF)
     super(CategoryEncoding, self).__init__(combiner=combiner, **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("CategoryEncoding")
 
     self._max_tokens = max_tokens
     self._output_mode = output_mode
@@ -162,6 +164,8 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
           shape=tensor_shape.TensorShape((max_tokens,)),
           dtype=K.floatx(),
           initializer=initializer)
+
+      self.input_spec = InputSpec(ndim=2)
 
   def compute_output_shape(self, input_shape):
     return tensor_shape.TensorShape([input_shape[0], self._max_tokens])
@@ -264,12 +268,22 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
     K.set_value(self.tf_idf_weights, tfidf_data)
 
   def call(self, inputs, count_weights=None):
+    if isinstance(inputs, (list, np.ndarray)):
+      inputs = ops.convert_to_tensor_v2(inputs)
+    if inputs.shape.rank == 1:
+      inputs = array_ops.expand_dims(inputs, 1)
+
     if count_weights is not None and self._output_mode != COUNT:
       raise ValueError("count_weights is not used in `output_mode='tf-idf'`, "
                        "or `output_mode='binary'`. Please pass a single input.")
     self._called = True
     if self._max_tokens is None:
       out_depth = K.get_value(self.num_elements)
+      if out_depth == 0:
+        raise RuntimeError(
+            "If you construct a `CategoryEncoding` layer with "
+            "`max_tokens=None`, you need to call `adapt()` "
+            "on it before using it")
     else:
       out_depth = self._max_tokens
 
@@ -277,6 +291,9 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
       # If the input is a sparse tensor, we densify it with the default value of
       # -1. Because -1 is ignored by one_hot, this effectively drops the non-set
       # positions from the output encoding.
+      if self._sparse:
+        raise ValueError("`sparse=True` with `output_mode=tfidf` "
+                         "is not supported.")
       if isinstance(inputs, sparse_tensor.SparseTensor):
         inputs = sparse_ops.sparse_tensor_to_dense(inputs, default_value=-1)
       one_hot_data = array_ops.one_hot(inputs, depth=out_depth)
@@ -293,7 +310,13 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
           minlength=out_depth,
           axis=-1,
           binary_output=binary_output)
-      return math_ops.cast(result, K.floatx())
+      result = math_ops.cast(result, K.floatx())
+      batch_size = array_ops.shape(result)[0]
+      result = sparse_tensor.SparseTensor(
+          indices=result.indices,
+          values=result.values,
+          dense_shape=[batch_size, out_depth])
+      return result
     else:
       result = bincount_ops.bincount(
           inputs,
@@ -340,6 +363,8 @@ class _CategoryEncodingCombiner(base_preprocessing_layer.Combiner):
 
     # TODO(momernick): Benchmark improvements to this algorithm.
     for element in values:
+      if not isinstance(element, list):
+        element = [element]
       current_doc_id = accumulator.data[self.DOC_ID_IDX]
       for value in element:
         current_max_value = accumulator.data[self.MAX_VALUE_IDX]

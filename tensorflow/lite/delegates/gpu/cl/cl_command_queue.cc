@@ -216,16 +216,14 @@ absl::Status ProfilingCommandQueue::GetBestWorkGroupIndex(
     const CLKernel& kernel, const DeviceInfo& device_info, const int3& grid,
     const std::vector<int3>& work_group_sizes, int* index) {
   // Some Adreno 3xx can have wrong numbers for some events
-  const bool possible_bug_with_events =
-      device_info.vendor == Vendor::QUALCOMM &&
-      device_info.adreno_info.gpu_version < 400;
+  const bool possible_bug_with_events = device_info.IsAdreno3xx();
   events_.resize(work_group_sizes.size());
   for (int i = 0; i < work_group_sizes.size(); ++i) {
     RETURN_IF_ERROR(CLCommandQueue::DispatchImplicit(
         kernel, grid, work_group_sizes[i], &events_[i]));
 
     // reducing the speed of memory leak on Mali for some kernels
-    if (device_info.vendor == Vendor::MALI && i % 8 == 7) {
+    if (device_info.IsMali() && i % 8 == 7) {
       events_[i - 7].Wait();
     }
     if (possible_bug_with_events) {
@@ -237,7 +235,7 @@ absl::Status ProfilingCommandQueue::GetBestWorkGroupIndex(
   RETURN_IF_ERROR(WaitForCompletion());
 
   // To release memory of some kernel pool on Mali.
-  if (device_info.vendor == Vendor::MALI) {
+  if (device_info.IsMali()) {
     RETURN_IF_ERROR(kernel.ReInit());
   }
 

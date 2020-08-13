@@ -1,5 +1,5 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=p,x -tf-input-shapes=:1  -tf-output-arrays=p,x -o - | FileCheck %s --check-prefix=NONE --dump-input-on-failure
-# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=p,x -tf-input-shapes=:1  -tf-input-data-types=DT_INT32,DT_BOOL -tf-output-arrays=p,x -o - | FileCheck %s --dump-input-on-failure
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=p,x -tf-input-shapes=:1  -tf-output-arrays=p,x -o - | FileCheck %s --check-prefix=NONE
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -tf-input-arrays=p,x -tf-input-shapes=:1  -tf-input-data-types=DT_INT32,DT_BOOL -tf-output-arrays=p,x -o - | FileCheck %s
 
 # Test the handling of the input data types. In particular, if the data type
 # for an input graph node is specified via command line options, use it.

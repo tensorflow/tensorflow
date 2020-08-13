@@ -3,6 +3,7 @@
 load(
     "//tensorflow/core/platform/default:build_config.bzl",
     _if_llvm_aarch64_available = "if_llvm_aarch64_available",
+    _if_llvm_system_z_available = "if_llvm_system_z_available",
     _pyx_library = "pyx_library",
     _tf_additional_all_protos = "tf_additional_all_protos",
     _tf_additional_binary_deps = "tf_additional_binary_deps",
@@ -27,6 +28,7 @@ load(
     _tf_platform_deps = "tf_platform_deps",
     _tf_portable_deps_no_runtime = "tf_portable_deps_no_runtime",
     _tf_portable_proto_lib = "tf_portable_proto_lib",
+    _tf_profiler_client_deps = "tf_profiler_client_deps",
     _tf_proto_library = "tf_proto_library",
     _tf_proto_library_cc = "tf_proto_library_cc",
     _tf_proto_library_py = "tf_proto_library_py",
@@ -37,6 +39,7 @@ load(
     _tf_protos_grappler = "tf_protos_grappler",
     _tf_protos_grappler_impl = "tf_protos_grappler_impl",
     _tf_protos_profiler_impl = "tf_protos_profiler_impl",
+    _tf_protos_profiler_service = "tf_protos_profiler_service",
     _tf_py_clif_cc = "tf_py_clif_cc",
     _tf_pyclif_proto_library = "tf_pyclif_proto_library",
     _tf_resource_deps = "tf_resource_deps",
@@ -44,6 +47,7 @@ load(
 )
 
 if_llvm_aarch64_available = _if_llvm_aarch64_available
+if_llvm_system_z_available = _if_llvm_system_z_available
 pyx_library = _pyx_library
 tf_additional_all_protos = _tf_additional_all_protos
 tf_additional_binary_deps = _tf_additional_binary_deps
@@ -78,6 +82,8 @@ tf_protos_all_impl = _tf_protos_all_impl
 tf_protos_grappler = _tf_protos_grappler
 tf_protos_grappler_impl = _tf_protos_grappler_impl
 tf_protos_profiler_impl = _tf_protos_profiler_impl
+tf_protos_profiler_service = _tf_protos_profiler_service
+tf_profiler_client_deps = _tf_profiler_client_deps
 tf_py_clif_cc = _tf_py_clif_cc
 tf_pyclif_proto_library = _tf_pyclif_proto_library
 tf_resource_deps = _tf_resource_deps

@@ -19,7 +19,7 @@ Note: Core ML delegate supports Core ML version 2 and later.
 
 **Supported models**
 
-The Core ML delegate currently supports float32 models.
+The Core ML delegate currently supports float (FP32 and FP16) models.
 
 ## Trying the Core ML delegate on your own model
 
@@ -159,10 +159,10 @@ if (delegate == nullptr) {
 interpreter->ModifyGraphWithDelegate(delegate);
 ```
 
-The delegate creation logic reads device's machine id (e.g. iPhone11,1)
-to determine its Neural Engine availability. See the
+The delegate creation logic reads device's machine id (e.g. iPhone11,1) to
+determine its Neural Engine availability. See the
 [code](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/experimental/delegates/coreml/coreml_delegate.mm)
-for more detail. Alternatively, you can implement your own set of blacklist
+for more detail. Alternatively, you can implement your own set of denylist
 devices using other libraries such as
 [DeviceKit](https://github.com/devicekit/DeviceKit).
 
@@ -184,6 +184,7 @@ Following ops are supported by the Core ML delegate.
         1]`, `[B, 1, H, W]`, `[B, 1, 1, 1]`.
 *   AveragePool2D
 *   Concat
+    *   Concatenation should be done along the channel axis.
 *   Conv2D
     *   Weights and bias should be constant.
 *   DepthwiseConv2D
@@ -195,10 +196,16 @@ Following ops are supported by the Core ML delegate.
 *   Hardswish
 *   Logistic (aka Sigmoid)
 *   MaxPool2D
+*   MirrorPad
+    *   Only 4D input with `REFLECT` mode is supported. Padding should be
+        constant, and is only allowed for H and W dimensions.
 *   Mul
     *   Only certain shapes are broadcastable. In Core ML tensor layout,
         following tensor shapes are broadcastable. `[B, C, H, W]`, `[B, C, 1,
         1]`, `[B, 1, H, W]`, `[B, 1, 1, 1]`.
+*   Pad and PadV2
+    *   Only 4D input is supported. Padding should be constant, and is only
+        allowed for H and W dimensions.
 *   Relu
 *   ReluN1To1
 *   Relu6

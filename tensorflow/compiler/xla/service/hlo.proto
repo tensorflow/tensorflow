@@ -35,7 +35,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 72
+// Next ID: 73
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -248,6 +248,9 @@ message HloInstructionProto {
 
   // RNG algorithm used by kRngBitGenerator.
   xla.RandomAlgorithm rng_algorithm = 70;
+
+  // The comparison type used for kCompare.
+  string comparison_type = 72;
 }
 
 // Serialization of HloComputation.
@@ -283,19 +286,17 @@ message HloScheduleProto {
   map<int64, InstructionSequence> sequences = 1;
 }
 
-message HloInputOutputAliasProto {
-  enum Kind {
-    // Define a UNDEFINED_ALIAS equal to zero to get around the default-0 proto3
-    // behavior and missing has_*() APIs.
-    UNDEFINED_ALIAS = 0;
-    // An alias setup by the user as must alias. A use setting USER_ALIAS is
-    // expecting the designed output to be dropped over the given input
-    // parameter number+index.
-    USER_ALIAS = 1;
-    // An alias setup by the compiler as part of its optimizations.
-    SYSTEM_ALIAS = 2;
-  }
+enum Kind {
+  // Define a UNDEFINED_ALIAS equal to zero to get around the default-0 proto3
+  // behavior and missing has_*() APIs.
+  UNDEFINED_ALIAS = 0;
+  // The buffers may or may not alias at runtime.
+  MAY_ALIAS = 1;
+  // The buffers must alias at runtime.
+  MUST_ALIAS = 2;
+}
 
+message HloInputOutputAliasProto {
   // The following proto describes a pair of aliased an input
   // (described by parameter number and a ShapeIndex of the parameter)
   // and an output (described by a ShapeIndex of the root

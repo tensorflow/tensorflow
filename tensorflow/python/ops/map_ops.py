@@ -61,17 +61,13 @@ def LookupGrad(op, dval):
 def InsertGrad(op, dmap):
   _, k, v = op.inputs
   key_grad = None
-  value_grad = control_flow_ops.cond(tensor_map_has_key(dmap, k),
-                                     lambda: tensor_map_lookup(dmap, k, v.dtype),
-                                     lambda: array_ops.zeros_like(v))
-  map_grad = control_flow_ops.cond(tensor_map_has_key(dmap, k),
-                                   lambda: tensor_map_erase(dmap, k, v.dtype)[0],
-                                   lambda: dmap)
+  (value_grad, map_grad) = control_flow_ops.cond(tensor_map_has_key(dmap, k),
+                                                 lambda: (tensor_map_lookup(dmap, k, v.dtype), tensor_map_erase(dmap, k, v.dtype)),
+                                                 lambda: (array_ops.zeros_like(v), dmap))
   return map_grad, key_grad, value_grad
 
 @ops.RegisterGradient("TensorMapErase")
-def EraseGrad(op, dmap, dval):
-  _, k = op.inputs
+def EraseGrad(op, dmap):
   key_grad = None
-  map_grad = tensor_map_insert(dmap, k, dval)
+  map_grad = dmap
   return map_grad, key_grad

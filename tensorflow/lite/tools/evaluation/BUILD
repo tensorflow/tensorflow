@@ -42,17 +42,21 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
     ] + select({
-        "//tensorflow:android": [
+        "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
             "//tensorflow/lite/delegates/gpu:delegate",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:android": [
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         ],
         "//conditions:default": [],
     }) + select({
         "//tensorflow:android_arm": [
-            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//tensorflow:android_arm64": [
-            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
         ],
         "//conditions:default": [],
     }) + select({

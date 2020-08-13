@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/register.h"
 
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace ops {
@@ -52,24 +54,24 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_L2_POOL_2D, Register_L2_POOL_2D());
   AddBuiltin(BuiltinOperator_CONV_2D, Register_CONV_2D(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_DEPTHWISE_CONV_2D, Register_DEPTHWISE_CONV_2D(),
              /* min_version = */ 1,
-             /* max_version = */ 5);
+             /* max_version = */ 6);
   AddBuiltin(BuiltinOperator_SVDF, Register_SVDF(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_RNN, Register_RNN(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
              Register_BIDIRECTIONAL_SEQUENCE_RNN(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
              Register_UNIDIRECTIONAL_SEQUENCE_RNN(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_EMBEDDING_LOOKUP, Register_EMBEDDING_LOOKUP(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -77,7 +79,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_EMBEDDING_LOOKUP_SPARSE());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(),
              /* min_version = */ 1,
-             /* max_version = */ 8);
+             /* max_version = */ 9);
   AddBuiltin(BuiltinOperator_LSH_PROJECTION, Register_LSH_PROJECTION());
   AddBuiltin(BuiltinOperator_HASHTABLE_LOOKUP, Register_HASHTABLE_LOOKUP());
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),
@@ -87,8 +89,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_ADD, Register_ADD(),
-             /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* min_version */ 1,
+             /* max_version */ 4);
   AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND, Register_SPACE_TO_BATCH_ND(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -103,17 +105,17 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
              Register_LOCAL_RESPONSE_NORMALIZATION());
   AddBuiltin(BuiltinOperator_LSTM, Register_LSTM(), /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM,
              Register_BIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_PAD, Register_PAD(), /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_PADV2, Register_PADV2(), /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR(),
              /* min_version = */ 1,
@@ -129,19 +131,19 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE, Register_DEPTH_TO_SPACE());
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version = */ 1,
              /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN(),
              /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_DIV, Register_DIV(),
              /* min_version */ 1,
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SUB, Register_SUB(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(),
              /* min_version = */ 1,
              /* max_version = */ 4);
@@ -287,7 +289,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SCATTER_ND, Register_SCATTER_ND());
   AddBuiltin(BuiltinOperator_DENSIFY, Register_DENSIFY());
   AddBuiltin(BuiltinOperator_SEGMENT_SUM, Register_SEGMENT_SUM());
-  AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL());
+  AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL(),
+             /* min_version = */ 1,
+             /* max_version = */ 2);
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

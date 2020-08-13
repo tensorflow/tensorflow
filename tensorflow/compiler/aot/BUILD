@@ -1,6 +1,6 @@
 load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
-load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available")
+load("//tensorflow/core/platform:build_config.bzl", "if_llvm_aarch64_available", "if_llvm_system_z_available")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -35,7 +35,9 @@ cc_library(
         "flags.h",
         "quantize.h",
     ],
-    defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]),
+    defines = if_llvm_aarch64_available(["TF_LLVM_AARCH64_AVAILABLE=1"]) + if_llvm_system_z_available([
+        "TF_LLVM_S390X_AVAILABLE=1",
+    ]),
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
         ":aot_only_var_handle_op",
@@ -67,13 +69,16 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "@llvm-project//llvm:arm_target",  # fixdeps: keep
-        "@llvm-project//llvm:powerpc_target",  # fixdeps: keep
-        "@llvm-project//llvm:target_base",
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
         "//tensorflow/core:regexp_internal",
-    ] + if_llvm_aarch64_available([
-        "@llvm-project//llvm:aarch64_target",  # fixdeps: keep
+    ] + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
 
@@ -94,8 +99,8 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/platform:resource_loader",
         "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:support",  # fixdeps: keep
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
+        "@llvm-project//llvm:Support",  # fixdeps: keep
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
     ],
 )
 
@@ -109,12 +114,14 @@ cc_library(
     name = "llvm_targets",
     visibility = ["//tensorflow/python:__pkg__"],
     deps = [
-        "@llvm-project//llvm:arm_target",  # fixdeps: keep
-        "@llvm-project//llvm:powerpc_target",  # fixdeps: keep
-        "@llvm-project//llvm:target_base",
-        "@llvm-project//llvm:x86_target",  # fixdeps: keep
-    ] + if_llvm_aarch64_available([
-        "@llvm-project//llvm:aarch64_target",  # fixdeps: keep
+        "@llvm-project//llvm:ARMCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:PowerPCCodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+    ] + if_llvm_system_z_available([
+        "@llvm-project//llvm:SystemZCodeGen",  # fixdeps: keep
+    ]) + if_llvm_aarch64_available([
+        "@llvm-project//llvm:AArch64CodeGen",  # fixdeps: keep
     ]),
 )
 
@@ -286,9 +293,9 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
-        "@llvm-project//llvm:ir",
-        "@llvm-project//llvm:support",
-        "@llvm-project//llvm:target_base",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
     ],
 )
 
@@ -301,6 +308,8 @@ cc_library(
     ],
     deps = [
         "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla:xla_context",
+        "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/core:framework",
     ],
     alwayslink = 1,

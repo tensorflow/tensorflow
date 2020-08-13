@@ -59,6 +59,8 @@ class NoDependency(object):
   variables will appear in `Model.variables`).
   """
 
+  __slots__ = ["value"]
+
   def __init__(self, value):
     self.value = value
 
@@ -736,7 +738,7 @@ class _DictWrapper(TrackableDataStructure, wrapt.ObjectProxy):
     if wrapped_dict is None:
       # Allow zero-argument construction, e.g. from session.run's re-wrapping.
       wrapped_dict = {}
-    if not isinstance(wrapped_dict, collections.Mapping):
+    if not isinstance(wrapped_dict, collections_abc.Mapping):
       # Allow construction from a sequence, e.g. from nest.pack_sequence_as.
       wrapped_dict = dict(wrapped_dict)
     wrapt.ObjectProxy.__init__(self, wrapped_dict)

@@ -19,6 +19,7 @@ limitations under the License.
 #include "esp_camera.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "sensor.h"
 
 /**
  * PIXFORMAT_RGB565,    // 2BPP/RGB565

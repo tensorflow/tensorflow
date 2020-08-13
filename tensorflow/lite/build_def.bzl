@@ -7,6 +7,8 @@ load(
     "tf_cc_shared_object",
     "tf_cc_test",
 )
+load("//tensorflow/lite/java:aar_with_jni.bzl", "aar_with_jni")
+load("@build_bazel_rules_android//android:rules.bzl", "android_library")
 
 def tflite_copts():
     """Defines compile time flags."""
@@ -251,7 +253,6 @@ def generated_test_models():
         "ceil",
         "concat",
         "constant",
-        # "control_dep", # b/150647401
         "conv",
         "conv_relu",
         "conv_relu1",
@@ -577,7 +578,14 @@ def flags_for_merged_test_models(test_name, conversion_mode):
         tests_csv = tests_csv[:-1]  # Remove trailing comma.
     return " --no_tests_limit --test_sets=%s" % tests_csv
 
-def gen_zip_test(name, test_name, conversion_mode, **kwargs):
+def gen_zip_test(
+        name,
+        test_name,
+        conversion_mode,
+        test_tags,
+        test_args,
+        additional_test_args = {},
+        **kwargs):
     """Generate a zipped-example test and its dependent zip files.
 
     Args:
@@ -585,6 +593,11 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
       test_name: str. Test targets this model. Comes from the list above.
       conversion_mode: str. Which conversion mode to run with. Comes from the
         list above.
+      test_tags: tags for the generated cc_test.
+      test_args: the basic cc_test args to be used.
+      additional_test_args: a dictionary of additional args to be used together
+        with test_args. The key is an identifier to be used in test tag, and
+        the value is a list of additional test args to be used.
       **kwargs: tf_cc_test kwargs
     """
     toco = "//tensorflow/lite/toco:toco"
@@ -602,7 +615,19 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         toco = toco,
         flags = flags + " --save_graphdefs",
     )
-    tf_cc_test(name, **kwargs)
+    tf_cc_test(
+        name,
+        args = test_args,
+        tags = test_tags + ["gen_zip_test"],
+        **kwargs
+    )
+    for key, value in additional_test_args.items():
+        tf_cc_test(
+            name = "%s_%s" % (name, key),
+            args = test_args + value,
+            tags = test_tags + ["gen_zip_test_%s" % key],
+            **kwargs
+        )
 
 def gen_zipped_test_file(name, file, toco, flags):
     """Generate a zip file of tests by using :generate_examples.
@@ -731,4 +756,118 @@ def tflite_experimental_runtime_linkopts(if_eager = [], if_non_eager = [], if_no
             # "//tensorflow/lite/experimental/tf_runtime:model",
         ] + if_non_eager,
         if_none = [] + if_none,
+    )
+
+def tflite_custom_cc_library(
+        name,
+        models = [],
+        srcs = [],
+        deps = [],
+        visibility = ["//visibility:private"]):
+    """Generates a tflite cc library, stripping off unused operators.
+
+    This library includes the TfLite runtime as well as all operators needed for the given models.
+    Op resolver can be retrieved using tflite::CreateOpResolver method.
+
+    Args:
+        name: Str, name of the target.
+        models: List of models. This TFLite build will only include
+            operators used in these models. If the list is empty, all builtin
+            operators are included.
+        srcs: List of files implementing custom operators if any.
+        deps: Additional dependencies to build all the custom operators.
+        visibility: Visibility setting for the generated target. Default to private.
+    """
+    real_srcs = []
+    real_srcs.extend(srcs)
+    real_deps = []
+    real_deps.extend(deps)
+
+    if models:
+        gen_selected_ops(
+            name = "%s_registration" % name,
+            model = models,
+        )
+        real_srcs.append(":%s_registration" % name)
+        real_deps.append("//tensorflow/lite/java/src/main/native:selected_ops_jni")
+    else:
+        # Support all operators if `models` not specified.
+        real_deps.append("//tensorflow/lite/java/src/main/native")
+
+    native.cc_library(
+        name = name,
+        srcs = real_srcs,
+        hdrs = [
+            # TODO(b/161323860) replace this by generated header.
+            "//tensorflow/lite/java/src/main/native:op_resolver.h",
+        ],
+        copts = tflite_copts(),
+        linkopts = select({
+            "//tensorflow:windows": [],
+            "//conditions:default": ["-lm", "-ldl"],
+        }),
+        deps = depset([
+            "//tensorflow/lite:framework",
+            "//tensorflow/lite/kernels:builtin_ops",
+        ] + real_deps),
+        visibility = visibility,
+    )
+
+def tflite_custom_android_library(
+        name,
+        models = [],
+        srcs = [],
+        deps = [],
+        custom_package = "org.tensorflow.lite",
+        visibility = ["//visibility:private"]):
+    """Generates a tflite Android library, stripping off unused operators.
+
+    Note that due to a limitation in the JNI Java wrapper, the compiled TfLite shared binary
+    has to be named as tensorflowlite_jni.so so please make sure that there is no naming conflict.
+    i.e. you can't call this rule multiple times in the same build file.
+
+    Args:
+        name: Name of the target.
+        models: List of models to be supported. This TFLite build will only include
+            operators used in these models. If the list is empty, all builtin
+            operators are included.
+        srcs: List of files implementing custom operators if any.
+        deps: Additional dependencies to build all the custom operators.
+        custom_package: Name of the Java package. It is required by android_library in case
+            the Java source file can't be inferred from the directory where this rule is used.
+        visibility: Visibility setting for the generated target. Default to private.
+    """
+    tflite_custom_cc_library(name = "%s_cc" % name, models = models, srcs = srcs, deps = deps, visibility = visibility)
+
+    # JNI wrapper expects a binary file called `libtensorflowlite_jni.so` in java path.
+    tflite_jni_binary(
+        name = "libtensorflowlite_jni.so",
+        linkscript = "//tensorflow/lite/java:tflite_version_script.lds",
+        deps = [
+            ":%s_cc" % name,
+            "//tensorflow/lite/java/src/main/native:native_framework_only",
+        ],
+    )
+
+    native.cc_library(
+        name = "%s_jni" % name,
+        srcs = ["libtensorflowlite_jni.so"],
+        visibility = visibility,
+    )
+
+    android_library(
+        name = name,
+        manifest = "//tensorflow/lite/java:AndroidManifest.xml",
+        deps = [
+            ":%s_jni" % name,
+            "//tensorflow/lite/java:tensorflowlite_java",
+            "@org_checkerframework_qual",
+        ],
+        custom_package = custom_package,
+        visibility = visibility,
+    )
+
+    aar_with_jni(
+        name = "%s_aar" % name,
+        android_library = name,
     )

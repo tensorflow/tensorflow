@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -25,30 +24,34 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetSoftmaxKernelCode(
-    const OperationDef& op_def,
-    const std::vector<ElementwiseOperation*>& linked_operations,
-    Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+Softmax::Softmax(const OperationDef& definition) : GPUOperation(definition) {
+  code_ = GetSoftmaxKernelCode(definition_);
+}
+
+Softmax::Softmax(Softmax&& kernel) : GPUOperation(std::move(kernel)) {}
+
+Softmax& Softmax::operator=(Softmax&& kernel) {
+  if (this != &kernel) {
+    GPUOperation::operator=(std::move(kernel));
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  return *this;
+}
+
+std::string Softmax::GetSoftmaxKernelCode(const OperationDef& op_def) {
+  auto src_desc = op_def.src_tensors[0];
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
+  AddSrcTensor("src_tensor", src_desc);
+  auto dst_desc = op_def.dst_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddDstTensor("dst_tensor", dst_desc);
 
   std::string c = GetCommonDefines(op_def.precision);
-  std::string linked_args = GetArgsDeclaration(linked_operations);
-  if (linked_args[0] == ',') {
-    linked_args[0] = ' ';
-  }
   c += "__kernel void main_function(\n";
-  c += linked_args;
   c += "$0) {\n";
   c += "  int X = get_global_id(0);\n";
   c += "  int Y = get_global_id(1);\n";
@@ -66,47 +69,10 @@ std::string GetSoftmaxKernelCode(
   c += "    float4 t = args.src_tensor.Read<float>(X, Y, d);\n";
   c += "    t = exp(t) / sum;\n";
   c += "    FLT4 result = TO_FLT4(t);\n";
-  c += PostProcess(linked_operations, {"result", "X", "Y", "d"});
   c += "    args.dst_tensor.Write(result, X, Y, d);\n";
   c += "  }\n";
   c += "}\n";
   return c;
-}
-}  // namespace
-
-Softmax::Softmax(Softmax&& kernel)
-    : GPUOperation(std::move(kernel)),
-      args_(std::move(kernel.args_)),
-      kernel_(std::move(kernel.kernel_)),
-      work_group_size_(kernel.work_group_size_) {}
-
-Softmax& Softmax::operator=(Softmax&& kernel) {
-  if (this != &kernel) {
-    args_ = std::move(kernel.args_);
-    kernel_ = std::move(kernel.kernel_);
-    std::swap(work_group_size_, kernel.work_group_size_);
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
-absl::Status Softmax::Compile(const CreationContext& creation_context) {
-  std::string code =
-      GetSoftmaxKernelCode(definition_, linked_operations_, &args_);
-  RETURN_IF_ERROR(args_.TransformToCLCode(&code));
-  code = absl::Substitute(code, args_.GetListOfArgs());
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status Softmax::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  kernel_.ResetBindingCounter();
-  RETURN_IF_ERROR(BindArgs(&kernel_, linked_operations_));
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel(), kernel_.GetBindingCounter()));
-  return absl::OkStatus();
 }
 
 int3 Softmax::GetGridSize() const {
@@ -114,16 +80,6 @@ int3 Softmax::GetGridSize() const {
   const int grid_y = dst_[0]->Height();
   const int grid_z = 1;
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status Softmax::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status Softmax::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 Softmax CreateSoftmax(const OperationDef& definition) {

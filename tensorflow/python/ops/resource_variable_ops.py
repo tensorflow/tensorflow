@@ -23,6 +23,8 @@ import contextlib
 import functools
 import weakref
 
+import numpy as np
+
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.framework import variable_pb2
 from tensorflow.python import _pywrap_utils
@@ -265,6 +267,8 @@ class EagerResourceDeleter(object):
   the cycle will be collectable.
   """
 
+  __slots__ = ["_handle", "_handle_device", "_context"]
+
   def __init__(self, handle, handle_device):
     if not isinstance(handle, ops.Tensor):
       raise ValueError(
@@ -281,6 +285,9 @@ class EagerResourceDeleter(object):
     # Resources follow object-identity when executing eagerly, so it is safe to
     # delete the resource we have a handle to.
     try:
+      # A packed EagerTensor doesn't own any resource.
+      if isinstance(self._handle, ops.EagerTensor) and self._handle.is_packed:
+        return
       # This resource was created in eager mode. However, this destructor may be
       # running in graph mode (especially during unit tests). To clean up
       # successfully, we switch back into eager mode temporarily.
@@ -469,6 +476,23 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     else:
       yield
 
+  def __array__(self):
+    """Allows direct conversion to a numpy array.
+
+    >>> np.array(tf.Variable([1.0]))
+    array([1.], dtype=float32)
+
+    Returns:
+      The variable value as a numpy array.
+    """
+    # You can't return `self.numpy()` here because for scalars
+    # that raises:
+    #     ValueError: object __array__ method not producing an array
+    # Even `self.read_value().__array__()` and `self.read_value()._numpy()` give
+    # the same error. The `EagerTensor` class must be doing something behind the
+    # scenes to make `np.array(tf.constant(1))` work.
+    return np.asarray(self.numpy())
+
   def __nonzero__(self):
     return self.__bool__()
 
@@ -629,6 +653,18 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     """
     return gen_state_ops.resource_count_up_to(self.handle, limit=limit,
                                               T=self.dtype)
+
+  def _map_resources(self, save_options):
+    """For implementing `Trackable`."""
+    new_variable = None
+    if save_options.experimental_variable_policy._save_variable_devices():  # pylint:disable=protected-access
+      with ops.device(self.device):
+        new_variable = copy_to_graph_uninitialized(self)
+    else:
+      new_variable = copy_to_graph_uninitialized(self)
+    obj_map = {self: new_variable}
+    resource_map = {self._handle: new_variable.handle}
+    return obj_map, resource_map
 
   def _read_variable_op(self):
     variable_accessed(self)

@@ -29,7 +29,7 @@ inline ActivationFunctionType TfLiteActivationToSchemaActivation(
       return ActivationFunctionType_NONE;
     case kTfLiteActRelu:
       return ActivationFunctionType_RELU;
-    case kTfLiteActRelu1:
+    case kTfLiteActReluN1To1:
       return ActivationFunctionType_RELU_N1_TO_1;
     case kTfLiteActRelu6:
       return ActivationFunctionType_RELU6;
@@ -82,6 +82,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_INT16;
     case kTfLiteComplex64:
       return TensorType_COMPLEX64;
+    case kTfLiteComplex128:
+      return TensorType_COMPLEX128;
   }
   // TODO(aselle): consider an error
 }

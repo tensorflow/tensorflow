@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -146,8 +145,7 @@ Status HostTracer::CollectData(XSpace* space) {
     return errors::Internal("TraceMeRecorder not stopped");
   }
   MakeCompleteEvents(&events_);
-  XPlane* plane = GetOrCreatePlane(space, kHostThreads);
-  plane->set_id(kHostPlaneId);
+  XPlane* plane = FindOrAddMutablePlaneWithName(space, kHostThreadsPlaneName);
   ConvertCompleteEventsToXPlane(start_timestamp_ns_, events_, plane);
   events_.clear();
   return Status::OK();
@@ -163,11 +161,7 @@ std::unique_ptr<ProfilerInterface> CreateHostTracer(
 }
 
 auto register_host_tracer_factory = [] {
-  bool enable;
-  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_CPU_PROFILER", true, &enable));
-  if (enable) {
-    RegisterProfilerFactory(&CreateHostTracer);
-  }
+  RegisterProfilerFactory(&CreateHostTracer);
   return 0;
 }();
 

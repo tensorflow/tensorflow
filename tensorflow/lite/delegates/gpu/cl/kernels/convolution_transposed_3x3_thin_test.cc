@@ -43,7 +43,7 @@ TEST_F(OpenCLOperationTest, ConvolutionTransposed3x3ThinSimpleWeights) {
   attr.weights.shape = OHWI(1, 3, 3, 1);
   attr.weights.data = {1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
   attr.bias.shape = Linear(2);
-  attr.bias.data = {0.0f};
+  attr.bias.data = {0.0f, 0.0f};
 
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {

@@ -20,6 +20,24 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "parameterized_truncated_normal_op_test",
+    size = "medium",
+    srcs = ["parameterized_truncated_normal_op_test.py"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:client",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
 tf_py_test(
     name = "random_shuffle_queue_test",
     size = "small",
@@ -101,7 +119,7 @@ cuda_py_test(
     name = "stateless_random_ops_test",
     size = "medium",
     srcs = ["stateless_random_ops_test.py"],
-    shard_count = 2,
+    shard_count = 10,
     tfrt_enabled = True,
     deps = [
         "//tensorflow/python:array_ops",

@@ -20,12 +20,44 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python.client import session as session_lib
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.distribute import sharded_variable
+from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
+
+
+def _load_and_run(
+    model_dir,
+    inputs,
+    signature_key=signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY):
+  """Load a SavedModel into a TF 1.x-style graph and run `signature_key`."""
+  graph = ops.Graph()
+  with graph.as_default(), session_lib.Session() as session:
+    meta_graph_def = loader.load(session, [tag_constants.SERVING], model_dir)
+    signature = meta_graph_def.signature_def[signature_key]
+    feed_dict = {}
+    for arg_name in inputs.keys():
+      input_tensor = session.graph.get_tensor_by_name(
+          signature.inputs[arg_name].name)
+      feed_dict[input_tensor] = inputs[arg_name]
+    output_dict = {}
+    for output_name, output_tensor_info in signature.outputs.items():
+      output_dict[output_name] = session.graph.get_tensor_by_name(
+          output_tensor_info.name)
+    return session.run(output_dict, feed_dict=feed_dict)
 
 
 class ShardedVariableTest(test.TestCase):
@@ -116,24 +148,48 @@ class ShardedVariableTest(test.TestCase):
     self.assertAllEqual(self.evaluate(cp2.s.variables[0]), [0, 1])
     self.assertAllEqual(self.evaluate(cp2.s.variables[1]), [2, 3])
 
+  def test_save_graph_def(self):
+    root = tracking.AutoTrackable()
+    v1 = variables_lib.Variable([3.])
+    v2 = variables_lib.Variable([2.])
+    root.v = sharded_variable.ShardedVariable([v1, v2])
+    root.train = def_function.function(
+        lambda x: embedding_ops.embedding_lookup_v2(root.v.variables, x))
+    # TODO(b/144057383): Remove the necessity of root.serve once saving context
+    # is made to tf.function cache.
+    root.serve = def_function.function(
+        lambda x: embedding_ops.embedding_lookup_v2(root.v.variables[0], x),
+        input_signature=[tensor_spec.TensorSpec([2], dtypes.int32, name='x')])
+
+    # Trace and use root.train
+    self.assertAllEqual([3., 2.], root.train([0, 1]).numpy())
+
+    save_dir = os.path.join(self.get_temp_dir(), 'saved_model')
+    save.save(root, save_dir, root.serve)
+    self.assertAllEqual([3., 2.],
+                        _load_and_run(save_dir, {'x': [0, 1]})['output_0'])
+
+    # Continue using root.train for training
+    self.assertAllEqual([3., 2.], root.train([0, 1]).numpy())
+
   def test_validation_errors(self):
-    with self.assertRaisesRegexp(ValueError, 'Expected a list of '):
+    with self.assertRaisesRegex(ValueError, 'Expected a list of '):
       sharded_variable.ShardedVariable(
           [variables_lib.Variable([0]), 'not-a-variable'])
 
-    with self.assertRaisesRegexp(ValueError, 'must have the same dtype'):
+    with self.assertRaisesRegex(ValueError, 'must have the same dtype'):
       sharded_variable.ShardedVariable([
           variables_lib.Variable([0], dtype='int64'),
           variables_lib.Variable([1], dtype='int32')
       ])
 
-    with self.assertRaisesRegexp(ValueError, 'the same shapes except'):
+    with self.assertRaisesRegex(ValueError, 'the same shapes except'):
       sharded_variable.ShardedVariable([
           variables_lib.Variable(array_ops.ones((5, 10))),
           variables_lib.Variable(array_ops.ones((5, 20)))
       ])
 
-    with self.assertRaisesRegexp(ValueError, '`SaveSliceInfo` should not'):
+    with self.assertRaisesRegex(ValueError, '`SaveSliceInfo` should not'):
       v = variables_lib.Variable([0])
       v._set_save_slice_info(
           variables_lib.Variable.SaveSliceInfo(

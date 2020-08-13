@@ -15,16 +15,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_
 
-#include "tensorflow/core/framework/op_kernel.h"
-#include "tensorflow/core/kernels/tensor_map.h"
-#include "tensorflow/core/util/batch_util.h"
-#include "tensorflow/core/framework/variant_encode_decode.h"
-#include "tensorflow/core/util/tensor_ops_util.h"
-
 #include <iostream>
 
-namespace tensorflow {
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/kernels/tensor_map.h"
+//#include "tensorflow/core/framework/variant_encode_decode.h"
+#include "tensorflow/core/util/batch_util.h"
+#include "tensorflow/core/util/tensor_ops_util.h"
 
+namespace tensorflow {
 
 Status GetInputMap(OpKernelContext* c, int index, const TensorMap** map) {
   if (!TensorShapeUtils::IsScalar(c->input(index).shape())) {
@@ -41,12 +40,11 @@ Status GetInputMap(OpKernelContext* c, int index, const TensorMap** map) {
   return Status::OK();
 }
 
-
-//TODO(kattian): change into templated function
+// TODO(kattian): change into templated function
 Status ForwardInputOrCreateNewMap(OpKernelContext* c, int32 input_index,
-                                   int32 output_index,
-                                   const TensorMap& input_map,
-                                   TensorMap** output_map) {
+                                  int32 output_index,
+                                  const TensorMap& input_map,
+                                  TensorMap** output_map) {
   // Attempt to forward the input tensor to the output if possible.
   std::unique_ptr<Tensor> maybe_output = c->forward_input(
       input_index, output_index, DT_VARIANT, TensorShape{},
@@ -81,7 +79,6 @@ Status ForwardInputOrCreateNewMap(OpKernelContext* c, int32 input_index,
   return Status::OK();
 }
 
-
 class EmptyTensorMap : public OpKernel {
  public:
   explicit EmptyTensorMap(OpKernelConstruction* c) : OpKernel(c) {}
@@ -95,7 +92,6 @@ class EmptyTensorMap : public OpKernel {
     result->scalar<Variant>()() = std::move(empty);
   }
 };
-
 
 class TensorMapSize : public OpKernel {
  public:
@@ -111,6 +107,22 @@ class TensorMapSize : public OpKernel {
   }
 };
 
+class TensorMapLookup : public OpKernel {
+ public:
+  explicit TensorMapLookup(OpKernelConstruction* c) : OpKernel(c) {}
+  ~TensorMapLookup() override {}
+
+  void Compute(OpKernelContext* c) override {
+    const TensorKey& key = c->input(1);
+    const TensorMap* m = nullptr;
+    OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
+
+    OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
+                errors::InvalidArgument("Trying to lookup non-existent key."));
+
+    c->set_output(0, m->tensors().find(key)->second);
+  }
+};
 
 class TensorMapInsert : public OpKernel {
  public:
@@ -129,46 +141,23 @@ class TensorMapInsert : public OpKernel {
   }
 };
 
-
-class TensorMapLookup : public OpKernel {
- public:
-  explicit TensorMapLookup(OpKernelConstruction* c) : OpKernel(c) {}
-  ~TensorMapLookup() override {}
-
-  void Compute(OpKernelContext* c) override {
-    const TensorKey& key = c->input(1);
-    const TensorMap* m = nullptr;
-    OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
-
-    OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
-                errors::InvalidArgument("Trying to lookup non-existent key."));
-    
-    c->set_output(0, m->tensors().find(key)->second);
-  }
-};
-
-
 class TensorMapErase : public OpKernel {
  public:
   explicit TensorMapErase(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
+    const TensorKey& key = c->input(1);
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
-    const TensorKey& key = c->input(1);
 
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
                 errors::InvalidArgument("Trying to erase non-existent item."));
-
-    const Tensor& t = m->tensors().find(key)->second;
-    c->set_output(1, t);
 
     TensorMap* output_map = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
     output_map->tensors().erase(key);
   }
 };
-
 
 class TensorMapHasKey : public OpKernel {
  public:
@@ -185,6 +174,7 @@ class TensorMapHasKey : public OpKernel {
   }
 };
 
+<<<<<<< HEAD
 class TensorMapListKeys : public OpKernel {
  public:
   explicit TensorMapListKeys(OpKernelConstruction* c) : OpKernel(c) {
@@ -213,32 +203,33 @@ class TensorMapListKeys : public OpKernel {
   DataType key_dtype_;
 };
 
+=======
+>>>>>>> erase_change
 template <typename Device>
 Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
-                           const TensorMap& b, TensorMap* out) {
+                          const TensorMap& b, TensorMap* out) {
+  // Binary add returns a map containing the union of keys.
+  // Values with keys in the intersection are added.
   out->tensors() = a.tensors();
-  for (const std::pair<TensorKey,Tensor>& p : b.tensors()) {
-    absl::flat_hash_map<TensorKey,Tensor>::iterator it = out->tensors().find(p.first);
+  for (const std::pair<TensorKey, Tensor>& p : b.tensors()) {
+    absl::flat_hash_map<TensorKey, Tensor>::iterator it =
+        out->tensors().find(p.first);
     if (it != out->tensors().end()) {
       Tensor out_tensor;
-      TF_RETURN_IF_ERROR(BinaryAddTensors<Device>(c, p.second, it->second, &out_tensor));
+      TF_RETURN_IF_ERROR(
+          BinaryAddTensors<Device>(c, p.second, it->second, &out_tensor));
       it->second = out_tensor;
-    }
-    else {
+    } else {
       out->tensors().emplace(p.first, p.second);
     }
   }
   return Status::OK();
 }
 
-
 template <typename Device>
-Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x, TensorMap* y) {
-  for (const std::pair<TensorKey,Tensor>& p : x.tensors()) {
-    Tensor val;
-    TF_RETURN_IF_ERROR(ZerosLikeTensor<Device>(c, p.second, &val));
-    y->tensors().emplace(p.first, val);
-  }
+Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x,
+                          TensorMap* y) {
+  // Zeros like returns an empty map.
   return Status::OK();
 }
 

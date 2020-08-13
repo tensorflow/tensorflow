@@ -25,15 +25,20 @@ import math
 import os
 import time
 
+from absl.testing import parameterized
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.compat import compat
+from tensorflow.python.data.experimental.ops import get_single_element
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -44,6 +49,7 @@ from tensorflow.python.ops import image_ops_impl
 from tensorflow.python.ops import io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import stateless_random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
@@ -227,7 +233,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
 
       # this is the error message we expect the function to raise
       err_msg = "Last dimension of a grayscale image should be size 1"
-      with self.assertRaisesRegexp(ValueError, err_msg):
+      with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
     # tests if an exception is raised if a two dimensional
@@ -240,7 +246,7 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
 
       # this is the error message we expect the function to raise
       err_msg = "must be at least two-dimensional"
-      with self.assertRaisesRegexp(ValueError, err_msg):
+      with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
   @test_util.run_deprecated_v1
@@ -282,7 +288,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegexp(ValueError, err_msg):
+      with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
   @test_util.run_deprecated_v1
@@ -295,7 +301,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegexp(ValueError, err_msg):
+      with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
   @test_util.run_deprecated_v1
@@ -311,7 +317,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       image = image_ops.adjust_gamma(x, gamma=y)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegexp(errors.InvalidArgumentError, err_msg):
+      with self.assertRaisesRegex(errors.InvalidArgumentError, err_msg):
         self.evaluate(image)
 
   def _test_adjust_gamma_uint8(self, gamma):
@@ -524,7 +530,7 @@ class AdjustHueTest(test_util.TensorFlowTestCase):
     x_np = np.random.rand(2, 3) * 255.
     delta_h = np.random.rand() * 2.0 - 1.0
     fused = False
-    with self.assertRaisesRegexp(ValueError, "Shape must be at least rank 3"):
+    with self.assertRaisesRegex(ValueError, "Shape must be at least rank 3"):
       self._adjustHueTf(x_np, delta_h)
     x_np = np.random.rand(4, 2, 4) * 255.
     delta_h = np.random.rand() * 2.0 - 1.0
@@ -997,7 +1003,8 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
           self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
 
-class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
+class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
+                              parameterized.TestCase):
 
   def testInvolutionLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1071,6 +1078,109 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       # Six Sigma: 50 - (5 * 6) = 20
       self.assertGreaterEqual(count_flipped, 20)
       self.assertGreaterEqual(count_unflipped, 20)
+
+  # TODO(b/162345082): stateless random op generates different random number
+  # with xla_gpu. Update tests such that there is a single ground truth result
+  # to test against.
+  @parameterized.named_parameters(
+      ("_RandomFlipLeftRight", image_ops.stateless_random_flip_left_right),
+      ("_RandomFlipUpDown", image_ops.stateless_random_flip_up_down),
+  )
+  def testRandomFlipStateless(self, func):
+    with test_util.use_gpu():
+      x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
+      y_np = np.array([[3, 2, 1], [6, 5, 4]], dtype=np.uint8).reshape([2, 3, 1])
+      if "RandomFlipUpDown" in self.id():
+        y_np = np.array(
+            [[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+
+      iterations = 2
+      flip_counts = [None for _ in range(iterations)]
+      flip_sequences = ["" for _ in range(iterations)]
+      test_seed = (1, 2)
+      split_seeds = stateless_random_ops.split(test_seed, 10)
+      seeds_list = self.evaluate(split_seeds)
+      for i in range(iterations):
+        count_flipped = 0
+        count_unflipped = 0
+        flip_seq = ""
+        for seed in seeds_list:
+          y_tf = func(x_tf, seed=seed)
+          y_tf_eval = self.evaluate(y_tf)
+          if y_tf_eval[0][0] == 1:
+            self.assertAllEqual(y_tf_eval, x_np)
+            count_unflipped += 1
+            flip_seq += "U"
+          else:
+            self.assertAllEqual(y_tf_eval, y_np)
+            count_flipped += 1
+            flip_seq += "F"
+
+        flip_counts[i] = (count_flipped, count_unflipped)
+        flip_sequences[i] = flip_seq
+
+      # Verify that results are deterministic.
+      for i in range(1, iterations):
+        self.assertAllEqual(flip_counts[0], flip_counts[i])
+        self.assertAllEqual(flip_sequences[0], flip_sequences[i])
+
+  # TODO(b/162345082): stateless random op generates different random number
+  # with xla_gpu. Update tests such that there is a single ground truth result
+  # to test against.
+  @parameterized.named_parameters(
+      ("_RandomFlipLeftRight", image_ops.stateless_random_flip_left_right),
+      ("_RandomFlipUpDown", image_ops.stateless_random_flip_up_down)
+  )
+  def testRandomFlipStatelessWithBatch(self, func):
+    with test_util.use_gpu():
+      batch_size = 16
+
+      # create single item of test data
+      x_np_raw = np.array(
+          [[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([1, 2, 3, 1])
+      y_np_raw = np.array(
+          [[3, 2, 1], [6, 5, 4]], dtype=np.uint8).reshape([1, 2, 3, 1])
+      if "RandomFlipUpDown" in self.id():
+        y_np_raw = np.array(
+            [[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([1, 2, 3, 1])
+
+      # create batched test data
+      x_np = np.vstack([x_np_raw for _ in range(batch_size)])
+      y_np = np.vstack([y_np_raw for _ in range(batch_size)])
+
+      x_tf = constant_op.constant(x_np, shape=x_np.shape)
+
+      iterations = 2
+      flip_counts = [None for _ in range(iterations)]
+      flip_sequences = ["" for _ in range(iterations)]
+      test_seed = (1, 2)
+      split_seeds = stateless_random_ops.split(test_seed, 10)
+      seeds_list = self.evaluate(split_seeds)
+      for i in range(iterations):
+        count_flipped = 0
+        count_unflipped = 0
+        flip_seq = ""
+        for seed in seeds_list:
+          y_tf = func(x_tf, seed=seed)
+          y_tf_eval = self.evaluate(y_tf)
+          for j in range(batch_size):
+            if y_tf_eval[j][0][0] == 1:
+              self.assertAllEqual(y_tf_eval[j], x_np[j])
+              count_unflipped += 1
+              flip_seq += "U"
+            else:
+              self.assertAllEqual(y_tf_eval[j], y_np[j])
+              count_flipped += 1
+              flip_seq += "F"
+
+        flip_counts[i] = (count_flipped, count_unflipped)
+        flip_sequences[i] = flip_seq
+
+      for i in range(1, iterations):
+        self.assertAllEqual(flip_counts[0], flip_counts[i])
+        self.assertAllEqual(flip_sequences[0], flip_sequences[i])
 
   @test_util.run_deprecated_v1
   def testRandomFlipLeftRightWithBatch(self):
@@ -1304,13 +1414,13 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
         image_ops.transpose, image_ops.rot90
     ]:
       transformed_unknown_rank = op(p_unknown_rank)
-      self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
+      self.assertIsNone(transformed_unknown_rank.get_shape().ndims)
       transformed_unknown_dims_3 = op(p_unknown_dims_3)
       self.assertEqual(3, transformed_unknown_dims_3.get_shape().ndims)
       transformed_unknown_width = op(p_unknown_width)
       self.assertEqual(3, transformed_unknown_width.get_shape().ndims)
 
-      with self.assertRaisesRegexp(ValueError, "must be > 0"):
+      with self.assertRaisesRegex(ValueError, "must be > 0"):
         op(p_zero_dim)
 
     #Ops that support 4D input
@@ -1323,8 +1433,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
       transformed_unknown_batch = op(p_unknown_batch)
       self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
-      with self.assertRaisesRegexp(ValueError,
-                                   "must be at least three-dimensional"):
+      with self.assertRaisesRegex(ValueError,
+                                  "must be at least three-dimensional"):
         op(p_wrong_rank)
 
   def testRot90GroupOrder(self):
@@ -1362,6 +1472,26 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
       for k in xrange(4):
         y_np = np.rot90(image, k=k, axes=(1, 2))
         self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
+
+  def testFlipImageUnknownShape(self):
+    expected_output = constant_op.constant([[[[3, 4, 5], [0, 1, 2]],
+                                             [[9, 10, 11], [6, 7, 8]]]])
+
+    def generator():
+      image_input = np.array(
+          [[[[0, 1, 2], [3, 4, 5]], [[6, 7, 8], [9, 10, 11]]]], np.int32)
+      yield image_input
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator,
+        output_types=dtypes.int32,
+        output_shapes=tensor_shape.TensorShape([1, 2, 2, 3]))
+    dataset = dataset.map(image_ops.flip_left_right)
+
+    image_flipped_via_dataset_map = get_single_element.get_single_element(
+        dataset.take(1))
+    self.assertAllEqual(image_flipped_via_dataset_map, expected_output)
+
 
 class AdjustContrastTest(test_util.TensorFlowTestCase):
 
@@ -1447,8 +1577,8 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
     x_shape = [1, 2, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 1"):
       image_ops.adjust_contrast(x_np, [2.0])
 
 
@@ -2287,6 +2417,149 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       begin = self.evaluate(begin)
       end = self.evaluate(end)
       bbox_for_drawing = self.evaluate(bbox_for_drawing)
+
+  def _testStatelessSampleDistortedBoundingBox(self, image, bounding_box,
+                                               min_object_covered,
+                                               aspect_ratio_range, area_range):
+    with test_util.use_gpu():
+      original_area = float(np.prod(image.shape))
+      bounding_box_area = float((bounding_box[3] - bounding_box[1]) *
+                                (bounding_box[2] - bounding_box[0]))
+
+      image_size_np = np.array(image.shape, dtype=np.int32)
+      bounding_box_np = (
+          np.array(bounding_box, dtype=np.float32).reshape([1, 1, 4]))
+
+      iterations = 2
+      test_seeds = [(1, 2), (3, 4), (5, 6)]
+
+      for seed in test_seeds:
+        aspect_ratios = []
+        area_ratios = []
+        fraction_object_covered = []
+        for _ in range(iterations):
+          image_tf = constant_op.constant(image, shape=image.shape)
+          image_size_tf = constant_op.constant(
+              image_size_np, shape=image_size_np.shape)
+          bounding_box_tf = constant_op.constant(bounding_box_np,
+                                                 dtype=dtypes.float32,
+                                                 shape=bounding_box_np.shape)
+          begin, size, _ = image_ops.stateless_sample_distorted_bounding_box(
+              image_size=image_size_tf,
+              bounding_boxes=bounding_box_tf,
+              seed=seed,
+              min_object_covered=min_object_covered,
+              aspect_ratio_range=aspect_ratio_range,
+              area_range=area_range)
+          y = array_ops.strided_slice(image_tf, begin, begin + size)
+          y_tf = self.evaluate(y)
+          crop_height = y_tf.shape[0]
+          crop_width = y_tf.shape[1]
+          aspect_ratio = float(crop_width) / float(crop_height)
+          area = float(crop_width * crop_height)
+          aspect_ratios.append(aspect_ratio)
+          area_ratio = area / original_area
+          area_ratios.append(area_ratio)
+          fraction_object_covered.append(
+              float(np.sum(y_tf)) / bounding_box_area)
+
+        # Check that `area_ratio` is within valid range.
+        self.assertLessEqual(area_ratio, area_range[1])
+        self.assertGreaterEqual(area_ratio, area_range[0])
+
+        # Each array should consist of one value just repeated `iteration` times
+        # because the same seed is used.
+        self.assertEqual(len(set(aspect_ratios)), 1)
+        self.assertEqual(len(set(area_ratios)), 1)
+        self.assertEqual(len(set(fraction_object_covered)), 1)
+
+  # TODO(b/162345082): stateless random op generates different random number
+  # with xla_gpu. Update tests such that there is a single ground truth result
+  # to test against.
+  def testWholeImageBoundingBoxStateless(self):
+    height = 40
+    width = 50
+    image_size = [height, width, 1]
+    bounding_box = [0.0, 0.0, 1.0, 1.0]
+    image = np.arange(
+        0, np.prod(image_size), dtype=np.int32).reshape(image_size)
+    for min_obj_covered in [0.1, constant_op.constant(0.1)]:
+      self._testStatelessSampleDistortedBoundingBox(
+          image,
+          bounding_box,
+          min_object_covered=min_obj_covered,
+          aspect_ratio_range=(0.75, 1.33),
+          area_range=(0.05, 1.0))
+
+  # TODO(b/162345082): stateless random op generates different random number
+  # with xla_gpu. Update tests such that there is a single ground truth result
+  # to test against.
+  def testWithBoundingBoxStateless(self):
+    height = 40
+    width = 50
+    x_shape = [height, width, 1]
+    image = np.zeros(x_shape, dtype=np.int32)
+
+    xmin = 2
+    ymin = 3
+    xmax = 12
+    ymax = 13
+    for x in np.arange(xmin, xmax + 1, 1):
+      for y in np.arange(ymin, ymax + 1, 1):
+        image[x, y] = 1
+
+    # Bounding box is specified as (ymin, xmin, ymax, xmax) in
+    # relative coordinates.
+    bounding_box = (float(ymin) / height, float(xmin) / width,
+                    float(ymax) / height, float(xmax) / width)
+
+    # Test both scalar and tensor input for `min_object_covered`.
+    for min_obj_covered in [0.1, constant_op.constant(0.1)]:
+      self._testStatelessSampleDistortedBoundingBox(
+          image,
+          bounding_box=bounding_box,
+          min_object_covered=min_obj_covered,
+          aspect_ratio_range=(0.75, 1.33),
+          area_range=(0.05, 1.0))
+
+  def testSampleDistortedBoundingBoxShapeStateless(self):
+    with test_util.use_gpu():
+      image_size = constant_op.constant(
+          [40, 50, 1], shape=[3], dtype=dtypes.int32)
+      bounding_box = constant_op.constant(
+          [[[0.0, 0.0, 1.0, 1.0]]],
+          shape=[1, 1, 4],
+          dtype=dtypes.float32,
+      )
+
+      bbox_func = functools.partial(
+          image_ops.stateless_sample_distorted_bounding_box,
+          image_size=image_size,
+          bounding_boxes=bounding_box,
+          min_object_covered=0.1,
+          aspect_ratio_range=(0.75, 1.33),
+          area_range=(0.05, 1.0))
+
+      # Check error is raised with wrong seed shapes.
+      for seed in [1, (1, 2, 3)]:
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          begin, end, bbox_for_drawing = bbox_func(seed=seed)
+
+      test_seed = (1, 2)
+      begin, end, bbox_for_drawing = bbox_func(seed=test_seed)
+
+      # Test that the shapes are correct.
+      self.assertAllEqual([3], begin.get_shape().as_list())
+      self.assertAllEqual([3], end.get_shape().as_list())
+      self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+
+      # Actual run to make sure shape is correct inside Compute().
+      begin = self.evaluate(begin)
+      end = self.evaluate(end)
+      bbox_for_drawing = self.evaluate(bbox_for_drawing)
+      self.assertAllEqual([3], begin.shape)
+      self.assertAllEqual([3], end.shape)
+      self.assertAllEqual([1, 1, 4], bbox_for_drawing.shape)
 
 
 class ResizeImagesV2Test(test_util.TensorFlowTestCase):
@@ -3788,7 +4061,7 @@ class ResizeImageWithCropOrPadTest(test_util.TensorFlowTestCase):
     self.assertTrue(y.op.name.startswith("resize_image_with_crop_or_pad"))
 
 
-def _SimpleColorRamp():
+def simple_color_ramp():
   """Build a simple color ramp RGB image."""
   w, h = 256, 200
   i = np.arange(h)[:, None]
@@ -3887,7 +4160,7 @@ class JpegTest(test_util.TensorFlowTestCase):
   def testSynthetic(self):
     with self.cached_session(use_gpu=True) as sess:
       # Encode it, then decode it, then encode it
-      image0 = constant_op.constant(_SimpleColorRamp())
+      image0 = constant_op.constant(simple_color_ramp())
       jpeg0 = image_ops.encode_jpeg(image0)
       image1 = image_ops.decode_jpeg(jpeg0, dct_method="INTEGER_ACCURATE")
       image2 = image_ops.decode_jpeg(
@@ -3908,7 +4181,7 @@ class JpegTest(test_util.TensorFlowTestCase):
   def testSyntheticFasterAlgorithm(self):
     with self.cached_session(use_gpu=True) as sess:
       # Encode it, then decode it, then encode it
-      image0 = constant_op.constant(_SimpleColorRamp())
+      image0 = constant_op.constant(simple_color_ramp())
       jpeg0 = image_ops.encode_jpeg(image0)
       image1 = image_ops.decode_jpeg(jpeg0, dct_method="INTEGER_FAST")
       image2 = image_ops.decode_jpeg(
@@ -3933,7 +4206,7 @@ class JpegTest(test_util.TensorFlowTestCase):
     with self.cached_session(use_gpu=True) as sess:
       # Compare decoding with both dct_option=INTEGER_FAST and
       # default.  They should be the same.
-      image0 = constant_op.constant(_SimpleColorRamp())
+      image0 = constant_op.constant(simple_color_ramp())
       jpeg0 = image_ops.encode_jpeg(image0)
       image1 = image_ops.decode_jpeg(jpeg0, dct_method="INTEGER_FAST")
       image2 = image_ops.decode_jpeg(jpeg0)
@@ -3995,6 +4268,36 @@ class JpegTest(test_util.TensorFlowTestCase):
               np.array_equal(random_jpeg_images[0], random_jpeg_images[i]))
         self.assertFalse(all(are_images_equal))
 
+  # TODO(b/162345082): stateless random op generates different random number
+  # with xla_gpu. Update tests such that there is a single ground truth result
+  # to test against.
+  def testStatelessRandomJpegQuality(self):
+    # Test deterministic randomness in jpeg quality by checking that the same
+    # sequence of jpeg quality adjustments are returned each round given the
+    # same seed.
+    with test_util.use_gpu():
+      path = ("tensorflow/core/lib/jpeg/testdata/medium.jpg")
+      jpeg = io_ops.read_file(path)
+      image = image_ops.decode_jpeg(jpeg)
+      jpeg_quality = (40, 100)
+      seeds_list = [(1, 2), (3, 4)]
+
+      iterations = 2
+      random_jpeg_images_all = [[] for _ in range(iterations)]
+      for random_jpeg_images in random_jpeg_images_all:
+        for seed in seeds_list:
+          distorted_jpeg = image_ops.stateless_random_jpeg_quality(
+              image, jpeg_quality[0], jpeg_quality[1], seed=seed)
+          # Verify that the random jpeg image is different from the original
+          # jpeg image.
+          self.assertNotAllEqual(image, distorted_jpeg)
+          random_jpeg_images.append(self.evaluate(distorted_jpeg))
+
+      # Verify that the results are identical given the same seed.
+      for i in range(1, iterations):
+        self.assertAllEqual(random_jpeg_images_all[0],
+                            random_jpeg_images_all[i])
+
   def testAdjustJpegQuality(self):
     # Test if image_ops.adjust_jpeg_quality works when jpeq quality
     # is an int (not tensor) for backward compatibility.
@@ -4040,7 +4343,7 @@ class PngTest(test_util.TensorFlowTestCase):
   def testSynthetic(self):
     with self.cached_session(use_gpu=True) as sess:
       # Encode it, then decode it
-      image0 = constant_op.constant(_SimpleColorRamp())
+      image0 = constant_op.constant(simple_color_ramp())
       png0 = image_ops.encode_png(image0, compression=7)
       image1 = image_ops.decode_png(png0)
       png0, image0, image1 = self.evaluate([png0, image0, image1])
@@ -4055,7 +4358,7 @@ class PngTest(test_util.TensorFlowTestCase):
   def testSyntheticUint16(self):
     with self.cached_session(use_gpu=True) as sess:
       # Encode it, then decode it
-      image0 = constant_op.constant(_SimpleColorRamp(), dtype=dtypes.uint16)
+      image0 = constant_op.constant(simple_color_ramp(), dtype=dtypes.uint16)
       png0 = image_ops.encode_png(image0, compression=7)
       image1 = image_ops.decode_png(png0, dtype=dtypes.uint16)
       png0, image0, image1 = self.evaluate([png0, image0, image1])
@@ -4070,7 +4373,7 @@ class PngTest(test_util.TensorFlowTestCase):
   def testSyntheticTwoChannel(self):
     with self.cached_session(use_gpu=True) as sess:
       # Strip the b channel from an rgb image to get a two-channel image.
-      gray_alpha = _SimpleColorRamp()[:, :, 0:2]
+      gray_alpha = simple_color_ramp()[:, :, 0:2]
       image0 = constant_op.constant(gray_alpha)
       png0 = image_ops.encode_png(image0, compression=7)
       image1 = image_ops.decode_png(png0)
@@ -4081,7 +4384,7 @@ class PngTest(test_util.TensorFlowTestCase):
   def testSyntheticTwoChannelUint16(self):
     with self.cached_session(use_gpu=True) as sess:
       # Strip the b channel from an rgb image to get a two-channel image.
-      gray_alpha = _SimpleColorRamp()[:, :, 0:2]
+      gray_alpha = simple_color_ramp()[:, :, 0:2]
       image0 = constant_op.constant(gray_alpha, dtype=dtypes.uint16)
       png0 = image_ops.encode_png(image0, compression=7)
       image1 = image_ops.decode_png(png0, dtype=dtypes.uint16)
@@ -4097,6 +4400,17 @@ class PngTest(test_util.TensorFlowTestCase):
         image = image_ops.decode_png(png, channels=channels)
         self.assertEqual(image.get_shape().as_list(),
                          [None, None, channels or None])
+
+  def testPaletteOnly(self):
+    filename = "tensorflow/core/lib/png/testdata/palette_only.png"
+    expected = np.zeros((20, 20, 1), np.uint8)
+    expected[1, 1:19, :] = 1
+    expected[3, 1:19, :] = 2
+    with self.cached_session(use_gpu=True):
+      channels = 1
+      png = image_ops.decode_png(io_ops.read_file(filename), channels=channels)
+      png = self.evaluate(png)
+      self.assertAllEqual(expected, png)
 
 
 class GifTest(test_util.TensorFlowTestCase):
@@ -4152,14 +4466,14 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       image = constant_op.constant(x_np)
       y = image_ops.convert_image_dtype(image, output_dtype)
       self.assertTrue(y.dtype == output_dtype)
-      self.assertAllClose(y.eval(), y_np, atol=1e-5)
+      self.assertAllClose(y, y_np, atol=1e-5)
       if output_dtype in [
           dtypes.float32, dtypes.float64, dtypes.int32, dtypes.int64
       ]:
         y_saturate = image_ops.convert_image_dtype(
             image, output_dtype, saturate=True)
         self.assertTrue(y_saturate.dtype == output_dtype)
-        self.assertAllClose(y_saturate.eval(), y_np, atol=1e-5)
+        self.assertAllClose(y_saturate, y_np, atol=1e-5)
 
   @test_util.run_deprecated_v1
   def testNoConvert(self):
@@ -4168,8 +4482,8 @@ class ConvertImageTest(test_util.TensorFlowTestCase):
       image = constant_op.constant([1], dtype=dtypes.uint8)
       image_ops.convert_image_dtype(image, dtypes.uint8)
       y = image_ops.convert_image_dtype(image, dtypes.uint8)
-      self.assertEquals(y.op.type, "Identity")
-      self.assertEquals(y.op.inputs[0], image)
+      self.assertEqual(y.op.type, "Identity")
+      self.assertEqual(y.op.inputs[0], image)
 
   @test_util.run_deprecated_v1
   def testConvertBetweenInteger(self):
@@ -4439,47 +4753,47 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
       iou_threshold = constant_op.constant(iou_threshold_np)
       selected_indices = image_ops.non_max_suppression(
           boxes, scores, max_output_size, iou_threshold)
-      self.assertAllClose(selected_indices.eval(), [3, 0, 5])
+      self.assertAllClose(selected_indices, [3, 0, 5])
 
   @test_util.run_deprecated_v1
   def testInvalidShape(self):
     # The boxes should be 2D of shape [num_boxes, 4].
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 2 but is rank 1"):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 2 but is rank 1"):
       boxes = constant_op.constant([0.0, 0.0, 1.0, 1.0])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
-    with self.assertRaisesRegexp(ValueError, "Dimension must be 4 but is 3"):
+    with self.assertRaisesRegex(ValueError, "Dimension must be 4 but is 3"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0]])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
     # The boxes is of shape [num_boxes, 4], and the scores is
     # of shape [num_boxes]. So an error will be thrown.
-    with self.assertRaisesRegexp(ValueError,
-                                 "Dimensions must be equal, but are 1 and 2"):
+    with self.assertRaisesRegex(ValueError,
+                                "Dimensions must be equal, but are 1 and 2"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9, 0.75])
       image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
     # The scores should be 1D of shape [num_boxes].
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 1 but is rank 2"):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 1 but is rank 2"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([[0.9]])
       image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
     # The max_output_size should be a scalar (0-D).
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 0 but is rank 1"):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 1"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, [3], 0.5)
 
     # The iou_threshold should be a scalar (0-D).
-    with self.assertRaisesRegexp(ValueError,
-                                 "Shape must be rank 0 but is rank 2"):
+    with self.assertRaisesRegex(ValueError,
+                                "Shape must be rank 0 but is rank 2"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, 3, [[0.5]])
@@ -4615,10 +4929,9 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
     self.assertEqual(selected_indices_padded.shape.is_fully_defined(), True)
     self.assertEqual(selected_indices.shape.is_fully_defined(), False)
     with self.cached_session():
-      self.assertAllClose(selected_indices_padded.eval(),
-                          [3, 0, 5, 0, 0])
+      self.assertAllClose(selected_indices_padded, [3, 0, 5, 0, 0])
       self.assertEqual(num_valid_padded.eval(), 3)
-      self.assertAllClose(selected_indices.eval(), [3, 0, 5])
+      self.assertAllClose(selected_indices, [3, 0, 5])
       self.assertEqual(num_valid.eval(), 3)
 
   @test_util.run_deprecated_v1
@@ -4645,7 +4958,7 @@ class NonMaxSuppressionPaddedTest(test_util.TensorFlowTestCase):
     # The output shape of the padded operation must be fully defined.
     self.assertEqual(selected_indices.shape.is_fully_defined(), False)
     with self.cached_session():
-      self.assertAllClose(selected_indices.eval(), [0, 2, 4])
+      self.assertAllClose(selected_indices, [0, 2, 4])
       self.assertEqual(num_valid.eval(), 3)
 
 
@@ -4671,7 +4984,7 @@ class NonMaxSuppressionWithOverlapsTest(test_util.TensorFlowTestCase):
         overlaps, scores, max_output_size, overlap_threshold, score_threshold)
 
     with self.cached_session():
-      self.assertAllClose(selected_indices.eval(), [1])
+      self.assertAllClose(selected_indices, [1])
 
 
 class VerifyCompatibleImageShapesTest(test_util.TensorFlowTestCase):
@@ -4857,6 +5170,29 @@ class SSIMTest(test_util.TensorFlowTestCase):
     ssim = image_ops.ssim(
         constant_op.constant(img1),
         constant_op.constant(img2),
+        1.0,
+        filter_size=11,
+        filter_sigma=1.5,
+        k1=0.01,
+        k2=0.03)
+    with self.cached_session(use_gpu=True):
+      self.assertAllClose(expected, self.evaluate(ssim), atol=1e-4)
+
+  def testBatchNumpyInputs(self):
+    img = self._LoadTestImages()
+    expected = self._ssim[np.triu_indices(3, k=1)]
+
+    img1, img2 = zip(*itertools.combinations(img, 2))
+    img1 = np.concatenate(img1)
+    img2 = np.concatenate(img2)
+
+    with self.cached_session(use_gpu=True):
+      img1 = self.evaluate(constant_op.constant(img1))
+      img2 = self.evaluate(constant_op.constant(img2))
+
+    ssim = image_ops.ssim(
+        img1,
+        img2,
         1.0,
         filter_size=11,
         filter_sigma=1.5,
@@ -5150,107 +5486,195 @@ class SobelEdgesTest(test_util.TensorFlowTestCase):
 @test_util.run_all_in_graph_and_eager_modes
 class DecodeImageTest(test_util.TensorFlowTestCase):
 
+  _FORWARD_COMPATIBILITY_HORIZONS = [
+      (2020, 1, 1),
+      (2020, 7, 14),
+      (2525, 1, 1),  # future behavior
+  ]
+
+  def testBmpChannels(self):
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with test_util.use_gpu():
+          base = "tensorflow/core/lib/bmp/testdata"
+          # `rgba_transparent.bmp` has 4 channels with transparent pixels.
+          # Test consistency between `decode_image` and `decode_bmp` functions.
+          bmp0 = io_ops.read_file(os.path.join(base, "rgba_small.bmp"))
+          image0 = image_ops.decode_image(bmp0, channels=4)
+          image1 = image_ops.decode_bmp(bmp0, channels=4)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
+
+          # Test that 3 channels is returned with user request of `channels=3`
+          # even though image has 4 channels.
+          # Note that this operation simply drops 4th channel information. This
+          # is the same behavior as `decode_png`.
+          # e.g. pixel values [25, 25, 25, 100] becomes [25, 25, 25].
+          bmp1 = io_ops.read_file(os.path.join(base, "rgb_small.bmp"))
+          image2 = image_ops.decode_bmp(bmp0, channels=3)
+          image3 = image_ops.decode_bmp(bmp1)
+          image2, image3 = self.evaluate([image2, image3])
+          self.assertAllEqual(image2, image3)
+
+          # Test that 4 channels is returned with user request of `channels=4`
+          # even though image has 3 channels. Alpha channel should be set to
+          # UINT8_MAX.
+          bmp3 = io_ops.read_file(os.path.join(base, "rgb_small_255.bmp"))
+          bmp4 = io_ops.read_file(os.path.join(base, "rgba_small_255.bmp"))
+          image4 = image_ops.decode_bmp(bmp3, channels=4)
+          image5 = image_ops.decode_bmp(bmp4)
+          image4, image5 = self.evaluate([image4, image5])
+          self.assertAllEqual(image4, image5)
+
+          # Test that 3 channels is returned with user request of `channels=3`
+          # even though image has 1 channel (grayscale).
+          bmp6 = io_ops.read_file(os.path.join(base, "grayscale_small.bmp"))
+          bmp7 = io_ops.read_file(
+              os.path.join(base, "grayscale_small_3channels.bmp"))
+          image6 = image_ops.decode_bmp(bmp6, channels=3)
+          image7 = image_ops.decode_bmp(bmp7)
+          image6, image7 = self.evaluate([image6, image7])
+          self.assertAllEqual(image6, image7)
+
+          # Test that 4 channels is returned with user request of `channels=4`
+          # even though image has 1 channel (grayscale). Alpha channel should be
+          # set to UINT8_MAX.
+          bmp9 = io_ops.read_file(
+              os.path.join(base, "grayscale_small_4channels.bmp"))
+          image8 = image_ops.decode_bmp(bmp6, channels=4)
+          image9 = image_ops.decode_bmp(bmp9)
+          image8, image9 = self.evaluate([image8, image9])
+          self.assertAllEqual(image8, image9)
+
   def testJpegUint16(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/jpeg/testdata"
-      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
-      image0 = image_ops.decode_image(jpeg0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
-                                             dtypes.uint16)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/jpeg/testdata"
+          jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+          image0 = image_ops.decode_image(jpeg0, dtype=dtypes.uint16)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
+                                                 dtypes.uint16)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testPngUint16(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/png/testdata"
-      png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
-      image0 = image_ops.decode_image(png0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(
-          image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.uint16)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/png/testdata"
+          png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
+          image0 = image_ops.decode_image(png0, dtype=dtypes.uint16)
+          image1 = image_ops.convert_image_dtype(
+              image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.uint16)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
-      # NumPy conversions should happen before
-      x = np.random.randint(256, size=(4, 4, 3), dtype=np.uint16)
-      x_str = image_ops_impl.encode_png(x)
-      x_dec = image_ops_impl.decode_image(
-          x_str, channels=3, dtype=dtypes.uint16)
-      self.assertAllEqual(x, x_dec)
+          # NumPy conversions should happen before
+          x = np.random.randint(256, size=(4, 4, 3), dtype=np.uint16)
+          x_str = image_ops_impl.encode_png(x)
+          x_dec = image_ops_impl.decode_image(
+              x_str, channels=3, dtype=dtypes.uint16)
+          self.assertAllEqual(x, x_dec)
 
   def testGifUint16(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/gif/testdata"
-      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
-      image0 = image_ops.decode_image(gif0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
-                                             dtypes.uint16)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/gif/testdata"
+          gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+          image0 = image_ops.decode_image(gif0, dtype=dtypes.uint16)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
+                                                 dtypes.uint16)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testBmpUint16(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/bmp/testdata"
-      bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
-      image0 = image_ops.decode_image(bmp0, dtype=dtypes.uint16)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
-                                             dtypes.uint16)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/bmp/testdata"
+          bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
+          image0 = image_ops.decode_image(bmp0, dtype=dtypes.uint16)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
+                                                 dtypes.uint16)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testJpegFloat32(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/jpeg/testdata"
-      jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
-      image0 = image_ops.decode_image(jpeg0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
-                                             dtypes.float32)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/jpeg/testdata"
+          jpeg0 = io_ops.read_file(os.path.join(base, "jpeg_merge_test1.jpg"))
+          image0 = image_ops.decode_image(jpeg0, dtype=dtypes.float32)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_jpeg(jpeg0),
+                                                 dtypes.float32)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testPngFloat32(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/png/testdata"
-      png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
-      image0 = image_ops.decode_image(png0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(
-          image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.float32)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/png/testdata"
+          png0 = io_ops.read_file(os.path.join(base, "lena_rgba.png"))
+          image0 = image_ops.decode_image(png0, dtype=dtypes.float32)
+          image1 = image_ops.convert_image_dtype(
+              image_ops.decode_png(png0, dtype=dtypes.uint16), dtypes.float32)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testGifFloat32(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/gif/testdata"
-      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
-      image0 = image_ops.decode_image(gif0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
-                                             dtypes.float32)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/gif/testdata"
+          gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+          image0 = image_ops.decode_image(gif0, dtype=dtypes.float32)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_gif(gif0),
+                                                 dtypes.float32)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testBmpFloat32(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/bmp/testdata"
-      bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
-      image0 = image_ops.decode_image(bmp0, dtype=dtypes.float32)
-      image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
-                                             dtypes.float32)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/bmp/testdata"
+          bmp0 = io_ops.read_file(os.path.join(base, "lena.bmp"))
+          image0 = image_ops.decode_image(bmp0, dtype=dtypes.float32)
+          image1 = image_ops.convert_image_dtype(image_ops.decode_bmp(bmp0),
+                                                 dtypes.float32)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertAllEqual(image0, image1)
 
   def testExpandAnimations(self):
-    with self.cached_session(use_gpu=True) as sess:
-      base = "tensorflow/core/lib/gif/testdata"
-      gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
-      image0 = image_ops.decode_image(
-          gif0, dtype=dtypes.float32, expand_animations=False)
-      # image_ops.decode_png() handles GIFs and returns 3D tensors
-      animation = image_ops.decode_gif(gif0)
-      first_frame = array_ops.gather(animation, 0)
-      image1 = image_ops.convert_image_dtype(first_frame, dtypes.float32)
-      image0, image1 = self.evaluate([image0, image1])
-      self.assertEqual(len(image0.shape), 3)
-      self.assertAllEqual(list(image0.shape), [40, 20, 3])
-      self.assertAllEqual(image0, image1)
+    for horizon in self._FORWARD_COMPATIBILITY_HORIZONS:
+      with compat.forward_compatibility_horizon(*horizon):
+        with self.cached_session(use_gpu=True) as sess:
+          base = "tensorflow/core/lib/gif/testdata"
+          gif0 = io_ops.read_file(os.path.join(base, "scan.gif"))
+
+          # Test `expand_animations=False` case.
+          image0 = image_ops.decode_image(
+              gif0, dtype=dtypes.float32, expand_animations=False)
+          # image_ops.decode_png() handles GIFs and returns 3D tensors
+          animation = image_ops.decode_gif(gif0)
+          first_frame = array_ops.gather(animation, 0)
+          image1 = image_ops.convert_image_dtype(first_frame, dtypes.float32)
+          image0, image1 = self.evaluate([image0, image1])
+          self.assertEqual(len(image0.shape), 3)
+          self.assertAllEqual(list(image0.shape), [40, 20, 3])
+          self.assertAllEqual(image0, image1)
+
+          # Test `expand_animations=True` case.
+          image2 = image_ops.decode_image(gif0, dtype=dtypes.float32)
+          image3 = image_ops.convert_image_dtype(animation, dtypes.float32)
+          image2, image3 = self.evaluate([image2, image3])
+          self.assertEqual(len(image2.shape), 4)
+          self.assertAllEqual(list(image2.shape), [12, 40, 20, 3])
+          self.assertAllEqual(image2, image3)
 
 
 if __name__ == "__main__":

@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s --dump-input-on-failure
+# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - | FileCheck %s
 
 node {
   name: "TensorListReserve/num_elements"

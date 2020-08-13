@@ -21,6 +21,7 @@ limitations under the License.
 #include "mlir/Translation.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
+#include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -183,3 +184,8 @@ static mlir::TranslateToMLIRRegistration HloToHloMlirTranslate(
 
 static mlir::TranslateToMLIRRegistration HloTextToHloMlirTranslate(
     "hlo-text-to-mlir-hlo", xla::HloTextToMlirHloTranslateFunction);
+
+// MHLO doesn't support explicit layouts, while XLA service does.
+// TODO(timshen): remove it once MHLO supports explicit layouts.
+static mlir::TranslateToMLIRRegistration HloTextToLhloMlirTranslate(
+    "hlo-text-to-lhlo", mlir::HloTextToLhloTranslateFunction);

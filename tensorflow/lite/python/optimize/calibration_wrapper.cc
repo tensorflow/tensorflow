@@ -86,6 +86,8 @@ inline TensorType TfLiteTypeToSchemaType(TfLiteType type) {
       return TensorType_INT16;
     case kTfLiteComplex64:
       return TensorType_COMPLEX64;
+    case kTfLiteComplex128:
+      return TensorType_COMPLEX128;
   }
   // No default to get compiler error when new type is introduced.
 }
@@ -246,6 +248,14 @@ PyObject* CalibrationWrapper::SetTensor(int index, PyObject* value) {
   tensor = interpreter_->tensor(index);
 
   size_t size = PyArray_NBYTES(array);
+
+  if (tensor->type == kTfLiteString) {
+    tflite::DynamicBuffer buffer;
+    buffer.AddString(reinterpret_cast<const char*>(PyArray_BYTES(array)), size);
+    buffer.WriteToTensor(interpreter_->tensor(index), /*new_shape=*/nullptr);
+    Py_RETURN_NONE;
+  }
+
   if (size != tensor->bytes) {
     PyErr_Format(PyExc_ValueError,
                  "numpy array had %zu bytes but expected %zu bytes.", size,
@@ -269,7 +279,8 @@ PyObject* CalibrationWrapper::Calibrate() {
 
 PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
                                             int output_py_type,
-                                            bool allow_float) {
+                                            bool allow_float,
+                                            int activations_py_type) {
   if (NoOpModel(*model_)) {
     return python_utils::ConvertToPyString(model_str_->data(),
                                            model_str_->size());
@@ -277,6 +288,9 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
 
   TfLiteType input_type = python_utils::TfLiteTypeFromPyType(input_py_type);
   TfLiteType output_type = python_utils::TfLiteTypeFromPyType(output_py_type);
+  TfLiteType activations_type =
+      python_utils::TfLiteTypeFromPyType(activations_py_type);
+
   if (input_type == kTfLiteNoType || output_type == kTfLiteNoType) {
     PyErr_SetString(PyExc_ValueError,
                     "Input/output type cannot be kTfLiteNoType");
@@ -286,9 +300,11 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   reader_->AddCalibrationToModel(tflite_model.get(), /*update=*/false);
   flatbuffers::FlatBufferBuilder builder;
   auto status = kTfLiteOk;
-  status = tflite::optimize::QuantizeModel(
+
+  status = tflite::optimize::QuantizeModelAllOperators(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
-      TfLiteTypeToSchemaType(output_type), allow_float, error_reporter_.get());
+      TfLiteTypeToSchemaType(output_type), allow_float,
+      TfLiteTypeToSchemaType(activations_type), error_reporter_.get());
 
   if (status != kTfLiteOk) {
     error_reporter_->exception();
@@ -319,7 +335,7 @@ PyObject* CalibrationWrapper::QuantizeModel(int input_py_type,
   auto status = tflite::optimize::QuantizeModel(
       &builder, tflite_model.get(), TfLiteTypeToSchemaType(input_type),
       TfLiteTypeToSchemaType(output_type), allow_float, {op_name},
-      error_reporter_.get());
+      TensorType_INT8, error_reporter_.get());
   if (status != kTfLiteOk) {
     error_reporter_->exception();
     return nullptr;

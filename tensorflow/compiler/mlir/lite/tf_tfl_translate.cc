@@ -16,6 +16,7 @@ limitations under the License.
 #include <iostream>
 
 #include "absl/strings/str_split.h"
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -29,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
+#include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/lite/common/tfl_pass_config.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
@@ -37,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/tf_tfl_translate_cl.h"
 #include "tensorflow/compiler/mlir/lite/tf_to_tfl_flatbuffer.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/tf_mlir_translate_cl.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/errors.h"
@@ -141,6 +144,10 @@ int main(int argc, char **argv) {
 
   StatusOr<mlir::OwningModuleRef> module;
 
+  tensorflow::GraphImportConfig specs;
+  specs.upgrade_legacy = upgrade_legacy;
+  specs.prune_unused_nodes = true;
+
   // TODO(b/147435528): We need to test the e2e behavior once the graph freezing
   // inside mlir is done.
   if (import_saved_model_object_graph || import_saved_model_signature_defs) {
@@ -165,14 +172,14 @@ int main(int argc, char **argv) {
       return kTrFailure;
     }
 
-    module = tensorflow::ImportSavedModel(input_file_name, saved_model_version,
-                                          tags, exported_names, &context);
+    module =
+        tensorflow::ImportSavedModel(input_file_name, saved_model_version, tags,
+                                     exported_names, specs, &context);
   } else {
     module = tensorflow::LoadFromGraphdefOrMlirSource(
         input_file_name, input_mlir, use_splatted_constant, custom_opdefs,
-        debug_info_file, input_arrays, input_dtypes, input_shapes,
-        output_arrays,
-        /*prune_unused_nodes=*/true, &source_mgr, &context);
+        specs, debug_info_file, input_arrays, input_dtypes, input_shapes,
+        output_arrays, &source_mgr, &context);
   }
 
   // If errors occur, the library call in the above already logged the error
@@ -220,7 +227,9 @@ int main(int argc, char **argv) {
   pass_config.lower_tensor_list_ops = lower_tensor_list_ops;
   pass_config.legalize_tf_while = convert_tf_while_to_tfl_while;
 
-  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm);
+  // TODO(b/153507667): Pass the session object when importing logic is removed.
+  tensorflow::AddTFToTFLConversionPasses(pass_config, &pm,
+                                         /*session=*/llvm::None);
   // TODO(b/150901738): Move those into tf_tfl_translate.cc.
   // Convert back to outlined while format for export back to flatbuffer.
   if (pass_config.legalize_tf_while) {

@@ -960,49 +960,6 @@ cudnnStatus_t CUDNNWINAPI cudnnDropoutForward(
                   reserveSpaceSizeInBytes);
 }
 
-cudnnStatus_t CUDNNWINAPI
-cudnnCreateAlgorithmDescriptor(cudnnAlgorithmDescriptor_t *algoDesc) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnAlgorithmDescriptor_t *);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnCreateAlgorithmDescriptor");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(algoDesc);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnSetAlgorithmDescriptor(
-    cudnnAlgorithmDescriptor_t algoDesc, cudnnAlgorithm_t algorithm) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnAlgorithmDescriptor_t,
-                                               cudnnAlgorithm_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnSetAlgorithmDescriptor");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(algoDesc, algorithm);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnGetAlgorithmDescriptor(
-    const cudnnAlgorithmDescriptor_t algoDesc, cudnnAlgorithm_t *algorithm) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(const cudnnAlgorithmDescriptor_t,
-                                               cudnnAlgorithm_t *);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnGetAlgorithmDescriptor");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(algoDesc, algorithm);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnCopyAlgorithmDescriptor(
-    const cudnnAlgorithmDescriptor_t src, cudnnAlgorithmDescriptor_t dest) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(const cudnnAlgorithmDescriptor_t,
-                                               cudnnAlgorithmDescriptor_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnCopyAlgorithmDescriptor");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(src, dest);
-}
-
-cudnnStatus_t CUDNNWINAPI
-cudnnDestroyAlgorithmDescriptor(cudnnAlgorithmDescriptor_t algoDesc) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnAlgorithmDescriptor_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnDestroyAlgorithmDescriptor");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(algoDesc);
-}
-
 cudnnStatus_t CUDNNWINAPI cudnnCreateAlgorithmPerformance(
     cudnnAlgorithmPerformance_t *algoPerf, int numberToCreate) {
   using FuncPtr =
@@ -1010,29 +967,6 @@ cudnnStatus_t CUDNNWINAPI cudnnCreateAlgorithmPerformance(
   static auto func_ptr = LoadSymbol<FuncPtr>("cudnnCreateAlgorithmPerformance");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(algoPerf, numberToCreate);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnSetAlgorithmPerformance(
-    cudnnAlgorithmPerformance_t algoPerf, cudnnAlgorithmDescriptor_t algoDesc,
-    cudnnStatus_t status, float time, size_t memory) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnAlgorithmPerformance_t,
-                                               cudnnAlgorithmDescriptor_t,
-                                               cudnnStatus_t, float, size_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnSetAlgorithmPerformance");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(algoPerf, algoDesc, status, time, memory);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnGetAlgorithmPerformance(
-    const cudnnAlgorithmPerformance_t algoPerf,
-    cudnnAlgorithmDescriptor_t *algoDesc, cudnnStatus_t *status, float *time,
-    size_t *memory) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      const cudnnAlgorithmPerformance_t, cudnnAlgorithmDescriptor_t *,
-      cudnnStatus_t *, float *, size_t *);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnGetAlgorithmPerformance");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(algoPerf, algoDesc, status, time, memory);
 }
 
 cudnnStatus_t CUDNNWINAPI cudnnDestroyAlgorithmPerformance(
@@ -1043,36 +977,6 @@ cudnnStatus_t CUDNNWINAPI cudnnDestroyAlgorithmPerformance(
       LoadSymbol<FuncPtr>("cudnnDestroyAlgorithmPerformance");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(algoPerf, numberToDestroy);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnGetAlgorithmSpaceSize(
-    cudnnHandle_t handle, cudnnAlgorithmDescriptor_t algoDesc,
-    size_t *algoSpaceSizeInBytes) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, cudnnAlgorithmDescriptor_t, size_t *);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnGetAlgorithmSpaceSize");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, algoDesc, algoSpaceSizeInBytes);
-}
-
-cudnnStatus_t CUDNNWINAPI
-cudnnSaveAlgorithm(cudnnHandle_t handle, cudnnAlgorithmDescriptor_t algoDesc,
-                   void *algoSpace, size_t algoSpaceSizeInBytes) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, cudnnAlgorithmDescriptor_t, void *, size_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnSaveAlgorithm");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, algoDesc, algoSpace, algoSpaceSizeInBytes);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnRestoreAlgorithm(
-    cudnnHandle_t handle, void *algoSpace, size_t algoSpaceSizeInBytes,
-    cudnnAlgorithmDescriptor_t algoDesc) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnHandle_t, void *, size_t,
-                                               cudnnAlgorithmDescriptor_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnRestoreAlgorithm");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, algoSpace, algoSpaceSizeInBytes, algoDesc);
 }
 
 cudnnStatus_t CUDNNWINAPI cudnnSetCallback(unsigned mask, void *udata,
@@ -2044,56 +1948,6 @@ cudnnStatus_t CUDNNWINAPI cudnnRNNForwardInferenceEx(
                   workSpaceSizeInBytes);
 }
 
-cudnnStatus_t CUDNNWINAPI cudnnSetRNNAlgorithmDescriptor(
-    cudnnHandle_t handle, cudnnRNNDescriptor_t rnnDesc,
-    cudnnAlgorithmDescriptor_t algoDesc) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, cudnnRNNDescriptor_t, cudnnAlgorithmDescriptor_t);
-  static auto func_ptr = LoadSymbol<FuncPtr>("cudnnSetRNNAlgorithmDescriptor");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, rnnDesc, algoDesc);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnGetRNNForwardInferenceAlgorithmMaxCount(
-    cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc, int *count) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, const cudnnRNNDescriptor_t, int *);
-  static auto func_ptr =
-      LoadSymbol<FuncPtr>("cudnnGetRNNForwardInferenceAlgorithmMaxCount");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, rnnDesc, count);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnFindRNNForwardInferenceAlgorithmEx(
-    cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc,
-    const int seqLength, const cudnnTensorDescriptor_t *xDesc, const void *x,
-    const cudnnTensorDescriptor_t hxDesc, const void *hx,
-    const cudnnTensorDescriptor_t cxDesc, const void *cx,
-    const cudnnFilterDescriptor_t wDesc, const void *w,
-    const cudnnTensorDescriptor_t *yDesc, void *y,
-    const cudnnTensorDescriptor_t hyDesc, void *hy,
-    const cudnnTensorDescriptor_t cyDesc, void *cy, const float findIntensity,
-    const int requestedAlgoCount, int *returnedAlgoCount,
-    cudnnAlgorithmPerformance_t *perfResults, void *workspace,
-    size_t workSpaceSizeInBytes) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, const cudnnRNNDescriptor_t, const int,
-      const cudnnTensorDescriptor_t *, const void *,
-      const cudnnTensorDescriptor_t, const void *,
-      const cudnnTensorDescriptor_t, const void *,
-      const cudnnFilterDescriptor_t, const void *,
-      const cudnnTensorDescriptor_t *, void *, const cudnnTensorDescriptor_t,
-      void *, const cudnnTensorDescriptor_t, void *, const float, const int,
-      int *, cudnnAlgorithmPerformance_t *, void *, size_t);
-  static auto func_ptr =
-      LoadSymbol<FuncPtr>("cudnnFindRNNForwardInferenceAlgorithmEx");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, rnnDesc, seqLength, xDesc, x, hxDesc, hx, cxDesc, cx,
-                  wDesc, w, yDesc, y, hyDesc, hy, cyDesc, cy, findIntensity,
-                  requestedAlgoCount, returnedAlgoCount, perfResults, workspace,
-                  workSpaceSizeInBytes);
-}
-
 cudnnStatus_t CUDNNWINAPI
 cudnnCreateSeqDataDescriptor(cudnnSeqDataDescriptor_t *seqDataDesc) {
   using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(cudnnSeqDataDescriptor_t *);
@@ -2933,131 +2787,6 @@ cudnnStatus_t CUDNNWINAPI cudnnRNNBackwardWeightsEx(
   return func_ptr(handle, rnnDesc, xDesc, x, hxDesc, hx, yDesc, y, workSpace,
                   workSpaceSizeInBytes, dwDesc, dw, reserveSpace,
                   reserveSpaceSizeInBytes);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnGetRNNForwardTrainingAlgorithmMaxCount(
-    cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc, int *count) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, const cudnnRNNDescriptor_t, int *);
-  static auto func_ptr =
-      LoadSymbol<FuncPtr>("cudnnGetRNNForwardTrainingAlgorithmMaxCount");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, rnnDesc, count);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnFindRNNForwardTrainingAlgorithmEx(
-    cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc,
-    const int seqLength, const cudnnTensorDescriptor_t *xDesc, const void *x,
-    const cudnnTensorDescriptor_t hxDesc, const void *hx,
-    const cudnnTensorDescriptor_t cxDesc, const void *cx,
-    const cudnnFilterDescriptor_t wDesc, const void *w,
-    const cudnnTensorDescriptor_t *yDesc, void *y,
-    const cudnnTensorDescriptor_t hyDesc, void *hy,
-    const cudnnTensorDescriptor_t cyDesc, void *cy, const float findIntensity,
-    const int requestedAlgoCount, int *returnedAlgoCount,
-    cudnnAlgorithmPerformance_t *perfResults, void *workspace,
-    size_t workSpaceSizeInBytes, void *reserveSpace,
-    size_t reserveSpaceSizeInBytes) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, const cudnnRNNDescriptor_t, const int,
-      const cudnnTensorDescriptor_t *, const void *,
-      const cudnnTensorDescriptor_t, const void *,
-      const cudnnTensorDescriptor_t, const void *,
-      const cudnnFilterDescriptor_t, const void *,
-      const cudnnTensorDescriptor_t *, void *, const cudnnTensorDescriptor_t,
-      void *, const cudnnTensorDescriptor_t, void *, const float, const int,
-      int *, cudnnAlgorithmPerformance_t *, void *, size_t, void *, size_t);
-  static auto func_ptr =
-      LoadSymbol<FuncPtr>("cudnnFindRNNForwardTrainingAlgorithmEx");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, rnnDesc, seqLength, xDesc, x, hxDesc, hx, cxDesc, cx,
-                  wDesc, w, yDesc, y, hyDesc, hy, cyDesc, cy, findIntensity,
-                  requestedAlgoCount, returnedAlgoCount, perfResults, workspace,
-                  workSpaceSizeInBytes, reserveSpace, reserveSpaceSizeInBytes);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnGetRNNBackwardDataAlgorithmMaxCount(
-    cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc, int *count) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, const cudnnRNNDescriptor_t, int *);
-  static auto func_ptr =
-      LoadSymbol<FuncPtr>("cudnnGetRNNBackwardDataAlgorithmMaxCount");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, rnnDesc, count);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnFindRNNBackwardDataAlgorithmEx(
-    cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc,
-    const int seqLength, const cudnnTensorDescriptor_t *yDesc, const void *y,
-    const cudnnTensorDescriptor_t *dyDesc, const void *dy,
-    const cudnnTensorDescriptor_t dhyDesc, const void *dhy,
-    const cudnnTensorDescriptor_t dcyDesc, const void *dcy,
-    const cudnnFilterDescriptor_t wDesc, const void *w,
-    const cudnnTensorDescriptor_t hxDesc, const void *hx,
-    const cudnnTensorDescriptor_t cxDesc, const void *cx,
-    const cudnnTensorDescriptor_t *dxDesc, void *dx,
-    const cudnnTensorDescriptor_t dhxDesc, void *dhx,
-    const cudnnTensorDescriptor_t dcxDesc, void *dcx, const float findIntensity,
-    const int requestedAlgoCount, int *returnedAlgoCount,
-    cudnnAlgorithmPerformance_t *perfResults, void *workspace,
-    size_t workSpaceSizeInBytes, void *reserveSpace,
-    size_t reserveSpaceSizeInBytes) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, const cudnnRNNDescriptor_t, const int,
-      const cudnnTensorDescriptor_t *, const void *,
-      const cudnnTensorDescriptor_t *, const void *,
-      const cudnnTensorDescriptor_t, const void *,
-      const cudnnTensorDescriptor_t, const void *,
-      const cudnnFilterDescriptor_t, const void *,
-      const cudnnTensorDescriptor_t, const void *,
-      const cudnnTensorDescriptor_t, const void *,
-      const cudnnTensorDescriptor_t *, void *, const cudnnTensorDescriptor_t,
-      void *, const cudnnTensorDescriptor_t, void *, const float, const int,
-      int *, cudnnAlgorithmPerformance_t *, void *, size_t, void *, size_t);
-  static auto func_ptr =
-      LoadSymbol<FuncPtr>("cudnnFindRNNBackwardDataAlgorithmEx");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, rnnDesc, seqLength, yDesc, y, dyDesc, dy, dhyDesc,
-                  dhy, dcyDesc, dcy, wDesc, w, hxDesc, hx, cxDesc, cx, dxDesc,
-                  dx, dhxDesc, dhx, dcxDesc, dcx, findIntensity,
-                  requestedAlgoCount, returnedAlgoCount, perfResults, workspace,
-                  workSpaceSizeInBytes, reserveSpace, reserveSpaceSizeInBytes);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnGetRNNBackwardWeightsAlgorithmMaxCount(
-    cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc, int *count) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, const cudnnRNNDescriptor_t, int *);
-  static auto func_ptr =
-      LoadSymbol<FuncPtr>("cudnnGetRNNBackwardWeightsAlgorithmMaxCount");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, rnnDesc, count);
-}
-
-cudnnStatus_t CUDNNWINAPI cudnnFindRNNBackwardWeightsAlgorithmEx(
-    cudnnHandle_t handle, const cudnnRNNDescriptor_t rnnDesc,
-    const int seqLength, const cudnnTensorDescriptor_t *xDesc, const void *x,
-    const cudnnTensorDescriptor_t hxDesc, const void *hx,
-    const cudnnTensorDescriptor_t *yDesc, const void *y,
-    const float findIntensity, const int requestedAlgoCount,
-    int *returnedAlgoCount, cudnnAlgorithmPerformance_t *perfResults,
-    const void *workspace, size_t workSpaceSizeInBytes,
-    const cudnnFilterDescriptor_t dwDesc, void *dw, const void *reserveSpace,
-    size_t reserveSpaceSizeInBytes) {
-  using FuncPtr = cudnnStatus_t(CUDNNWINAPI *)(
-      cudnnHandle_t, const cudnnRNNDescriptor_t, const int,
-      const cudnnTensorDescriptor_t *, const void *,
-      const cudnnTensorDescriptor_t, const void *,
-      const cudnnTensorDescriptor_t *, const void *, const float, const int,
-      int *, cudnnAlgorithmPerformance_t *, const void *, size_t,
-      const cudnnFilterDescriptor_t, void *, const void *, size_t);
-  static auto func_ptr =
-      LoadSymbol<FuncPtr>("cudnnFindRNNBackwardWeightsAlgorithmEx");
-  if (!func_ptr) return GetSymbolNotFoundError();
-  return func_ptr(handle, rnnDesc, seqLength, xDesc, x, hxDesc, hx, yDesc, y,
-                  findIntensity, requestedAlgoCount, returnedAlgoCount,
-                  perfResults, workspace, workSpaceSizeInBytes, dwDesc, dw,
-                  reserveSpace, reserveSpaceSizeInBytes);
 }
 
 cudnnStatus_t CUDNNWINAPI cudnnMultiHeadAttnBackwardData(

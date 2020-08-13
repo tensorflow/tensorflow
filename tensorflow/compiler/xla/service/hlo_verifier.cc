@@ -670,14 +670,6 @@ Status ShapeVerifier::HandleReduce(HloInstruction* reduce) {
 }
 
 Status ShapeVerifier::HandleBitcast(HloInstruction* bitcast) {
-  // Bitcasts are not allowed to change the element type.
-  if (bitcast->operand(0)->shape().element_type() !=
-      bitcast->shape().element_type()) {
-    return InternalError(
-        "Bitcast can not change the element type from %s to %s",
-        PrimitiveType_Name(bitcast->operand(0)->shape().element_type()),
-        PrimitiveType_Name(bitcast->shape().element_type()));
-  }
   if (layout_sensitive_ &&
       shape_size_function_(bitcast->shape()) !=
           shape_size_function_(bitcast->operand(0)->shape())) {
@@ -1123,7 +1115,8 @@ Status ShapeVerifier::HandleGetDimensionSize(HloInstruction* get_size) {
 Status ShapeVerifier::HandleSetDimensionSize(HloInstruction* set_size) {
   return CheckShape(set_size,
                     ShapeInference::InferSetDimensionSizeShape(
-                        set_size->operand(0)->shape(), set_size->dimension()));
+                        set_size->operand(0)->shape(),
+                        set_size->operand(1)->shape(), set_size->dimension()));
 }
 
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
@@ -1323,7 +1316,8 @@ Status VerifyHloStructure(HloModule* module) {
               "Operand %d (%s) of instruction %s is in a different "
               "computation: %s vs %s",
               i, operand->name(), instruction->name(),
-              operand->parent()->name(), instruction->parent()->name());
+              operand->parent() ? operand->parent()->name() : "(null)",
+              instruction->parent()->name());
         }
       }
     }

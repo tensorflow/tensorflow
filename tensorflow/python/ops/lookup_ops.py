@@ -40,6 +40,7 @@ from tensorflow.python.ops import string_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_lookup_ops import *
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.training.saver import BaseSaverBuilder
 # pylint: enable=wildcard-import
 from tensorflow.python.training.tracking import base as trackable_base
@@ -209,14 +210,16 @@ class InitializableLookupTableBase(LookupInterface):
       name: A name for the operation (optional).
 
     Returns:
-      A `SparseTensor` if keys are sparse, otherwise a dense `Tensor`.
+      A `SparseTensor` if keys are sparse, a `RaggedTensor` if keys are ragged,
+      otherwise a dense `Tensor`.
 
     Raises:
       TypeError: when `keys` or `default_value` doesn't match the table data
         types.
     """
     key_tensor = keys
-    if isinstance(keys, sparse_tensor.SparseTensor):
+    if isinstance(keys,
+                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
       key_tensor = keys.values
 
     if keys.dtype.base_dtype != self._key_dtype:
@@ -233,6 +236,8 @@ class InitializableLookupTableBase(LookupInterface):
     values.set_shape(key_tensor.get_shape())
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, values, keys.dense_shape)
+    elif isinstance(keys, ragged_tensor.RaggedTensor):
+      return keys.with_values(values)
     else:
       return values
 
@@ -468,6 +473,7 @@ class DatasetInitializer(TableInitializerBase):
     _check_table_dtypes(table, self._key_dtype, self._value_dtype)
     init_op = gen_lookup_ops.initialize_table_from_dataset(
         table.resource_handle, self.dataset._variant_tensor)  # pylint: disable=protected-access
+    ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     return init_op
 
 
@@ -1057,7 +1063,8 @@ class IdTableWithHashBuckets(LookupInterface):
       name: Optional name for the op.
 
     Returns:
-      A `SparseTensor` if keys are sparse, otherwise a dense `Tensor`.
+      A `SparseTensor` if keys are sparse, a `RaggedTensor` if keys are ragged,
+      otherwise a dense `Tensor`.
 
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
@@ -1066,7 +1073,8 @@ class IdTableWithHashBuckets(LookupInterface):
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
     values = keys
-    if isinstance(keys, sparse_tensor.SparseTensor):
+    if isinstance(keys,
+                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
       values = math_ops.cast(values, dtypes.int64)
@@ -1091,6 +1099,8 @@ class IdTableWithHashBuckets(LookupInterface):
           ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, ids, keys.dense_shape)
+    elif isinstance(keys, ragged_tensor.RaggedTensor):
+      return keys.with_values(ids)
     return ids
 
 
@@ -1243,7 +1253,8 @@ class StaticVocabularyTable(LookupInterface):
       name: Optional name for the op.
 
     Returns:
-      A `SparseTensor` if keys are sparse, otherwise a dense `Tensor`.
+      A `SparseTensor` if keys are sparse, a `RaggedTensor` if keys are ragged,
+      otherwise a dense `Tensor`.
 
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
@@ -1252,7 +1263,8 @@ class StaticVocabularyTable(LookupInterface):
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
     values = keys
-    if isinstance(keys, sparse_tensor.SparseTensor):
+    if isinstance(keys,
+                  (sparse_tensor.SparseTensor, ragged_tensor.RaggedTensor)):
       values = keys.values
     if self._table and (self._table.key_dtype.base_dtype == dtypes.int64):
       values = math_ops.cast(values, dtypes.int64)
@@ -1272,6 +1284,8 @@ class StaticVocabularyTable(LookupInterface):
         ids = buckets
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, ids, keys.dense_shape)
+    elif isinstance(keys, ragged_tensor.RaggedTensor):
+      return keys.with_values(ids)
     return ids
 
 
@@ -1870,25 +1884,27 @@ class MutableHashTable(LookupInterface):
     return {
         "table":
             functools.partial(
-                MutableHashTable._Saveable, table=self, name=self._name)
+                MutableHashTable._Saveable, table=self, name=self._name,
+                table_name=self._name)
     }
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
-    """SaveableObject implementation for MutableHashTable."""
+    """SaveableObject implementation for DenseHashTable."""
 
-    def __init__(self, table, name):
+    def __init__(self, table, name, table_name=None):
       tensors = table.export()
       specs = [
           BaseSaverBuilder.SaveSpec(tensors[0], "", name + "-keys"),
           BaseSaverBuilder.SaveSpec(tensors[1], "", name + "-values")
       ]
+      self.table_name = table_name or name
       # pylint: disable=protected-access
       super(MutableHashTable._Saveable, self).__init__(table, specs, name)
 
-    def restore(self, restored_tensors, restored_shapes, name=None):
+    def restore(self, restored_tensors, restored_shapes):
       del restored_shapes  # unused
       # pylint: disable=protected-access
-      with ops.name_scope(name, "%s_table_restore" % self.name):
+      with ops.name_scope("%s_table_restore" % self.table_name):
         with ops.colocate_with(self.op.resource_handle):
           return gen_lookup_ops.lookup_table_import_v2(self.op.resource_handle,
                                                        restored_tensors[0],
@@ -2166,25 +2182,27 @@ class DenseHashTable(LookupInterface):
     return {
         "table":
             functools.partial(
-                DenseHashTable._Saveable, table=self, name=self._name)
+                DenseHashTable._Saveable, table=self, name=self._name,
+                table_name=self._name)
     }
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
     """SaveableObject implementation for DenseHashTable."""
 
-    def __init__(self, table, name):
+    def __init__(self, table, name, table_name=None):
       tensors = table.export()
       specs = [
           BaseSaverBuilder.SaveSpec(tensors[0], "", name + "-keys"),
           BaseSaverBuilder.SaveSpec(tensors[1], "", name + "-values")
       ]
+      self.table_name = table_name or name
       # pylint: disable=protected-access
       super(DenseHashTable._Saveable, self).__init__(table, specs, name)
 
-    def restore(self, restored_tensors, restored_shapes, name=None):
+    def restore(self, restored_tensors, restored_shapes):
       del restored_shapes  # unused
       # pylint: disable=protected-access
-      with ops.name_scope(name, "%s_table_restore" % self.name):
+      with ops.name_scope("%s_table_restore" % self.table_name):
         with ops.colocate_with(self.op.resource_handle):
           return gen_lookup_ops.lookup_table_import_v2(self.op.resource_handle,
                                                        restored_tensors[0],

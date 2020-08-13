@@ -75,7 +75,9 @@ Status Concat(const gtl::ArraySlice<Tensor>& tensors, Tensor* result) {
   for (int i = 1; i < tensors.size(); ++i) {
     if (tensors[i].dtype() != dtype) {
       return errors::InvalidArgument(
-          "Cannot concatenate tensors that have different data types");
+          "Cannot concatenate tensors that have different data types.", " Got ",
+          DataTypeString(dtype), " and ", DataTypeString(tensors[i].dtype()),
+          ".");
     }
   }
   *result = Tensor(dtype, shape);

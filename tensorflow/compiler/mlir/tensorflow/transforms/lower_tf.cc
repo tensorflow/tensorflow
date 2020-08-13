@@ -113,12 +113,42 @@ Type InferExpandDimsType(Type ty, int64_t axis, Builder *builder) {
 
 // Lowers AddN op to a sequence of AddV2 ops to accumulate operands.
 //
+// Note that to improve the parallelism, AddN op uses tree-based reduction.
+// For example, tf.AddN([0, 1, 2, 3, 4]) behaves as follows:
+//
+//                 0     1     2     3     4
+//                 |     |     |     |     |
+//                 -------     -------     |
+//                    |           |        |
+//                    5           6        |
+//                    |           |        |
+//                    -------------        |
+//                          |              |
+//                          7              |
+//                          |              |
+//                          ----------------
+//                                 |
+//                                 8
+//
+// Example:
+//
 //   %result = "tf.AddN"(%0, %1, %2)
 //
 // is lowered to:
 //
-//   %sum_0 = "tf.AddV2"(%0, %1)
-//   %result = "tf.AddV2"(%sum_0, %2)
+//   %sum0 = "tf.AddV2"(%0, %1)
+//   %result = "tf.AddV2"(%sum0, %2)
+//
+// While
+//
+//   %result = "tf.AddN"(%0, %1, %2, %3, %4)
+//
+// is lowered to:
+//
+//   %sum0 = "tf.AddV2"(%0, %1)
+//   %sum1 = "tf.AddV2"(%2, %3)
+//   %sum2 = "tf.AddV2"(%sum0, %sum1)
+//   %result = "tf.AddV2"(%sum2, %4)
 //
 class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
  public:
@@ -131,14 +161,23 @@ class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
     // support variant type so variant types require special handling.
     if (getElementTypeOrSelf(op.getType()).isa<VariantType>()) return failure();
 
-    // TODO(hinsu): Improve parallelism by splitting operands in two halves and
-    // accumulating them first.
-    Value result = *op.inputs().begin();
-    for (Value operand : llvm::drop_begin(op.inputs(), 1)) {
-      result = rewriter.create<TF::AddV2Op>(op.getLoc(), result, operand);
+    llvm::SmallVector<Value, 4> operands(op.inputs().begin(),
+                                         op.inputs().end());
+
+    int64_t n = operands.size();
+    // Keep doing tree-based reduction when there are more than one operand.
+    while (n > 1) {
+      for (int64_t i = 0; i < n; i += 2) {
+        // Add two adjacent operands if applicable.
+        operands[i / 2] = (i + 1 < n)
+                              ? rewriter.create<TF::AddV2Op>(
+                                    op.getLoc(), operands[i], operands[i + 1])
+                              : operands[i];
+      }
+      n = (n + 1) / 2;
     }
 
-    rewriter.replaceOp(op, result);
+    rewriter.replaceOp(op, operands[0]);
     return success();
   }
 };
@@ -344,12 +383,56 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
   }
 };
 
+// Lowers `TF::SparseMatMulOp` to `TF::MatMulOp`, ignoring the sparseness hints,
+// since we currently don't have an implementation that can use this
+// information. Adds appropriate casts where necessary to align element types
+// of operands and result for `TF::MatMulOp`.
+class LowerSparseMatMulOp : public OpRewritePattern<TF::SparseMatMulOp> {
+ public:
+  using OpRewritePattern<TF::SparseMatMulOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::SparseMatMulOp op,
+                                PatternRewriter &rewriter) const override {
+    // Result type must be f32 for applying the pattern (currently this is
+    // required by the op anyway but this might change).
+    if (!op.product().getType().cast<TensorType>().getElementType().isF32()) {
+      return failure();
+    }
+    MLIRContext *context = rewriter.getContext();
+    llvm::SmallVector<Value, 2> operands{op.a(), op.b()};
+    for (Value &operand : operands) {
+      TensorType tensor_type = operand.getType().cast<TensorType>();
+      Type element_type = tensor_type.getElementType();
+      if (element_type.isF32()) continue;
+      // Element type can either be f32 or bf16 for `SparseMatMulOp` so it
+      // must be bf16 here.
+      assert(element_type.isBF16());
+      Type tensor_type_f32;
+      if (tensor_type.hasRank()) {
+        tensor_type_f32 = RankedTensorType::get(tensor_type.getShape(),
+                                                FloatType::getF32(context));
+      } else {
+        tensor_type_f32 = UnrankedTensorType::get(FloatType::getF32(context));
+      }
+      // Add cast to f32 to conform with element type of result.
+      operand =
+          rewriter.create<TF::CastOp>(op.getLoc(), tensor_type_f32, operand);
+    }
+    Value result = rewriter.create<TF::MatMulOp>(
+        op.getLoc(), op.product().getType(), operands[0], operands[1],
+        op.transpose_a(), op.transpose_b());
+
+    rewriter.replaceOp(op, {result});
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
   patterns->insert<LowerAddNOp, LowerDynamicStitchOp, LowerInvertPermutationOp,
-                   LowerPackOp>(context);
+                   LowerPackOp, LowerSparseMatMulOp>(context);
   populateWithGenerated(context, patterns);
 }
 

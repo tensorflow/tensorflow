@@ -72,11 +72,13 @@ extern const char* const kAcquireOutfeedBufferForPopulationSymbolName;
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
 extern const char* const kParallelForkJoinSymbolName;
 extern const char* const kKeyValueSortSymbolName;
+extern const char* const kTopKF32SymbolName;
 extern const char* const kAllReduceSymbolName;
 extern const char* const kCollectivePermuteSymbolName;
 extern const char* const kReplicaIdSymbolName;
 extern const char* const kTracingStartSymbolName;
 extern const char* const kTracingEndSymbolName;
+extern const char* const kAllToAllSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.
@@ -180,6 +182,12 @@ extern void __xla_cpu_runtime_CollectivePermute(
     xla::int64 op_id, xla::int32 byte_size, void* input_buffer,
     void* output_buffer, const void* source_target_pairs,
     xla::int32 source_target_pairs_size);
+
+extern void __xla_cpu_runtime_AllToAll(
+    const xla::ExecutableRunOptions* run_options, xla::int32 channel_id_present,
+    xla::int64 op_id, const void* replica_groups_str,
+    xla::int32 replica_groups_str_size, xla::int32 num_buffers,
+    xla::int64 buffer_size, void** source_buffers, void** destination_buffers);
 
 // Write the replica ID into the output buffer.
 extern void __xla_cpu_runtime_ReplicaId(

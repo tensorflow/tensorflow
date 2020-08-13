@@ -41,7 +41,9 @@ limitations under the License.
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
@@ -49,15 +51,19 @@ limitations under the License.
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/unroll_batch_matmul.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
 #define DEBUG_TYPE "tf-tfl-legalization"
 
@@ -494,7 +500,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
         original_input_type.getShape();
     SmallVector<int64_t, 4> new_shape;
     int index = 0;
-    while (index < original_input_shape.size() || new_axis_mask) {
+    const int original_input_rank = original_input_shape.size();
+    while (index < original_input_rank || new_axis_mask) {
       if (new_axis_mask & 1) {
         new_shape.emplace_back(1);
       } else {
@@ -584,46 +591,50 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     const int ellipsis_filled_dim_size = input_size - begin_shape[0] + 1;
 
-    llvm::APInt new_begin_mask = strided_slice_op.begin_mask();
-    llvm::APInt new_end_mask = strided_slice_op.end_mask();
+    int64_t begin_mask = strided_slice_op.begin_mask().getSExtValue();
+    int64_t end_mask = strided_slice_op.end_mask().getSExtValue();
+    int64_t new_begin_mask = 0;
+    int64_t new_end_mask = 0;
 
     SmallVector<int32_t, 4> padded_begin;
     SmallVector<int32_t, 4> padded_end;
     SmallVector<int32_t, 4> padded_stride;
 
     // Before the ellipsis.
-    uint64_t index = 1;
-    int count = 0;
-
-    while (index < ellipsis_mask) {
-      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(count));
-      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(count));
-      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(count));
-      index <<= 1;
-      count++;
+    int index = 0;
+    int new_index = 0;
+    while (((ellipsis_mask >> index) & 1) == 0) {
+      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
+      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
+      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
+      if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
+      if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
+      ++index;
+      ++new_index;
     }
 
     // Ellipsis.
-    for (int i = 0; i < ellipsis_filled_dim_size; ++i) {
-      new_begin_mask |= ellipsis_mask;
-      new_end_mask |= ellipsis_mask;
+    for (; new_index < index + ellipsis_filled_dim_size; ++new_index) {
+      new_begin_mask |= (1 << new_index);
+      new_end_mask |= (1 << new_index);
 
       // Mimic the begin/end/strides mask behavior.
       padded_begin.push_back(0);
       padded_end.push_back(0);
       padded_stride.push_back(1);
-
-      ellipsis_mask <<= 1;
     }
 
     // Account for ellipsis mask.
-    count++;
+    ++index;
 
     // After the ellipsis.
-    for (; count < begin_shape[0]; ++count) {
-      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(count));
-      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(count));
-      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(count));
+    for (; index < begin_shape[0]; ++index) {
+      padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
+      padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
+      padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
+
+      if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
+      if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
     }
 
     auto attribute_type = rewriter.getIntegerType(64);
@@ -645,7 +656,7 @@ struct ConvertTFStridedSlice : public RewritePattern {
         end_op.getResult(), stride_op.getResult(),
         rewriter.getIntegerAttr(attribute_type, new_begin_mask),
         rewriter.getIntegerAttr(attribute_type, new_end_mask),
-        rewriter.getI64IntegerAttr(0),
+        /*ellipsis_maks=*/rewriter.getI64IntegerAttr(0),
         rewriter.getIntegerAttr(attribute_type,
                                 strided_slice_op.new_axis_mask()),
         rewriter.getIntegerAttr(attribute_type,
@@ -655,9 +666,11 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
   LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
-    // TODO(renjieliu): Consider expand the transformation for shrink
-    // mask as well.
     TF::StridedSliceOp strided_slice_op = llvm::cast<TF::StridedSliceOp>(op);
+
+    // TODO(renjieliu): Consider expand the transformation for shrink mask as
+    // well.
+    if (strided_slice_op.shrink_axis_mask().getZExtValue()) return failure();
 
     // Handle new axis mask.
     uint64_t new_axis_mask = strided_slice_op.new_axis_mask().getZExtValue();
@@ -671,6 +684,48 @@ struct ConvertTFStridedSlice : public RewritePattern {
       return RewriteEllipsisMask(strided_slice_op, ellipsis_mask, rewriter);
     }
     return failure();
+  }
+};
+
+struct ConvertTFBroadcastTo : public RewritePattern {
+  explicit ConvertTFBroadcastTo(MLIRContext *context)
+      : RewritePattern(TF::BroadcastToOp::getOperationName(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
+    auto input_type = tf_broadcast_to_op.input().getType().cast<ShapedType>();
+    auto output_type = tf_broadcast_to_op.output().getType().cast<ShapedType>();
+    auto shape_type = tf_broadcast_to_op.shape().getType().cast<ShapedType>();
+    Type element_type = input_type.getElementType();
+
+    // Allow lowering when low dimension inputs are given and its type is F32 or
+    // I32.
+    if (!((output_type.hasRank() && output_type.getRank() <= 5) ||
+          (shape_type.hasStaticShape() && shape_type.getRank() == 1 &&
+           shape_type.getDimSize(0) <= 5)))
+      return failure();
+
+    if (!((element_type.getKind() == mlir::StandardTypes::F32) ||
+          (element_type.getKind() == mlir::StandardTypes::BF16) ||
+          (element_type.getKind() == mlir::StandardTypes::Integer &&
+           element_type.cast<mlir::IntegerType>().getWidth() == 32)))
+      return failure();
+
+    auto status_or_const_op =
+        CreateConstOpWithSingleValue(&rewriter, op->getLoc(), input_type, 1);
+    if (!status_or_const_op.ok()) {
+      return failure();
+    }
+
+    auto tf_fill_op = rewriter.create<TF::FillOp>(
+        op->getLoc(), output_type, tf_broadcast_to_op.shape(),
+        status_or_const_op.ValueOrDie());
+
+    auto mul_op = rewriter.create<TF::MulOp>(
+        op->getLoc(), output_type, tf_broadcast_to_op.input(), tf_fill_op);
+    rewriter.replaceOp(op, mul_op.getResult());
+    return success();
   }
 };
 
@@ -690,6 +745,23 @@ LogicalResult ValidateOp(Operation *op) {
   return failure(has_illegal_ops);
 }
 
+// Converts a set of TF2XLA ops into pure TF ops for future legalizations as
+// TF2XLA ops aren't supported by later stages.
+LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
+  ConversionTarget target(*context);
+  target.addLegalDialect<StandardOpsDialect>();
+  target.addLegalDialect<TF::TensorFlowDialect>();
+  target.addLegalOp<ModuleOp>();
+  target.addLegalOp<FuncOp>();
+  target.addIllegalOp<TF::XlaConvOp>();
+
+  OwningRewritePatternList patterns;
+  mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns);
+  TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
+
+  return applyPartialConversion(func, target, patterns);
+}
+
 void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
   auto func = getFunction();
@@ -701,6 +773,11 @@ void PrepareTFPass::runOnFunction() {
   // to make things more modular.
   if (failed(ValidateOp(func))) {
     func.emitError() << "tfl-prepare-tf pass failed.";
+    signalPassFailure();
+    return;
+  }
+
+  if (failed(ConvertTf2XlaOps(func, ctx))) {
     signalPassFailure();
     return;
   }
@@ -733,7 +810,7 @@ void PrepareTFPass::runOnFunction() {
     patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                     TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);
   }
-  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFConv2D,
+  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFConv2D,
                   ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
   applyPatternsAndFoldGreedily(func, patterns);
 }

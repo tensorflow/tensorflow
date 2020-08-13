@@ -110,7 +110,7 @@ void TF_OutputListPushBack(TF_OutputList* o, TF_AbstractTensor* tensor,
 // Any active tape will observe the effects of this execution.
 void TF_ExecuteOperation(TF_AbstractOp* op, int num_inputs,
                          TF_AbstractTensor* const* inputs, TF_OutputList* o,
-                         TF_ExecutionContext* ctx, TF_Status* s);
+                         TF_Status* s);
 
 // Creates a new TF_AbstractFunction from the current tracing states in the
 // context. The provided `ctx` is consumed by this API call and deleted.
@@ -137,7 +137,8 @@ TF_AbstractTensor* TF_CreateAbstractTensorFromEagerTensor(TFE_TensorHandle* t,
                                                           TF_Status* s);
 TFE_TensorHandle* TF_AbstractTensorGetEagerTensor(TF_AbstractTensor* at,
                                                   TF_Status* s);
-TFE_Context* TF_ExecutionContextGetTFEContext(TF_ExecutionContext*);
+TFE_Context* TF_ExecutionContextGetTFEContext(TF_ExecutionContext*,
+                                              TF_Status* s);
 
 #ifdef __cplusplus
 } /* end extern "C" */

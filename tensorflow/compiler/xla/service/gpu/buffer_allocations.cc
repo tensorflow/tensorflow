@@ -64,6 +64,13 @@ se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
   return buffers_[buffer_index];
 }
 
+se::DeviceMemoryBase& BufferAllocations::GetMutableDeviceAddress(
+    BufferAllocation::Index buffer_index) {
+  CHECK_GE(buffer_index, 0);
+  CHECK_LT(buffer_index, buffers_.size());
+  return buffers_[buffer_index];
+}
+
 se::DeviceMemoryBase BufferAllocations::GetDeviceAddress(
     const BufferAllocation::Slice& buffer_slice) const {
   se::DeviceMemoryBase base = GetDeviceAddress(buffer_slice.index());

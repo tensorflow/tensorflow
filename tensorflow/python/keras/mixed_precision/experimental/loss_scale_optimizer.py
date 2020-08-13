@@ -22,6 +22,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
@@ -31,7 +32,6 @@ from tensorflow.python.keras.mixed_precision.experimental import loss_scale as k
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training.experimental import loss_scale as loss_scale_module
 from tensorflow.python.training.experimental import mixed_precision
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import keras_export
@@ -48,6 +48,8 @@ class _UnwrapPreventer(object):
   TODO(reedwm): Find/implement a better way of preventing values from being
   unwrapped by DistributionStrategy
   """
+
+  __slots__ = ['value']
 
   def __init__(self, value):
     self.value = value
@@ -269,7 +271,7 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     # constructor.
     _DelegatingTrackableMixin.__init__(self, self._optimizer)
 
-    for weight in loss_scale_module.get_loss_scale_weights(self._loss_scale):
+    for weight in self._loss_scale._weights.values():  # pylint: disable=protected-access
       # We cannot call `track_variable` in the LossScale class itself, because a
       # file outside of Keras cannot depend on a Keras file. Calling it here
       # instead is OK, because a variable only needs to be tracked if used with
@@ -347,10 +349,15 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
         for g in grads
     ]
 
-  def _compute_gradients(self, loss, var_list, grad_loss=None):
-    loss = self.get_scaled_loss(loss)
-    grads_and_vars = self._optimizer._compute_gradients(loss, var_list,  # pylint: disable=protected-access
-                                                        grad_loss)
+  def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
+    tape = backprop.GradientTape() if tape is None else tape
+    with tape:
+      loss = self.get_scaled_loss(loss)
+    grads_and_vars = self._optimizer._compute_gradients(  # pylint: disable=protected-access
+        loss,
+        var_list,
+        grad_loss,
+        tape=tape)
     grads = [g for g, _ in grads_and_vars]
     variables = [v for _, v in grads_and_vars]
     unscaled_grads = self.get_unscaled_gradients(grads)
@@ -395,13 +402,18 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
           self._apply_gradients,
           args=(grads, wrapped_vars, name, experimental_aggregate_gradients))
 
+    def do_not_apply_fn():
+      # Normally self._optimizer.iterations is incremented in
+      # self._optimizer.apply_gradients(). Since that is not called in this
+      # branch, we increment it here instead.
+      return self._optimizer.iterations.assign_add(1, read_value=False)
+
     # Note: We must call this cond() in a cross-replica context.
     # DistributionStrategy does not support having a cond in a replica context
     # with a branch that calls `merge_call`, and self._optimizer.apply_gradients
     # calls `merge_call`.
-    maybe_apply_op = smart_cond.smart_cond(should_apply_grads,
-                                           apply_fn,
-                                           control_flow_ops.no_op)
+    maybe_apply_op = smart_cond.smart_cond(should_apply_grads, apply_fn,
+                                           do_not_apply_fn)
     return control_flow_ops.group(maybe_apply_op, loss_scale_update_op)
 
   def _apply_gradients(self, grads, wrapped_vars, name,
@@ -434,7 +446,8 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     if not strategy_supports_loss_scaling():
       strategy = distribution_strategy_context.get_strategy()
       if isinstance(strategy,
-                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)):
+                    (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1,
+                     tpu_strategy.TPUStrategyV2)):
         raise ValueError(
             'Loss scaling is not supported with TPUStrategy. Loss scaling is '
             'unnecessary with TPUs, since they support bfloat16 instead of '

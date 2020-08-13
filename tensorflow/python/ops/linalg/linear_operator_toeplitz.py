@@ -209,8 +209,8 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
     # for more details.
     x = linalg.adjoint(x) if adjoint_arg else x
     expanded_x = array_ops.concat([x, array_ops.zeros_like(x)], axis=-2)
-    col = ops.convert_to_tensor(self.col)
-    row = ops.convert_to_tensor(self.row)
+    col = ops.convert_to_tensor_v2_with_dispatch(self.col)
+    row = ops.convert_to_tensor_v2_with_dispatch(self.row)
     circulant_col = array_ops.concat(
         [col,
          array_ops.zeros_like(col[..., 0:1]),
@@ -236,8 +236,8 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
         [self.domain_dimension_tensor()], self.dtype)
 
   def _to_dense(self):
-    row = ops.convert_to_tensor(self.row)
-    col = ops.convert_to_tensor(self.col)
+    row = ops.convert_to_tensor_v2_with_dispatch(self.row)
+    col = ops.convert_to_tensor_v2_with_dispatch(self.col)
     total_shape = array_ops.broadcast_dynamic_shape(
         array_ops.shape(row), array_ops.shape(col))
     n = array_ops.shape(row)[-1]

@@ -20,6 +20,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_SUBGRAPH_TEST_UTIL_H_
 #define TENSORFLOW_LITE_KERNELS_SUBGRAPH_TEST_UTIL_H_
 
+#include <stdint.h>
+
+#include <memory>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/interpreter.h"

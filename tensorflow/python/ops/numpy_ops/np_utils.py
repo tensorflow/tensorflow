@@ -20,18 +20,23 @@ from __future__ import division
 from __future__ import print_function
 
 import inspect
+import numbers
+import os
+import re
 import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
+from tensorflow.python.types import core
 from tensorflow.python.util import nest
+
 
 tensor_to_ndarray = np_arrays.tensor_to_ndarray
 
@@ -43,11 +48,11 @@ def _canonicalize_axis(axis, rank):
 def _canonicalize_axes(axes, rank):
   rank = _maybe_static(rank)
 
-  if isinstance(rank, ops.Tensor):
+  if isinstance(rank, core.Tensor):
     canonicalizer = (
         lambda axis: cond(axis < 0, lambda: axis + rank, lambda: axis))
   else:
-    canonicalizer = lambda axis: axis+rank if axis < 0 else axis
+    canonicalizer = lambda axis: axis + rank if axis < 0 else axis
 
   return [canonicalizer(axis) for axis in axes]
 
@@ -82,72 +87,18 @@ def _to_numpy_type(dtype):
   return np.dtype(dtype)
 
 
-def finfo(dtype):
-  """Returns properties of floating point types.
-
-  Note that currently it just forwards to the numpy namesake, while tensorflow
-  and numpy dtypes may have different properties.
-
-  Args:
-    dtype: Could be a python type, a numpy type or a TF DType.
-
-  Returns:
-    A class describing properties of `dtype`, as described by
-    https://docs.scipy.org/doc/numpy/reference/generated/numpy.finfo.html
-  """
-  return np.finfo(_to_numpy_type(dtype))
-
-
 def isscalar(val):
   """Returns whether `val` is a scalar value or scalar Tensor."""
-  if isinstance(val, (np.ndarray, np_arrays.ndarray, ops.Tensor)):
-    return len(val.shape) == 0  # pylint: disable=g-explicit-length-test
-  return np.isscalar(val)
-
-
-# Can't use np_doc because np.result_type is a builtin function.
-def result_type(*arrays_and_dtypes):
-  """Returns the type resulting from applying NumPy type promotion to arguments.
-
-  Args:
-    *arrays_and_dtypes: A list of array_like objects or dtypes.
-
-  Returns:
-    A numpy dtype.
-  """
-
-  def maybe_get_dtype(x):
-    # Don't put np.ndarray in this list, because np.result_type looks at the
-    # value (not just dtype) of np.ndarray to decide the result type.
-    if isinstance(x, (np_arrays.ndarray, np_arrays.ShardedNdArray, ops.Tensor,
-                      indexed_slices.IndexedSlices)):
-      return _to_numpy_type(x.dtype)
-    elif isinstance(x, dtypes.DType):
-      return _to_numpy_type(x)
-    return x
-
-  arrays_and_dtypes = [
-      maybe_get_dtype(x) for x in nest.flatten(arrays_and_dtypes)
-  ]
-  if not arrays_and_dtypes:
-    # If arrays_and_dtypes is an empty list, let numpy decide what the dtype is.
-    arrays_and_dtypes = [np.asarray([])]
-  return np_dtypes._result_type(*arrays_and_dtypes)  # pylint: disable=protected-access
-
-
-def promote_types(type1, type2):
-  """Returns the type resulting from applying NumPy type promotion.
-
-  Args:
-    type1: A numpy type.
-    type2: A numpy type.
-
-  Returns:
-    A numpy type.
-  """
-  type1 = _to_numpy_type(type1)
-  type2 = _to_numpy_type(type2)
-  return np_dtypes.canonicalize_dtype(np.promote_types(type1, type2))
+  if isinstance(val, np_arrays.ndarray):
+    val = val.data
+  if isinstance(val, core.Tensor):
+    ndims = val.shape.ndims
+    if ndims is not None:
+      return ndims == 0
+    else:
+      return math_ops.equal(array_ops.rank(val), 0)
+  else:
+    return np.isscalar(val)
 
 
 def _has_docstring(f):
@@ -226,28 +177,220 @@ def _is_compatible_param_kind(a, b):
   return relax(a) == relax(b)
 
 
-def np_doc(np_fun, np_fun_name=None):
-  """Attachs numpy docstring to a function.
+def _prepare_np_fun_name_and_fun(np_fun_name, np_fun):
+  """Mutually propagates information between `np_fun_name` and `np_fun`.
+
+  If one is None and the other is not, we'll try to make the former not None in
+  a best effort.
 
   Args:
-    np_fun: the numpy function whose docstring will be used.
-    np_fun_name: optional name for the np_fun symbol. At least one of np_fun or
+    np_fun_name: name for the np_fun symbol. At least one of np_fun or
       np_fun_name shoud be set.
+    np_fun: the numpy function whose docstring will be used.
 
   Returns:
-    A function decorator that attaches the docstring from `np_fun` to the
-    decorated function.
+    Processed `np_fun_name` and `np_fun`.
   """
+  if np_fun_name is not None:
+    assert isinstance(np_fun_name, str)
+  if np_fun is not None:
+    assert not isinstance(np_fun, str)
   if np_fun is None:
     assert np_fun_name is not None
     try:
       np_fun = getattr(np, str(np_fun_name))
     except AttributeError:
       np_fun = None
-  np_sig = _np_signature(np_fun)
   if np_fun_name is None:
     assert np_fun is not None
     np_fun_name = np_fun.__name__
+  return np_fun_name, np_fun
+
+
+def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None,
+                   link=None):
+  """Helper to get docs."""
+  assert np_f or np_fun_name
+  if not np_fun_name:
+    np_fun_name = np_f.__name__
+  doc = 'TensorFlow variant of NumPy\'s `%s`.\n\n' % np_fun_name
+  if unsupported_params:
+    doc += 'Unsupported arguments: ' + ', '.join(
+        '`' + name + '`' for name in unsupported_params) + '.\n\n'
+  if _has_docstring(f):
+    doc += f.__doc__
+    doc = _add_blank_line(doc)
+  # TODO(wangpeng): Re-enable the following and choose inlined vs. link to numpy
+  #   doc according to some global switch.
+  doc = _add_np_doc(doc, np_fun_name, np_f, link=link)
+  return doc
+
+
+_np_doc_form = os.getenv('TF_NP_DOC_FORM', '1.16')
+
+
+def get_np_doc_form():
+  """Gets the form of the original numpy docstrings.
+
+  Returns:
+    See `set_np_doc_form` for the list of valid values.
+  """
+  return _np_doc_form
+
+
+def set_np_doc_form(value):
+  r"""Selects the form of the original numpy docstrings.
+
+  This function sets a global variable that controls how a tf-numpy symbol's
+  docstring should refer to the original numpy docstring. If `value` is
+  `'inlined'`, the numpy docstring will be verbatim copied into the tf-numpy
+  docstring. Otherwise, a link to the original numpy docstring will be
+  added. Which numpy version the link points to depends on `value`:
+  * `'stable'`: the current stable version;
+  * `'dev'`: the current development version;
+  * pattern `\d+(\.\d+(\.\d+)?)?`: `value` will be treated as a version number,
+    e.g. '1.16'.
+
+  Args:
+    value: the value to set the global variable to.
+  """
+  global _np_doc_form
+  _np_doc_form = value
+
+
+class Link:
+
+  def __init__(self, v):
+    self.value = v
+
+
+class AliasOf:
+
+  def __init__(self, v):
+    self.value = v
+
+
+class NoLink:
+  pass
+
+
+def generate_link(flag, np_fun_name):
+  """Generates link from numpy function name.
+
+  Args:
+    flag: the flag to control link form. See `set_np_doc_form`.
+    np_fun_name: the numpy function name.
+
+  Returns:
+    A string.
+  """
+  # Only adds link in this case
+  if flag == 'dev':
+    template = 'https://numpy.org/devdocs/reference/generated/numpy.%s.html'
+  elif flag == 'stable':
+    template = (
+        'https://numpy.org/doc/stable/reference/generated/numpy.%s.html')
+  elif re.match(r'\d+(\.\d+(\.\d+)?)?$', flag):
+    # `flag` is the version number
+    template = ('https://numpy.org/doc/' + flag +
+                '/reference/generated/numpy.%s.html')
+  else:
+    return None
+  return template % np_fun_name
+
+
+_is_check_link = (os.getenv('TF_NP_CHECK_LINK', 'False') in
+                  ('True', 'true', '1'))
+
+
+def is_check_link():
+  return _is_check_link
+
+
+def set_check_link(value):
+  global _is_check_link
+  _is_check_link = value
+
+
+def _add_np_doc(doc, np_fun_name, np_f, link):
+  """Appends the numpy docstring to `doc`, according to `set_np_doc_form`.
+
+  See `set_np_doc_form` for how it controls the form of the numpy docstring.
+
+  Args:
+    doc: the docstring to be appended to.
+    np_fun_name: the name of the numpy function.
+    np_f: (optional) the numpy function.
+    link: (optional) which link to use. See `np_doc` for details.
+
+  Returns:
+    `doc` with numpy docstring appended.
+  """
+  flag = get_np_doc_form()
+  if flag == 'inlined':
+    if _has_docstring(np_f):
+      doc += 'Documentation for `numpy.%s`:\n\n' % np_fun_name
+      # TODO(wangpeng): It looks like code snippets in numpy doc don't work
+      # correctly with doctest. Fix that and remove the reformatting of the np_f
+      # comment.
+      doc += np_f.__doc__.replace('>>>', '>')
+  elif isinstance(flag, str):
+    if link is None:
+      url = generate_link(flag, np_fun_name)
+    elif isinstance(link, AliasOf):
+      url = generate_link(flag, link.value)
+    elif isinstance(link, Link):
+      url = link.value
+    else:
+      url = None
+    if url is not None:
+      if is_check_link():
+        # Imports locally because some builds may not have `requests`
+        import requests  # pylint: disable=g-import-not-at-top
+        r = requests.head(url)
+        if r.status_code != 200:
+          raise ValueError("Can't open link for %s: %s" % (np_fun_name, url))
+      doc += 'See the NumPy documentation for [`numpy.%s`](%s).' % (
+          np_fun_name, url)
+  return doc
+
+
+_is_sig_mismatch_an_error = (
+    os.getenv('TF_NP_SIG_MISMATCH_IS_ERROR', 'False') in ('True', 'true', '1'))
+
+
+def is_sig_mismatch_an_error():
+  return _is_sig_mismatch_an_error
+
+
+def set_is_sig_mismatch_an_error(value):
+  global _is_sig_mismatch_an_error
+  _is_sig_mismatch_an_error = value
+
+
+def np_doc(np_fun_name, np_fun=None, export=True, link=None):
+  """Attachs numpy docstring to a function.
+
+  Args:
+    np_fun_name: name for the np_fun symbol. At least one of np_fun or
+      np_fun_name shoud be set.
+    np_fun: (optional) the numpy function whose docstring will be used.
+    export: whether to export this symbol under module
+      `tf.experimental.numpy`. Note that if `export` is `True`, `np_fun` must be
+      a function directly under the `numpy` module, not under any submodule of
+      `numpy` (e.g. `numpy.random`).
+    link: (optional) which link to use. If `None`, a default link generated from
+      `np_fun_name` will be used. If an instance of `AliasOf`, `link.value` will
+      be used in place of `np_fun_name` for the link generation. If an instance
+      of `Link`, `link.value` will be used as the whole link. If an instance of
+      `NoLink`, no link will be added.
+
+  Returns:
+    A function decorator that attaches the docstring from `np_fun` to the
+    decorated function.
+  """
+  np_fun_name, np_fun = _prepare_np_fun_name_and_fun(np_fun_name, np_fun)
+  np_sig = _np_signature(np_fun)
 
   def decorator(f):
     """The decorator."""
@@ -257,74 +400,123 @@ def np_doc(np_fun, np_fun_name=None):
         sig = inspect.signature(f)
       except ValueError:
         sig = None
-      # TODO(wangpeng): Enable this.
-      # Looks like this may not work with different versions of numpy.
-      # if sig is not None:
-      #   for name, param in sig.parameters.items():
-      #     np_param = np_sig.parameters.get(name)
-      #     if np_param is None:
-      #       raise TypeError('Cannot find parameter "%s" in the numpy
-      #          function\'s ' 'signature' % name)
-      #     if not _is_compatible_param_kind(param.kind, np_param.kind):
-      #       raise TypeError(
-      #           'Parameter "%s" is of kind %s while in numpy it is of '
-      #           'kind %s' % (name, param.kind, np_param.kind))
-      #     has_default = (param.default != inspect.Parameter.empty)
-      #     np_has_default = (np_param.default != inspect.Parameter.empty)
-      #     if has_default != np_has_default:
-      #       raise TypeError('Parameter "%s" should%s have a default value' %
-      #                       (name, '' if np_has_default else ' not'))
-      #   for name in np_sig.parameters:
-      #     if name not in sig.parameters:
-      #       unsupported_params.append(name)
-    f.__doc__ = _np_doc_helper(f, np_fun, np_fun_name=np_fun_name,
-                               unsupported_params=unsupported_params)
-    return f
+      if sig is not None:
+        for name, param in sig.parameters.items():
+          np_param = np_sig.parameters.get(name)
+          if np_param is None:
+            if is_sig_mismatch_an_error():
+              raise TypeError(
+                  'Cannot find parameter "%s" in the numpy function\'s '
+                  'signature (which has these parameters: %s)' %
+                  (name, list(np_sig.parameters.keys())))
+            else:
+              continue
+          if (is_sig_mismatch_an_error() and
+              not _is_compatible_param_kind(param.kind, np_param.kind)):
+            raise TypeError(
+                'Parameter "%s" is of kind %s while in numpy it is of '
+                'kind %s' % (name, param.kind, np_param.kind))
+          has_default = (param.default != inspect.Parameter.empty)
+          np_has_default = (np_param.default != inspect.Parameter.empty)
+          if is_sig_mismatch_an_error() and has_default != np_has_default:
+            raise TypeError('Parameter "%s" should%s have a default value' %
+                            (name, '' if np_has_default else ' not'))
+        for name in np_sig.parameters:
+          if name not in sig.parameters:
+            unsupported_params.append(name)
+    f.__doc__ = _np_doc_helper(
+        f, np_fun, np_fun_name=np_fun_name,
+        unsupported_params=unsupported_params, link=link)
+    if export:
+      return np_export.np_export(np_fun_name)(f)
+    else:
+      return f
 
   return decorator
 
 
-def _np_doc_helper(f, np_f, np_fun_name=None, unsupported_params=None):
-  """Helper to get docs."""
-  if not unsupported_params and not _has_docstring(f) and _has_docstring(np_f):
-      # TODO(wangpeng): It looks like code snippets in numpy doc don't work
-      # correctly with doctest. Fix that and remove the reformatting of the np_f
-      # comment, here and below.
-    return np_f.__doc__.replace('>>>', '>')
-  assert np_f or np_fun_name
-  if not np_fun_name:
-    np_fun_name = np_f.__name__
-  doc = 'TensorFlow variant of `numpy.%s`.\n\n' % np_fun_name
-  if unsupported_params:
-    doc += 'Unsupported arguments: ' + ', '.join(
-        '`' + name + '`' for name in unsupported_params) + '.\n\n'
-  if _has_docstring(f):
-    doc += f.__doc__
-    doc = _add_blank_line(doc)
-  if _has_docstring(np_f):
-    doc += 'Documentation for `numpy.%s`:\n\n' % np_f.__name__
-    doc += np_f.__doc__.replace('>>>', '>')
-  return doc
-
-
-def np_doc_only(np_f):
+def np_doc_only(np_fun_name, np_fun=None, export=True):
   """Attachs numpy docstring to a function.
 
   This differs from np_doc in that it doesn't check for a match in signature.
 
   Args:
-    np_f: the numpy function whose docstring will be used.
+    np_fun_name: name for the np_fun symbol. At least one of np_fun or
+      np_fun_name shoud be set.
+    np_fun: (optional) the numpy function whose docstring will be used.
+    export: whether to export this symbol under module
+      `tf.experimental.numpy`. Note that if `export` is `True`, `np_f` must be a
+      function directly under the `numpy` module, not under any submodule of
+      `numpy` (e.g. `numpy.random`).
 
   Returns:
-    A function decorator that attaches the docstring from `np_f` to the
+    A function decorator that attaches the docstring from `np_fun` to the
     decorated function.
   """
+  np_fun_name, np_fun = _prepare_np_fun_name_and_fun(np_fun_name, np_fun)
 
   def decorator(f):
-    f.__doc__ = _np_doc_helper(f, np_f)
-    return f
+    f.__doc__ = _np_doc_helper(f, np_fun, np_fun_name=np_fun_name)
+    if export:
+      return np_export.np_export(np_fun_name)(f)
+    else:
+      return f
 
   return decorator
+
+
+# pylint: disable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-docstring-missing-newline,g-doc-return-or-yield,g-doc-args
+@np_doc('finfo')
+def finfo(dtype):
+  """Note that currently it just forwards to the numpy namesake, while
+  tensorflow and numpy dtypes may have different properties."""
+  return np.finfo(_to_numpy_type(dtype))
+# pylint: enable=g-short-docstring-punctuation,g-no-space-after-docstring-summary,g-docstring-missing-newline,g-doc-return-or-yield,g-doc-args
+
+
+def _maybe_get_dtype(x):
+  """Returns a numpy type if available from x. Skips if x is numpy.ndarray."""
+  # Don't put np.ndarray in this list, because np.result_type looks at the
+  # value (not just dtype) of np.ndarray to decide the result type.
+  if isinstance(x, np_arrays.ndarray):
+    return x.dtype
+  if isinstance(x, numbers.Real):
+    return x
+  if isinstance(x, (core.Tensor, indexed_slices.IndexedSlices)):
+    return _to_numpy_type(x.dtype)
+  if isinstance(x, dtypes.DType):
+    return x.as_numpy_dtype
+  if isinstance(x, (list, tuple)):
+    raise ValueError('Got sequence')
+  return x
+
+
+# Can't use np_doc because np.result_type is a builtin function.
+@np_doc_only('result_type')
+def result_type(*arrays_and_dtypes):  # pylint: disable=missing-function-docstring
+  arrays_and_dtypes = [
+      _maybe_get_dtype(x) for x in nest.flatten(arrays_and_dtypes)
+  ]
+  if not arrays_and_dtypes:
+    # If arrays_and_dtypes is an empty list, let numpy decide what the dtype is.
+    arrays_and_dtypes = [np.asarray([])]
+  return np_dtypes._result_type(*arrays_and_dtypes)  # pylint: disable=protected-access
+
+
+def _result_type_binary(t1, t2):  # pylint: disable=missing-function-docstring
+  """A specialization of result_type for 2 arguments for performance reasons."""
+  try:
+    return np_dtypes._result_type(_maybe_get_dtype(t1),  # pylint: disable=protected-access
+                                  _maybe_get_dtype(t2))  # pylint: disable=protected-access
+  except ValueError:
+    return result_type(t1, t2)
+
+
+@np_doc('promote_types')
+def promote_types(type1, type2):  # pylint: disable=missing-function-docstring
+  type1 = _to_numpy_type(type1)
+  type2 = _to_numpy_type(type2)
+  return np_dtypes.canonicalize_dtype(np.promote_types(type1, type2))
 
 
 def tf_broadcast(*args):
@@ -360,7 +552,7 @@ def get_static_value(x):
     Same as `tf.get_static_value`, except that it returns None when `x` has a
     float dtype.
   """
-  if isinstance(x, ops.Tensor) and (x.dtype.is_floating or x.dtype.is_complex):
+  if isinstance(x, core.Tensor) and (x.dtype.is_floating or x.dtype.is_complex):
     return None
   return tensor_util.constant_value(x)
 
@@ -464,3 +656,10 @@ def reduce_any(input_tensor, axis=None, keepdims=False):
     return math_ops.reduce_any(input_tensor, axis=axis, keepdims=keepdims)
   else:
     return v.any(axis=axis, keepdims=keepdims)
+
+
+def tf_rank(t):
+  r = t.shape.rank
+  if r is not None:
+    return r
+  return array_ops.rank(t)

@@ -97,6 +97,16 @@ def _get_layer_computation_test_cases():
               np.float32),
       "testcase_name":
           "3d_multiple_axis"
+  }, {
+      "adapt_data":
+          np.zeros((3, 4)),
+      "axis": -1,
+      "test_data":
+          np.zeros((3, 4)),
+      "expected":
+          np.zeros((3, 4)),
+      "testcase_name":
+          "zero_variance"
   })
 
   crossed_test_cases = []
@@ -232,7 +242,7 @@ class NormalizationTest(keras_parameterized.TestCase,
 
     cls = get_layer_class()
     layer = cls(axis=-1)
-    layer.build((2,))
+    layer.build((None, 2))
     layer.mean.assign([1.3, 2.0])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
       layer.adapt(np.array([[1, 2]]), reset_state=False)
@@ -244,7 +254,7 @@ class NormalizationTest(keras_parameterized.TestCase,
 
     cls = get_layer_class()
     layer = cls(axis=-1)
-    layer.build((2,))
+    layer.build((None, 2))
     layer.variance.assign([1.3, 2.0])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
       layer.adapt(np.array([[1, 2]]), reset_state=False)
@@ -252,7 +262,7 @@ class NormalizationTest(keras_parameterized.TestCase,
   def test_weight_setting_continued_adapt_failure(self):
     cls = get_layer_class()
     layer = cls(axis=-1)
-    layer.build((2,))
+    layer.build((None, 2))
     layer.set_weights([np.array([1.3, 2.0]), np.array([0.0, 1.0]), np.array(0)])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
       layer.adapt(np.array([[1, 2]]), reset_state=False)
@@ -260,10 +270,75 @@ class NormalizationTest(keras_parameterized.TestCase,
   def test_weight_setting_no_count_continued_adapt_failure(self):
     cls = get_layer_class()
     layer = cls(axis=-1)
-    layer.build((2,))
+    layer.build((None, 2))
     layer.set_weights([np.array([1.3, 2.0]), np.array([0.0, 1.0])])
     with self.assertRaisesRegex(RuntimeError, "without also setting 'count'"):
       layer.adapt(np.array([[1, 2]]), reset_state=False)
+
+  def test_1d_data(self):
+    data = [0, 2, 0, 2]
+    cls = get_layer_class()
+    layer = cls(axis=-1)
+    layer.adapt(data)
+    output = layer(data)
+    self.assertListEqual(output.shape.as_list(), [4, 1])
+    if context.executing_eagerly():
+      self.assertAllClose(output.numpy(), [[-1], [1], [-1], [1]])
+
+  @parameterized.parameters(
+      {"axis": 0},
+      {"axis": (-1, 0)},
+  )
+  def test_zeros_fail_init(self, axis):
+    cls = get_layer_class()
+    with self.assertRaisesRegex(ValueError,
+                                "The argument 'axis' may not be 0."):
+      cls(axis=axis)
+
+  @parameterized.parameters(
+      # Out of bounds
+      {"axis": 3},
+      {"axis": -3},
+      # In a tuple
+      {"axis": (1, 3)},
+      {"axis": (1, -3)},
+  )
+  def test_bad_axis_fail_build(self, axis):
+    cls = get_layer_class()
+    layer = cls(axis=axis)
+    with self.assertRaisesRegex(ValueError,
+                                r"in the range \[1-ndim, ndim-1\]."):
+      layer.build([None, 2, 3])
+
+  @parameterized.parameters(
+      # Results should be identical no matter how the axes are specified (3d).
+      {"axis": (1, 2)},
+      {"axis": (2, 1)},
+      {"axis": (1, -1)},
+      {"axis": (-1, 1)},
+  )
+  def test_axis_permutations(self, axis):
+    cls = get_layer_class()
+    layer = cls(axis=axis)
+    # data.shape = [2, 2, 3]
+    data = np.array([[[0., 1., 2.], [0., 2., 6.]],
+                     [[2., 3., 4.], [3., 6., 10.]]])
+    expect = np.array([[[-1., -1., -1.], [-1., -1., -1.]],
+                       [[1., 1., 1.], [1., 1., 1.]]])
+    layer.adapt(data)
+    self.assertAllClose(expect, layer(data))
+
+  def test_model_summary_after_layer_adapt(self):
+    data = np.array([[[0., 1., 2.], [0., 2., 6.]],
+                     [[2., 3., 4.], [3., 6., 10.]]])
+    cls = get_layer_class()
+    layer = cls(axis=-1)
+    layer.adapt(data)
+    model = keras.Sequential(
+        [layer,
+         keras.layers.Dense(64, activation="relu"),
+         keras.layers.Dense(1)])
+    model.summary()
 
 
 if __name__ == "__main__":

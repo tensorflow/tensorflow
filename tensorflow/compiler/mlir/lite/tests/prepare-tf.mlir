@@ -1,4 +1,6 @@
-// RUN: tf-opt -tfl-prepare-tf %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -tfl-prepare-tf %s | FileCheck %s
+
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 268 : i32}} {
 
 func @conv(tensor<256x32x32x3xf32>, tensor<3x3x3x16xf32>, tensor<256x3x32x32xf32>) -> (tensor<256x30x30x16xf32>, tensor<256x16x30x30xf32>, tensor<256x30x30x16xf32>, tensor<256x30x30x16xf32>, tensor<256x30x30x16xf32>) {
 ^bb0(%arg0: tensor<256x32x32x3xf32>, %arg1: tensor<3x3x3x16xf32>, %arg2: tensor<256x3x32x32xf32>) :
@@ -149,14 +151,14 @@ func @batchNormWithGlobalNormalizationWithScaleAfterNormalization(
 }
 
 // CHECK-LABEL: fakeQuantPerChannelForActivation
-func @fakeQuantPerChannelForActivation(%arg0: tensor<8x3xf32>) -> (tensor<8x3xf32>) {
-  %arg1 = constant dense<[0.0, -1.0, 1.0]> : tensor<3xf32>
-  %arg2 = constant dense<[255.0, 254.0, 256.0]> : tensor<3xf32>
-  %0 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x3xf32>, tensor<3xf32>, tensor<3xf32>) -> tensor<8x3xf32>
-  return %0 : tensor<8x3xf32>
+func @fakeQuantPerChannelForActivation(%arg0: tensor<8x4xf32>) -> (tensor<8x4xf32>) {
+  %arg1 = constant dense<[0.0, -1.0, 1.0, 0.0]> : tensor<4xf32>
+  %arg2 = constant dense<[255.0, 254.0, 256.0, 1.0e-9]> : tensor<4xf32>
+  %0 = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %arg1, %arg2) {num_bits = 3, narrow_range = false} : (tensor<8x4xf32>, tensor<4xf32>, tensor<4xf32>) -> tensor<8x4xf32>
+  return %0 : tensor<8x4xf32>
 
 // CHECK:  %[[fq:.*]] = "tf.FakeQuantWithMinMaxVarsPerChannel"(%arg0, %cst, %cst_0)
-// CHECK:  %[[q:.*]] = "tfl.quantize"(%[[fq]]) {qtype = tensor<8x3x!quant.uniform<u8:f32:1, {1.000000e+00,1.000000e+00:1,1.000000e+00}>>}
+// CHECK:  %[[q:.*]] = "tfl.quantize"(%[[fq]]) {qtype = tensor<8x4x!quant.uniform<u8:f32:1, {1.000000e+00,1.000000e+00:1,1.000000e+00,3.9215686274509805E-9:127}>>}
 // CHECK:  %[[dq:.*]] = "tfl.dequantize"(%[[q]])
 // CHECK:  return %[[dq]]
 }
@@ -528,6 +530,26 @@ func @PadStridedSliceNewAxisMask2(%arg0: tensor<4x64x64x1xf32>) -> tensor<1x4x64
   return %1 : tensor<1x4x64x64xf32>
 }
 
+// CHECK-LABEL: @StridedSliceRewriteMasks
+func @StridedSliceRewriteMasks(%arg0: tensor<8x4x16x2xf32>) -> tensor<8x4x16x1xf32> {
+  %cst = "tf.Const"() {device = "", value = dense<[1, 0, 1]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %cst_0 = "tf.Const"() {device = "", value = dense<[1, 0, 0]> : tensor<3xi32>} : () -> tensor<3xi32>
+  %cst_1 = "tf.Const"() {device = "", value = dense<1> : tensor<3xi32>} : () -> tensor<3xi32>
+
+  // CHECK: %[[CST:.*]] = constant dense<[1, 0, 0, 1]> : tensor<4xi32>
+  // CHECK: %[[CST0:.*]] = constant dense<[1, 0, 0, 0]> : tensor<4xi32>
+  // CHECK: %[[CST1:.*]] = constant dense<1> : tensor<4xi32>
+  // CHECK: %[[RESULT:.*]] = "tf.StridedSlice"(%arg0, %[[CST]], %[[CST0]], %[[CST1]])
+  // CHECK-SAME: begin_mask = 7 : i64
+  // CHECK-SAME: ellipsis_mask = 0 : i64
+  // CHECK-SAME: end_mask = 14 : i64
+  // CHECK-SAME: new_axis_mask = 0 : i64
+  // CHECK-SAME: shrink_axis_mask = 0 : i64
+
+  %0 = "tf.StridedSlice"(%arg0, %cst, %cst_0, %cst_1) {begin_mask = 1 : i64, device = "", ellipsis_mask = 2 : i64, end_mask = 4 : i64, new_axis_mask = 0 : i64, shrink_axis_mask = 0 : i64} : (tensor<8x4x16x2xf32>, tensor<3xi32>, tensor<3xi32>, tensor<3xi32>) -> tensor<8x4x16x1xf32>
+  return %0 : tensor<8x4x16x1xf32>
+}
+
 // CHECK-LABEL: @MatrixSetDiagV2Conversion
 func @MatrixSetDiagV2Conversion(%arg0: tensor<3x3xi32>, %arg1: tensor<3xi32>) -> tensor<3x3xi32> {
   %cst = constant dense<0> : tensor<i32>
@@ -557,4 +579,40 @@ func @MatrixSetDiagV3Conversion(%arg0: tensor<3x3xi32>, %arg1: tensor<3xi32>) ->
 
   // CHECK: %[[RES:.*]] = "tf.MatrixSetDiag"(%arg0, %arg1) : (tensor<3x3xi32>, tensor<3xi32>) -> tensor<3x3xi32>
   // CHECK: return %[[RES]]
+}
+
+// CHECK-LABEL: xla_conv
+func @xla_conv(%arg0: tensor<4x8x8x16xf32>) -> tensor<4x8x8x16xf32> {
+  %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<3x3x16x16xf32>} : () -> tensor<3x3x16x16xf32> loc("Const_1")
+  %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32> loc("XlaConv/feature_group_count")
+  %2 = "tf.Const"() {value = dense<1> : tensor<2x2xi32>} : () -> tensor<2x2xi32> loc("XlaConv/padding")
+  %3 = "tf.Const"() {value = dense<1> : tensor<2xi32>} : () -> tensor<2xi32> loc("XlaConv/window_strides")
+  %4 = "tf.XlaConv"(%arg0, %0, %3, %2, %3, %3, %1) {device = "", dimension_numbers = "\18\02 \032\02\00\01@\03P\03Z\02\01\02b\02\01\02", precision_config = ""} : (tensor<4x8x8x16xf32>, tensor<3x3x16x16xf32>, tensor<2xi32>, tensor<2x2xi32>, tensor<2xi32>, tensor<2xi32>, tensor<i32>) -> tensor<4x8x8x16xf32>
+  return %4 : tensor<4x8x8x16xf32>
+  // CHECK: %[[CST:.*]] = constant dense<0.000000e+00> : tensor<16xf32>
+  // CHECK: %[[CST0:.*]] = constant dense<1.000000e+00> : tensor<16x3x3x16xf32>
+  // CHECK: %[[RES:.*]] = "tfl.conv_2d"(%arg0, %[[CST0]], %[[CST]]) {dilation_h_factor = 1 : i32, dilation_w_factor = 1 : i32, fused_activation_function = "NONE", padding = "SAME", stride_h = 1 : i32, stride_w = 1 : i32} : (tensor<4x8x8x16xf32>, tensor<16x3x3x16xf32>, tensor<16xf32>) -> tensor<4x8x8x16xf32>
+  // CHECK: return %[[RES]]
+}
+
+func @broadcast_to_f32(%arg0: tensor<3xf32>, %arg1: tensor<2xi32>) -> tensor<3x3xf32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<3xf32>, tensor<2xi32>) -> tensor<3x3xf32>
+  return %0: tensor<3x3xf32>
+
+// CHECK-LABEL: broadcast_to_f32
+// CHECK:  [[CST:%.*]] = constant dense<1.000000e+00> : tensor<3x3xf32>
+// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xf32>, tensor<3x3xf32>) -> tensor<3x3xf32>
+// CHECK:  return [[MUL]] : tensor<3x3xf32>
+}
+
+func @broadcast_to_i32(%input: tensor<3xi32>, %shape: tensor<2xi32>) -> tensor<3x3xi32> {
+  %0 = "tf.BroadcastTo"(%input, %shape) : (tensor<3xi32>, tensor<2xi32>) -> tensor<3x3xi32>
+  return %0: tensor<3x3xi32>
+
+// CHECK-LABEL: broadcast_to_i32
+// CHECK:  [[CST:%.*]] = constant dense<1> : tensor<3x3xi32>
+// CHECK:  [[MUL:%.*]] = "tf.Mul"(%arg0, [[CST]]) : (tensor<3xi32>, tensor<3x3xi32>) -> tensor<3x3xi32>
+// CHECK:  return [[MUL]] : tensor<3x3xi32>
+}
+
 }

@@ -28,7 +28,7 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -568,21 +568,22 @@ class BatchNormalizationBase(Layer):
     train_op = _fused_batch_norm_training
     if use_fused_avg_updates and input_batch_size is not None:
       # pylint: disable=g-long-lambda
-      train_op = lambda: tf_utils.smart_cond(input_batch_size > 0,
-                                             _fused_batch_norm_training,
-                                             _fused_batch_norm_training_empty)
+      train_op = lambda: control_flow_util.smart_cond(
+          input_batch_size > 0, _fused_batch_norm_training,
+          _fused_batch_norm_training_empty)
       # pylint: enable=g-long-lambda
 
-    output, mean, variance = tf_utils.smart_cond(training, train_op,
-                                                 _fused_batch_norm_inference)
+    output, mean, variance = control_flow_util.smart_cond(
+        training, train_op, _fused_batch_norm_inference)
     variance = _maybe_add_or_remove_bessels_correction(variance, remove=True)
 
-    training_value = tf_utils.constant_value(training)
+    training_value = control_flow_util.constant_value(training)
     if training_value or training_value is None:
       if not use_fused_avg_updates:
         if training_value is None:
-          momentum = tf_utils.smart_cond(training, lambda: self.momentum,
-                                         lambda: 1.0)
+          momentum = control_flow_util.smart_cond(training,
+                                                  lambda: self.momentum,
+                                                  lambda: 1.0)
         else:
           momentum = ops.convert_to_tensor_v2(self.momentum)
 
@@ -635,9 +636,10 @@ class BatchNormalizationBase(Layer):
       d = math_ops.maximum(d, -dmax)
       d = math_ops.minimum(d, dmax)
     # When not training, use r=1, d=0.
-    r = tf_utils.smart_cond(training, lambda: r, lambda: array_ops.ones_like(r))
-    d = tf_utils.smart_cond(training, lambda: d,
-                            lambda: array_ops.zeros_like(d))
+    r = control_flow_util.smart_cond(training, lambda: r,
+                                     lambda: array_ops.ones_like(r))
+    d = control_flow_util.smart_cond(training, lambda: d,
+                                     lambda: array_ops.zeros_like(d))
 
     def _update_renorm_variable(var, value, inputs_size):
       """Updates a moving average and weight, returns the unbiased value."""
@@ -652,7 +654,7 @@ class BatchNormalizationBase(Layer):
       def _fake_update():
         return array_ops.identity(var)
 
-      return tf_utils.smart_cond(training, _do_update, _fake_update)
+      return control_flow_util.smart_cond(training, _do_update, _fake_update)
 
     # TODO(yuefengz): colocate the operations
     update_new_mean = _update_renorm_variable(self.renorm_mean, mean,
@@ -724,6 +726,13 @@ class BatchNormalizationBase(Layer):
         outputs = undo_virtual_batching(outputs)
       return outputs
 
+    inputs_dtype = inputs.dtype.base_dtype
+    if inputs_dtype in (dtypes.float16, dtypes.bfloat16):
+      # Do all math in float32 if given 16-bit inputs for numeric stability.
+      # In particular, it's very easy for variance to overflow in float16 and
+      # for safety we also choose to cast bfloat16 to float32.
+      inputs = math_ops.cast(inputs, dtypes.float32)
+
     # Compute the axes along which to reduce the mean / variance
     input_shape = inputs.shape
     ndims = len(input_shape)
@@ -753,17 +762,17 @@ class BatchNormalizationBase(Layer):
       return (scale, offset)
 
     # Determine a boolean value for `training`: could be True, False, or None.
-    training_value = tf_utils.constant_value(training)
+    training_value = control_flow_util.constant_value(training)
     if training_value == False:  # pylint: disable=singleton-comparison,g-explicit-bool-comparison
       mean, variance = self.moving_mean, self.moving_variance
     else:
       if self.adjustment:
         adj_scale, adj_bias = self.adjustment(array_ops.shape(inputs))
         # Adjust only during training.
-        adj_scale = tf_utils.smart_cond(training, lambda: adj_scale,
-                                        lambda: array_ops.ones_like(adj_scale))
-        adj_bias = tf_utils.smart_cond(training, lambda: adj_bias,
-                                       lambda: array_ops.zeros_like(adj_bias))
+        adj_scale = control_flow_util.smart_cond(
+            training, lambda: adj_scale, lambda: array_ops.ones_like(adj_scale))
+        adj_bias = control_flow_util.smart_cond(
+            training, lambda: adj_bias, lambda: array_ops.zeros_like(adj_bias))
         scale, offset = _compose_transforms(adj_scale, adj_bias, scale, offset)
 
       # Some of the computations here are not necessary when training==False
@@ -777,9 +786,9 @@ class BatchNormalizationBase(Layer):
       moving_mean = self.moving_mean
       moving_variance = self.moving_variance
 
-      mean = tf_utils.smart_cond(training, lambda: mean,
-                                 lambda: ops.convert_to_tensor_v2(moving_mean))
-      variance = tf_utils.smart_cond(
+      mean = control_flow_util.smart_cond(
+          training, lambda: mean, lambda: ops.convert_to_tensor_v2(moving_mean))
+      variance = control_flow_util.smart_cond(
           training, lambda: variance,
           lambda: ops.convert_to_tensor_v2(moving_variance))
 
@@ -819,7 +828,7 @@ class BatchNormalizationBase(Layer):
       def mean_update():
         true_branch = lambda: _do_update(self.moving_mean, new_mean)
         false_branch = lambda: self.moving_mean
-        return tf_utils.smart_cond(training, true_branch, false_branch)
+        return control_flow_util.smart_cond(training, true_branch, false_branch)
 
       def variance_update():
         """Update the moving variance."""
@@ -841,7 +850,7 @@ class BatchNormalizationBase(Layer):
           true_branch = lambda: _do_update(self.moving_variance, new_variance)
 
         false_branch = lambda: self.moving_variance
-        return tf_utils.smart_cond(training, true_branch, false_branch)
+        return control_flow_util.smart_cond(training, true_branch, false_branch)
 
       self.add_update(mean_update)
       self.add_update(variance_update)
@@ -852,11 +861,12 @@ class BatchNormalizationBase(Layer):
       offset = math_ops.cast(offset, inputs.dtype)
     if scale is not None:
       scale = math_ops.cast(scale, inputs.dtype)
-    # TODO(reedwm): Maybe do math in float32 if given float16 inputs, if doing
-    # math in float16 hurts validation accuracy of popular models like resnet.
     outputs = nn.batch_normalization(inputs, _broadcast(mean),
                                      _broadcast(variance), offset, scale,
                                      self.epsilon)
+    if inputs_dtype in (dtypes.float16, dtypes.bfloat16):
+      outputs = math_ops.cast(outputs, inputs_dtype)
+
     # If some components of the shape got lost due to adjustments, fix that.
     outputs.set_shape(input_shape)
 

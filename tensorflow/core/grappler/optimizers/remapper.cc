@@ -47,9 +47,14 @@ namespace grappler {
 // MatMul + ... -> _FusedMatMul:
 //   (1) MatMul + BiasAdd + <Activation>
 //
+// DepthwiseConv2dNative + ... -> _FusedDepthwiseConv2dNative:
+//   (1) DepthwiseConv2dNative + BiasAdd + <Activation>
+//
 // FusedBatchNorm[$is_training] + ... -> _FusedBatchNormEx[$is_training]
 //   (1) FusedBatchNorm + <Activation>
 //   (2) FusedBatchNorm + SideInput + <Activation>
+//
+// In all cases, the supported activation functions are Relu, Relu6, and Elu.
 //
 // Both Conv2D and MatMul implemented as Tensor contraction (on CPU), so all the
 // patterns are "ContractionWith...".
@@ -1593,7 +1598,8 @@ bool IsConv2DWithAdd(const RemapperContext& ctx, int node_index) {
 // shapes:
 //   (1) Splitting FusedBatchNorm into primitives.
 //   (2) Fusing side input and/or activation into FusedBatchNorm.
-//   (3) INTEL_MKL specific: Conv2D -> Add or Conv2D -> BiasAdd -> Add.
+//   (3) Fusing Conv2D biasadd and relu on GPU
+//   (4) INTEL_MKL specific: Conv2D -> Add or Conv2D -> BiasAdd -> Add.
 bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   // Candidate for a FusedBatchNorm splitting.
   const auto* node_view = ctx.graph_view.GetNode(node_index);
@@ -1605,6 +1611,31 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
     bool is_training = true;
     if (!TryGetNodeAttr(*node_def, kIsTraining, &is_training)) return false;
     if (is_training) return false;
+
+    return true;
+  };
+
+  const auto is_relu_biasadd_conv2d_candidate = [&]() -> bool {
+    if (!IsRelu(*node_def)) return false;
+    if (GetDataTypeFromAttr(*node_def, "T") != DT_FLOAT) return false;
+
+    if (node_view->NumRegularFanins() < 1) return false;
+    const auto& relu_fanin_0 = node_view->GetRegularFanin(0);
+    const auto* relu_fanin_0_node_view = relu_fanin_0.node_view();
+    const auto* relu_fanin_0_node_def = relu_fanin_0_node_view->node();
+
+    if (!IsBiasAdd(*relu_fanin_0_node_def)) return false;
+    if (GetDataTypeFromAttr(*relu_fanin_0_node_def, "T") != DT_FLOAT)
+      return false;
+
+    if (relu_fanin_0_node_view->NumRegularFanins() < 1) return false;
+
+    const auto& biasadd_fanin_0 = relu_fanin_0_node_view->GetRegularFanin(0);
+    const auto* biasadd_fanin_0_node_def = biasadd_fanin_0.node_view()->node();
+
+    if (!IsConv2D(*biasadd_fanin_0_node_def)) return false;
+    if (GetDataTypeFromAttr(*biasadd_fanin_0_node_def, "T") != DT_FLOAT)
+      return false;
 
     return true;
   };
@@ -1643,7 +1674,8 @@ bool RequiresInferredShapes(const RemapperContext& ctx, int node_index) {
   return is_batch_norm_candidate() || is_batch_norm_fusion_candidate() ||
          IsConv2DWithAdd(ctx, node_index);
 #else
-  return is_batch_norm_candidate() || is_batch_norm_fusion_candidate();
+  return is_relu_biasadd_conv2d_candidate() || is_batch_norm_candidate() ||
+         is_batch_norm_fusion_candidate();
 #endif  // INTEL_MKL
 }
 
@@ -1712,6 +1744,17 @@ Status Remapper::Optimize(Cluster* cluster, const GrapplerItem& item,
       }
     }
 #endif  //! INTEL_MKL
+
+    // Infer properties lazily in case they are not needed.
+    if (!ctx.inferred_graph_properties && RequiresInferredShapes(ctx, i)) {
+      const bool assume_valid_feeds = opt_level_ == RewriterConfig::AGGRESSIVE;
+      TF_RETURN_IF_ERROR(ctx.graph_properties.InferStatically(
+          assume_valid_feeds,
+          /*aggressive_shape_inference=*/false,
+          /*include_input_tensor_values=*/true,
+          /*include_output_tensor_values=*/false));
+      ctx.inferred_graph_properties = true;
+    }
 
     // Remap {Conv2D,DepthwiseConv2D,MatMul}+BiasAdd into the
     // _Fused{Conv2D,DepthwiseConv2dNative,MatMul}

@@ -27,6 +27,13 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+enum class TextureAddressMode {
+  DONT_CARE,  // translated to CLK_ADDRESS_NONE
+  ZERO,       // translated to CLK_ADDRESS_CLAMP
+};
+
+std::string TextureAddressModeToString(TextureAddressMode address_mode);
+
 enum class TensorStorageType {
   UNKNOWN,
   BUFFER,
@@ -41,20 +48,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   TensorDescriptor() = default;
   TensorDescriptor(DataType dt, TensorStorageType st, Layout l)
       : data_type(dt), storage_type(st), layout(l) {}
-  TensorDescriptor(const TensorDescriptor& desc)
-      : GPUObjectDescriptor(desc),
-        data_type(desc.data_type),
-        storage_type(desc.storage_type),
-        layout(desc.layout) {}
-  TensorDescriptor& operator=(const TensorDescriptor& desc) {
-    if (this != &desc) {
-      data_type = desc.data_type;
-      storage_type = desc.storage_type;
-      layout = desc.layout;
-      GPUObjectDescriptor::operator=(desc);
-    }
-    return *this;
-  }
 
   bool operator==(const TensorDescriptor& d) const {
     return data_type == d.data_type && storage_type == d.storage_type &&
@@ -68,9 +61,14 @@ struct TensorDescriptor : public GPUObjectDescriptor {
                                const std::vector<std::string>& template_args,
                                std::string* result) const override;
 
-  GPUResources GetGPUResources(AccessType access_type) const override;
+  GPUResources GetGPUResources() const override;
 
   bool HasAxis(Axis axis) const;
+  void SetTextureAddressMode(TextureAddressMode mode);
+
+  absl::Status GetLinkingContextFromWriteSelector(
+      const std::vector<std::string>& args, std::string* value_name,
+      std::string* x_coord, std::string* y_coord, std::string* s_coord) const;
 
   DataType data_type = DataType::UNKNOWN;
   TensorStorageType storage_type = TensorStorageType::UNKNOWN;
@@ -87,6 +85,15 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformGetAddressSelector(const std::vector<std::string>& args,
                                          std::string* result) const;
 
+  absl::Status PerformGetPtrWithSliceOffsetSelector(
+      const std::vector<std::string>& args, std::string* result) const;
+
+  absl::Status PerformGetWHOffsetSelector(const std::vector<std::string>& args,
+                                          std::string* result) const;
+
+  absl::Status PerformGetHandleSelector(const std::vector<std::string>& args,
+                                        std::string* result) const;
+
   std::string DeclareAddress(const std::string& var_name,
                              const std::string& address) const;
 
@@ -95,10 +102,20 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   absl::Status PerformWriteSelector(const std::vector<std::string>& args,
                                     std::string* result) const;
 
+  absl::Status PerformWriteLinearSelector(const std::vector<std::string>& args,
+                                          std::string* result) const;
+
   std::string Read(DataType read_as_type,
                    const std::string& global_address) const;
   std::string Write(const std::string& var_name,
                     const std::string& global_address) const;
+
+  bool IsBatchedWidth() const;
+
+  std::string GetWidth() const;
+  std::string GetSliceStride() const;
+
+  TextureAddressMode ModeFromState() const;
 
   absl::Status GetDataTypeFromTemplateArgs(const std::string& template_arg,
                                            DataType* result) const;
@@ -128,8 +145,6 @@ struct TensorDescriptor : public GPUObjectDescriptor {
   bool ParseCoordsFromArgs(const std::vector<std::string>& args, int offset,
                            std::string* xc, std::string* yc, std::string* zc,
                            std::string* sc, std::string* bc) const;
-
-  bool IsBatchedWidth() const;
 };
 
 std::string ToString(TensorStorageType type);

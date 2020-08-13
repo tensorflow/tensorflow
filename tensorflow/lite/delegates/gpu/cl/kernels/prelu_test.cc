@@ -52,7 +52,7 @@ TEST_F(OpenCLOperationTest, PReLUAlpha) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      PReLU operation;
+      GPUOperation operation;
       ASSERT_OK(CreatePReLU(creation_context_, op_def, attr, &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
@@ -83,7 +83,7 @@ TEST_F(OpenCLOperationTest, PReLUAlphaClip) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      PReLU operation;
+      GPUOperation operation;
       ASSERT_OK(CreatePReLU(creation_context_, op_def, attr, &operation));
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));

@@ -150,6 +150,9 @@ class DfsHloVisitorBase {
   virtual Status HandleRound(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }
+  virtual Status HandleLogistic(HloInstructionPtr hlo) {
+    return HandleElementwiseUnary(hlo);
+  }
   virtual Status HandleSign(HloInstructionPtr hlo) {
     return HandleElementwiseUnary(hlo);
   }

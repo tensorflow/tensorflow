@@ -9,7 +9,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'value_structure\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'element_spec\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_value"
