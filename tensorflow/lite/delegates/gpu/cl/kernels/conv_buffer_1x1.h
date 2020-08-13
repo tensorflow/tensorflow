@@ -47,7 +47,10 @@ class ConvBuffer1x1 : public GPUOperation {
   ConvBuffer1x1(const ConvBuffer1x1&) = delete;
   ConvBuffer1x1& operator=(const ConvBuffer1x1&) = delete;
 
-  absl::Status Tune(const TuningParameters& params) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
   int3 GetGridSize() const override;
 
   ConvWeightsDescription GetConvWeightsDescription() const {
@@ -65,8 +68,6 @@ class ConvBuffer1x1 : public GPUOperation {
     // some cases we need separate weights for H dimension and convolution
     // kernel requires very small modifications to support it.
     bool different_weights_for_height = false;
-
-    int3 work_group_size = int3(2, 4, 1);
   };
 
  private:

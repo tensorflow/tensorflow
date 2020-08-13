@@ -55,9 +55,13 @@ xla_test(
 cc_library(
     name = "comparators",
     srcs = ["comparators.cc"],
-    hdrs = ["comparators.h"],
+    hdrs = [
+        "comparators.h",
+        "//tensorflow/compiler/xla:literal_util",
+    ],
     deps = [
         ":constants",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",

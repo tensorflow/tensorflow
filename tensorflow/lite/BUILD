@@ -408,13 +408,16 @@ cc_test(
     ],
     features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
+        "noasan",  # b/163674257
         "tflite_not_portable_ios",  # TODO(b/117786830)
         "tflite_smoke_test",
     ],
     deps = [
+        ":builtin_op_data",
         ":external_cpu_backend_context",
         ":framework",
         ":string_util",
+        ":util",
         ":version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",

@@ -999,30 +999,30 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
   for (const auto& pair : data->glue_) {
     const ComponentFunctionData& comp_data = pair.second;
     DCHECK(comp_data.ret_alloc_attrs.size() == comp_data.ret_indices.size());
+    if (comp_data.ret_indices.empty()) {
+      continue;
+    }
 
     const string& target = pair.first;
     FunctionLibraryRuntime* target_flr = GetFLR(target);
+    Device* target_device = nullptr;
     if (target_flr == nullptr) {
-      if (!comp_data.ret_indices.empty()) {
-        return errors::Unimplemented(
-            "Currently, outputting tensors on remote devices is not supported. "
-            "The ",
-            comp_data.ret_indices[0],
-            "-th return value of the function outputs to target_device: ",
-            target,
-            " Please copy the tensor to local device explicitly using "
-            "tf.identity and return the new Tensor instead.");
-      }
-      continue;
+      // TODO(b/162618595): Remove this error once we support a remote
+      // multi-device function with remote outputs.
+      return errors::Unimplemented(
+          "Currently, outputting tensors on remote devices is not supported."
+          "The ",
+          comp_data.ret_indices[0],
+          "-th return value of the function outputs to target_device: ", target,
+          " Please copy the tensor to local device explicitly using "
+          "tf.identity and return the new Tensor instead.");
+    } else {
+      target_device = target_flr->device();
     }
-    Device* target_device = target_flr->device();
-    const FunctionBody* fbody = target_flr->GetFunctionBody(comp_data.handle);
-    DCHECK(fbody != nullptr);
-
     output_devices->resize(data->num_outputs_);
     for (int j = 0; j < comp_data.ret_indices.size(); ++j) {
       int ret_index = comp_data.ret_indices[j];
-      if (fbody->ret_types[j] == DT_RESOURCE) {
+      if (data->ret_types_[ret_index] == DT_RESOURCE) {
         (*output_devices)[ret_index] = target_device;
       } else {
         (*output_devices)[ret_index] =

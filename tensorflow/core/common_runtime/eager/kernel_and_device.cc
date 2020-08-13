@@ -46,9 +46,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#if !defined(PLATFORM_WINDOWS)
-#include "tensorflow/compiler/jit/xla_kernel_creator_util.h"
-#endif  // !PLATFORM_WINDOWS
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -242,7 +239,8 @@ struct OpExecutionState : public core::RefCounted {
 
 Status KernelAndDeviceOp::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+    std::vector<EagerKernelRet>* outputs,
+    CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   OpKernelContext::Params params;
   params.device = device_;
@@ -319,7 +317,8 @@ Status KernelAndDeviceOp::Run(
 
 Status KernelAndDeviceFunc::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+    std::vector<EagerKernelRet>* outputs,
+    CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   Notification n;
   Status status;
@@ -334,7 +333,8 @@ Status KernelAndDeviceFunc::Run(
 
 void KernelAndDeviceFunc::RunAsync(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+    std::vector<EagerKernelRet>* outputs,
+    CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
     std::function<void(const Status&)> done) {
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = nullptr;
@@ -395,25 +395,13 @@ void KernelAndDeviceFunc::RunAsync(
       },
       profiler::ContextType::kTfExecutor, opts->step_id,
       profiler::TraceMeLevel::kInfo);
-  std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
-  pflr_->Run(*opts, handle_, inputs, function_rets,
-             [opts, outputs, function_rets, rendezvous, local_cm,
-              step_container, this, done = std::move(done)](const Status& s) {
+  pflr_->Run(*opts, handle_, inputs, outputs,
+             [opts, rendezvous, local_cm, step_container, this,
+              done = std::move(done)](const Status& s) {
                rendezvous->Unref();
                if (step_container == nullptr) {
                  this->step_container_.CleanUp();
                }
-               if (s.ok()) {
-                 // TODO(b/162618595): Change the type of `outputs` to
-                 // support TensorShapes for remote outputs and remove the
-                 // FunctionRet to Tensor conversion here.
-                 for (const auto& ret : *function_rets) {
-                   if (ret.index() == 0) {
-                     outputs->push_back(absl::get<Tensor>(ret));
-                   }
-                 }
-               }
-               delete function_rets;
                done(s);
              });
 }

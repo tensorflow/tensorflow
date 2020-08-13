@@ -261,7 +261,15 @@ LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
   for (int i = 1; i < 3; ++i) {
     auto input = lstm_func.getArgument(i);
     auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
-    if (!input_type || !input_type.hasStaticShape()) return failure();
+    if (!input_type || !input_type.hasStaticShape()) {
+      lstm_func.emitWarning(
+          "we cannot fuse this lstm func because the batch size is not fixed, "
+          "please consider setting fixed batch size like "
+          "https://github.com/tensorflow/tensorflow/blob/master/tensorflow/"
+          "lite/examples/experimental_new_converter/"
+          "Keras_LSTM_fusion_Codelab.ipynb");
+      return failure();
+    }
   }
 
   return success();

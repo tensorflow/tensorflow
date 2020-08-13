@@ -481,14 +481,26 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
                                              num_iters,
                                              execution_mode=None):
 
-    def func_matmul(m):
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([2, 2], dtypes.float32)])
+    def defun_matmul(m):
       return math_ops.matmul(m, m)
 
-    f = function.defun(
-        func_matmul,
-        input_signature=[tensor_spec.TensorSpec([2, 2], dtypes.float32)])
+    func = lambda: defun_matmul(m)
+    self._run(func, num_iters, execution_mode=execution_mode)
 
-    func = lambda: f(m)
+  def _benchmark_defun_matmul_relaxed_shape(self,
+                                            m,
+                                            num_iters,
+                                            execution_mode=None):
+
+    @def_function.function(experimental_relax_shapes=True)
+    def defun_matmul(m):
+      return math_ops.matmul(m, m)
+
+    m_3_by_3 = random_ops.random_uniform((3, 3))
+    defun_matmul(m_3_by_3)
+    func = lambda: defun_matmul(m)
     self._run(func, num_iters, execution_mode=execution_mode)
 
   def _benchmark_defun_args_matmul(self, m, num_iters, execution_mode=None):
@@ -591,10 +603,16 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       self._benchmark_defun_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
-  def benchmark_defun_matmul_2_by_2_CPU_with_signature(self):
+  def benchmark_defun_matmul_2_by_2_with_signature_CPU(self):
     with context.device(CPU):
       m = self._m_2_by_2.cpu()
       self._benchmark_defun_matmul_with_signature(
+          m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_defun_matmul_2_by_2_relaxed_shape_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_defun_matmul_relaxed_shape(
           m, num_iters=self._num_iters_2_by_2)
 
   @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
@@ -678,12 +696,21 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
   @test_util.disable_tfrt("copy to GPU not supported")
-  def benchmark_defun_matmul_2_by_2_GPU_with_signature(self):
+  def benchmark_defun_matmul_2_by_2_with_signature_GPU(self):
     if not context.num_gpus():
       return
     with context.device(GPU):
       m = self._m_2_by_2.gpu()
       self._benchmark_defun_matmul_with_signature(
+          m, num_iters=self._num_iters_2_by_2)
+
+  @test_util.disable_tfrt("copy to GPU not supported")
+  def benchmark_defun_matmul_2_by_2_relaxed_shape_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = self._m_2_by_2.gpu()
+      self._benchmark_defun_matmul_relaxed_shape(
           m, num_iters=self._num_iters_2_by_2)
 
   @test_util.disable_tfrt("Graph is not supported yet. b/156187905")

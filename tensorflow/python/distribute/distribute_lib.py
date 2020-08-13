@@ -200,7 +200,6 @@ import six
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -3292,7 +3291,7 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
       return self._iterator.get_next()
 
     def get_next_as_optional(self):
-      return iterator_ops.get_next_as_optional(self._iterator)
+      return self._iterator.get_next_as_optional()
 
     @deprecated(None, "Use the iterator's `initializer` property instead.")
     def initialize(self):

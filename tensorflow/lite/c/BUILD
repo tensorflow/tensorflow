@@ -62,6 +62,7 @@ cc_library(
         "//tensorflow/lite:framework",
         "//tensorflow/lite:version",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         "//tensorflow/lite/kernels:builtin_ops",
     ],
     alwayslink = 1,

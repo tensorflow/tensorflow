@@ -316,6 +316,19 @@ class BASE_HLO_RealOp {
   }];
 }
 
+class BASE_HLO_RngBitGeneratorOp {
+  string summary = "Uniform random number generator operator";
+
+  string description = [{
+    Returns an output with a given shape filled with uniform random bits using
+    the specified algorithm (or backend default) and returns an updated state
+    (with the same shape as initial state) and the generated random data.
+
+    See
+    https://www.tensorflow.org/xla/operation_semantics#rngbitgenerator.
+  }];
+}
+
 class BASE_HLO_RoundOp {
   string summary = "Round operator";
 

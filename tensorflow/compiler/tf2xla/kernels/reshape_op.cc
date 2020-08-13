@@ -109,27 +109,33 @@ class ReshapeOp : public XlaOpKernel {
     VLOG(2) << "Reshape from " << input_shape.DebugString() << " to "
             << shape.DebugString() << ", unknown_index=" << unknown_index;
 
-    shape_input.clear();
-    // Run get input again, this time with dynamic dimension represented as
-    // "-1"
-    ctx->set_dynamic_dimension_is_minus_one(true);
-    OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &shape_input));
-
     int dynamic_dimension = -1;
-
-    for (int d = 0; d < num_dims; ++d) {
-      const int32 size = shape_input[d];
-      if (size == -1) {
-        if (dynamic_dimension == -1) {
+    if (ctx->InputXlaShape(0)->is_dynamic()) {
+      std::vector<bool> dynamic_dims;
+      OP_REQUIRES_OK(ctx,
+                     ctx->ResolveInputDynamismIntoPredVector(1, &dynamic_dims));
+      for (int d = 0; d < num_dims; ++d) {
+        const bool dim_is_dynamic = dynamic_dims[d];
+        if (dim_is_dynamic) {
           dynamic_dimension = d;
-        } else {
-          if (unknown_index != d) {
-            dynamic_dimension = d;
-          }
         }
       }
-    }
 
+      // When reshaping from dynamic dimension, unkwown index is considered
+      // dynamic. E.g.,
+      //   [<=10]
+      //     |
+      // Reshape
+      //     |
+      //   [2, -1]
+      // The second dimension is dynamic.
+      if (dynamic_dimension == -1) {
+        dynamic_dimension = unknown_index;
+      }
+      VLOG(2) << "Reshape from " << ctx->InputXlaShape(0)->ToString() << " to "
+              << xla::VectorString(shape.dim_sizes())
+              << ", dynamic_dim=" << dynamic_dimension;
+    }
     // Pass unknown_index to Xla::Reshape as a hint for dynamic shape inference
     // in XLA to know which output dimension is dynamic.
     ctx->SetOutput(0, xla::ReshapeWithInferredDimension(

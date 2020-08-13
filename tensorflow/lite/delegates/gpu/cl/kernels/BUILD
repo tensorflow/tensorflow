@@ -1296,7 +1296,7 @@ cc_library(
     srcs = ["util.cc"],
     hdrs = ["util.h"],
     deps = [
-        "//tensorflow/lite/delegates/gpu/cl:cl_device",
+        "//tensorflow/lite/delegates/gpu/cl:device_info",
         "//tensorflow/lite/delegates/gpu/cl:precision",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/common:access_type",
@@ -1388,6 +1388,8 @@ test_suite(
         "fully_connected_test",
         "lstm_test",
         "max_unpooling_test",
+        "mean_stddev_normalization_test",
+        "mean_test",
         "padding_test",
         "pooling_test",
         "prelu_test",

@@ -28,8 +28,12 @@ namespace {
 constexpr char kPortPlaceholder[] = "%port%";
 }
 
-GrpcDataServerBase::GrpcDataServerBase(int port, const std::string& protocol)
-    : requested_port_(port), protocol_(protocol) {}
+GrpcDataServerBase::GrpcDataServerBase(int port, const std::string& protocol,
+                                       const std::string server_type)
+    : requested_port_(port),
+      protocol_(protocol),
+      server_type_(server_type),
+      bound_port_(port) {}
 
 Status GrpcDataServerBase::Start() {
   if (stopped_) {
@@ -56,7 +60,8 @@ Status GrpcDataServerBase::Start() {
   TF_RETURN_IF_ERROR(StartServiceInternal());
 
   started_ = true;
-  VLOG(1) << "Started tf.data service running at 0.0.0.0:" << BoundPort();
+  LOG(INFO) << "Started tf.data " << server_type_
+            << " running at 0.0.0.0:" << BoundPort();
   return Status::OK();
 }
 
@@ -74,7 +79,8 @@ int GrpcDataServerBase::BoundPort() { return bound_port(); }
 
 DispatchGrpcDataServer::DispatchGrpcDataServer(
     const experimental::DispatcherConfig& config)
-    : GrpcDataServerBase(config.port(), config.protocol()), config_(config) {}
+    : GrpcDataServerBase(config.port(), config.protocol(), "DispatchServer"),
+      config_(config) {}
 
 DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
 
@@ -100,7 +106,8 @@ Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
 
 WorkerGrpcDataServer::WorkerGrpcDataServer(
     const experimental::WorkerConfig& config)
-    : GrpcDataServerBase(config.port(), config.protocol()), config_(config) {}
+    : GrpcDataServerBase(config.port(), config.protocol(), "WorkerServer"),
+      config_(config) {}
 
 WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
 
@@ -116,7 +123,7 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
   std::string resolved_address = str_util::StringReplace(
       worker_address, kPortPlaceholder, absl::StrCat(bound_port()),
       /*replace_all=*/false);
-  service_->Start(resolved_address);
+  TF_RETURN_IF_ERROR(service_->Start(resolved_address));
   return Status::OK();
 }
 

@@ -56,6 +56,9 @@ monitoring::CounterCell* GetTFDataElementsCounter(const string& name);
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64 num_bytes);
 
+// Records the number of times tf.data experiment is applied to input pipelines.
+void RecordTFDataExperiment(const string& name);
+
 // Records the time spent in ItertatorResource::GetNext() in microseconds.
 void RecordTFDataGetNextDuration(uint64 duration_us);
 

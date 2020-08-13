@@ -673,7 +673,7 @@ void CalculateLstmGateInteger8x8_8(
   tensor_utils::ApplyLayerNormFloat(
       gate, layer_norm_gate_weight, layer_norm_gate_scale_a,
       layer_norm_gate_scale_b, gate_bias, n_batch, n_cell, gate);
-  // Apply activation.  // Apply activation
+  // Apply activation.
   switch (activation) {
     case kTfLiteActSigmoid:
       tensor_utils::ApplySigmoidFloat(gate, n_batch, n_cell, gate);

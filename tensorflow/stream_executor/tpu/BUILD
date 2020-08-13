@@ -53,6 +53,18 @@ cc_library(
 )
 
 cc_library(
+    name = "noncopyable_buffer",
+    hdrs = ["noncopyable_buffer.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/base",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
     name = "tpu_node_context_c_api_hdrs",
     hdrs = ["tpu_node_context_c_api.h"],
     visibility = ["//visibility:public"],
@@ -190,6 +202,18 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_transfer_manager_interface",
+    srcs = ["tpu_transfer_manager_interface.cc"],
+    hdrs = ["tpu_transfer_manager_interface.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":noncopyable_buffer",
+        ":tpu_platform_interface",
+        "//tensorflow/compiler/xla/service:transfer_manager",
+    ],
+)
+
+cc_library(
     name = "tpu_transfer_manager",
     srcs = ["tpu_transfer_manager_registration.cc"],
     deps = [
@@ -206,10 +230,12 @@ cc_library(
     hdrs = ["tpu_transfer_manager.h"],
     deps = [
         ":c_api_conversions",
+        ":noncopyable_buffer",
         ":proto_helper",
         ":status_helper",
         ":tpu_executor_base",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_transfer_manager_interface",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -269,6 +295,7 @@ cc_library(
     hdrs = ["tpu_platform_interface.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_decl",
         ":tpu_topology_external",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor",

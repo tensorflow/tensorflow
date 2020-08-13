@@ -191,6 +191,20 @@ func @concatenate_const_2D_horizontal() -> tensor<2x2xi32> {
   return %2 : tensor<2x2xi32>
 }
 
+// CHECK-LABEL: constant_like_constant
+func @constant_like_constant(%arg0: tensor<3x4xi32>) -> tensor<3x4xf32> {
+  // CHECK: mhlo.constant dense<3.200000e+00>
+  %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<3x4xi32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// CHECK-LABEL: constant_like_constant_dynamic
+func @constant_like_constant_dynamic(%arg0: tensor<*xi32>) -> tensor<*xf32> {
+  // CHECK: chlo.constant_like
+  %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<*xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: dynamic_slice_variable_start
 func @dynamic_slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
   // CHECK: "mhlo.dynamic-slice"
@@ -560,4 +574,26 @@ func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
   }) : (tensor<i64>) -> tensor<i64>
 
   return %arg0 : tensor<i64>
+}
+
+// CHECK-LABEL: unpack_repack_same_tuple
+// CHECK-SAME: ([[ARG0:%.*]]: tuple<tensor<i32>, !mhlo.token, tensor<f32>>)
+func @unpack_repack_same_tuple(%arg0: tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> tuple<tensor<i32>, !mhlo.token, tensor<f32>> {
+  %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> tensor<i32>
+  %1 = "mhlo.get_tuple_element"(%arg0) {index = 1 : i32} : (tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> !mhlo.token
+  %2 = "mhlo.get_tuple_element"(%arg0) {index = 2 : i32} : (tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> tensor<f32>
+  %3 = "mhlo.tuple"(%0, %1, %2) : (tensor<i32>, !mhlo.token, tensor<f32>) -> tuple<tensor<i32>, !mhlo.token, tensor<f32>>
+
+  // CHECK: return [[ARG0]]
+  return %3 : tuple<tensor<i32>, !mhlo.token, tensor<f32>>
+}
+
+// CHECK-LABEL: unpack_repack_same_tuple_single_element
+// CHECK-SAME: ([[ARG0:%.*]]: tuple<tensor<i32>>)
+func @unpack_repack_same_tuple_single_element(%arg0: tuple<tensor<i32>>) -> tuple<tensor<i32>> {
+  %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<i32>>) -> tensor<i32>
+  %3 = "mhlo.tuple"(%0) : (tensor<i32>) -> tuple<tensor<i32>>
+
+  // CHECK: return [[ARG0]]
+  return %3 : tuple<tensor<i32>>
 }

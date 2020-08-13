@@ -227,7 +227,7 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
     RETURN_IF_ERROR(
         MergeOperations(linked_operations_, &args_, &element_wise_code));
     RETURN_IF_ERROR(args_.TransformToCLCode(
-        creation_context.device->GetInfo(),
+        creation_context.device->info_,
         {{dst_tensors_names_[0], element_wise_code}}, &code));
     code = absl::Substitute(code, args_.GetListOfArgs());
     RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
@@ -238,13 +238,42 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
     RETURN_IF_ERROR(
         MergeOperations(linked_operations_, &args_, &element_wise_code));
     RETURN_IF_ERROR(args_.TransformToCLCode(
-        creation_context.device->GetInfo(),
+        creation_context.device->info_,
         {{dst_tensors_names_[0], element_wise_code}}, &code_));
     RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
         code_, "main_function", compiler_options_, *creation_context.context,
         *creation_context.device, &kernel_));
   }
-  return PostCompileCheck(creation_context.device->GetInfo());
+  return PostCompileCheck(creation_context.device->info_, kernel_.info_);
+}
+
+void GPUOperation::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  GetPossibleWorkGroups(tuning_type, device_info, kernel_info, grid_size_,
+                        work_groups);
+}
+
+absl::Status GPUOperation::Tune(const TuningParameters& params) {
+  std::vector<int3> possible_work_groups;
+  GetPossibleKernelWorkGroups(params.tuning_type, *params.info, kernel_.info_,
+                              &possible_work_groups);
+  if (possible_work_groups.empty()) {
+    return absl::NotFoundError(
+        "Can not found work_group size to launch kernel");
+  }
+  if (possible_work_groups.size() == 1) {
+    work_group_size_ = possible_work_groups[0];
+    return absl::OkStatus();
+  } else {
+    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
+    int best_work_group_index;
+    RETURN_IF_ERROR(params.queue->GetBestWorkGroupIndex(
+        kernel_, *params.info, grid_size_, possible_work_groups,
+        &best_work_group_index));
+    work_group_size_ = possible_work_groups[best_work_group_index];
+    return absl::OkStatus();
+  }
 }
 
 int3 GPUOperation::GetGridSize() const {

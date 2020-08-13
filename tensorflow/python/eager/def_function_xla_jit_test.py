@@ -147,7 +147,7 @@ class DefFunctionTest(xla_test.XLATestCase):
       func = def_function.function(fn2, experimental_compile=False)
       inputs = constant_op.constant([1, 2, 2, 3, 3])
       with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                    'not compilable'):
+                                  'not compilable'):
         func(inputs)
 
   @test_util.disable_mlir_bridge('TODO(b/162272821): MLIR bridge returns'
