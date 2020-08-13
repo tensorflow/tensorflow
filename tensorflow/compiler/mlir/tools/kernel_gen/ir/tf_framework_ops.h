@@ -46,11 +46,6 @@ class OpKernelContextType
   static OpKernelContextType get(MLIRContext *context) {
     return Base::get(context, TFFrameworkTypes::Kind::OpKernelContextType);
   }
-
-  /// Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) {
-    return kind == TFFrameworkTypes::Kind::OpKernelContextType;
-  }
 };
 
 #define GET_OP_CLASSES
