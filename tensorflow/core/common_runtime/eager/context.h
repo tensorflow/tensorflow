@@ -518,6 +518,8 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   void ResetClusterFLR(DistributedFunctionLibraryRuntime* cluster_flr);
 
+  void RemoveKernelFromCacheImpl(Fprint128 cache_key);
+
   template <typename T>
   struct OwnedOrUnownedHelper {
    public:

@@ -782,7 +782,7 @@ Status EagerContext::RemoveFunction(const string& func) {
     is_last_ref = registered_function->RefCountIsOne();
     if (is_last_ref) {
       for (auto& key : *registered_function->cached_kernel_keys) {
-        RemoveKernelFromCache(key);
+        RemoveKernelFromCacheImpl(key);
       }
       registered_functions_.erase(func);
     }
@@ -869,12 +869,12 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   if (kernel_cache_.find(cache_key) != kernel_cache_.end()) {
     // Replace any existing entry for this key with the new value.
     // TODO: Should we raise an error instead?
-    RemoveKernelFromCache(cache_key);
+    RemoveKernelFromCacheImpl(cache_key);
   }
   if (kernel_cache_lru_list_.size() >= MAX_KERNEL_CACHE_SIZE) {
     // Ran out of space; remove least-recently-used kernel.
     auto key_to_remove = kernel_cache_lru_list_.back().first;
-    RemoveKernelFromCache(key_to_remove);
+    RemoveKernelFromCacheImpl(key_to_remove);
   }
   core::RefCountPtr<KernelAndDevice> new_ref(kernel);
   new_ref->Ref();
@@ -891,6 +891,13 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
 
 void EagerContext::RemoveKernelFromCache(Fprint128 cache_key) {
   mutex_lock ml(cache_mu_);
+  RemoveKernelFromCacheImpl(cache_key);
+}
+
+// Internal implementation of removing an entry from the cache.
+// Basically does everything except locking.
+// Callers must hold cache_mu_ when calling this function.
+void EagerContext::RemoveKernelFromCacheImpl(Fprint128 cache_key) {
   auto iter = kernel_cache_.find(cache_key);
   if (iter == kernel_cache_.end()) {
     // Make removal idempotent to simplify code elsewhere.
