@@ -84,7 +84,7 @@ def _convert(converter, **kwargs):
     converter: TFLiteConverter object.
     **kwargs: Additional arguments to be passed into the converter. Supported
       flags are {"target_ops", "post_training_quantize",
-       "quantize_to_float16", "post_training_quantize_16x8", "model_input_size"}.
+      "quantize_to_float16", "post_training_quantize_16x8", "model_input_size"}.
 
   Returns:
     The converted TFLite model in serialized format.
