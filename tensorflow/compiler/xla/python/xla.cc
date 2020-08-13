@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -897,6 +898,7 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildOpsSubmodule(&m);
   BuildProfilerSubmodule(&m);
   BuildOutfeedReceiverSubmodule(&m);
+  BuildPytreeSubmodule(m);
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>
