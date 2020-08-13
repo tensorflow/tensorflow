@@ -1404,6 +1404,38 @@ that are not a number (NaN) or infinity (Inf). Otherwise, passes `tensor` as-is.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_CholeskyOp : TF_Op<"Cholesky", [NoSideEffect]> {
+  let summary = [{
+Computes the Cholesky decomposition of one or more square matrices.
+  }];
+
+  let description = [{
+The input is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions
+form square matrices.
+
+The input has to be symmetric and positive definite. Only the lower-triangular
+part of the input will be used for this operation. The upper-triangular part
+will not be read.
+
+The output is a tensor of the same shape as the input
+containing the Cholesky decompositions for all input submatrices `[..., :, :]`.
+
+**Note**: The gradient computation on GPU is faster for large matrices but
+not for large batch dimensions when the submatrices are small. In this
+case it might be faster to use the CPU.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$input
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_ClipByValueOp : TF_Op<"ClipByValue", [NoSideEffect, TF_SameOperandsAndResultElementTypeResolveRef]> {
   let summary = "Clips tensor values to a specified min and max.";
 
@@ -2104,6 +2136,40 @@ the source data format.
 
   let results = (outs
     TF_I32OrI64Tensor:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_DebugIdentityV2Op : TF_Op<"DebugIdentityV2", []> {
+  let summary = "Debug Identity V2 Op.";
+
+  let description = [{
+Provides an identity mapping from input to output, while writing the content of
+the input tensor by calling DebugEventsWriter.
+
+The semantics of the input tensor depends on tensor_debug_mode. In typical
+usage, the input tensor comes directly from the user computation only when
+graph_debug_mode is FULL_TENSOR (see protobuf/debug_event.proto for a
+list of all the possible values of graph_debug_mode). For the other debug modes,
+the input tensor should be produced by an additional op or subgraph that
+computes summary information about one or more tensors.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+
+    StrAttr:$tfdbg_context_id,
+    StrAttr:$op_name,
+    DefaultValuedAttr<I64Attr, "-1">:$output_slot,
+    DefaultValuedAttr<I64Attr, "-1">:$tensor_debug_mode,
+    DefaultValuedAttr<StrArrayAttr, "{}">:$debug_urls,
+    DefaultValuedAttr<I64Attr, "1000">:$circular_buffer_size,
+    StrAttr:$tfdbg_run_id
+  );
+
+  let results = (outs
+    TF_Tensor:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -4185,6 +4251,22 @@ tf.imag(input) ==> [4.75, 5.75]
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
+def TF_InfeedDequeueOp : TF_Op<"InfeedDequeue", []> {
+  let summary = [{
+A placeholder op for a value that will be fed into the computation.
+  }];
+
+  let arguments = (ins
+    TF_ShapeAttr:$shape
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedResultTypeAttr dtype = TF_DerivedResultTypeAttr<0>;
+}
+
 def TF_InitializeTableFromTextFileV2Op : TF_Op<"InitializeTableFromTextFileV2", []> {
   let summary = "Initializes a table from a text file.";
 
@@ -5668,6 +5750,74 @@ tf.matrix_set_diag(input, diagonals, k = (-1, 2), align="LEFT_RIGHT")
 
   let results = (outs
     TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_MatrixTriangularSolveOp : TF_Op<"MatrixTriangularSolve", [NoSideEffect]> {
+  let summary = [{
+Solves systems of linear equations with upper or lower triangular matrices by backsubstitution.
+  }];
+
+  let description = [{
+`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form
+square matrices. If `lower` is `True` then the strictly upper triangular part
+of each inner-most matrix is assumed to be zero and not accessed.
+If `lower` is False then the strictly lower triangular part of each inner-most
+matrix is assumed to be zero and not accessed.
+`rhs` is a tensor of shape `[..., M, N]`.
+
+The output is a tensor of shape `[..., M, N]`. If `adjoint` is
+`True` then the innermost matrices in `output` satisfy matrix equations
+`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `False` then the strictly then the  innermost matrices in
+`output` satisfy matrix equations
+`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`.
+
+Note, the batch shapes for the inputs only need to broadcast.
+
+Example:
+```python
+
+a = tf.constant([[3,  0,  0,  0],
+                 [2,  1,  0,  0],
+                 [1,  0,  1,  0],
+                 [1,  1,  1,  1]], dtype=tf.float32)
+
+b = tf.constant([[4],
+                 [2],
+                 [4],
+                 [2]], dtype=tf.float32)
+
+x = tf.linalg.triangular_solve(a, b, lower=True)
+x
+# <tf.Tensor: shape=(4, 1), dtype=float32, numpy=
+# array([[ 1.3333334 ],
+#        [-0.66666675],
+#        [ 2.6666665 ],
+#        [-1.3333331 ]], dtype=float32)>
+
+# in python3 one can use `a@x`
+tf.matmul(a, x)
+# <tf.Tensor: shape=(4, 1), dtype=float32, numpy=
+# array([[4.       ],
+#        [2.       ],
+#        [4.       ],
+#        [1.9999999]], dtype=float32)>
+```
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$matrix,
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$rhs,
+
+    DefaultValuedAttr<BoolAttr, "true">:$lower,
+    DefaultValuedAttr<BoolAttr, "false">:$adjoint
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -9926,6 +10076,25 @@ retained with length 1.
   >];
 }
 
+def TF_SymbolicGradientOp : TF_Op<"SymbolicGradient", [NoSideEffect]> {
+  let summary = [{
+Computes the gradient function for function f via backpropagation.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_Tensor>:$input,
+
+    SymbolRefAttr:$f
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<0>;
+  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+}
+
 def TF_TPUCompilationResultOp : TF_Op<"TPUCompilationResult", [NoSideEffect]> {
   let summary = "Returns the result of a TPU compilation.";
 
@@ -11945,6 +12114,31 @@ def TF_XlaReplicaIdOp : TF_Op<"XlaReplicaId", [NoSideEffect]> {
   );
 }
 
+def TF_XlaScatterOp : TF_Op<"XlaScatter", [NoSideEffect]> {
+  let summary = "Wraps the XLA Scatter operator documented at";
+
+  let description = [{
+https://www.tensorflow.org/xla/operation_semantics#scatter.
+  }];
+
+  let arguments = (ins
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$operand,
+    TF_I32OrI64Tensor:$scatter_indices,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$updates,
+
+    SymbolRefAttr:$update_computation,
+    StrAttr:$dimension_numbers,
+    BoolAttr:$indices_are_sorted
+  );
+
+  let results = (outs
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr Tindices = TF_DerivedOperandTypeAttr<1>;
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
 def TF_XlaSelfAdjointEigOp : TF_Op<"XlaSelfAdjointEig", [NoSideEffect]> {
   let summary = [{
 Computes the eigen decomposition of a batch of self-adjoint matrices
@@ -12229,6 +12423,28 @@ rewrite passes must replace this op with a _TPUCompileMlir op `program` output.
   let results = (outs
     TF_StrTensor:$program
   );
+}
+
+def TF__UnaryOpsCompositionOp : TF_Op<"_UnaryOpsComposition", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = [{
+*NOTE*: Do not invoke this operator directly in Python. Graph rewrite pass is
+  }];
+
+  let description = [{
+expected to create these operators.
+  }];
+
+  let arguments = (ins
+    TensorOf<[F16, F32, F64]>:$x,
+
+    StrArrayAttr:$op_names
+  );
+
+  let results = (outs
+    TensorOf<[F16, F32, F64]>:$y
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF__XlaHostComputeMlirOp : TF_Op<"_XlaHostComputeMlir", []> {
