@@ -5893,13 +5893,7 @@ def random_binomial(shape, p=0.0, dtype=None, seed=None):
   """
   logging.warning('`tf.keras.backend.random_binomial` is deprecated. '
                   'Please use `tf.keras.backend.random_bernoulli` instead.')
-  if dtype is None:
-    dtype = floatx()
-  if seed is None:
-    seed = np.random.randint(10e6)
-  return array_ops.where_v2(
-      random_ops.random_uniform(shape, dtype=dtype, seed=seed) <= p,
-      array_ops.ones(shape, dtype=dtype), array_ops.zeros(shape, dtype=dtype))
+  return random_bernoulli(shape, p, dtype, seed)
 
 
 @keras_export('keras.backend.random_bernoulli')
@@ -5916,7 +5910,13 @@ def random_bernoulli(shape, p=0.0, dtype=None, seed=None):
   Returns:
       A tensor.
   """
-  return random_binomial(shape, p, dtype, seed)
+  if dtype is None:
+    dtype = floatx()
+  if seed is None:
+    seed = np.random.randint(10e6)
+  return array_ops.where_v2(
+      random_ops.random_uniform(shape, dtype=dtype, seed=seed) <= p,
+      array_ops.ones(shape, dtype=dtype), array_ops.zeros(shape, dtype=dtype))
 
 
 @keras_export('keras.backend.truncated_normal')
