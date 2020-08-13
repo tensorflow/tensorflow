@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/tensor_map.h"
+#include "tensorflow/core/util/tensor_ops_util.h"
 
 namespace tensorflow {
 
@@ -174,6 +175,34 @@ class TensorMapHasKey : public OpKernel {
     result->scalar<bool>()() = m->tensors().find(key) != m->tensors().end();
   }
 };
+
+template <typename Device>
+Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
+                          const TensorMap& b, TensorMap* out) {
+  // Binary add returns a map containing the union of keys.
+  // Values with keys in the intersection are added.
+  out->tensors() = a.tensors();
+  for (const std::pair<TensorKey, Tensor>& p : b.tensors()) {
+    absl::flat_hash_map<TensorKey, Tensor>::iterator it =
+        out->tensors().find(p.first);
+    if (it != out->tensors().end()) {
+      Tensor out_tensor;
+      TF_RETURN_IF_ERROR(
+          BinaryAddTensors<Device>(c, p.second, it->second, &out_tensor));
+      it->second = out_tensor;
+    } else {
+      out->tensors().emplace(p.first, p.second);
+    }
+  }
+  return Status::OK();
+}
+
+template <typename Device>
+Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x,
+                          TensorMap* y) {
+  // Zeros like returns an empty map.
+  return Status::OK();
+}
 
 }  // namespace tensorflow
 
