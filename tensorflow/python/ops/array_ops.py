@@ -1301,6 +1301,9 @@ def parallel_stack(values, name="parallel_stack"):
   Given a list of length `N` of tensors of shape `(A, B, C)`; the `output`
   tensor will have the shape `(N, A, B, C)`.
 
+  Note: `parallel_stack` has same behavior as `stack` when eager execution
+  enabled.
+  
   For example:
 
   ```python
