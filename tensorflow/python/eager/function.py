@@ -2457,9 +2457,7 @@ class FunctionSpec(object):
     self._args_to_indices = {arg: i for i, arg in enumerate(args)}
     self._arg_names = args
 
-    self._num_tot_args = len(self._arg_names)
-    self._num_req_args = (self._num_tot_args -
-                          len(self._fullargspec.defaults or []))
+    self._num_req_args = (len(args) - len(self._fullargspec.defaults or []))
 
     if input_signature is None:
       self._input_signature = None
@@ -2645,22 +2643,28 @@ class FunctionSpec(object):
       if self._fullargspec.kwonlydefaults:
         kwargs.update(self._fullargspec.kwonlydefaults)
     else:
-      add_args = [None] * (self._num_tot_args - len(args))
-
-      for i in range(len(args), self._num_tot_args):
+      # Fill in any remaining positional arguments which were not called as 
+      # pure positional arguments by the user, using values provided by the
+      # user if called in a keyword-like fashion, or otherwise the default
+      # values.
+      remaining_args = [None] * (len(self._arg_names) - len(args))
+      for i in range(len(args), len(self._arg_names)):
         arg_name = self._arg_names[i]
         if arg_name in kwargs:
-          add_args[i - len(args)] = kwargs[arg_name]
+          # Value provided by user using arg name (keyword-like fashion)
+          remaining_args[i - len(args)] = kwargs[arg_name]
           del kwargs[arg_name]
         else:
+          # Use default value
           if i < self._num_req_args:
+            # Default value does not exist
             missing_args = [arg_name]
             for j in range(i + 1, self._num_req_args):
               if self._arg_names[j] not in kwargs:
                 missing_args.append(self._arg_names[j])
             raise TypeError("{} missing required arguments: {}".format(
                 self.signature_summary(), ", ".join(missing_args)))
-          add_args[i - len(args)] = \
+          remaining_args[i - len(args)] = \
               self._fullargspec.defaults[i - self._num_req_args]
       # After this point, `kwargs` will only contain keyword_only arguments,
       # and all positional_or_keyword arguments have been moved to `inputs`.
@@ -2671,7 +2675,7 @@ class FunctionSpec(object):
           raise TypeError("{} got two values for argument '{}'".format(
               self.signature_summary(), arg))
 
-      inputs = args + tuple(add_args)
+      inputs = args + tuple(remaining_args)
 
       if kwargs and self._input_signature is not None:
         raise TypeError(
