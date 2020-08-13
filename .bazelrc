@@ -18,10 +18,8 @@
 #
 # Compiler options:
 #     cuda_clang:             Use clang when building CUDA code.
-#     c++17:                  Build with C++17 options (links with libc++)
-#     c++1z:                  Build with C++17 options (links with libc++)
-#     c++17_gcc:              Build with C++17 options (links with stdlibc++)
-#     c++1z_gcc:              Build with C++17 options (links with stdlibc++)
+#     c++17:                  Build with C++17 options
+#     c++1z:                  Build with C++17 options
 #     avx_linux:              Build with avx instruction set on linux.
 #     avx2_linux:             Build with avx2 instruction set on linux.
 #     native_arch_linux:      Build with instruction sets available to the host machine on linux
@@ -161,13 +159,11 @@ build --host_java_toolchain=//third_party/toolchains/java:tf_java_toolchain
 # environment variable "TF_MKL_ROOT" every time before build.
 build:mkl --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl --define=build_with_mkl_dnn_v1_only=true
 build:mkl -c opt
 
 # config to build OneDNN backend with a user specified threadpool.
 build:mkl_threadpool --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl_threadpool --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl_threadpool --define=build_with_mkl_dnn_v1_only=true
 build:mkl_threadpool --define=build_with_mkl_opensource=true
 build:mkl_threadpool --define=build_with_mkldnn_threadpool=true
 build:mkl_threadpool -c opt
@@ -175,7 +171,6 @@ build:mkl_threadpool -c opt
 # Config setting to build with oneDNN and without the binary blob
 build:mkl_opensource_only --define=build_with_mkl=true --define=enable_mkl=true
 build:mkl_opensource_only --define=tensorflow_mkldnn_contraction_kernel=0
-build:mkl_opensource_only --define=build_with_mkl_dnn_v1_only=true
 build:mkl_opensource_only --define=build_with_mkl_opensource=true
 build:mkl_opensource_only -c opt
 
