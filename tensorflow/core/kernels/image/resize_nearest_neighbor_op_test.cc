@@ -16,6 +16,7 @@ limitations under the License.
 // TODO(shlens, sherrym): Consider adding additional tests in image_ops.py in
 // order to compare the reference implementation for image resizing in Python
 // Image Library.
+#include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -30,18 +31,31 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
+enum class TestDevice { CPU, GPU };
 
-class ResizeNearestNeighborOpTestBase : public OpsTestBase {
+class ResizeNearestNeighborOpTestBase
+    : public OpsTestBase,
+      public ::testing::WithParamInterface<TestDevice> {
  protected:
-  explicit ResizeNearestNeighborOpTestBase(bool half_pixel_centers) {
-    TF_EXPECT_OK(NodeDefBuilder("resize_nn", "ResizeNearestNeighbor")
+  explicit ResizeNearestNeighborOpTestBase(bool half_pixel_centers)
+      : align_corners_(false), half_pixel_centers_(half_pixel_centers) {}
+  void SetUp() override {
+    if (GetParam() == TestDevice::GPU) {
+      std::unique_ptr<Device> device_gpu(
+          DeviceFactory::NewDevice("GPU", {}, "/job:a/replica:0/task:0"));
+      SetDevice(DEVICE_GPU, std::move(device_gpu));
+    }
+
+    TF_EXPECT_OK(NodeDefBuilder("resize_nn_op", "ResizeNearestNeighbor")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))
-                     .Attr("align_corners", false)
-                     .Attr("half_pixel_centers", half_pixel_centers)
+                     .Attr("align_corners", align_corners_)
+                     .Attr("half_pixel_centers", half_pixel_centers_)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
+  bool align_corners_;
+  bool half_pixel_centers_;
 };
 
 class ResizeNearestNeighborOpTest : public ResizeNearestNeighborOpTestBase {
@@ -58,19 +72,29 @@ class ResizeNearestNeighborHalfPixelCentersOpTest
 
 // TODO(jflynn): Add some actual tests for the half pixel centers case.
 
-class ResizeNearestNeighborOpAlignCornersTest : public OpsTestBase {
+class ResizeNearestNeighborOpAlignCornersTest
+    : public OpsTestBase,
+      public ::testing::WithParamInterface<TestDevice> {
  protected:
-  ResizeNearestNeighborOpAlignCornersTest() {
-    TF_EXPECT_OK(NodeDefBuilder("resize_nn", "ResizeNearestNeighbor")
+  ResizeNearestNeighborOpAlignCornersTest() : align_corners_(true) {}
+  void SetUp() override {
+    if (GetParam() == TestDevice::GPU) {
+      std::unique_ptr<Device> device_gpu(
+          DeviceFactory::NewDevice("GPU", {}, "/job:a/replica:0/task:0"));
+      SetDevice(DEVICE_GPU, std::move(device_gpu));
+    }
+
+    TF_EXPECT_OK(NodeDefBuilder("resize_nn_op", "ResizeNearestNeighbor")
                      .Input(FakeInput(DT_FLOAT))
                      .Input(FakeInput(DT_INT32))
-                     .Attr("align_corners", true)
+                     .Attr("align_corners", align_corners_)
                      .Finalize(node_def()));
     TF_EXPECT_OK(InitOp());
   }
+  bool align_corners_;
 };
 
-TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To1x1) {
+TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2To1x1) {
   // Input:
   //  1, 2
   //  3, 4
@@ -87,7 +111,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To1x1) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpAlignCornersTest,
+TEST_P(ResizeNearestNeighborOpAlignCornersTest,
        TestNearest2x2AlignCornersTo1x1) {
   // Input:
   //  1, 2
@@ -105,7 +129,7 @@ TEST_F(ResizeNearestNeighborOpAlignCornersTest,
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To3x3) {
+TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2To3x3) {
   // Input:
   //  1, 2
   //  3, 4
@@ -125,7 +149,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To3x3) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpAlignCornersTest,
+TEST_P(ResizeNearestNeighborOpAlignCornersTest,
        TestNearestAlignCorners2x2To3x3) {
   // Input:
   //  1, 2
@@ -146,7 +170,7 @@ TEST_F(ResizeNearestNeighborOpAlignCornersTest,
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpTest, TestNearest3x3To2x2) {
+TEST_P(ResizeNearestNeighborOpTest, TestNearest3x3To2x2) {
   // Input:
   //  1, 2, 3
   //  4, 5, 6
@@ -167,7 +191,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest3x3To2x2) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpAlignCornersTest,
+TEST_P(ResizeNearestNeighborOpAlignCornersTest,
        TestNearestAlignCorners3x3To2x2) {
   // Input:
   //  1, 2, 3
@@ -189,7 +213,7 @@ TEST_F(ResizeNearestNeighborOpAlignCornersTest,
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To2x5) {
+TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2To2x5) {
   // Input:
   //  1, 2
   //  3, 4
@@ -208,7 +232,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To2x5) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpTest, TestNearestNeighbor4x4To3x3) {
+TEST_P(ResizeNearestNeighborOpTest, TestNearestNeighbor4x4To3x3) {
   // Input:
   //  1,  2,  3,  4
   //  5,  6,  7,  8
@@ -232,7 +256,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearestNeighbor4x4To3x3) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpAlignCornersTest,
+TEST_P(ResizeNearestNeighborOpAlignCornersTest,
        TestNearestNeighborAlignCorners4x4To3x3) {
   // Input:
   //  1,  2,  3,  4
@@ -257,7 +281,7 @@ TEST_F(ResizeNearestNeighborOpAlignCornersTest,
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To5x2) {
+TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2To5x2) {
   // Input:
   //  1, 2
   //  3, 4
@@ -279,7 +303,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To5x2) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To4x4) {
+TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2To4x4) {
   // Input:
   //  1, 2
   //  3, 4
@@ -300,7 +324,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2To4x4) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2x2x2To2x3x3x2) {
+TEST_P(ResizeNearestNeighborOpTest, TestNearest2x2x2x2To2x3x3x2) {
   // Input:
   //  [ [ 1, 1 ], [ 2, 2],
   //    [ 3, 3 ], [ 4, 4] ],
@@ -332,7 +356,7 @@ TEST_F(ResizeNearestNeighborOpTest, TestNearest2x2x2x2To2x3x3x2) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest5x2To2x2) {
+TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest5x2To2x2) {
   // Input:
   //  1, 2
   //  3, 4
@@ -350,7 +374,7 @@ TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest5x2To2x2) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To1x1) {
+TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To1x1) {
   // Input:
   //  1, 2
   //  3, 4
@@ -367,7 +391,7 @@ TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To1x1) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To3x3) {
+TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To3x3) {
   // Input:
   //  1, 2
   //  3, 4
@@ -387,7 +411,7 @@ TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To3x3) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest3x3To2x2) {
+TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest3x3To2x2) {
   // Input:
   //  1, 2, 3
   //  4, 5, 6
@@ -408,7 +432,7 @@ TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest3x3To2x2) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To2x5) {
+TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To2x5) {
   // Input:
   //  1, 2
   //  3, 4
@@ -427,7 +451,7 @@ TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To2x5) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest,
+TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest,
        TestNearestNeighbor4x4To3x3) {
   // Input:
   //  1,  2,  3,  4
@@ -452,7 +476,7 @@ TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest,
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To5x2) {
+TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To5x2) {
   // Input:
   //  1, 2
   //  3, 4
@@ -474,7 +498,7 @@ TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To5x2) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To4x4) {
+TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To4x4) {
   // Input:
   //  1, 2
   //  3, 4
@@ -495,7 +519,7 @@ TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest, TestNearest2x2To4x4) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest,
+TEST_P(ResizeNearestNeighborHalfPixelCentersOpTest,
        TestNearest2x2x2x2To2x3x3x2) {
   // Input:
   //  [ [ 1, 1 ], [ 2, 2],
@@ -521,4 +545,26 @@ TEST_F(ResizeNearestNeighborHalfPixelCentersOpTest,
   // clang-format on
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
+
+INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborOpTestCpu,
+                         ResizeNearestNeighborOpTest,
+                         ::testing::Values(TestDevice::CPU));
+INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborHalfPixelCentersOpTestCpu,
+                         ResizeNearestNeighborHalfPixelCentersOpTest,
+                         ::testing::Values(TestDevice::CPU));
+INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborOpAlignCornersTestCpu,
+                         ResizeNearestNeighborOpAlignCornersTest,
+                         ::testing::Values(TestDevice::CPU));
+#if GOOGLE_CUDA
+// Instantiate tests for GPU.
+INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborOpTestGpu,
+                         ResizeNearestNeighborOpTest,
+                         ::testing::Values(TestDevice::GPU));
+INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborHalfPixelCentersOpTestGpu,
+                         ResizeNearestNeighborHalfPixelCentersOpTest,
+                         ::testing::Values(TestDevice::GPU));
+INSTANTIATE_TEST_SUITE_P(ResizeNearestNeighborOpAlignCornersTestGpu,
+                         ResizeNearestNeighborOpAlignCornersTest,
+                         ::testing::Values(TestDevice::GPU));
+#endif  // GOOGLE_CUDA
 }  // namespace tensorflow
