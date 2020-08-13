@@ -1,6 +1,6 @@
-path: "tensorflow.keras.layers.Softmax"
+path: "tensorflow.keras.layers.MultiHeadAttention"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.layers.advanced_activations.Softmax\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.multi_head_attention.MultiHeadAttention\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.module.module.Module\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.tracking.AutoTrackable\'>"
@@ -117,7 +117,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'axis\'], varargs=None, keywords=kwargs, defaults=[\'-1\'], "
+    argspec: "args=[\'self\', \'num_heads\', \'key_dim\', \'value_dim\', \'dropout\', \'use_bias\', \'output_shape\', \'attention_axes\', \'kernel_initializer\', \'bias_initializer\', \'kernel_regularizer\', \'bias_regularizer\', \'activity_regularizer\', \'kernel_constraint\', \'bias_constraint\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'0.0\', \'True\', \'None\', \'None\', \'glorot_uniform\', \'zeros\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_loss"
@@ -149,7 +149,7 @@ tf_class {
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'query\', \'value\', \'key\', \'attention_mask\', \'return_attention_scores\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\'], "
   }
   member_method {
     name: "compute_mask"
@@ -157,7 +157,7 @@ tf_class {
   }
   member_method {
     name: "compute_output_shape"
-    argspec: "args=[\'instance\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "compute_output_signature"
