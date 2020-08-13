@@ -97,7 +97,6 @@ An n-way switch statement, implementing the following:
     Variadic<TF_Tensor>:$input,
 
     Confined<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
-    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
 
     // Used to map StatelessCase and Case to a common op.
     DefaultValuedAttr<BoolAttr, "false">:$is_stateless
@@ -109,6 +108,7 @@ An n-way switch statement, implementing the following:
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let hasCanonicalizer = 1;
 }
