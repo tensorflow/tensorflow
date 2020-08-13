@@ -95,7 +95,7 @@ TEST_F(RemoteMgrTest, SerializeRemoteTensorHandle) {
   const uint64 op_id = 3;
   const int output_num = 1;
   TensorHandle* handle = TensorHandle::CreateLazyRemoteHandle(
-      op_id, output_num, DT_FLOAT, remote_device_, ctx_);
+      op_id, output_num, DT_FLOAT, remote_device_, /*is_ready=*/true, ctx_);
   RemoteTensorHandle remote_handle;
   TF_ASSERT_OK(remote_mgr.SerializeRemoteTensorHandle(
       handle, /*wait_until_ready=*/true, &remote_handle, remote_device_,

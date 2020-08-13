@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
 
@@ -29,8 +30,7 @@ namespace {
 
 class AddGradientFunction : public GradientFunction {
  public:
-  Status Compute(Context* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_inputs,
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
     grad_outputs->resize(2);
     vector<AbstractTensorHandle*> identity_outputs(1);
@@ -54,8 +54,7 @@ class ExpGradientFunction : public GradientFunction {
   explicit ExpGradientFunction(AbstractTensorHandle* exp) : exp_(exp) {
     exp->Ref();
   }
-  Status Compute(Context* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_inputs,
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
     vector<AbstractTensorHandle*> conj_outputs(1);
     TF_RETURN_IF_ERROR(
@@ -74,12 +73,22 @@ class ExpGradientFunction : public GradientFunction {
 
 }  // namespace
 
-GradientFunction* AddRegisterer(const ForwardOperation& op) {
-  return new AddGradientFunction;
+BackwardFunction* AddRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new AddGradientFunction;
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
 }
 
-GradientFunction* ExpRegisterer(const ForwardOperation& op) {
-  return new ExpGradientFunction(op.outputs[0]);
+BackwardFunction* ExpRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new ExpGradientFunction(op.outputs[0]);
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
 }
 
 }  // namespace gradients

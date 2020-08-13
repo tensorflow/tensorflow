@@ -330,15 +330,6 @@ LogicalResult HoistResourceOpsFromCluster(tf_device::ClusterOp cluster,
   getUsedValuesDefinedAbove(new_cluster.body(), new_cluster.body(),
                             captured_values);
 
-  for (Value v : captured_values) {
-    auto tensor_type = v.getType().dyn_cast<TensorType>();
-    if (!tensor_type) continue;
-    if (!tensor_type.getElementType().isa<TF::ResourceType>()) continue;
-
-    return new_cluster.emitOpError()
-           << "has remaining resource inputs that can not be lifted";
-  }
-
   return success();
 }
 
@@ -361,29 +352,23 @@ LogicalResult FindResourceArgUseInfo(
     ResourceArgUseInfo info;
     info.used = false;
     info.updated = false;
-    bool do_not_touch = false;
+    bool read_or_assigned = false;
     for (auto user : arg.getUsers()) {
       if (user == return_op) continue;
+      info.used = true;
       if (auto read = llvm::dyn_cast<TF::ReadVariableOp>(user)) {
-        info.used = true;
+        read_or_assigned = true;
         info.data_type = read.getType();
         continue;
       }
       if (auto assign = llvm::dyn_cast<TF::AssignVariableOp>(user)) {
-        info.used = true;
+        read_or_assigned = true;
         info.updated = true;
         info.data_type = assign.value().getType();
         continue;
       }
-      if (isa<TF::StackPushV2Op, TF::StackPopV2Op>(user)) {
-        // Stacks will be handled by a separate pass.
-        do_not_touch = true;
-        break;
-      }
-      user->emitOpError("found unsupported operations on resource.");
-      return failure();
     }
-    if (!do_not_touch) (*result)[arg.getArgNumber()] = info;
+    if (!info.used || read_or_assigned) (*result)[arg.getArgNumber()] = info;
   }
   return success();
 }

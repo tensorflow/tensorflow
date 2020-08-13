@@ -203,7 +203,7 @@ class ProcessFunctionLibraryRuntime {
 
   const DeviceMgr* device_mgr() { return device_mgr_; }
 
-  const std::shared_ptr<DeviceSet> device_set() {
+  const std::shared_ptr<DeviceSet> device_set() const {
     tf_shared_lock l(mu_);
     return device_set_;
   }

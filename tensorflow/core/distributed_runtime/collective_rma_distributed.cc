@@ -146,7 +146,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
                              delete cpu_tensor;
                              // This callback must not block, so execute
                              // done in another thread.
-                             RunClosure([s, done] { done(s); });
+                             work_queue_->Schedule([s, done] { done(s); });
                            });
         delete state;
         return;

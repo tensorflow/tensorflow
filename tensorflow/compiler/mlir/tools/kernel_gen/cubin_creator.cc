@@ -13,33 +13,59 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tools/kernel_gen/passes.h"
+//===- cubin_creator.cc -----------------------------------------*- C++ -*-===//
+//
+// This file implements the function to compile a TF kernel function to a cubin.
+//
+//===----------------------------------------------------------------------===//
+#include "tensorflow/compiler/mlir/tools/kernel_gen/cubin_creator.h"
 
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "absl/memory/memory.h"
+#include "absl/strings/escaping.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/None.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Support/Debug.h"
+#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Parser.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/NVVMIR.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/gpu/llvm_gpu_backend/gpu_backend_lib.h"
 #include "tensorflow/compiler/xla/service/gpu/stream_executor_util.h"
 #include "tensorflow/compiler/xla/service/gpu/target_constants.h"
-#include "tensorflow/compiler/xla/service/hlo_module_config.h"
-#include "tensorflow/compiler/xla/status.h"
-#include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/service/mlir_gpu/kernel_lowering.h"
 #include "tensorflow/core/platform/cuda_libdevice_path.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/path.h"
-
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
 #endif
 
-namespace mlir {
-namespace kernel_gen {
 namespace {
+using tensorflow::Status;
+using xla::InternalError;
+using xla::StatusOr;
 
-xla::StatusOr<std::string> GetLibdeviceDir(
+StatusOr<std::string> GetLibdeviceDir(
     const xla::HloModuleConfig& hlo_module_config) {
   for (const std::string& cuda_root : tensorflow::CandidateCudaRoots(
            hlo_module_config.debug_options().xla_gpu_cuda_data_dir())) {
@@ -51,7 +77,7 @@ xla::StatusOr<std::string> GetLibdeviceDir(
       return libdevice_dir;
     }
   }
-  return xla::InternalError(
+  return InternalError(
       "Can't find libdevice directory ${CUDA_DIR}/nvvm/libdevice");
 }
 
@@ -87,11 +113,34 @@ struct UnfuseBatchNormPass
   }
 };
 
-struct PropagateTensorFlowABIKnowledgePass
-    : public mlir::PassWrapper<PropagateTensorFlowABIKnowledgePass,
+Status LowerTfOpToLhloWithDynamicShapes(mlir::ModuleOp module) {
+  mlir::PassManager pm(module.getContext());
+  auto enable_if_vlog_is_on = [](mlir::Pass* pass, mlir::Operation* op) {
+    return VLOG_IS_ON(1);
+  };
+  pm.enableIRPrinting(/*shouldPrintBeforePass=*/{},
+                      /*shouldPrintAfterPass=*/enable_if_vlog_is_on,
+                      /*printModuleScope=*/false,
+                      /*printAfterOnlyOnChange=*/false, llvm::dbgs());
+  pm.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(false));
+  pm.addNestedPass<mlir::FuncOp>(
+      absl::make_unique<MaterializeBroadcastsPass>());
+  pm.addNestedPass<mlir::FuncOp>(absl::make_unique<UnfuseBatchNormPass>());
+  pm.addPass(mlir::mhlo::createLegalizeToLhloPass(
+      /*results_escape_functions=*/true));
+  pm.addNestedPass<mlir::FuncOp>(mlir::lmhlo::createLhloCopyRemovalPass());
+
+  if (failed(pm.run(module))) {
+    return InternalError("Lowering TF to LHLO failed.");
+  }
+  return Status::OK();
+}
+
+struct PropagateTensorFlowABIKnowledge
+    : public mlir::PassWrapper<PropagateTensorFlowABIKnowledge,
                                mlir::OperationPass<mlir::LLVM::LLVMFuncOp>> {
-  explicit PropagateTensorFlowABIKnowledgePass(
-      mlir::FunctionType type, llvm::ArrayRef<uint32_t> same_shape_)
+  explicit PropagateTensorFlowABIKnowledge(mlir::FunctionType type,
+                                           llvm::ArrayRef<uint32_t> same_shape_)
       : func_type(type), same_shape(same_shape_) {}
 
   void runOnOperation() override {
@@ -125,7 +174,8 @@ struct PropagateTensorFlowABIKnowledgePass
     for (mlir::Type arg_type : arg_types) {
       if (!arg_type.isa<mlir::MemRefType>()) {
         func.emitError() << "argument of surrounding func is not ranked memref";
-        return signalPassFailure();
+        signalPassFailure();
+        return;
       }
       positions.push_back(arg_pos);
       // Set alignment and aliasing on the pointers.
@@ -154,7 +204,8 @@ struct PropagateTensorFlowABIKnowledgePass
           func.emitOpError() << "same shape constraints on arguments with "
                                 "non-matching shapes: #"
                              << first << " and #" << same;
-          return signalPassFailure();
+          signalPassFailure();
+          continue;
         }
 
         for (uint32_t i = 0; i < 2 * rank; ++i) {
@@ -171,93 +222,91 @@ struct PropagateTensorFlowABIKnowledgePass
   llvm::ArrayRef<uint32_t> same_shape;
 };
 
-class GpuKernelToBlobPass
-    : public mlir::PassWrapper<GpuKernelToBlobPass,
-                               mlir::OperationPass<mlir::gpu::GPUModuleOp>> {
- public:
-  GpuKernelToBlobPass(mlir::StringRef blob_annotation,
-                      std::pair<int32_t, int32_t> compute_capability)
-      : blob_annotation_(blob_annotation),
-        compute_capability_(compute_capability) {}
+Status PropagateTensorFlowABIKnowledgeToKernel(
+    mlir::ModuleOp module, llvm::ArrayRef<uint32_t> same_shape) {
+  // Grab the original signature from the single function.
+  auto func = *module.getBody()->op_begin<mlir::FuncOp>();
 
-  void runOnOperation() override {
-    mlir::gpu::GPUModuleOp module = getOperation();
+  mlir::PassManager pm(module.getContext());
+  auto enable_if_vlog_is_on = [](mlir::Pass*, mlir::Operation*) {
+    return VLOG_IS_ON(1);
+  };
+  pm.enableIRPrinting(/*shouldPrintBeforePass=*/{},
+                      /*shouldPrintAfterPass=*/enable_if_vlog_is_on,
+                      /*printModuleScope=*/false,
+                      /*printAfterOnlyOnChange=*/false, llvm::dbgs());
+  auto& kernel_pm = pm.nest<::mlir::gpu::GPUModuleOp>();
+  kernel_pm.addNestedPass<mlir::LLVM::LLVMFuncOp>(
+      absl::make_unique<PropagateTensorFlowABIKnowledge>(func.getType(),
+                                                         same_shape));
 
-    llvm::LLVMContext llvmContext;
-    auto llvmModule = mlir::translateModuleToNVVMIR(module, llvmContext);
-    if (!llvmModule) {
-      return signalPassFailure();
-    }
-
-    llvmModule->setModuleIdentifier("acme");
-    llvmModule->setDataLayout(xla::gpu::nvptx::kDataLayout);
-    xla::HloModuleConfig config;
-    config.set_debug_options(xla::GetDebugOptionsFromFlags());
-
-    auto enable_fusion = [](llvm::TargetMachine* target) {
-      target->Options.AllowFPOpFusion = llvm::FPOpFusion::FPOpFusionMode::Fast;
-    };
-
-    auto libdevice_dir_or = GetLibdeviceDir(config);
-    if (!libdevice_dir_or.ok()) {
-      return signalPassFailure();
-    }
-
-    auto ptx_or = xla::gpu::nvptx::CompileToPtx(
-        llvmModule.get(), compute_capability_, config,
-        libdevice_dir_or.ValueOrDie(), enable_fusion);
-    if (!ptx_or.ok()) {
-      return signalPassFailure();
-    }
-
-    auto ptx = ptx_or.ValueOrDie();
-
-#if GOOGLE_CUDA
-    auto blob_or = tensorflow::se::CompileGpuAsm(
-        std::get<0>(compute_capability_), std::get<1>(compute_capability_),
-        ptx.c_str(), xla::gpu::PtxOptsFromConfig(config));
-    if (blob_or.ok()) {
-      const auto& blob = blob_or.ValueOrDie();
-      std::string blob_string(blob.begin(), blob.end());
-      module.setAttr(blob_annotation_,
-                     mlir::StringAttr::get(blob_string, &getContext()));
-      return;
-    } else {
-      return signalPassFailure();
-    }
-#endif
-    return signalPassFailure();
+  if (failed(pm.run(module))) {
+    return InternalError("Static knowledge propagation failed.");
   }
+  return Status::OK();
+}
 
- private:
-  mlir::StringRef blob_annotation_;
-  std::pair<int32_t, int32_t> compute_capability_;
-};
-
+void RegisterDialects() {
+  static bool init_once = []() {
+    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
+    return true;
+  }();
+  (void)init_once;
+}
 }  // namespace
 
-std::unique_ptr<mlir::FunctionPass> createMaterializeBroadcastsPass() {
-  return absl::make_unique<MaterializeBroadcastsPass>();
-}
+StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
+    llvm::StringRef tf_code, std::pair<int32_t, int32_t> compute_capability,
+    llvm::ArrayRef<uint32_t> tile_sizes, llvm::ArrayRef<uint32_t> same_shape,
+    llvm::ArrayRef<uint32_t> unroll_factors) {
+  RegisterDialects();
+  mlir::MLIRContext context;
+  mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
 
-std::unique_ptr<mlir::FunctionPass> createUnfuseBatchNormPass() {
-  return absl::make_unique<UnfuseBatchNormPass>();
-}
+  TF_RETURN_IF_ERROR(LowerTfOpToLhloWithDynamicShapes(module.get()));
+  {
+    xla::mlir_gpu::LowerLHLOToGPUOptions options;
+    options.tile_sizes = tile_sizes;
+    options.unroll_factors = unroll_factors;
+    options.collapse_parallel_loops = false;
+    options.use_approximations = true;
+    TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerLHLOToGPU(module.get(), options));
+  }
+  TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
+  TF_RETURN_IF_ERROR(
+      PropagateTensorFlowABIKnowledgeToKernel(module.get(), same_shape));
 
-std::unique_ptr<mlir::OperationPass<mlir::LLVM::LLVMFuncOp>>
-createPropagateTensorFlowABIKnowledgePass(mlir::FunctionType type,
-                                          llvm::ArrayRef<uint32_t> same_shape) {
-  return absl::make_unique<PropagateTensorFlowABIKnowledgePass>(type,
-                                                                same_shape);
-}
+  mlir::OwningModuleRef kernel_module =
+      xla::mlir_gpu::ExtractKernelModule(*module).ValueOrDie();
+  llvm::LLVMContext llvmContext;
+  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module, llvmContext);
+  if (!llvmModule) {
+    return InternalError("Could not translate MLIR module to NVVM");
+  }
 
-std::unique_ptr<mlir::OperationPass<mlir::gpu::GPUModuleOp>>
-createGpuKernelToBlobPass(
-    mlir::StringRef blob_annotation,
-    const std::pair<int32_t, int32_t>& compute_capability) {
-  return absl::make_unique<GpuKernelToBlobPass>(blob_annotation,
-                                                compute_capability);
-}
+  llvmModule->setModuleIdentifier("acme");
+  llvmModule->setDataLayout(xla::gpu::nvptx::kDataLayout);
 
-}  // namespace kernel_gen
-}  // namespace mlir
+  xla::HloModuleConfig config;
+  config.set_debug_options(xla::GetDebugOptionsFromFlags());
+
+  auto enable_fusion = [](llvm::TargetMachine* target) {
+    target->Options.AllowFPOpFusion = llvm::FPOpFusion::FPOpFusionMode::Fast;
+  };
+
+  TF_ASSIGN_OR_RETURN(std::string libdevice_dir, GetLibdeviceDir(config));
+  TF_ASSIGN_OR_RETURN(
+      std::string ptx,
+      xla::gpu::nvptx::CompileToPtx(llvmModule.get(), compute_capability,
+                                    config, libdevice_dir, enable_fusion));
+  VLOG(1) << ptx;
+
+#if GOOGLE_CUDA
+  return tensorflow::se::CompileGpuAsm(
+      std::get<0>(compute_capability), std::get<1>(compute_capability),
+      ptx.c_str(), xla::gpu::PtxOptsFromConfig(config));
+#else
+  return InternalError(
+      "GOOGLE_CUDA not defined. Did you specify --config=cuda ?");
+#endif
+}

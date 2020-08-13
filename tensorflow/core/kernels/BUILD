@@ -3095,8 +3095,6 @@ LOGGING_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
-    # TODO(b/162630222): remove this dependency.
-    "//tensorflow/c/kernels:summary_op",
 ]
 
 tf_kernel_library(
@@ -3121,7 +3119,9 @@ tf_kernel_library(
     name = "summary_op",
     prefix = "summary_op",
     deps = LOGGING_DEPS + [
+        # TODO(b/162630222): remove these dependencies.
         "//tensorflow/c/kernels:histogram_summary_op",
+        "//tensorflow/c/kernels:summary_op",
     ],
 )
 

@@ -8,6 +8,6 @@ HloModule TestModule
 ENTRY TestComputation {
   x = f32[3, 2]{1,0} parameter(0)
 
-  // CHECK: "lmhlo.copy"(%{{.*}}, %{{.*}}) : (memref<3x2xf32>, memref<3x2xf32, #[[MAP]]>) -> ()
+  // CHECK: "lmhlo.copy"(%{{.*}}, %{{.*}}) {name = "copy.1"} : (memref<3x2xf32>, memref<3x2xf32, #[[MAP]]>) -> ()
   ROOT x.copy = f32[3, 2]{0,1} copy(x)
 }
