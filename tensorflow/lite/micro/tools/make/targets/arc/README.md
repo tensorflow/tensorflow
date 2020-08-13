@@ -208,7 +208,9 @@ In both cases you will see the application output in the serial terminal.
 1.  Use the following command in the same command shell you used for building
     the application, as described in the previous step
 
+```
     make flash
+```
 
 2.  Copy the content of the created *./bin* folder into the root of microSD
     card. Note that the card must be formatted as FAT32 with default cluster
@@ -219,7 +221,21 @@ In both cases you will see the application output in the serial terminal.
 4.  Push the RST button. If a red LED is lit beside RST button, push the CFG
     button.
 
-You will see the application output in the serial terminal.
+5.  Using serial terminal, create uboot environment file to automatically run 
+the application on start-up. Type or copy next sequence of commands into 
+    serial terminal one-by-another:
+
+```
+   setenv loadaddr 0x10800000
+   setenv bootfile app.elf
+   setenv bootdelay 1
+   setenv bootcmd fatload mmc 0 \$\{loadaddr\} \$\{bootfile\} \&\& bootelf
+   saveenv
+``` 
+
+6. Reset the board (see step 4 above) 
+
+You will see the application output in the serial terminal. 
 
 ## Custom ARC EM/HS Platform
 

@@ -109,6 +109,15 @@ get it started.
     *   Plug in the microSD card into the J11 connector.
     *   Push the RST button. If a red LED is lit beside RST button, push the CFG
         button.
+    * Type or copy next commands one-by-another into serial terminal:
+        ```
+        setenv loadaddr 0x10800000
+        setenv bootfile app.elf
+        setenv bootdelay 1
+        setenv bootcmd fatload mmc 0 \$\{loadaddr\} \$\{bootfile\} \&\& bootelf
+        saveenv
+        ``` 
+    * Push the RST button. 
 
 6.  If you have the MetaWare Debugger installed in your environment:
 

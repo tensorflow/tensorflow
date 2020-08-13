@@ -42,8 +42,8 @@ ifneq ($(filter $(ALL_TAGS), reduce_codesize),)
 # with high probability may not be acceptable for other graphs and will need 
 # to be adjusted by the user
 
-	@sed -E -i 's#mli_krn_depthwise_conv2d_hwcn_sa8_sa8_sa32\(#\
-	mli_krn_depthwise_conv2d_hwcn_sa8_sa8_sa32_generic\(#' $(word 3, $^)
+	@sed -E -i 's#mli_krn_depthwise_conv2d_hwcn_sa8_sa8_sa32\(# \
+	mli_krn_depthwise_conv2d_hwcn_sa8_sa8_sa32_generic\(#g' $(word 3, $^)
 	@echo $(word 3, $^): Use generic function >> $@
 endif
 

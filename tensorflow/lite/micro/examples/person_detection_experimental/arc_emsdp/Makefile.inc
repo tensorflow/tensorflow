@@ -34,10 +34,7 @@ ifneq ($(filter $(ALL_TAGS), reduce_codesize),)
 	@sed -E -i 's#mli_krn_conv2d_nhwc_sa8_sa8_sa32#mli_krn_conv2d_nhwc_sa8_sa8_sa32_k1x1_nopad#' $(word 3, $^)
 	@sed -E -i 's#mli_krn_depthwise_conv2d_hwcn_sa8_sa8_sa32#mli_krn_depthwise_conv2d_hwcn_sa8_sa8_sa32_k3x3_krnpad#' $(word 4, $^)
 	@sed -E -i 's#mli_krn_avepool_hwc_sa8#mli_krn_avepool_hwc_sa8_k3x3_nopad#' $(word 5, $^)
-	@sed -E -i 's#mli_krn_maxpool_hwc_sa8\(in_ptr, \&cfg, out_ptr\);#{\
-	      TF_LITE_KERNEL_LOG(context, \"Max pooling is removed from the application\");\
-	      return kTfLiteError;\
-	    }#' $(word 5, $^)
+	@sed -E -i 's#mli_krn_maxpool_hwc_sa8\(in_ptr, \&cfg, out_ptr\);#return kTfLiteError;#' $(word 5, $^)
 	@echo $(word 3, $^): Use specialization >> $@
 	@echo $(word 4, $^): Use specialization >> $@
 	@echo $(word 5, $^): Use specialization and remove max pooling >> $@
