@@ -607,8 +607,14 @@ Status CreateUnshapedOutput(
         "Unable to find remote task corresponding to device ",
         output_device->name());
   }
-  *output = TensorHandle::CreateUnshapedRemoteHandle(
-      op_id, output_num, remote_task, output_dtype, output_device, ctx);
+  if (ctx->RemoteMgr()->IsMaster()) {
+    *output = TensorHandle::CreateUnshapedRemoteHandle(
+        op_id, output_num, remote_task, output_dtype, output_device, ctx);
+  } else {
+    *output = TensorHandle::CreateLazyRemoteHandle(op_id, output_num,
+                                                   output_dtype, output_device,
+                                                   /*is_ready=*/false, ctx);
+  }
   return Status::OK();
 #endif  // !IS_MOBILE_PLATFORM
 }
@@ -916,14 +922,15 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
     // execute.
 
     // The device_ and resource_device_ of this TensorHandle might be
-    // incorrect. It is pretty hard to make it correct because for
-    // multi-device functions, we don't know the output device until the
-    // function is instantiated. Luckily, we don't need to know the correct
-    // remote device here. We just need to know that it is remote. If we need
-    // to copy this tensor to this process, the remote end will know the
-    // correct device of this handle.
+    // incorrect. For multi-device functions, we don't know the output device
+    // until the function is instantiated on a remote worker. Luckily, we don't
+    // need to know the correct remote device here. We just need to know that it
+    // is remote. If we need copy this tensor to this process or run any ops
+    // which take this tensor as an input, block until the correct device is
+    // set.
+    const bool unknown_device = op->is_function();
     retvals[i] = TensorHandle::CreateUnshapedRemoteHandle(
-        id, i, remote_task, output_dtypes[i], op_device, &ctx);
+        id, i, remote_task, output_dtypes[i], op_device, &ctx, unknown_device);
   }
 
   if (ctx.LazyCopyFunctionRemoteInputs()) {
@@ -1206,6 +1213,7 @@ Status LocalEagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
 Status EagerCopyToDevice(TensorHandle* h, EagerContext* ctx,
                          EagerExecutor* executor, Device* device, bool mirror,
                          TensorHandle** result) {
+  TF_RETURN_IF_ERROR(h->WaitUnknownDevice());
   auto send_device = h->DeviceOrHostCPU(*ctx);
   if (VariantDeviceIsCustom(send_device)) {
     return errors::Unimplemented(

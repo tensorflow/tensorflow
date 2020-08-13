@@ -88,8 +88,14 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
         }
         for (size_t i = 0; i < retvals.size(); ++i) {
           if (status.ok()) {
-            Status s = retvals[i]->SetRemoteShape(
-                response->queue_response(0).shape(i), device, context_view_id);
+            const string output_device =
+                response->queue_response(0).device().empty()
+                    ? ""
+                    : response->queue_response(0).device(i);
+            Status s = retvals[i]->SetRemoteShapeAndDevice(
+                response->queue_response(0).shape(i), device, context_view_id,
+                output_device);
+
             if (!s.ok()) {
               LOG(ERROR) << "Ignoring an error encountered when setting "
                             "remote shape of tensor handle: "

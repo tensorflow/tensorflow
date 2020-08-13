@@ -1006,16 +1006,13 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
     const string& target = pair.first;
     FunctionLibraryRuntime* target_flr = GetFLR(target);
     Device* target_device = nullptr;
+    Device* host = nullptr;
     if (target_flr == nullptr) {
-      // TODO(b/162618595): Remove this error once we support a remote
-      // multi-device function with remote outputs.
-      return errors::Unimplemented(
-          "Currently, outputting tensors on remote devices is not supported."
-          "The ",
-          comp_data.ret_indices[0],
-          "-th return value of the function outputs to target_device: ", target,
-          " Please copy the tensor to local device explicitly using "
-          "tf.identity and return the new Tensor instead.");
+      target_device = device_set()->FindDeviceByName(target);
+      string remote_host;
+      TF_RETURN_IF_ERROR(
+          DeviceNameUtils::DeviceNameToCpuDeviceName(target, &remote_host));
+      host = device_set()->FindDeviceByName(remote_host);
     } else {
       target_device = target_flr->device();
     }
@@ -1026,7 +1023,7 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
         (*output_devices)[ret_index] = target_device;
       } else {
         (*output_devices)[ret_index] =
-            comp_data.ret_alloc_attrs[j].on_host() ? nullptr : target_device;
+            comp_data.ret_alloc_attrs[j].on_host() ? host : target_device;
       }
     }
   }

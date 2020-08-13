@@ -156,9 +156,15 @@ Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
   const tensorflow::Tensor* t = nullptr;
 
   // TODO(nareshmodi): This call makes async calls sync calls. Fix this.
-  TF_RETURN_IF_ERROR(handle->Tensor(&t));
+  if (handle->Type() == TensorHandle::LOCAL) {
+    TF_RETURN_IF_ERROR(handle->Tensor(&t));
 
-  t->shape().AsProto(proto);
+    t->shape().AsProto(proto);
+  } else {
+    TensorShape shape;
+    TF_RETURN_IF_ERROR(handle->Shape(&shape));
+    shape.AsProto(proto);
+  }
 
   return Status::OK();
 }
@@ -166,7 +172,8 @@ Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
 Status AddOpRetvalsToResponse(
     EagerContext* eager_context, int op_id, int num_retvals,
     TensorHandle** retvals, std::function<TensorProto*()> add_tensor_proto_fn,
-    std::function<TensorShapeProto*()> add_shape_proto_fn) {
+    std::function<TensorShapeProto*()> add_shape_proto_fn,
+    std::function<string*()> add_device_fn = nullptr) {
   if (op_id == kInvalidRemoteOpId) {
     // Copy the output tensors back along with the response, since the op id
     // is invalid which cannot be added to RemoteMgr.
@@ -175,10 +182,21 @@ Status AddOpRetvalsToResponse(
       retvals[i]->Unref();
     }
   } else {
-    eager_context->RemoteMgr()->AddOperationOutputs(
-        absl::MakeSpan(retvals, num_retvals), op_id);
     for (int i = 0; i < num_retvals; i++) {
       TF_RETURN_IF_ERROR(TensorHandleShape(retvals[i], add_shape_proto_fn()));
+      const bool is_remote = retvals[i]->Type() == TensorHandle::REMOTE;
+      if (add_device_fn) {
+        *add_device_fn() =
+            is_remote ? absl::get<Device*>(
+                            retvals[i]->DeviceOrHostCPU(*eager_context))
+                            ->name()
+                      : "";
+      }
+      if (is_remote) {
+        retvals[i]->Unref();
+      } else {
+        eager_context->RemoteMgr()->AddOperationOutput(retvals[i], op_id, i);
+      }
     }
   }
   return Status::OK();
@@ -479,6 +497,8 @@ void EagerServiceImpl::RunComponentFunction(
           wrapped_done(status);
           return;
         }
+        // The output device of a component function is the component device
+        // which is known on the default device of it's parent function.
         wrapped_done(AddOpRetvalsToResponse(
             eager_context, op_id, *num_retvals, retvals->data(),
             [response] { return response->add_tensor(); },
@@ -510,10 +530,19 @@ Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
           num_retvals),
       &num_retvals));
 
+  std::function<string*()> add_device_fn = nullptr;
+  // Send the output devices of a function back to let a client know where the
+  // outputs are. For a primitive op, an output devics is the op device which is
+  // known on a client.
+  if (op.is_function()) {
+    add_device_fn = [queue_response] { return queue_response->add_device(); };
+  }
+
   return AddOpRetvalsToResponse(
       eager_context, operation.id(), num_retvals, retvals.data(),
       [queue_response] { return queue_response->add_tensor(); },
-      [queue_response] { return queue_response->add_shape(); });
+      [queue_response] { return queue_response->add_shape(); },
+      std::move(add_device_fn));
 }
 
 Status EagerServiceImpl::Enqueue(CallOptions* call_opts,
