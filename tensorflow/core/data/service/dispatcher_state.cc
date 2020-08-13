@@ -53,8 +53,7 @@ void DispatcherState::RegisterDataset(
     const RegisterDatasetUpdate& register_dataset) {
   int64 id = register_dataset.dataset_id();
   int64 fingerprint = register_dataset.fingerprint();
-  auto dataset = std::make_shared<Dataset>(id, fingerprint,
-                                           register_dataset.dataset_def());
+  auto dataset = std::make_shared<Dataset>(id, fingerprint);
   DCHECK(!datasets_by_id_.contains(id));
   datasets_by_id_[id] = dataset;
   DCHECK(!datasets_by_fingerprint_.contains(fingerprint));
