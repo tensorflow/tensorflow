@@ -224,6 +224,8 @@ int64_t GetOrCreateIdForVarHandle(VarHandleOp handle, int64_t* next_id,
 // ResourceAliasAnalysisInfo
 //===----------------------------------------------------------------------===//
 
+constexpr int64_t ResourceAliasAnalysisInfo::kUnknownResourceId;
+
 // Constructs the analysis info by analyzing the given function.
 ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
     FuncOp func_op, const BacktrackAnalysis& backtrack_analysis) {
