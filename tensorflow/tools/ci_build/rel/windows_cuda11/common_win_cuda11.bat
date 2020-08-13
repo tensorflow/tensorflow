@@ -15,7 +15,7 @@
 
 echo on
 
-SET TF_CUDA_VERSION=11
+SET TF_CUDA_VERSION=11.0
 SET TF_CUDNN_VERSION=8
 
 REM TODO(sanjoy): This script should be removed once common_win.bat

@@ -220,6 +220,8 @@ class DefFunctionTest(xla_test.XLATestCase):
 
       self.assertAllClose(40.0, f(2.0))
       self.assertAllClose([40.0, 28.0], g(2.0))
+      self.assertAllClose(40.0, f.get_concrete_function(2.0)(2.0))
+      self.assertAllClose([40.0, 28.0], g.get_concrete_function(2.0)(2.0))
 
   def testMethodCompilation(self):
 

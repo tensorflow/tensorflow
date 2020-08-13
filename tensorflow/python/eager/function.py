@@ -57,6 +57,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import type_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import default_gradient
 from tensorflow.python.ops import functional_ops
@@ -1939,15 +1940,24 @@ class ConcreteFunction(object):
         possible_gradient_type,
         executing_eagerly)
     forward_function, args_with_tangents = forward_backward.forward()
-    if executing_eagerly:
-      flat_outputs = forward_function.call(
-          ctx, args_with_tangents,
-          cancellation_manager=cancellation_manager)
-    else:
-      with default_graph._override_gradient_function(  # pylint: disable=protected-access
-          {"PartitionedCall": self._get_gradient_function(),
-           "StatefulPartitionedCall": self._get_gradient_function()}):
-        flat_outputs = forward_function.call(ctx, args_with_tangents)
+    compiled_with_xla = self._attrs.get("_XlaMustCompile", False) and \
+        not control_flow_util.GraphOrParentsInXlaContext(default_graph)
+    xla_context = control_flow_ops.XLAControlFlowContext()
+    try:
+      if compiled_with_xla:
+        xla_context.Enter()
+      if executing_eagerly:
+        flat_outputs = forward_function.call(
+            ctx, args_with_tangents,
+            cancellation_manager=cancellation_manager)
+      else:
+        with default_graph._override_gradient_function(  # pylint: disable=protected-access
+            {"PartitionedCall": self._get_gradient_function(),
+             "StatefulPartitionedCall": self._get_gradient_function()}):
+          flat_outputs = forward_function.call(ctx, args_with_tangents)
+    finally:
+      if compiled_with_xla:
+        xla_context.Exit()
     forward_backward.record(flat_outputs)
     return self._build_call_outputs(flat_outputs)
 

@@ -35,6 +35,7 @@ function print_usage {
 
 # Check command line flags.
 ARGUMENTS=$@
+BUILD_FLAGS=""
 TARGET_ARCHS=x86,x86_64,arm64-v8a,armeabi-v7a
 FLAG_CHECKPOINT="master"
 
@@ -48,9 +49,11 @@ do
 case $i in
     --input_models=*)
       FLAG_MODELS="${i#*=}"
+      BUILD_FLAGS="${BUILD_FLAGS} ${i}"
       shift;;
     --target_archs=*)
       TARGET_ARCHS="${i#*=}"
+      BUILD_FLAGS="${BUILD_FLAGS} ${i}"
       shift;;
     --checkpoint=*)
       FLAG_CHECKPOINT="${i#*=}"
@@ -67,7 +70,7 @@ if [ ! -d /tensorflow_src ]; then
   do
     FLAG_DIR="${FLAG_DIR} -v ${model}:${model}"
   done
-  docker run --rm -it -v $PWD:/tmp -v ${SCRIPT_DIR}:/script_dir ${FLAG_DIR} \
+  docker run --rm -it -v $PWD:/host_dir -v ${SCRIPT_DIR}:/script_dir ${FLAG_DIR} \
     --entrypoint /script_dir/build_aar_with_docker.sh tflite-builder \
     ${ARGUMENTS}
   exit 0
@@ -97,7 +100,7 @@ else
   git checkout ${FLAG_CHECKPOINT}
 
   # Building with bazel.
-  bash /tensorflow_src/tensorflow/lite/tools/build_aar.sh ${ARGUMENTS}
+  bash /tensorflow_src/tensorflow/lite/tools/build_aar.sh ${BUILD_FLAGS}
 
   # Copy the output files from docker container.
   clear
@@ -107,7 +110,7 @@ else
   for i in ${OUT_FILES}
   do
     if [ -f $i ]; then
-      cp $i /tmp
+      cp $i /host_dir
       basename $i
     fi
   done

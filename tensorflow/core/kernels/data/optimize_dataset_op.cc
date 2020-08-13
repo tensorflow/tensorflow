@@ -106,6 +106,13 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     }
   }
 
+  // If there are no optimizations to be applied, directly return the input.
+  if (optimizations.empty()) {
+    *output = input;
+    input->Ref();
+    return;
+  }
+
   auto config_factory = [this, &optimizations]() {
     return CreateConfig(optimizations, optimization_configs_);
   };

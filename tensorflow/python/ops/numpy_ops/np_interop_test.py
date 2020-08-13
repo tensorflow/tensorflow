@@ -305,12 +305,12 @@ class InteropTest(tf.test.TestCase):
 
     model = tf.keras.Sequential(
         [tf.keras.layers.Dense(100), ProjectionLayer(2)])
-    output = model.call(np.random.randn(10, 100))
+    output = model.call(np.random.randn(10, 100).astype(np.float32))
 
     self.assertIsInstance(output, np.ndarray)
 
     dense_layer = tf.keras.layers.Dense(100)
-    output = dense_layer(np.random.randn(10, 100))
+    output = dense_layer(np.random.randn(10, 100).astype(np.float32))
 
   def testPForInterop(self):
     def outer_product(a):

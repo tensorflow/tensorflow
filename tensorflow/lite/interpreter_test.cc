@@ -43,11 +43,7 @@ class InterpreterTest : public ::testing::Test {
   template <typename Delegate>
   static TfLiteStatus ModifyGraphWithDelegate(
       Interpreter* interpreter, std::unique_ptr<Delegate> delegate) {
-    Interpreter::TfLiteDelegatePtr tflite_delegate(
-        delegate.release(), [](TfLiteDelegate* delegate) {
-          delete reinterpret_cast<Delegate*>(delegate);
-        });
-    return interpreter->ModifyGraphWithDelegate(std::move(tflite_delegate));
+    return interpreter->ModifyGraphWithDelegate(std::move(delegate));
   }
 
  protected:
@@ -1578,8 +1574,9 @@ class TestCustomAllocation : public ::testing::Test {
 TEST_F(TestCustomAllocation, InvalidAlignment) {
   const TfLiteTensor* input_tensor =
       interpreter_->tensor(interpreter_->inputs()[0]);
-  auto input_alloc =
-      NewCustomAlloc(input_tensor->bytes, kDefaultTensorAlignment - 1);
+  intptr_t dummy_ptr = kDefaultTensorAlignment - 1;
+  TfLiteCustomAllocation input_alloc{reinterpret_cast<void*>(dummy_ptr),
+                                     input_tensor->bytes};
   ASSERT_EQ(interpreter_->SetCustomAllocationForTensor(
                 interpreter_->inputs()[0], input_alloc),
             kTfLiteError);

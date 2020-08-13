@@ -241,9 +241,13 @@ class CallbackList(object):
     # pylint: enable=protected-access
 
     # Performance check: Check batch hooks for slowness compared to batch time.
-    self._timing = {}
-    self._check_timing = False
+    # Only run check for custom callbacks (i.e. not present in this file).
+    self._check_timing = any([cbk.__class__.__name__ not in globals()
+                              for cbk in self.callbacks])
+    self._num_batches_for_timing_check = 5
+    self._hook_times = {}
     self._batch_start_time = None
+    self._batch_times = []
 
   def _add_default_callbacks(self, add_history, add_progbar):
     """Adds `Callback`s that are always present."""
@@ -294,7 +298,6 @@ class CallbackList(object):
   def _call_batch_begin_hook(self, mode, batch, logs):
     """Helper function for `on_*_batch_begin` methods."""
     hook_name = 'on_{mode}_batch_begin'.format(mode=mode)
-    self._check_timing = batch == 1 and hook_name not in self._timing
     self._call_batch_hook_helper(hook_name, batch, logs)
 
     if self._check_timing:
@@ -304,31 +307,39 @@ class CallbackList(object):
     """Helper function for `on_*_batch_end` methods."""
     hook_name = 'on_{mode}_batch_end'.format(mode=mode)
 
-    if self._check_timing:
+    if self._check_timing and batch >= 1:
       batch_time = time.time() - self._batch_start_time
+      self._batch_times.append(batch_time)
 
     self._call_batch_hook_helper(hook_name, batch, logs)
 
-    if self._check_timing:
+    if len(self._batch_times) >= self._num_batches_for_timing_check:
       end_hook_name = hook_name
       begin_hook_name = 'on_{mode}_batch_begin'.format(mode=mode)
+      avg_batch_time = sum(self._batch_times) / len(self._batch_times)
+      avg_end_hook_time = sum(self._hook_times[end_hook_name]) / len(
+          self._hook_times[end_hook_name])
+      avg_begin_hook_time = sum(self._hook_times[begin_hook_name]) / len(
+          self._hook_times[begin_hook_name])
 
-      threshold_time = 1.5 * batch_time
-      warning_msg = ('Callbacks method `{hook}` is slow compared to '
+      threshold_time = 1.0 * avg_batch_time
+      warning_msg = ('Callback method `{hook}` is slow compared to '
                      'the batch time (batch time: {batch_time:.4f}s vs '
-                     '`{hook}` time: {cbk_time:.4f}s). Check your callbacks.')
-      if self._timing[begin_hook_name] > threshold_time:
+                     '`{hook}` time: {hook_time:.4f}s). Check your callbacks.')
+      if avg_begin_hook_time > threshold_time:
         logging.warning(warning_msg.format(
             hook=begin_hook_name,
-            batch_time=batch_time,
-            cbk_time=self._timing[begin_hook_name]))
-      if self._timing[end_hook_name] > threshold_time:
+            batch_time=avg_batch_time,
+            hook_time=avg_begin_hook_time))
+      if avg_end_hook_time > threshold_time:
         logging.warning(warning_msg.format(
             hook=end_hook_name,
-            batch_time=batch_time,
-            cbk_time=self._timing[end_hook_name]))
+            batch_time=avg_batch_time,
+            hook_time=avg_end_hook_time))
       self._check_timing = False
       self._batch_start_time = None
+      self._batch_times = []
+      self._hook_times = {}
 
   def _call_batch_hook_helper(self, hook_name, batch, logs):
     """Helper function for `on_*_batch_*` methods."""
@@ -347,7 +358,9 @@ class CallbackList(object):
         hook(batch, numpy_logs)
 
     if self._check_timing:
-      self._timing[hook_name] = time.time() - start_time
+      if hook_name not in self._hook_times:
+        self._hook_times[hook_name] = []
+      self._hook_times[hook_name].append(time.time() - start_time)
 
   def _call_begin_hook(self, mode):
     """Helper function for on_{train|test|predict}_begin methods."""
@@ -1358,8 +1371,6 @@ class ModelCheckpoint(Callback):
           raise IOError('Please specify a non-directory filepath for '
                         'ModelCheckpoint. Filepath used is an existing '
                         'directory: {}'.format(filepath))
-        # Re-throw the error for any other causes.
-        raise e
 
   def _get_file_path(self, epoch, logs):
     """Returns the file path for checkpoint."""

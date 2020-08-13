@@ -2835,6 +2835,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "num_replicas"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
 }
 op {
   name: "AvgPool"
@@ -14735,6 +14742,13 @@ op {
     has_minimum: true
     minimum: 1
   }
+  attr {
+    name: "log_warning"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ExperimentalIteratorGetDevice"
@@ -19019,6 +19033,13 @@ op {
     type: "list(shape)"
     has_minimum: true
     minimum: 1
+  }
+  attr {
+    name: "log_warning"
+    type: "bool"
+    default_value {
+      b: false
+    }
   }
 }
 op {

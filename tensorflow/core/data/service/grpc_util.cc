@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace data {
 namespace grpc_util {
 
-Status WrapError(const std::string& message, const grpc::Status& status) {
+Status WrapError(const std::string& message, const ::grpc::Status& status) {
   if (status.ok()) {
     return errors::Internal("Expected a non-ok grpc status. Wrapping message: ",
                             message);

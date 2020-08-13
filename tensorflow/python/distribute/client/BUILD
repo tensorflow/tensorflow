@@ -103,3 +103,9 @@ tf_py_test(
         "//tensorflow/python/eager:test",
     ],
 )
+
+py_library(
+    name = "remote_eager_lib",
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+)

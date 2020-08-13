@@ -133,7 +133,7 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   const TPUExecutableInfoProto& executable_info(int index) const;
 
   const TPUHostTransferInfoProto& host_transfer_info(int index) const;
-  void set_hlo_metadata(const xla::HloProto& hlo_metadata);
+  void set_hlo_metadatas(absl::Span<const xla::HloProto> hlo_metadatas);
   const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
 

@@ -28,6 +28,8 @@ flatbuffer_cc_library(
     srcs = ["database.fbs"],
 )
 
+exports_files(srcs = ["database.fbs"])
+
 cc_library(
     name = "devicedb",
     srcs = [

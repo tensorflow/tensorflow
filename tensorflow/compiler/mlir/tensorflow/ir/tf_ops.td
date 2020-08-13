@@ -338,10 +338,6 @@ else_branch: A region that computes the outputs of the op if cond = false.
     Variadic<TF_Tensor>:$output
   );
 
-  TF_DerivedOperandTypeAttr Tcond = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
-
   let regions = (region SizedRegion<1>:$then_branch, SizedRegion<1>:$else_branch);
 
   let verifier = [{
@@ -754,8 +750,6 @@ def TL_WhileRegionOp : TF_Op<"WhileRegion",
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
   );
   let results = (outs Variadic<AnyTensor>:$output);
-
-  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 

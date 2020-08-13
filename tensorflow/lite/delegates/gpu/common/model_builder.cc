@@ -1175,6 +1175,10 @@ class MulOperationParser : public TFLiteOperationParser {
       Tensor<Scalar, DataType::FLOAT32> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
       attr.param = tensor.data[0];
+    } else if (constant_dims->size == 3) {
+      Tensor<HWC, DataType::FLOAT32> tensor;
+      RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
+      attr.param = std::move(tensor);
     } else {
       Tensor<Linear, DataType::FLOAT32> tensor;
       RETURN_IF_ERROR(reader->ReadTensor(constant_tensor, &tensor));
@@ -2192,10 +2196,10 @@ class RoIToTransformMatrixOperationParser : public TFLiteOperationParser {
     std::string op_name = "roi_to_transform_matrix";
     node->operation.type = op_name;
     BHWC output_shape;
-    RETURN_IF_ERROR(
-        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
-                              tflite_node->custom_initial_data_size,
-                              &(node->operation.attributes), &output_shape));
+    RETURN_IF_ERROR(ParseCustomAttributes(
+        op_name, registration->version, tflite_node->custom_initial_data,
+        tflite_node->custom_initial_data_size, &(node->operation.attributes),
+        &output_shape));
 
     auto output_value = graph->FindOutputs(node->id)[0];
     output_value->tensor.shape = output_shape;
@@ -2225,10 +2229,10 @@ class RoIToTransformMatrixV2OperationParser : public TFLiteOperationParser {
     std::string op_name = "roi_to_transform_matrix_v2";
     node->operation.type = op_name;
     BHWC output_shape;
-    RETURN_IF_ERROR(
-        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
-                              tflite_node->custom_initial_data_size,
-                              &(node->operation.attributes), &output_shape));
+    RETURN_IF_ERROR(ParseCustomAttributes(
+        op_name, registration->version, tflite_node->custom_initial_data,
+        tflite_node->custom_initial_data_size, &(node->operation.attributes),
+        &output_shape));
 
     auto output_value = graph->FindOutputs(node->id)[0];
     output_value->tensor.shape = output_shape;
@@ -2259,10 +2263,10 @@ class TransformTensorOperationParser : public TFLiteOperationParser {
     std::string op_name = "transform_tensor";
     node->operation.type = op_name;
     BHWC output_shape;
-    RETURN_IF_ERROR(
-        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
-                              tflite_node->custom_initial_data_size,
-                              &(node->operation.attributes), &output_shape));
+    RETURN_IF_ERROR(ParseCustomAttributes(
+        op_name, registration->version, tflite_node->custom_initial_data,
+        tflite_node->custom_initial_data_size, &(node->operation.attributes),
+        &output_shape));
 
     auto output_value = graph->FindOutputs(node->id)[0];
 
@@ -2296,10 +2300,10 @@ class TransformTensorBilinearV2OperationParser : public TFLiteOperationParser {
     std::string op_name = "transform_tensor_bilinear_v2";
     node->operation.type = op_name;
     BHWC output_shape;
-    RETURN_IF_ERROR(
-        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
-                              tflite_node->custom_initial_data_size,
-                              &(node->operation.attributes), &output_shape));
+    RETURN_IF_ERROR(ParseCustomAttributes(
+        op_name, registration->version, tflite_node->custom_initial_data,
+        tflite_node->custom_initial_data_size, &(node->operation.attributes),
+        &output_shape));
 
     auto output_value = graph->FindOutputs(node->id)[0];
 
@@ -2331,11 +2335,11 @@ class TransformLandmarksOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));
     std::string op_name = "transform_landmarks";
     node->operation.type = op_name;
-    BHWC output_shape;
-    RETURN_IF_ERROR(
-        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
-                              tflite_node->custom_initial_data_size,
-                              &(node->operation.attributes), &output_shape));
+    BHWC output_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
+    RETURN_IF_ERROR(ParseCustomAttributes(
+        op_name, registration->version, tflite_node->custom_initial_data,
+        tflite_node->custom_initial_data_size, &(node->operation.attributes),
+        &output_shape));
 
     auto output_value = graph->FindOutputs(node->id)[0];
 
@@ -2369,10 +2373,10 @@ class TransformLandmarksV2OperationParser : public TFLiteOperationParser {
     auto output_value = graph->FindOutputs(node->id)[0];
     output_value->tensor.shape = graph->FindInputs(node->id)[0]->tensor.shape;
     BHWC output_shape = output_value->tensor.shape;
-    RETURN_IF_ERROR(
-        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
-                              tflite_node->custom_initial_data_size,
-                              &(node->operation.attributes), &output_shape));
+    RETURN_IF_ERROR(ParseCustomAttributes(
+        op_name, registration->version, tflite_node->custom_initial_data,
+        tflite_node->custom_initial_data_size, &(node->operation.attributes),
+        &output_shape));
 
     return absl::OkStatus();
   }
@@ -2399,10 +2403,10 @@ class Landmarks2TransformMatrixOperationParser : public TFLiteOperationParser {
     const std::string op_name = "landmarks_to_transform_matrix";
     node->operation.type = op_name;
     BHWC output_shape;
-    RETURN_IF_ERROR(
-        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
-                              tflite_node->custom_initial_data_size,
-                              &(node->operation.attributes), &output_shape));
+    RETURN_IF_ERROR(ParseCustomAttributes(
+        op_name, registration->version, tflite_node->custom_initial_data,
+        tflite_node->custom_initial_data_size, &(node->operation.attributes),
+        &output_shape));
 
     auto output_value = graph->FindOutputs(node->id)[0];
     output_value->tensor.shape = output_shape;
@@ -2430,10 +2434,10 @@ class Landmarks2TransformMatrixV2OperationParser
     const std::string op_name = "landmarks_to_transform_matrix_v2";
     node->operation.type = op_name;
     BHWC output_shape;
-    RETURN_IF_ERROR(
-        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
-                              tflite_node->custom_initial_data_size,
-                              &(node->operation.attributes), &output_shape));
+    RETURN_IF_ERROR(ParseCustomAttributes(
+        op_name, registration->version, tflite_node->custom_initial_data,
+        tflite_node->custom_initial_data_size, &(node->operation.attributes),
+        &output_shape));
 
     auto output_value = graph->FindOutputs(node->id)[0];
     output_value->tensor.shape = output_shape;
@@ -2461,10 +2465,10 @@ class AlignmentPointsToTransformMatrixOperationParser
     const std::string op_name = "alignment_points_to_transform_matrix";
     node->operation.type = op_name;
     BHWC output_shape;
-    RETURN_IF_ERROR(
-        ParseCustomAttributes(op_name, tflite_node->custom_initial_data,
-                              tflite_node->custom_initial_data_size,
-                              &(node->operation.attributes), &output_shape));
+    RETURN_IF_ERROR(ParseCustomAttributes(
+        op_name, registration->version, tflite_node->custom_initial_data,
+        tflite_node->custom_initial_data_size, &(node->operation.attributes),
+        &output_shape));
 
     auto output_value = graph->FindOutputs(node->id)[0];
     output_value->tensor.shape = output_shape;

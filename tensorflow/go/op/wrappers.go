@@ -10899,12 +10899,26 @@ func ExperimentalRandomDataset(scope *Scope, seed tf.Output, seed2 tf.Output, ou
 	return op.Output(0)
 }
 
+// ExperimentalIgnoreErrorsDatasetAttr is an optional argument to ExperimentalIgnoreErrorsDataset.
+type ExperimentalIgnoreErrorsDatasetAttr func(optionalAttr)
+
+// ExperimentalIgnoreErrorsDatasetLogWarning sets the optional log_warning attribute to value.
+// If not specified, defaults to false
+func ExperimentalIgnoreErrorsDatasetLogWarning(value bool) ExperimentalIgnoreErrorsDatasetAttr {
+	return func(m optionalAttr) {
+		m["log_warning"] = value
+	}
+}
+
 // Creates a dataset that contains the elements of `input_dataset` ignoring errors.
-func ExperimentalIgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func ExperimentalIgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ExperimentalIgnoreErrorsDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ExperimentalIgnoreErrorsDataset",
 		Input: []tf.Input{
@@ -15554,33 +15568,6 @@ func AudioSummaryV2(scope *Scope, tag tf.Output, tensor tf.Output, sample_rate t
 			tag, tensor, sample_rate,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Outputs a `Summary` protocol buffer with a histogram.
-//
-// The generated
-// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-// has one summary value containing a histogram for `values`.
-//
-// This op reports an `InvalidArgument` error if any value is not finite.
-//
-// Arguments:
-//	tag: Scalar.  Tag to use for the `Summary.Value`.
-//	values: Any shape. Values to use to build the histogram.
-//
-// Returns Scalar. Serialized `Summary` protocol buffer.
-func HistogramSummary(scope *Scope, tag tf.Output, values tf.Output) (summary tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "HistogramSummary",
-		Input: []tf.Input{
-			tag, values,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -28663,6 +28650,33 @@ func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ..
 	return op.Output(0)
 }
 
+// Outputs a `Summary` protocol buffer with a histogram.
+//
+// The generated
+// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+// has one summary value containing a histogram for `values`.
+//
+// This op reports an `InvalidArgument` error if any value is not finite.
+//
+// Arguments:
+//	tag: Scalar.  Tag to use for the `Summary.Value`.
+//	values: Any shape. Values to use to build the histogram.
+//
+// Returns Scalar. Serialized `Summary` protocol buffer.
+func HistogramSummary(scope *Scope, tag tf.Output, values tf.Output) (summary tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "HistogramSummary",
+		Input: []tf.Input{
+			tag, values,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Performs gradient updates of embedding tables.
 //
 // Arguments:
@@ -31035,12 +31049,26 @@ func MaxPool3DGradGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output
 	return op.Output(0)
 }
 
+// IgnoreErrorsDatasetAttr is an optional argument to IgnoreErrorsDataset.
+type IgnoreErrorsDatasetAttr func(optionalAttr)
+
+// IgnoreErrorsDatasetLogWarning sets the optional log_warning attribute to value.
+// If not specified, defaults to false
+func IgnoreErrorsDatasetLogWarning(value bool) IgnoreErrorsDatasetAttr {
+	return func(m optionalAttr) {
+		m["log_warning"] = value
+	}
+}
+
 // Creates a dataset that contains the elements of `input_dataset` ignoring errors.
-func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...IgnoreErrorsDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "IgnoreErrorsDataset",
 		Input: []tf.Input{
@@ -48725,6 +48753,14 @@ type AutoShardDatasetAttr func(optionalAttr)
 func AutoShardDatasetAutoShardPolicy(value int64) AutoShardDatasetAttr {
 	return func(m optionalAttr) {
 		m["auto_shard_policy"] = value
+	}
+}
+
+// AutoShardDatasetNumReplicas sets the optional num_replicas attribute to value.
+// If not specified, defaults to 0
+func AutoShardDatasetNumReplicas(value int64) AutoShardDatasetAttr {
+	return func(m optionalAttr) {
+		m["num_replicas"] = value
 	}
 }
 

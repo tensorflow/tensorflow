@@ -19,8 +19,7 @@ message Update {
 
 message RegisterDatasetUpdate {
   int64 dataset_id = 1;
-  DatasetDef dataset_def = 2;
-  uint64 fingerprint = 3;
+  uint64 fingerprint = 2;
 }
 
 message RegisterWorkerUpdate {
