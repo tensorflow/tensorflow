@@ -79,7 +79,6 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.tensor_map_insert(m, k, v)
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 1)
-    # do the erase
     m = map_ops.tensor_map_erase(m, k, v.dtype)
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 0)
@@ -109,7 +108,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     k2 = constant_op.constant(2.0)
     v = constant_op.constant(2.0)
     m = map_ops.tensor_map_insert(m, k, v)
-    # check has key
+    # Check has key.
     b = map_ops.tensor_map_has_key(m, k)
     b2 = map_ops.tensor_map_has_key(m, k2)
     self.assertAllEqual(b, True)
@@ -185,7 +184,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllEqual(g, 5)
 
   def testReplaceLookupGrad(self):
-    '''Same key different value'''
+    # Test using same key and different value.
     with backprop.GradientTape(persistent=True) as tape:
       m = map_ops.empty_tensor_map()
       k = constant_op.constant(1.0)
@@ -198,7 +197,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertAllClose(l, v)
       g = tape.gradient(l * 5, v)
       self.assertAllEqual(g, 5)
-      # replace k and lookup
+      # Replace key and lookup.
       m = map_ops.tensor_map_insert(m, k, v2)
       l2 = map_ops.tensor_map_lookup(m, k, v2.dtype)
       self.assertAllClose(l2, v2)
@@ -339,17 +338,17 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       m = map_ops.tensor_map_insert(m, k2, v2)
       s = map_ops.tensor_map_size(m)
       self.assertAllEqual(s, 2)
-      # lookup and gradient
+      # Test lookup and gradient.
       l = map_ops.tensor_map_lookup(m, k, v.dtype)
       self.assertAllClose(l, v)
       self.assertAllClose(tape.gradient(l * 5, v), 5)
-      # replace and gradient
+      # Test replace and gradient.
       m = map_ops.tensor_map_insert(m, k, v2)
       l2 = map_ops.tensor_map_lookup(m, k, v2.dtype)
       self.assertAllClose(l2, v2)
       g = tape.gradient(l2 * 6, v2)
       self.assertAllEqual(g, 6)
-      # erase, has key, and gradient
+      # Test erase, has key, and gradient.
       m = map_ops.tensor_map_erase(m, k, v2.dtype)
       s = map_ops.tensor_map_size(m)
       self.assertAllEqual(s, 1)
@@ -366,15 +365,15 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v = constant_op.constant("value")
     k2 = constant_op.constant(1.0)
     v2 = constant_op.constant(2.0)
-    # test insert and lookup on string key-value pair
+    # Test insert and lookup on string key-value pair.
     m = map_ops.tensor_map_insert(m, k, v)
     m = map_ops.tensor_map_insert(m, k2, v2)
     l = map_ops.tensor_map_lookup(m, k, v.dtype)
     self.assertAllEqual(l, v)
-    # test lookup on float key-value pair
+    # Test lookup on float key-value pair.
     l2 = map_ops.tensor_map_lookup(m, k2, v2.dtype)
     self.assertAllClose(l2, v2)
-    # test erase and has key
+    # Test erase and has key.
     self.assertAllEqual(map_ops.tensor_map_has_key(m, k), True)
     m = map_ops.tensor_map_erase(m, k, v.dtype)
     self.assertAllEqual(map_ops.tensor_map_has_key(m, k), False)
@@ -384,13 +383,13 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant([1.0, 2.0])
     v = constant_op.constant([11.0, 22.0])
-    # test insert and lookup
+    # Test insert and lookup.
     m = map_ops.tensor_map_insert(m, k, v)
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 1)
     l = map_ops.tensor_map_lookup(m, k, v.dtype)
     self.assertAllEqual(l, v)
-    # test erase and has key
+    # Test erase and has key.
     m = map_ops.tensor_map_erase(m, k, v.dtype)
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 0)
