@@ -128,7 +128,7 @@ during runtime. Some differences are:
     may need to change to explicit shape operations or control flow
     constructs.
 *   Also note the [autograph limitations](
-https://www.tensorflow.org/code/tensorflow/python/autograph/g3doc/reference/limitations.md).
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md).
 
 
 ## Mutation and Variables
