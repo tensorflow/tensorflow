@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -35,6 +36,8 @@ namespace tensorflow {
 namespace gradients {
 namespace internal {
 namespace {
+using std::vector;
+using tracing::TracingOperation;
 
 class CppGradients
     : public ::testing::TestWithParam<std::tuple<const char*, bool, bool>> {
@@ -60,9 +63,9 @@ Status Add(AbstractContext* ctx, Tape* tape,
   forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(
       Reset(add_op.get(), "Add", /*raw_device_name=*/nullptr, &forward_op));
-  if (isa<tracing::TracingOperation>(add_op.get())) {
+  if (isa<TracingOperation>(add_op.get())) {
     TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(add_op.get())->SetOpName("my_add"));
+        dyn_cast<TracingOperation>(add_op.get())->SetOpName("my_add"));
   }
   TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[0], &forward_op));
   TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[1], &forward_op));
@@ -81,9 +84,9 @@ Status Exp(AbstractContext* ctx, Tape* tape,
   forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(
       Reset(exp_op.get(), "Exp", /*raw_device_name=*/nullptr, &forward_op));
-  if (isa<tracing::TracingOperation>(exp_op.get())) {
+  if (isa<TracingOperation>(exp_op.get())) {
     TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(exp_op.get())->SetOpName("my_exp"));
+        dyn_cast<TracingOperation>(exp_op.get())->SetOpName("my_exp"));
   }
   TF_RETURN_IF_ERROR(AddInput(exp_op.get(), inputs[0], &forward_op));
   int num_retvals = 1;
@@ -183,21 +186,36 @@ Status RunModel(Model model, AbstractContext* ctx,
   if (use_function) {
     const char* fn_name = "test_fn";
     std::unique_ptr<AbstractFunction> scoped_func;
+    // Returning null tensors from a tf.function is not supported, so we keep
+    // track of indices in the model's outputs are nullptr in this set.
+    // The FunctionDef only outputs the non-null tensors. We later pad the
+    // function op outputs to have nullptrs at the `null_indices`.
+    absl::flat_hash_set<int> null_indices;
     {
       AbstractContextPtr func_ctx(BuildFunction(fn_name));
       std::vector<AbstractTensorHandle*> func_inputs;
       func_inputs.reserve(inputs.size());
       TF_RETURN_IF_ERROR(
           CreateParamsForInputs(func_ctx.get(), inputs, &func_inputs));
-      OutputList output_list;
-      output_list.expected_num_outputs = outputs.size();
-      output_list.outputs.resize(outputs.size());
+      vector<AbstractTensorHandle*> model_outputs;
+      model_outputs.resize(outputs.size());
       TF_RETURN_IF_ERROR(model(func_ctx.get(), absl::MakeSpan(func_inputs),
-                               absl::MakeSpan(output_list.outputs), registry));
+                               absl::MakeSpan(model_outputs), registry));
       for (auto func_input : func_inputs) {
         func_input->Unref();
       }
       AbstractFunction* func = nullptr;
+      OutputList output_list;
+      output_list.expected_num_outputs = 0;
+      output_list.outputs.reserve(outputs.size());
+      for (int i = 0; i < model_outputs.size(); i++) {
+        if (model_outputs[i]) {
+          output_list.outputs.emplace_back(model_outputs[i]);
+          output_list.expected_num_outputs += 1;
+        } else {
+          null_indices.insert(i);
+        }
+      }
       TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
                              ->Finalize(&output_list, &func));
       scoped_func.reset(func);
@@ -212,8 +230,19 @@ Status RunModel(Model model, AbstractContext* ctx,
     for (auto input : inputs) {
       TF_RETURN_IF_ERROR(fn_op->AddInput(input));
     }
-    int retvals = outputs.size();
-    TF_RETURN_IF_ERROR(fn_op->Execute(outputs, &retvals));
+    int retvals = outputs.size() - null_indices.size();
+    vector<AbstractTensorHandle*> fn_outputs(retvals);
+    TF_RETURN_IF_ERROR(fn_op->Execute(
+        absl::Span<AbstractTensorHandle*>(fn_outputs.data(), fn_outputs.size()),
+        &retvals));
+    int skipped_indices = 0;
+    for (int i = 0; i < outputs.size(); i++) {
+      if (!null_indices.contains(i)) {
+        outputs[i] = fn_outputs[i - skipped_indices];
+      } else {
+        skipped_indices += 1;
+      }
+    }
     TF_RETURN_IF_ERROR(ctx->RemoveFunction(fn_name));
     return Status::OK();
   } else {
