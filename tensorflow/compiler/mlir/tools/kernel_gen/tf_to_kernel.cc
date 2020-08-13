@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//===- tf_to_cubin.cc -------------------------------------------*- C++ -*-===//
+//===- tf_to_kernel.cc ------------------------------------------*- C++ -*-===//
 //
 // This file implements the entry point to compile a tf op to a cubin file.
 //
@@ -22,10 +22,21 @@
 #include <vector>
 
 #include "absl/strings/string_view.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Module.h"
 #include "llvm/Support/CommandLine.h"
+#include "llvm/Support/Host.h"
+#include "llvm/Support/TargetRegistry.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/Target/TargetMachine.h"
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Target/LLVMIR.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/init_mlir.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/kernel_creator.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
@@ -33,6 +44,55 @@
 namespace tensorflow {
 namespace kernel_gen {
 namespace {
+
+static llvm::codegen::RegisterCodeGenFlags CGF;
+
+std::unique_ptr<llvm::TargetMachine> GetTargetMachine(llvm::Module* module) {
+  llvm::Triple triple(module->getTargetTriple());
+  if (triple.getTriple().empty()) {
+    triple = llvm::Triple(llvm::sys::getDefaultTargetTriple());
+    module->setTargetTriple(triple.getTriple());
+  }
+
+  std::string error;
+  const llvm::Target* target =
+      llvm::TargetRegistry::lookupTarget("", triple, error);
+  if (!target) {
+    return nullptr;
+  }
+
+  llvm::TargetOptions target_options =
+      llvm::codegen::InitTargetOptionsFromCodeGenFlags();
+  return std::unique_ptr<llvm::TargetMachine>(target->createTargetMachine(
+      triple.str(), "generic", "", target_options, llvm::Reloc::Model::PIC_));
+}
+
+// Compiles the given MLIR module via LLVM into an executable binary format.
+xla::StatusOr<std::string> EmitToBinary(mlir::ModuleOp module) {
+  // Translate the module.
+  llvm::LLVMContext llvm_context;
+  std::unique_ptr<llvm::Module> llvm_module =
+      mlir::translateModuleToLLVMIR(module, llvm_context);
+
+  // Set up the output stream.
+  llvm::SmallString<8> outstr;
+  llvm::raw_svector_ostream ostream(outstr);
+  ostream.SetUnbuffered();
+
+  llvm::legacy::PassManager codegen_passes;
+  codegen_passes.add(new llvm::TargetLibraryInfoWrapperPass(
+      llvm::Triple(llvm_module->getTargetTriple())));
+
+  // TODO(b/163818770): Apply optimizations before dumping .a file.
+  auto target_machine = GetTargetMachine(llvm_module.get());
+  llvm_module->setDataLayout(target_machine->createDataLayout());
+  if (target_machine->addPassesToEmitFile(codegen_passes, ostream, nullptr,
+                                          llvm::CGFT_ObjectFile, false)) {
+    return xla::InternalError("Failed add passes to emit file");
+  }
+  codegen_passes.run(*llvm_module);
+  return ostream.str().str();
+}
 
 xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
                 int32_t architecture, llvm::ArrayRef<uint32_t> tile_sizes,
@@ -49,15 +109,15 @@ xla::Status Run(llvm::StringRef input_file, llvm::StringRef output_file,
   mlir::MLIRContext mlir_context;
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
-      GenerateKernelForTfCode(mlir_context, tf_code, /*cubin_only=*/true,
+      GenerateKernelForTfCode(mlir_context, tf_code, /*cubin_only=*/false,
                               compute_capability, tile_sizes, same_shape,
                               unroll_factors));
-  // Extract cubin.
-  TF_ASSIGN_OR_RETURN(std::string cubin, ExtractGpuBinary(*module));
+  // Get binary.
+  TF_ASSIGN_OR_RETURN(std::string binary, EmitToBinary(*module));
 
-  // Write cubin binary blob.
+  // Write .a file.
   TF_RETURN_IF_ERROR(
-      WriteStringToFile(Env::Default(), output_file.str(), cubin));
+      WriteStringToFile(Env::Default(), output_file.str(), binary));
   return xla::Status::OK();
 }
 
@@ -88,6 +148,8 @@ int main(int argc, char** argv) {
       llvm::cl::ZeroOrMore, llvm::cl::CommaSeparated);
 
   tensorflow::InitMlir y(&argc, &argv);
+  llvm::InitializeNativeTarget();
+  llvm::InitializeNativeTargetAsmPrinter();
   mlir::registerPassManagerCLOptions();
   llvm::cl::ParseCommandLineOptions(argc, argv, "TF op GPU kernel generator\n");
 
