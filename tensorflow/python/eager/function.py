@@ -2661,7 +2661,9 @@ class FunctionSpec(object):
       for i in range(len(args), len(self._arg_names)):
         arg_name = self._arg_names[i]
         if arg_name in kwargs:
-          # Value provided by user using arg name (keyword-like fashion)
+          # Value provided by user using arg name (keyword-like fashion).
+          # Guaranteed to be unique, as Python does not allow passing the same
+          # keyword more than once to the same function call.
           remaining_args[i - len(args)] = kwargs[arg_name]
           del kwargs[arg_name]
         else:
@@ -2676,14 +2678,19 @@ class FunctionSpec(object):
                 self.signature_summary(), ", ".join(missing_args)))
           remaining_args[i - len(args)] = \
               self._fullargspec.defaults[i - self._num_req_args]
-      # After this point, `kwargs` will only contain keyword_only arguments,
-      # and all positional_or_keyword arguments have been moved to `inputs`.
 
+      # Check for any keyword-like arguments coinciding with purely positional
+      # arguments.
       for arg, value in six.iteritems(kwargs):
         index = self._args_to_indices.get(arg, None)
-        if index is not None and index < len(args):
+        if index is not None:
+          # By here, index < len(args) necessarily (i.e. purely positional),
+          # as all greater indices will have been removed from kwargs above.
           raise TypeError("{} got two values for argument '{}'".format(
               self.signature_summary(), arg))
+
+      # After this point, `kwargs` will only contain keyword_only arguments,
+      # and all positional_or_keyword arguments have been moved to `inputs`.
 
       inputs = args + tuple(remaining_args)
 
