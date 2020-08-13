@@ -946,7 +946,7 @@ Status EagerRemoteExecute(EagerOperation* op, TensorHandle** retvals,
 
   std::unique_ptr<EagerNode> node(new eager::RemoteExecuteNode(
       &op->EagerContext(), std::move(request), op_device,
-      ctx.GetContextViewId(), eager_client.get(),
+      ctx.GetContextViewId(), eager_client.get(), op->GetCancellationManager(),
       op->MutableAttrs()->BuildNodeDef(), op->EagerContext().FuncLibDef(),
       op->Inputs(), {retvals, num_outputs}));
 

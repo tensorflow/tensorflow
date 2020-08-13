@@ -24,7 +24,7 @@ namespace tensorflow {
 namespace eager {
 
 void RemoteExecuteNode::RunAsync(StatusCallback done) {
-  EnqueueResponse* response = new EnqueueResponse;
+  auto response = std::make_shared<EnqueueResponse>();
 
   const gtl::InlinedVector<TensorHandle*, 4>& inputs = inputs_;
   const gtl::InlinedVector<TensorHandle*, 2>& retvals = retvals_;
@@ -56,10 +56,27 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
     handle->Ref();
   }
 
+  CancellationManager* cm = cancellation_manager_;
+  CancellationToken token = 0;
+  auto call_opts = std::make_shared<CallOptions>();
+  if (cm != nullptr) {
+    token = cm->get_cancellation_token();
+    const bool already_cancelled = !cm->RegisterCallback(
+        token, [call_opts, response, done]() { call_opts->StartCancel(); });
+    if (already_cancelled) {
+      done(errors::Cancelled("RemoteExecuteNode::RunAsync"));
+      return;
+    }
+  }
+
   eager_client_->StreamingEnqueueAsync(
-      request_.get(), response,
-      [inputs, retvals, response, device, context_view_id = context_view_id_,
-       rpc_description, done](const Status& status) {
+      call_opts.get(), request_.get(), response.get(),
+      [inputs, retvals, call_opts, response, device,
+       context_view_id = context_view_id_, rpc_description, cm, token,
+       done](const Status& status) {
+        if (cm != nullptr) {
+          cm->TryDeregisterCallback(token);
+        }
         for (auto handle : inputs) {
           handle->Unref();
         }
@@ -88,7 +105,6 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
           retvals[i]->Unref();
         }
         done(status);
-        delete response;
       });
 }
 

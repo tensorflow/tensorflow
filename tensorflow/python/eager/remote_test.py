@@ -18,7 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import random
+import time
 
 from absl.testing import parameterized
 import numpy as np
@@ -26,6 +28,7 @@ import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import remote
@@ -38,6 +41,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -310,6 +314,63 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
 
     with ops.device('/job:worker/replica:0/task:1'):
       self.assertAllEqual(local_func(x), [2, 1])
+
+  # Note that the following tests for remote function cancellation only works
+  # when non-streaming RPC. We need to disable streaming explicitly and restore
+  # this config to its initial value at the end of each test case.
+  def testCancelRemoteFunctionBeforeExecution(self):
+    remote_async_env_var = 'TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE'
+    default_streaming = os.environ.get(remote_async_env_var)
+    os.environ[remote_async_env_var] = str(False)
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    c_mgr.start_cancel()
+    with self.assertRaises(errors.CancelledError):
+      with ops.device('/job:worker/replica:0/task:1'):
+        cancelable_func()
+
+    if default_streaming is None:
+      del os.environ[remote_async_env_var]
+    else:
+      os.environ[remote_async_env_var] = default_streaming
+
+  def testCancelRemoteFunctionDuringExecution(self):
+    remote_async_env_var = 'TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE'
+    default_streaming = os.environ.get(remote_async_env_var)
+    os.environ[remote_async_env_var] = str(False)
+
+    q = data_flow_ops.FIFOQueue(1, dtypes.int32)
+
+    @def_function.function
+    def f():
+      return q.dequeue()
+
+    c_mgr = cancellation.CancellationManager()
+    cancelable_func = c_mgr.get_cancelable_function(f.get_concrete_function())
+
+    def cancel_thread():
+      time.sleep(0.5)
+      c_mgr.start_cancel()
+
+    t = self.checkedThread(cancel_thread)
+    t.start()
+    with self.assertRaises(errors.CancelledError):
+      with ops.device('/job:worker/replica:0/task:1'):
+        cancelable_func()
+    t.join()
+
+    if default_streaming is None:
+      del os.environ[remote_async_env_var]
+    else:
+      os.environ[remote_async_env_var] = default_streaming
 
   @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionOnLocalDevice(self):
