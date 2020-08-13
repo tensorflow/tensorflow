@@ -12,21 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
+#include "include/json/json.h"
 #include "tensorflow/lite/tools/list_flex_ops.h"
 
 namespace tflite {
 namespace flex {
 
 std::string OpListToJSONString(const OpKernelSet& flex_ops) {
-  return absl::StrCat("[",
-                      absl::StrJoin(flex_ops, ",\n",
-                                    [](std::string* out, const OpKernel& op) {
-                                      absl::StrAppend(out, "\"", op.op_name,
-                                                      "\"");
-                                    }),
-                      "]");
+  Json::Value result(Json::arrayValue);
+  for (const OpKernel& op : flex_ops) {
+    result.append(Json::Value(op.op_name));
+  }
+  return Json::FastWriter().write(result);
 }
 
 void AddFlexOpsFromModel(const tflite::Model* model, OpKernelSet* flex_ops) {
