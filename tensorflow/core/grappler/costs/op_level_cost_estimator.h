@@ -64,6 +64,7 @@ class OpLevelCostEstimator {
   // Implementation of costs other than
   // execution_time is optional, depending on the
   // device.
+  Costs PredictNaryOp(const OpContext& op_context) const;
   Costs PredictConv2D(const OpContext& op_context) const;
   Costs PredictCwiseOp(const OpContext& op_context) const;
   Costs PredictConv2DBackpropInput(const OpContext& op_context) const;
@@ -86,6 +87,8 @@ class OpLevelCostEstimator {
   Costs PredictFusedBatchNormGrad(const OpContext& op_context) const;
   Costs PredictEinsum(const OpContext& op_context) const;
   Costs PredictAssignVariableOps(const OpContext& op_context) const;
+  Costs PredictPureMemoryOp(const OpContext& op_context) const;
+  Costs PredictSoftmax(const OpContext& op_context) const;
 
   // Generic cost prediction method for fused operations.
   Costs PredictFusedOp(const OpContext& op_context,

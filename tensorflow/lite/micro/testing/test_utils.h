@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <cmath>
 #include <cstdint>
-#include <initializer_list>
 #include <limits>
 
 #include "tensorflow/lite/c/common.h"
@@ -31,12 +30,6 @@ namespace testing {
 
 // Note: These methods are deprecated, do not use.  See b/141332970.
 
-// TODO(kreeger): Don't use this anymore in our tests. Optimized compiler
-// settings can play with pointer placement on the stack (b/140130236).
-inline TfLiteIntArray* IntArrayFromInitializer(
-    std::initializer_list<int> int_initializer) {
-  return IntArrayFromInts(int_initializer.begin());
-}
 
 // Derives the quantization range max from scaling factor and zero point.
 template <typename T>
@@ -53,8 +46,9 @@ inline float MinFromZeroPointScale(const int zero_point, const float scale) {
 // Derives the quantization scaling factor from a min and max range.
 template <typename T>
 inline float ScaleFromMinMax(const float min, const float max) {
-  return (max - min) / ((std::numeric_limits<T>::max() * 1.0) -
-                        std::numeric_limits<T>::min());
+  return (max - min) /
+         static_cast<float>((std::numeric_limits<T>::max() * 1.0) -
+                            std::numeric_limits<T>::min());
 }
 
 // Derives the quantization zero point from a min and max range.
@@ -79,26 +73,12 @@ int32_t F2Q32(const float value, const float scale);
 void PopulateContext(TfLiteTensor* tensors, int tensors_size,
                      ErrorReporter* error_reporter, TfLiteContext* context);
 
-TfLiteTensor CreateFloatTensor(std::initializer_list<float> data,
-                               TfLiteIntArray* dims, bool is_variable = false);
-
-TfLiteTensor CreateBoolTensor(std::initializer_list<bool> data,
-                              TfLiteIntArray* dims, bool is_variable = false);
-
 TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
                                    float min, float max,
                                    bool is_variable = false);
 
-TfLiteTensor CreateQuantizedTensor(std::initializer_list<uint8_t> data,
-                                   TfLiteIntArray* dims, float min, float max,
-                                   bool is_variable = false);
-
 TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
                                    float min, float max,
-                                   bool is_variable = false);
-
-TfLiteTensor CreateQuantizedTensor(std::initializer_list<int8_t> data,
-                                   TfLiteIntArray* dims, float min, float max,
                                    bool is_variable = false);
 
 TfLiteTensor CreateQuantizedTensor(float* data, uint8_t* quantized_data,
@@ -116,10 +96,6 @@ TfLiteTensor CreateQuantizedTensor(float* data, int16_t* quantized_data,
 TfLiteTensor CreateQuantized32Tensor(const int32_t* data, TfLiteIntArray* dims,
                                      float scale, bool is_variable = false);
 
-TfLiteTensor CreateQuantized32Tensor(std::initializer_list<int32_t> data,
-                                     TfLiteIntArray* dims, float scale,
-                                     bool is_variable = false);
-
 template <typename input_type = int32_t,
           TfLiteType tensor_input_type = kTfLiteInt32>
 inline TfLiteTensor CreateTensor(const input_type* data, TfLiteIntArray* dims,
@@ -132,15 +108,6 @@ inline TfLiteTensor CreateTensor(const input_type* data, TfLiteIntArray* dims,
   result.bytes = ElementCount(*dims) * sizeof(input_type);
   result.is_variable = is_variable;
   return result;
-}
-
-template <typename input_type = int32_t,
-          TfLiteType tensor_input_type = kTfLiteInt32>
-inline TfLiteTensor CreateTensor(std::initializer_list<input_type> data,
-                                 TfLiteIntArray* dims,
-                                 bool is_variable = false) {
-  return CreateTensor<input_type, tensor_input_type>(data.begin(), dims,
-                                                     is_variable);
 }
 
 }  // namespace testing

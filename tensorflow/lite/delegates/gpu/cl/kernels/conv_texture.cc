@@ -30,33 +30,95 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
+bool UseFP16SIMD(const DeviceInfo& device_info, CalculationsPrecision precision,
+                 bool kernel1x1) {
+  if (!device_info.IsAdreno()) {
+    return false;
+  }
+  switch (precision) {
+    case CalculationsPrecision::F32:
+    case CalculationsPrecision::F32_F16:
+      return false;
+    case CalculationsPrecision::F16:
+      return device_info.IsAdreno3xx() && kernel1x1;
+  }
+}
+}  // namespace
 
-std::string GenerateConvCode(const OperationDef& op_def, const int3& block_size,
-                             bool is1x1, bool adreno4xx_optimization,
-                             bool stride_correction,
-                             bool different_weights_for_height,
-                             const CLDevice& device, Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(GetFastestZeroMode(device));
-  if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+ConvTexture::ConvTexture(const OperationDef& definition,
+                         const Convolution2DAttributes& attr)
+    : GPUOperation(definition),
+      kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
+      stride_(attr.strides.w, attr.strides.h),
+      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
+      dilation_(attr.dilations.w, attr.dilations.h),
+      different_weights_for_height_(false),
+      block_size_(2, 2, 2) {
+  work_group_size_ = int3(4, 4, 2);
+}
+
+ConvTexture::ConvTexture(const OperationDef& definition)
+    : GPUOperation(definition),
+      kernel_size_(1, 1),
+      stride_(1, 1),
+      padding_(0, 0),
+      dilation_(1, 1),
+      different_weights_for_height_(false),
+      block_size_(4, 1, 2) {
+  work_group_size_ = int3(16, 1, 2);
+}
+
+ConvTexture::ConvTexture(ConvTexture&& operation)
+    : GPUOperation(std::move(operation)),
+      kernel_size_(operation.kernel_size_),
+      stride_(operation.stride_),
+      padding_(operation.padding_),
+      dilation_(operation.dilation_),
+      different_weights_for_height_(operation.different_weights_for_height_),
+      block_size_(operation.block_size_) {}
+
+ConvTexture& ConvTexture::operator=(ConvTexture&& operation) {
+  if (this != &operation) {
+    std::swap(kernel_size_, operation.kernel_size_);
+    std::swap(stride_, operation.stride_);
+    std::swap(padding_, operation.padding_);
+    std::swap(dilation_, operation.dilation_);
+    std::swap(different_weights_for_height_,
+              operation.different_weights_for_height_);
+    std::swap(block_size_, operation.block_size_);
+    GPUOperation::operator=(std::move(operation));
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
+  return *this;
+}
+
+std::string ConvTexture::GenerateConvCode(const OperationDef& op_def,
+                                          const int3& block_size, bool is1x1,
+                                          bool adreno4xx_optimization,
+                                          bool stride_correction,
+                                          bool different_weights_for_height) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+    src_desc.SetStateVar("BatchedWidth", "true");
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
+  AddSrcTensor("src_tensor", src_desc);
+
+  auto dst_desc = op_def.dst_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddDstTensor("dst_tensor", dst_desc);
+
   if (!is1x1) {
-    args->AddInt("kernel_size_x");
-    args->AddInt("kernel_size_y");
-    args->AddInt("dilation_x");
-    args->AddInt("dilation_y");
+    args_.AddInt("kernel_size_x");
+    args_.AddInt("kernel_size_y");
+    args_.AddInt("dilation_x");
+    args_.AddInt("dilation_y");
   }
-  args->AddInt("stride_x");
-  args->AddInt("stride_y");
-  args->AddInt("padding_x");
-  args->AddInt("padding_y");
+  args_.AddInt("stride_x");
+  args_.AddInt("stride_y");
+  args_.AddInt("padding_x");
+  args_.AddInt("padding_y");
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool is_buffer = src_tensor_type == TensorStorageType::IMAGE_BUFFER ||
@@ -317,99 +379,26 @@ std::string GenerateConvCode(const OperationDef& op_def, const int3& block_size,
   return c;
 }
 
-bool UseFP16SIMD(const CLDevice& device, CalculationsPrecision precision,
-                 bool kernel1x1) {
-  if (!device.IsAdreno()) {
-    return false;
-  }
-  switch (precision) {
-    case CalculationsPrecision::F32:
-    case CalculationsPrecision::F32_F16:
-      return false;
-    case CalculationsPrecision::F16:
-      return device.IsAdreno3xx() && kernel1x1;
-  }
-}
-}  // namespace
-
-ConvTexture::ConvTexture(const OperationDef& definition,
-                         const Convolution2DAttributes& attr)
-    : GPUOperation(definition),
-      kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
-      stride_(attr.strides.w, attr.strides.h),
-      padding_(-attr.padding.prepended.w, -attr.padding.prepended.h),
-      dilation_(attr.dilations.w, attr.dilations.h),
-      different_weights_for_height_(false),
-      block_size_(2, 2, 2) {
-  work_group_size_ = int3(4, 4, 2);
-}
-
-ConvTexture::ConvTexture(const OperationDef& definition)
-    : GPUOperation(definition),
-      kernel_size_(1, 1),
-      stride_(1, 1),
-      padding_(0, 0),
-      dilation_(1, 1),
-      different_weights_for_height_(false),
-      block_size_(4, 1, 2) {
-  work_group_size_ = int3(16, 1, 2);
-}
-
-ConvTexture::ConvTexture(ConvTexture&& operation)
-    : GPUOperation(std::move(operation)),
-      kernel_size_(operation.kernel_size_),
-      stride_(operation.stride_),
-      padding_(operation.padding_),
-      dilation_(operation.dilation_),
-      different_weights_for_height_(operation.different_weights_for_height_),
-      block_size_(operation.block_size_) {}
-
-ConvTexture& ConvTexture::operator=(ConvTexture&& operation) {
-  if (this != &operation) {
-    std::swap(kernel_size_, operation.kernel_size_);
-    std::swap(stride_, operation.stride_);
-    std::swap(padding_, operation.padding_);
-    std::swap(dilation_, operation.dilation_);
-    std::swap(different_weights_for_height_,
-              operation.different_weights_for_height_);
-    std::swap(block_size_, operation.block_size_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status ConvTexture::Compile(const CreationContext& creation_context) {
+void ConvTexture::GenerateCode(const DeviceInfo& device_info) {
   auto storage_type = definition_.GetPrimaryStorageType();
   bool is1x1 = kernel_size_.x == 1 && kernel_size_.y == 1;
   bool adreno4xx_optimization =
       stride_.x == 1 && stride_.y == 1 && padding_.x == 0 && padding_.y == 0 &&
-      creation_context.device->IsAdreno4xx() &&
+      device_info.IsAdreno4xx() &&
       storage_type == TensorStorageType::TEXTURE_ARRAY &&
       definition_.precision == CalculationsPrecision::F16;
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  std::string code =
+  code_ =
       GenerateConvCode(definition_, block_size_, is1x1, adreno4xx_optimization,
-                       stride_correction, different_weights_for_height_,
-                       *creation_context.device, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  std::vector<CompilerOptions> options;
-  if (UseFP16SIMD(*creation_context.device, definition_.precision, is1x1)) {
-    options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+                       stride_correction, different_weights_for_height_);
+
+  if (UseFP16SIMD(device_info, definition_.precision, is1x1)) {
+    compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
   }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status ConvTexture::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   if (!(kernel_size_.x == 1 && kernel_size_.y == 1)) {
     RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
     RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
@@ -431,9 +420,11 @@ int3 ConvTexture::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvTexture::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
+void ConvTexture::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
 absl::Status CreateConvTexture(const CreationContext& creation_context,
@@ -441,6 +432,7 @@ absl::Status CreateConvTexture(const CreationContext& creation_context,
                                const Convolution2DAttributes& attr,
                                ConvTexture* result) {
   *result = ConvTexture(definition, attr);
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
@@ -449,6 +441,7 @@ absl::Status CreateConvTexture(const CreationContext& creation_context,
                                const FullyConnectedAttributes& attr,
                                ConvTexture* result) {
   *result = ConvTexture(definition);
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadData(attr.weights, attr.bias, creation_context.context);
 }
 
@@ -458,6 +451,7 @@ absl::Status CreateConvTextureWino4x4To6x6(
   *result = ConvTexture(definition);
   result->different_weights_for_height_ = true;
   result->block_size_ = {4, 1, 2};
+  result->GenerateCode(creation_context.device->info_);
   return result->UploadDataForWinograd4x4To6x6(
       attr.weights, *creation_context.device, creation_context.context);
 }

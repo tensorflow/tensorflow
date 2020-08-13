@@ -474,6 +474,7 @@ tpu_py_test(
         "tpu_embedding_v2_test.py",
     ],
     disable_experimental = True,
+    disable_mlir_bridge = False,
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY2AND3",
@@ -505,6 +506,7 @@ tpu_py_test(
         "tpu_embedding_v2_correctness_test.py",
     ],
     disable_experimental = True,
+    disable_mlir_bridge = False,
     python_version = "PY3",
     shard_count = 4,
     srcs_version = "PY2AND3",
@@ -558,6 +560,13 @@ tpu_py_test(
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
     ],
+)
+
+# NOTE this target should only be depended on by the tpu_test_wrapper macro.
+py_library(
+    name = "tpu_test_deps",
+    visibility = ["//visibility:public"],
+    deps = ["//tensorflow/python:client_testlib"],
 )
 
 tf_proto_library(

@@ -83,6 +83,8 @@ class XLATestCase(test.TestCase):
 
   def __init__(self, method_name='runTest'):
     super(XLATestCase, self).__init__(method_name)
+    if 'XLA' in FLAGS.test_device:
+      context.context().enable_xla_devices()
     context.context().enable_mlir_bridge = test_util.is_mlir_bridge_enabled()
 
     self.device = FLAGS.test_device
@@ -236,9 +238,7 @@ class XLATestCase(test.TestCase):
 
   @contextlib.contextmanager
   def test_scope(self):
-    """Test scope that runs tests on a Tensorflow/XLA device.
-
-    Uses a compilation_scope() to mark operators to compile.
+    """Test scope that runs tests on `self.device`.
 
     Yields:
       A scope to apply to the operators under test.

@@ -43,8 +43,7 @@ TEST(Bfloat16Test, FlushDenormalsToZero) {
     } else {
       ASSERT_EQ(bf_trunc.value, 0x0000) << denorm;
     }
-    bfloat16 bf_round =
-        bfloat16(Eigen::bfloat16_impl::float_to_bfloat16_rtne(denorm));
+    bfloat16 bf_round(denorm);
     ASSERT_EQ(static_cast<float>(bf_round), 0.0f);
     if (std::signbit(denorm)) {
       ASSERT_EQ(bf_round.value, 0x8000) << denorm;
@@ -100,8 +99,7 @@ TEST_P(Bfloat16Test, TruncateTest) {
 
   EXPECT_EQ(GetParam().expected_truncation, float(truncated));
 
-  bfloat16 rounded = bfloat16(
-      Eigen::bfloat16_impl::float_to_bfloat16_rtne((GetParam().input)));
+  bfloat16 rounded(GetParam().input);
   if (std::isnan(GetParam().input)) {
     EXPECT_TRUE(std::isnan(float(rounded)) || std::isinf(float(rounded)));
     return;

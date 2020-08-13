@@ -66,10 +66,10 @@ absl::optional<int64> GetKernelEventType(bool is_host_plane,
   return absl::nullopt;
 }
 
-bool IsTfOpEvent(const XPlaneVisitor& visitor, const XEvent& event) {
+Category GetTfEventCategory(const XPlaneVisitor& visitor, const XEvent& event) {
   TfOp tf_op =
       ParseTfOpFullname(visitor.GetEventMetadata(event.metadata_id())->name());
-  return tf_op.category == Category::kTensorFlow;
+  return tf_op.category;
 }
 
 int64 GetEventType(bool is_host_plane, const XPlaneVisitor& visitor,
@@ -83,10 +83,16 @@ int64 GetEventType(bool is_host_plane, const XPlaneVisitor& visitor,
     // TODO(b/148346217): Make XPlaneVisitor support KernelLaunch and
     // KernelExecute event types.
     return *kernel_event_type;
-  } else if (IsTfOpEvent(visitor, event)) {
-    return HostEventType::kTfOpRun;
   } else {
-    return HostEventType::kUnknownHostEventType;
+    Category category = GetTfEventCategory(visitor, event);
+    switch (category) {
+      case Category::kTensorFlow:
+        return HostEventType::kTfOpRun;
+      case Category::kTfData:
+        return HostEventType::kIterator;
+      default:
+        return HostEventType::kUnknownHostEventType;
+    }
   }
 }
 
@@ -641,6 +647,76 @@ void EventForest::ProcessModelIds() {
   }
 }
 
+void EventForest::ProcessTfDataEvents() {
+  absl::flat_hash_map<std::pair<int64 /*iterator_id*/, int64 /*element_id*/>,
+                      std::vector<EventNode*>>
+      produce_iterator_map;
+  uint64 num_producers = 0;
+  for (HostEventType event_type :
+       {HostEventType::kPrefetchProduce,
+        HostEventType::kParallelInterleaveProduce,
+        HostEventType::kParallelMapProduce, HostEventType::kMapAndBatchProduce,
+        HostEventType::kParseExampleProduce}) {
+    auto produce_event_list = gtl::FindOrNull(event_node_map_, event_type);
+    if (!produce_event_list) continue;
+    VLOG(1) << produce_event_list->size() << " "
+            << GetHostEventTypeStr(event_type) << " events found.";
+    for (auto& produce_event : *produce_event_list) {
+      absl::optional<XStatVisitor> element_id =
+          produce_event->GetEventVisitor().GetStat(StatType::kElementId);
+      if (!element_id.has_value()) continue;
+      for (EventNode* produce_iterator : produce_event->GetChildren()) {
+        if (IsDatasetOp(ParseTfOpFullname(
+                produce_iterator->GetEventVisitor().Name()))) {
+          absl::optional<XStatVisitor> iterator_id =
+              produce_iterator->GetEventVisitor().GetStat(StatType::kParentId);
+          if (!iterator_id.has_value()) break;
+          produce_iterator_map[{iterator_id->IntValue(),
+                                element_id->IntValue()}]
+              .push_back(produce_iterator);
+          ++num_producers;
+          break;
+        }
+      }
+    }
+  }
+  VLOG(1) << num_producers << " producer iterators found.";
+  uint64 num_matched = 0;
+  for (HostEventType event_type :
+       {HostEventType::kPrefetchConsume,
+        HostEventType::kParallelInterleaveConsume,
+        HostEventType::kParallelMapConsume, HostEventType::kMapAndBatchConsume,
+        HostEventType::kParseExampleConsume}) {
+    auto consume_event_list = gtl::FindOrNull(event_node_map_, event_type);
+    if (!consume_event_list) continue;
+    VLOG(1) << consume_event_list->size() << " "
+            << GetHostEventTypeStr(event_type) << " events found.";
+    for (auto& consume_event : *consume_event_list) {
+      absl::optional<XStatVisitor> element_id =
+          consume_event->GetEventVisitor().GetStat(StatType::kElementId);
+      if (!element_id.has_value()) continue;
+      EventNode* consume_iterator = consume_event->GetParent();
+      if (!consume_iterator ||
+          !IsDatasetOp(
+              ParseTfOpFullname(consume_iterator->GetEventVisitor().Name()))) {
+        continue;
+      }
+      absl::optional<XStatVisitor> iterator_id =
+          consume_iterator->GetEventVisitor().GetStat(StatType::kStepId);
+      if (!iterator_id.has_value()) continue;
+      if (auto produce_iterators = gtl::FindOrNull(
+              produce_iterator_map, std::make_pair(iterator_id->IntValue(),
+                                                   element_id->IntValue()))) {
+        for (EventNode* produce_iterator : *produce_iterators) {
+          consume_iterator->AddChild(produce_iterator);
+          ++num_matched;
+        }
+      }
+    }
+  }
+  VLOG(1) << num_matched << " consumer iterators matched.";
+}
+
 EventForest::EventForest(
     const std::vector<InterThreadConnectInfo>& connect_info_list,
     const std::vector<int64>& root_event_types,
@@ -662,6 +738,17 @@ EventForest::EventForest(
   MarkEagerlyExecutedGpuKernels();
   MarkEagerlyExecutedCpuTfOps();
   ProcessModelIds();
+}
+
+EventForest::EventForest(
+    const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
+    XPlane* plane) {
+  ContextGroupMap context_groups;
+  visitors_.reserve(1);
+  CreateStatMetadata(plane);
+  visitors_.push_back(visitor_factory(plane));
+  ConnectIntraThread(visitors_.back(), plane, &context_groups);
+  ConnectContextGroups(context_groups);
 }
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList() {

@@ -574,9 +574,7 @@ void* SimpleStatefulOp::Init(TfLiteContext* context, const char* buffer,
   TFLITE_DCHECK(context->GetScratchBuffer == nullptr);
   TFLITE_DCHECK(context->RequestScratchBufferInArena == nullptr);
 
-  void* raw;
-  TFLITE_DCHECK(context->AllocatePersistentBuffer(context, sizeof(OpData),
-                                                  &raw) == kTfLiteOk);
+  void* raw = context->AllocatePersistentBuffer(context, sizeof(OpData));
   OpData* data = reinterpret_cast<OpData*>(raw);
   *data = {};
   return raw;
@@ -586,7 +584,7 @@ TfLiteStatus SimpleStatefulOp::Prepare(TfLiteContext* context,
                                        TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
-  // Make sure that the input is in uint8 with at least 1 data entry.
+  // Make sure that the input is in uint8_t with at least 1 data entry.
   const TfLiteTensor* input = tflite::GetInput(context, node, kInputTensor);
   if (input->type != kTfLiteUInt8) return kTfLiteError;
   if (NumElements(input->dims) == 0) return kTfLiteError;
@@ -814,11 +812,13 @@ int TestStrcmp(const char* a, const char* b) {
 
 // Wrapper to forward kernel errors to the interpreter's error reporter.
 void ReportOpError(struct TfLiteContext* context, const char* format, ...) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
   ErrorReporter* error_reporter = static_cast<ErrorReporter*>(context->impl_);
   va_list args;
   va_start(args, format);
   TF_LITE_REPORT_ERROR(error_reporter, format, args);
   va_end(args);
+#endif
 }
 
 // Create a TfLiteIntArray from an array of ints.  The first element in the
@@ -927,8 +927,8 @@ TfLiteTensor CreateQuantizedBiasTensor(const float* data, int32_t* quantized,
   TfLiteTensor result = CreateTensor(dims, is_variable);
   result.type = kTfLiteInt32;
   result.data.i32 = const_cast<int32_t*>(quantized);
-  // Quantized int32 tensors always have a zero point of 0, since the range of
-  // int32 values is large, and because zero point costs extra cycles during
+  // Quantized int32_t tensors always have a zero point of 0, since the range of
+  // int32_t values is large, and because zero point costs extra cycles during
   // processing.
   result.params = {bias_scale, 0};
   result.quantization = {kTfLiteAffineQuantization, nullptr};
@@ -936,7 +936,7 @@ TfLiteTensor CreateQuantizedBiasTensor(const float* data, int32_t* quantized,
   return result;
 }
 
-// Quantizes int32 bias tensor with per-channel weights determined by input
+// Quantizes int32_t bias tensor with per-channel weights determined by input
 // scale multiplied by weight scale for each channel.
 TfLiteTensor CreatePerChannelQuantizedBiasTensor(
     const float* input, int32_t* quantized, TfLiteIntArray* dims,
@@ -994,6 +994,14 @@ TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
   result.quantization = {kTfLiteAffineQuantization, affine_quant};
   result.bytes = ElementCount(*dims) * sizeof(int8_t);
   return result;
+}
+
+size_t GetModelTensorCount(const Model* model) {
+  auto* subgraphs = model->subgraphs();
+  if (subgraphs) {
+    return (*subgraphs)[0]->tensors()->size();
+  }
+  return 0;
 }
 
 }  // namespace testing

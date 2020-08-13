@@ -144,25 +144,11 @@ Status ApplyRewrites(OpKernelContext* ctx,
 Status RewriteDataset(OpKernelContext* ctx, const DatasetBase* input,
                       std::function<RewriterConfig(void)> config_factory,
                       bool record_fingerprint, DatasetBase** rewritten_input) {
-  SerializationContext::Params params;
   std::vector<std::pair<string, Tensor>> input_list;
-  params.input_list = &input_list;
-  params.external_state_policy =
-      SerializationContext::ExternalStatePolicy::kIgnore;
-  params.fail_if_unimplemented = false;
-  params.serialize_data_tensors = false;
-  params.preserve_random_seeds = false;
-  SerializationContext serialization_ctx(params);
   GraphDef graph_def;
-  TF_RETURN_IF_ERROR(
-      AsGraphDef(ctx, input, std::move(serialization_ctx), &graph_def));
-
   string output_node;
-  for (const auto& node : graph_def.node()) {
-    if (node.op() == "_Retval") {
-      output_node = node.input(0);
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      AsGraphDefMinimal(ctx, input, &input_list, &graph_def, &output_node));
 
   VLOG(3) << "Before graph rewrites: " << graph_def.DebugString();
   TF_RETURN_IF_ERROR(

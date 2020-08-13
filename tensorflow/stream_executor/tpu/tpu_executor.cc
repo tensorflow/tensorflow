@@ -18,8 +18,8 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/tpu/tpu_api.h"
-#include "tensorflow/stream_executor/tpu/device_memory_base_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
+#include "tensorflow/stream_executor/tpu/tpu_event.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream.h"
 #include "tensorflow/stream_executor/tpu/tpu_timer.h"
 
@@ -169,7 +169,9 @@ std::unique_ptr<::stream_executor::internal::StreamInterface>
 TpuExecutor::GetStreamImplementation() {
   SE_Stream* tpu_stream = tpu::ExecutorApiFn()->TpuStream_NewFn(executor_);
   auto ptr = absl::make_unique<TpuStream>(tpu_stream);
+  tpu_platform().mutex().lock();
   stream_map()[ptr.get()] = tpu_stream;
+  tpu_platform().mutex().unlock();
   return ptr;
 }
 
@@ -185,18 +187,16 @@ TpuExecutor::CreateEventImplementation() {
 DeviceMemoryBase TpuExecutor::Allocate(uint64 size, int64 memory_space) {
   SE_DeviceMemoryBase se_base = tpu::ExecutorApiFn()->TpuExecutor_AllocateFn(
       executor_, size, memory_space);
-  return DeviceMemoryBaseHelper::SE_DeviceMemoryBaseToDeviceMemoryBase(se_base);
+  return ApiConverter::FromC(se_base);
 }
 
 void TpuExecutor::Deallocate(const DeviceMemoryBase& memory) {
-  SE_DeviceMemoryBase se_base =
-      DeviceMemoryBaseHelper::DeviceMemoryBaseToSE_DeviceMemoryBase(memory);
+  SE_DeviceMemoryBase se_base = ApiConverter::ToC(memory);
   tpu::ExecutorApiFn()->TpuExecutor_DeallocateFn(executor_, &se_base);
 }
 
 void TpuExecutor::Deallocate(DeviceMemoryBase* memory) {
-  SE_DeviceMemoryBase se_base =
-      DeviceMemoryBaseHelper::DeviceMemoryBaseToSE_DeviceMemoryBase(*memory);
+  SE_DeviceMemoryBase se_base = ApiConverter::ToC(*memory);
   tpu::ExecutorApiFn()->TpuExecutor_DeallocateFn(executor_, &se_base);
 }
 
@@ -271,8 +271,7 @@ Status TpuExecutor::EnqueueInfeed(int32 infeed_queue_index,
 bool TpuExecutor::Memcpy(Stream* stream, void* host_dst,
                          const ::stream_executor::DeviceMemoryBase& device_src,
                          uint64 size) {
-  SE_DeviceMemoryBase se_base =
-      DeviceMemoryBaseHelper::DeviceMemoryBaseToSE_DeviceMemoryBase(device_src);
+  SE_DeviceMemoryBase se_base = ApiConverter::ToC(device_src);
   return tpu::ExecutorApiFn()->TpuExecutor_MemcpyToHostFn(
       executor_, stream_map().at(stream->implementation()), host_dst, &se_base,
       size);
@@ -281,9 +280,7 @@ bool TpuExecutor::Memcpy(Stream* stream, void* host_dst,
 bool TpuExecutor::Memcpy(Stream* stream,
                          ::stream_executor::DeviceMemoryBase* device_dst,
                          const void* host_src, uint64 size) {
-  SE_DeviceMemoryBase se_base =
-      DeviceMemoryBaseHelper::DeviceMemoryBaseToSE_DeviceMemoryBase(
-          *device_dst);
+  SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
   return tpu::ExecutorApiFn()->TpuExecutor_MemcpyFromHostFn(
       executor_, stream_map().at(stream->implementation()), &se_base, host_src,
       size);
@@ -293,9 +290,7 @@ Status TpuExecutor::SynchronousMemcpy(
     ::stream_executor::DeviceMemoryBase* device_dst, const void* host_src,
     uint64 size) {
   StatusHelper status;
-  SE_DeviceMemoryBase se_base =
-      DeviceMemoryBaseHelper::DeviceMemoryBaseToSE_DeviceMemoryBase(
-          *device_dst);
+  SE_DeviceMemoryBase se_base = ApiConverter::ToC(*device_dst);
   tpu::ExecutorApiFn()->TpuExecutor_SynchronousMemcpyFromHostFn(
       executor_, &se_base, host_src, size, status.c_status);
   return status.status();
@@ -305,8 +300,7 @@ Status TpuExecutor::SynchronousMemcpy(
     void* host_dst, const ::stream_executor::DeviceMemoryBase& device_src,
     uint64 size) {
   StatusHelper status;
-  SE_DeviceMemoryBase se_base =
-      DeviceMemoryBaseHelper::DeviceMemoryBaseToSE_DeviceMemoryBase(device_src);
+  SE_DeviceMemoryBase se_base = ApiConverter::ToC(device_src);
   tpu::ExecutorApiFn()->TpuExecutor_SynchronousMemcpyToHostFn(
       executor_, host_dst, &se_base, size, status.c_status);
   return status.status();

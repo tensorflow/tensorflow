@@ -174,7 +174,7 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
   def testExternalControlDependencies(self):
     with ops.Graph().as_default(), self.test_session():
       v = variables.Variable(1.)
-      v.initializer.run()
+      self.evaluate(v.initializer)
       op = v.assign_add(1.)
 
       def body_fn(i):  # pylint: disable=invalid-name
@@ -1240,6 +1240,26 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     config = config_pb2.ConfigProto()
     config.experimental.executor_type = "SINGLE_THREADED_EXECUTOR"
     self._runBasicWithConfig(config)
+
+  def testIsControlFlowGraph(self):
+    x = constant_op.constant(0)
+
+    @def_function.function
+    def F(c):
+
+      def Cond(i):
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i < 2
+
+      def Body(i):
+        i = i + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      return while_loop_v2(Cond, Body, [c])
+
+    ret, = F(x)
+    self.assertEqual(2, self.evaluate(ret))
 
   def testImportFromSerializedWithFunctionInBody(self):
     serialized = """node {

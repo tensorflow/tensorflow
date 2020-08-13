@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
+#include "tensorflow/core/protobuf/struct.pb.h"
 
 namespace tensorflow {
 namespace internal {
@@ -59,10 +60,17 @@ Status LoadTFConcreteFunction(
         captured_objects,
     ImmediateExecutionContext* ctx, std::unique_ptr<TFConcreteFunction>* out);
 
-// Find the SavedObject in `object_graph` at location `path`. `path` must be a
-// dot-delimited string of object names relative to the root object. If no
-// object is found, returns nullptr. Callers must ensure `object_graph` outlives
-// the returned pointer.
+// Flattens `signature` into a vector of TensorSpecProto pointers back into
+// `signature`. `signature` must outlive flattened_specs. `signature` must also
+// be the input or output signature of a SavedConcreteFunction (i.e. "nested
+// structures of tensorspecs").
+Status FlattenSignature(const StructuredValue& signature,
+                        std::vector<const TensorSpecProto*>* flattened_specs);
+
+// Find the SavedObject in `object_graph` at location `path`. `path` must be
+// a dot-delimited string of object names relative to the root object. If no
+// object is found, returns nullptr. Callers must ensure `object_graph`
+// outlives the returned pointer.
 const SavedObject* FindNodeAtPath(StringPiece path,
                                   const SavedObjectGraph& object_graph);
 

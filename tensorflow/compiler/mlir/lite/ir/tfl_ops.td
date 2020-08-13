@@ -943,7 +943,10 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    NoSideEffect,
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
-   SameOperandsAndResultElementType]> {
+   PredOpTrait<"x and output must have same element type",
+       TFL_TCresVTEtIsSameAsOp<0, 0>>,
+   PredOpTrait<"y and output must have same element type",
+       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -1059,8 +1062,7 @@ def TFL_LessEqualOp : TFL_Op<"less_equal", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Less_equal operator";
 
   let description = [{
@@ -1121,8 +1123,7 @@ convolutional neural networks (NIPS 2012)](http://papers.nips.cc/paper/4824-imag
 def TFL_GreaterEqualOp : TFL_Op<"greater_equal", [
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     ResultsBroadcastableShape,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Greater_equal operator";
 
   let description = [{
@@ -1415,7 +1416,6 @@ def TFL_EmbeddingLookupOp: TFL_Op<"embedding_lookup",
 
 def TFL_EqualOp: TFL_Op<"equal", [
     Commutative,
-    NoQuantizableResult,
     ResultsBroadcastableShape,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
     PredOpTrait<"Operands have same value type", TCopVTEtIsSameAs<0, 1>>]> {
@@ -1621,8 +1621,7 @@ def TFL_GreaterOp : TFL_Op<"greater", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Greater operator";
 
   let description = [{
@@ -1721,8 +1720,7 @@ def TFL_LessOp : TFL_Op<"less", [
     ResultsBroadcastableShape,
     BinaryOpSameElementTypeConstraint,
     TFL_OperandsHaveSameShapesOrBroadcastableShape<[0, 1], 4>,
-    NoSideEffect,
-    NoQuantizableResult]> {
+    NoSideEffect]> {
   let summary = "Less operator";
 
   let description = [{
@@ -2678,6 +2676,7 @@ def TFL_ReverseV2Op: TFL_Op<"reverse_v2", [
 // are unranked. Therefore, we skip adding shape constraints here.
 def TFL_SelectOp : TFL_Op<"select", [
   NoSideEffect,
+  SameOperandsAndResultsScale,
   PredOpTrait<"operands have same element type", TCopVTEtIsSameAs<1, 2>>,
   PredOpTrait<"operands and result have same element type",
     TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
@@ -4300,7 +4299,8 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let hasCanonicalizer = 1;
 }
 
-def TFL_CustomOp : Op<TFL_Dialect, "custom", [NoSideEffect]> {
+def TFL_CustomOp : Op<TFL_Dialect, "custom", [
+  NoSideEffect, NoQuantizableResult]> {
   let summary = "Custom op";
 
   let description = [{
@@ -4321,6 +4321,31 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [NoSideEffect]> {
   let results = (outs Variadic<AnyTensor>:$output);
 
   let verifier = [{ return Verify(*this); }];
+}
+
+def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
+  // Currently the custom ops have no side effect
+  // TODO(karimnosseir): Revisit if this needs updating.
+  NoSideEffect,
+  NoQuantizableResult,
+  SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "Wrapper Op for TF custom ops.";
+
+  let description = [{
+    A wrapper op around any Custom TF op. These includes ops defined using
+    custom_opdefs or linked which are not defined in TF dialect.
+    This Op just wraps the custom op inside a region.
+    Note #1, this Op will not include TF Lite custom ops defined using CustomOp.
+    Note #2, this op is just internal representation inside the converter and
+    are not exposed/exported when the model is exported to Flatbuffer.
+  }];
+
+  let arguments = (ins
+    Variadic<TFL_TensorOfOrNone<[AnyType]>>:$input
+  );
+  let results = (outs Variadic<AnyTensor>:$output);
+
+  let regions = (region SizedRegion<1>:$body);
 }
 
 #endif // TFL_OPS

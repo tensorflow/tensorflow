@@ -155,10 +155,10 @@ gentbl(
     name = "InstCombineTableGen",
     tbl_outs = [(
         "-gen-searchable-tables",
-        "lib/Transforms/InstCombine/InstCombineTables.inc",
+        "lib/Target/AMDGPU/InstCombineTables.inc",
     )],
     tblgen = ":llvm-tblgen",
-    td_file = "lib/Transforms/InstCombine/InstCombineTables.td",
+    td_file = "lib/Target/AMDGPU/InstCombineTables.td",
     td_srcs = glob([
         "include/llvm/CodeGen/*.td",
         "include/llvm/IR/Intrinsics*.td",
@@ -721,6 +721,7 @@ cc_library(
             "lib/Analysis/*.h",
         ],
         exclude = [
+            "lib/Analysis/DevelopmentModeInlineAdvisor.cpp",
             "lib/Analysis/MLInlineAdvisor.cpp",
             "lib/Analysis/ReleaseModeModelRunner.cpp",
             "lib/Analysis/TFUtils.cpp",
@@ -1555,7 +1556,9 @@ cc_library(
         ":BPFInfo",
         ":CodeGen",
         ":Core",
+        ":IPO",
         ":MC",
+        ":Scalar",
         ":SelectionDAG",
         ":Support",
         ":Target",
@@ -3187,6 +3190,7 @@ cc_library(
     ]),
     copts = llvm_copts,
     deps = [
+        ":BinaryFormat",
         ":DebugInfoCodeView",
         ":MC",
         ":Object",

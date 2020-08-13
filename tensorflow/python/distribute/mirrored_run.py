@@ -31,11 +31,8 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import shared_variable_creator
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
@@ -313,8 +310,7 @@ class _MirroredReplicaThread(threading.Thread):
           _enter_graph(self.graph, self.in_eager,
                        self._variable_creator_stack), \
           context.device_policy(self.context_device_policy), \
-          _MirroredReplicaContext(self.distribution, constant_op.constant(
-              self.replica_id, dtypes.int32)), \
+          _MirroredReplicaContext(self.distribution, self.replica_id), \
           ops.device(self.devices[self.replica_id]), \
           ops.name_scope(self._name_scope), \
           variable_scope.variable_scope(
@@ -452,5 +448,7 @@ class _MirroredReplicaContext(distribute_lib.ReplicaContext):
   @property
   def devices(self):
     distribute_lib.require_replica_context(self)
-    replica_id = tensor_util.constant_value(self._replica_id_in_sync_group)
-    return [self._strategy.extended.worker_devices_by_replica[replica_id]]
+    return [
+        self._strategy.extended.worker_devices_by_replica[
+            self._replica_id_in_sync_group]
+    ]

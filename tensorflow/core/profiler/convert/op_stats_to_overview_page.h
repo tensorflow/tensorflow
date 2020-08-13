@@ -54,8 +54,7 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats);
 OverviewPageRunEnvironment ComputeRunEnvironment(
     const RunEnvironment& run_environment);
 
-OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
-                                          HardwareType hardware_type);
+OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats);
 
 // Returns a html which provides tf-function related recommendation.
 std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db);

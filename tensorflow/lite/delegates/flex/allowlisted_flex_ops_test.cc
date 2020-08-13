@@ -52,6 +52,16 @@ TEST(AllowlistedFlexOpsTest, EveryOpHasKernel) {
         << "but its kernel is not found.";
   }
 }
+
+TEST(TfTextUtilsTest, TestFlexOpAllowed) {
+  // Expect false since ConstrainedSequence kernel is not registered.
+  EXPECT_FALSE(IsAllowedTFTextOpForFlex("ConstrainedSequence"));
+}
+
+TEST(TfTextUtilsTest, TestFlexOpNotAllowed) {
+  EXPECT_FALSE(IsAllowedTFTextOpForFlex("ngrams"));
+}
+
 }  // namespace flex
 }  // namespace tflite
 

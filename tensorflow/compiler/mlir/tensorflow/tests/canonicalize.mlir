@@ -143,6 +143,56 @@ func @testConcatCanonicalization(%arg0: tensor<2x1xi32>, %arg1: tensor<2x1xi32>)
   return %1 : tensor<2x2xi32>
 }
 
+// CHECK-LABEL: testConcatCwiseUnary
+func @testConcatCwiseUnary(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1xf32>, %arg2: tensor<i32>) -> tensor<?x2xf32> {
+
+  // CHECK: %[[CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %arg2)
+  // CHECK: %[[LOG1P:.*]] = "tf.Log1p"(%[[CONCAT]])
+  // CHECK: return %[[LOG1P]]
+  %0 = "tf.Log1p"(%arg0) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  %1 = "tf.Log1p"(%arg1) : (tensor<?x1xf32>) -> tensor<?x1xf32>
+  %2 = "tf.ConcatV2"(%0, %1, %arg2) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
+
+  return %2 : tensor<?x2xf32>
+}
+
+// CHECK-LABEL: testConcatCwiseBinaryOnInnerDim
+func @testConcatCwiseBinaryOnInnerDim(%arg0: tensor<?x1xf32>,
+  %arg1: tensor<?x1xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x2xf32> {
+
+  // CHECK: %[[LHS_AXIS:.*]] = "tf.Const"() {value = dense<1> : tensor<i64>}
+  // CHECK: %[[RHS_AXIS:.*]] = "tf.Const"() {value = dense<0> : tensor<i64>}
+
+  // CHECK: %[[LHS_CONCAT:.*]] = "tf.ConcatV2"(%arg0, %arg1, %[[LHS_AXIS]])
+  // CHECK: %[[RHS_CONCAT:.*]] = "tf.ConcatV2"(%arg2, %arg3, %[[RHS_AXIS]])
+
+  // CHECK: %[[MUL:.*]] = "tf.Mul"(%[[LHS_CONCAT]], %[[RHS_CONCAT]])
+  // CHECK-SAME: (tensor<?x2xf32>, tensor<2xf32>) -> tensor<?x2xf32>
+  // CHECK: return %[[MUL]]
+
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %1 = "tf.Mul"(%arg0, %arg2) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %2 = "tf.Mul"(%arg1, %arg3) : (tensor<?x1xf32>, tensor<f32>) -> tensor<?x1xf32>
+  %3 = "tf.ConcatV2"(%1, %2, %0) : (tensor<?x1xf32>, tensor<?x1xf32>, tensor<i32>) -> tensor<?x2xf32>
+
+  return %3 : tensor<?x2xf32>
+}
+
+// CHECK-LABEL: testConcatCwiseBinaryInvalidInnerDim
+func @testConcatCwiseBinaryInvalidInnerDim(%arg0: tensor<?x2xf32>,
+  %arg1: tensor<?x2xf32>, %arg2: tensor<f32>, %arg3: tensor<f32>) -> tensor<?x4xf32> {
+  // Each individual binary operation has an implicit broadcast that will be
+  // lost if we would reorder them with the concat.
+
+  // CHECK: "tf.ConcatV2"(%1, %2, %0)
+  %0 = "tf.Const"() { value = dense<1> : tensor<i32> } : () -> tensor<i32>
+  %1 = "tf.Mul"(%arg0, %arg2) : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
+  %2 = "tf.Mul"(%arg1, %arg3) : (tensor<?x2xf32>, tensor<f32>) -> tensor<?x2xf32>
+  %3 = "tf.ConcatV2"(%1, %2, %0) : (tensor<?x2xf32>, tensor<?x2xf32>, tensor<i32>) -> tensor<?x4xf32>
+
+  return %3 : tensor<?x4xf32>
+}
+
 // CHECK-LABEL: testLogOfSoftmax
 func @testLogOfSoftmax(%arg0: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Softmax"(%arg0) : (tensor<8x16xf32>) -> tensor<8x16xf32>
@@ -377,6 +427,15 @@ func @testRedundantReshape(%arg0: tensor<4x4xi32>) -> tensor<2x8xi32> {
   // CHECK: return %1 : tensor<2x8xi32>
 }
 
+// CHECK-LABEL: testReshapeToSelfShape
+func @testReshapeToSelfShape(%arg0: tensor<?x4xf32>) -> tensor<?x4xf32> {
+  %0 = "tf.Shape"(%arg0) : (tensor<?x4xf32>) -> tensor<2xi32>
+  %1 = "tf.Reshape"(%arg0, %0) : (tensor<?x4xf32>, tensor<2xi32>) -> tensor<?x4xf32>
+
+  // CHECK: return %arg0 : tensor<?x4xf32>
+  return %1: tensor<?x4xf32>
+}
+
 // CHECK-LABEL: func @testReshapeNoOp
 func @testReshapeNoOp(%arg0: tensor<2x4xf32>, %arg1: tensor<2xi32>) -> tensor<2x4xf32> {
   %0 = "tf.Reshape"(%arg0, %arg1) : (tensor<2x4xf32>, tensor<2xi32>) -> tensor<2x4xf32>
@@ -385,8 +444,8 @@ func @testReshapeNoOp(%arg0: tensor<2x4xf32>, %arg1: tensor<2xi32>) -> tensor<2x
   return %0 : tensor<2x4xf32>
 }
 
-// CHECK-LABEL: func @testReshapeNoOpShapeComputation
-func @testReshapeNoOpShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>, %arg2: tensor<*xf32>) -> (tensor<?x1xf32>, tensor<?x1x2xf32>,  tensor<?x1x2xf32>, tensor<?x2x1xf32>, tensor<?x1x2xf32>, tensor<?x1x1xf32>, tensor<*xf32>) {
+// CHECK-LABEL: func @testPackShapeComputation
+func @testPackShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>, %arg2: tensor<*xf32>) -> (tensor<2xi32>, tensor<3xi32>, tensor<3xi32>,  tensor<3xi32>, tensor<3xi32>, tensor<*xi32>) {
   // Test dimensions sizes.
   %d1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
   %d2 = "tf.Const"() {value = dense<2> : tensor<i32>} : () -> tensor<i32>
@@ -396,65 +455,56 @@ func @testReshapeNoOpShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x
   %1 = "tf.Const"() {value = dense<1> : tensor<1xi32>} : () -> tensor<1xi32>
   %2 = "tf.Const"() {value = dense<2> : tensor<1xi32>} : () -> tensor<1xi32>
 
-  // Fold reshape if the shape is computed from the input tensor:
+  // Fold pack operation if it computes the input tensor shape:
   //
-  //   %shape     = tf.Shape(%arg)                    // [? x ...]
-  //   %dim0      = tf.StridedSlice(%shape, 0, 1, 1)  // get unknown dim value
-  //   %new_shape = tf.Pack(dim0, ...) { axis = 0 }   // [? x ...]
-  //   %reshape   = tf.Reshape(%arg, %new_shape)      // this is no-op
+  //   %shape  = tf.Shape(%arg)                    // [? x ...]
+  //   %dim0   = tf.StridedSlice(%shape, 0, 1, 1)  // get unknown dim0 value
+  //   %pack   = tf.Pack(dim0, ...) { axis = 0 }   // [? x ...]
   //
-  // Where `...` are some statically known dimensions. In this case reshape is
-  // a no-op and can be replaced by %arg (assuming `...` are equal).
+  // Where `...` are some statically known dimensions. In this case %pack can be
+  // replace with a %shape. This is a common pattern in models with a dynamic
+  // batch size.
 
   // Test Rank 2
+  // CHECK: %[[SHAPE0:.*]] = "tf.Shape"
   %3 = "tf.Shape"(%arg0) : (tensor<?x1xf32>) -> tensor<2xi32>
   %4 = "tf.StridedSlice"(%3, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
   %5 = "tf.Pack"(%4, %d1) {axis = 0 : i64} : (tensor<i32>, tensor<i32>) -> tensor<2xi32>
   %6 = "tf.Reshape"(%arg0, %5) : (tensor<?x1xf32>, tensor<2xi32>) -> tensor<?x1xf32>
 
   // Test Rank 3.
-
+  // CHECK: %[[SHAPE1:.*]] = "tf.Shape"
   %7 = "tf.Shape"(%arg1) : (tensor<?x1x2xf32>) -> tensor<3xi32>
   %8 = "tf.StridedSlice"(%7, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<3xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
   %9 = "tf.Pack"(%8, %d1, %d2) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
   %10 = "tf.Reshape"(%arg1, %9) : (tensor<?x1x2xf32>, tensor<3xi32>) -> tensor<?x1x2xf32>
 
-  // Shape was taken from the op that is not reshaped in the end:
-  //   Reshape(%arg1) vs Shape(%arg0)
-  %11 = "tf.StridedSlice"(%3, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
-  %12 = "tf.Pack"(%11, %d1, %d2) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
-  // CHECK: %[[RESHAPE0:.*]] = "tf.Reshape"
-  %13 = "tf.Reshape"(%arg1, %12) : (tensor<?x1x2xf32>, tensor<3xi32>) -> tensor<?x1x2xf32>
-
   // Packed dimensions have different order from the reshape operand:
   //   [?, 1, 2] vs [?, 2, 1]
   %14 = "tf.StridedSlice"(%7, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<3xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
   %15 = "tf.Pack"(%14, %d2, %d1) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
-  // CHECK: %[[RESHAPE1:.*]] = "tf.Reshape"
-  %16 = "tf.Reshape"(%arg1, %15) : (tensor<?x1x2xf32>, tensor<3xi32>) -> tensor<?x2x1xf32>
+  // CHECK: %[[PACK0:.*]] = "tf.Pack"
 
   // StridedSlice takes second dimension from the shape:
   //   begin = [1], end = [2], stride = [1]
   %17 = "tf.StridedSlice"(%7, %1, %2, %1) {shrink_axis_mask = 1 : i64} : (tensor<3xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
   %18 = "tf.Pack"(%17, %d1, %d2) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
-  // CHECK: %[[RESHAPE2:.*]] = "tf.Reshape"
-  %19 = "tf.Reshape"(%arg1, %18) : (tensor<?x1x2xf32>, tensor<3xi32>) -> tensor<?x1x2xf32>
+  // CHECK: %[[PACK1:.*]] = "tf.Pack"
 
   // Packed dimensions have higher rank than the reshape operand:
   //   [?, 1] vs [?, 1, 1]
   %20 = "tf.StridedSlice"(%3, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<2xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<i32>
   %21 = "tf.Pack"(%20, %d1, %d1) {axis = 0 : i64} : (tensor<i32>, tensor<i32>, tensor<i32>) -> tensor<3xi32>
-  // CHECK: %[[RESHAPE3:.*]] = "tf.Reshape"
-  %22 = "tf.Reshape"(%arg0, %21) : (tensor<?x1xf32>, tensor<3xi32>) -> tensor<?x1x1xf32>
+  // CHECK: %[[PACK2:.*]] = "tf.Pack"
 
   // Make sure a dynamic ranked shape doesn't crash the "canonicalize" pass
   %23 = "tf.Shape"(%arg2) : (tensor<*xf32>) -> tensor<*xi32>
   %24 = "tf.StridedSlice"(%23, %0, %1, %1) {shrink_axis_mask = 1 : i64} : (tensor<*xi32>, tensor<1xi32>, tensor<1xi32>, tensor<1xi32>) -> tensor<*xi32>
   %25 = "tf.Pack"(%24, %d1) {axis = 0 : i64} : (tensor<*xi32>, tensor<i32>) -> tensor<*xi32>
-  %26 = "tf.Reshape"(%arg2, %25) : (tensor<*xf32>, tensor<*xi32>) -> tensor<*xf32>
+  // CHECK: %[[PACK3:.*]] = "tf.Pack"
 
-  // CHECK: return %arg0, %arg1, %[[RESHAPE0]], %[[RESHAPE1]], %[[RESHAPE2]], %[[RESHAPE3]]
-  return %6, %10, %13, %16, %19, %22, %26 : tensor<?x1xf32>, tensor<?x1x2xf32>, tensor<?x1x2xf32>, tensor<?x2x1xf32>, tensor<?x1x2xf32>, tensor<?x1x1xf32>, tensor<*xf32>
+  // CHECK: return %[[SHAPE0]], %[[SHAPE1]], %[[PACK0]], %[[PACK1]], %[[PACK2]], %[[PACK3]]
+  return %5, %9, %15, %18, %21, %25 : tensor<2xi32>, tensor<3xi32>, tensor<3xi32>,  tensor<3xi32>, tensor<3xi32>, tensor<*xi32>
 }
 
 // CHECK-LABEL: testSelectScalarPred
@@ -755,6 +805,27 @@ func @foldFill() -> (tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>) {
   return %2, %3, %4 : tensor<3x2x1xf32>, tensor<*xf32>, tensor<*xcomplex<f32>>
 }
 
+// CHECK-LABEL: foldIf
+func @foldIf(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tensor<f32>) {
+  %0 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %1 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+
+  // CHECK: %0 = "tf.PartitionedCall"(%arg0, %arg1)
+  // CHECK-SAME: device = "noodle"
+  // CHECK-SAME: f = @sub
+  %2 = "tf.If"(%0, %arg0, %arg1) {then_branch = @add, else_branch = @sub, output_shapes = [#tf.shape<>], device = "noodle", is_stateless = true} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: %1 = "tf.StatefulPartitionedCall"(%0, %arg1)
+  // CHECK-SAME: _underscore_attr = "something"
+  // CHECK-SAME: f = @add
+  %3 = "tf.If"(%1, %2, %arg1) {then_branch = @add, else_branch = @sub, output_shapes = [#tf.shape<>], _underscore_attr = "something", is_stateless = false} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  // CHECK: %2 = "tf.If"
+  %4 = "tf.If"(%arg2, %3, %arg1) {then_branch = @add, else_branch = @sub, is_stateless = false} : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+
+  // CHECK: return %2
+  return %4 : tensor<f32>
+}
+
 // CHECK-LABEL: foldCase
 func @foldCase(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   %2 = constant dense<1> : tensor<i32>
@@ -963,4 +1034,37 @@ func @testWhileRegionUnusedValue(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>, %ar
   // Verify that return still uses while result # 0
   // CHECK: return %[[WHILE_OUT]]#0 : tensor<*xf32>
   return %0#0 : tensor<*xf32>
+}
+
+// Check that output_shapes attribute is removed for tf.If
+func @testIfThen(tensor<*xf32>) -> tensor<*xf32>
+func @testIfElse(tensor<*xf32>) -> tensor<*xf32>
+// CHECK-LABEL: func @testIfDropOutputShapes
+func @testIfDropOutputShapes(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
+^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
+  // CHECK: "tf.If"
+  // CHECK-NOT: output_shapes
+  %1 = "tf.If"(%arg0, %arg1) {
+    then_branch = @testIfThen, else_branch = @testIfElse, is_stateless = false, output_shapes = [#tf.shape<>]
+  } : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %1 : tensor<2xf32>
+}
+
+// Check that output_shapes attribute is removed for tf.Whileß
+func @testWhileCond(tensor<*xf32>) -> (tensor<i1>)
+func @testWhileBody(tensor<*xf32>) -> (tensor<*xf32>)
+// CHECK-LABEL: func @testWhileDropOutputShapes
+func @testWhileDropOutputShapes(tensor<*xf32>) -> (tensor<*xf32>) {
+^bb0(%arg0: tensor<*xf32>):
+  // CHECK: "tf.While"
+  // CHECK-NOT: output_shapes
+  %1 = "tf.While"(%arg0) {
+    cond = @testWhileCond,
+    body = @testWhileBody,
+    is_stateless = false,
+    output_shapes = [#tf.shape<>]
+  } : (tensor<*xf32>) -> (tensor<*xf32>)
+
+  return %1 : tensor<*xf32>
 }

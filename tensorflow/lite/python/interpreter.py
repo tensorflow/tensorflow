@@ -21,11 +21,12 @@ from __future__ import print_function
 import ctypes
 import platform
 import sys
+import os
 
 import numpy as np
 
 # pylint: disable=g-import-not-at-top
-if not __file__.endswith('tflite_runtime/interpreter.py'):
+if not os.path.splitext(__file__)[0].endswith('tflite_runtime/interpreter'):
   # This file is part of tensorflow package.
   from tensorflow.lite.python.interpreter_wrapper import _pywrap_tensorflow_interpreter_wrapper as _interpreter_wrapper
   from tensorflow.python.util.tf_export import tf_export as _tf_export

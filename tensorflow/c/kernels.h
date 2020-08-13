@@ -18,8 +18,10 @@ limitations under the License.
 
 #include <stdint.h>
 
+#include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 
 // Macro to control visibility of exported symbols in the shared library (.so,
 // .dylib, .dll).
@@ -184,6 +186,10 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrInt32(
     TF_OpKernelConstruction* ctx, const char* attr_name, int32_t* val,
     TF_Status* status);
 
+// Returns the unique operation name for this OpKernel.
+TF_CAPI_EXPORT extern TF_StringView TF_OpKernelConstruction_GetName(
+    TF_OpKernelConstruction* ctx);
+
 // Allocates Tensor for output at given index. Caller takes ownership of
 // returned TF_Tensor and should deallocate it using TF_DeleteTensor(tensor).
 //
@@ -193,6 +199,15 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             int index, TF_DataType dtype,
                                             int64_t* dims, int num_dims,
                                             size_t len, TF_Status* status);
+
+// Allocates a temporary Tensor of the specified type and shape. The
+// Tensor must not be used after kernel construction is
+// complete.
+//
+// num_dims must equal the size of array dims
+TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(
+    TF_OpKernelContext* context, TF_DataType dtype, int64_t* dims, int num_dims,
+    TF_AllocatorAttributes* alloc_attrs, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

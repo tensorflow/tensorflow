@@ -1004,7 +1004,7 @@ PjRtBuffer::GetBufferForHoldLocked(ScopedHold::Type type) {
     // acquiring any other kind of hold.
     WaitForOutstandingDonationHold();
     if (device_buffer_ == nullptr) {
-      return InvalidArgument("Hold requested on invalid buffer");
+      return InvalidArgument("Hold requested on deleted or donated buffer");
     } else {
       ++holds_[type];
     }
@@ -1084,7 +1084,8 @@ PjRtBuffer::CopyToHostAsyncInternal(bool discard_cached_copy,
     // We can't perform any other action while a donation hold is in progress.
     WaitForOutstandingDonationHold();
     if (device_buffer_ == nullptr) {
-      return InvalidArgument("CopyToHostAsync() called on invalid buffer.");
+      return InvalidArgument(
+          "CopyToHostAsync() called on deleted or donated buffer");
     }
     if (discard_cached_copy) {
       auto it = host_values_.find(host_layout);
@@ -1154,7 +1155,7 @@ StatusOr<std::shared_ptr<Literal>> PjRtBuffer::ToLiteral(
   TF_ASSIGN_OR_RETURN(std::shared_ptr<HostValue> host_value,
                       CopyToHostAsyncInternal(discard_cached_copy, layout));
   if (host_value == nullptr) {
-    return InvalidArgument("ToLiteral called on invalid buffer");
+    return InvalidArgument("ToLiteral called on deleted or donated buffer");
   }
   host_value->ready.WaitForNotification();
   TF_RETURN_IF_ERROR(host_value->status);
@@ -1272,7 +1273,8 @@ StatusOr<std::unique_ptr<PjRtBuffer>> PjRtBuffer::CopyToDevice(
     // We can't perform any other action while a donation hold is in progress.
     WaitForOutstandingDonationHold();
     if (device_buffer_ == nullptr) {
-      return InvalidArgument("CopyToDevice called on invalid buffer");
+      return InvalidArgument(
+          "CopyToDevice called on deleted or donated buffer");
     }
     AcquireHoldLocked(&src_device_buffer);
   }
@@ -1313,7 +1315,8 @@ Status PjRtBuffer::BlockHostUntilReady() {
   {
     absl::MutexLock lock(&mu_);
     if (device_buffer_ == nullptr) {
-      return InvalidArgument("BlockHostUntilReady() called on invalid buffer.");
+      return InvalidArgument(
+          "BlockHostUntilReady() called on deleted or donated buffer");
     }
     device_buffer = device_buffer_;
   }
@@ -1610,6 +1613,10 @@ StatusOr<ScopedShapedBuffer> PjRtExecutable::EnqueueExecution(
   run_options.set_run_id(run_id);
   run_options.set_rng_seed(device_state->GetNewPrngSeed());
   run_options.set_gpu_executable_run_options(client_->gpu_run_options());
+  run_options.set_launch_id(options.launch_id);
+  if (run_options.launch_id() != 0) {
+    VLOG(1) << "launch id for " << name() << ": " << run_options.launch_id();
+  }
 
   // The choice of where we wait is arbitrary; the reason for the wait is
   // pacing to avoid problems such as memory fragmentation and running ahead
@@ -2138,13 +2145,13 @@ StatusOr<std::pair<std::vector<Shape>, Shape>> GetShardedProgramShapes(
       client->client()->Compile(computation, argument_layout_pointers,
                                 build_options));
 
-  auto py_executable = absl::make_unique<PjRtExecutable>(
+  auto executable = absl::make_unique<PjRtExecutable>(
       std::move(local_executables), options.parameter_is_tupled_arguments,
       std::move(device_assignment), std::move(local_logical_device_ids),
       std::move(local_devices), client);
-  TF_RETURN_IF_ERROR(py_executable->SetUpDonation(
-      client, options.parameter_is_tupled_arguments));
-  return py_executable;
+  TF_RETURN_IF_ERROR(
+      executable->SetUpDonation(client, options.parameter_is_tupled_arguments));
+  return executable;
 }
 
 }  // namespace xla

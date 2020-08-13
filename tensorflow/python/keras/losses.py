@@ -1313,8 +1313,8 @@ def _maybe_convert_labels(y_true):
     # Convert the binary labels to -1 or 1.
     return 2. * y_true - 1.
 
-  updated_y_true = smart_cond.smart_cond(is_binary,
-                                         _convert_binary_labels, lambda: y_true)
+  updated_y_true = smart_cond.smart_cond(is_binary, _convert_binary_labels,
+                                         lambda: y_true)
   return updated_y_true
 
 
@@ -1526,8 +1526,8 @@ def categorical_crossentropy(y_true,
     num_classes = math_ops.cast(array_ops.shape(y_true)[-1], y_pred.dtype)
     return y_true * (1.0 - label_smoothing) + (label_smoothing / num_classes)
 
-  y_true = smart_cond.smart_cond(label_smoothing,
-                                 _smooth_labels, lambda: y_true)
+  y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
+                                 lambda: y_true)
   return K.categorical_crossentropy(y_true, y_pred, from_logits=from_logits)
 
 
@@ -1595,8 +1595,8 @@ def binary_crossentropy(y_true, y_pred, from_logits=False, label_smoothing=0):
   def _smooth_labels():
     return y_true * (1.0 - label_smoothing) + 0.5 * label_smoothing
 
-  y_true = smart_cond.smart_cond(label_smoothing,
-                                 _smooth_labels, lambda: y_true)
+  y_true = smart_cond.smart_cond(label_smoothing, _smooth_labels,
+                                 lambda: y_true)
   return K.mean(
       K.binary_crossentropy(y_true, y_pred, from_logits=from_logits), axis=-1)
 

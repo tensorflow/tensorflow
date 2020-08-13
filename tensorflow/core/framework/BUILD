@@ -31,7 +31,7 @@ package(
 )
 
 # Export all header files for which we do not yet provide a dedicated build
-# rule. This avoids breading all the rules in tensorflow/core/BUILD.
+# rule. This avoids breaking all the rules in tensorflow/core/BUILD.
 exports_files(
     srcs = [
         "allocator_registry.h",
@@ -39,7 +39,7 @@ exports_files(
         "collective.h",
         "control_flow.h",
         "dataset.h",
-        "dataset_stateful_op_whitelist.h",
+        "dataset_stateful_op_allowlist.h",
         "device_base.h",
         "function.h",
         "function_handle_cache.h",
@@ -166,7 +166,7 @@ filegroup(
         "common_shape_fns.h",
         "control_flow.h",
         "dataset.h",
-        "dataset_stateful_op_whitelist.h",
+        "dataset_stateful_op_allowlist.h",
         "device_base.h",
         "function.h",
         "function_handle_cache.h",
@@ -214,6 +214,7 @@ filegroup(
         "shared_ptr_variant.h",
         "stats_aggregator.h",
         "tensor.h",
+        "tensor_key.h",
         "tensor_reference.h",
         "tensor_shape.h",
         "tensor_slice.h",
@@ -293,6 +294,7 @@ filegroup(
         "resource_handle.h",
         "tensor.cc",
         "tensor.h",
+        "tensor_key.h",
         "tensor_shape.cc",
         "tensor_shape.h",
         "tensor_types.h",
@@ -328,7 +330,7 @@ filegroup(
         "control_flow.h",
         "dataset.cc",
         "dataset.h",
-        "dataset_stateful_op_whitelist.h",
+        "dataset_stateful_op_allowlist.h",
         "device_base.cc",
         "device_base.h",
         "function.cc",
@@ -428,7 +430,7 @@ filegroup(
     ],
 )
 
-# Individual targets. These should be prefered over tensorflow/core:framework
+# Individual targets. These should be preferred over tensorflow/core:framework
 # whenever possible.
 
 # This is redundant with the "tensorflow/core:framework" target. It's useful for
@@ -677,7 +679,11 @@ cc_library(
     name = "type_index",
     hdrs = ["type_index.h"],
     visibility = ["//visibility:private"],
-    deps = ["//tensorflow/core/platform:types"],
+    deps = [
+        "//tensorflow/core/platform:hash",
+        "//tensorflow/core/platform:stringpiece",
+        "//tensorflow/core/platform:types",
+    ],
 )
 
 cc_library(

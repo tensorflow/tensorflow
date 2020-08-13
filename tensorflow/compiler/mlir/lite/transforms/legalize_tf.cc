@@ -45,6 +45,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/mangling_util.h"
@@ -137,7 +138,6 @@ DECL_CONVERT_OP(StridedSlice);
 DECL_CONVERT_OP(Unpack);
 DECL_CONVERT_OP(Reciprocal);
 DECL_CONVERT_OP(RandomUniform);
-DECL_CONVERT_OP(BroadcastTo);
 
 #undef DECL_CONVERT_OP
 
@@ -158,7 +158,7 @@ LogicalResult ConvertTFRandomUniformOp::matchAndRewrite(
       random_uniform_op.seed().getSExtValue(),
       random_uniform_op.seed2().getSExtValue());
   Distribution dist;
-  int num_elements = 0;
+  size_t num_elements = 0;
   if (auto output_type =
           random_uniform_op.output().getType().dyn_cast_or_null<ShapedType>()) {
     if (auto ranked_output = output_type.dyn_cast_or_null<RankedTensorType>()) {
@@ -483,89 +483,6 @@ LogicalResult ConvertTFAssertOp::matchAndRewrite(
   return success();
 }
 
-StatusOr<ConstantOp> CreateConstOpWithSingleValue(PatternRewriter* rewriter,
-                                                  Location loc,
-                                                  ShapedType shaped_type,
-                                                  int value) {
-  Type element_type = shaped_type.getElementType();
-  ShapedType scalar_type = RankedTensorType::get({}, element_type);
-  Attribute attr;
-  switch (element_type.getKind()) {
-    case mlir::StandardTypes::F16: {
-      auto floatType = mlir::FloatType::getF16(element_type.getContext());
-      auto floatAttr =
-          mlir::FloatAttr::get(floatType, static_cast<float>(value));
-      std::vector<Attribute> floatValues({floatAttr});
-      attr = DenseElementsAttr::get(scalar_type, floatValues);
-      break;
-    }
-    case mlir::StandardTypes::BF16: {
-      auto floatType = mlir::FloatType::getBF16(element_type.getContext());
-      auto floatAttr =
-          mlir::FloatAttr::get(floatType, static_cast<float>(value));
-      std::vector<Attribute> floatValues({floatAttr});
-      attr = DenseElementsAttr::get(scalar_type, floatValues);
-      break;
-    }
-    case mlir::StandardTypes::F32: {
-      attr =
-          DenseElementsAttr::get<float>(scalar_type, static_cast<float>(value));
-      break;
-    }
-    case mlir::StandardTypes::Complex: {
-      auto etype = element_type.cast<mlir::ComplexType>().getElementType();
-      if (etype.isF32()) {
-        auto dialect = etype.getContext()->getRegisteredDialect("tf");
-        tensorflow::TensorProto repr;
-        repr.set_dtype(tensorflow::DT_COMPLEX64);
-
-        tensorflow::TensorShapeProto* shape = repr.mutable_tensor_shape();
-        shape->set_unknown_rank(false);
-        shape->add_dim()->set_size(int64_t{1});
-        std::string content;
-        auto complex_value =
-            std::complex<float>(static_cast<float>(value), 0.0f);
-        content.assign(reinterpret_cast<const char*>(&complex_value),
-                       sizeof(complex_value));
-        repr.set_tensor_content(content);
-        std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
-
-        attr = mlir::OpaqueElementsAttr::get(dialect, scalar_type, mangled);
-        break;
-      }
-      return Status(tensorflow::error::INVALID_ARGUMENT, "Unsupported type");
-    }
-    case mlir::StandardTypes::Integer: {
-      const auto& itype = element_type.cast<mlir::IntegerType>();
-      switch (itype.getWidth()) {
-        case 8:
-          attr = DenseElementsAttr::get<int8_t>(scalar_type,
-                                                static_cast<int8_t>(value));
-          break;
-        case 16:
-          attr = DenseElementsAttr::get<int16_t>(scalar_type,
-                                                 static_cast<int16_t>(value));
-          break;
-        case 32:
-          attr = DenseElementsAttr::get<int32_t>(scalar_type,
-                                                 static_cast<int32_t>(value));
-          break;
-        case 64:
-          attr = DenseElementsAttr::get<int64_t>(scalar_type,
-                                                 static_cast<int64_t>(value));
-          break;
-        default:
-          return Status(tensorflow::error::INVALID_ARGUMENT,
-                        "Unsupported type");
-      }
-      break;
-    }
-    default:
-      return Status(tensorflow::error::INVALID_ARGUMENT, "Unsupported type");
-  }
-  return rewriter->create<ConstantOp>(loc, scalar_type, attr);
-}
-
 LogicalResult ConvertTFReciprocalOp::matchAndRewrite(
     Operation* op, PatternRewriter& rewriter) const {
   auto tf_reciprocal_op = cast<TF::ReciprocalOp>(op);
@@ -583,31 +500,6 @@ LogicalResult ConvertTFReciprocalOp::matchAndRewrite(
   rewriter.replaceOpWithNewOp<TFL::DivOp>(op, status_or_const_op.ValueOrDie(),
                                           tf_reciprocal_op.x(),
                                           fused_activation_function);
-  return success();
-}
-
-LogicalResult ConvertTFBroadcastToOp::matchAndRewrite(
-    Operation* op, PatternRewriter& rewriter) const {
-  auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
-  auto element_type = tf_broadcast_to_op.input().getType().cast<ShapedType>();
-  auto output_type = tf_broadcast_to_op.output().getType();
-
-  auto status_or_const_op =
-      CreateConstOpWithSingleValue(&rewriter, op->getLoc(), element_type, 1);
-  if (!status_or_const_op.ok()) {
-    return failure();
-  }
-
-  auto tfl_fill_op = rewriter.create<TFL::FillOp>(
-      op->getLoc(), output_type, tf_broadcast_to_op.shape(),
-      status_or_const_op.ValueOrDie());
-
-  StringAttr fused_activation_function =
-      StringAttr::get("NONE", rewriter.getContext());
-
-  rewriter.replaceOpWithNewOp<TFL::MulOp>(
-      op, output_type, tf_broadcast_to_op.input(), tfl_fill_op,
-      fused_activation_function);
   return success();
 }
 
@@ -751,7 +643,7 @@ void LegalizeTF::runOnFunction() {
               ConvertTFMatrixDiagV3Op, ConvertTFPackOp, ConvertTFReshapeOp,
               ConvertTFSplitOp, ConvertTFSplitVOp, ConvertTFStridedSliceOp,
               ConvertTFUnpackOp, ConvertTFAssertOp, ConvertTFReciprocalOp,
-              ConvertTFRandomUniformOp, ConvertTFBroadcastToOp>(context);
+              ConvertTFRandomUniformOp>(context);
 
   // Ophint python converter converted tf node pattern.
   patterns.insert<LegalizeUnidirectionalSequenceLstm,

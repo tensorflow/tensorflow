@@ -37,8 +37,12 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sort_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.ops.numpy_ops import np_dtypes
+from tensorflow.python.ops.numpy_ops import np_export
 from tensorflow.python.ops.numpy_ops import np_utils
 from tensorflow.python.util import nest
+
+
+newaxis = np_export.np_export_constant(__name__, 'newaxis', np.newaxis)
 
 
 @np_utils.np_doc('empty')
@@ -168,11 +172,6 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
   else:
     result_t = val
 
-  if copy and isinstance(result_t, ops.Tensor):
-    # Note: In eager mode, a copy of `result_t` is made only if it is not on
-    # the context device.
-    result_t = array_ops.identity(result_t)
-
   if not isinstance(result_t, ops.Tensor):
     if not dtype:
       dtype = np_utils.result_type(result_t)
@@ -198,6 +197,9 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
     result_t = math_ops.cast(result_t, dtype=dtype)
   elif dtype:
     result_t = math_ops.cast(result_t, dtype)
+
+  if copy:
+    result_t = array_ops.identity(result_t)
 
   if ndmin == 0:
     return np_arrays.tensor_to_ndarray(result_t)
@@ -954,13 +956,14 @@ def select(condlist, choicelist, default=0):  # pylint: disable=missing-docstrin
   return output
 
 
-@np_utils.np_doc('shape')
+@np_utils.np_doc('shape', link=np_utils.Link(
+    'https://numpy.org/doc/1.18/reference/generated/numpy.shape.html'))
 def shape(a):
   a = asarray(a)
   return a.shape
 
 
-@np_utils.np_doc('ndim')
+@np_utils.np_doc('ndim', link=np_utils.NoLink())
 def ndim(a):
   a = asarray(a)
   return a.ndim

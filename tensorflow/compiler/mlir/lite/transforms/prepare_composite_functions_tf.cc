@@ -34,6 +34,7 @@ limitations under the License.
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -224,7 +225,8 @@ void PrepareCompositeFunctionsPass::ConvertTFImplementsWithAttributes(
 LogicalResult CheckOutputConsumer(
     Operation* call_op, int expected_num_outputs,
     llvm::DenseSet<int> expected_consumer_indices) {
-  if (call_op->getNumResults() != expected_num_outputs) return failure();
+  const int num_results = call_op->getNumResults();
+  if (num_results != expected_num_outputs) return failure();
 
   for (int i = 0; i < expected_num_outputs; ++i) {
     auto it = expected_consumer_indices.find(i);
@@ -237,21 +239,39 @@ LogicalResult CheckOutputConsumer(
 }
 
 LogicalResult CheckFusableKerasLstm(FuncOp lstm_func, ModuleOp module) {
-  bool check_failed = false;
   for (auto func : module.getOps<FuncOp>()) {
-    func.walk([&](Operation* op) {
-      auto call_op = dyn_cast_or_null<CallOpInterface>(op);
-      if (call_op && op->getAttrOfType<SymbolRefAttr>("f").getRootReference() ==
-                         lstm_func.getName()) {
+    if (func == lstm_func) continue;
+    auto result = func.walk([&](CallOpInterface op) {
+      if (dyn_cast<FuncOp>(op.resolveCallable()) == lstm_func) {
         // Keras LSTM have 5 outputs.
-        // We should make sure only the first or the second output are consumed.
-        if (failed(CheckOutputConsumer(call_op, 5, {0, 1})))
-          check_failed = true;
+        // We should make sure only the first or the second output are
+        // consumed.
+        if (failed(CheckOutputConsumer(op.getOperation(), 5, {0, 1})))
+          return WalkResult::interrupt();
       }
+      return WalkResult::advance();
     });
+
+    if (result.wasInterrupted()) return failure();
   }
 
-  if (check_failed) return failure();
+  // We should know the batch size in advance for the lstm fusion.
+  // A good indicator of batch size is both cell state and input state have
+  // fixed shape. (indices 1 & 2).
+  for (int i = 1; i < 3; ++i) {
+    auto input = lstm_func.getArgument(i);
+    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!input_type || !input_type.hasStaticShape()) {
+      lstm_func.emitWarning(
+          "we cannot fuse this lstm func because the batch size is not fixed, "
+          "please consider setting fixed batch size like "
+          "https://github.com/tensorflow/tensorflow/blob/master/tensorflow/"
+          "lite/examples/experimental_new_converter/"
+          "Keras_LSTM_fusion_Codelab.ipynb");
+      return failure();
+    }
+  }
+
   return success();
 }
 

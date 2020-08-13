@@ -62,7 +62,7 @@ static void TestVersion(void) {
 
 static void TestSmokeTest(void) {
   TfLiteModel* model =
-      TfLiteModelCreateFromFile("third_party/tensorflow/lite/testdata/add.bin");
+      TfLiteModelCreateFromFile("tensorflow/lite/testdata/add.bin");
   ASSERT_NE(model, NULL);
 
   TfLiteInterpreterOptions* options = TfLiteInterpreterOptionsCreate();

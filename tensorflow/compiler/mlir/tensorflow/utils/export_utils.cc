@@ -82,7 +82,7 @@ Status ConvertLocation(mlir::Location inst_loc,
     if (locations.size() <= 1)
       return errors::InvalidArgument("expected experimental debuf info.");
     // skip the first one, which is the name of the node_def.
-    for (int i = 0; i < locations.size() - 1; ++i) {
+    for (int i = 0, end = locations.size() - 1; i < end; ++i) {
       TF_RETURN_IF_ERROR(ConvertLocation(locations[i], debug_info));
     }
   }
@@ -227,25 +227,13 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
-// Updates NodeDef constructed out of an MLIR If op to map it to either
-// TensorFlow StatelessIf or If op depending on the additional attribute.
-void UpdateCompositeIfOp(NodeDef* node_def) {
+// Updates NodeDef constructed out of an MLIR Case/IfW/While op to map it to
+// either TensorFlow StatelessX or X op depending on the additional attribute.
+void UpdateCompositeOp(NodeDef* node_def) {
   auto it = node_def->mutable_attr()->find("is_stateless");
   if (it != node_def->attr().end()) {
     if (it->second.b()) {
-      *node_def->mutable_op() = "StatelessIf";
-    }
-    node_def->mutable_attr()->erase(it);
-  }
-}
-
-// Updates NodeDef constructed out of an MLIR While op to map it to either
-// TensorFlow StatelessWhile or While op depending on the additional attribute.
-void UpdateCompositeWhileOp(NodeDef* node_def) {
-  auto it = node_def->mutable_attr()->find("is_stateless");
-  if (it != node_def->attr().end()) {
-    if (it->second.b()) {
-      *node_def->mutable_op() = "StatelessWhile";
+      *node_def->mutable_op() = "Stateless" + node_def->op();
     }
     node_def->mutable_attr()->erase(it);
   }
@@ -352,8 +340,9 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   TF_RETURN_IF_ERROR(ConvertLocation(
       inst->getLoc(), node_def->mutable_experimental_debug_info()));
 
-  if (node_def->op() == "If") UpdateCompositeIfOp(node_def.get());
-  if (node_def->op() == "While") UpdateCompositeWhileOp(node_def.get());
+  if (node_def->op() == "Case") UpdateCompositeOp(node_def.get());
+  if (node_def->op() == "If") UpdateCompositeOp(node_def.get());
+  if (node_def->op() == "While") UpdateCompositeOp(node_def.get());
 
   return node_def;
 }
@@ -518,7 +507,7 @@ Status SetSizeAttribute(absl::string_view name, size_t size,
     // This should be extremely rare as it means we are adding the same
     // attribute multiple times/have some redundancy in representing this
     // attribute.
-    int64 actual_size = result.first->second.i();
+    size_t actual_size = result.first->second.i();
     // Just check via string output as we shouldn't get here and if we do they
     // should be trivially the same, else fail.
     if (actual_size != size)

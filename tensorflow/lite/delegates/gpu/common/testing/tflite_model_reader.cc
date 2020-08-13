@@ -79,7 +79,6 @@ absl::Status BuildFromFlatBuffer(const tflite::FlatBufferModel& flatbuffer,
   if (interpreter_builder(&interpreter) != kTfLiteOk || !interpreter) {
     return absl::InternalError("Unable to prepare TfLite interpreter.");
   }
-  interpreter->UseNNAPI(false);
   TfLiteDelegate delegate;
   delegate.data_ = graph;
   delegate.flags = kTfLiteDelegateFlagsNone;

@@ -247,7 +247,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegex(ValueError, "non-flat outputs"):
+    with self.assertRaisesRegex(ValueError, "non-Tensor value"):
       save.save(root, save_dir, to_save)
 
   def test_nested_dict_outputs(self):
@@ -259,8 +259,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegex(ValueError,
-                                "dictionary containing non-Tensor value"):
+    with self.assertRaisesRegex(ValueError, "non-Tensor value"):
       save.save(root, save_dir, to_save)
 
   def test_variable(self):
@@ -580,8 +579,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertIsNone(v1)
       self.assertEmpty(v0.device)
-      # TODO(b/159752793): There should be only one input here.
-      self.assertLen(saved_function.signature.input_arg, 2)
+      self.assertLen(saved_function.signature.input_arg, 1)
 
   def test_expand_distributed_variables_not_allowed(self):
     root = tracking.AutoTrackable()

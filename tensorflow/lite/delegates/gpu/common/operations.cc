@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 
 #include <cstdint>
-#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
@@ -84,12 +84,16 @@ std::string ToString(enum OperationType op) {
       return "convolution_2d";
     case OperationType::CONVOLUTION_TRANSPOSED:
       return "convolution_transposed";
+    case OperationType::COPY:
+      return "copy";
     case OperationType::COS:
       return "cos";
     case OperationType::DEPTHWISE_CONVOLUTION:
       return "depthwise_convolution";
     case OperationType::DIV:
       return "div";
+    case OperationType::ELU:
+      return "elu";
     case OperationType::EXP:
       return "exp";
     case OperationType::FULLY_CONNECTED:
@@ -106,6 +110,8 @@ std::string ToString(enum OperationType op) {
       return "max_unpooling";
     case OperationType::MEAN:
       return "mean";
+    case OperationType::MEAN_STDDEV_NORMALIZATION:
+      return "mean_stddev_normalization";
     case OperationType::MINIMUM:
       return "minimum";
     case OperationType::MUL:
@@ -152,15 +158,14 @@ std::string ToString(enum OperationType op) {
       return "tanh";
     case OperationType::TRANSPOSE:
       return "transpose";
-    default:
-      break;
+    case OperationType::UNKNOWN:
+      return "unknown_operation";
   }
-  return "unknown_operation";
 }
 
 OperationType OperationTypeFromString(const std::string& name) {
   static const auto operations =
-      new std::unordered_map<std::string, OperationType>({
+      new absl::flat_hash_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},
@@ -168,9 +173,11 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"const", OperationType::CONST},
           {"convolution_2d", OperationType::CONVOLUTION_2D},
           {"convolution_transposed", OperationType::CONVOLUTION_TRANSPOSED},
+          {"copy", OperationType::COPY},
           {"cos", OperationType::COS},
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
           {"div", OperationType::DIV},
+          {"elu", OperationType::ELU},
           {"exp", OperationType::EXP},
           {"fully_connected", OperationType::FULLY_CONNECTED},
           {"hard_swish", OperationType::HARD_SWISH},
@@ -179,6 +186,8 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"maximum", OperationType::MAXIMUM},
           {"max_unpooling", OperationType::MAX_UNPOOLING_2D},
           {"mean", OperationType::MEAN},
+          {"mean_stddev_normalization",
+           OperationType::MEAN_STDDEV_NORMALIZATION},
           {"minimum", OperationType::MINIMUM},
           {"mul", OperationType::MUL},
           {"pad", OperationType::PAD},

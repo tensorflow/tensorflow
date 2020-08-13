@@ -217,6 +217,97 @@ static LogicalResult Verify(PackOp op) {
   return success();
 }
 
+OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
+  // Fold pack operation if it computes the input tensor shape:
+  //
+  //   %shape  = tf.Shape(%arg)                    // [? x ...]
+  //   %dim0   = tf.StridedSlice(%shape, 0, 1, 1)  // get unknown dim0 value
+  //   %pack   = tf.Pack(dim0, ...) { axis = 0 }   // [? x ...]
+  //
+  // Where `...` are some statically known dimensions. In this case %pack can be
+  // replaced with a %shape. This is a common pattern in models with a dynamic
+  // batch size.
+
+  // Pack operation should pack at least two values.
+  if (values().size() < 2) return {};
+
+  // Dimensions packed along axis = 0 (pack scalars into vector).
+  if (axis().getSExtValue() != 0) return {};
+
+  // First packed value is defined by a strided slice operation.
+  auto slice_op = dyn_cast_or_null<StridedSliceOp>(values()[0].getDefiningOp());
+  if (!slice_op) return {};
+
+  // Input to the slice op is defined by shape operation.
+  auto shape_op = dyn_cast_or_null<ShapeOp>(slice_op.input().getDefiningOp());
+  if (!shape_op) return {};
+
+  // Input tensor, which shape is reconstructed by the pack operation.
+  Value tensor = shape_op.input();
+
+  // All masks are `0` except `shrink_axis_mask` which is equal to `1` (slicing
+  // scalar value from input vector).
+  if (slice_op.begin_mask().getSExtValue() != 0 ||
+      slice_op.ellipsis_mask().getSExtValue() != 0 ||
+      slice_op.end_mask().getSExtValue() != 0 ||
+      slice_op.new_axis_mask().getSExtValue() != 0 ||
+      slice_op.shrink_axis_mask().getSExtValue() != 1)
+    return {};
+
+  // Returns a value if the `value` is defined by a ConstOp with a single
+  // integer element in it and has an expected rank.
+  auto get_const_int = [](Value value, int expected_rank) -> Optional<int64_t> {
+    auto const_op = dyn_cast_or_null<ConstOp>(value.getDefiningOp());
+    if (!const_op) return None;
+
+    auto value_attr = const_op.value().dyn_cast<DenseIntElementsAttr>();
+    if (!value_attr || value_attr.getNumElements() != 1) return None;
+
+    auto value_ty = value_attr.getType();
+    if (!value_ty.hasRank() || value_ty.getRank() != expected_rank) return None;
+
+    auto splat = value_attr.getSplatValue<IntegerAttr>();
+    return splat.getValue().getSExtValue();
+  };
+
+  // All other packed values are scalar constants.
+  SmallVector<int64_t, 4> packed_dims;
+  packed_dims.reserve(values().size() - 1);
+  for (Value operand : llvm::drop_begin(values(), 1)) {
+    if (auto dim = get_const_int(operand, /*expected_rank=*/0)) {
+      packed_dims.push_back(*dim);
+    } else {
+      return {};
+    }
+  }
+
+  // Slice exactly the first shape dimension:
+  //   begin = [0] end = [1], strides = [1]
+  auto begin = get_const_int(slice_op.begin(), /*expected_rank=*/1);
+  auto end = get_const_int(slice_op.end(), /*expected_rank=*/1);
+  auto strides = get_const_int(slice_op.strides(), /*expected_rank=*/1);
+  if (!begin.hasValue() || !end.hasValue() || !strides.hasValue() ||
+      *begin != 0 || *end != 1 || *strides != 1)
+    return {};
+
+  // First tensor dimension is dynamic.
+  auto arg_ty = tensor.getType().dyn_cast<ShapedType>();
+  if (!arg_ty || !arg_ty.hasRank() || arg_ty.getNumDynamicDims() != 1 ||
+      !arg_ty.isDynamicDim(0))
+    return {};
+
+  // Argument tensor rank is equal to the number of packed dimensions.
+  if (arg_ty.getRank() != values().size()) return {};
+
+  // All other dimensions are statically known and equal to packed dims.
+  auto arg_dims = llvm::drop_begin(arg_ty.getShape(), 1);
+  if (!std::equal(arg_dims.begin(), arg_dims.end(), packed_dims.begin()))
+    return {};
+
+  // Replace %pack with %shape.
+  return slice_op.input();
+}
+
 //===----------------------------------------------------------------------===//
 // PadOp
 //===----------------------------------------------------------------------===//
@@ -608,12 +699,11 @@ void ReshapeOp::build(OpBuilder &builder, OperationState &result, Value tensor,
 
 void ReshapeOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                             MLIRContext *context) {
-  results.insert<RedundantReshape>(context);
+  results.insert<RedundantReshape, ReshapeToSelfShape>(context);
 }
 
 OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
   Value tensor = this->tensor();
-  Value shape = this->shape();
 
   // Fold reshape if operand and result types are the same and all dimensions
   // are statically known (no-op reshape).
@@ -624,90 +714,7 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
     return tensor;
   }
 
-  // Fold reshape if the shape is computed from the input tensor:
-  //
-  //   %shape     = tf.Shape(%arg)                    // [? x ...]
-  //   %dim0      = tf.StridedSlice(%shape, 0, 1, 1)  // get unknown dim value
-  //   %new_shape = tf.Pack(dim0, ...) { axis = 0 }   // [? x ...]
-  //   %reshape   = tf.Reshape(%arg, %new_shape)      // this is no-op
-  //
-  // Where `...` are some statically known dimensions. In this case reshape is
-  // a no-op and can be replaced by %arg (assuming `...` are equal).
-  auto pack_op = dyn_cast_or_null<PackOp>(shape.getDefiningOp());
-  if (!pack_op || pack_op.values().size() < 2) return {};
-
-  // Dimensions packed along axis = 0 (pack scalars into vector).
-  if (pack_op.axis().getSExtValue() != 0) return {};
-
-  // First packed value is defined by a strided slice operation.
-  auto slice_op =
-      dyn_cast_or_null<StridedSliceOp>(pack_op.values()[0].getDefiningOp());
-  if (!slice_op) return {};
-
-  // Input to the slice op is defined by shape operation.
-  auto shape_op = dyn_cast_or_null<ShapeOp>(slice_op.input().getDefiningOp());
-  if (!shape_op || shape_op.input() != tensor) return {};
-
-  // All masks are `0` except `shrink_axis_mask` which is equal to `1` (slicing
-  // scalar value from input vector).
-  if (slice_op.begin_mask().getSExtValue() != 0 ||
-      slice_op.ellipsis_mask().getSExtValue() != 0 ||
-      slice_op.end_mask().getSExtValue() != 0 ||
-      slice_op.new_axis_mask().getSExtValue() != 0 ||
-      slice_op.shrink_axis_mask().getSExtValue() != 1)
-    return {};
-
-  // Returns a value if the `value` is defined by a ConstOp with a single
-  // integer element in it and has an expected rank.
-  auto get_value = [](Value value, int expected_rank) -> Optional<int64_t> {
-    auto const_op = dyn_cast_or_null<ConstOp>(value.getDefiningOp());
-    if (!const_op) return None;
-
-    auto value_attr = const_op.value().dyn_cast<DenseIntElementsAttr>();
-    if (!value_attr || value_attr.getNumElements() != 1) return None;
-
-    auto value_ty = value_attr.getType();
-    if (!value_ty.hasRank() || value_ty.getRank() != expected_rank) return None;
-
-    auto splat = value_attr.getSplatValue<IntegerAttr>();
-    return splat.getValue().getSExtValue();
-  };
-
-  // All other packed values are scalar constants.
-  SmallVector<int64_t, 4> packed_dims;
-  packed_dims.reserve(pack_op.values().size() - 1);
-  for (Value operand : llvm::drop_begin(pack_op.values(), 1)) {
-    if (auto dim = get_value(operand, /*expected_rank=*/0)) {
-      packed_dims.push_back(*dim);
-    } else {
-      return {};
-    }
-  }
-
-  // Slice exactly the first shape dimension:
-  //   begin = [0] end = [1], strides = [1]
-  auto begin = get_value(slice_op.begin(), /*expected_rank=*/1);
-  auto end = get_value(slice_op.end(), /*expected_rank=*/1);
-  auto strides = get_value(slice_op.strides(), /*expected_rank=*/1);
-  if (!begin.hasValue() || !end.hasValue() || !strides.hasValue() ||
-      *begin != 0 || *end != 1 || *strides != 1)
-    return {};
-
-  // First tensor dimension is dynamic.
-  auto arg_ty = tensor.getType().dyn_cast<ShapedType>();
-  if (!arg_ty || !arg_ty.hasRank() || arg_ty.getNumDynamicDims() != 1 ||
-      !arg_ty.isDynamicDim(0))
-    return {};
-
-  // Argument tensor rank is equal to the number of packed dimensions.
-  if (arg_ty.getRank() != pack_op.values().size()) return {};
-
-  // All other dimensions are statically known and equal to packed dims.
-  auto arg_dims = llvm::drop_begin(arg_ty.getShape(), 1);
-  if (!std::equal(arg_dims.begin(), arg_dims.end(), packed_dims.begin()))
-    return {};
-
-  return tensor;
+  return {};
 }
 
 //===----------------------------------------------------------------------===//
@@ -925,24 +932,75 @@ static LogicalResult Verify(ShapeNOp op) {
   return success();
 }
 
-LogicalResult ShapeNOp::fold(ArrayRef<Attribute> operands,
-                             SmallVectorImpl<OpFoldResult> &results) {
-  if (getNumOperands() == 0) return success();
-  int width =
-      getType(0).cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
-
-  for (Type input_ty : getOperandTypes()) {
-    OpFoldResult result = ConvertShapeToAttr(input_ty, width);
-    if (!result) return failure();
-
-    results.push_back(result);
-  }
-  return success();
-}
-
-// TODO(hinsu): Add canonicalization pattern for ShapeN ops that don't have all
+namespace {
+// Canonicalization pattern for ShapeNOp that don't have all
 // static input shapes. Replacing output values corresponding to static input
 // types may enable optimizations in users of the values.
+class ShapeNPartialStaticInputShape : public OpRewritePattern<ShapeNOp> {
+  using OpRewritePattern<ShapeNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ShapeNOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() == 0) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+
+    int width = getElementTypeOrSelf(op.getType(0)).getIntOrFloatBitWidth();
+
+    SmallVector<Value, 4> results(op.getNumOperands());
+    SmallVector<int64_t, 4> dynamic_indices;
+    SmallVector<Value, 4> dynamic_inputs;
+    SmallVector<Type, 4> result_types;
+    for (auto e : llvm::enumerate(op.getOperands())) {
+      if (Attribute result = ConvertShapeToAttr(e.value().getType(), width)) {
+        results[e.index()] = rewriter.create<TF::ConstOp>(op.getLoc(), result);
+      } else {
+        dynamic_indices.push_back(e.index());
+        dynamic_inputs.push_back(e.value());
+        result_types.push_back(op.getType(e.index()));
+      }
+    }
+
+    if (dynamic_inputs.size() == op.getNumOperands()) {
+      // Cannot canonicalize ShapeN if all inputs are dynamic.
+      return failure();
+    }
+
+    // Create a ShapeNOp for all dynamic inputs.
+    if (!dynamic_inputs.empty()) {
+      auto dynamic_shape_n = rewriter.create<TF::ShapeNOp>(
+          op.getLoc(), result_types, dynamic_inputs);
+      for (auto index_result :
+           llvm::zip(dynamic_indices, dynamic_shape_n.getResults())) {
+        results[std::get<0>(index_result)] = std::get<1>(index_result);
+      }
+    }
+
+    rewriter.replaceOp(op, results);
+    return success();
+  }
+};
+
+// Canonicalize ShapeNOp to ShapeOp if there is only one operand.
+class ShapeNToShape : public OpRewritePattern<ShapeNOp> {
+  using OpRewritePattern<ShapeNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ShapeNOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 1) {
+      return failure();
+    }
+    auto shape = rewriter.create<TF::ShapeOp>(op.getLoc(), op.getType(0),
+                                              op.getOperand(0));
+    rewriter.replaceOp(op, {shape});
+    return success();
+  }
+};
+}  // namespace
+
+void ShapeNOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<ShapeNToShape, ShapeNPartialStaticInputShape>(context);
+}
 
 //===----------------------------------------------------------------------===//
 // SizeOp
@@ -1752,11 +1810,52 @@ void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(TransposeOp op) {
-  // TODO(hinsu): Verify using a custom verifier that,
-  // * Transpose permutation is 1-D of size equal to the rank of the first
-  //   input, if the shapes are partially known. Requires use of a more
-  //   restrictive type than TF_Tensor.
-  // * Result shape dimensions are possible based on the input shape.
+  auto perm_type = op.perm().getType().dyn_cast<RankedTensorType>();
+  auto x_type = op.x().getType().dyn_cast<RankedTensorType>();
+  auto y_type = op.y().getType().dyn_cast<RankedTensorType>();
+
+  if (perm_type && perm_type.getRank() != 1) {
+    return op.emitOpError()
+           << "expected perm to be a 1-D Tensor, got perm of rank "
+           << perm_type.getRank();
+  }
+
+  if (x_type && y_type && x_type.getRank() != y_type.getRank()) {
+    return op.emitOpError() << "x should be of the same rank with y, got "
+                            << "x of rank " << x_type.getRank()
+                            << ", and y of rank " << y_type.getRank();
+  }
+
+  if (!x_type || !y_type || !perm_type || !perm_type.hasStaticShape()) {
+    return success();
+  }
+
+  if (x_type.getRank() != perm_type.getNumElements()) {
+    return op.emitOpError() << "expected perm to be a 1-D Tensor of size "
+                            << "equal to the rank of x, got perm of size "
+                            << perm_type.getNumElements() << ", and x of rank "
+                            << x_type.getRank();
+  }
+
+  DenseIntElementsAttr attr_perm;
+  if (matchPattern(op.perm(), m_Constant(&attr_perm))) {
+    // y.shape[i] should be equal to x.shape[perm[i]]
+    // for i = [0, 1, ..., rank(x) - 1]
+    for (auto e : llvm::enumerate(attr_perm)) {
+      const int64_t y_idx = e.index();
+      const int64_t y_dim = y_type.getDimSize(y_idx);
+      const int64_t x_idx = e.value().getSExtValue();
+      const int64_t x_dim = x_type.getDimSize(x_idx);
+      if (y_dim != ShapedType::kDynamicSize &&
+          x_dim != ShapedType::kDynamicSize && y_dim != x_dim) {
+        return op.emitOpError()
+               << "requires y.shape[" << y_idx << "] (" << y_dim << ") "
+               << "to be equal to x.shape[perm[" << x_idx << "]] "
+               << "(" << x_dim << ")";
+      }
+    }
+  }
+
   return success();
 }
 
@@ -1982,9 +2081,8 @@ OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(WhileOp op) {
-  auto module = op.getParentOfType<ModuleOp>();
-  auto cond_fn = module.lookupSymbol<FuncOp>(op.cond());
-  auto body_fn = module.lookupSymbol<FuncOp>(op.body());
+  auto cond_fn = op.cond_func();
+  auto body_fn = op.body_func();
   if (!cond_fn) {
     return op.emitOpError("cond refers to an undefined function : ")
            << op.cond();
@@ -2063,6 +2161,14 @@ static LogicalResult Verify(WhileOp op) {
     }
   }
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// WhileOp canonicalization.
+//===----------------------------------------------------------------------===//
+void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                          MLIRContext *context) {
+  results.insert<DropAttributes<WhileOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//

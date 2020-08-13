@@ -28,6 +28,9 @@ using tflite::jni::ThrowException;
 
 namespace {
 
+static const char* kByteArrayClassPath = "[B";
+static const char* kStringClassPath = "java/lang/String";
+
 // Convenience handle for obtaining a TfLiteTensor given an interpreter and
 // tensor index.
 //
@@ -139,13 +142,20 @@ size_t WriteOneDimensionalArray(JNIEnv* env, jobject object, TfLiteType type,
       env->GetByteArrayRegion(byte_array, 0, num_elements, byte_dst);
       return to_copy;
     }
+    case kTfLiteBool: {
+      jbooleanArray bool_array = static_cast<jbooleanArray>(array);
+      jboolean* bool_dst = static_cast<jboolean*>(dst);
+      env->GetBooleanArrayRegion(bool_array, 0, num_elements, bool_dst);
+      return to_copy;
+    }
     default: {
-      ThrowException(env, kUnsupportedOperationException,
-                     "DataType error: TensorFlowLite currently supports float "
-                     "(32 bits), int (32 bits), byte (8 bits), and long "
-                     "(64 bits), support for other types (DataType %d in this "
-                     "case) will be added in the future",
-                     kTfLiteFloat32, type);
+      ThrowException(
+          env, kUnsupportedOperationException,
+          "DataType error: TensorFlowLite currently supports float "
+          "(32 bits), int (32 bits), byte (8 bits), bool (8 bits), and long "
+          "(64 bits), support for other types (DataType %d in this "
+          "case) will be added in the future",
+          kTfLiteFloat32, type);
       return 0;
     }
   }
@@ -186,6 +196,12 @@ size_t ReadOneDimensionalArray(JNIEnv* env, TfLiteType data_type,
       jbyteArray byte_array = static_cast<jbyteArray>(dst);
       env->SetByteArrayRegion(byte_array, 0, len,
                               static_cast<const jbyte*>(src));
+      return size;
+    }
+    case kTfLiteBool: {
+      jbooleanArray bool_array = static_cast<jbooleanArray>(dst);
+      env->SetBooleanArrayRegion(bool_array, 0, len,
+                                 static_cast<const jboolean*>(src));
       return size;
     }
     default: {
@@ -271,13 +287,24 @@ size_t WriteMultiDimensionalArray(JNIEnv* env, jobject src, TfLiteType type,
   }
 }
 
-void AddStringDynamicBuffer(JNIEnv* env, jstring src,
+void AddStringDynamicBuffer(JNIEnv* env, jobject src,
                             tflite::DynamicBuffer* dst_buffer) {
-  const char* chars = env->GetStringUTFChars(src, nullptr);
-  // + 1 for terminating character.
-  const int byte_len = env->GetStringUTFLength(src) + 1;
-  dst_buffer->AddString(chars, byte_len);
-  env->ReleaseStringUTFChars(src, chars);
+  if (env->IsInstanceOf(src, env->FindClass(kStringClassPath))) {
+    jstring str = static_cast<jstring>(src);
+    const char* chars = env->GetStringUTFChars(str, nullptr);
+    // + 1 for terminating character.
+    const int byte_len = env->GetStringUTFLength(str) + 1;
+    dst_buffer->AddString(chars, byte_len);
+    env->ReleaseStringUTFChars(str, chars);
+  }
+  if (env->IsInstanceOf(src, env->FindClass(kByteArrayClassPath))) {
+    jbyteArray byte_array = static_cast<jbyteArray>(src);
+    jsize byte_array_length = env->GetArrayLength(byte_array);
+    jbyte* bytes = env->GetByteArrayElements(byte_array, nullptr);
+    dst_buffer->AddString(reinterpret_cast<const char*>(bytes),
+                          byte_array_length);
+    env->ReleaseByteArrayElements(byte_array, bytes, JNI_ABORT);
+  }
 }
 
 void PopulateStringDynamicBuffer(JNIEnv* env, jobject src,
@@ -290,10 +317,9 @@ void PopulateStringDynamicBuffer(JNIEnv* env, jobject src,
   // recursively call populateStringDynamicBuffer over sub-dimensions.
   if (dims_left <= 1) {
     for (int i = 0; i < num_elements; ++i) {
-      jstring string_obj =
-          static_cast<jstring>(env->GetObjectArrayElement(object_array, i));
-      AddStringDynamicBuffer(env, string_obj, dst_buffer);
-      env->DeleteLocalRef(string_obj);
+      jobject obj = env->GetObjectArrayElement(object_array, i);
+      AddStringDynamicBuffer(env, obj, dst_buffer);
+      env->DeleteLocalRef(obj);
     }
   } else {
     for (int i = 0; i < num_elements; ++i) {
@@ -358,7 +384,7 @@ void WriteScalar(JNIEnv* env, jobject src, TfLiteType type, void* dst,
 
 void WriteScalarString(JNIEnv* env, jobject src, TfLiteTensor* tensor) {
   tflite::DynamicBuffer dst_buffer;
-  AddStringDynamicBuffer(env, static_cast<jstring>(src), &dst_buffer);
+  AddStringDynamicBuffer(env, src, &dst_buffer);
   if (!env->ExceptionCheck()) {
     dst_buffer.WriteToTensor(tensor, /*new_shape=*/nullptr);
   }

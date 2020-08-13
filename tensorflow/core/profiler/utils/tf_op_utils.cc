@@ -32,6 +32,7 @@ namespace {
 
 const absl::string_view kIterator = "Iterator";
 const absl::string_view kSeparator = "::";
+constexpr char kNameScopeSeparator = '/';
 
 }  // namespace
 
@@ -51,8 +52,15 @@ bool IsTfOpType(absl::string_view op_type) {
 }
 
 bool IsJaxOpType(absl::string_view op_type) {
-  static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_]*"};
+  static const LazyRE2 kJaxOpTypeRegEx = {"[a-z_][a-z_]*"};
   return RE2::FullMatch(op_type, *kJaxOpTypeRegEx);
+}
+
+bool IsJaxOpNameAndType(absl::string_view op_name, absl::string_view op_type) {
+  if (op_name.empty() || !IsJaxOpType(op_type)) return false;
+  std::vector<absl::string_view> split_result =
+      absl::StrSplit(op_name, kNameScopeSeparator);
+  return absl::StrContains(split_result.back(), op_type);
 }
 
 TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
@@ -85,7 +93,8 @@ TfOp ParseTfOpFullname(absl::string_view tf_op_fullname) {
 }
 
 std::vector<absl::string_view> ParseTfNameScopes(const TfOp& tf_op) {
-  std::vector<absl::string_view> name_scopes = absl::StrSplit(tf_op.name, '/');
+  std::vector<absl::string_view> name_scopes =
+      absl::StrSplit(tf_op.name, kNameScopeSeparator);
   // The last element is an op name not TF name scope.
   if (!name_scopes.empty()) name_scopes.pop_back();
   return name_scopes;
@@ -97,9 +106,7 @@ std::string TfOpEventName(const TfOp& tf_op) {
     // Some TraceMe names contain trailing whitespace, remove it.
     event_name = std::string(absl::StripTrailingAsciiWhitespace(tf_op.name));
   } else if (tf_op.category == Category::kTfData) {
-    std::vector<absl::string_view> op_parts =
-        absl::StrSplit(tf_op.name, kSeparator);
-    event_name = absl::StrCat(kIterator, kSeparator, op_parts.back());
+    event_name = DatasetOpEventName(tf_op.name);
   } else {
     event_name = std::string(tf_op.type);
   }
@@ -108,6 +115,18 @@ std::string TfOpEventName(const TfOp& tf_op) {
 
 std::string TfOpEventName(absl::string_view tf_op_fullname) {
   return TfOpEventName(ParseTfOpFullname(tf_op_fullname));
+}
+
+std::string DatasetOpEventName(absl::string_view full_name) {
+  std::vector<absl::string_view> split_result =
+      absl::StrSplit(full_name, kSeparator);
+  return absl::StrCat(kIterator, kSeparator, split_result.back());
+}
+
+std::string IteratorName(absl::string_view full_name) {
+  std::vector<absl::string_view> split_result =
+      absl::StrSplit(full_name, kSeparator);
+  return std::string(split_result.back());
 }
 
 std::vector<absl::string_view> ParseTensorShapes(

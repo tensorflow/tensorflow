@@ -14,15 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 
+#include <atomic>
+
 #include "tensorflow/core/common_runtime/collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/blocking_counter.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -34,15 +41,20 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
   CollectiveParamResolverLocalTest() {
     ConfigProto cp;
     SessionOptions options;
-    string task_name = "/job:localhost/replica:0/task:0";
+    task_name_ = "/job:localhost/replica:0/task:0";
     auto* device_count = options.config.mutable_device_count();
     device_count->insert({"CPU", NUM_DEVS});
     std::vector<std::unique_ptr<Device>> devices;
-    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
+    TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name_, &devices));
     device_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(devices));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
+    ResetParamResolver();
+  }
+
+  void ResetParamResolver() {
+    ConfigProto cp;
     prl_.reset(new CollectiveParamResolverLocal(cp, device_mgr_.get(),
-                                                drl_.get(), task_name));
+                                                drl_.get(), task_name_));
   }
 
   void RunCompleteDefaultRanking(
@@ -74,6 +86,7 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     }
   }
 
+  string task_name_;
   std::unique_ptr<DeviceMgr> device_mgr_;
   std::unique_ptr<DeviceResolverLocal> drl_;
   std::unique_ptr<CollectiveParamResolverLocal> prl_;
@@ -285,6 +298,194 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
                   " were group_size=",
                   NUM_DEVS, " BcastRecvs but no BcastSend."));
   }
+}
+
+CollectiveParams MakeCollectiveParams(int group_key, int instance_key,
+                                      bool is_source) {
+  CollectiveParams cp;
+  cp.group.group_key = group_key;
+  cp.group.group_size = NUM_DEVS;
+  cp.group.device_type = DeviceType("CPU");
+  cp.group.num_tasks = 1;
+  cp.instance.instance_key = instance_key;
+  // CompleteInstanceLocal only waits for the group for broadcasts.
+  // Testing with broadcasts yields better coverage.
+  cp.instance.type = BROADCAST_COLLECTIVE;
+  cp.is_source = is_source;
+  return cp;
+}
+
+TEST_F(CollectiveParamResolverLocalTest, AbortPendingGroup) {
+  CancellationManager cancel_mgr;
+  std::vector<CollectiveParams> cp(NUM_DEVS - 1);
+  BlockingCounter start(NUM_DEVS - 1);
+  BlockingCounter done(NUM_DEVS - 1);
+  for (int i = 0; i < NUM_DEVS - 1; ++i) {
+    Env::Default()->SchedClosure([this, i, &cancel_mgr, &cp, &start, &done] {
+      string device =
+          strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+      cp[i] = MakeCollectiveParams(/*group_key*/ 100, /*instance_key*/ 100,
+                                   /*is_source*/ i == 0);
+      prl_->CompleteParamsAsync(device, &cp[i], &cancel_mgr,
+                                [&done](const Status& s) {
+                                  EXPECT_EQ(s.code(), error::ABORTED);
+                                  EXPECT_EQ(s.error_message(), "__aborted__");
+                                  done.DecrementCount();
+                                });
+      start.DecrementCount();
+    });
+  }
+  start.Wait();
+  prl_->StartAbort(Status(error::ABORTED, "__aborted__"));
+  done.Wait();
+}
+
+TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
+  CancellationManager cancel_mgr;
+  std::vector<CollectiveParams> cp(NUM_DEVS);
+  int group_key = 100;
+  int instance_key = 100;
+  // First do a normal CompleteParamsAsync to complete the group;
+  {
+    BlockingCounter done(NUM_DEVS);
+    for (int i = 0; i < NUM_DEVS; ++i) {
+      Env::Default()->SchedClosure([this, group_key, instance_key, i,
+                                    &cancel_mgr, &cp, &done] {
+        string device =
+            strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+        cp[i] = MakeCollectiveParams(group_key, instance_key,
+                                     /*is_source*/ i == 0);
+        prl_->CompleteParamsAsync(device, &cp[i], &cancel_mgr,
+                                  [&done](const Status& s) {
+                                    EXPECT_EQ(s.code(), error::OK);
+                                    done.DecrementCount();
+                                  });
+      });
+    }
+    done.Wait();
+  }
+  BlockingCounter start(NUM_DEVS - 1);
+  BlockingCounter done(NUM_DEVS - 1);
+  for (int i = 0; i < NUM_DEVS - 1; ++i) {
+    Env::Default()->SchedClosure(
+        [this, group_key, instance_key, i, &cancel_mgr, &cp, &start, &done] {
+          string device =
+              strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+          cp[i] = MakeCollectiveParams(group_key, instance_key + 1,
+                                       /*is_source*/ i == 0);
+          prl_->CompleteParamsAsync(
+              device, &cp[i], &cancel_mgr, [&done](const Status& s) {
+                EXPECT_EQ(s.code(), error::ABORTED);
+                EXPECT_EQ(s.error_message(), "__aborted__");
+                done.DecrementCount();
+              });
+          start.DecrementCount();
+        });
+  }
+  start.Wait();
+  prl_->StartAbort(Status(error::ABORTED, "__aborted__"));
+  done.Wait();
+}
+
+TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
+  CancellationManager cancel_mgr;
+  int group_key = 100;
+  int instance_key = 100;
+  // First do a normal CompleteParamsAsync to complete the group;
+  {
+    std::vector<CollectiveParams> cp(NUM_DEVS);
+    BlockingCounter done(NUM_DEVS);
+    for (int i = 0; i < NUM_DEVS; ++i) {
+      Env::Default()->SchedClosure([this, group_key, instance_key, i,
+                                    &cancel_mgr, &cp, &done] {
+        string device =
+            strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+        cp[i] = MakeCollectiveParams(group_key, instance_key,
+                                     /*is_source*/ i == 0);
+        prl_->CompleteParamsAsync(device, &cp[i], &cancel_mgr,
+                                  [&done](const Status& s) {
+                                    EXPECT_EQ(s.code(), error::OK);
+                                    done.DecrementCount();
+                                  });
+      });
+    }
+    done.Wait();
+  }
+  prl_->StartAbort(Status(error::ABORTED, "__aborted__"));
+
+  auto complete_params = [this, &cancel_mgr](int group_key, int instance_key) {
+    string device = "/job:localhost/replica:0/task:0/device:CPU:0";
+    Notification done;
+    auto cp = MakeCollectiveParams(group_key, instance_key,
+                                   /*is_source*/ true);
+    prl_->CompleteParamsAsync(device, &cp, &cancel_mgr,
+                              [&done](const Status& s) {
+                                EXPECT_EQ(s.code(), error::ABORTED);
+                                EXPECT_EQ(s.error_message(), "__aborted__");
+                                done.Notify();
+                              });
+    done.WaitForNotification();
+  };
+  // It should error without waiting for the all following combinations:
+  // - existing group, existing instance
+  complete_params(group_key, instance_key);
+  // - existing group, new instance
+  complete_params(group_key, instance_key + 1);
+  // - new group, new instance
+  complete_params(group_key + 1, instance_key + 1);
+}
+
+TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
+  // The concurrent nature makes it hard to test abortion, which can happen at
+  // any moment. We don't have good options to inject control points into the
+  // code to explicitly test every possible scenarios, so we run the test for
+  // many times to have a better chance to cover different cases.
+  CancellationManager cancel_mgr;
+  std::atomic<int64> num_ok{0};
+  for (int cnt = 0; cnt < 100; ++cnt) {
+    // Launching threads that keep doing CompleteInstanceLocal.
+    BlockingCounter done(NUM_DEVS);
+    for (int i = 0; i < NUM_DEVS; ++i) {
+      string device =
+          strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
+      Env::Default()->SchedClosure(
+          [this, i, device, &num_ok, &cancel_mgr, &done] {
+            int key = 100;
+            while (true) {
+              Status status;
+              Notification n;
+              auto cp =
+                  MakeCollectiveParams(/* group_key*/ key, /*instance_key*/ key,
+                                       /*is_source*/ i == 0);
+              prl_->CompleteParamsAsync(device, &cp, &cancel_mgr,
+                                        [&status, &n](const Status& s) {
+                                          status = s;
+                                          n.Notify();
+                                        });
+              n.WaitForNotification();
+              // The status should be either OK or the aborted status.
+              if (!status.ok()) {
+                EXPECT_EQ(status.code(), error::ABORTED);
+                EXPECT_EQ(status.error_message(), "__aborted__");
+                done.DecrementCount();
+                return;
+              }
+              ++num_ok;
+              ++key;
+            }
+          });
+    }
+    // Introduce a random delay up to 50ms, so that we're more likely to abort
+    // on different code points each time.
+    int64 delay_ms = random::New64() % 50000;
+    Env::Default()->SleepForMicroseconds(delay_ms);
+    prl_->StartAbort(Status(error::ABORTED, "__aborted__"));
+    done.Wait();
+    ResetParamResolver();
+  }
+  // There should be at least a few successes, otherwise the delay may be too
+  // short and may not cover certain stages of param resolution.
+  EXPECT_GT(num_ok.load(), 50);
 }
 
 }  // namespace tensorflow

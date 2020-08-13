@@ -13,6 +13,7 @@ cc_library(
     srcs = ["tpu_rewrite_pass_registration.cc"],
     deps = [
         ":distributed_tpu_configuration_rewrite_pass",
+        ":distributed_tpu_rewrite_pass",
         ":encapsulate_tpu_computations_pass",
         ":variable_merger_pass",
         "//tensorflow/core:core_cpu",
@@ -99,5 +100,122 @@ cc_library(
         "@com_google_absl//absl/container:node_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "distributed_tpu_rewrite_pass_internal",
+    srcs = ["distributed_tpu_rewrite_pass_internal.cc"],
+    hdrs = ["distributed_tpu_rewrite_pass_internal.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@com_google_absl//absl/random",
+    ],
+)
+
+cc_library(
+    name = "distributed_tpu_rewrite_pass",
+    srcs = [
+        "distributed_tpu_rewrite_pass.cc",
+    ],
+    hdrs = [
+        "distributed_tpu_rewrite_pass.h",
+    ],
+    deps = [
+        ":cond_builder",
+        ":distributed_tpu_rewrite_helpers",
+        ":distributed_tpu_rewrite_pass_internal",
+        ":host_training_loop_optimization_util",
+        ":incomplete_nodedef_builder",
+        "//tensorflow/compiler/jit:encapsulate_util",
+        "//tensorflow/compiler/jit:shape_inference",
+        "//tensorflow/compiler/tf2xla:resource_operation_table",
+        "//tensorflow/compiler/tf2xla:sharding_util",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:array3d",
+        "//tensorflow/compiler/xla:array4d",
+        "//tensorflow/compiler/xla:xla_proto_cc",
+        "//tensorflow/compiler/xla/client:sharding_builder",
+        "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
+        "//tensorflow/core/common_runtime:function",
+        "//tensorflow/core/common_runtime:graph_constructor",
+        "//tensorflow/core/common_runtime:lower_function_call_op",
+        "//tensorflow/core/common_runtime:lower_functional_ops",
+        "//tensorflow/core/common_runtime:lower_if_op",
+        "//tensorflow/core/common_runtime:lower_while_op",
+        "//tensorflow/core/common_runtime:optimization_registry",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "//tensorflow/core/protobuf/tpu:dynamic_padding_proto_cc",
+        "//tensorflow/core/protobuf/tpu:topology_proto_cc",
+        "//tensorflow/core/tpu:tpu_compile_interface",
+        "//tensorflow/core/tpu:tpu_defs",
+        "//tensorflow/core/tpu/kernels:tpu_util_c_api_hdrs",
+        "//tensorflow/stream_executor/tpu:tpu_platform_interface",
+        "//tensorflow/stream_executor/tpu:tpu_topology_external",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "incomplete_nodedef_builder",
+    srcs = ["incomplete_nodedef_builder.cc"],
+    hdrs = ["incomplete_nodedef_builder.h"],
+    deps = [
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "cond_builder",
+    srcs = ["cond_builder.cc"],
+    hdrs = ["cond_builder.h"],
+    deps = [
+        ":incomplete_nodedef_builder",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
+    name = "host_training_loop_optimization_util",
+    srcs = [
+        "host_training_loop_optimization_util.cc",
+    ],
+    hdrs = [
+        "host_training_loop_optimization_util.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":distributed_tpu_rewrite_pass_internal",
+        "//tensorflow/compiler/tf2xla:functionalize_control_flow_util",
+        "//tensorflow/compiler/tf2xla:tf2xla_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/protobuf/tpu:compile_metadata_proto_cc",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/container:node_hash_set",
+        "@com_google_absl//absl/types:optional",
     ],
 )

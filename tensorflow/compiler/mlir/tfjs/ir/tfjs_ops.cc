@@ -25,8 +25,7 @@ namespace tfjs {
 // TFJSDialect
 //===----------------------------------------------------------------------===//
 
-TFJSDialect::TFJSDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context) {
+void TFJSDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tfjs/ir/tfjs_ops.cc.inc"

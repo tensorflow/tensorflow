@@ -224,6 +224,7 @@ tf_py_test(
     name = "from_generator_test",
     size = "medium",
     srcs = ["from_generator_test.py"],
+    shard_count = 10,
     deps = [
         ":test_base",
         "//tensorflow/python:client_testlib",

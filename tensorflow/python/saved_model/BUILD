@@ -302,6 +302,18 @@ py_strict_library(
     deps = [],
 )
 
+tf_py_test(
+    name = "save_context_test",
+    srcs = ["save_context_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":save_context",
+        ":save_options",
+        "//tensorflow/python:extra_py_tests_deps",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
 py_strict_library(
     name = "save",
     srcs = [
@@ -368,6 +380,15 @@ tf_py_test(
 )
 
 py_strict_library(
+    name = "load_context",
+    srcs = [
+        "load_context.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [],
+)
+
+py_library(
     name = "load",
     srcs = [
         "load.py",
@@ -375,6 +396,7 @@ py_strict_library(
     srcs_version = "PY2AND3",
     deps = [
         ":function_deserialization",
+        ":load_context",
         ":load_options",
         ":load_v1_in_v2",
         ":loader",
@@ -397,6 +419,7 @@ py_strict_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:distribute_utils",
+        "//tensorflow/python/distribute:values_util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/training/saving:checkpoint_options",
@@ -422,6 +445,7 @@ py_strict_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:func_graph",
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
         "//tensorflow/python:sparse_tensor",
@@ -563,6 +587,7 @@ py_strict_library(
         "//tensorflow/python/data/ops:iterator_ops",
         "//tensorflow/python/data/ops:optional_ops",
         "//tensorflow/python/distribute:values",
+        "//tensorflow/python/ops/numpy_ops:numpy",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "//tensorflow/python/ops/ragged:row_partition",
         "@six_archive//:six",

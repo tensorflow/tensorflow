@@ -24,22 +24,27 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device,
-                        Arguments* args) {
-  args->AddObjectRef(
-      "intermediate", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "prev_state", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[1]));
-  args->AddObjectRef(
-      "new_state", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
-  args->AddObjectRef(
-      "activation", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[1]));
+LSTM::LSTM(const OperationDef& definition, const DeviceInfo& device_info)
+    : GPUOperation(definition) {
+  code_ = GetLSTMCode(definition_, device_info);
+}
+
+LSTM::LSTM(LSTM&& kernel) : GPUOperation(std::move(kernel)) {}
+
+LSTM& LSTM::operator=(LSTM&& kernel) {
+  if (this != &kernel) {
+    GPUOperation::operator=(std::move(kernel));
+  }
+  return *this;
+}
+
+std::string LSTM::GetLSTMCode(const OperationDef& op_def,
+                              const DeviceInfo& device_info) {
+  AddSrcTensor("intermediate", op_def.src_tensors[0]);
+  AddSrcTensor("prev_state", op_def.src_tensors[1]);
+  AddDstTensor("new_state", op_def.dst_tensors[0]);
+  AddDstTensor("activation", op_def.dst_tensors[1]);
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -54,7 +59,8 @@ std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device,
   c += "  FLT4 r1 = args.intermediate.Read(0, 0, Z + state_stride, B);\n";
   c += "  FLT4 r2 = args.intermediate.Read(0, 0, Z + state_stride * 2, B);\n";
   c += "  FLT4 r3 = args.intermediate.Read(0, 0, Z + state_stride * 3, B);\n";
-  if (op_def.precision != CalculationsPrecision::F32 && device.IsAdreno()) {
+  if (op_def.precision != CalculationsPrecision::F32 &&
+      device_info.IsAdreno()) {
     c += "  FLT4 input_gate;\n";
     c += "  FLT4 new_input;\n";
     c += "  FLT4 forget_gate;\n";
@@ -98,35 +104,6 @@ std::string GetLSTMCode(const OperationDef& op_def, const CLDevice& device,
   c += "}\n";
   return c;
 }
-}  // namespace
-
-LSTM::LSTM(const OperationDef& definition) : GPUOperation(definition) {}
-
-LSTM::LSTM(LSTM&& kernel) : GPUOperation(std::move(kernel)) {}
-
-LSTM& LSTM::operator=(LSTM&& kernel) {
-  if (this != &kernel) {
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
-absl::Status LSTM::Compile(const CreationContext& creation_context) {
-  std::string code = GetLSTMCode(definition_, *creation_context.device, &args_);
-  RETURN_IF_ERROR(
-      args_.TransformToCLCode(creation_context.device->GetInfo(), {}, &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status LSTM::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("intermediate", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("prev_state", src_[1]));
-  RETURN_IF_ERROR(args_.SetObjectRef("new_state", dst_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("activation", dst_[1]));
-  return absl::OkStatus();
-}
 
 int3 LSTM::GetGridSize() const {
   const int grid_x = dst_[0]->Batch();
@@ -135,7 +112,9 @@ int3 LSTM::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-LSTM CreateLSTM(const OperationDef& definition) { return LSTM(definition); }
+LSTM CreateLSTM(const OperationDef& definition, const DeviceInfo& device_info) {
+  return LSTM(definition, device_info);
+}
 
 }  // namespace cl
 }  // namespace gpu

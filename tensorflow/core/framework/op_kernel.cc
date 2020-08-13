@@ -53,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform_strings.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -172,34 +173,38 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   }
 }
 
-string OpKernel::GetTraceArgument(OpKernelContext* ctx) {
-  int num_inputs = ctx->num_inputs();
+string OpKernel::ShapeTraceString(const OpKernelContext& ctx) const {
+  int num_inputs = ctx.num_inputs();
   if (num_inputs == 0) return "";
   std::vector<string> tensor_shapes;
   tensor_shapes.reserve(num_inputs);
   for (int i = 0; i < num_inputs; i++) {
-    if (!ctx->has_input(i)) {
+    if (!ctx.has_input(i)) {
       tensor_shapes.emplace_back();  // Placeholder
       continue;
     }
-    DataType input_dtype = ctx->input_dtype(i);
+    DataType input_dtype = ctx.input_dtype(i);
     if (input_dtype == DataType::DT_RESOURCE ||
         input_dtype == DataType::DT_VARIANT || IsRefType(input_dtype)) {
       tensor_shapes.emplace_back();  // Placeholder
       continue;
     }
     tensor_shapes.emplace_back(strings::StrCat(
-        DataTypeString(input_dtype), ctx->input(i).shape().DebugString()));
+        DataTypeString(input_dtype), ctx.input(i).shape().DebugString()));
   }
-  return strings::StrCat("shape=(", absl::StrJoin(tensor_shapes, ";"), ")");
+  return strings::StrCat("(", absl::StrJoin(tensor_shapes, ";"), ")");
 }
 
-string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
-  string trace_string = strings::StrCat(name_view(), ":", type_string_view());
-  if (!verbose) return trace_string;
-  string trace_args = GetTraceArgument(ctx);
-  if (trace_args.empty()) return trace_string;
-  return strings::StrCat(trace_string, "#", trace_args, "#");
+string OpKernel::TraceString(const OpKernelContext& ctx, bool verbose) const {
+  string trace_string = profiler::TraceMeOp(name_view(), type_string_view());
+  if (verbose) {
+    string shape = ShapeTraceString(ctx);
+    if (!shape.empty()) {
+      trace_string =
+          profiler::TraceMeEncode(std::move(trace_string), {{"shape", shape}});
+    }
+  }
+  return trace_string;
 }
 
 void AsyncOpKernel::Compute(OpKernelContext* context) {
@@ -413,7 +418,7 @@ Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
   return Status::OK();
 }
 
-const Tensor& OpKernelContext::input(int index) {
+const Tensor& OpKernelContext::input(int index) const {
   CHECK_GE(index, 0);
   CHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();
   CHECK(!input_is_ref(index));
@@ -704,10 +709,11 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  Tensor new_tensor(a, type, shape,
-                    AllocationAttributes(allocation_attr.no_retry_on_failure,
-                                         /* allocation_will_be_logged= */ true,
-                                         allocation_attr.freed_by_func));
+  Tensor new_tensor(
+      a, type, shape,
+      AllocationAttributes(
+          /*retry_on_failure=*/allocation_attr.retry_on_failure,
+          /*allocation_will_be_logged=*/true, allocation_attr.freed_by_func));
 
   if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted(
@@ -1206,7 +1212,8 @@ void LoadDynamicKernelsInternal() {
         if (s.ok() || override_abi_check) {
           // TODO(gunan): Store the handles to the opened files.
           void* unused_filehandle;
-          TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));
+          TF_CHECK_OK(
+              env->LoadDynamicLibrary(fullpath.c_str(), &unused_filehandle));
         } else {
           LOG(WARNING) << "Not loading plugin library " << fullpath << ": "
                        << s.error_message();
@@ -1413,10 +1420,10 @@ Status FindKernelDef(
       device_type, node_name, has_experimental_debug_info,
       experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch));
   if (reg == nullptr) {
-    std::string device_str = DeviceTypeString(device_type);
+    const std::string device_str = DeviceTypeString(device_type);
     Status s = errors::NotFound(
-        "No registered '", node_op, "' OpKernel for ",
-        DeviceTypeString(device_type), " devices compatible with node ",
+        "No registered '", node_op, "' OpKernel for ", device_str,
+        " devices compatible with node ",
         FormatNodeDefForError(node_name, has_experimental_debug_info,
                               experimental_debug_info));
     if (was_attr_mismatch) {

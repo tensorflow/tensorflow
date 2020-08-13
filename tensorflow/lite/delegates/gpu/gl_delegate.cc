@@ -160,7 +160,7 @@ class Delegate {
       tensors_[value->id] = {value->tensor.shape, 0};
     }
 
-    std::unordered_set<int> tflite_graph_io;
+    std::unordered_set<int> tflite_graph_io;  // NOLINT
 
     // Prepare graph inputs.
     //

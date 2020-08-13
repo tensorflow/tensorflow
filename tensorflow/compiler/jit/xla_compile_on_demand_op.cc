@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/xla_device.h"
 #include "tensorflow/compiler/jit/xla_launch_util.h"
+#include "tensorflow/compiler/jit/xla_platform_info.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -41,112 +42,109 @@ static std::vector<int> GetResourceVariableIndices(OpKernelContext* ctx) {
 }
 
 Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
-                                 const XlaDevice::Metadata& metadata,
+                                 XlaCompilationCache* cache,
                                  const XlaCompiler::CompilationResult* result,
                                  xla::LocalExecutable* executable,
                                  const ResourceVarsSnapshot& variable_args) {
-  xla::LocalClient* client = metadata.client();
+  xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
-  // Builds an XLA allocator for the device.
+  absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
+  se::DeviceMemoryAllocator* allocator =
+      GetAllocator(&tf_allocator_adapter, ctx, platform_info_);
   XlaComputationLaunchContext launch_context(
-      client, client->backend().memory_allocator(),
-      /*allocate_xla_tensors=*/true,
-      /*use_multiple_streams=*/metadata.UseMultipleStreams());
+      client, allocator, client->default_device_ordinal(),
+      /*allocate_xla_tensors=*/platform_info_.xla_device_metadata() != nullptr,
+      platform_info_.xla_device_metadata()
+          ? platform_info_.xla_device_metadata()->UseMultipleStreams()
+          : false);
 
-  launch_context.PopulateInputs(ctx, result, variable_args,
-                                /*missing_ctx_input_prefix=*/0);
-
-  se::Stream* stream =
-      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
-  TF_RET_CHECK(stream);
-
-  VLOG(2) << "Executing computation: " << name();
-  for (const xla::ShapedBuffer* arg : launch_context.arguments()) {
-    VLOG(2) << name() << ": " << *arg;
+  std::map<int, const Tensor*> snapshot_ptrs;
+  for (auto& p : variable_args) {
+    snapshot_ptrs.emplace(p.first,
+                          p.second.has_value() ? &p.second.value() : nullptr);
   }
-  xla::ExecutableRunOptions run_options;
-  run_options.set_stream(stream);
-  run_options.set_allocator(client->backend().memory_allocator());
-  run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
-  run_options.set_rng_seed(GetXLARandomSeed());
-
-  xla::StatusOr<xla::ScopedShapedBuffer> run_result =
-      executable->Run(launch_context.arguments(), run_options);
-  TF_RETURN_IF_ERROR(run_result.status());
 
   const xla::HloInputOutputAliasConfig& input_output_alias =
       executable->executable()->module().input_output_alias_config();
+  xla::StatusOr<std::vector<xla::ExecutionInput>> execution_inputs =
+      launch_context.PopulateInputs(ctx, result, snapshot_ptrs,
+                                    /*missing_ctx_input_prefix=*/0,
+                                    input_output_alias);
+  TF_RETURN_IF_ERROR(execution_inputs.status());
+
+  se::Stream* stream =
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
+
+  VLOG(2) << "Executing computation: " << name();
+  xla::ExecutableRunOptions run_options;
+  run_options.set_stream(stream);
+  run_options.set_allocator(allocator);
+  run_options.set_intra_op_thread_pool(&ctx->eigen_cpu_device());
+  run_options.set_rng_seed(GetXLARandomSeed());
+
+  xla::StatusOr<xla::ExecutionOutput> run_result =
+      executable->Run(execution_inputs.ConsumeValueOrDie(), run_options);
+  TF_RETURN_IF_ERROR(run_result.status());
+  xla::ExecutionOutput execution_output = run_result.ConsumeValueOrDie();
+  xla::StatusOr<std::vector<VariableInfo>> variable_infos =
+      GatherVariableInfo(ctx, *result, 0);
+  TF_RETURN_IF_ERROR(variable_infos.status());
+  TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(*variable_infos)));
   TF_RETURN_IF_ERROR(launch_context.PopulateOutputs(
-      ctx, result, run_result.ConsumeValueOrDie(),
-      /*missing_ctx_input_prefix=*/0, input_output_alias, variable_args));
+      ctx, result, execution_output.ConsumeResult(),
+      /*missing_ctx_input_prefix=*/0, absl::MakeSpan(*variable_infos),
+      input_output_alias, snapshot_ptrs));
   return Status::OK();
-}
-
-Status XlaCompileOnDemandOp::MustArgumentBeConstant(
-    const OpKernel* op_kernel, int64 argument_idx,
-    FunctionLibraryRuntime* flib_runtime, bool* result) {
-  *result = false;
-
-  // TODO(jmolloy): This could be expensive, so memoize.
-  std::vector<int> constant_input_indices;
-  TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
-      op_kernel, &constant_input_indices, flib_runtime));
-  *result = absl::c_binary_search(constant_input_indices, argument_idx);
-  return Status::OK();
-}
-
-// TODO(ycao): Remove the need to call ShouldArgumentBeConstant. Its benefit is
-// not clear yet and it causes heavy constant analysis to run twice.
-Status XlaCompileOnDemandOp::ShouldArgumentBeConstant(
-    const OpKernel* op_kernel, int64 argument_idx,
-    FunctionLibraryRuntime* flib_runtime, bool* result) {
-  return MustArgumentBeConstant(op_kernel, argument_idx, flib_runtime, result);
 }
 
 Status XlaCompileOnDemandOp::Compile(
-    OpKernelContext* ctx, const XlaDevice::Metadata& metadata,
-    const XlaCompiler::CompilationResult** result,
-    ResourceVarsSnapshot* variable_args, xla::LocalExecutable** executable) {
+    OpKernelContext* ctx, const XlaCompiler::CompilationResult** result,
+    XlaCompilationCache** cache, ResourceVarsSnapshot* variable_args,
+    xla::LocalExecutable** executable) {
   std::map<int, Tensor> constant_arguments;
+
+  std::vector<int> constant_input_indices;
+  TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
+      &ctx->op_kernel(), &constant_input_indices, ctx->function_library()));
+  CHECK(absl::c_is_sorted(constant_input_indices));
+
   for (int64 i = 0; i < ctx->num_inputs(); ++i) {
     const Tensor& device_tensor = ctx->input(i);
+
     if (const XlaTensor* xla_tensor = XlaTensor::FromTensor(&device_tensor)) {
       if (xla_tensor->has_host_tensor()) {
-        bool should_arg_be_const;
-        TF_RETURN_IF_ERROR(ShouldArgumentBeConstant(&ctx->op_kernel(), i,
-                                                    ctx->function_library(),
-                                                    &should_arg_be_const));
-        if (should_arg_be_const) {
+        if (absl::c_binary_search(constant_input_indices, i)) {
           constant_arguments[i] = xla_tensor->host_tensor();
         }
       }
     }
 
-    if (constant_arguments.count(i) == 0) {
-      bool must_argument_be_const;
-      TF_RETURN_IF_ERROR(MustArgumentBeConstant(&ctx->op_kernel(), i,
-                                                ctx->function_library(),
-                                                &must_argument_be_const));
-
-      if (must_argument_be_const) {
-        // Slow path; the argument is not available as a host constant so we
-        // must fetch it synchronously.
-        Tensor host_tensor;
-        AllocatorAttributes attrs;
-        attrs.set_on_host(true);
-        TF_RETURN_IF_ERROR(ctx->allocate_temp(
-            device_tensor.dtype(), device_tensor.shape(), &host_tensor, attrs));
-        Status status = ctx->op_device_context()->CopyDeviceTensorToCPUSync(
-            &device_tensor, "ConstantArgument",
-            reinterpret_cast<Device*>(ctx->device()), &host_tensor);
-        if (!status.ok()) {
-          LOG(ERROR) << "Copying tensor of shape "
-                     << device_tensor.shape().DebugString() << " from "
-                     << ctx->device()->name() << "to CPU failed with "
-                     << status.ToString();
-          return status;
+    if (!constant_arguments.count(i)) {
+      if (absl::c_binary_search(constant_input_indices, i)) {
+        if (ctx->input_memory_type(i) != HOST_MEMORY &&
+            ctx->op_device_context()) {
+          // Slow path; the argument is not available as a host constant so we
+          // must fetch it synchronously.
+          Tensor host_tensor;
+          AllocatorAttributes attrs;
+          attrs.set_on_host(true);
+          TF_RETURN_IF_ERROR(ctx->allocate_temp(device_tensor.dtype(),
+                                                device_tensor.shape(),
+                                                &host_tensor, attrs));
+          Status status = ctx->op_device_context()->CopyDeviceTensorToCPUSync(
+              &device_tensor, "ConstantArgument",
+              reinterpret_cast<Device*>(ctx->device()), &host_tensor);
+          if (!status.ok()) {
+            LOG(ERROR) << "Copying tensor of shape "
+                       << device_tensor.shape().DebugString() << " from "
+                       << ctx->device()->name() << "to CPU failed with "
+                       << status.ToString();
+            return status;
+          }
+          constant_arguments[i] = host_tensor;
+        } else {
+          constant_arguments[i] = device_tensor;
         }
-        constant_arguments[i] = host_tensor;
       }
     }
   }
@@ -156,24 +154,16 @@ Status XlaCompileOnDemandOp::Compile(
   ResourceMgr* rm = ctx->resource_manager();
   CHECK(rm);
 
-  XlaCompilationCache* cache;
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaCompilationCache>(
-      rm->default_container(), "xla_cache", &cache,
-      [&](XlaCompilationCache** cache) {
-        *cache = new XlaCompilationCache(metadata.client(),
-                                         metadata.jit_device_type());
-        return Status::OK();
+      rm->default_container(), "xla_cache", cache,
+      [&](XlaCompilationCache** write_into_cache) {
+        return BuildXlaCompilationCache(ctx, platform_info_, write_into_cache);
       }));
-  // Hold the reference to the JIT during evaluation. (We could probably
-  // free it sooner because the ResourceMgr will retain a reference, but
-  // this is more obviously correct.)
-  core::ScopedUnref cache_ref(cache);
 
-  XlaCompiler::Options options;
-  options.device_type = metadata.jit_device_type();
-  options.client = metadata.client();
-  options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
-  options.shape_representation_fn = metadata.shape_representation_fn();
+  absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
+  XlaCompiler::Options options =
+      GenerateCompilerOptions(**cache, ctx, platform_info_,
+                              /*has_ref_vars=*/true, &tf_allocator_adapter);
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
@@ -194,19 +184,25 @@ Status XlaCompileOnDemandOp::Compile(
         constant_arguments, variable_infos, ctx, &args));
   }
 
-  return cache->CompileSingleOp(options, args, ctx, compile_options, result,
-                                executable);
+  return (*cache)->CompileSingleOp(options, args, ctx, compile_options, result,
+                                   executable);
 }
 
 void XlaCompileOnDemandOp::Compute(OpKernelContext* ctx) {
   const XlaCompiler::CompilationResult* result;
   xla::LocalExecutable* executable;
-  const XlaDevice::Metadata* metadata;
-  OP_REQUIRES_OK(ctx, XlaDevice::GetMetadata(ctx, &metadata));
   ResourceVarsSnapshot variable_args;
+  XlaCompilationCache* cache;
+  OP_REQUIRES(ctx, ctx->function_library(),
+              errors::Internal("Function library missing"));
   OP_REQUIRES_OK(ctx,
-                 Compile(ctx, *metadata, &result, &variable_args, &executable));
-  OP_REQUIRES_OK(ctx, Run(ctx, *metadata, result, executable, variable_args));
+                 Compile(ctx, &result, &cache, &variable_args, &executable));
+
+  // Hold the reference to the JIT during evaluation. (We could probably
+  // free it sooner because the ResourceMgr will retain a reference, but
+  // this is more obviously correct.)
+  core::ScopedUnref cache_ref(cache);
+  OP_REQUIRES_OK(ctx, Run(ctx, cache, result, executable, variable_args));
 }
 
 }  // namespace tensorflow

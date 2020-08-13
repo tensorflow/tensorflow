@@ -51,25 +51,14 @@ int64 ToId(AbstractTensorHandle* t) {
 
 TapeTensor::TapeTensor(AbstractTensorHandle* handle, AbstractContext* ctx)
     : handle_(handle), ctx_(ctx) {
-  // TODO(b/160888114): Make AbstractTensorHandle RefCounted. Right now we rely
-  // on the client to keep this tensor live for the duration of the gradient
-  // computation.
-  // handle_->Ref();
+  handle_->Ref();
 }
 TapeTensor::TapeTensor(const TapeTensor& other) {
   handle_ = other.handle_;
-  // TODO(b/160888114): Make AbstractTensorHandle RefCounted. Right now we rely
-  // on the client to keep this tensor live for the duration of the gradient
-  // computation.
-  // handle_->Ref();
+  handle_->Ref();
   ctx_ = other.ctx_;
 }
-TapeTensor::~TapeTensor() {
-  // TODO(b/160888114): Make AbstractTensorHandle RefCounted. Right now we rely
-  // on the client to keep this tensor live for the duration of the gradient
-  // computation.
-  // handle_->Unref();
-}
+TapeTensor::~TapeTensor() { handle_->Unref(); }
 
 tensorflow::int64 TapeTensor::GetID() const { return ToId(handle_); }
 
@@ -112,7 +101,7 @@ AbstractTensorHandle* TapeTensor::ZerosLike() const {
   }
   if (isa<tracing::TracingOperation>(op.get())) {
     s = dyn_cast<tracing::TracingOperation>(op.get())->SetOpName(
-        absl::StrCat("OnesLike", ToId(handle_)).c_str());
+        absl::StrCat("ZerosLike", ToId(handle_)).c_str());
     if (!s.ok()) {
       return nullptr;
     }
@@ -175,7 +164,8 @@ Status TapeVSpace::CallBackwardFunction(
     gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
     std::vector<AbstractTensorHandle*>* result) const {
   if (backward_function == nullptr) return Status::OK();
-  return backward_function->Compute(output_gradients, result);
+  Context ctx = {ctx_};
+  return backward_function->Compute(&ctx, output_gradients, result);
 }
 
 // Looks up the ID of a Gradient.
@@ -191,7 +181,7 @@ TapeTensor TapeVSpace::TapeTensorFromGradient(AbstractTensorHandle* g) const {
 void TapeVSpace::MarkAsResult(AbstractTensorHandle* gradient) const {}
 
 void TapeVSpace::DeleteGradient(AbstractTensorHandle* gradient) const {
-  gradient->Release();
+  gradient->Unref();
 }
 
 // Helper functions which delegate to `AbstractOperation`, update
@@ -372,6 +362,10 @@ Status Execute(AbstractOperation* op_, AbstractContext* ctx,
   for (int i = 0; i < forward_op_->inputs.size(); i++) {
     input_ids[i] = ToId(forward_op_->inputs[i]);
     input_dtypes[i] = forward_op_->inputs[i]->DataType();
+  }
+  for (int i = 0; i < *num_retvals; i++) {
+    // TODO(srbs): Manage refcount of ForwardOperation's inputs/outputs.
+    forward_op_->outputs.push_back(retvals[i]);
   }
   std::vector<TapeTensor> tape_tensors;
   for (auto t : retvals) {

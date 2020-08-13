@@ -26,6 +26,7 @@ cc_library(
         ":function_metadata",
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -146,6 +147,7 @@ cc_library(
         "//tensorflow/c/eager:immediate_execution_operation",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -210,6 +212,23 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/common_runtime/eager:core",
+    ],
+)
+
+tf_cc_test(
+    name = "signature_flattening_test",
+    srcs = [
+        "signature_flattening_test.cc",
+    ],
+    deps = [
+        ":saved_model_utils",
+        "//tensorflow/c/experimental/saved_model/core:tf_concrete_function_test_protos",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime/eager:core",
     ],
 )

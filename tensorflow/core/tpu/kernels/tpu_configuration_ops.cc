@@ -25,6 +25,8 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_factory.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_local_lookup.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 #include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_op_consts.h"
 #include "tensorflow/core/tpu/tpu_api.h"
@@ -223,6 +225,10 @@ void ShutdownDistributedTpuOp::Compute(OpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, StatusFromTF_Status(status));
   TF_DeleteStatus(status);
 
+  OP_REQUIRES_OK(
+      ctx, DeleteIfExists<tpu::TpuCompilationCacheInterface>(
+               GetTPUConfigResourceMgr(), tpu::kCompilationCacheResourceName));
+
   VLOG(1) << "ShutdownDistributedTpuOp done";
 }
 
@@ -249,6 +255,10 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
                                      mesh_state_interface));
   }
 
+  VLOG(1) << "Removing existing proto compilation cache lookup if it exists";
+  OP_REQUIRES_OK(ctx, DeleteIfExists<tpu::TpuCompilationCacheLookup>(
+                          rmgr, tpu::kCompiledProtoCacheResourceName));
+
   if (enable_whole_mesh_compilations_) {
     // If this is a whole mesh compilation mode, create the compilation cache,
     // if missing.
@@ -257,10 +267,29 @@ void InitializeHostForDistributedTpuOp::Compute(OpKernelContext* ctx) {
     compilation_cache->Unref();
   }
 
+  tpu::TpuCompilationCacheInterface* local_compilation_cache;
+  Status s = rmgr->Lookup(rmgr->default_container(),
+                          tpu::kCompilationCacheResourceName,
+                          &local_compilation_cache);
+  if (!s.ok()) {
+    local_compilation_cache = nullptr;
+  }
+
   tpu::ConfigApiFn()->InitializeHostForDistributedTpuOp_DoWorkFn(
       tpu_host_config.size(), tpu_host_config.data(),
-      enable_whole_mesh_compilations_, &device_id_output_size,
-      &device_id_output, status);
+      enable_whole_mesh_compilations_, local_compilation_cache,
+      &device_id_output_size, &device_id_output, status);
+
+  if (local_compilation_cache != nullptr) {
+    local_compilation_cache->Unref();
+
+    tpu::TpuCompilationCacheLookup* proto_lookup;
+    proto_lookup =
+        new tpu::TpuCompilationCacheLocalLookup(local_compilation_cache);
+    OP_REQUIRES_OK(
+        ctx, rmgr->Create(rmgr->default_container(),
+                          tpu::kCompiledProtoCacheResourceName, proto_lookup));
+  }
 
   Tensor* ctx_output;
   OP_REQUIRES_OK(

@@ -41,8 +41,10 @@ namespace cl {
 class ConvPowerVR : public GPUOperation {
  public:
   ConvPowerVR() = default;
-  absl::Status Tune(const TuningParameters& params) override;
-  absl::Status Compile(const CreationContext& creation_context) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -82,7 +84,6 @@ class ConvPowerVR : public GPUOperation {
     // F32_F16 precision mode
     DataType weights_data_type;  // used for weights and biases
     int3 block_size;
-    int3 work_group_size;
     int3 work_group_launch_order;
     bool fixed_work_group_size;
     bool linear_hw;
@@ -137,6 +138,8 @@ class ConvPowerVR : public GPUOperation {
               const BHWC* dst_shape = nullptr);
   explicit ConvPowerVR(const OperationDef& definition);
 
+  void GenerateCode(const DeviceInfo& device_info);
+
   template <DataType T>
   absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
                           const tflite::gpu::Tensor<Linear, T>& biases,
@@ -176,35 +179,33 @@ class ConvPowerVR : public GPUOperation {
       const Convolution2DAttributes& attr, ConvPowerVR* result,
       const BHWC* dst_shape);
 
-  friend std::string GenerateConv(const CLDevice& device,
-                                  const OperationDef& op_def,
-                                  bool stride_correction,
-                                  const ConvParams& conv_params,
-                                  Arguments* args);
-
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
-                             const BHWC* dst_shape = nullptr) const;
+                             const BHWC* dst_shape = nullptr);
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
                              const BHWC& weights_shape,
-                             const BHWC* dst_shape = nullptr) const;
+                             const BHWC* dst_shape = nullptr);
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition,
                              const FullyConnectedAttributes& attr,
-                             const BHWC* dst_shape = nullptr) const;
+                             const BHWC* dst_shape = nullptr);
   ConvParams GuessBestParamsWinograd(const CLDevice& device,
                                      const OperationDef& definition,
                                      const Convolution2DAttributes& attr,
-                                     const BHWC* dst_shape = nullptr) const;
+                                     const BHWC* dst_shape = nullptr);
   ConvParams GuessBestParams(const CLDevice& device,
                              const OperationDef& definition, int src_depth,
                              int dst_depth, bool x_kernel_is_1,
                              bool y_kernel_is_1,
                              bool different_weights_for_height,
-                             const BHWC* dst_shape = nullptr) const;
+                             const BHWC* dst_shape = nullptr);
+
+  std::string GenerateConv(const DeviceInfo& device_info,
+                           const OperationDef& op_def, bool stride_correction,
+                           const ConvParams& conv_params);
 
   int4 stride_padding_;
   int4 kernel_dilation_;

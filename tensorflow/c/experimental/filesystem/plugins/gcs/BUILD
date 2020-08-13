@@ -25,12 +25,15 @@ cc_library(
         "//tensorflow:windows": get_win_copts(),
     }),
     deps = [
+        ":expiring_lru_cache",
         ":gcs_helper",
+        ":ram_file_block_cache",
         "//tensorflow/c:env",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 

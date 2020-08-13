@@ -85,6 +85,10 @@ exports_files(
         "mutex.h",
         "net.h",
         "numa.h",
+        "profile_utils/android_armv7a_cpu_utils_helper.h",
+        "profile_utils/cpu_utils.cc",
+        "profile_utils/cpu_utils.h",
+        "profile_utils/i_cpu_utils_helper.h",
         "ram_file_system.h",
         "resource_loader.h",
         "resource.h",
@@ -357,6 +361,8 @@ filegroup(
 cc_library(
     name = "mutex",
     textual_hdrs = ["mutex.h"],
+    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
+    visibility = ["//tensorflow:__subpackages__"],
     deps = tf_platform_deps("mutex"),
 )
 
@@ -773,6 +779,11 @@ filegroup(
 cc_library(
     name = "types",
     hdrs = ["types.h"],
+    # TODO(b/161569340): Short-term fix. Remove this visibility rule.
+    visibility = [
+        "//tensorflow:__subpackages__",
+        "//tensorflow_text:__subpackages__",
+    ],
     deps = [
         ":platform",
         ":tstring",
@@ -951,6 +962,27 @@ cc_library(
     srcs = ["tf32_utils.cc"],
     hdrs = ["tf32_utils.h"],
     copts = tf_copts(),
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "profile_utils_cpu_utils",
+    srcs = [
+        "profile_utils/android_armv7a_cpu_utils_helper.h",
+        "profile_utils/cpu_utils.cc",
+        "profile_utils/i_cpu_utils_helper.h",
+    ],
+    hdrs = [
+        "profile_utils/cpu_utils.h",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":logging",
+        ":macros",
+        ":types",
+        "@com_google_absl//absl/base",
+    ],
+    alwayslink = 1,
 )
 
 filegroup(
@@ -1539,6 +1571,7 @@ filegroup(
         "raw_coding.h",
         "refcount.h",
         "resource.h",
+        "regexp.h",
         "scanner.cc",
         "scanner.h",
         "setround.cc",
@@ -1634,7 +1667,6 @@ filegroup(
     srcs = [
         "profile_utils/android_armv7a_cpu_utils_helper.cc",
         "profile_utils/clock_cycle_profiler.cc",
-        "profile_utils/cpu_utils.cc",
     ],
     visibility = ["//tensorflow/core:__pkg__"],
 )

@@ -200,7 +200,6 @@ import six
 from tensorflow.python.autograph.core import ag_ctx as autograph_ctx
 from tensorflow.python.autograph.impl import api as autograph
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context
@@ -213,6 +212,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
@@ -1145,10 +1145,11 @@ class StrategyBase(object):
         dataset_fn, options)
 
   def run(self, fn, args=(), kwargs=None, options=None):
-    """Run `fn` on each replica, with the given arguments.
+    """Invokes `fn` on each replica, with the given arguments.
 
-    Executes ops specified by `fn` on each replica. If `args` or `kwargs` have
-    `tf.distribute.DistributedValues`, such as those produced by a
+    This method is the primary way to distribute your computation with a
+    tf.distribute object. It invokes `fn` on each replica. If `args` or `kwargs`
+    have `tf.distribute.DistributedValues`, such as those produced by a
     `tf.distribute.DistributedDataset` from
     `tf.distribute.Strategy.experimental_distribute_dataset` or
     `tf.distribute.Strategy.experimental_distribute_datasets_from_function`,
@@ -1156,20 +1157,27 @@ class StrategyBase(object):
     component of `tf.distribute.DistributedValues` that correspond to that
     replica.
 
-    `fn` may call `tf.distribute.get_replica_context()` to access members such
-    as `all_reduce`.
+    `fn` is invoked under a replica context. `fn` may call
+    `tf.distribute.get_replica_context()` to access members such as
+    `all_reduce`. Please see the module-level docstring of tf.distribute for the
+    concept of replica context.
 
-    All arguments in `args` or `kwargs` should either be nest of tensors or
-    `tf.distribute.DistributedValues` containing tensors or composite tensors.
+    All arguments in `args` or `kwargs` should either be Python values of a
+    nested structure of tensors, e.g. a list of tensors, in which case `args`
+    and `kwargs` will be passed to the `fn` invoked on each replica. Or `args`
+    or `kwargs` can be `tf.distribute.DistributedValues` containing tensors or
+    composite tensors, i.e. `tf.compat.v1.TensorInfo.CompositeTensor`, in which
+    case each `fn` call will get the component of a
+    `tf.distribute.DistributedValues` corresponding to its replica.
 
     IMPORTANT: Depending on the implementation of `tf.distribute.Strategy` and
     whether eager execution is enabled, `fn` may be called one or more times. If
     `fn` is annotated with `tf.function` or `tf.distribute.Strategy.run` is
-    called inside a `tf.function`, eager execution is disabled and `fn` is
-    called once (or once per replica, if you are using MirroredStrategy) to
-    generate a Tensorflow graph, which will then be reused for execution with
-    new inputs. Otherwise, if eager execution is enabled, `fn` will be called
-    every step just like regular python code.
+    called inside a `tf.function` (eager execution is disabled inside a
+    `tf.function` by default), `fn` is called once per replica to generate a
+    Tensorflow graph, which will then be reused for execution with new inputs.
+    Otherwise, if eager execution is enabled, `fn` will be called once per
+    replica every step just like regular python code.
 
     Example usage:
 
@@ -1204,11 +1212,33 @@ class StrategyBase(object):
     >>> result
     <tf.Tensor: shape=(), dtype=int32, numpy=4>
 
+    3. Use `tf.distribute.ReplicaContext` to allreduce values.
+
+    >>> strategy = tf.distribute.MirroredStrategy(["gpu:0", "gpu:1"])
+    >>> @tf.function
+    ... def run():
+    ...    def value_fn(value_context):
+    ...      return tf.constant(value_context.replica_id_in_sync_group)
+    ...    distributed_values = (
+    ...        strategy.experimental_distribute_values_from_function(
+    ...            value_fn))
+    ...    def replica_fn(input):
+    ...      return tf.distribute.get_replica_context().all_reduce("sum", input)
+    ...    return strategy.run(replica_fn, args=(distributed_values,))
+    >>> result = run()
+    >>> result
+    PerReplica:{
+      0: <tf.Tensor: shape=(), dtype=int32, numpy=1>,
+      1: <tf.Tensor: shape=(), dtype=int32, numpy=1>
+    }
+
     Args:
-      fn: The function to run. The output must be a `tf.nest` of `Tensor`s.
-      args: (Optional) Positional arguments to `fn`.
-      kwargs: (Optional) Keyword arguments to `fn`.
-      options: (Optional) An instance of `tf.distribute.RunOptions` specifying
+      fn: The function to run on each replica.
+      args: Optional positional arguments to `fn`. Its element can be a Python
+        value, a tensor or a `tf.distribute.DistributedValues`.
+      kwargs: Optional keyword arguments to `fn`. Its element can be a Python
+        value, a tensor or a `tf.distribute.DistributedValues`.
+      options: An optional instance of `tf.distribute.RunOptions` specifying
         the options to run `fn`.
 
     Returns:
@@ -2827,17 +2857,40 @@ class StrategyExtendedV1(StrategyExtendedV2):
 #   and switches the thread mode to a "cross-replica context".
 @tf_export("distribute.ReplicaContext")
 class ReplicaContext(object):
-  """`tf.distribute.Strategy` API when in a replica context.
+  """A class with a collection of APIs that can be called in a replica context.
 
   You can use `tf.distribute.get_replica_context` to get an instance of
-  `ReplicaContext`. This should be inside your replicated step function, such
-  as in a `tf.distribute.Strategy.run` call.
+  `ReplicaContext`, which can only be called inside the function passed to
+  `tf.distribute.Strategy.run`.
+
+  >>> strategy = tf.distribute.MirroredStrategy(['GPU:0', 'GPU:1'])
+  >>> def func():
+  ...   replica_context = tf.distribute.get_replica_context()
+  ...   return replica_context.replica_id_in_sync_group
+  >>> strategy.run(func)
+  PerReplica:{
+    0: <tf.Tensor: shape=(), dtype=int32, numpy=0>,
+    1: <tf.Tensor: shape=(), dtype=int32, numpy=1>
+  }
   """
 
   def __init__(self, strategy, replica_id_in_sync_group):
+    """Creates a ReplicaContext.
+
+    Args:
+      strategy: A `tf.distribute.Strategy`.
+      replica_id_in_sync_group: An integer, a `Tensor` or None. Prefer an
+        integer whenever possible to avoid issues with nested `tf.function`. It
+        accepts a `Tensor` only to be compatible with `tpu.replicate`.
+    """
     self._strategy = strategy
     self._thread_context = distribution_strategy_context._InReplicaThreadMode(  # pylint: disable=protected-access
         self)
+    if not (replica_id_in_sync_group is None or
+            tensor_util.is_tensor(replica_id_in_sync_group) or
+            isinstance(replica_id_in_sync_group, int)):
+      raise ValueError(
+          "replica_id_in_sync_group can only be an integer, a Tensor or None.")
     self._replica_id_in_sync_group = replica_id_in_sync_group
     self._summary_recording_distribution_strategy = None
 
@@ -2846,7 +2899,7 @@ class ReplicaContext(object):
     _push_per_thread_mode(self._thread_context)
 
     def replica_id_is_zero():
-      return math_ops.equal(self._replica_id_in_sync_group,
+      return math_ops.equal(self.replica_id_in_sync_group,
                             constant_op.constant(0))
 
     summary_state = summary_ops_v2._summary_state  # pylint: disable=protected-access
@@ -2906,22 +2959,37 @@ class ReplicaContext(object):
 
   @property
   def num_replicas_in_sync(self):
-    """Returns number of replicas over which gradients are aggregated."""
+    """Returns number of replicas that are kept in sync."""
     return self._strategy.num_replicas_in_sync
 
   @property
   def replica_id_in_sync_group(self):
-    """Returns the id of the replica being defined.
+    """Returns the id of the replica.
 
-    This identifies the replica that is part of a sync group. Currently we
-    assume that all sync groups contain the same number of replicas. The value
-    of the replica id can range from 0 to `num_replica_in_sync` - 1.
+    This identifies the replica among all replicas that are kept in sync. The
+    value of the replica id can range from 0 to
+    `tf.distribute.ReplicaContext.num_replicas_in_sync` - 1.
 
     NOTE: This is not guaranteed to be the same ID as the XLA replica ID use
     for low-level operations such as collective_permute.
+
+    Returns:
+      a `Tensor`.
     """
-    require_replica_context(self)
-    return self._replica_id_in_sync_group
+    # It's important to prefer making the Tensor at call time whenever possible.
+    # Keeping Tensors in global states doesn't work well with nested
+    # tf.function, since it's possible that the tensor is generated in one func
+    # graph, and gets captured by another, which will result in a subtle "An op
+    # outside of the function building code is being passed a Graph tensor"
+    # error. Making the tensor at call time to ensure it is the same graph where
+    # it's used. However to be compatible with tpu.replicate(),
+    # self._replica_id_in_sync_group can also be a Tensor.
+    if tensor_util.is_tensor(self._replica_id_in_sync_group):
+      return self._replica_id_in_sync_group
+    return constant_op.constant(
+        self._replica_id_in_sync_group,
+        dtypes.int32,
+        name="replica_id_in_sync_group")
 
   @property
   def strategy(self):
@@ -3145,9 +3213,7 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
       raise NotImplementedError("TODO")
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    with ReplicaContext(
-        self._container_strategy(),
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
+    with ReplicaContext(self._container_strategy(), replica_id_in_sync_group=0):
       return fn(*args, **kwargs)
 
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
@@ -3225,7 +3291,7 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
       return self._iterator.get_next()
 
     def get_next_as_optional(self):
-      return iterator_ops.get_next_as_optional(self._iterator)
+      return self._iterator.get_next_as_optional()
 
     @deprecated(None, "Use the iterator's `initializer` property instead.")
     def initialize(self):
@@ -3250,6 +3316,16 @@ class _DefaultDistributionExtended(StrategyExtendedV1):
   def _global_batch_size(self):
     """Global and per-replica batching are equivalent for this strategy."""
     return True
+
+
+class _DefaultReplicaContext(ReplicaContext):
+  """ReplicaContext for _DefaultDistributionStrategy."""
+
+  @property
+  def replica_id_in_sync_group(self):
+    # Return 0 instead of a constant tensor to avoid creating a new node for
+    # users who don't use distribution strategy.
+    return 0
 
 
 # ------------------------------------------------------------------------------
