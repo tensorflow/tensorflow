@@ -5334,6 +5334,8 @@ def fractional_max_pool_v2(value,
       [Graham, 2015](https://arxiv.org/abs/1412.6071)
       ([pdf](https://arxiv.org/pdf/1412.6071.pdf))
   """
+  if pooling_ratio < 1.0:
+    raise ValueError("pooling_ratio should be >= 1.0.")
   pooling_ratio = _get_sequence(pooling_ratio, 2, 3, "pooling_ratio")
 
   if seed == 0:
