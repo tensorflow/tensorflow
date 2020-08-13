@@ -102,6 +102,7 @@ py_library(
         "//tensorflow/tools/api/tests:__pkg__",
         "//tensorflow/tools/compatibility/update:__pkg__",
         "//tensorflow_estimator:__subpackages__",
+        "//third_party/py/tensorflow_privacy:__subpackages__",  # TODO(b/163395075): remove when fixed
     ],
     deps = [
         ":layers",
@@ -2992,6 +2993,7 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
     deps = [
+        "//tensorflow/c/kernels:histogram_summary_op_lib",
         "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/core:logging_ops_op_lib",
     ],
@@ -3451,7 +3453,6 @@ cuda_py_test(
         "no_rocm",
         "no_windows",
     ],
-    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":collective_ops",

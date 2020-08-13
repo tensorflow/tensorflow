@@ -46,7 +46,7 @@ void TensorMap::Encode(VariantTensorData* data) const {
 static Status TensorMapDeviceCopy(
     const TensorMap& from, TensorMap* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
-  for (const std::pair<TensorKey,Tensor>& p : from.tensors()) {
+  for (const std::pair<TensorKey, Tensor>& p : from.tensors()) {
     TensorKey to_key(p.first.dtype());
     Tensor to_val(p.second.dtype());
     TF_RETURN_IF_ERROR(copy(p.first, &to_key));

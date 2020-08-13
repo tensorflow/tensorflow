@@ -349,15 +349,13 @@ def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
   """
   channel_axis = 1 if backend.image_data_format() == 'channels_first' else -1
   filters = int(filters * alpha)
-  x = layers.ZeroPadding2D(padding=((0, 1), (0, 1)), name='conv1_pad')(inputs)
   x = layers.Conv2D(
       filters,
       kernel,
-      padding='valid',
+      padding='same',
       use_bias=False,
       strides=strides,
-      name='conv1')(
-          x)
+      name='conv1')(inputs)
   x = layers.BatchNormalization(axis=channel_axis, name='conv1_bn')(x)
   return layers.ReLU(6., name='conv1_relu')(x)
 

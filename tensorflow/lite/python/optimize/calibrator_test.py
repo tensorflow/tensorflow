@@ -91,6 +91,21 @@ class CalibratorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         input_gen, constants.FLOAT, constants.FLOAT, True, 'conv2d_8/BiasAdd')
     self.assertIsNotNone(quantized_model)
 
+  def test_calibration_with_string_input(self):
+    model_path = resource_loader.get_path_to_datafile(
+        'test_data/string_input_flex_model.bin')
+    with open(model_path, 'rb') as fp:
+      model_with_string_input = fp.read()
+    quantizer = _calibrator.Calibrator(model_with_string_input)
+    # Input generator for the model.
+    def input_gen():
+      for i in range(10):
+        yield [np.array(u'Test' + str(i))]
+
+    quantized_model = quantizer.calibrate_and_quantize_single(
+        input_gen, constants.FLOAT, constants.FLOAT, True, 'Identity')
+    self.assertIsNotNone(quantized_model)
+
   @parameterized.named_parameters(
       # Activation type Int8
       ('UseActivationTypeInt8 - EnableMlirQuantizer', constants.INT8),

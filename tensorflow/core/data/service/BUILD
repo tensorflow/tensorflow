@@ -3,6 +3,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_additional_all_protos",
     "tf_proto_library",
+    "tf_protos_profiler_service",
 )
 load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
@@ -49,6 +50,34 @@ tf_proto_library(
 )
 
 cc_library(
+    name = "dataset_store",
+    srcs = ["dataset_store.cc"],
+    hdrs = ["dataset_store.h"],
+    deps = [
+        ":common_proto_cc",
+        ":dispatcher_state",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "dataset_store_test",
+    srcs = ["dataset_store_test.cc"],
+    deps = [
+        ":common_proto_cc",
+        ":dataset_store",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+cc_library(
     name = "dispatcher_impl",
     srcs = ["dispatcher_impl.cc"],
     hdrs = [
@@ -58,6 +87,7 @@ cc_library(
         ":common_proto_cc",
         ":credentials_factory",
         ":data_service",
+        ":dataset_store",
         ":dispatcher_proto_cc",
         ":dispatcher_state",
         ":grpc_util",
@@ -332,6 +362,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/core/profiler/rpc:profiler_service_impl",
         tf_grpc_cc_dependency(),
     ],
     alwayslink = 1,
@@ -375,14 +406,14 @@ tf_cc_test(
         ":test_util",
         ":worker_cc_grpc_proto",
         ":worker_proto_cc",
+        "@com_google_absl//absl/strings",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/data:compression_utils",
         "//tensorflow/core/kernels/data:dataset_test_base",
-        "@com_google_absl//absl/strings",
         tf_grpc_cc_dependency(),
-    ],
+    ] + tf_protos_profiler_service(),
 )
 
 cc_grpc_library(

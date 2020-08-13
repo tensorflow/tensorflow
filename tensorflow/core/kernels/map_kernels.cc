@@ -53,4 +53,4 @@ REGISTER_UNARY_VARIANT_UNARY_OP_FUNCTION(ZEROS_LIKE_VARIANT_UNARY_OP,
                                          DEVICE_CPU, TensorMap,
                                          TensorMapZerosLike<CPUDevice>);
 
-} // namespace tensorflow
+}  // namespace tensorflow

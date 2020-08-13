@@ -179,14 +179,15 @@ Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
   // Binary add returns a map containing the union of keys.
   // Values with keys in the intersection are added.
   out->tensors() = a.tensors();
-  for (const std::pair<TensorKey,Tensor>& p : b.tensors()) {
-    absl::flat_hash_map<TensorKey,Tensor>::iterator it = out->tensors().find(p.first);
+  for (const std::pair<TensorKey, Tensor>& p : b.tensors()) {
+    absl::flat_hash_map<TensorKey, Tensor>::iterator it =
+        out->tensors().find(p.first);
     if (it != out->tensors().end()) {
       Tensor out_tensor;
-      TF_RETURN_IF_ERROR(BinaryAddTensors<Device>(c, p.second, it->second, &out_tensor));
+      TF_RETURN_IF_ERROR(
+          BinaryAddTensors<Device>(c, p.second, it->second, &out_tensor));
       it->second = out_tensor;
-    }
-    else {
+    } else {
       out->tensors().emplace(p.first, p.second);
     }
   }
@@ -194,7 +195,8 @@ Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
 }
 
 template <typename Device>
-Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x, TensorMap* y) {
+Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x,
+                          TensorMap* y) {
   // Zeros like returns an empty map.
   return Status::OK();
 }

@@ -674,6 +674,7 @@ tf_gen_op_libs(
         ":protos_all_cc",
         # TODO(b/162630222): remove this dependency.
         "//tensorflow/c/kernels:summary_op_lib",
+        "//tensorflow/c/kernels:histogram_summary_op_lib",
     ],
 )
 
@@ -877,6 +878,7 @@ cc_library(
         ":user_ops_op_lib",
         ":word2vec_ops",
         "//tensorflow/c/kernels:bitcast_op_lib",
+        "//tensorflow/c/kernels:histogram_summary_op_lib",
         "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/compiler/mlir/tensorflow:mlir_passthrough_op",
     ] + if_chromiumos(
@@ -985,6 +987,7 @@ cc_library(
     name = "all_kernels_impl",
     visibility = [":__subpackages__"],
     deps = [
+        "//tensorflow/c/kernels:histogram_summary_op",
         "//tensorflow/c/kernels:summary_op",
         "//tensorflow/c/kernels:bitcast_op",
         "//tensorflow/core/kernels:array",
@@ -1010,9 +1013,7 @@ cc_library(
         "//tensorflow/core/kernels:functional_ops",
         "//tensorflow/core/kernels:grappler",
         "//tensorflow/core/kernels:histogram_op",
-        "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
-        "//tensorflow/core/kernels/linalg:linalg",
         "//tensorflow/core/kernels:lookup",
         "//tensorflow/core/kernels:logging",
         "//tensorflow/core/kernels:manip",
@@ -1046,6 +1047,8 @@ cc_library(
         "//tensorflow/core/kernels:summary_kernels",
         "//tensorflow/core/kernels:training_ops",
         "//tensorflow/core/kernels:word2vec_kernels",
+        "//tensorflow/core/kernels/linalg:linalg",
+        "//tensorflow/core/kernels/image:image",
         "//tensorflow/core/kernels/sparse:kernels",
     ] + if_not_windows([
         "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",

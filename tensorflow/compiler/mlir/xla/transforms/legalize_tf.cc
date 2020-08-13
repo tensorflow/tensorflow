@@ -5793,14 +5793,14 @@ LogicalResult legalizeTF(
   // Add TF->HLO legalization patterns.
   PopulateLegalizeTfPatterns(context, &patterns);
 
+  // Add TF->TF lowering patterns.
+  TF::PopulateLoweringTFPatterns(context, &patterns);
+
   // Add TF->HLO legalization patterns via TF2XLA fallback.
   if (tf2xla_fallback_device_type.hasValue()) {
     PopulateLegalizeTfWithTf2XlaPatterns(tf2xla_fallback_device_type.getValue(),
                                          patterns);
   }
-
-  // Add TF->TF lowering patterns.
-  TF::PopulateLoweringTFPatterns(context, &patterns);
 
   // Populate with CHLO->HLO lowerings to account for TF ops legalized to
   // CHLO first.

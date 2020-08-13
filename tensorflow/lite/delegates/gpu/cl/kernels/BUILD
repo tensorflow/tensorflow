@@ -1388,6 +1388,8 @@ test_suite(
         "fully_connected_test",
         "lstm_test",
         "max_unpooling_test",
+        "mean_stddev_normalization_test",
+        "mean_test",
         "padding_test",
         "pooling_test",
         "prelu_test",

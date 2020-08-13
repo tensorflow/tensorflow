@@ -79,13 +79,14 @@ class Resolver(object):
     """Resolves the type of a (possibly annotated) function argument."""
     raise NotImplementedError('subclasses must implement')
 
-  def res_call(self, ns, types_ns, node, args, keywords):
+  def res_call(self, ns, types_ns, node, f_type, args, keywords):
     """Resolves the return type an external function or method call.
 
     Args:
       ns: namespace
       types_ns: types namespace
       node: str, the function name
+      f_type: types of the actual function being called, if known
       args: types of each respective argument in node.args
       keywords: types of each respective argument in node.keywords
 
@@ -152,6 +153,9 @@ class _SymbolTable(object):
 
   def __repr__(self):
     return 'SymbolTable {}'.format(self.types)
+
+
+NO_VALUE = object()
 
 
 class StmtInferrer(gast.NodeVisitor):
@@ -270,7 +274,17 @@ class StmtInferrer(gast.NodeVisitor):
     # Attempt to use the static value if known.
     parent_value = anno.Static.VALUE.of(node.value, None)
     if parent_value is not None:
-      static_value = getattr(parent_value, node.attr, None)
+      static_value = getattr(parent_value, node.attr, NO_VALUE)
+
+      if static_value is NO_VALUE:
+        # Unexpected failure to resolve attribute. Ask the resolver about the
+        # full name instead.
+        types, static_value = self.resolver.res_name(
+            self.namespace, self.types_in, anno.Basic.QN.of(node))
+        anno.setanno(node, anno.Static.VALUE, static_value)
+        if __debug__:
+          self._check_set(types)
+        return types
 
     else:
       # Fall back to the type if that is known.
@@ -315,17 +329,17 @@ class StmtInferrer(gast.NodeVisitor):
     if ret_types is None:
       ret_types = {Any}
 
-    fn_types = set()
+    f_types = set()
     for rt in ret_types:
-      fn_types.add(Callable[[Any], rt])
+      f_types.add(Callable[[Any], rt])
 
-    self.new_symbols[f_name] = fn_types
+    self.new_symbols[f_name] = f_types
     # The definition of a function is an expression, hence has no return value.
     return None
 
-  def _resolve_typed_callable(self, fn_types, arg_types, keyword_types):
+  def _resolve_typed_callable(self, f_types, arg_types, keyword_types):
     ret_types = set()
-    for t in fn_types:
+    for t in f_types:
 
       if isinstance(t, Callable):
         # Note: these are undocummented - may be version-specific!
@@ -351,8 +365,8 @@ class StmtInferrer(gast.NodeVisitor):
 
     if f_name in self.scope.bound:
       # Local function, use local type definitions, if available.
-      fn_type = self.types_in.types.get(f_name, None)
-      if fn_type is None:
+      f_type = self.types_in.types.get(f_name, None)
+      if f_type is None:
         # No static type info available, nothing more to do.
         ret_type, side_effects = None, None
       else:
@@ -361,9 +375,12 @@ class StmtInferrer(gast.NodeVisitor):
 
     else:
       # Nonlocal function, resolve externally.
+      f_type = anno.Static.TYPES.of(node.func, None)
       ret_type, side_effects = self.resolver.res_call(self.namespace,
                                                       self.types_in.types, node,
-                                                      arg_types, keyword_types)
+                                                      f_type, arg_types,
+                                                      keyword_types)
+
     if __debug__:
       self._check_set(ret_type)
       if side_effects:

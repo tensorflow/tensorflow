@@ -67,16 +67,12 @@ llvm::SmallDenseSet<int64_t, 8> FindAccessedResources(
     Operation* op, const ResourceAliasAnalysis::Info& alias_analysis) {
   llvm::SmallDenseSet<int64_t, 8> resources;
 
-  for (auto operand : op->getOperands()) {
-    if (!mlir::getElementTypeOrSelf(operand.getType()).isa<TF::ResourceType>())
-      continue;
+  for (auto operand : filter_resources(op->getOperands())) {
     if (alias_analysis.IsUnknownResource(operand)) return UnknownResourceSet();
     const auto& ids = alias_analysis.GetResourceUniqueIds(operand);
     resources.insert(ids.begin(), ids.end());
   }
-  for (auto result : op->getResults()) {
-    if (!mlir::getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>())
-      continue;
+  for (auto result : filter_resources(op->getResults())) {
     if (alias_analysis.IsUnknownResource(result)) return UnknownResourceSet();
     const auto& ids = alias_analysis.GetResourceUniqueIds(result);
     resources.insert(ids.begin(), ids.end());
@@ -117,34 +113,19 @@ bool OpIsDeclaration(Operation* op,
 
 // Returns if `op` is know to not have any side effect.
 bool OpIsKnownToHaveNoSideEffect(Operation* op) {
-  // TODO(riverriddle) We shouldn't treat all terminator operations as having
-  // side effects, this should be relaxed.
-  // TODO(riverriddle) Properly handle region side effects.
-  if (MemoryEffectOpInterface::hasNoEffect(op) && op->isKnownNonTerminator() &&
-      op->getNumRegions() == 0) {
-    return true;
-  }
-  if (auto if_op = llvm::dyn_cast<TF::IfOp>(op)) {
-    return if_op.is_stateless();
-  }
-  if (auto while_op = llvm::dyn_cast<TF::WhileOp>(op)) {
-    return while_op.is_stateless();
-  }
+  // Note: Identity op is really side-effect free, but it is not marked as such
+  // in the TF dialect (see comments in definition of Identity op in tf_ops.td)
+  // However, for adding control dependencies, its safe to assume
+  // that the Identity op is side-effect free.
+  if (isa<IdentityOp>(op)) return true;
 
-  // Try to get the statefulness flag from the registry.
-  //
-  // TODO(yuanzx): Remove this after all ops are defined in the dialect.
-  if (op->getName().getDialect() !=
-      TF::TensorFlowDialect::getDialectNamespace()) {
-    return false;
-  }
-  StringRef op_name = op->getName().getStringRef();
-  // Drop the `tf.` prefix to query TF registry.
-  auto node_name =
-      op_name.drop_front(TensorFlowDialect::getDialectNamespace().size() + 1);
-  const tensorflow::OpRegistrationData* op_reg_data =
-      tensorflow::OpRegistry::Global()->LookUp(node_name.data());
-  return op_reg_data && !op_reg_data->op_def.is_stateful();
+  // For op's in the Tensorflow dialect, query the dialect.
+  if (op->getName().getDialect() ==
+      TF::TensorFlowDialect::getDialectNamespace())
+    return !TensorFlowDialect::CanHaveSideEffects(op);
+
+  // Otherwise, conservatively assume that there can be side effects.
+  return false;
 }
 
 }  // namespace

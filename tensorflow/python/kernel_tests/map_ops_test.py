@@ -122,12 +122,14 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.tensor_map_insert(m, k, v)
 
     default_value = array_ops.zeros_like(v)
-    l = control_flow_ops.cond(map_ops.tensor_map_has_key(m, k),
-                              lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
-                              lambda: default_value)
-    l2 = control_flow_ops.cond(map_ops.tensor_map_has_key(m, k2),
-                               lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
-                               lambda: default_value)
+    l = control_flow_ops.cond(
+        map_ops.tensor_map_has_key(m, k),
+        lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
+        lambda: default_value)
+    l2 = control_flow_ops.cond(
+        map_ops.tensor_map_has_key(m, k2),
+        lambda: map_ops.tensor_map_lookup(m, k, dtypes.float32),
+        lambda: default_value)
     self.assertAllClose(l, v)
     self.assertAllClose(l2, default_value)
 
@@ -265,7 +267,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       g = tape.gradient(l1 * l2, [v, v2])
       self.assertAllClose(g, [v2, v])
       g2 = tape.gradient(l1 * l1, v)
-      self.assertAllClose(g2, 2*v)
+      self.assertAllClose(g2, 2 * v)
     del tape
 
   def testEraseFirstInsertGrad(self):
@@ -394,6 +396,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     s = map_ops.tensor_map_size(m)
     self.assertAllEqual(s, 0)
     self.assertAllEqual(map_ops.tensor_map_has_key(m, k), False)
+
 
 if __name__ == "__main__":
   test.main()

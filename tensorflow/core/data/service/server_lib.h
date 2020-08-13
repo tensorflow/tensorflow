@@ -19,6 +19,7 @@ limitations under the License.
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/protobuf/data/experimental/service_config.pb.h"
 
 namespace tensorflow {
@@ -52,7 +53,8 @@ class GrpcDataServerBase {
   int BoundPort();
 
  protected:
-  virtual void AddServiceToBuilder(::grpc::ServerBuilder* builder) = 0;
+  virtual void AddDataServiceToBuilder(::grpc::ServerBuilder* builder) = 0;
+  void AddProfilerServiceToBuilder(::grpc::ServerBuilder* builder);
   // Starts the service. This will be called after building the service, so
   // bound_port() will return the actual bound port.
   virtual Status StartServiceInternal() = 0;
@@ -68,7 +70,9 @@ class GrpcDataServerBase {
   bool started_ = false;
   bool stopped_ = false;
 
-  std::unique_ptr<grpc::Server> server_;
+  std::unique_ptr<::grpc::Server> server_;
+  // TensorFlow profiler service implementation.
+  std::unique_ptr<grpc::ProfilerService::Service> profiler_service_ = nullptr;
 };
 
 class DispatchGrpcDataServer : public GrpcDataServerBase {
@@ -80,7 +84,7 @@ class DispatchGrpcDataServer : public GrpcDataServerBase {
   Status NumWorkers(int* num_workers);
 
  protected:
-  void AddServiceToBuilder(grpc::ServerBuilder* builder) override;
+  void AddDataServiceToBuilder(::grpc::ServerBuilder* builder) override;
   Status StartServiceInternal() override;
 
  private:
@@ -95,7 +99,7 @@ class WorkerGrpcDataServer : public GrpcDataServerBase {
   ~WorkerGrpcDataServer() override;
 
  protected:
-  void AddServiceToBuilder(grpc::ServerBuilder* builder) override;
+  void AddDataServiceToBuilder(::grpc::ServerBuilder* builder) override;
   Status StartServiceInternal() override;
 
  private:

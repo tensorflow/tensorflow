@@ -1797,6 +1797,15 @@ bool NNAPIDelegateKernel::Validate(
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
+      Expect(node->inputs->size >= 2,
+             NNAPIValidationFailureType::kUnsupportedOperatorVariant,
+             "Expected at least 2 inputs", &val_ctx);
+      if (node->inputs->size >= 2) {
+        Expect(context->tensors[node->inputs->data[1]].allocation_type ==
+                   kTfLiteMmapRo,
+               NNAPIValidationFailureType::kInputTensorShouldHaveConstantShape,
+               "The size input tensor must be constant.", &val_ctx);
+      }
       auto builtin = reinterpret_cast<TfLiteResizeNearestNeighborParams*>(
           node->builtin_data);
       if (android_sdk_version <= kMinSdkVersionForNNAPI12) {

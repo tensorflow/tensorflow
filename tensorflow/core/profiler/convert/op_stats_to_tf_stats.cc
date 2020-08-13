@@ -114,6 +114,7 @@ TfStatsDatabase ConvertOpStatsToTfStats(const OpStats& op_stats) {
   *tf_stats_db.mutable_without_idle() = GenerateTfStatsTable(
       host_tf_metrics_db, device_tf_metrics_db, kernel_stats_by_op_name,
       ridge_point, /*exclude_idle=*/true);
+  tf_stats_db.set_device_type(op_stats.run_environment().device_type());
   return tf_stats_db;
 }
 

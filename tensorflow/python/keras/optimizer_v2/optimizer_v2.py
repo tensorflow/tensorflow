@@ -41,7 +41,6 @@ from tensorflow.python.keras.optimizer_v2 import utils as optimizer_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import gradients
@@ -278,7 +277,11 @@ class OptimizerV2(trackable.Trackable):
   # Note: This attribute will likely be removed in an upcoming release.
   _HAS_AGGREGATE_GRAD = False
 
-  def __init__(self, name, **kwargs):
+  def __init__(self,
+               name,
+               gradient_aggregator=None,
+               gradient_transformers=None,
+               **kwargs):
     """Create a new Optimizer.
 
     This must be called by the constructors of subclasses.
@@ -287,11 +290,30 @@ class OptimizerV2(trackable.Trackable):
     you should be able to use the _set_hyper()/state.get_hyper()
     facility instead.
 
-    This class in stateful and thread-compatible.
+    This class is stateful and thread-compatible.
+
+    Example of custom gradient transformations:
+
+    ```python
+    def my_gradient_transformer(grads_and_vars):
+      # Simple example, double the gradients.
+      return [(2. * g, v) for g, v in grads_and_vars]
+
+    optimizer = tf.keras.optimizers.SGD(
+        1e-3, gradient_transformers=[my_gradient_transformer])
+    ```
 
     Args:
       name: A non-empty string.  The name to use for accumulators created
         for the optimizer.
+      gradient_aggregator: The function to use to aggregate gradients across
+        devices (when using `tf.distribute.Strategy`). If `None`, defaults to
+        summing the gradients across devices. The function should accept and
+        return a list of `(gradient, variable)` tuples.
+      gradient_transformers: (Optional). List of functions to use to transform
+        gradients before applying updates to `Variable`s. The functions are
+        applied after `gradient_aggregator`. The functions should accept and
+        return a list of `(gradient, variable)` tuples.
       **kwargs: keyword arguments. Allowed to be {`clipnorm`, `clipvalue`, `lr`,
         `decay`}. `clipnorm` is clip gradients by norm; `clipvalue` is clip
         gradients by value, `decay` is included for backward compatibility to
@@ -332,23 +354,81 @@ class OptimizerV2(trackable.Trackable):
       raise ValueError("decay cannot be less than 0: {}".format(decay))
     self._initial_decay = decay
 
-    # Set the gradient clipping properties
-    self.clipnorm = kwargs.pop("clipnorm", None)
-    self.clipvalue = kwargs.pop("clipvalue", None)
-    if ((self.clipnorm is not None or self.clipvalue is not None)
-        and distribute_ctx.has_strategy()):
-      raise ValueError("Gradient clipping in the optimizer "
-                       "(by setting clipnorm or clipvalue) is currently "
-                       "unsupported when using a distribution strategy.")
-
     self._hypers_created = False
-
     # Store the distribution strategy object if the optimizer is created inside
     # strategy scope, so it could be used to create variables later.
     if distribute_ctx.has_strategy():
       self._distribution_strategy = distribute_ctx.get_strategy()
     else:
       self._distribution_strategy = None
+
+    # Configure gradient transformations.
+    if gradient_aggregator is None:
+      gradient_aggregator = optimizer_utils.all_reduce_sum_gradients
+    self.gradient_aggregator = gradient_aggregator
+    if gradient_transformers is None:
+      gradient_transformers = []
+    self.gradient_transformers = gradient_transformers
+    self.clipnorm = kwargs.pop("clipnorm", None)
+    self.clipvalue = kwargs.pop("clipvalue", None)
+
+  @property
+  def clipnorm(self):
+    """`float` or `None`. If set, clips gradients to a maximum norm."""
+    return self._clipnorm
+
+  @clipnorm.setter
+  def clipnorm(self, val):
+    if val is not None and self.gradient_transformers:
+      raise ValueError("`clipnorm` cannot be set when `gradient_transformers` "
+                       "is set. Instead, use the `gradient_transformers` to "
+                       "specify clipping and other transformations.")
+    self._clipnorm = val
+    self._clipnorm_fn = optimizer_utils.make_gradient_clipnorm_fn(
+        self._clipnorm)
+
+  @property
+  def clipvalue(self):
+    """`float` or `None`. If set, clips gradients to a maximum value."""
+    return self._clipvalue
+
+  @clipvalue.setter
+  def clipvalue(self, val):
+    if val is not None and self.gradient_transformers:
+      raise ValueError("`clipvalue` cannot be set when `gradient_transformers` "
+                       "is set. Instead, use the `gradient_transformers` to "
+                       "specify clipping and other transformations.")
+    self._clipvalue = val
+    self._clipvalue_fn = optimizer_utils.make_gradient_clipvalue_fn(
+        self._clipvalue)
+
+  def _transform_loss(self, loss):
+    """Called in `.minimize` to transform loss before computing gradients."""
+    return loss
+
+  def _get_gradients(self, tape, loss, var_list, grad_loss=None):
+    """Called in `minimize` to compute gradients from loss."""
+    grads = tape.gradient(loss, var_list, grad_loss)
+    return list(zip(grads, var_list))
+
+  def _transform_unaggregated_gradients(self, grads_and_vars):
+    """Called in `apply_gradients` before gradient aggregation."""
+    return grads_and_vars
+
+  def _aggregate_gradients(self, grads_and_vars):
+    """Called in `apply_gradients` to aggregate gradients across devices."""
+    return self.gradient_aggregator(grads_and_vars)
+
+  def _transform_gradients(self, grads_and_vars):
+    """Called in `apply_gradients` after aggregation."""
+    if self._clipvalue is not None:
+      grads_and_vars = self._clipvalue_fn(grads_and_vars)
+    if self._clipnorm is not None:
+      grads_and_vars = self._clipnorm_fn(grads_and_vars)
+
+    for fn in self.gradient_transformers:
+      grads_and_vars = fn(grads_and_vars)
+    return grads_and_vars
 
   def minimize(self, loss, var_list, grad_loss=None, name=None, tape=None):
     """Minimize `loss` by updating `var_list`.
@@ -384,26 +464,6 @@ class OptimizerV2(trackable.Trackable):
     grads_and_vars = self._compute_gradients(
         loss, var_list=var_list, grad_loss=grad_loss, tape=tape)
     return self.apply_gradients(grads_and_vars, name=name)
-
-  def _clip_gradients(self, grads):
-    """Clip gradients according to the clipnorm and clipvalue attributes."""
-    if self.clipnorm is not None:
-      if distribute_ctx.has_strategy():
-        raise ValueError("Gradient clipping in the optimizer "
-                         "(by setting clipnorm or clipvalue) is currently "
-                         "unsupported when using a distribution strategy.")
-      grads = [None if g is None else clip_ops.clip_by_norm(g, self.clipnorm)
-               for g in grads]
-    if self.clipvalue is not None:
-      if distribute_ctx.has_strategy():
-        raise ValueError("Gradient clipping in the optimizer "
-                         "(by setting clipnorm or clipvalue) is currently "
-                         "unsupported when using a distribution strategy.")
-      v = self.clipvalue
-      grads = [
-          None if g is None else clip_ops.clip_by_value(g, -v, v) for g in grads
-      ]
-    return grads
 
   def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
     """Compute gradients of `loss` for the variables in `var_list`.
@@ -444,19 +504,16 @@ class OptimizerV2(trackable.Trackable):
       with tape:
         if not callable(var_list):
           tape.watch(var_list)
-
-        if callable(loss):
-          loss = loss()
-
+        loss = loss()
         if callable(var_list):
           var_list = var_list()
 
+    with tape:
+      loss = self._transform_loss(loss)
+
     var_list = nest.flatten(var_list)
     with ops.name_scope_v2(self._name + "/gradients"):
-      grads = tape.gradient(loss, var_list, grad_loss)
-      # TODO(omalleyt): Move to post-aggregation.
-      grads = self._clip_gradients(grads)
-    grads_and_vars = list(zip(grads, var_list))
+      grads_and_vars = self._get_gradients(tape, loss, var_list, grad_loss)
 
     self._assert_valid_dtypes([
         v for g, v in grads_and_vars
@@ -464,34 +521,6 @@ class OptimizerV2(trackable.Trackable):
     ])
 
     return grads_and_vars
-
-  def get_gradients(self, loss, params):
-    """Returns gradients of `loss` with respect to `params`.
-
-    Arguments:
-      loss: Loss tensor.
-      params: List of variables.
-
-    Returns:
-      List of gradient tensors.
-
-    Raises:
-      ValueError: In case any gradient cannot be computed (e.g. if gradient
-        function not implemented).
-    """
-    params = nest.flatten(params)
-    with backend.get_graph().as_default(), backend.name_scope(self._name +
-                                                              "/gradients"):
-      grads = gradients.gradients(loss, params)
-      for grad, param in zip(grads, params):
-        if grad is None:
-          raise ValueError("Variable {} has `None` for gradient. "
-                           "Please make sure that all of your ops have a "
-                           "gradient defined (i.e. are differentiable). "
-                           "Common ops without gradient: "
-                           "K.argmax, K.round, K.eval.".format(param))
-      grads = self._clip_gradients(grads)
-    return grads
 
   def apply_gradients(self,
                       grads_and_vars,
@@ -537,7 +566,7 @@ class OptimizerV2(trackable.Trackable):
     grads_and_vars = optimizer_utils.filter_empty_gradients(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
 
-    with backend.name_scope(self._name):
+    with ops.name_scope_v2(self._name):
       # Create iteration if necessary.
       with ops.init_scope():
         self._create_all_weights(var_list)
@@ -563,29 +592,16 @@ class OptimizerV2(trackable.Trackable):
 
       apply_state = self._prepare(var_list)
       if experimental_aggregate_gradients:
-        reduced_grads = self._aggregate_gradients(grads_and_vars)
-        var_list = [v for _, v in grads_and_vars]
-        grads_and_vars = list(zip(reduced_grads, var_list))
+        grads_and_vars = self._transform_unaggregated_gradients(grads_and_vars)
+        grads_and_vars = self._aggregate_gradients(grads_and_vars)
+      grads_and_vars = self._transform_gradients(grads_and_vars)
+
       return distribute_ctx.get_replica_context().merge_call(
           functools.partial(self._distributed_apply, apply_state=apply_state),
           args=(grads_and_vars,),
           kwargs={
               "name": name,
           })
-
-  def _aggregate_gradients(self, grads_and_vars):
-    """Returns aggregated gradients.
-
-    This method must be preserved to maintain backwards compatibility with
-    Horovod aggregation.
-
-    Args:
-      grads_and_vars: List of (gradient, variable) pairs.
-
-    Returns:
-      A list of all-reduced gradients.
-    """
-    return optimizer_utils.all_reduce_sum_gradients(grads_and_vars)
 
   def _distributed_apply(self, distribution, grads_and_vars, name, apply_state):
     """`apply_gradients` using a `DistributionStrategy`."""
@@ -645,6 +661,35 @@ class OptimizerV2(trackable.Trackable):
             return self._iterations.assign_add(1, read_value=False)
 
       return self._iterations.assign_add(1)
+
+  def get_gradients(self, loss, params):
+    """Returns gradients of `loss` with respect to `params`.
+
+    Should be used only in legacy v1 graph mode.
+
+    Arguments:
+      loss: Loss tensor.
+      params: List of variables.
+
+    Returns:
+      List of gradient tensors.
+
+    Raises:
+      ValueError: In case any gradient cannot be computed (e.g. if gradient
+        function not implemented).
+    """
+    params = nest.flatten(params)
+    with backend.get_graph().as_default(), backend.name_scope(self._name +
+                                                              "/gradients"):
+      grads = gradients.gradients(loss, params)
+      for grad, param in zip(grads, params):
+        if grad is None:
+          raise ValueError("Variable {} has `None` for gradient. "
+                           "Please make sure that all of your ops have a "
+                           "gradient defined (i.e. are differentiable). "
+                           "Common ops without gradient: "
+                           "K.argmax, K.round, K.eval.".format(param))
+    return grads
 
   def get_updates(self, loss, params):
     grads = self.get_gradients(loss, params)

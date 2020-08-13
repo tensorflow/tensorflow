@@ -80,51 +80,37 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                                                      &optimizations_default));
 
     string job_name = port::JobName();
-    if (job_name.empty()) {
-      // If `job_name` is empty, apply the enabled and default optimizations
-      // directly.
-      optimizations.insert(optimizations.end(), optimizations_enabled.begin(),
-                           optimizations_enabled.end());
-      optimizations.insert(optimizations.end(), optimizations_default.begin(),
-                           optimizations_default.end());
-    } else {
-      // The map that stores the experiment names and for how much percentage
-      // of the jobs, the experiments will be randomly turned on.
-      //
-      // This is currently empty; we have no live experiments yet.
-      absl::flat_hash_map<string, uint64> live_experiments;
+    // The map that stores the experiment names and for how much percentage
+    // of the jobs, the experiments will be randomly turned on.
+    //
+    // This is currently empty; we have no live experiments yet.
+    absl::flat_hash_map<string, uint64> live_experiments;
+    auto hash_func = [](const string& str) { return Hash64(str); };
+    optimizations = SelectOptimizations(
+        job_name, live_experiments, optimizations_enabled,
+        optimizations_disabled, optimizations_default, hash_func);
 
-      const char* opt_ins_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
-      const char* opt_outs_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
-      string opt_ins_raw;
-      if (opt_ins_raw_cs != nullptr) {
-        opt_ins_raw = string(opt_ins_raw_cs);
-      }
-      string opt_outs_raw;
-      if (opt_outs_raw_cs != nullptr) {
-        opt_outs_raw = string(opt_outs_raw_cs);
-      }
-      auto hash_func = [](const string& str) { return Hash64(str); };
-      optimizations = SelectOptimizations(
-          job_name, opt_ins_raw, opt_outs_raw, live_experiments,
-          optimizations_enabled, optimizations_disabled, optimizations_default,
-          hash_func);
+    // Log and record the experiments that will be applied.
+    if (!job_name.empty() && !live_experiments.empty()) {
+      VLOG(1) << "The input pipeline is subject to tf.data experiment. "
+                 "Please see `go/tf-data-experiments` for more details.";
 
-      // Log the experiments that will be applied.
-      if (!live_experiments.empty() && VLOG_IS_ON(1)) {
-        VLOG(1) << "The input pipeline is subject to tf.data experiment. "
-                   "Please see `go/tf-data-experiments` for more details.";
-
-        for (auto& pair : live_experiments) {
-          string experiment = pair.first;
-          if (std::find(optimizations.begin(), optimizations.end(),
-                        experiment) != optimizations.end()) {
-            VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
-            metrics::RecordTFDataExperiment(experiment);
-          }
+      for (auto& pair : live_experiments) {
+        string experiment = pair.first;
+        if (std::find(optimizations.begin(), optimizations.end(), experiment) !=
+            optimizations.end()) {
+          VLOG(1) << "The experiment \"" << experiment << "\" is applied.";
+          metrics::RecordTFDataExperiment(experiment);
         }
       }
     }
+  }
+
+  // If there are no optimizations to be applied, directly return the input.
+  if (optimizations.empty()) {
+    *output = input;
+    input->Ref();
+    return;
   }
 
   auto config_factory = [this, &optimizations]() {

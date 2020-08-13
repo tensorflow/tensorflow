@@ -51,7 +51,8 @@ Status GrpcDataServerBase::Start() {
                            credentials, &bound_port_);
   builder.SetMaxReceiveMessageSize(-1);
 
-  AddServiceToBuilder(&builder);
+  AddDataServiceToBuilder(&builder);
+  AddProfilerServiceToBuilder(&builder);
   server_ = builder.BuildAndStart();
   if (!server_) {
     return errors::Internal("Could not start gRPC server");
@@ -77,6 +78,12 @@ void GrpcDataServerBase::Join() { server_->Wait(); }
 
 int GrpcDataServerBase::BoundPort() { return bound_port(); }
 
+void GrpcDataServerBase::AddProfilerServiceToBuilder(
+    ::grpc::ServerBuilder* builder) {
+  profiler_service_ = CreateProfilerService();
+  builder->RegisterService(profiler_service_.get());
+}
+
 DispatchGrpcDataServer::DispatchGrpcDataServer(
     const experimental::DispatcherConfig& config)
     : GrpcDataServerBase(config.port(), config.protocol(), "DispatchServer"),
@@ -84,7 +91,8 @@ DispatchGrpcDataServer::DispatchGrpcDataServer(
 
 DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
 
-void DispatchGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
+void DispatchGrpcDataServer::AddDataServiceToBuilder(
+    ::grpc::ServerBuilder* builder) {
   service_ = absl::make_unique<GrpcDispatcherImpl>(builder, config_).release();
 }
 
@@ -95,8 +103,8 @@ Status DispatchGrpcDataServer::StartServiceInternal() {
 Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   GetWorkersRequest req;
   GetWorkersResponse resp;
-  grpc::ServerContext ctx;
-  grpc::Status s = service_->GetWorkers(&ctx, &req, &resp);
+  ::grpc::ServerContext ctx;
+  ::grpc::Status s = service_->GetWorkers(&ctx, &req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get workers", s);
   }
@@ -111,7 +119,8 @@ WorkerGrpcDataServer::WorkerGrpcDataServer(
 
 WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
 
-void WorkerGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
+void WorkerGrpcDataServer::AddDataServiceToBuilder(
+    ::grpc::ServerBuilder* builder) {
   service_ = absl::make_unique<GrpcWorkerImpl>(builder, config_).release();
 }
 

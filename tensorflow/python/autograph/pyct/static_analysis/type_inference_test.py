@@ -44,6 +44,8 @@ class BasicTestResolver(type_inference.Resolver):
     return {type(value)}
 
   def res_arg(self, ns, types_ns, f_name, name, type_anno):
+    if type_anno is None:
+      return None
     return {str(type_anno)}
 
 
@@ -167,19 +169,20 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
   def test_expr(self):
 
-    self_test = self
+    test_self = self
 
     class Resolver(type_inference.Resolver):
 
       def res_value(self, ns, value):
-        self_test.assertEqual(value, tc.a)
+        test_self.assertEqual(value, tc.a)
         return {str}
 
       def res_name(self, ns, types_ns, name):
-        self_test.assertEqual(name, qual_names.QN('tc'))
+        test_self.assertEqual(name, qual_names.QN('tc'))
         return {TestClass}, tc
 
-      def res_call(self, ns, types_ns, node, args, keywords):
+      def res_call(self, ns, types_ns, node, f_type, args, keywords):
+        test_self.assertEqual(f_type, (str,))
         return {int}, None
 
     class TestClass:
@@ -401,7 +404,8 @@ class TypeInferenceAnalyzerTest(test.TestCase):
         test_self.assertEqual(name, qual_names.QN('g'))
         return {str}, g
 
-      def res_call(self, ns, types_ns, node, args, keywords):
+      def res_call(self, ns, types_ns, node, f_type, args, keywords):
+        test_self.assertEqual(f_type, (str,))
         test_self.assertEqual(
             anno.getanno(node.func, anno.Basic.QN), qual_names.QN('g'))
         return {float}, None
@@ -433,7 +437,8 @@ class TypeInferenceAnalyzerTest(test.TestCase):
       def res_arg(self, ns, types_ns, f_name, name, type_anno):
         return {str(type_anno)}
 
-      def res_call(self, ns, types_ns, node, args, keywords):
+      def res_call(self, ns, types_ns, node, f_type, args, keywords):
+        test_self.assertIsNone(f_type)
         return None, {qual_names.QN('x'): {str}}
 
     def g():
@@ -540,6 +545,22 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     self.assertTypes(fn_body[1].targets[0], float)
     self.assertClosureTypes(fn_body[0], {'x': {float}})
 
+  def test_local_function_hides_locals(self):
+
+    def test_fn(a: int):  # pylint:disable=unused-argument
+
+      def local_fn(v):
+        a = v
+        return a
+
+      local_fn(1)
+
+    node, _ = TestTranspiler(BasicTestResolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertFalse(
+        anno.hasanno(fn_body[0].body[0].targets[0], anno.Static.TYPES))
+
   def test_local_function_type(self):
 
     def test_fn(x: int):
@@ -564,7 +585,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
       def res_name(self, ns, types_ns, name):
         test_self.assertEqual(name, qual_names.QN('g'))
-        return None, g
+        return {Callable[[Callable], None]}, g
 
       def res_value(self, ns, value):
         test_self.assertEqual(value, 1.0)
@@ -573,8 +594,9 @@ class TypeInferenceAnalyzerTest(test.TestCase):
       def res_arg(self, ns, types_ns, f_name, name, type_anno):
         return {str(type_anno)}
 
-      def res_call(self, ns, types_ns, node, args, keywords):
+      def res_call(self, ns, types_ns, node, f_type, args, keywords):
         test_self.assertEqual(node.func.id, 'g')
+        test_self.assertEqual(f_type, (Callable[[Callable], None],))
         return None, {qual_names.QN('x'): {str}}
 
     def g(foo):

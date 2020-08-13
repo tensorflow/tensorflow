@@ -327,6 +327,27 @@ cc_library(
     ],
 )
 
+# TODO(phawkins): this library is really part of JAX. Find a better home for it.
+cc_library(
+    name = "pytree",
+    srcs = ["pytree.cc"],
+    hdrs = ["pytree.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
+        "@pybind11",
+    ],
+)
+
 config_setting(
     name = "enable_gpu",
     values = {"define": "xla_python_enable_gpu=true"},
@@ -348,6 +369,7 @@ pybind_extension(
         ":dlpack",
         ":ops",
         ":py_client",
+        ":pytree",
         ":python_ref_manager",
         ":outfeed_receiver_py",
         ":traceback",
