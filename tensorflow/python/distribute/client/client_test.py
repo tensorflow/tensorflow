@@ -80,10 +80,8 @@ class CoordinatedClosureQueueTest(test.TestCase):
     def get_func(label):
 
       def func():
-        logging.info('Label: %s, before waiting 3 sec', label)
         time.sleep(3)
         processed_count[label] += 1
-        logging.info('Label: %s, after waiting 3 sec', label)
 
       return func
 

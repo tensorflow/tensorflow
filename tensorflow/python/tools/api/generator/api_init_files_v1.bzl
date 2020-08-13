@@ -113,6 +113,7 @@ KERAS_API_INIT_FILES_V1 = [
     "keras/applications/inception_v3/__init__.py",
     "keras/applications/mobilenet/__init__.py",
     "keras/applications/mobilenet_v2/__init__.py",
+    "keras/applications/mobilenet_v3/__init__.py",
     "keras/applications/nasnet/__init__.py",
     "keras/applications/resnet/__init__.py",
     "keras/applications/resnet_v2/__init__.py",

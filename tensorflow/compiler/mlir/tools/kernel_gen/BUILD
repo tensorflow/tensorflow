@@ -1,46 +1,111 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
-licenses(["notice"])
+package(
+    default_visibility = [":friends"],
+    licenses = ["notice"],  # Apache 2.0
+)
 
 package_group(
     name = "friends",
     includes = ["//third_party/mlir:subpackages"],
-    packages = ["//tensorflow/compiler/mlir/..."],
+    packages = [
+        "//tensorflow/compiler/mlir/...",
+        "//tensorflow/core/kernels/mlir_generated/...",
+    ],
 )
 
 cc_library(
-    name = "cubin_creator",
-    srcs = ["cubin_creator.cc"],
-    hdrs = ["cubin_creator.h"],
+    name = "passes",
+    srcs = ["passes.cc"],
+    hdrs = ["passes.h"],
     copts = if_cuda(["-DGOOGLE_CUDA=1"]),
     deps = [
         "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
         "@llvm-project//mlir:GPUDialect",
-        "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
-        "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TargetNVVMIR",
         "@llvm-project//mlir:Transforms",
-        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:lhlo",
-        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
         "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
+        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
         "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+        "//tensorflow/compiler/xla:status",
         "//tensorflow/compiler/xla/service/gpu:target_constants",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
-        "//tensorflow/compiler/xla/service/mlir_gpu:kernel_lowering",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
+    ] + if_cuda(["//tensorflow/stream_executor/gpu:asm_compiler"]),
+)
+
+cc_library(
+    name = "kernel_creator",
+    srcs = ["kernel_creator.cc"],
+    hdrs = ["kernel_creator.h"],
+    copts = if_cuda(["-DGOOGLE_CUDA=1"]),
+    deps = [
+        ":passes",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Affine",
+        "@llvm-project//mlir:AffineToStandardTransforms",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_dialect_registration",
+        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:CFGTransforms",
+        "@llvm-project//mlir:GPUDialect",
+        "@llvm-project//mlir:GPUToNVVMTransforms",
+        "@llvm-project//mlir:GPUTransforms",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:LLVMDialect",
+        "@llvm-project//mlir:LLVMTransforms",
+        "@llvm-project//mlir:LinalgOps",
+        "@llvm-project//mlir:LinalgToLLVM",
+        "@llvm-project//mlir:LinalgTransforms",
+        "@llvm-project//mlir:NVVMDialect",
+        "@llvm-project//mlir:Parser",
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:SCFDialect",
+        "@llvm-project//mlir:GPUToGPURuntimeTransforms",
+        "@llvm-project//mlir:SCFToGPUPass",
+        "@llvm-project//mlir:SCFTransforms",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:TargetNVVMIR",
+        "@llvm-project//mlir:Transforms",
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:all_passes",
+        "//tensorflow/compiler/mlir/hlo:hlo_dialect_force_registration",
+        "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
+        "//tensorflow/compiler/mlir/hlo:legalize_tanh_to_approximation",
+        "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo_copy_removal",
+        "//tensorflow/compiler/mlir/hlo:lhlo_fuse_linalg",
+        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_affine",
+        "//tensorflow/compiler/mlir/hlo:lhlo_legalize_to_gpu",
+        "//tensorflow/compiler/mlir/hlo:materialize_broadcasts",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/hlo:unfuse_batch_norm",  # buildcleaner: keep
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
+        "//tensorflow/compiler/mlir/xla:xla_legalize_tf",
+        "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",
+        "//tensorflow/compiler/xla/service/gpu:stream_executor_util",
+        "//tensorflow/compiler/xla/service/gpu:target_constants",
+        "//tensorflow/compiler/xla/service/mlir_gpu:kernel_lowering",
+        "//tensorflow/compiler/xla/service/mlir_gpu:passes",
+        "//tensorflow/compiler/xla:debug_options_flags",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/core:cuda_libdevice_path",
+        "//tensorflow/core:lib",
+        "//tensorflow/compiler/xla:util",
     ] + if_cuda(["//tensorflow/stream_executor/gpu:asm_compiler"]),
 )
 
@@ -49,11 +114,36 @@ tf_cc_binary(
     srcs = ["tf_to_cubin.cc"],
     visibility = ["//tensorflow/core/kernels/mlir_generated:__pkg__"],
     deps = [
-        ":cubin_creator",
+        ":kernel_creator",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Pass",
+    ],
+)
+
+tf_cc_binary(
+    name = "tf_to_kernel",
+    srcs = ["tf_to_kernel.cc"],
+    visibility = ["//tensorflow/core/kernels/mlir_generated:__pkg__"],
+    deps = [
+        ":kernel_creator",
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Analysis",
+        "@llvm-project//llvm:CodeGen",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//llvm:Target",
+        "@llvm-project//llvm:X86CodeGen",  # fixdeps: keep
+        "@llvm-project//llvm:X86Disassembler",  # fixdeps: keep
+        "@llvm-project//mlir:Pass",
+        "@llvm-project//mlir:TargetLLVMIR",
     ],
 )
 
@@ -72,5 +162,17 @@ tf_cc_binary(
         "@llvm-project//mlir:MlirOptMain",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+exports_files(["tf_framework_c_interface.h"])
+
+cc_library(
+    name = "tf_framework_c_interface",
+    srcs = ["tf_framework_c_interface.cc"],
+    hdrs = ["tf_framework_c_interface.h"],
+    deps = [
+        "//tensorflow/core:framework",
+        "@llvm-project//mlir:mlir_runner_utils",
     ],
 )

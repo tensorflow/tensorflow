@@ -578,7 +578,14 @@ def flags_for_merged_test_models(test_name, conversion_mode):
         tests_csv = tests_csv[:-1]  # Remove trailing comma.
     return " --no_tests_limit --test_sets=%s" % tests_csv
 
-def gen_zip_test(name, test_name, conversion_mode, **kwargs):
+def gen_zip_test(
+        name,
+        test_name,
+        conversion_mode,
+        test_tags,
+        test_args,
+        additional_test_args = {},
+        **kwargs):
     """Generate a zipped-example test and its dependent zip files.
 
     Args:
@@ -586,6 +593,11 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
       test_name: str. Test targets this model. Comes from the list above.
       conversion_mode: str. Which conversion mode to run with. Comes from the
         list above.
+      test_tags: tags for the generated cc_test.
+      test_args: the basic cc_test args to be used.
+      additional_test_args: a dictionary of additional args to be used together
+        with test_args. The key is an identifier to be used in test tag, and
+        the value is a list of additional test args to be used.
       **kwargs: tf_cc_test kwargs
     """
     toco = "//tensorflow/lite/toco:toco"
@@ -603,7 +615,19 @@ def gen_zip_test(name, test_name, conversion_mode, **kwargs):
         toco = toco,
         flags = flags + " --save_graphdefs",
     )
-    tf_cc_test(name, **kwargs)
+    tf_cc_test(
+        name,
+        args = test_args,
+        tags = test_tags + ["gen_zip_test"],
+        **kwargs
+    )
+    for key, value in additional_test_args.items():
+        tf_cc_test(
+            name = "%s_%s" % (name, key),
+            args = test_args + value,
+            tags = test_tags + ["gen_zip_test_%s" % key],
+            **kwargs
+        )
 
 def gen_zipped_test_file(name, file, toco, flags):
     """Generate a zip file of tests by using :generate_examples.

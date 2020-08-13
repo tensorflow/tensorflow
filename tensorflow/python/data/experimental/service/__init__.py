@@ -64,8 +64,8 @@ workers, the tf.data service should be able to achieve similar speed.
 ## Running the tf.data service
 
 tf.data servers should be brought up alongside your training jobs, and brought
-down when the jobs are finished. The tf.data service uses one DispatchServer and
-any number of WorkerServers. See
+down when the jobs are finished. The tf.data service uses one `DispatchServer`
+and any number of `WorkerServers`. See
 https://github.com/tensorflow/ecosystem/tree/master/data_service for an example
 of using Google Kubernetes Engine (GKE) to manage the tf.data service. The
 server implementation in
@@ -75,12 +75,17 @@ contexts.
 
 ### Fault tolerance
 
-The tf.data dispatch server manages all state for the service, so it is
-important to keep the server alive. If the dispatch server is restarted
-mid-training, the training must also be restarted.
+By default, the tf.data dispatch server stores its state in-memory, making it a
+single point of failure during training. To avoid this, pass
+`fault_tolerant_mode=True` when creating your `DispatchServer`. Dispatcher
+fault tolerance requires `work_dir` to be configured and accessible from the
+dispatcher both before and after restart (e.g. a GCS path). With fault tolerant
+mode enabled, the dispatcher will journal its state to the work directory so
+that no state is lost when the dispatcher is restarted.
 
-WorkerServers, on the other hand, may be freely restarted, added, or removed
-during training.
+WorkerServers may be freely restarted, added, or removed during training. At
+startup, workers will register with the dispatcher and begin processing all
+outstanding jobs from the beginning.
 
 ## Using the tf.data service from your training job
 

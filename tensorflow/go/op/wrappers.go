@@ -10899,12 +10899,26 @@ func ExperimentalRandomDataset(scope *Scope, seed tf.Output, seed2 tf.Output, ou
 	return op.Output(0)
 }
 
+// ExperimentalIgnoreErrorsDatasetAttr is an optional argument to ExperimentalIgnoreErrorsDataset.
+type ExperimentalIgnoreErrorsDatasetAttr func(optionalAttr)
+
+// ExperimentalIgnoreErrorsDatasetLogWarning sets the optional log_warning attribute to value.
+// If not specified, defaults to false
+func ExperimentalIgnoreErrorsDatasetLogWarning(value bool) ExperimentalIgnoreErrorsDatasetAttr {
+	return func(m optionalAttr) {
+		m["log_warning"] = value
+	}
+}
+
 // Creates a dataset that contains the elements of `input_dataset` ignoring errors.
-func ExperimentalIgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func ExperimentalIgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...ExperimentalIgnoreErrorsDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "ExperimentalIgnoreErrorsDataset",
 		Input: []tf.Input{
@@ -12075,6 +12089,153 @@ func ExtractGlimpse(scope *Scope, input tf.Output, size tf.Output, offsets tf.Ou
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// StatelessSampleDistortedBoundingBoxAttr is an optional argument to StatelessSampleDistortedBoundingBox.
+type StatelessSampleDistortedBoundingBoxAttr func(optionalAttr)
+
+// StatelessSampleDistortedBoundingBoxAspectRatioRange sets the optional aspect_ratio_range attribute to value.
+//
+// value: The cropped area of the image must have an aspect ratio =
+// width / height within this range.
+// If not specified, defaults to <f:0.75 f:1.33 >
+func StatelessSampleDistortedBoundingBoxAspectRatioRange(value []float32) StatelessSampleDistortedBoundingBoxAttr {
+	return func(m optionalAttr) {
+		m["aspect_ratio_range"] = value
+	}
+}
+
+// StatelessSampleDistortedBoundingBoxAreaRange sets the optional area_range attribute to value.
+//
+// value: The cropped area of the image must contain a fraction of the
+// supplied image within this range.
+// If not specified, defaults to <f:0.05 f:1 >
+func StatelessSampleDistortedBoundingBoxAreaRange(value []float32) StatelessSampleDistortedBoundingBoxAttr {
+	return func(m optionalAttr) {
+		m["area_range"] = value
+	}
+}
+
+// StatelessSampleDistortedBoundingBoxMaxAttempts sets the optional max_attempts attribute to value.
+//
+// value: Number of attempts at generating a cropped region of the image
+// of the specified constraints. After `max_attempts` failures, return the entire
+// image.
+// If not specified, defaults to 100
+func StatelessSampleDistortedBoundingBoxMaxAttempts(value int64) StatelessSampleDistortedBoundingBoxAttr {
+	return func(m optionalAttr) {
+		m["max_attempts"] = value
+	}
+}
+
+// StatelessSampleDistortedBoundingBoxUseImageIfNoBoundingBoxes sets the optional use_image_if_no_bounding_boxes attribute to value.
+//
+// value: Controls behavior if no bounding boxes supplied.
+// If true, assume an implicit bounding box covering the whole input. If false,
+// raise an error.
+// If not specified, defaults to false
+func StatelessSampleDistortedBoundingBoxUseImageIfNoBoundingBoxes(value bool) StatelessSampleDistortedBoundingBoxAttr {
+	return func(m optionalAttr) {
+		m["use_image_if_no_bounding_boxes"] = value
+	}
+}
+
+// Generate a randomly distorted bounding box for an image deterministically.
+//
+// Bounding box annotations are often supplied in addition to ground-truth labels
+// in image recognition or object localization tasks. A common technique for
+// training such a system is to randomly distort an image while preserving its
+// content, i.e. *data augmentation*. This Op, given the same `seed`,
+// deterministically outputs a randomly distorted localization of an object, i.e.
+// bounding box, given an `image_size`, `bounding_boxes` and a series of
+// constraints.
+//
+// The output of this Op is a single bounding box that may be used to crop the
+// original image. The output is returned as 3 tensors: `begin`, `size` and
+// `bboxes`. The first 2 tensors can be fed directly into `tf.slice` to crop the
+// image. The latter may be supplied to `tf.image.draw_bounding_boxes` to visualize
+// what the bounding box looks like.
+//
+// Bounding boxes are supplied and returned as `[y_min, x_min, y_max, x_max]`. The
+// bounding box coordinates are floats in `[0.0, 1.0]` relative to the width and
+// the height of the underlying image.
+//
+// The output of this Op is guaranteed to be the same given the same `seed` and is
+// independent of how many times the function is called, and independent of global
+// seed settings (e.g. `tf.random.set_seed`).
+//
+// Example usage:
+//
+// >>> image = np.array([[[1], [2], [3]], [[4], [5], [6]], [[7], [8], [9]]])
+// >>> bbox = tf.constant(
+// ...   [0.0, 0.0, 1.0, 1.0], dtype=tf.float32, shape=[1, 1, 4])
+// >>> seed = (1, 2)
+// >>> # Generate a single distorted bounding box.
+// >>> bbox_begin, bbox_size, bbox_draw = (
+// ...   tf.image.stateless_sample_distorted_bounding_box(
+// ...     tf.shape(image), bounding_boxes=bbox, seed=seed))
+// >>> # Employ the bounding box to distort the image.
+// >>> tf.slice(image, bbox_begin, bbox_size)
+// <tf.Tensor: shape=(2, 2, 1), dtype=int64, numpy=
+// array([[[1],
+//         [2]],
+//        [[4],
+//         [5]]])>
+// >>> # Draw the bounding box in an image summary.
+// >>> colors = np.array([[1.0, 0.0, 0.0], [0.0, 0.0, 1.0]])
+// >>> tf.image.draw_bounding_boxes(
+// ...   tf.expand_dims(tf.cast(image, tf.float32),0), bbox_draw, colors)
+// <tf.Tensor: shape=(1, 3, 3, 1), dtype=float32, numpy=
+// array([[[[1.],
+//          [1.],
+//          [3.]],
+//         [[1.],
+//          [1.],
+//          [6.]],
+//         [[7.],
+//          [8.],
+//          [9.]]]], dtype=float32)>
+//
+// Note that if no bounding box information is available, setting
+// `use_image_if_no_bounding_boxes = true` will assume there is a single implicit
+// bounding box covering the whole image. If `use_image_if_no_bounding_boxes` is
+// false and no bounding boxes are supplied, an error is raised.
+//
+// Arguments:
+//	image_size: 1-D, containing `[height, width, channels]`.
+//	bounding_boxes: 3-D with shape `[batch, N, 4]` describing the N bounding boxes
+// associated with the image.
+//	min_object_covered: The cropped area of the image must contain at least this
+// fraction of any bounding box supplied. The value of this parameter should be
+// non-negative. In the case of 0, the cropped area does not need to overlap
+// any of the bounding boxes supplied.
+//	seed: 1-D with shape `[2]`. The seed to the random number generator. Must have dtype
+// `int32` or `int64`. (When using XLA, only `int32` is allowed.)
+//
+// Returns:
+//	begin: 1-D, containing `[offset_height, offset_width, 0]`. Provide as input to
+// `tf.slice`.
+//	size: 1-D, containing `[target_height, target_width, -1]`. Provide as input to
+// `tf.slice`.
+//	bboxes: 3-D with shape `[1, 1, 4]` containing the distorted bounding box.
+// Provide as input to `tf.image.draw_bounding_boxes`.
+func StatelessSampleDistortedBoundingBox(scope *Scope, image_size tf.Output, bounding_boxes tf.Output, min_object_covered tf.Output, seed tf.Output, optional ...StatelessSampleDistortedBoundingBoxAttr) (begin tf.Output, size tf.Output, bboxes tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StatelessSampleDistortedBoundingBox",
+		Input: []tf.Input{
+			image_size, bounding_boxes, min_object_covered, seed,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
 }
 
 // SampleDistortedBoundingBoxAttr is an optional argument to SampleDistortedBoundingBox.
@@ -13364,6 +13525,24 @@ func ResizeArea(scope *Scope, images tf.Output, size tf.Output, optional ...Resi
 			images, size,
 		},
 		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the number of work units this Reader has finished processing.
+//
+// Arguments:
+//	reader_handle: Handle to a Reader.
+func ReaderNumWorkUnitsCompletedV2(scope *Scope, reader_handle tf.Output) (units_completed tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReaderNumWorkUnitsCompletedV2",
+		Input: []tf.Input{
+			reader_handle,
+		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -15101,6 +15280,94 @@ func TensorListLength(scope *Scope, input_handle tf.Output) (length tf.Output) {
 	return op.Output(0)
 }
 
+// Returns whether the given key exists in the map.
+//
+// input_handle: the input map
+// key: the key to check
+// has_key: whether the key is already in the map or not
+func TensorMapHasKey(scope *Scope, input_handle tf.Output, key tf.Output) (has_key tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorMapHasKey",
+		Input: []tf.Input{
+			input_handle, key,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the value from a given key in a tensor map.
+//
+// input_handle: the input map
+// key: the key to be looked up
+// value: the value found from the given key
+func TensorMapLookup(scope *Scope, input_handle tf.Output, key tf.Output, value_dtype tf.DataType) (value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"value_dtype": value_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorMapLookup",
+		Input: []tf.Input{
+			input_handle, key,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Inverse 3D fast Fourier transform.
+//
+// Computes the inverse 3-dimensional discrete Fourier transform over the
+// inner-most 3 dimensions of `input`.
+//
+// Arguments:
+//	input: A complex tensor.
+//
+// Returns A complex tensor of the same shape as `input`. The inner-most 3
+//   dimensions of `input` are replaced with their inverse 3D Fourier transform.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.ifftn with 3 dimensions.
+// @end_compatibility
+func IFFT3D(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "IFFT3D",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns a map that is the 'input_handle' with the given key-value pair inserted.
+//
+// input_handle: the original map
+// output_handle: the map with key and value inserted
+// key: the key to be inserted
+// value: the value to be inserted
+func TensorMapInsert(scope *Scope, input_handle tf.Output, key tf.Output, value tf.Output) (output_handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorMapInsert",
+		Input: []tf.Input{
+			input_handle, key, value,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Merges summaries.
 //
 // This op creates a
@@ -15301,33 +15568,6 @@ func AudioSummaryV2(scope *Scope, tag tf.Output, tensor tf.Output, sample_rate t
 			tag, tensor, sample_rate,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Outputs a `Summary` protocol buffer with a histogram.
-//
-// The generated
-// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-// has one summary value containing a histogram for `values`.
-//
-// This op reports an `InvalidArgument` error if any value is not finite.
-//
-// Arguments:
-//	tag: Scalar.  Tag to use for the `Summary.Value`.
-//	values: Any shape. Values to use to build the histogram.
-//
-// Returns Scalar. Serialized `Summary` protocol buffer.
-func HistogramSummary(scope *Scope, tag tf.Output, values tf.Output) (summary tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "HistogramSummary",
-		Input: []tf.Input{
-			tag, values,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -20034,6 +20274,28 @@ func Polygamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Returns a tensor map with item from given key erased.
+//
+// input_handle: the original map
+// output_handle: the map with value from given key removed
+// key: the key of the value to be erased
+// value: the value that was erased
+func TensorMapErase(scope *Scope, input_handle tf.Output, key tf.Output, value_dtype tf.DataType) (output_handle tf.Output, value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"value_dtype": value_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorMapErase",
+		Input: []tf.Input{
+			input_handle, key,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // Shuffle dimensions of x according to a permutation.
@@ -24997,6 +25259,24 @@ func MaxPoolWithArgmax(scope *Scope, input tf.Output, ksize []int64, strides []i
 	return op.Output(0), op.Output(1)
 }
 
+// Returns the number of tensors in the input tensor map.
+//
+// input_handle: the input map
+// size: the number of tensors in the map
+func TensorMapSize(scope *Scope, input_handle tf.Output) (size tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorMapSize",
+		Input: []tf.Input{
+			input_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // MaxPoolGradGradAttr is an optional argument to MaxPoolGradGrad.
 type MaxPoolGradGradAttr func(optionalAttr)
 
@@ -28370,6 +28650,33 @@ func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ..
 	return op.Output(0)
 }
 
+// Outputs a `Summary` protocol buffer with a histogram.
+//
+// The generated
+// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+// has one summary value containing a histogram for `values`.
+//
+// This op reports an `InvalidArgument` error if any value is not finite.
+//
+// Arguments:
+//	tag: Scalar.  Tag to use for the `Summary.Value`.
+//	values: Any shape. Values to use to build the histogram.
+//
+// Returns Scalar. Serialized `Summary` protocol buffer.
+func HistogramSummary(scope *Scope, tag tf.Output, values tf.Output) (summary tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "HistogramSummary",
+		Input: []tf.Input{
+			tag, values,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Performs gradient updates of embedding tables.
 //
 // Arguments:
@@ -30742,12 +31049,26 @@ func MaxPool3DGradGrad(scope *Scope, orig_input tf.Output, orig_output tf.Output
 	return op.Output(0)
 }
 
+// IgnoreErrorsDatasetAttr is an optional argument to IgnoreErrorsDataset.
+type IgnoreErrorsDatasetAttr func(optionalAttr)
+
+// IgnoreErrorsDatasetLogWarning sets the optional log_warning attribute to value.
+// If not specified, defaults to false
+func IgnoreErrorsDatasetLogWarning(value bool) IgnoreErrorsDatasetAttr {
+	return func(m optionalAttr) {
+		m["log_warning"] = value
+	}
+}
+
 // Creates a dataset that contains the elements of `input_dataset` ignoring errors.
-func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+func IgnoreErrorsDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape, optional ...IgnoreErrorsDatasetAttr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "IgnoreErrorsDataset",
 		Input: []tf.Input{
@@ -35440,34 +35761,6 @@ func DecodeRaw(scope *Scope, bytes tf.Output, out_type tf.DataType, optional ...
 	return op.Output(0)
 }
 
-// Inverse 3D fast Fourier transform.
-//
-// Computes the inverse 3-dimensional discrete Fourier transform over the
-// inner-most 3 dimensions of `input`.
-//
-// Arguments:
-//	input: A complex tensor.
-//
-// Returns A complex tensor of the same shape as `input`. The inner-most 3
-//   dimensions of `input` are replaced with their inverse 3D Fourier transform.
-//
-// @compatibility(numpy)
-// Equivalent to np.fft.ifftn with 3 dimensions.
-// @end_compatibility
-func IFFT3D(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "IFFT3D",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // QueueDequeueUpToV2Attr is an optional argument to QueueDequeueUpToV2.
 type QueueDequeueUpToV2Attr func(optionalAttr)
 
@@ -39085,24 +39378,6 @@ func ResourceApplyAddSign(scope *Scope, var_ tf.Output, m tf.Output, lr tf.Outpu
 	return scope.AddOperation(opspec)
 }
 
-// Returns the number of work units this Reader has finished processing.
-//
-// Arguments:
-//	reader_handle: Handle to a Reader.
-func ReaderNumWorkUnitsCompletedV2(scope *Scope, reader_handle tf.Output) (units_completed tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReaderNumWorkUnitsCompletedV2",
-		Input: []tf.Input{
-			reader_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // FractionalMaxPoolAttr is an optional argument to FractionalMaxPool.
 type FractionalMaxPoolAttr func(optionalAttr)
 
@@ -39423,6 +39698,20 @@ func RemoteFusedGraphExecute(scope *Scope, inputs []tf.Output, Toutputs []tf.Dat
 		return
 	}
 	return outputs
+}
+
+// Creates and returns an empty tensor map.
+//
+// handle: an empty tensor map
+func EmptyTensorMap(scope *Scope) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "EmptyTensorMap",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // DatasetToGraphAttr is an optional argument to DatasetToGraph.
@@ -48464,6 +48753,14 @@ type AutoShardDatasetAttr func(optionalAttr)
 func AutoShardDatasetAutoShardPolicy(value int64) AutoShardDatasetAttr {
 	return func(m optionalAttr) {
 		m["auto_shard_policy"] = value
+	}
+}
+
+// AutoShardDatasetNumReplicas sets the optional num_replicas attribute to value.
+// If not specified, defaults to 0
+func AutoShardDatasetNumReplicas(value int64) AutoShardDatasetAttr {
+	return func(m optionalAttr) {
+		m["num_replicas"] = value
 	}
 }
 

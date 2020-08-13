@@ -15,9 +15,11 @@ limitations under the License.
 
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tools/kernel_gen/transforms/rewriters.h"
@@ -39,21 +41,23 @@ class TestTFFrameworkToLLVMPass
     // Populate type conversions.
     LLVMTypeConverter type_converter(m.getContext());
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
-      return LLVM::LLVMType::getInt8PtrTy(type_converter.getDialect());
+      return LLVM::LLVMType::getInt8PtrTy(m.getContext());
     });
 
     // Populate patterns.
     OwningRewritePatternList patterns;
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     PopulateTFFrameworkToLLVMConversionPatterns(&type_converter, &patterns);
+    lmhlo::PopulateLhloToLLVMConversionPatterns(&type_converter, &patterns);
 
     // Set target.
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
+    target.addLegalDialect<gpu::GPUDialect>();
     target.addIllegalDialect<tf_framework::TFFrameworkDialect>();
-    target.addLegalOp<ModuleOp, ModuleTerminatorOp>();
+    target.addIllegalOp<LLVM::DialectCastOp>();
 
-    if (failed(applyFullConversion(m, target, patterns))) {
+    if (failed(applyPartialConversion(m, target, patterns))) {
       signalPassFailure();
     }
   }

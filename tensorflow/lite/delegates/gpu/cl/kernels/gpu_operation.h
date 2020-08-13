@@ -37,6 +37,18 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+// kCustom: default value
+//   GPUOperation::GetGridSize must be overloaded
+// kWBToX_HDToY_SToZ:
+//   grid_x = dst_[0]->Width() * dst_[0]->Batch();
+//   grid_y = dst_[0]->Height() * dst_[0]->Depth();
+//   grid_z = dst_[0]->Slices();
+// kWBToX_HDToY_ZIs1:
+//   grid_x = dst_[0]->Width() * dst_[0]->Batch();
+//   grid_y = dst_[0]->Height() * dst_[0]->Depth();
+//   grid_z = 1;
+enum class TensorToGrid { kCustom, kWBToX_HDToY_SToZ, kWBToX_HDToY_ZIs1 };
+
 struct CreationContext {
   const CLDevice* device;
   CLContext* context;
@@ -93,14 +105,16 @@ class GPUOperation {
     return queue->DispatchImplicit(kernel_, grid_size_, work_group_size_);
   }
 
-  virtual absl::Status Tune(const TuningParameters& params) {
-    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-    return GetBestWorkGroup(params, kernel_, grid_size_, &work_group_size_);
-  }
+  virtual void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info, std::vector<int3>* work_groups) const;
 
-  virtual absl::Status Compile(const CreationContext& creation_context);
+  absl::Status Tune(const TuningParameters& params);
 
-  virtual absl::Status PostCompileCheck(const DeviceInfo& device_info) {
+  absl::Status Compile(const CreationContext& creation_context);
+
+  virtual absl::Status PostCompileCheck(const DeviceInfo& device_info,
+                                        const KernelInfo& kernel_info) {
     return absl::OkStatus();
   }
 
@@ -120,6 +134,8 @@ class GPUOperation {
 
   Arguments args_;
   std::string code_;
+  // not applicable to elementwise
+  TensorToGrid tensor_to_grid_ = TensorToGrid::kCustom;
 
   bool elementwise_ = false;
   // applicable only with elementwise_ = true;

@@ -683,24 +683,22 @@ TEST(SetTensorValueTest, Quantized) {
                              /*error_msg=*/"");
 }
 
-static void BM_NodeMapConstruct(benchmark::State& state) {
-  const int size = state.range(0);
+static void BM_NodeMapConstruct(int iters, int size) {
   testing::StopTiming();
   GraphDef graph = test::CreateRandomGraph(size);
   testing::StartTiming();
-  for (auto s : state) {
+  for (int i = 0; i < iters; i++) {
     NodeMap node_map(&graph);
   }
   testing::StopTiming();
 }
 BENCHMARK(BM_NodeMapConstruct)->Range(1, 1 << 20);
 
-static void BM_ImmutableNodeMapConstruct(benchmark::State& state) {
-  const int size = state.range(0);
+static void BM_ImmutableNodeMapConstruct(int iters, int size) {
   testing::StopTiming();
   GraphDef graph = test::CreateRandomGraph(size);
   testing::StartTiming();
-  for (auto s : state) {
+  for (int i = 0; i < iters; i++) {
     ImmutableNodeMap node_map(&graph);
   }
   testing::StopTiming();

@@ -412,9 +412,11 @@ cc_test(
         "tflite_smoke_test",
     ],
     deps = [
+        ":builtin_op_data",
         ":external_cpu_backend_context",
         ":framework",
         ":string_util",
+        ":util",
         ":version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",

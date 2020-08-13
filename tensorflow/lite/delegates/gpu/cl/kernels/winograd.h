@@ -38,7 +38,10 @@ class Winograd4x4To36 : public GPUOperation {
                   const DeviceInfo& device_info);
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Tune(const TuningParameters& params) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
 
   // Move only
   Winograd4x4To36(Winograd4x4To36&& operation);
@@ -56,7 +59,7 @@ class Winograd4x4To36 : public GPUOperation {
   std::string GetWinograd4x4To36Code(const OperationDef& op_def);
 
   // Must be called after kernel compilation
-  int3 SelectBestWorkGroup();
+  int3 SelectBestWorkGroup(const KernelInfo& kernel_info) const;
 
   Padding2D padding_;
 };
@@ -73,7 +76,10 @@ class Winograd36To4x4 : public GPUOperation {
                   const DeviceInfo& device_info);
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
-  absl::Status Tune(const TuningParameters& params) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
 
   // Move only
   Winograd36To4x4(Winograd36To4x4&& operation);
@@ -92,7 +98,7 @@ class Winograd36To4x4 : public GPUOperation {
   std::string GetWinograd36To4x4Code(const OperationDef& op_def);
 
   // Must be called after kernel compilation
-  int3 SelectBestWorkGroup();
+  int3 SelectBestWorkGroup(const KernelInfo& kernel_info) const;
 };
 
 absl::Status CreateWinograd36To4x4(

@@ -121,9 +121,6 @@ class TensorFlowTypeImpl
   static Derived get(MLIRContext* context) {
     return Base::get(context, Derived::getTypeKind());
   }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == Derived::getTypeKind(); }
 };
 }  // namespace detail
 
@@ -242,9 +239,6 @@ class TypeWithSubtypeImpl
   }
 
   static Derived get(MLIRContext* context) { return get({}, context); }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == Derived::getTypeKind(); }
 
   static LogicalResult verifyConstructionInvariants(
       Location loc, ArrayRef<TensorType> subtypes) {

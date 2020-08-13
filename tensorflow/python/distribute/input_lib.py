@@ -1032,6 +1032,13 @@ class DistributedDataset(_IterableInput):
       iterator = DistributedIterator(self._input_workers, worker_iterators,
                                      self._strategy)
     iterator._element_spec = self.element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   @property
@@ -1106,6 +1113,13 @@ class DistributedDatasetV1(DistributedDataset):
     iterator = DistributedIteratorV1(self._input_workers, worker_iterators,
                                      self._strategy)
     iterator._element_spec = self.element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   def __iter__(self):
@@ -1173,6 +1187,13 @@ class DistributedDatasetsFromFunction(_IterableInput):
         iterator = DistributedIterator(self._input_workers, iterators,
                                        self._strategy)
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+
+      # When async eager is enabled, sometimes the iterator may not finish
+      # initialization before passing to a multi device function, add a sync
+      # point here to make sure all underlying iterators are initialized.
+      if context.executing_eagerly():
+        context.async_wait()
+
       return iterator
 
     raise RuntimeError("__iter__() is only supported inside of tf.function "
@@ -1213,6 +1234,13 @@ class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
     iterator = DistributedIteratorV1(self._input_workers, iterators,
                                      self._strategy)
     iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   def __iter__(self):

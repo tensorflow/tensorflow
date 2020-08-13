@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -35,6 +36,8 @@ namespace tensorflow {
 namespace gradients {
 namespace internal {
 namespace {
+using std::vector;
+using tracing::TracingOperation;
 
 class CppGradients
     : public ::testing::TestWithParam<std::tuple<const char*, bool, bool>> {
@@ -45,7 +48,9 @@ class CppGradients
 };
 
 Status RegisterGradients(GradientRegistry* registry) {
-  return registry->Register("Add", AddRegisterer);
+  TF_RETURN_IF_ERROR(registry->Register("Add", AddRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Exp", ExpRegisterer));
+  return Status::OK();
 }
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
@@ -58,14 +63,34 @@ Status Add(AbstractContext* ctx, Tape* tape,
   forward_op.ctx = ctx;
   TF_RETURN_IF_ERROR(
       Reset(add_op.get(), "Add", /*raw_device_name=*/nullptr, &forward_op));
-  if (isa<tracing::TracingOperation>(add_op.get())) {
+  if (isa<TracingOperation>(add_op.get())) {
     TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(add_op.get())->SetOpName("my_add"));
+        dyn_cast<TracingOperation>(add_op.get())->SetOpName("my_add"));
   }
   TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[0], &forward_op));
   TF_RETURN_IF_ERROR(AddInput(add_op.get(), inputs[1], &forward_op));
   int num_retvals = 1;
   return Execute(add_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
+
+// Computes `exp(inputs[0])` and records it on the tape.
+Status Exp(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs,
+           const GradientRegistry& registry) {
+  AbstractOperationPtr exp_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(exp_op.get(), "Exp", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<TracingOperation>(exp_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<TracingOperation>(exp_op.get())->SetOpName("my_exp"));
+  }
+  TF_RETURN_IF_ERROR(AddInput(exp_op.get(), inputs[0], &forward_op));
+  int num_retvals = 1;
+  return Execute(exp_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
                  registry);
 }
 
@@ -101,6 +126,35 @@ Status AddGradModel(AbstractContext* ctx,
   return Status::OK();
 }
 
+// Computes
+// y = exp(inputs[0])
+// return grad(y, {inputs[0]})
+Status ExpGradModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));  // Watch x.
+  std::vector<AbstractTensorHandle*> exp_outputs(1);
+  TF_RETURN_IF_ERROR(Exp(ctx, tape, inputs, absl::MakeSpan(exp_outputs),
+                         registry));  // Compute x+y.
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(exp_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0])}, source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads));
+  for (auto exp_output : exp_outputs) {
+    exp_output->Unref();
+  }
+  outputs[0] = out_grads[0];
+  delete tape;
+  return Status::OK();
+}
+
 AbstractContext* BuildFunction(const char* fn_name) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -132,26 +186,42 @@ Status RunModel(Model model, AbstractContext* ctx,
   if (use_function) {
     const char* fn_name = "test_fn";
     std::unique_ptr<AbstractFunction> scoped_func;
+    // Returning null tensors from a tf.function is not supported, so we keep
+    // track of indices in the model's outputs are nullptr in this set.
+    // The FunctionDef only outputs the non-null tensors. We later pad the
+    // function op outputs to have nullptrs at the `null_indices`.
+    absl::flat_hash_set<int> null_indices;
     {
       AbstractContextPtr func_ctx(BuildFunction(fn_name));
       std::vector<AbstractTensorHandle*> func_inputs;
       func_inputs.reserve(inputs.size());
       TF_RETURN_IF_ERROR(
           CreateParamsForInputs(func_ctx.get(), inputs, &func_inputs));
-      OutputList output_list;
-      output_list.expected_num_outputs = outputs.size();
-      output_list.outputs.resize(outputs.size());
+      vector<AbstractTensorHandle*> model_outputs;
+      model_outputs.resize(outputs.size());
       TF_RETURN_IF_ERROR(model(func_ctx.get(), absl::MakeSpan(func_inputs),
-                               absl::MakeSpan(output_list.outputs), registry));
+                               absl::MakeSpan(model_outputs), registry));
       for (auto func_input : func_inputs) {
         func_input->Unref();
       }
       AbstractFunction* func = nullptr;
+      OutputList output_list;
+      output_list.expected_num_outputs = 0;
+      output_list.outputs.reserve(outputs.size());
+      for (int i = 0; i < model_outputs.size(); i++) {
+        if (model_outputs[i]) {
+          output_list.outputs.emplace_back(model_outputs[i]);
+          output_list.expected_num_outputs += 1;
+        } else {
+          null_indices.insert(i);
+        }
+      }
       TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingContext>(func_ctx.get())
                              ->Finalize(&output_list, &func));
       scoped_func.reset(func);
-      output_list.outputs[0]->Unref();
-      output_list.outputs[1]->Unref();
+      for (auto output : output_list.outputs) {
+        output->Unref();
+      }
       TF_RETURN_IF_ERROR(ctx->RegisterFunction(func));
     }
 
@@ -160,8 +230,19 @@ Status RunModel(Model model, AbstractContext* ctx,
     for (auto input : inputs) {
       TF_RETURN_IF_ERROR(fn_op->AddInput(input));
     }
-    int retvals = outputs.size();
-    TF_RETURN_IF_ERROR(fn_op->Execute(outputs, &retvals));
+    int retvals = outputs.size() - null_indices.size();
+    vector<AbstractTensorHandle*> fn_outputs(retvals);
+    TF_RETURN_IF_ERROR(fn_op->Execute(
+        absl::Span<AbstractTensorHandle*>(fn_outputs.data(), fn_outputs.size()),
+        &retvals));
+    int skipped_indices = 0;
+    for (int i = 0; i < outputs.size(); i++) {
+      if (!null_indices.contains(i)) {
+        outputs[i] = fn_outputs[i - skipped_indices];
+      } else {
+        skipped_indices += 1;
+      }
+    }
     TF_RETURN_IF_ERROR(ctx->RemoveFunction(fn_name));
     return Status::OK();
   } else {
@@ -264,18 +345,62 @@ TEST_P(CppGradients, TestAddGrad) {
   TF_DeleteTensor(result_tensor);
 }
 
+TEST_P(CppGradients, TestExpGrad) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+
+  AbstractTensorHandlePtr x;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx.get(), 1.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    x.reset(x_raw);
+  }
+
+  GradientRegistry registry;
+  Status s = RegisterGradients(&registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  // Pseudo-code:
+  //
+  // tape.watch(x)
+  // y = exp(x)
+  // outputs = tape.gradient(y, x)
+  std::vector<AbstractTensorHandle*> outputs(1);
+  s = RunModel(ExpGradModel, ctx.get(), {x.get()}, absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  TF_Tensor* result_tensor;
+  s = getValue(outputs[0], &result_tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
+  EXPECT_NEAR(*result_value, 2.718, 0.001);
+  outputs[0]->Unref();
+  TF_DeleteTensor(result_tensor);
+  result_tensor = nullptr;
+}
+
 // TODO(b/160888630): Enable this test with mlir after AddInputList is
 // supported. It is needed for AddN op which is used for gradient aggregation.
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,
-    ::testing::Combine(::testing::Values("graphdef"),
+    ::testing::Combine(::testing::Values("graphdef", "mlir"),
                        /*tfrt*/ ::testing::Values(true, false),
                        /*executing_eagerly*/ ::testing::Values(true, false)));
 #else
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,
-    ::testing::Combine(::testing::Values("graphdef"),
+    ::testing::Combine(::testing::Values("graphdef", "mlir"),
                        /*tfrt*/ ::testing::Values(false),
                        /*executing_eagerly*/ ::testing::Values(true, false)));
 #endif

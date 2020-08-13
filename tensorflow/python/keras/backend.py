@@ -1181,7 +1181,7 @@ def placeholder(shape=None,
 
   >>> input_ph = tf.keras.backend.placeholder(shape=(2, 4, 5))
   >>> input_ph
-  <KerasTensor: shape=(2, 4, 5) dtype=float32 (Symbolic value ...)>
+  <KerasTensor: shape=(2, 4, 5) dtype=float32 (created by layer ...)>
 
   """
   if sparse and ragged:

@@ -324,6 +324,7 @@ class TFETest(test_util.TensorFlowTestCase):
       else:
         ops.disable_tensor_equality()
 
+  @test_util.disable_tfrt('Async execution mode not supported in TFRT.')
   def testContext(self):
     ctx = context.Context()
     self.assertTrue(ctx.executing_eagerly())
@@ -383,6 +384,7 @@ class TFETest(test_util.TensorFlowTestCase):
     with ctx.device(device_spec):
       self.assertEqual(device_name, ctx.device_name)
 
+  @test_util.disable_tfrt('Async execution mode not supported in TFRT.')
   def testAsyncBasic(self):
     ctx = context.Context(execution_mode=context.ASYNC)
     ctx.ensure_initialized()
@@ -392,6 +394,7 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertTrue(has_cpu_device)
     del ctx
 
+  @test_util.disable_tfrt('Multi CPU placement not supported yet.')
   def testMultiCpuPlacement(self):
     with ops.device('cpu:1'):
       x = array_ops.identity(1.0)
@@ -401,10 +404,12 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('Device name incorrect (known issue for runtime '
+                          'fallback).')
   def testShouldCopy(self):
     with ops.device('GPU:0'):
       x = array_ops.identity(1.0)
-      self.assertEqual(x.device, '/job:localhost/replica:0/task:0/device:GPU:0')
+      self.assertEndsWith(x.device, 'GPU:0')
     y = array_ops.identity(x)
     # The value we're testing y.device against will depend on what the behavior
     # of not explicitly specifying a device in the context is.  This behavior is
@@ -426,6 +431,7 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertFalse(switch.is_building_function)
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('Resolve not implemented yet.')
   def testInt32GPU(self):
     with ops.device('gpu:0'):
       xent = nn_ops.sparse_softmax_cross_entropy_with_logits(
@@ -461,6 +467,7 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertAllEqual(context_values, get_context_values(ctx))
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('Context config not supported in TFRT.')
   def testContextConfig(self):
     ctx = context.Context(config=config_pb2.ConfigProto(
         device_count={'GPU': 0}))
@@ -478,6 +485,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertAllEqual(t.numpy(), 10.0)
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('Resolve not implemented yet.')
   def testDevicePlacementEnforcesConsistency(self):
     cpu = context.device('cpu:0')
     gpu = context.device('gpu:0')
@@ -494,6 +502,8 @@ class TFETest(test_util.TensorFlowTestCase):
     cpu.__exit__()
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('Device name incorrect (known issue for runtime '
+                          'fallback).')
   def testReEntrant(self):
     cpu = context.device('cpu:0')
     gpu = context.device('gpu:0')
@@ -518,6 +528,7 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertEqual(3, result)
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('Resolve not implemented yet.')
   def testResourceTensorPlacement(self):
     with context.device('gpu:0'):
       v = resource_variable_ops.ResourceVariable(1.0)
@@ -540,6 +551,7 @@ class TFETest(test_util.TensorFlowTestCase):
       x.gpu(context.context().num_gpus() + 1)
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('Async execution mode not supported in TFRT.')
   def testCopyBetweenDevicesAsync(self):
     with context.execution_mode(context.ASYNC):
       x = constant_op.constant([[1., 2.], [3., 4.]])
@@ -556,6 +568,7 @@ class TFETest(test_util.TensorFlowTestCase):
     context.context().executor.clear_error()
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('TensorHandleInterface::Resolve() not implemented.')
   def testCopyScope(self):
     constant = constant_op.constant(1.0)
     with ops.device('gpu:0'):
@@ -563,6 +576,7 @@ class TFETest(test_util.TensorFlowTestCase):
         c = constant + 1.0
     self.assertAllEqual(c, 2.0)
 
+  @test_util.disable_tfrt('ContextFromInterface not implemented.')
   def testPyFunctionNullContext(self):
     def simple_fn(unused_handle):
       return 1.
@@ -577,6 +591,7 @@ class TFETest(test_util.TensorFlowTestCase):
 
     self.assertAllEqual(test_fn(test_var), 1.0)
 
+  @test_util.disable_tfrt('Async execution mode not supported in TFRT.')
   def testPyFunctionAsync(self):
 
     def simple_fn(v):
@@ -594,6 +609,7 @@ class TFETest(test_util.TensorFlowTestCase):
     async_executor.wait()
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('Resolve not implemented yet.')
   def testNumpyForceCPU(self):
     cpu = constant_op.constant([[1., 2.], [3., 4.]])
     c2g = cpu.gpu()
@@ -622,6 +638,7 @@ class TFETest(test_util.TensorFlowTestCase):
         attrs=('T', three.dtype.as_datatype_enum))[0]
     self.assertAllEqual(15, product)
 
+  @test_util.disable_tfrt('Async execution mode not supported in TFRT.')
   def testExecuteBasicAsync(self):
     with context.execution_mode(context.ASYNC):
       three = constant_op.constant(3)
@@ -650,6 +667,8 @@ class TFETest(test_util.TensorFlowTestCase):
     context.context().executor.clear_error()
     context.context().execution_mode = context.SYNC
 
+  @test_util.disable_tfrt('TFRT asserts correct number of outputs instead of '
+                          'returning error status.')
   def testExecuteTooManyNumOutputs(self):
     # num_outputs provided is 50, but only one output is produced.
     product = execute(
@@ -660,6 +679,8 @@ class TFETest(test_util.TensorFlowTestCase):
         attrs=('T', dtypes.int32.as_datatype_enum))[0]
     self.assertAllEqual(15, product)
 
+  @test_util.disable_tfrt('TFRT asserts correct number of outputs instead of '
+                          'returning error status.')
   def testExecuteTooFewNumOutputs(self):
     # num_outputs provided is 0, but one output is produced.
     with self.assertRaises(errors.InvalidArgumentError):
@@ -671,6 +692,7 @@ class TFETest(test_util.TensorFlowTestCase):
           attrs=('T', dtypes.int32.as_datatype_enum))[0]
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('Resolve not implemented yet.')
   def testMatMulGPU(self):
     three = constant_op.constant([[3.]]).gpu()
     five = constant_op.constant([[5.]]).gpu()
@@ -736,8 +758,8 @@ class TFETest(test_util.TensorFlowTestCase):
     product = execute(
         b'MatMul',
         num_outputs=1,
-        inputs=[constant_op.constant([[3]]),
-                constant_op.constant([[5]])],
+        inputs=[constant_op.constant([[3.]]),
+                constant_op.constant([[5.]])],
         attrs=('transpose_a', True, 'transpose_b', False, 'T',
                dtypes.int32.as_datatype_enum))[0]
     self.assertAllEqual([[15]], product)
@@ -903,6 +925,7 @@ class TFETest(test_util.TensorFlowTestCase):
           inputs=[constant_op.constant(3.0)],
           attrs=('T', dtypes.float32.as_datatype_enum))
 
+  @test_util.disable_tfrt('TFRT raises InternalError instead of NotFoundError')
   def testExecuteUnknownOp(self):
     with self.assertRaises(errors.NotFoundError):
       execute(b'BlahBlahBlah', num_outputs=1, inputs=[], attrs=None)
@@ -973,7 +996,7 @@ class TFETest(test_util.TensorFlowTestCase):
       c = a + b
 
     # Op forced to CPU since all constants are integers and small.
-    self.assertEqual(c.device, '/job:localhost/replica:0/task:0/device:CPU:0')
+    self.assertEndsWith(c.device, 'CPU:0')
 
     a = array_ops.zeros((8, 10), dtype=dtypes.int64)
     b = array_ops.ones((8, 10), dtype=dtypes.int64)
@@ -982,7 +1005,7 @@ class TFETest(test_util.TensorFlowTestCase):
       c = a + b
 
     # Op not forced to CPU since the tensors are larger than 64 elements.
-    self.assertEqual(c.device, '/job:localhost/replica:0/task:0/device:GPU:0')
+    self.assertEndsWith(c.device, 'GPU:0')
 
     a = constant_op.constant((1, 2, 3, 4, 5), dtype=dtypes.float32)
     b = constant_op.constant((2, 3, 4, 5, 6), dtype=dtypes.float32)
@@ -990,7 +1013,7 @@ class TFETest(test_util.TensorFlowTestCase):
       c = a + b
 
     # Op not forced to CPU since the constants are not integers.
-    self.assertEqual(c.device, '/job:localhost/replica:0/task:0/device:GPU:0')
+    self.assertEndsWith(c.device, 'GPU:0')
 
   def testExecutionModeIsStoredThreadLocal(self):
     cv = threading.Condition()
@@ -1024,6 +1047,8 @@ class TFETest(test_util.TensorFlowTestCase):
     for t in threads:
       t.join()
 
+  @test_util.disable_tfrt('Does not support converting DT_RESOURCE'
+                          'to op attr type yet.')
   def testEmptyResourceReturned(self):
     with ops.device('CPU:0'):
       v = variables.Variable(1.)
@@ -1066,6 +1091,7 @@ class SendRecvTest(test_util.TensorFlowTestCase):
     context._reset_context()
     configure_virtual_cpus()
 
+  @test_util.disable_tfrt('Send/Receive not supported in TFRT yet.')
   def testBasic(self):
     t0 = constant_op.constant(1.0)
     t1 = constant_op.constant(2.0)
@@ -1079,6 +1105,7 @@ class SendRecvTest(test_util.TensorFlowTestCase):
         2.0)
 
   @test_util.run_gpu_only
+  @test_util.disable_tfrt('Send/Receive not supported in TFRT yet.')
   def testLocalCrossDevice(self):
     gpu_device_name = '/job:localhost/replica:0/task:0/device:GPU:0'
     with ops.device('GPU:0'):

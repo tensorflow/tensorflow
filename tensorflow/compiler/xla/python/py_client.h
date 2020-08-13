@@ -124,7 +124,7 @@ class PyClient : public std::enable_shared_from_this<PyClient> {
       const pybind11::object& argument, Device* device, bool force_copy,
       PjRtBuffer::HostBufferSemantics host_buffer_semantics);
 
-  StatusOr<std::unique_ptr<PyExecutable>> Compile(
+  StatusOr<std::shared_ptr<PyExecutable>> Compile(
       const XlaComputation& computation, CompileOptions options);
 
   pybind11::bytes HeapProfile();

@@ -162,14 +162,6 @@ MlirCommonFlags* GetMlirCommonFlags();
 void AppendMarkForCompilationPassFlags(
     std::vector<tensorflow::Flag>* flag_list);
 
-// Makes all future calls to `IsXlaEnabled()` return `true`.
-//
-// Should only be called when XLA is linked in.
-void SetXlaIsEnabled();
-
-// Returns whether XLA is enabled.
-bool IsXlaEnabled();
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_FLAGS_H_

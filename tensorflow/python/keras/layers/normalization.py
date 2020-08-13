@@ -577,7 +577,7 @@ class BatchNormalizationBase(Layer):
         training, train_op, _fused_batch_norm_inference)
     variance = _maybe_add_or_remove_bessels_correction(variance, remove=True)
 
-    training_value = control_flow_util.smart_constant_value(training)
+    training_value = control_flow_util.constant_value(training)
     if training_value or training_value is None:
       if not use_fused_avg_updates:
         if training_value is None:
@@ -762,7 +762,7 @@ class BatchNormalizationBase(Layer):
       return (scale, offset)
 
     # Determine a boolean value for `training`: could be True, False, or None.
-    training_value = control_flow_util.smart_constant_value(training)
+    training_value = control_flow_util.constant_value(training)
     if training_value == False:  # pylint: disable=singleton-comparison,g-explicit-bool-comparison
       mean, variance = self.moving_mean, self.moving_variance
     else:

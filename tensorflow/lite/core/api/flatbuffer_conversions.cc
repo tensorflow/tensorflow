@@ -896,6 +896,7 @@ TfLiteStatus ParseAdd(const Operator* op, ErrorReporter* error_reporter,
   if (schema_params != nullptr) {
     params->activation =
         ConvertActivation(schema_params->fused_activation_function());
+    params->pot_scale_int16 = schema_params->pot_scale_int16();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
@@ -1631,6 +1632,7 @@ TfLiteStatus ParseSub(const Operator* op, ErrorReporter* error_reporter,
   if (schema_params != nullptr) {
     params->activation =
         ConvertActivation(schema_params->fused_activation_function());
+    params->pot_scale_int16 = schema_params->pot_scale_int16();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

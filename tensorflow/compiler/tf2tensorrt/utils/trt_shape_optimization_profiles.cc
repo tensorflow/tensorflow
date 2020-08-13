@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <functional>
 
+#include "absl/algorithm/container.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
@@ -35,14 +36,16 @@ void TrtShapeOptimizationProfile::InitProfiles() {
             << "for each input (min=opt=max).";
   }
   for (auto& shape_vec : input_shapes_) {
-    std::vector<nvinfer1::Dims> dimvec;
-    for (auto& shape : shape_vec) {
-      dimvec.push_back(TensorShapeToTrtDims(shape, false));
+    if (!shape_vec.empty()) {
+      std::vector<nvinfer1::Dims> dimvec(shape_vec.size());
+      absl::c_transform(shape_vec, dimvec.begin(), [](TensorShape shape) {
+        return TensorShapeToTrtDims(shape, false);
+      });
+      // Set min=opt=max.
+      OptimizationProfileConfig profConfig{dimvec, dimvec, dimvec};
+      profiles_.push_back(std::move(profConfig));
+      VLOG(1) << "Created profile " << profiles_.back().DebugString();
     }
-    // We set min=opt=max.
-    OptimizationProfileConfig profConfig{dimvec, dimvec, dimvec};
-    profiles_.push_back(std::move(profConfig));
-    VLOG(1) << "Created profile " << profiles_.back().DebugString();
   }
 }
 

@@ -1020,7 +1020,8 @@ class MirroredVariable(DistributedVariable, Mirrored):
     # TODO(b/154017756): Make _dense_var_to_tensor consistent between ON_READ
     # and ON_WRITE.
     # Try to avoid assignments to and other mutations of MirroredVariable
-    # state except through a DistributionStrategy.extended.update() call.
+    # state except through a DistributionStrategy.extended.update() or any of
+    # the `assign*` and `scatter*` calls.
     if as_ref:
       # A TF 1.x case where the variable is a boolean variable and used like:
       # tf.cond(v, true_fn, false_fn).
@@ -1083,7 +1084,8 @@ class SyncOnReadVariable(DistributedVariable):
     if values_util.is_saving_non_distributed():
       return self._primary.assign_sub(value, use_locking, name, read_value)
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if ds_context.in_cross_replica_context() and not _in_update_replica():
+      if (ds_context.in_cross_replica_context() and
+          not values_util.in_replica_update_context()):
         return values_util.on_read_assign_sub_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1094,7 +1096,8 @@ class SyncOnReadVariable(DistributedVariable):
     if values_util.is_saving_non_distributed():
       return self._primary.assign_add(value, use_locking, name, read_value)
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if ds_context.in_cross_replica_context() and not _in_update_replica():
+      if (ds_context.in_cross_replica_context() and
+          not values_util.in_replica_update_context()):
         return values_util.on_read_assign_add_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1105,7 +1108,8 @@ class SyncOnReadVariable(DistributedVariable):
     if values_util.is_saving_non_distributed():
       return self._primary.assign(value, use_locking, name, read_value)
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if ds_context.in_cross_replica_context() and not _in_update_replica():
+      if (ds_context.in_cross_replica_context() and
+          not values_util.in_replica_update_context()):
         return values_util.on_read_assign_cross_replica(
             self, value, read_value=read_value)
       else:
@@ -1156,7 +1160,8 @@ class SyncOnReadVariable(DistributedVariable):
     if values_util.is_saving_non_distributed():
       return self._primary.value()
     with ds_context.enter_or_assert_strategy(self._distribute_strategy):
-      if ds_context.in_cross_replica_context() and not _in_update_replica():
+      if (ds_context.in_cross_replica_context() and
+          not values_util.in_replica_update_context()):
         if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
           return self._get_replica(0).value()
         return self._get_cross_replica()
@@ -1291,7 +1296,10 @@ class OnReadPolicy(VariablePolicy):
 
   def value(self, var):
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      if ds_context.in_cross_replica_context():
+      if (ds_context.in_cross_replica_context() and
+          not values_util.in_replica_update_context()):
+        if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
+          return var._get_replica(0).value()  # pylint: disable=protected-access
         return var._get_cross_replica()  # pylint: disable=protected-access
       else:
         return var._get_on_device_or_primary().value()  # pylint: disable=protected-access
@@ -1324,7 +1332,8 @@ class OnReadPolicy(VariablePolicy):
                  read_value=True):
     """Subtracts a value from this variable."""
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      if ds_context.in_cross_replica_context():
+      if (ds_context.in_cross_replica_context() and
+          not values_util.in_replica_update_context()):
         return values_util.on_read_assign_sub_cross_replica(
             var, value, read_value=read_value)
       else:
@@ -1336,7 +1345,8 @@ class OnReadPolicy(VariablePolicy):
                  read_value=True):
     """Adds a value to this variable."""
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      if ds_context.in_cross_replica_context():
+      if (ds_context.in_cross_replica_context() and
+          not values_util.in_replica_update_context()):
         return values_util.on_read_assign_add_cross_replica(
             var, value, read_value=read_value)
       else:
@@ -1346,7 +1356,8 @@ class OnReadPolicy(VariablePolicy):
 
   def assign(self, var, value, use_locking=False, name=None, read_value=True):
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
-      if ds_context.in_cross_replica_context():
+      if (ds_context.in_cross_replica_context() and
+          not values_util.in_replica_update_context()):
         return values_util.on_read_assign_cross_replica(var, value,
                                                         read_value=read_value)
       else:
@@ -1524,24 +1535,3 @@ class OnWritePolicy(AutoPolicy):
 
   def _update_replica(self, var, update_fn, value, **kwargs):
     return _on_write_update_replica(var, update_fn, value, **kwargs)
-
-
-# Utility functions
-# Return True if the Value is Mirrored or the Variable is replicated and kept in
-# sync.
-def _is_mirrored(val):
-  if isinstance(val, DistributedVariable):
-    if val._policy:  # pylint: disable=protected-access
-      return val._policy._is_mirrored()  # pylint: disable=protected-access
-  return isinstance(val, Mirrored)
-
-
-def _is_sync_on_read(val):
-  if isinstance(val, DistributedVariable):
-    if val._policy:  # pylint: disable=protected-access
-      return not val._policy._is_mirrored()  # pylint: disable=protected-access
-  return not isinstance(val, Mirrored)
-
-
-def _in_update_replica():
-  return distribute_lib.get_update_replica_id() is not None

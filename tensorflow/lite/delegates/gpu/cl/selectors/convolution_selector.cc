@@ -167,7 +167,7 @@ absl::Status SelectConvolution(const Convolution2DAttributes& attr,
                                const CreationContext& creation_context,
                                const OperationDef& op_def, ModelHints hints,
                                std::unique_ptr<GPUOperation>* ptr) {
-  const auto& device_info = creation_context.device->GetInfo();
+  const auto& device_info = creation_context.device->info_;
   if (device_info.IsAdreno()) {
     return SelectConvolutionAdreno(attr, dst_shape, creation_context, op_def,
                                      hints, ptr);
@@ -190,7 +190,7 @@ absl::Status SelectConvolutionForWinograd(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const CreationContext& creation_context, const OperationDef& op_def,
     ModelHints hints, std::unique_ptr<GPUOperation>* ptr) {
-  const auto& device_info = creation_context.device->GetInfo();
+  const auto& device_info = creation_context.device->info_;
   if (device_info.IsAdreno()) {
     return SelectConvolutionWinogradAdreno(attr, dst_shape, creation_context,
                                              op_def, hints, ptr);
@@ -215,7 +215,7 @@ absl::Status SelectConvolutionWithDynamicWeights(
     const BHWC& dst_shape, const CreationContext& creation_context,
     const OperationDef& op_def, ModelHints hints,
     std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc) {
-  const auto& device_info = creation_context.device->GetInfo();
+  const auto& device_info = creation_context.device->info_;
   if (device_info.IsAdreno()) {
     return SelectConvolutionDynamicWeightsAdreno(attr, weights_shape, dst_shape,
                                                  creation_context, op_def,

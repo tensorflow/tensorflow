@@ -110,8 +110,8 @@ absl::Status SelectConcat(const ConcatAttributes& attr,
     case Axis::DEPTH:
     case Axis::HEIGHT:
     case Axis::WIDTH: {
-      ConcatXY operation = CreateConcatXY(op_def, attr);
-      *ptr = absl::make_unique<ConcatXY>(std::move(operation));
+      GPUOperation operation = CreateConcatXY(op_def, attr);
+      *ptr = absl::make_unique<GPUOperation>(std::move(operation));
       return absl::OkStatus();
     }
     default:

@@ -136,7 +136,7 @@ Inputs must be of same size and shape.
   let hasFolder = 1;
 }
 
-def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef]>,
+def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef, TF_CwiseBinary]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -1350,48 +1350,6 @@ then the output will be
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_CaseOp : TF_Op<"Case", []> {
-  let summary = [{
-An n-way switch statement which calls a single branch function.
-  }];
-
-  let description = [{
-An n-way switch statement, implementing the following:
-    ```
-    switch (branch_index) {
-      case 0:
-        output = branches[0](input);
-        break;
-      case 1:
-        output = branches[1](input);
-        break;
-      ...
-      case [[nbranches-1]]:
-      default:
-        output = branches[nbranches-1](input);
-        break;
-    }
-    ```
-  }];
-
-  let arguments = (ins
-    I32Tensor:$branch_index,
-    Variadic<TF_Tensor>:$input,
-
-    Confined<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
-    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes
-  );
-
-  let results = (outs
-    Variadic<TF_Tensor>:$output
-  );
-
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
-
-  let hasCanonicalizer = 1;
-}
-
 def TF_CastOp : TF_Op<"Cast", [NoSideEffect, SameOperandsAndResultShape]> {
   let summary = "Cast x of type SrcT to y of DstT.";
 
@@ -1711,6 +1669,8 @@ def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_ConjOp : TF_Op<"Conj", [NoSideEffect, SameOperandsAndResultType]> {
@@ -4797,7 +4757,7 @@ tf.math.log(x) ==> [-inf, -0.6931472,  0. ,  1.609438]
   let hasCanonicalizer = 1;
 }
 
-def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, SameOperandsAndResultType]> {
+def TF_Log1pOp : TF_Op<"Log1p", [NoSideEffect, SameOperandsAndResultType, TF_CwiseUnary]> {
   let summary = "Computes natural logarithm of (1 + x) element-wise.";
 
   let description = [{
@@ -5858,6 +5818,30 @@ def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape, TF
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
+def TF_MergeSummaryOp : TF_Op<"MergeSummary", [NoSideEffect, SameOperandsAndResultType]> {
+  let summary = "Merges summaries.";
+
+  let description = [{
+This op creates a
+[`Summary`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto)
+protocol buffer that contains the union of all the values in the input
+summaries.
+
+When the Op is run, it reports an `InvalidArgument` error if multiple values
+in the summaries to merge use the same tag.
+  }];
+
+  let arguments = (ins
+    Variadic<TF_StrTensor>:$inputs
+  );
+
+  let results = (outs
+    TF_StrTensor:$summary
+  );
+
+  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
+}
+
 def TF_MergeV2CheckpointsOp : TF_Op<"MergeV2Checkpoints", []> {
   let summary = [{
 V2 format specific: merges the metadata files of sharded checkpoints.  The
@@ -6070,7 +6054,7 @@ the result here is consistent with a truncating divide. E.g.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_MulOp : TF_Op<"Mul", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
+def TF_MulOp : TF_Op<"Mul", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef, TF_CwiseBinary]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x * y element-wise.";
 
@@ -7226,6 +7210,28 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
   ];
 }
 
+def TF_RangeDatasetOp : TF_Op<"RangeDataset", []> {
+  let summary = [{
+Creates a dataset with a range of values. Corresponds to python's xrange.
+  }];
+
+  let description = [{
+  }];
+
+  let arguments = (ins
+    I64Tensor:$start,
+    I64Tensor:$stop,
+    I64Tensor:$step,
+
+    Confined<TypeArrayAttr, [ArrayMinCount<1>]>:$output_types,
+    Confined<TF_ShapeAttrArray, [ArrayMinCount<1>]>:$output_shapes
+  );
+
+  let results = (outs
+    TF_VariantTensor:$handle
+  );
+}
+
 def TF_RankOp : TF_Op<"Rank", [NoSideEffect]> {
   let summary = "Returns the rank of a tensor.";
 
@@ -7316,7 +7322,7 @@ tf.real(input) ==> [-2.25, 3.25]
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
 }
 
-def TF_RealDivOp : TF_Op<"RealDiv", [NoSideEffect, ResultsBroadcastableShape]>,
+def TF_RealDivOp : TF_Op<"RealDiv", [NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary]>,
                    WithBroadcastableBinOpBuilder {
   let summary = "Returns x / y element-wise for real types.";
 
@@ -8688,7 +8694,7 @@ This operation returns N 1-D integer tensors representing shape of `input[i]s`.
     return Verify(*this);
   }];
 
-  let hasFolder = 1;
+  let hasCanonicalizer = 1;
 }
 
 def TF_ShardedFilenameOp : TF_Op<"ShardedFilename", [NoSideEffect]> {
@@ -9865,7 +9871,7 @@ Examples:
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
+def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef, TF_CwiseBinary]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x - y element-wise.";
 
@@ -11509,6 +11515,140 @@ where(input) ==> [[0, 0, 0],
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+}
+
+def TF_WriteAudioSummaryOp : TF_Op<"WriteAudioSummary", []> {
+  let summary = "Writes an audio summary.";
+
+  let description = [{
+Writes encoded audio summary `tensor` at `step` with `tag` using summary `writer`.
+`sample_rate` is the audio sample rate is Hz.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$writer,
+    I64Tensor:$step,
+    TF_StrTensor:$tag,
+    F32Tensor:$tensor,
+    F32Tensor:$sample_rate,
+
+    Confined<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_outputs
+  );
+
+  let results = (outs);
+}
+
+def TF_WriteGraphSummaryOp : TF_Op<"WriteGraphSummary", []> {
+  let summary = "Writes a graph summary.";
+
+  let description = [{
+Writes TensorFlow graph `tensor` at `step` using summary `writer`.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$writer,
+    I64Tensor:$step,
+    TF_StrTensor:$tensor
+  );
+
+  let results = (outs);
+}
+
+def TF_WriteHistogramSummaryOp : TF_Op<"WriteHistogramSummary", []> {
+  let summary = "Writes a histogram summary.";
+
+  let description = [{
+Writes histogram `values` at `step` with `tag` using summary `writer`.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$writer,
+    I64Tensor:$step,
+    TF_StrTensor:$tag,
+    TF_IntOrFpTensor:$values
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<3>;
+}
+
+def TF_WriteImageSummaryOp : TF_Op<"WriteImageSummary", []> {
+  let summary = "Writes an image summary.";
+
+  let description = [{
+Writes image `tensor` at `step` with `tag` using summary `writer`.
+`tensor` is image with shape [height, width, channels].
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$writer,
+    I64Tensor:$step,
+    TF_StrTensor:$tag,
+    TensorOf<[F16, F32, TF_Uint8]>:$tensor,
+    TF_Uint8Tensor:$bad_color,
+
+    Confined<DefaultValuedAttr<I64Attr, "3">, [IntMinValue<1>]>:$max_images
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<3>;
+}
+
+def TF_WriteRawProtoSummaryOp : TF_Op<"WriteRawProtoSummary", []> {
+  let summary = "Writes a serialized proto summary.";
+
+  let description = [{
+Writes `tensor`, a serialized proto at `step` using summary `writer`.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$writer,
+    I64Tensor:$step,
+    TF_StrTensor:$tensor
+  );
+
+  let results = (outs);
+}
+
+def TF_WriteScalarSummaryOp : TF_Op<"WriteScalarSummary", []> {
+  let summary = "Writes a scalar summary.";
+
+  let description = [{
+Writes scalar `value` at `step` with `tag` using summary `writer`.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$writer,
+    I64Tensor:$step,
+    TF_StrTensor:$tag,
+    TF_IntOrFpTensor:$value
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<3>;
+}
+
+def TF_WriteSummaryOp : TF_Op<"WriteSummary", []> {
+  let summary = "Writes a tensor summary.";
+
+  let description = [{
+Writes `tensor` at `step` with `tag` using summary `writer`.
+  }];
+
+  let arguments = (ins
+    TF_ResourceTensor:$writer,
+    I64Tensor:$step,
+    TF_Tensor:$tensor,
+    TF_StrTensor:$tag,
+    TF_StrTensor:$summary_metadata
+  );
+
+  let results = (outs);
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<2>;
 }
 
 def TF_XdivyOp : TF_Op<"Xdivy", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
