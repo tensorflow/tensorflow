@@ -112,26 +112,6 @@ func @internal_resource() -> tensor<*xi32> {
 
 // -----
 
-// Tests that pass fails when there are remaining resource operationss that can
-// not be lifted.
-
-func @lifting_failure() -> tensor<*xi32> {
-
-  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource>
-
-  // expected-error @+1 {{has remaining resource inputs that can not be lifted}}
-  %1 = "tf_device.cluster"() ( {
-    %2 = "tf.ReadVariableOp"(%0) {dtype = i32} : (tensor<*x!tf.resource>) -> tensor<*xi32>
-		%3 = "tf.SomeResourceOp"(%0, %2) : (tensor<*x!tf.resource>, tensor<*xi32>) -> tensor<*xi32>
-    "tf.AssignVariableOp"(%0, %3) {dtype = i32} : (tensor<*x!tf.resource>, tensor<*xi32>) -> ()
-    tf_device.return %3 : tensor<*xi32>
-  }) {cluster_attr = "cluster_attr"} : () -> tensor<*xi32>
-
-  return %1 : tensor<*xi32>
-}
-
-// -----
-
 // Tests that pass lifts resource reads/writes from a loop, and removed unused
 // resources.
 
@@ -339,30 +319,6 @@ func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.re
   %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v2"} : () -> tensor<*x!tf.resource<tensor<f32>>>
   // expected-error @+1 {{resource used in while loop is only supported when the resource input and output alias each other in the loop body}}
   return %0 : tensor<*x!tf.resource<tensor<f32>>>
-}
-func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
-  %read = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
-  return %read : tensor<f32>
-}
-
-// -----
-
-// Tests that pass reports error on unsupported ops in loop body.
-
-func @cluster_with_loop() -> () {
-  %0 = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> tensor<*x!tf.resource<tensor<f32>>>
-  "tf_device.cluster"() ( {
-    %1 = "tf.While"(%0) {
-      body = @while_body, cond = @while_cond, device = "", is_stateless = false}
-         : (tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>)
-    tf_device.return
-  }) {cluster_attr = "cluster_attr"} : () -> ()
-  return
-}
-func @while_body(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> (tensor<*x!tf.resource<tensor<f32>>>) {
-  // expected-error @+1 {{found unsupported operations on resource.}}
-  "tf._UnknownOp"(%arg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> ()
-  return %arg0 : tensor<*x!tf.resource<tensor<f32>>>
 }
 func @while_cond(%arg0: tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32> {
   %read = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
