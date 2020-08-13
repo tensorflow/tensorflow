@@ -4495,7 +4495,7 @@ def where_v2(condition, x=None, y=None, name=None):
   
   Instead of this
   
-  >>> y = -1
+  >>> y = float(-1)
   >>> tf.where(y > 0, tf.sqrt(y), y)
   
   Use this
