@@ -1083,6 +1083,36 @@ XlaOp XlaBuilder::Reshape(const Shape& shape, XlaOp operand,
   });
 }
 
+XlaOp XlaBuilder::DynamicReshape(XlaOp operand,
+                                 absl::Span<const XlaOp> dim_sizes,
+                                 absl::Span<const int64> new_size_bounds,
+                                 const std::vector<bool>& dims_are_dynamic) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    std::vector<const Shape*> dim_size_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& dim_size_shapes,
+                        GetOperandShapes(dim_sizes));
+
+    absl::c_transform(dim_size_shapes, std::back_inserter(dim_size_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(const Shape shape,
+                        ShapeInference::InferDynamicReshapeShape(
+                            *operand_shape, dim_size_shape_ptrs,
+                            new_size_bounds, dims_are_dynamic));
+    TF_RETURN_IF_ERROR(first_error_);
+    std::vector<XlaOp> operands;
+    operands.reserve(1 + dim_sizes.size());
+    operands.push_back(operand);
+    for (const XlaOp& dim_size : dim_sizes) {
+      operands.push_back(dim_size);
+    }
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kDynamicReshape,
+                          operands);
+  });
+}
+
 XlaOp XlaBuilder::Collapse(XlaOp operand, absl::Span<const int64> dimensions) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (dimensions.size() <= 1) {
@@ -3464,6 +3494,13 @@ XlaOp Reshape(const XlaOp operand, absl::Span<const int64> new_sizes) {
 
 XlaOp Reshape(const Shape& shape, XlaOp operand) {
   return operand.builder()->Reshape(shape, operand);
+}
+
+XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                     absl::Span<const int64> new_size_bounds,
+                     const std::vector<bool>& dims_are_dynamic) {
+  return operand.builder()->DynamicReshape(operand, dim_sizes, new_size_bounds,
+                                           dims_are_dynamic);
 }
 
 XlaOp ReshapeWithInferredDimension(XlaOp operand,

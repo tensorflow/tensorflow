@@ -1290,6 +1290,18 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
             changed, RewriteDynamicReshape(inst, &dynamic_dimension_inference));
         continue;
       }
+
+      if (inst->opcode() == HloOpcode::kDynamicReshape) {
+        TF_ASSIGN_OR_RETURN(
+            changed, RewriteDynamicReshape(inst, &dynamic_dimension_inference));
+        auto* static_reshape =
+            computation->AddInstruction(HloInstruction::CreateReshape(
+                inst->shape(), inst->mutable_operand(0)));
+        TF_RETURN_IF_ERROR(inst->ReplaceAllUsesWith(static_reshape));
+        TF_RETURN_IF_ERROR(dynamic_dimension_inference.ForwardDynamicSize(
+            inst, static_reshape, {}));
+        continue;
+      }
       for (int64 operand_num = 0; operand_num < inst->operand_count();
            ++operand_num) {
         HloInstruction* original_operand = inst->mutable_operand(operand_num);

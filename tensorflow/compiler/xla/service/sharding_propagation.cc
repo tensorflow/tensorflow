@@ -387,6 +387,7 @@ const HloInstruction* PickRepresentativeOperand(
     case HloOpcode::kDot:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kFft:
     case HloOpcode::kFusion:
     case HloOpcode::kGather:
