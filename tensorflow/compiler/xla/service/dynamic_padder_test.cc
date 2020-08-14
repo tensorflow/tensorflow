@@ -20,7 +20,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
-#include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -382,8 +381,6 @@ class ExecutionTest : public HloTestBase {
                         bool slice_dynamic_output = true) {
     DynamicPadder padder(slice_dynamic_output);
     TF_CHECK_OK(padder.Run(module.get()).status());
-    HloGetDimensionSizeRewriter rewriter;
-    TF_CHECK_OK(rewriter.Run(module.get()).status());
     HloDCE dce;
     TF_CHECK_OK(dce.Run(module.get()).status());
     return ExecuteAndTransfer(std::move(module), arguments);
@@ -1369,6 +1366,71 @@ ENTRY main {
   Literal expected = LiteralUtil::CreateR1<int32>({4, 0, 2});
 
   EXPECT_EQ(result, expected);
+}
+
+namespace op = xla::testing::opcode_matchers;
+
+class HloDimensionSizeLegalizerTest : public HloTestBase {
+ protected:
+  HloDimensionSizeLegalizerTest() {}
+};
+
+TEST_F(HloDimensionSizeLegalizerTest, Ok) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule _
+ENTRY gds {
+  p = s32[3,4] parameter(0)
+  size0 = s32[] get-dimension-size(p), dimensions={0}
+  size1 = s32[] get-dimension-size(p), dimensions={1}
+  ROOT mul = s32[] multiply(size0, size1)
+})")
+                    .ValueOrDie();
+  DynamicPadder pass;
+  EXPECT_TRUE(pass.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Multiply(op::Constant(), op::Constant()));
+}
+
+TEST_F(HloDimensionSizeLegalizerTest, GetSetSetDimensionSizeRewriter) {
+  auto module = ParseAndReturnVerifiedModule(R"(
+HloModule _
+ENTRY gds {
+  p = s32[3,4] parameter(0)
+  size0 = s32[] get-dimension-size(p), dimensions={0}
+  p_copy = s32[3,4] copy(p)
+  p_copy_dynamic = s32[<=3, 4] set-dimension-size(p_copy, size0), dimensions={0}
+  size1 = s32[] get-dimension-size(p_copy_dynamic), dimensions={0}
+  ROOT mul = s32[] multiply(size0, size1)
+})")
+                    .ValueOrDie();
+  DynamicPadder pass;
+  EXPECT_TRUE(pass.Run(module.get()).ValueOrDie());
+  EXPECT_THAT(module->entry_computation()->root_instruction(),
+              op::Multiply(op::Constant(), op::Constant()));
+}
+
+TEST_F(HloDimensionSizeLegalizerTest, IllegalType) {
+  auto module = ParseAndReturnUnverifiedModule(R"(
+HloModule _
+ENTRY gds {
+  p = s32[3]{0} parameter(0)
+  ROOT gds = s64[] get-dimension-size(p), dimensions={0}
+})")
+                    .ValueOrDie();
+  DynamicPadder pass;
+  EXPECT_FALSE(pass.Run(module.get()).ok());
+}
+
+TEST_F(HloDimensionSizeLegalizerTest, IllegalDimension) {
+  auto module = ParseAndReturnUnverifiedModule(R"(
+HloModule _
+ENTRY gds {
+  p = f32[2,5] parameter(0)
+  ROOT gds = s32[] get-dimension-size(p), dimensions={2}
+})")
+                    .ValueOrDie();
+  DynamicPadder pass;
+  EXPECT_FALSE(pass.Run(module.get()).ok());
 }
 
 }  // namespace
