@@ -166,7 +166,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v = constant_op.constant(2.0)
     m = map_ops.tensor_map_insert(m, k, v)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Key has mismatched dtype."):
+                                "Key does not match requested dtype."):
       keys = map_ops.tensor_map_stack_keys(m, dtypes.float32)
       self.evaluate(keys)
 

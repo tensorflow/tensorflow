@@ -197,7 +197,7 @@ class TensorMapStackKeys : public OpKernel {
     int i = 0;
     while (it != m->tensors().end() && i < sz) {
       OP_REQUIRES(c, it->first.dtype() == key_dtype_,
-                  errors::InvalidArgument("Key has mismatched dtype."));
+                  errors::InvalidArgument("Key does not match requested dtype."));
       batch_util::CopyElementToSlice(it->first, result, i);
       i++;
       it++;
