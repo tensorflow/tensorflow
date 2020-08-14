@@ -365,8 +365,6 @@ def diagonal(a, offset=0, axis1=0, axis2=1):  # pylint: disable=missing-docstrin
   return a
 
 
-setattr(np_arrays.ndarray, 'diagonal', diagonal)
-
 @np_utils.np_doc('diagflat')
 def diagflat(v, k=0):
   v = asarray(v)
@@ -403,10 +401,6 @@ def any(a, axis=None, keepdims=None):  # pylint: disable=redefined-builtin
   a = asarray(a, dtype=bool)
   return np_utils.tensor_to_ndarray(
       math_ops.reduce_any(input_tensor=a.data, axis=axis, keepdims=keepdims))
-
-
-setattr(np_arrays.ndarray, 'all', all)
-setattr(np_arrays.ndarray, 'any', any)
 
 
 @np_utils.np_doc('compress')
@@ -579,11 +573,8 @@ def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-b
       tf_bool_fn=math_ops.reduce_any)
 
 
-setattr(np_arrays.ndarray, 'sum', sum)
-
-
 @np_utils.np_doc('prod')
-def prod(a, axis=None, dtype=None, keepdims=None):
+def prod(a, axis=None, dtype=None, keepdims=None):set
   return _reduce(
       math_ops.reduce_prod,
       a,
@@ -697,9 +688,6 @@ def ravel(a):  # pylint: disable=missing-docstring
   return np_utils.tensor_to_ndarray(out)
 
 
-setattr(np_arrays.ndarray, 'ravel', ravel)
-
-
 @np_utils.np_doc('real')
 def real(val):
   val = asarray(val)
@@ -756,9 +744,6 @@ def around(a, decimals=0):  # pylint: disable=missing-docstring
   a = math_ops.round(a)
   a = math_ops.divide(a, factor)
   return np_utils.tensor_to_ndarray(a).astype(dtype)
-
-
-setattr(np_arrays.ndarray, '__round__', around)
 
 
 @np_utils.np_doc('reshape')
@@ -885,12 +870,6 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
   a = array_ops.transpose(a, perm)
 
   return np_utils.tensor_to_ndarray(a)
-
-
-# TODO(wangpeng): Make a custom `setattr` that also sets docstring for the
-#   method.
-setattr(np_arrays.ndarray, 'transpose', transpose)
-setattr(np_arrays.ndarray, 'reshape', _reshape_method_wrapper)
 
 
 @np_utils.np_doc('pad')
@@ -1694,4 +1673,9 @@ def _getitem(self, slice_spec):
   return np_utils.tensor_to_ndarray(result_t)
 
 
+fns_as_methods = ['ravel', '__getitem__', '__round__', 'transpose', 'reshape', 
+                  'all', 'any', 'diagonal']
+
 setattr(np_arrays.ndarray, '__getitem__', _getitem)
+setattr(np_arrays.ndarray, '__round__', around)
+setattr(np_arrays.ndarray, 'reshape', _reshape_method_wrapper)
