@@ -32,7 +32,13 @@ extern "C" {
 #define IS_SWMEM(a) \
   (((uintptr_t)a >= 0x40000000) && (((uintptr_t)a <= 0x80000000)))
 
+#ifndef USE_QSPI_SWMEM
 void swmem_setup();
+#else
+#include <xcore/chanend.h>
+void swmem_setup(chanend_t ctrl_swmem_c);
+#endif
+
 void swmem_handler(void *ignored);
 void swmem_teardown();
 
@@ -52,3 +58,4 @@ void memload(void **dest, void *src, size_t size);
 #endif
 
 #endif  // XCORE_DEVICE_MEMORY_H_
+
