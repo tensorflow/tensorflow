@@ -92,6 +92,10 @@ const string& DeviceNameOrUnspecified(VariantDevice device) {
 bool KernelCacheEnabled(const OpDef& op_def) {
   if (data::DatasetOpKernel::IsDatasetOp(&op_def)) {
     return false;
+  } else if (op_def.name() == "VarHandleOp") {
+    // [40171] Don't cache kernels for VarHandleOp because `saved_model.load()`
+    // rewrites these ops to be globally-unique on every load operation.
+    return false;
   }
   // TODO(b/162540360): Revisit a way to mark kernels as uncachable once we have
   // 5+ kernels to exclude.
