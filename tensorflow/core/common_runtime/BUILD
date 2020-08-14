@@ -14,9 +14,6 @@ load(
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # For platform specific build config
@@ -1912,9 +1909,9 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "ring_reducer_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "ring_reducer_test.cc",
     ],
@@ -1927,7 +1924,6 @@ tf_cc_tests_gpu(
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
@@ -1935,14 +1931,13 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/memory",
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "ring_gatherer_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "ring_gatherer_test.cc",
     ],
@@ -1962,15 +1957,13 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-        "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/memory",
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "hierarchical_tree_broadcaster_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "hierarchical_tree_broadcaster_test.cc",
     ],
@@ -1990,15 +1983,13 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-        "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/memory",
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "permuter_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "permuter_test.cc",
     ],
@@ -2018,8 +2009,6 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-        "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/memory",
     ],
 )
