@@ -55,7 +55,7 @@ struct RawType<qint8> {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-// Generic class template, no explicit GPUDevice references.
+// Generic class template, no explicit GPUDevice references
 template <typename Device, typename T>
 class SpaceToDepthOp : public OpKernel {
  public:
@@ -139,7 +139,7 @@ class SpaceToDepthOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-// Template specialization for GPUDevice, explicitly referencing GPUDevice in code.
+// Template specialization for GPUDevice, explicit referncing GPUDevice in code
 template <typename T>
 class SpaceToDepthOp<GPUDevice, T> : public OpKernel {
  public:
