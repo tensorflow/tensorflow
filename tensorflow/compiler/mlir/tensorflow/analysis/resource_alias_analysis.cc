@@ -207,6 +207,8 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
       Optional<int> passthrough_arg = callee_info.getValue()->GetArg(res_index);
       if (!passthrough_arg) break;
       value = call.getArgOperands()[passthrough_arg.getValue()];
+    } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp>(op)) {
+      value = op->getRegion(0).front().getTerminator()->getOperand(res_index);
     } else {
       break;
     }
@@ -405,6 +407,13 @@ ResourceAliasAnalysisInfo::ResourceAliasAnalysisInfo(
         } else {
           AddValueUniqueIDMapping(result, kUnknownResourceId);
         }
+      }
+    } else if (isa<tf_device::LaunchOp, tf_device::ClusterOp>(op)) {
+      Region& region = op->getRegion(0);
+      const auto& body_info = backtrack_analysis.GetAnalysisForRegion(region);
+      for (auto result : filter_resources(op->getResults())) {
+        Value body_result = body_info.GetValue(result.getResultNumber());
+        PropagateInputToOutput(body_result, result);
       }
     } else {
       assign_unknown_id_to_all(op->getResults());
