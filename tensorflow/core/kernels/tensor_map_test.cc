@@ -44,7 +44,6 @@ TEST(TensorKeyTest, Equal) {
 }
 
 TEST(TensorMapTest, Insert) {
-  EXPECT_EQ(1, 1);
   TensorMap tm;
   TensorKey k = Tensor(11);
   Tensor v = Tensor(22);
@@ -124,7 +123,6 @@ TEST(TensorMapTest, ListKeys) {
     key_doubles.push_back(p);
   }
   sort(key_doubles.begin(), key_doubles.end());
-
   // Check number of keys and each key.
   EXPECT_EQ(keys.size(), 2);
   EXPECT_EQ(key_doubles[0].first, 11.0);
@@ -134,6 +132,15 @@ TEST(TensorMapTest, ListKeys) {
   int ind2 = key_doubles[1].second;
   EXPECT_EQ(keys[ind1].shape(), k.shape());
   EXPECT_EQ(keys[ind2].shape(), k2.shape());
+}
+
+TEST(TensorMapTest, Size) {
+  TensorMap tm;
+  EXPECT_EQ(tm.size(), 0);
+  TensorKey k = Tensor(11);
+  Tensor v = Tensor(22);
+  tm.insert(k, v);
+  EXPECT_EQ(tm.size(), 1);
 }
 
 TEST(TensorMapTest, Copy) {

@@ -152,10 +152,23 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     expected = constant_op.constant([1.0, 2.0, 3.0])
     self.assertAllClose(array_ops.shape(keys), array_ops.shape(expected))
     self.assertAllClose(sort_ops.sort(keys), expected)
-  
-  def testStackKeysEmpty(self):
+
+  def testStackKeysEmptyMapFails(self):
     m = map_ops.empty_tensor_map()
-    
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Empty map has no keys."):
+      keys = map_ops.tensor_map_stack_keys(m, dtypes.float32)
+      self.evaluate(keys)
+
+  def testStackKeysMismatchedDtypeFails(self):
+    m = map_ops.empty_tensor_map()
+    k = constant_op.constant("mismatched_key")
+    v = constant_op.constant(2.0)
+    m = map_ops.tensor_map_insert(m, k, v)
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Key has mismatched dtype."):
+      keys = map_ops.tensor_map_stack_keys(m, dtypes.float32)
+      self.evaluate(keys)
 
   def testInsertLookupGrad(self):
     with backprop.GradientTape() as tape:

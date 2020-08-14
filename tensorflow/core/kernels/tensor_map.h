@@ -144,7 +144,7 @@ class TensorMap {
   size_t erase(TensorKey key) { return tensors_->values_.erase(key); }
 
   // Size returns the number of elements in the map
-  size_t size() { return tensors_->values_.size(); }
+  size_t size() const { return tensors_->values_.size(); }
 
   std::vector<Tensor> keys() const {
     std::vector<Tensor> keys;

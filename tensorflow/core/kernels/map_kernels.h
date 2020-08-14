@@ -185,6 +185,9 @@ class TensorMapStackKeys : public OpKernel {
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
     
+    OP_REQUIRES(c, m->size() != 0,
+                errors::InvalidArgument("Empty map has no keys."));
+
     auto it = m->tensors().begin();
     size_t sz = m->tensors().size();
     TensorShape shape = it->first.shape();
@@ -194,7 +197,7 @@ class TensorMapStackKeys : public OpKernel {
     int i = 0;
     while (it != m->tensors().end() && i < sz) {
       OP_REQUIRES(c, it->first.dtype() == key_dtype_,
-                  errors::InvalidArgument("Key has incorrect dtype."));
+                  errors::InvalidArgument("Key has mismatched dtype."));
       batch_util::CopyElementToSlice(it->first, result, i);
       i++;
       it++;
