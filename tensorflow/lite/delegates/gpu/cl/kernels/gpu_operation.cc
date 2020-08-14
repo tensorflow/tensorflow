@@ -124,6 +124,8 @@ void GPUOperation::SetDst(Tensor* ptr, int index) {
 GPUOperation::GPUOperation(GPUOperation&& operation)
     : args_(std::move(operation.args_)),
       code_(std::move(operation.code_)),
+      work_group_size_(operation.work_group_size_),
+      compiler_options_(std::move(operation.compiler_options_)),
       tensor_to_grid_(operation.tensor_to_grid_),
       elementwise_(operation.elementwise_),
       linkable_(operation.linkable_),
@@ -132,17 +134,17 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       src_(std::move(operation.src_)),
       dst_(std::move(operation.dst_)),
       kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_),
       grid_size_(operation.grid_size_),
       src_tensors_names_(std::move(operation.src_tensors_names_)),
       dst_tensors_names_(std::move(operation.dst_tensors_names_)),
-      compiler_options_(std::move(operation.compiler_options_)),
       linked_operations_(std::move(operation.linked_operations_)) {}
 
 GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
   if (this != &operation) {
     args_ = std::move(operation.args_);
     code_ = std::move(operation.code_);
+    std::swap(work_group_size_, operation.work_group_size_);
+    compiler_options_ = std::move(operation.compiler_options_);
     tensor_to_grid_ = operation.tensor_to_grid_;
     elementwise_ = operation.elementwise_;
     linkable_ = operation.linkable_;
@@ -151,11 +153,9 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     src_ = std::move(operation.src_);
     dst_ = std::move(operation.dst_);
     kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
     std::swap(grid_size_, operation.grid_size_);
     src_tensors_names_ = std::move(operation.src_tensors_names_);
     dst_tensors_names_ = std::move(operation.dst_tensors_names_);
-    compiler_options_ = std::move(operation.compiler_options_);
     linked_operations_ = std::move(operation.linked_operations_);
   }
   return *this;
@@ -288,6 +288,18 @@ int3 GPUOperation::GetGridSize() const {
   if (tensor_to_grid_ == TensorToGrid::kWBToX_HDToY_ZIs1) {
     const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
     const int grid_y = dst_[0]->Height() * dst_[0]->Depth();
+    const int grid_z = 1;
+    return int3(grid_x, grid_y, grid_z);
+  }
+  if (tensor_to_grid_ == TensorToGrid::kWBToX_HToY_DToZ) {
+    const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
+    const int grid_y = dst_[0]->Height();
+    const int grid_z = dst_[0]->Depth();
+    return int3(grid_x, grid_y, grid_z);
+  }
+  if (tensor_to_grid_ == TensorToGrid::kBToX_YIs1_ZIs1) {
+    const int grid_x = dst_[0]->Batch();
+    const int grid_y = 1;
     const int grid_z = 1;
     return int3(grid_x, grid_y, grid_z);
   }

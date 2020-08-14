@@ -24,32 +24,8 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-Softmax::Softmax(const OperationDef& definition) : GPUOperation(definition) {
-  code_ = GetSoftmaxKernelCode(definition_);
-}
-
-Softmax::Softmax(Softmax&& kernel) : GPUOperation(std::move(kernel)) {}
-
-Softmax& Softmax::operator=(Softmax&& kernel) {
-  if (this != &kernel) {
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
-std::string Softmax::GetSoftmaxKernelCode(const OperationDef& op_def) {
-  auto src_desc = op_def.src_tensors[0];
-  if (op_def.IsBatchSupported()) {
-    src_desc.SetStateVar("BatchedWidth", "true");
-  }
-  AddSrcTensor("src_tensor", src_desc);
-  auto dst_desc = op_def.dst_tensors[0];
-  if (op_def.IsBatchSupported()) {
-    dst_desc.SetStateVar("BatchedWidth", "true");
-  }
-  AddDstTensor("dst_tensor", dst_desc);
-
+namespace {
+std::string GetSoftmaxKernelCode(const OperationDef& op_def) {
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
@@ -74,16 +50,23 @@ std::string Softmax::GetSoftmaxKernelCode(const OperationDef& op_def) {
   c += "}\n";
   return c;
 }
+}  // namespace
 
-int3 Softmax::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = 1;
-  return int3(grid_x, grid_y, grid_z);
-}
-
-Softmax CreateSoftmax(const OperationDef& definition) {
-  return Softmax(definition);
+GPUOperation CreateSoftmax(const OperationDef& definition) {
+  GPUOperation op(definition);
+  auto src_desc = definition.src_tensors[0];
+  if (definition.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  op.AddSrcTensor("src_tensor", src_desc);
+  auto dst_desc = definition.dst_tensors[0];
+  if (definition.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  op.AddDstTensor("dst_tensor", dst_desc);
+  op.code_ = GetSoftmaxKernelCode(definition);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_ZIs1;
+  return op;
 }
 
 }  // namespace cl

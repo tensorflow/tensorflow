@@ -24,25 +24,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Transpose : public GPUOperation {
- public:
-  Transpose(const OperationDef& definition, const TransposeAttributes& attr);
-  int3 GetGridSize() const override;
-
-  // Move only
-  Transpose(Transpose&& operation);
-  Transpose& operator=(Transpose&& operation);
-  Transpose(const Transpose&) = delete;
-  Transpose& operator=(const Transpose&) = delete;
-
- private:
-  std::string GetTransposeCode(const OperationDef& op_def,
-                               const TransposeAttributes& attr);
-  TransposeAttributes attr_;
-};
-
-Transpose CreateTranspose(const OperationDef& definition,
-                          const TransposeAttributes& attr);
+GPUOperation CreateTranspose(const OperationDef& definition,
+                             const TransposeAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu
