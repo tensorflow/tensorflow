@@ -23,7 +23,7 @@ limitations under the License.
 namespace tensorflow {
 
 // Basic implementation of PerStepCollectiveRemoteAccess.
-class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
+class CollectiveRemoteAccessLocal : public CollectiveRemoteAccess {
  public:
   CollectiveRemoteAccessLocal(const DeviceMgr* dev_mgr,
                               DeviceResolverInterface* dev_resolver,
@@ -52,26 +52,6 @@ class CollectiveRemoteAccessLocal : public PerStepCollectiveRemoteAccess {
                   const Tensor* from_tensor,
                   const DeviceLocality& client_locality,
                   const StatusCallback& done) override;
-
-  void GetAllDeviceAttributesAsync(const std::vector<string>& devices,
-                                   const std::vector<string>& tasks,
-                                   std::vector<DeviceAttributes>* attributes,
-                                   const StatusCallback& done) override {
-    dev_resolver_->GetAllDeviceAttributesAsync(devices, tasks, attributes,
-                                               done);
-  }
-
-  void GetDeviceAttributesAsync(const string& device, const string& task,
-                                DeviceAttributes* attributes,
-                                const StatusCallback& done) override {
-    dev_resolver_->GetDeviceAttributesAsync(device, task, attributes, done);
-  }
-
-  void ClearTask(const string& task) override {
-    dev_resolver_->ClearTask(task);
-  }
-
-  void ClearCache() override { dev_resolver_->ClearCache(); }
 
   BufRendezvous* buf_rendezvous() override { return &buf_rendezvous_; }
 

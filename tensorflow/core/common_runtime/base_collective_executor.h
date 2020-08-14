@@ -96,9 +96,8 @@ CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
 class BaseCollectiveExecutor : public CollectiveExecutor {
  public:
   BaseCollectiveExecutor(CollectiveExecutorMgrInterface* cem,
-                         PerStepCollectiveRemoteAccess* remote_access,
-                         int64 step_id, const DeviceMgr* dev_mgr,
-                         const string* gpu_ring_order,
+                         CollectiveRemoteAccess* remote_access, int64 step_id,
+                         const DeviceMgr* dev_mgr, const string* gpu_ring_order,
                          std::shared_ptr<UnboundedWorkQueue> work_queue)
       : CollectiveExecutor(cem),
         step_id_(step_id),
@@ -118,7 +117,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
                            CancellationManager* cancel_mgr,
                            StatusCallback done) override;
 
-  PerStepCollectiveRemoteAccess* remote_access() override {
+  CollectiveRemoteAccess* remote_access() override {
     return remote_access_.get();
   }
 
@@ -139,7 +138,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
  protected:
   const int64 step_id_;
   const DeviceMgr* dev_mgr_;  // Not owned.
-  std::unique_ptr<PerStepCollectiveRemoteAccess> remote_access_;
+  std::unique_ptr<CollectiveRemoteAccess> remote_access_;
   const string* gpu_ring_order_;  // Not owned.
   // Ownership of `work_queue_` is shared between `this` and
   // `CollectiveExecutorMgr`.
