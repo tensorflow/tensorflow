@@ -481,6 +481,46 @@ void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// CaseRegionOp
+//===----------------------------------------------------------------------===//
+
+// TODO(lyandy): Extract similar checks for CaseOp.
+static LogicalResult Verify(CaseRegionOp op) {
+  if (op.branches().empty())
+    return op.emitOpError() << "expects to have at least 1 region";
+
+  if (!IsOfRankOrUnranked(op.branch_index(), 0))
+    return op.emitOpError() << "expects 'branch_index' to be a scalar, but got "
+                            << op.branch_index().getType();
+
+  DenseIntElementsAttr branch_index_attr;
+  if (matchPattern(op.branch_index(), m_Constant(&branch_index_attr))) {
+    assert(branch_index_attr.getNumElements() == 1);
+    int64_t branch_index = branch_index_attr.getSplatValue<IntegerAttr>()
+                               .getValue()
+                               .getSExtValue();
+    if (branch_index < 0)
+      return op.emitOpError()
+             << "expects 'branch_index' to be non-negative, but got "
+             << branch_index;
+
+    if (branch_index >= op.branches().size())
+      return op.emitOpError()
+             << "expects 'branch_index' to be less than the number of regions ("
+             << op.branches().size() << "), but got " << branch_index;
+  }
+
+  for (auto region_and_idx : llvm::enumerate(op.branches())) {
+    std::string region_name =
+        llvm::formatv("region #{0}", region_and_idx.index()).str();
+    if (failed(VerifyRegionResults(op, region_and_idx.value(), region_name)))
+      return failure();
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // CastOp
 //===----------------------------------------------------------------------===//
 
