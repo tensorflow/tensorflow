@@ -157,6 +157,14 @@
     * <ADD RELEASE NOTES HERE>
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>
+*   `tf.train.Checkpoint`:
+    * Now accepts a `root` argument in the initialization, which generates a
+      checkpoint with a root object. This allows users to create a `Checkpoint`
+      object that is compatible with Keras `model.save_weights()` and
+      `model.load_weights`. The checkpoint is also compatible with the
+      checkpoint saved in the `variables/` folder in the SavedModel.
+    * When restoring, `save_path` can be a path to a SavedModel. The function
+      will automatically find the checkpoint in the SavedModel.
 *   Other:
     * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
   and "denylist" where possible. Please see 
