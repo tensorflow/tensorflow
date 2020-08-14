@@ -71,10 +71,12 @@ namespace gpu {
 // GPU-delegate derived properties.
 
 // Whether the GPU delegate works in general.
-// Possible values are ("", "SUPPORTED", "UNSUPPORTED"). An empty value for
-// this field means that the device is unsupported.
+// ("UNSET", "UNKNOWN", "SUPPORTED", "UNSUPPORTED").
 constexpr char kStatus[] = "tflite.gpu.status";
 
+// Whether OpenCL should be allowed. Possible values are the SupportStatus enums
+// ("UNSET", "UNKNOWN", "SUPPORTED", "UNSUPPORTED").
+constexpr char kOpenCLStatus[] = "tflite.gpu.opencl_status";
 constexpr char kStatusSupported[] = "SUPPORTED";
 constexpr char kStatusUnsupported[] = "UNSUPPORTED";
 }  // namespace gpu

@@ -100,6 +100,10 @@
                             {
                               "variable": "tflite.gpu.status",
                               "value": "SUPPORTED"
+                            },
+                            {
+                              "variable": "tflite.gpu.opencl_status",
+                              "value": "SUPPORTED"
                             }
                           ]
                         }
@@ -146,7 +150,7 @@
                           "value": "j8y18lte",
                           "derived_properties": [
                             {
-                              "variable": "tflite.gpu.status",
+                              "variable": "tflite.gpu.opencl_status",
                               "value": "SUPPORTED"
                             }
                           ]
