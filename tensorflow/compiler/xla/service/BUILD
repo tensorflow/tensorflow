@@ -1431,6 +1431,7 @@ cc_library(
         ":hlo_live_range",
         ":hlo_ordering",
         ":hlo_proto_cc",
+        ":memory_space_assignment_repacking",
         ":tuple_points_to_analysis",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",

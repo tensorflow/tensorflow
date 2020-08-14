@@ -33,14 +33,26 @@ class MemorySpaceAssignmentRepacker {
   // successful and the allocations were modified, the offset field holds the
   // new offset. To support aliased allocations, AllocationBlock also includes a
   // vector of AllocationBlock pointers, called colocations. All AllocationBlock
-  // objects within the colocations must get the same offset.
+  // objects within the colocations must get the same offset. The id should be
+  // unique and is used to ensure determinism for comparison tie-breaker.
   struct AllocationBlock {
     int64 start_time;
     int64 end_time;
     int64 size;
     int64 offset;
     int64 initial_offset;
+    int64 id;
     std::vector<AllocationBlock*> colocations;
+
+    std::string ToString() const {
+      return absl::StrCat("[", start_time, ", ", end_time, "] : size = ", size,
+                          ", offset = ", offset,
+                          " initial offset = ", initial_offset);
+    }
+
+    // This is required by BufferIntervalCompare as a tie breaker. Use a unique
+    // and deterministic id.
+    bool operator<(const AllocationBlock& other) const { return id < other.id; }
   };
 
   // Repack the AllocationBlocks provided in the parameter. Returns true if
