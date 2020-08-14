@@ -424,3 +424,48 @@ func @propagate_if_region_inlined(
   }
   return
 }
+
+// Test propagation through WhileRegion (inlined calls)
+// CHECK-LABEL: func @propagate_while_region_inlined
+func @propagate_while_region_inlined(
+  %arg0: !tf_res {tf.device = "/TPU:0"},
+  %arg1: tensor<i32>) {
+  tf_executor.graph {
+    // CHECK: tf_executor.island
+    %island = tf_executor.island {
+      // CHECK-NEXT: "tf.Identity"
+      // CHECK-SAME: {device = "/TPU:0"}
+      %id0 = "tf.Identity"(%arg0) : (!tf_res) -> !tf_res
+      // CHECK-NEXT: "tf.VarHandleOp"
+      %var_handle = "tf.VarHandleOp"() {container = "c", shared_name = "v0", device = "/TPU:1"} : () -> !tf_res
+      // CHECK-NEXT: "tf.WhileRegion"
+      "tf.WhileRegion"(%arg1, %id0, %var_handle) ({
+          ^bb0(%carg0: tensor<i32>, %carg1: !tf_res, %carg2: !tf_res):
+            // CHECK: ^bb
+            // CHECK: "tf.Identity"
+            // CHECK-SAME: {device = "/TPU:0"}
+            %cid0 = "tf.Identity"(%carg1) : (!tf_res) -> !tf_res loc("cid0")
+            %read = "tf.ReadVariableOp"(%cid0) : (!tf_res) -> tensor<32xf32>
+            %cst = constant dense<3.0> : tensor<32xf32>
+            %cmp = "tf.Less"(%read, %cst) : (tensor<32xf32>, tensor<32xf32>) -> tensor<32xi1>
+            %dims = constant dense<0> : tensor<1xi32>
+            %reduce = "tf.All"(%cmp, %dims) {keep_dims = false} : (tensor<32xi1>, tensor<1xi32>) -> tensor<i1>
+            "tf.Yield"(%reduce) : (tensor<i1>) -> ()
+        }, {
+          ^bb0(%barg0: tensor<i32>, %barg1: !tf_res, %barg2: !tf_res):
+            // CHECK: ^bb
+            // CHECK: "tf.Identity"
+            // CHECK-SAME: {device = "/TPU:0"}
+            %bid0 = "tf.Identity"(%barg1) : (!tf_res) -> !tf_res
+            // CHECK-NEXT: "tf.Identity"
+            // CHECK-SAME: {device = "/TPU:1"}
+            %id1 = "tf.Identity"(%barg2) : (!tf_res) -> !tf_res
+            "tf.Yield"(%barg0, %bid0, %id1) : (tensor<i32>, !tf_res,!tf_res) -> ()
+        }){is_stateless = false}
+        : (tensor<i32>, !tf_res, !tf_res) -> (tensor<i32>, !tf_res, !tf_res)
+      tf_executor.yield
+    }
+    tf_executor.fetch %island : !tf_executor.control
+  }
+  return
+}
