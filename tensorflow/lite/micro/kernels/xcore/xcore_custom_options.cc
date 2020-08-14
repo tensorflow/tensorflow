@@ -11,7 +11,7 @@ namespace xcore {
 // ExecutionPlan only
 //*****************************
 void parse_custom_options(TfLiteContext *context, const char *buffer,
-                          size_t length, ::xcore::ExecutionPlan *plan) {
+                          size_t length, ExecutionPlan *plan) {
   parse_custom_options(context, buffer, length, nullptr, nullptr, nullptr,
                        nullptr, nullptr, nullptr,
                        plan  // ExecutionPlan
@@ -22,9 +22,8 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
 // PoolingParams
 //*****************************
 void parse_custom_options(TfLiteContext *context, const char *buffer,
-                          size_t length,
-                          ::xcore::pooling::PoolingParams &pooling_params,
-                          ::xcore::ExecutionPlan *plan) {
+                          size_t length, PoolingParams &pooling_params,
+                          ExecutionPlan *plan) {
   parse_custom_options(context, buffer, length, &pooling_params.stride_h,
                        &pooling_params.stride_w, &pooling_params.pool_h,
                        &pooling_params.pool_w,
@@ -38,9 +37,8 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
 // Conv2DParams
 //*****************************
 void parse_custom_options(TfLiteContext *context, const char *buffer,
-                          size_t length,
-                          ::xcore::conv::Conv2DParams &conv2d_params,
-                          ::xcore::ExecutionPlan *plan) {
+                          size_t length, Conv2DParams &conv2d_params,
+                          ExecutionPlan *plan) {
   parse_custom_options(context, buffer, length, &conv2d_params.stride_h,
                        &conv2d_params.stride_w,
                        nullptr,  // pool_h
@@ -54,8 +52,7 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
 void parse_custom_options(TfLiteContext *context, const char *buffer,
                           size_t length, int32_t *stride_h, int32_t *stride_w,
                           int32_t *pool_h, int32_t *pool_w, int32_t *K_w,
-                          ::xcore::conv::Conv2DPadding *pad,
-                          ::xcore::ExecutionPlan *plan) {
+                          Conv2DPadding *pad, ExecutionPlan *plan) {
   const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
   // std::cout << flexbuffers::GetRoot(buffer_t, length).ToString() <<
   // std::endl;

@@ -1,9 +1,8 @@
 #ifndef XCORE_CUSTOM_OPTIONS_H_
 #define XCORE_CUSTOM_OPTIONS_H_
 
-#include "operators/conv2d.h"
-#include "operators/planning.h"
-#include "operators/pooling.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_ops.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_planning.h"
 
 namespace tflite {
 namespace ops {
@@ -11,25 +10,22 @@ namespace micro {
 namespace xcore {
 
 void parse_custom_options(TfLiteContext *context, const char *buffer,
-                          size_t length, ::xcore::ExecutionPlan *plan);
+                          size_t length, ExecutionPlan *plan);
 
 void parse_custom_options(TfLiteContext *context, const char *buffer,
-                          size_t length,
-                          ::xcore::pooling::PoolingParams &pooling_params,
-                          ::xcore::ExecutionPlan *plan = nullptr);
+                          size_t length, PoolingParams &pooling_params,
+                          ExecutionPlan *plan = nullptr);
 
 void parse_custom_options(TfLiteContext *context, const char *buffer,
-                          size_t length,
-                          ::xcore::conv::Conv2DParams &conv2d_params,
-                          ::xcore::ExecutionPlan *plan = nullptr);
+                          size_t length, Conv2DParams &conv2d_params,
+                          ExecutionPlan *plan = nullptr);
 
 void parse_custom_options(TfLiteContext *context, const char *buffer,
                           size_t length, int32_t *stride_h = nullptr,
                           int32_t *stride_w = nullptr,
                           int32_t *pool_h = nullptr, int32_t *pool_w = nullptr,
-                          int32_t *K_w = nullptr,
-                          ::xcore::conv::Conv2DPadding *pad = nullptr,
-                          ::xcore::ExecutionPlan *plan = nullptr);
+                          int32_t *K_w = nullptr, Conv2DPadding *pad = nullptr,
+                          ExecutionPlan *plan = nullptr);
 
 }  // namespace xcore
 }  // namespace micro
