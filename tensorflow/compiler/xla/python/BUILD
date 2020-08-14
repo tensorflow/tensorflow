@@ -243,6 +243,33 @@ cc_library(
 )
 
 cc_library(
+    name = "jax_jit",
+    srcs = ["jax_jit.cc"],
+    hdrs = ["jax_jit.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":py_client",
+        ":pytree",
+        ":types",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:optional",
+        "@pybind11",
+    ],
+)
+
+cc_library(
     name = "ops",
     srcs = ["ops.cc"],
     hdrs = ["ops.h"],
@@ -367,6 +394,7 @@ pybind_extension(
     deps = [
         ":bfloat16",
         ":dlpack",
+        ":jax_jit",
         ":ops",
         ":py_client",
         ":pytree",
