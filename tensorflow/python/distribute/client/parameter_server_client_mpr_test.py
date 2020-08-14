@@ -50,7 +50,7 @@ class ParameterServerClientMprTest(test.TestCase):
     def proc_func(functions_scheduled_event, test_finished_event):
       cluster_resolver = TFConfigClusterResolver()
       if cluster_resolver.task_type != "chief":
-        utils.start_server(cluster_resolver)
+        utils.start_server(cluster_resolver, "grpc")
       ps_client = parameter_server_client.ParameterServerClient(
           cluster_resolver)
       with ps_client._strategy.scope():
@@ -107,7 +107,7 @@ class ParameterServerClientMprTest(test.TestCase):
         multi_worker_test_base.create_cluster_spec(
             has_chief=True, num_workers=3, num_ps=1, has_eval=False),
         args=(functions_scheduled_event, test_finished_event),
-        rpc_layer="grpc+loas",
+        rpc_layer="grpc",
         list_stdout=True,
         use_dill_for_args=False)
 
