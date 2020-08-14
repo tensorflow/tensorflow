@@ -211,7 +211,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if is_functional_model_init_params(args, kwargs) and cls == Model:
       # Functional model
       from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
-      return functional.Functional(*args, **kwargs)
+      return functional.Functional(skip_init=True, *args, **kwargs)
     else:
       return super(Model, cls).__new__(cls, *args, **kwargs)
 
