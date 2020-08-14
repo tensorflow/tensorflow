@@ -30,11 +30,30 @@ from tensorflow.python.util.tf_export import keras_export
 class Ftrl(optimizer_v2.OptimizerV2):
   r"""Optimizer that implements the FTRL algorithm.
 
-  See Algorithm 1 of this [paper](
-  https://www.eecs.tufts.edu/~dsculley/papers/ad-click-prediction.pdf).
+  See Algorithm 1 of this
+  [paper](https://research.google.com/pubs/archive/41159.pdf).
   This version has support for both online L2 (the L2 penalty given in the paper
   above) and shrinkage-type L2 (which is the addition of an L2 penalty to the
   loss function).
+
+  Initialization:
+  $$t = 0$$
+  $$n_{0} = 0$$
+  $$\sigma_{0} = 0$$
+  $$z_{0} = 0$$
+
+  Update ($$i$$ is variable index, $$\alpha$$ is the learning rate):
+  $$t = t + 1$$
+  $$n_{t,i} = n_{t-1,i} + g_{t,i}^{2}$$
+  $$\sigma_{t,i} = (\sqrt{n_{t,i}} - \sqrt{n_{t-1,i}}) / \alpha$$
+  $$z_{t,i} = z_{t-1,i} + g_{t,i} - \sigma_{t,i} * w_{t,i}$$
+  $$w_{t,i} = - ((\beta+\sqrt{n_{t,i}}) / \alpha + 2 * \lambda_{2})^{-1} *
+              (z_{i} - sgn(z_{i}) * \lambda_{1}) if \abs{z_{i}} > \lambda_{i}
+                                                 else 0$$
+
+  Check the documentation for the l2_shrinkage_regularization_strength
+  parameter for more details when shrinkage is enabled, in which case gradient
+  is replaced with gradient_with_shrinkage.
 
   Args:
     learning_rate: A `Tensor`, floating point value, or a schedule that is a
@@ -54,8 +73,7 @@ class Ftrl(optimizer_v2.OptimizerV2):
       or equal to zero. This differs from L2 above in that the L2 above is a
       stabilization penalty, whereas this L2 shrinkage is a magnitude penalty.
       When input is sparse shrinkage will only happen on the active weights.
-    beta: A float value, representing the beta value from the paper
-      (https://research.google.com/pubs/archive/41159.pdf).
+    beta: A float value, representing the beta value from the paper.
     **kwargs: Keyword arguments. Allowed to be one of
       `"clipnorm"` or `"clipvalue"`.
       `"clipnorm"` (float) clips gradients by norm; `"clipvalue"` (float) clips
