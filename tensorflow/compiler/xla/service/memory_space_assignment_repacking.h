@@ -22,10 +22,10 @@ limitations under the License.
 namespace xla {
 
 // An interface to define allocation repacking algorithms.
-template <typename O>
 class MemorySpaceAssignmentRepacker {
  public:
-  MemorySpaceAssignmentRepacker() = default;
+  MemorySpaceAssignmentRepacker(int64 max_size, int64 alignment)
+      : max_size_(max_size), alignment_(alignment) {}
   virtual ~MemorySpaceAssignmentRepacker() = default;
 
   // A contiguous block of allocation consisting of start and end (logical)
@@ -33,9 +33,7 @@ class MemorySpaceAssignmentRepacker {
   // successful and the allocations were modified, the offset field holds the
   // new offset. To support aliased allocations, AllocationBlock also includes a
   // vector of AllocationBlock pointers, called colocations. All AllocationBlock
-  // objects within the colocations must get the same offset. The opaque field
-  // is used by the MemorySpaceAssignment pass and should not be accessed by the
-  // repacking algorithm.
+  // objects within the colocations must get the same offset.
   struct AllocationBlock {
     int64 start_time;
     int64 end_time;
@@ -43,13 +41,16 @@ class MemorySpaceAssignmentRepacker {
     int64 offset;
     int64 initial_offset;
     std::vector<AllocationBlock*> colocations;
-    O opaque;
   };
 
   // Repack the AllocationBlocks provided in the parameter. Returns true if
   // allocations have been modified and false if not. Returns a non-ok status if
   // there was an error.
   virtual StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) = 0;
+
+ protected:
+  int64 max_size_;
+  int64 alignment_;
 };
 
 }  // namespace xla

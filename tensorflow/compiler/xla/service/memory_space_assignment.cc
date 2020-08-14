@@ -1051,6 +1051,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
                                                  allocation_values);
 
     // Retry allocating this value with larger limits if allocation fails.
+    bool repacked = false;
     for (int retry_number = 0; retry_number < options_.max_retries;
          retry_number++) {
       bool final_retry = (retry_number == options_.max_retries - 1);
@@ -1064,11 +1065,13 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
         UncommitPendingChunks(absl::MakeSpan(allocation_values));
         VLOG(2) << "Couldn't allocate. Retry number " << retry_number;
       } else if (result_is(result, Result::kFailOutOfMemory) &&
-                 num_repacks_ < options_.max_repacks) {
+                 num_repacks_ < options_.max_repacks && !repacked) {
         UncommitPendingChunks(absl::MakeSpan(allocation_values));
         ++num_repacks_;
+        repacked = true;
         CHECK_NE(options_.repacker, nullptr);
-        std::vector<RepackAllocationBlock*> repack_allocation_blocks;
+        std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>
+            repack_allocation_blocks;
         ExportAllocationsForRepacking(repack_allocation_blocks);
         VLOG(2) << "Repacking.";
         auto repack_status =
@@ -1076,7 +1079,7 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
         CHECK_EQ(repack_status.status(), Status::OK());
         VLOG(2) << "Repack complete. Modified = " << *repack_status;
         if (*repack_status) {
-          ImportRepackedAllocations(absl::MakeSpan(repack_allocation_blocks));
+          ImportRepackedAllocations();
           --retry_number;
         }
       } else {
@@ -1381,6 +1384,18 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   for (auto& allocation : allocations) {
     allocations_->push_back(std::move(allocation));
   }
+  // Add a repack allocation block for the Allocation object in alternate
+  // memory.
+  CHECK_EQ(allocations_->size(), 2);
+  MemorySpaceAssignment::Allocation* last_allocation =
+      allocations_->at(1).get();
+  CHECK(last_allocation->memory_space() == MemorySpace::kAlternate);
+  repack_allocation_blocks_.push_back(RepackAllocationBlock(
+      last_allocation->start_time(), last_allocation->end_time(),
+      last_allocation->chunk().size, last_allocation->chunk().offset,
+      last_allocation));
+  repack_allocation_blocks_.back().colocations.push_back(
+      &repack_allocation_blocks_.back());
 
   ClearPendingChunks();
 }
@@ -1560,29 +1575,27 @@ bool AlternateMemoryBestFitHeap::AreIntervalsReservedInAlternateMemory(
 }
 
 void AlternateMemoryBestFitHeap::ExportAllocationsForRepacking(
-    std::vector<AlternateMemoryBestFitHeap::RepackAllocationBlock*>&
-        allocations) {
+    std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>& allocations) {
   for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
     allocations.push_back(&allocation_block);
   }
 }
 
-void AlternateMemoryBestFitHeap::ImportRepackedAllocations(
-    absl::Span<AlternateMemoryBestFitHeap::RepackAllocationBlock*>
-        repacked_allocations) {
+void AlternateMemoryBestFitHeap::ImportRepackedAllocations() {
   interval_tree_ = {};
-  for (RepackAllocationBlock* allocation_block : repacked_allocations) {
-    MemorySpaceAssignment::Allocation* allocation = allocation_block->opaque;
+  for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
+    MemorySpaceAssignment::Allocation* allocation = allocation_block.allocation;
     VLOG(3) << "Moved " << allocation->ToString() << ", size "
-            << allocation->chunk().size << " from "
-            << allocation_block->initial_offset << " to "
-            << allocation_block->offset;
-    allocation_block->opaque->mutable_chunk()->offset =
-        allocation_block->offset;
-    interval_tree_.Add(allocation_block->start_time, allocation_block->end_time,
-                       {allocation_block->offset, allocation_block->size});
-    allocation_block->initial_offset = allocation_block->offset;
-    allocation_block->offset = -1;
+            << allocation->chunk().size << ", (" << allocation_block.start_time
+            << ", " << allocation_block.end_time << ") from "
+            << allocation_block.initial_offset << " to "
+            << allocation_block.offset;
+    allocation_block.allocation->mutable_chunk()->offset =
+        allocation_block.offset;
+    interval_tree_.Add(allocation_block.start_time, allocation_block.end_time,
+                       {allocation_block.offset, allocation_block.size});
+    allocation_block.initial_offset = allocation_block.offset;
+    allocation_block.offset = -1;
   }
 }
 
@@ -1655,17 +1668,17 @@ void AlternateMemoryBestFitHeap::FinalizeAllocations(
   // Export these to repack_allocation_blocks_ so that we can repack them to
   // reduce fragmentation.
   for (auto& colocation : colocation_map) {
-    std::vector<RepackAllocationBlock*> colocations;
+    std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*> colocations;
     for (MemorySpaceAssignment::Allocation* colocated_allocation :
          colocation.second) {
-      repack_allocation_blocks_.push_back(
-          {colocated_allocation->start_time(), colocated_allocation->end_time(),
-           colocated_allocation->chunk().size, /*offset=*/-1,
-           colocated_allocation->chunk().offset, /*colocations=*/{},
-           colocated_allocation});
+      repack_allocation_blocks_.push_back(RepackAllocationBlock(
+          colocated_allocation->start_time(), colocated_allocation->end_time(),
+          colocated_allocation->chunk().size,
+          colocated_allocation->chunk().offset, colocated_allocation));
       colocations.push_back(&repack_allocation_blocks_.back());
     }
-    for (RepackAllocationBlock* repack_block : colocations) {
+    for (MemorySpaceAssignmentRepacker::AllocationBlock* repack_block :
+         colocations) {
       repack_block->colocations = colocations;
     }
   }

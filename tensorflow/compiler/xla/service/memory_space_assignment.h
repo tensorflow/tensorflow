@@ -435,7 +435,7 @@ class MemorySpaceAssignment {
 
     // The repacking algorithm to reduce fragmentation. Must be non-null if
     // max_repacks is greater than 0.
-    MemorySpaceAssignmentRepacker<Allocation*>* repacker = nullptr;
+    MemorySpaceAssignmentRepacker* repacker = nullptr;
 
     // If true, tries allocating buffers across (e.g., before and inside a while
     // loop body) sequential calls (kWhile, kCall, and kConditional).
@@ -943,8 +943,24 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   HeapSimulator::Result Finish() override;
 
  private:
-  using RepackAllocationBlock = MemorySpaceAssignmentRepacker<
-      MemorySpaceAssignment::Allocation*>::AllocationBlock;
+  // We inherit AllocationBlock struct to attach the Allocation information to
+  // make importing repacked offsets easier.
+  struct RepackAllocationBlock
+      : MemorySpaceAssignmentRepacker::AllocationBlock {
+    RepackAllocationBlock(int64 start_time, int64 end_time, int64 size,
+                          int64 initial_offset,
+                          MemorySpaceAssignment::Allocation* allocation) {
+      this->start_time = start_time;
+      this->end_time = end_time;
+      this->size = size;
+      this->offset = -1;
+      this->initial_offset = initial_offset;
+      this->colocations = {};
+      this->allocation = allocation;
+    }
+
+    MemorySpaceAssignment::Allocation* allocation;
+  };
 
   // An allocation request for a use segment. A use segment is the time segment
   // between the definition and the first use, and the time segment between the
@@ -1169,12 +1185,12 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // Exports the allocations for repacking and puts them into the vector in the
   // parameter.
   void ExportAllocationsForRepacking(
-      std::vector<RepackAllocationBlock*>& allocations);
+      std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>&
+          allocations);
 
   // Imports repacked allocations and updates the internal data structures
   // consistent with the new packing.
-  void ImportRepackedAllocations(
-      absl::Span<RepackAllocationBlock*> repacked_allocations);
+  void ImportRepackedAllocations();
 
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
