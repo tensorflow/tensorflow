@@ -40,7 +40,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-// Generic class template, no explicit GPUDevice references
+// Generic class template, no explicit GPUDevice references.
 template <typename Device, typename T>
 class DepthToSpaceOp : public OpKernel {
  public:
@@ -127,7 +127,7 @@ class DepthToSpaceOp : public OpKernel {
   TensorFormat data_format_;
 };
 
-// Template specialization for GPUDevice, explicit referncing GPUDevice in code
+// Template specialization for GPUDevice, explicit referencing GPUDevice in code.
 template <typename T>
 class DepthToSpaceOp<GPUDevice, T> : public OpKernel {
  public:
