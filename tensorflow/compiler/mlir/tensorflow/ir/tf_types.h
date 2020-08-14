@@ -83,10 +83,7 @@ class TensorFlowType : public Type {
   using Type::Type;
 
   // Support method to enable LLVM-style type casting.
-  static bool classof(Type type) {
-    return type.getKind() >= Type::FIRST_TENSORFLOW_TYPE &&
-           type.getKind() <= TensorFlowTypes::LAST_USED_TENSORFLOW_TYPE;
-  }
+  static bool classof(Type type);
 };
 
 // Returns true if the specified type is a valid TensorFlow element type.
@@ -130,10 +127,7 @@ class TensorFlowRefType : public TensorFlowType {
   using TensorFlowType::TensorFlowType;
 
   // Checks if a type is TensorFlow Ref type.
-  static bool classof(Type type) {
-    return type.getKind() >= TensorFlowTypes::FLOAT_REF &&
-           type.getKind() <= TensorFlowTypes::LAST_USED_TENSORFLOW_TYPE;
-  }
+  static bool classof(Type type);
 
   // Converts a type to the corresponding TensorFlowRef type.
   static TensorFlowType get(Type type);
@@ -263,10 +257,7 @@ class TensorFlowTypeWithSubtype : public TensorFlowType {
   using TensorFlowType::TensorFlowType;
 
   // Checks if a type is TensorFlow type with subtypes.
-  static bool classof(Type type) {
-    return type.getKind() == TensorFlowTypes::VARIANT ||
-           type.getKind() == TensorFlowTypes::RESOURCE;
-  }
+  static bool classof(Type type);
 
   // Converts a TypeWithSubtype type to the same type but without its subtypes.
   Type RemoveSubtypes();
