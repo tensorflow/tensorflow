@@ -35,9 +35,12 @@ exports_files([
     name = "zip_test_%s" % test_name,
     size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
-    additional_test_args = {
-        # TODO(b/162696268): uncomment once the bug is fixed.
-        # "xnnpack": ["--use_xnnpack=true"],
+    additional_test_tags_args = {
+        "xnnpack": (
+            # TODO(b/162696268): remove 'notap' once the bug is fixed.
+            ["notap"],
+            ["--use_xnnpack=true"],
+        ),
     },
     conversion_mode = conversion_mode,
     data = [
@@ -47,10 +50,10 @@ exports_files([
     test_args = args + select({
         "//tensorflow:android": [],
         "//conditions:default": [
-            "--zip_file_path=$(location :zip_%s)" % test_name,
+            "--zip_file_path=third_party/tensorflow/lite/testing/%s.zip" % test_name,
             # TODO(angerson) We may be able to add an external unzip binary instead
             # of relying on an existing one for OSS builds.
-            "--unzip_binary_path=/usr/bin/unzip",
+            "--unzip_binary_path=third_party/unzip/unzip",
         ],
     }),
     test_name = test_name,

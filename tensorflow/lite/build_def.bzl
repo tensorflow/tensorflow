@@ -584,7 +584,7 @@ def gen_zip_test(
         conversion_mode,
         test_tags,
         test_args,
-        additional_test_args = {},
+        additional_test_tags_args = {},
         **kwargs):
     """Generate a zipped-example test and its dependent zip files.
 
@@ -595,9 +595,11 @@ def gen_zip_test(
         list above.
       test_tags: tags for the generated cc_test.
       test_args: the basic cc_test args to be used.
-      additional_test_args: a dictionary of additional args to be used together
-        with test_args. The key is an identifier to be used in test tag, and
-        the value is a list of additional test args to be used.
+      additional_test_tags_args: a dictionary of additional test tags and args
+        to be used together with test_tags and test_args. The key is an
+        identifier which can be in creating a test tag to identify a set of
+        tests. The value is a tuple of list of additional test tags and args to
+        be used.
       **kwargs: tf_cc_test kwargs
     """
     toco = "//tensorflow/lite/toco:toco"
@@ -621,11 +623,13 @@ def gen_zip_test(
         tags = test_tags + ["gen_zip_test"],
         **kwargs
     )
-    for key, value in additional_test_args.items():
+    for key, value in additional_test_tags_args.items():
+        extra_tags, extra_args = value
+        extra_tags.append("gen_zip_test_%s" % key)
         tf_cc_test(
             name = "%s_%s" % (name, key),
-            args = test_args + value,
-            tags = test_tags + ["gen_zip_test_%s" % key],
+            args = test_args + extra_args,
+            tags = test_tags + extra_tags,
             **kwargs
         )
 
