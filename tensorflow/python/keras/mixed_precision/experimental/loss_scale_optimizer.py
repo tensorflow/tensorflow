@@ -245,7 +245,6 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
         int/float is equivalent to passing a FixedLossScale with the given loss
         scale.
     """
-    self._hyper = {}
     if not isinstance(optimizer, optimizer_v2.OptimizerV2):
       raise ValueError('"optimizer" must be an instance of OptimizerV2, but '
                        'got: %s' % optimizer)
@@ -280,6 +279,9 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
       # through the LossScaleOptimizer.
       backend.track_variable(weight)
     self._track_trackable(self._loss_scale, 'loss_scale')
+
+    # Needed because the superclass's __getattribute__ checks this.
+    self._hyper = {}
 
     # To support restoring TensorFlow 2.2 checkpoints.
     self._track_trackable(FakeOptimizerForRestoration(self._optimizer),

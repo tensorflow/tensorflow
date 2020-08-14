@@ -1448,9 +1448,13 @@ class TrainingTest(keras_parameterized.TestCase):
 
       _HAS_AGGREGATE_GRAD = True
 
-      def _aggregate_gradients(self, grads_and_vars):
+      def __init__(self):
+        self.aggregate_gradients_called = False
+        super(_Optimizer, self).__init__(name='MyOptimizer')
+
+      def _aggregate_gradients(self, grads):
         self.aggregate_gradients_called = True
-        return super(_Optimizer, self)._aggregate_gradients(grads_and_vars)
+        return super(_Optimizer, self)._aggregate_gradients(grads)
 
     mock_optimizer = _Optimizer()
 
