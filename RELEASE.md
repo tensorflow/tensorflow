@@ -88,6 +88,7 @@
       dataset when it is safe to do so. The optimization can be disabled via
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
+    * `tf.data.Options` were previously immutable and can now be overriden.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
       `tf.image.random_*` function. Added a new op

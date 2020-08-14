@@ -2836,20 +2836,37 @@ def get_legacy_output_types(dataset_or_iterator):
 
 @tf_export("data.Options")
 class Options(options_lib.OptionsBase):
-  """Represents options for tf.data.Dataset.
+  """Represents options for `tf.data.Dataset`.
 
-  An `Options` object can be, for instance, used to control which graph
-  optimizations to apply or whether to use performance modeling to dynamically
-  tune the parallelism of operations such as `tf.data.Dataset.map` or
-  `tf.data.Dataset.interleave`.
+  A `tf.data.Options` object can be, for instance, used to control which static
+  optimizations to apply to the input pipeline graph or whether to use
+  performance modeling to dynamically tune the parallelism of operations such as
+  `tf.data.Dataset.map` or `tf.data.Dataset.interleave`.
 
-  After constructing an `Options` object, use `dataset.with_options(options)` to
-  apply the options to a dataset.
+  The options are set for the entire dataset and are carried over to datasets
+  created through tf.data transformations.
 
-  >>> dataset = tf.data.Dataset.range(3)
+  The options can be set either by mutating the object returned by
+  `tf.data.Dataset.options()` or by constructing an `Options` object and using
+  the `tf.data.Dataset.with_options(options)` transformation, which returns a
+  dataset with the options set.
+
+  >>> dataset = tf.data.Dataset.range(42)
+  >>> dataset.options().experimental_deterministic = False
+  >>> print(dataset.options().experimental_deterministic)
+  False
+
+  >>> dataset = tf.data.Dataset.range(42)
   >>> options = tf.data.Options()
-  >>> # Set options here.
+  >>> options.experimental_deterministic = False
   >>> dataset = dataset.with_options(options)
+  >>> print(dataset.options().experimental_deterministic)
+  False
+
+  Note: A known limitation of the `tf.data.Options` implementation is that the
+  options are not preserved across tf.function boundaries. In particular, to
+  set options for a dataset that is iterated within a tf.function, the options
+  need to be set within the same tf.function.
   """
 
   experimental_deterministic = options_lib.create_option(
@@ -2968,17 +2985,15 @@ class Options(options_lib.OptionsBase):
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
 
-    The given `tf.data.Options` can be merged as long as there does not exist an
-    attribute that is set to different values in `self` and `options`.
+    If this object and the `options` to merge set an option differently, a
+    warning is generated and this object's value is updated with the `options`
+    object's value.
 
     Args:
       options: a `tf.data.Options` to merge with
 
-    Raises:
-      ValueError: if the given `tf.data.Options` cannot be merged
-
     Returns:
-      New `tf.data.Options()` object which is the result of merging self with
+      New `tf.data.Options` object which is the result of merging self with
       the input `tf.data.Options`.
     """
     return options_lib.merge_options(self, options)
