@@ -69,7 +69,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:conv_grad_size_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
-        "//tensorflow/core/lib/bfloat16",
+        "//tensorflow/core/platform:bfloat16",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",

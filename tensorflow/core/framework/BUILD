@@ -614,7 +614,6 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
-        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],

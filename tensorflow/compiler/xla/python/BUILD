@@ -155,7 +155,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/lib/bfloat16",
+        "//tensorflow/core/platform:bfloat16",
         "//tensorflow/core/platform:logging",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
