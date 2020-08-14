@@ -2598,6 +2598,79 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Transpose(), op::Shape("f32[16,2,38,38]")));
 }
 
+TEST_F(SpmdPartitioningTest, PartialReplicateShardableTranspose) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[16,38,38,4] parameter(0)
+  %param0.copy = f32[16,38,38,4] copy(%param0),
+    sharding={devices=[1,2,1,1,2]0,1,2,3 last_tile_dim_replicate}
+  ROOT %transpose = f32[16,4,38,38] transpose(%param0.copy),
+    dimensions={0,3,1,2},
+    sharding={devices=[1,1,2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(), op::Constant(), op::Reshape(),
+                                op::Constant(), op::Constant())),
+      op::Shape("f32[16,19,38,4]"));
+  EXPECT_THAT(root, AllOf(op::Transpose(param0), op::Shape("f32[16,4,19,38]")));
+}
+
+TEST_F(SpmdPartitioningTest, PartialReplicateNonShardableTranspose) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[16,38,38,4] parameter(0)
+  %param0.copy = f32[16,38,38,4] copy(%param0),
+    sharding={devices=[1,2,1,1,2]0,1,2,3 last_tile_dim_replicate}
+  ROOT %transpose = f32[16,4,38,38] transpose(%param0.copy),
+    dimensions={0,3,1,2},
+    sharding={devices=[1,2,1,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto resahrd = AllOf(op::Reshape(op::Transpose(op::Reshape(op::AllToAll()))),
+                       op::Shape("f32[16,38,38,2]"));
+  EXPECT_THAT(root, AllOf(op::Transpose(), op::Shape("f32[16,2,38,38]")));
+}
+
+TEST_F(SpmdPartitioningTest, PartialReplicateMultiDimensionShardedTranspose) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[16,38,38,4] parameter(0)
+  %param0.copy = f32[16,38,38,4] copy(%param0),
+    sharding={devices=[2,2,1,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %transpose = f32[38,4,16,38] transpose(%param0.copy),
+    dimensions={1,3,0,2},
+    sharding={devices=[2,1,2,1,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 = AllOf(
+      op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(), op::Reshape(),
+                                op::Constant(), op::Constant())),
+      op::Shape("f32[8,19,38,4]"));
+  EXPECT_THAT(root, AllOf(op::Transpose(param0), op::Shape("f32[19,4,8,38]")));
+}
+
 TEST_F(SpmdPartitioningTest, ShardableReshape) {
   const char* const hlo_string = R"(
 HloModule module

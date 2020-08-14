@@ -106,21 +106,28 @@ HloSharding TransposeSharding(const HloSharding& sharding,
   if (sharding.IsTileMaximal()) {
     return sharding;
   }
-  const int64 rank = dimensions.size();
+  auto perm_dimensions = dimensions;
+  if (sharding.ReplicateOnLastTileDim() &&
+      dimensions.size() < sharding.tile_assignment().num_dimensions()) {
+    perm_dimensions.push_back(dimensions.size());
+  }
+  const int64 rank = perm_dimensions.size();
   std::vector<int64> tile_assignment_dim(rank);
   for (int64 i = 0; i < rank; ++i) {
-    tile_assignment_dim[i] = sharding.tile_assignment().dim(dimensions[i]);
+    tile_assignment_dim[i] = sharding.tile_assignment().dim(perm_dimensions[i]);
   }
   Array<int64> tile_assignment = sharding.tile_assignment();
   tile_assignment.Reshape(tile_assignment_dim);
   tile_assignment.Each([&](absl::Span<const int64> indices, int64* value) {
     std::vector<int64> src_indices(indices.size(), -1);
     for (int64 i = 0; i < indices.size(); ++i) {
-      src_indices[dimensions[i]] = indices[i];
+      src_indices[perm_dimensions[i]] = indices[i];
     }
     *value = sharding.tile_assignment()(src_indices);
   });
-  return HloSharding::Tile(tile_assignment);
+  return sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(tile_assignment)
+             : HloSharding::Tile(tile_assignment);
 }
 
 absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,

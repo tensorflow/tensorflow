@@ -2039,5 +2039,45 @@ ENTRY entry {
       op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
 }
 
+TEST_F(ShardingPropagationTest, PartialShardingTransposeForwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %transpose {
+  %param = f32[7,11,13]{2,1,0} parameter(0),
+    sharding={devices=[2,1,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  %transpose = f32[11,13,7]{2,1,0} transpose(%param), dimensions={1,2,0}
+  ROOT %copy = f32[11,13,7]{2,1,0} copy(%transpose)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "transpose"),
+      op::Sharding(
+          "{devices=[1,2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, PartialShardingTransposeBackwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %transpose {
+  %param = f32[7,11,13]{2,1,0} parameter(0)
+  %copy = f32[7,11,13]{2,1,0} copy(%param)
+  ROOT %transpose = f32[11,13,7]{2,1,0} transpose(%copy), dimensions={1,2,0},
+    sharding={devices=[1,2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "copy"),
+      op::Sharding(
+          "{devices=[2,1,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+}
+
 }  // namespace
 }  // namespace xla
