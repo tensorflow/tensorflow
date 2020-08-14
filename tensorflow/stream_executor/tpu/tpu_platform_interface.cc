@@ -17,7 +17,6 @@ limitations under the License.
 
 #include <atomic>
 
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
@@ -25,14 +24,7 @@ namespace tensorflow {
 namespace tpu {
 
 namespace {
-TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
-                                                  int tries_left = 5) {
-  if (tries_left <= 0) {
-    LOG(ERROR) << "Unable to find a TPU platform after exhausting all tries. "
-                  "Returning nullptr...";
-    return nullptr;
-  }
-
+TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform) {
   // Prefer TpuPlatform if it's registered.
   auto status_or_tpu_platform =
       stream_executor::MultiPlatformManager::PlatformWithName(
@@ -55,8 +47,7 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
                    nullptr;
           },
           initialize_platform);
-  if (!status_or_other_tpu_platforms.ok() &&
-      status_or_other_tpu_platforms.status().code() != error::NOT_FOUND) {
+  if (!status_or_other_tpu_platforms.ok()) {
     LOG(WARNING) << "Error when getting other TPU platforms: "
                  << status_or_tpu_platform.status();
     return nullptr;
@@ -69,11 +60,8 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
     return static_cast<TpuPlatformInterface*>(other_tpu_platforms[0]);
   }
 
-  LOG(WARNING)
-      << "No TPU platform registered. Waiting 1 second and trying again... ("
-      << tries_left << " tries left)";
-  Env::Default()->SleepForMicroseconds(1000000);  // 1 second
-  return GetRegisteredPlatformStatic(initialize_platform, --tries_left);
+  LOG(WARNING) << "No TPU platform registered";
+  return nullptr;
 }
 }  // namespace
 
