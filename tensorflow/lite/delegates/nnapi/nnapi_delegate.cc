@@ -1690,7 +1690,7 @@ bool NNAPIDelegateKernel::Validate(
       }
     } break;
     case kTfLiteBuiltinFullyConnected: {
-      ExpectMaxOpVersion(version, 4, &val_ctx);
+      ExpectMaxOpVersion(version, 5, &val_ctx);
       // TODO(b/132950584): Add support for FullyConnected with no bias.
       Expect(node->inputs->size == 3 &&
                  node->inputs->data[2] != kTfLiteOptionalTensor,

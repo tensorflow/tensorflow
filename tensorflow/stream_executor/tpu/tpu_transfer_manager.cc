@@ -93,6 +93,8 @@ Status TpuTransferManager::TransferLiteralToInfeed(
   tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralToInfeedFn(
       manager_, tpu_executor->se_executor(), &c_literal, status.c_status);
 
+  ApiConverter::Free(&c_literal);
+
   return status.status();
 }
 
@@ -134,6 +136,9 @@ Status TpuTransferManager::TransferLiteralFromOutfeed(
   tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralFromOutfeedFn(
       manager_, tpu_executor->se_executor(), &c_shape, &c_literal,
       status.c_status);
+
+  ApiConverter::Free(&c_shape);
+  ApiConverter::Free(&c_literal);
 
   return status.status();
 }
@@ -265,6 +270,7 @@ Status TpuTransferManager::LinearizeToBuffers(
   tpu::ExecutorApiFn()->TpuTransferManager_FreeBuffersFn(
       buffers_array, buffers_size, buffers_array_size);
 
+  ApiConverter::Free(&c_literal);
   return status.status();
 }
 

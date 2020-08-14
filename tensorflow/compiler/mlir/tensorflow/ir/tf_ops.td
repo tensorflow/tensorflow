@@ -97,10 +97,10 @@ An n-way switch statement, implementing the following:
     Variadic<TF_Tensor>:$input,
 
     Confined<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
-    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
 
-    // Used to map StatelessCase and Case to a common op.
-    DefaultValuedAttr<BoolAttr, "false">:$is_stateless
+    // Used to map StatelessCase and Case op defined in TensorFlow to a common
+    // op.
+    BoolAttr:$is_stateless
   );
 
   let results = (outs
@@ -109,6 +109,7 @@ An n-way switch statement, implementing the following:
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let hasCanonicalizer = 1;
 }
@@ -337,10 +338,6 @@ else_branch: A region that computes the outputs of the op if cond = false.
   let results = (outs
     Variadic<TF_Tensor>:$output
   );
-
-  TF_DerivedOperandTypeAttr Tcond = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
 
   let regions = (region SizedRegion<1>:$then_branch, SizedRegion<1>:$else_branch);
 
@@ -754,8 +751,6 @@ def TL_WhileRegionOp : TF_Op<"WhileRegion",
     DefaultValuedAttr<I64Attr, "10">:$parallel_iterations
   );
   let results = (outs Variadic<AnyTensor>:$output);
-
-  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
 
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 

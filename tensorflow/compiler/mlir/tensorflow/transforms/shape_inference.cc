@@ -697,11 +697,8 @@ bool ShapeInference::RefineShapeForPassThroughOps(Operation* op) {
     // TODO(jpienaar): The tf.Cast op, which is uniformly inserted at the
     // moment, cannot handle arbirary types (e.g., it can't handle quantized
     // types). This restriction can be relaxed if not only tf.Cast is used.
-    auto kind = t.getKind();
-    return (kind >= Type::FIRST_STANDARD_TYPE &&
-            kind < Type::LAST_STANDARD_TYPE) ||
-           (kind >= Type::FIRST_TENSORFLOW_TYPE &&
-            kind < Type::LAST_TENSORFLOW_TYPE);
+    return t.getDialect().getNamespace().empty() ||
+           isa<TensorFlowDialect>(t.getDialect());
   };
 
   bool changed = false;

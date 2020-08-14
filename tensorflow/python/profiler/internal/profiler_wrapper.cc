@@ -190,7 +190,7 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
     xspace.ParseFromString(std::string(serialized_xspace_proto));
     tensorflow::profiler::TfStatsDatabase tf_stats_db =
         tensorflow::profiler::ConvertOpStatsToTfStats(
-            ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB}));
+            ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, KERNEL_STATS_DB}));
     return py::bytes(tf_stats_db.SerializeAsString());
   });
 

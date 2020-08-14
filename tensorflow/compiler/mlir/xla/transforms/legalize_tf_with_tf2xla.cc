@@ -102,6 +102,8 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::BatchMatMulV2Op>(),
     TypeID::get<TF::BatchToSpaceNDOp>(),
     TypeID::get<TF::BatchToSpaceOp>(),
+    TypeID::get<TF::BesselI0eOp>(),
+    TypeID::get<TF::BesselI1eOp>(),
     TypeID::get<TF::BiasAddGradOp>(),
     TypeID::get<TF::BiasAddOp>(),
     TypeID::get<TF::BitwiseAndOp>(),

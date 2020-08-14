@@ -267,8 +267,8 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
-        "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
@@ -302,7 +302,7 @@ cc_library(
     hdrs = ["list_flex_ops.h"],
     deps = [
         "//tensorflow/lite:framework",
-        "@com_google_absl//absl/strings",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 

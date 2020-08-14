@@ -477,7 +477,7 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
 
 void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  results.insert<FoldConstantCaseOp>(context);
+  results.insert<FoldConstantCaseOp, DropAttributes<CaseOp>>(context);
 }
 
 //===----------------------------------------------------------------------===//

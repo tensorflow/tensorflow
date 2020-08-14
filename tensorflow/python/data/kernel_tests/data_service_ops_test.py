@@ -26,6 +26,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute_options
+from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
@@ -41,6 +42,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
@@ -87,8 +89,10 @@ def _make_distributed_range_dataset(num_elements,
 
 class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def start_dispatch_server(self, port=0):
-    work_dir = os.path.join(self.get_temp_dir(), "work_dir")
+  def start_dispatch_server(self, name="", port=0):
+    # If a test starts multiple independent dispatch servers, it should give
+    # them different `name` values.
+    work_dir = os.path.join(self.get_temp_dir(), "work_dir_", name)
     return server_lib.DispatchServer(
         port=port,
         protocol=server_lib.DEFAULT_PROTOCOL,
@@ -115,16 +119,17 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     worker._stop()
     return self.start_worker_server(dispatcher, port)
 
-  def start_cluster(self, num_workers):
+  def start_cluster(self, num_workers, name=""):
     """Creates a cluster of tf.data service servers.
 
     Args:
       num_workers: The number of workers in the cluster.
+      name: A name for the cluster.
 
     Returns:
       A tuple of (dispatcher, list_of_workers).
     """
-    dispatcher = self.start_dispatch_server()
+    dispatcher = self.start_dispatch_server(name=name)
     servers = [self.start_worker_server(dispatcher) for _ in range(num_workers)]
     return dispatcher, servers
 
@@ -691,6 +696,40 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     id_1 = data_service_ops.register_dataset(dispatcher.target, ds_1)
     id_2 = data_service_ops.register_dataset(dispatcher.target, ds_2)
     self.assertNotEqual(id_1.numpy(), id_2.numpy())
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testTwoLevelDistribute(self):
+    cluster_1_size = 3
+    dispatcher_1, workers_1 = self.start_cluster(  # to avoid gcing workers, pylint: disable=unused-variable
+        cluster_1_size,
+        name="cluster_1")
+    dispatcher_2, workers_2 = self.start_cluster(1, name="cluster_2")  # to avoid gcing workers, pylint: disable=unused-variable
+    num_sizes = 10
+    size_repeats = 5
+    strings = ["a" * i for i in range(num_sizes)] * size_repeats
+    ds = dataset_ops.Dataset.from_tensor_slices(strings)
+    ds = ds.shuffle(len(strings))
+    ds = _make_distributed_dataset(ds, dispatcher_1)
+    # Large enough so that all strings of the same size are windowed together.
+    window_size = cluster_1_size * size_repeats
+    batch_size = size_repeats
+
+    def key_func(x):
+      return math_ops.cast(string_ops.string_length_v2(x), dtypes.int64)
+
+    ds = ds.apply(
+        grouping.group_by_window(
+            key_func=key_func,
+            reduce_func=lambda _, x: x.batch(batch_size),
+            window_size=window_size))
+    ds = _make_distributed_dataset(ds, dispatcher_2)
+
+    it = iter(ds)
+    for _ in range(num_sizes):
+      element = next(it).numpy()
+      for _ in range(1, cluster_1_size):
+        self.assertAllEqual(next(it).numpy(), element)
+    self.assertEmpty(list(it))
 
 
 if __name__ == "__main__":

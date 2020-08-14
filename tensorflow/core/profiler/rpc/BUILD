@@ -13,6 +13,7 @@ cc_library(
     features = ["-layering_check"],
     visibility = tf_external_workspace_visible(
         [
+            "//tensorflow/core/data/service:__pkg__",
             "//tensorflow/core/distributed_runtime/rpc:__pkg__",
             "//tensorflow_serving/model_servers:__pkg__",
         ],

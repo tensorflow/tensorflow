@@ -33,38 +33,6 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class DepthwiseConvPlus1x1Conv : public GPUOperation {
- public:
-  DepthwiseConvPlus1x1Conv() = default;
-  int3 GetGridSize() const override;
-
-  // Move only
-  DepthwiseConvPlus1x1Conv(DepthwiseConvPlus1x1Conv&& operation);
-  DepthwiseConvPlus1x1Conv& operator=(DepthwiseConvPlus1x1Conv&& operation);
-  DepthwiseConvPlus1x1Conv(const DepthwiseConvPlus1x1Conv&) = delete;
-  DepthwiseConvPlus1x1Conv& operator=(const DepthwiseConvPlus1x1Conv&) = delete;
-
- private:
-  friend absl::Status CreateDepthwiseConvPlus1x1Conv(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const DepthwiseConvolution2DAttributes& dw_attr,
-      const Convolution2DAttributes& conv_attr,
-      DepthwiseConvPlus1x1Conv* result);
-  DepthwiseConvPlus1x1Conv(const OperationDef& definition,
-                           const DepthwiseConvolution2DAttributes& dw_attr,
-                           const Convolution2DAttributes& conv_attr);
-
-  absl::Status UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
-                             const Convolution2DAttributes& conv_attr,
-                             CLContext* context);
-
-  std::string GenerateCode(const OperationDef& op_def,
-                           const DepthwiseConvolution2DAttributes& dw_attr,
-                           int result_depth);
-
-  DepthwiseConvolution2DAttributes dw_attr_;
-};
-
 bool IsDepthwiseConvPlus1x1ConvSupported(
     const CLDevice& device, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
@@ -73,7 +41,7 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
 absl::Status CreateDepthwiseConvPlus1x1Conv(
     const CreationContext& creation_context, const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr, DepthwiseConvPlus1x1Conv* result);
+    const Convolution2DAttributes& conv_attr, GPUOperation* result);
 
 }  // namespace cl
 }  // namespace gpu

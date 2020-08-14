@@ -1403,7 +1403,7 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
   }
   for (int64 i = 0; i < grouped_sharding.group_dims.size(); ++i) {
     int64 dim = grouped_sharding.group_dims[i];
-    tiling_dims[dim] = grouped_sharding.group_dim_sizes[i];
+    tiling_dims[dim] *= grouped_sharding.group_dim_sizes[i];
   }
   Array<int64> tiling(tiling_dims);
   grouped_tiling.Each([&](absl::Span<const int64> indices, int64 device) {
@@ -1411,9 +1411,12 @@ HloSharding UngroupSharding(const GroupedSharding& grouped_sharding) {
     for (int64 g = 0; g < grouped_sharding.device_groups.size(); ++g) {
       int64 remaining_group_index = g;
       for (int64 i = grouped_sharding.group_dims.size() - 1; i >= 0; --i) {
-        ungrouped_inds[grouped_sharding.group_dims[i]] =
-            remaining_group_index % grouped_sharding.group_dim_sizes[i];
-        remaining_group_index /= grouped_sharding.group_dim_sizes[i];
+        int64 dim = grouped_sharding.group_dims[i];
+        int64 groups_in_this_dim = grouped_sharding.group_dim_sizes[i];
+        ungrouped_inds[dim] = (remaining_group_index % groups_in_this_dim) *
+                                  grouped_tiling.dim(dim) +
+                              indices[dim];
+        remaining_group_index /= groups_in_this_dim;
       }
       tiling(ungrouped_inds) = grouped_sharding.device_groups[g][device];
     }

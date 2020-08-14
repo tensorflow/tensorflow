@@ -385,20 +385,20 @@ Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
 // Prints a type registered to this dialect.
 void TensorFlowDialect::printType(Type ty, DialectAsmPrinter &os) const {
   assert(ty.isa<TensorFlowType>());
-  switch (ty.getKind()) {
-    default:
-      llvm_unreachable("unexpected tensorflow type kind");
-#define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  case TensorFlowTypes::enumerant:              \
-    os << name;                                 \
-    break;
+#define HANDLE_TF_TYPE(tftype, enumerant, name)        \
+  if (auto derived_ty = ty.dyn_cast<tftype##Type>()) { \
+    os << name;                                        \
+    return;                                            \
+  }
 #define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name) \
-  case TensorFlowTypes::enumerant:                     \
-    Print##tftype##Type(ty.cast<tftype##Type>(), os);  \
-    break;
+  if (auto derived_ty = ty.dyn_cast<tftype##Type>()) { \
+    Print##tftype##Type(derived_ty, os);               \
+    return;                                            \
+  }
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-  }
+
+  llvm_unreachable("unexpected tensorflow type kind");
 }
 
 namespace {

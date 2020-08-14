@@ -37,6 +37,32 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+// kCustom: default value
+//   GPUOperation::GetGridSize must be overloaded
+// kWBToX_HDToY_SToZ:
+//   grid_x = dst_[0]->Width() * dst_[0]->Batch();
+//   grid_y = dst_[0]->Height() * dst_[0]->Depth();
+//   grid_z = dst_[0]->Slices();
+// kWBToX_HDToY_ZIs1:
+//   grid_x = dst_[0]->Width() * dst_[0]->Batch();
+//   grid_y = dst_[0]->Height() * dst_[0]->Depth();
+//   grid_z = 1;
+// kWBToX_HToY_DToZ:
+//   grid_x = dst_[0]->Width() * dst_[0]->Batch();
+//   grid_y = dst_[0]->Height();
+//   grid_z = dst_[0]->Depth();
+// kBToX_YIs1_ZIs1:
+//   grid_x = dst_[0]->Batch();
+//   grid_y = 1;
+//   grid_z = 1;
+enum class TensorToGrid {
+  kCustom,
+  kWBToX_HDToY_SToZ,
+  kWBToX_HDToY_ZIs1,
+  kWBToX_HToY_DToZ,
+  kBToX_YIs1_ZIs1
+};
+
 struct CreationContext {
   const CLDevice* device;
   CLContext* context;
@@ -122,6 +148,10 @@ class GPUOperation {
 
   Arguments args_;
   std::string code_;
+  int3 work_group_size_ = int3(8, 4, 1);
+  std::vector<CompilerOptions> compiler_options_;
+  // not applicable to elementwise
+  TensorToGrid tensor_to_grid_ = TensorToGrid::kCustom;
 
   bool elementwise_ = false;
   // applicable only with elementwise_ = true;
@@ -138,11 +168,9 @@ class GPUOperation {
   std::vector<Tensor*> src_;
   std::vector<Tensor*> dst_;
   CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
   int3 grid_size_ = int3(0, 0, 0);
   std::vector<std::string> src_tensors_names_;
   std::vector<std::string> dst_tensors_names_;
-  std::vector<CompilerOptions> compiler_options_;
   std::vector<GPUOperation*> linked_operations_;
 };
 

@@ -25,7 +25,6 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.compiler.tests import xla_test
-from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import array_ops
@@ -51,8 +50,7 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
         with self.test_scope():
           a = array_ops.placeholder(dtype)
           index = array_ops.placeholder(index_dtype)
-          out = def_function.function(experimental_compile=True)(tf_reduce_fn)(
-              a, index)
+          out = tf_reduce_fn(a, index)
         result = sess.run(out, {a: test_input, index: [0]})
         self.assertAllClose(
             result, np_reduce_fn(test_input, axis=0), rtol=rtol, atol=atol)
@@ -180,24 +178,6 @@ class ReduceOpsTest(xla_test.XLATestCase, parameterized.TestCase):
           errors_impl.InvalidArgumentError,
           'Axes contains duplicate dimension'):
         sess.run(out, {a: [10, 20, 30], index: [0, 0]})
-
-  def testReduceEuclideanNorm(self, index_dtype):
-
-    def reference_euclidean_norm(dtype, inp, axis):
-      inp = inp.astype(dtype)
-      return np.sqrt(np.sum(inp * np.conj(inp), axis)).astype(dtype)
-
-    for real_dtype in [np.int32, np.int64, np.float16, np.float32, np.float64]:
-      self._testReduction(
-          math_ops.reduce_euclidean_norm,
-          functools.partial(reference_euclidean_norm, real_dtype), real_dtype,
-          self.REAL_DATA, index_dtype)
-
-    for complex_dtype in [np.complex64]:
-      self._testReduction(
-          math_ops.reduce_euclidean_norm,
-          functools.partial(reference_euclidean_norm, complex_dtype),
-          complex_dtype, self.COMPLEX_DATA, index_dtype)
 
 
 class ReduceOpPrecisionTest(xla_test.XLATestCase):

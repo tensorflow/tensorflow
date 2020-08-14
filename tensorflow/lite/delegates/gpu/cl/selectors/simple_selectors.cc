@@ -102,16 +102,16 @@ absl::Status SelectConcat(const ConcatAttributes& attr,
                           std::unique_ptr<GPUOperation>* ptr) {
   switch (attr.axis) {
     case Axis::CHANNELS: {
-      ConcatZ operation = CreateConcatZ(op_def, channels, device_info);
-      *ptr = absl::make_unique<ConcatZ>(std::move(operation));
+      GPUOperation operation = CreateConcatZ(op_def, channels, device_info);
+      *ptr = absl::make_unique<GPUOperation>(std::move(operation));
       return absl::OkStatus();
     }
     case Axis::BATCH:
     case Axis::DEPTH:
     case Axis::HEIGHT:
     case Axis::WIDTH: {
-      ConcatXY operation = CreateConcatXY(op_def, attr);
-      *ptr = absl::make_unique<ConcatXY>(std::move(operation));
+      GPUOperation operation = CreateConcatXY(op_def, attr);
+      *ptr = absl::make_unique<GPUOperation>(std::move(operation));
       return absl::OkStatus();
     }
     default:
@@ -123,25 +123,25 @@ void SelectReshape(int src_channels, int dst_channels,
                    const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr) {
   if (src_channels % 4 == 0 && dst_channels % 4 == 0) {
-    Reshapex4 operation = CreateReshapex4(op_def);
-    *ptr = absl::make_unique<Reshapex4>(std::move(operation));
+    GPUOperation operation = CreateReshapex4(op_def);
+    *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   } else {
-    Reshape operation = CreateReshape(op_def);
-    *ptr = absl::make_unique<Reshape>(std::move(operation));
+    GPUOperation operation = CreateReshape(op_def);
+    *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   }
 }
 
 void SelectSpaceToDepth(const SpaceToDepthAttributes& attr,
                         const OperationDef& op_def,
                         std::unique_ptr<GPUOperation>* ptr) {
-  SpaceToDepth operation = CreateSpaceToDepth(op_def, attr);
-  *ptr = absl::make_unique<SpaceToDepth>(std::move(operation));
+  GPUOperation operation = CreateSpaceToDepth(op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 void SelectPadding(const PadAttributes& attr, const OperationDef& op_def,
                    std::unique_ptr<GPUOperation>* ptr) {
-  Padding operation = CreatePadding(op_def, attr);
-  *ptr = absl::make_unique<Padding>(std::move(operation));
+  GPUOperation operation = CreatePadding(op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 void SelectStridedSlice(const SliceAttributes& attr, const OperationDef& op_def,
@@ -167,16 +167,16 @@ void SelectSoftmax(const BHWC& shape, const OperationDef& op_def,
     Softmax1x1 operation = CreateSoftmax1x1(op_def);
     *ptr = absl::make_unique<Softmax1x1>(std::move(operation));
   } else {
-    Softmax operation = CreateSoftmax(op_def);
-    *ptr = absl::make_unique<Softmax>(std::move(operation));
+    GPUOperation operation = CreateSoftmax(op_def);
+    *ptr = absl::make_unique<GPUOperation>(std::move(operation));
   }
 }
 
 void SelectTranspose(const TransposeAttributes& attr,
                      const OperationDef& op_def,
                      std::unique_ptr<GPUOperation>* ptr) {
-  Transpose operation = CreateTranspose(op_def, attr);
-  *ptr = absl::make_unique<Transpose>(std::move(operation));
+  GPUOperation operation = CreateTranspose(op_def, attr);
+  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
 absl::Status SelectWinograd4x4To36(const CreationContext& creation_context,

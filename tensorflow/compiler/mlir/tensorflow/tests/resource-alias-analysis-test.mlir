@@ -232,3 +232,23 @@ func @while_region_aliasing(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) {
   return
 }
 
+// -----
+// Test aliasing through calls
+!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+
+// CHECK-LABEL: func @aliasing_through_calls
+func @aliasing_through_calls(%arg0: tensor<32xf32>) -> () {
+  // expected-remark@below {{Result #0, ID 0 : 0, 1, 2}}
+  %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
+  // expected-remark@below {{Result #0, ID 1 : Unknown}}
+  // expected-remark@below {{Result #1, ID 2 : 0, 1, 2}}
+  %c:2 = call @passthru(%vh0) : (!tf_res) -> (!tf_res, !tf_res)
+  return
+}
+
+// expected-remark@below {{Region #0, Arg #0, ID 1 : 1}}
+func @passthru(%arg0: !tf_res) -> (!tf_res, !tf_res) {
+  // expected-remark@below {{Result #0, ID 0 : 0}}
+  %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
+  return %vh0, %arg0 : !tf_res, !tf_res
+}

@@ -647,7 +647,6 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
           num_iters=self._num_iters_2_by_2,
           execution_mode=context.ASYNC)
 
-  @test_util.disable_tfrt("copy to GPU not supported")
   def benchmark_tf_matmul_2_by_2_GPU(self):
     if not context.num_gpus():
       return

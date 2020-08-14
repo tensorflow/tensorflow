@@ -25,6 +25,7 @@ namespace experimental {
 /* static */ constexpr const char* const AutoShardDatasetOp::kDatasetType;
 /* static */ constexpr const char* const AutoShardDatasetOp::kInputDataset;
 /* static */ constexpr const char* const AutoShardDatasetOp::kNumWorkers;
+/* static */ constexpr const char* const AutoShardDatasetOp::kNumReplicas;
 /* static */ constexpr const char* const AutoShardDatasetOp::kIndex;
 /* static */ constexpr const char* const AutoShardDatasetOp::kOutputTypes;
 /* static */ constexpr const char* const AutoShardDatasetOp::kOutputShapes;

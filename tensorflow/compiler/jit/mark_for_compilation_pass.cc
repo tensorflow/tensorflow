@@ -1893,7 +1893,6 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "Einsum",
                                      "EmptyTensorList",
                                      "EnsureShape",
-                                     "EuclideanNorm",
                                      "ExtractImagePatches",
                                      "Igamma",
                                      "IgammaGradA",
