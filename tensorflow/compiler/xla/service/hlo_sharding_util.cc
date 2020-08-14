@@ -234,8 +234,14 @@ absl::optional<HloSharding> ReshapeSharding(const Shape& source_shape,
     }
   }
   Array<int64> new_tile_assignment = sharding.tile_assignment();
+  if (sharding.ReplicateOnLastTileDim()) {
+    target_tile_assignment_dimensions.push_back(
+        sharding.tile_assignment().dimensions().back());
+  }
   new_tile_assignment.Reshape(target_tile_assignment_dimensions);
-  return HloSharding::Tile(new_tile_assignment);
+  return sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(new_tile_assignment)
+             : HloSharding::Tile(new_tile_assignment);
 }
 
 HloSharding ReverseSharding(const HloSharding& sharding,
@@ -253,7 +259,9 @@ HloSharding ReverseSharding(const HloSharding& sharding,
     }
     *device = sharding.tile_assignment()(original_indices);
   });
-  return HloSharding::Tile(new_tile_assignment);
+  return sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(new_tile_assignment)
+             : HloSharding::Tile(new_tile_assignment);
 }
 
 HloSharding ReshapeToTileDimension(const HloSharding& sharding, int64 dim,
