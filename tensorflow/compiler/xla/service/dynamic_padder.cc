@@ -32,6 +32,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/shape_inference.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -123,6 +125,58 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst,
       return UnimplementedStrCat("Unimplemented padding for instruction: ",
                                  inst->ToString());
   }
+}
+
+StatusOr<bool> ReplaceGetSize(
+    HloInstruction* instr,
+    DynamicDimensionInference* dynamic_dimension_inference) {
+  if (instr->opcode() != HloOpcode::kGetDimensionSize) {
+    return false;
+  }
+  HloComputation* computation = instr->parent();
+
+  TF_ASSIGN_OR_RETURN(auto legal_shape,
+                      ShapeInference::InferGetDimensionSizeShape(
+                          instr->operand(0)->shape(), instr->dimension()));
+  TF_RET_CHECK(ShapeUtil::Equal(instr->shape(), legal_shape))
+      << "instr->shape() " << instr->shape().ToString() << " , "
+      << "legal_shape " << legal_shape.ToString();
+  TF_RET_CHECK(ShapeUtil::HasPrimitiveType(instr->shape(), S32));
+  HloInstruction* operand = instr->mutable_operand(0);
+  int64 dim = instr->dimension();
+  HloInstruction* dynamic_size =
+      dynamic_dimension_inference->GetDynamicSize(operand, {}, dim);
+  if (dynamic_size != nullptr) {
+    TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(dynamic_size));
+    // The dependency between a instruction and its dynamic dimensions is not
+    // modeled in the IR. As instr is being replaced by dynamic_size, also tell
+    // dynamic dimension inference that the instruction is being replaced.
+    dynamic_dimension_inference->ReplaceAllDynamicDimensionUsesWith(
+        instr, dynamic_size);
+  } else {
+    int32 size = instr->operand(0)->shape().dimensions(dim);
+    HloInstruction* new_instr = computation->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(size)));
+    TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(new_instr));
+    dynamic_dimension_inference->ReplaceAllDynamicDimensionUsesWith(instr,
+                                                                    new_instr);
+  }
+  return true;
+}
+
+StatusOr<bool> ReplaceSetSize(HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kSetDimensionSize) {
+    return false;
+  }
+
+  TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension()(
+      instr->shape(), instr->operand(0)->shape()))
+      << "instr->shape() " << instr->shape().ToString() << " , "
+      << "instruction operand shape " << instr->operand(0)->shape();
+  HloInstruction* operand = instr->mutable_operand(0);
+
+  TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(operand));
+  return true;
 }
 
 bool ShouldSkipPadOnOperand(const HloInstruction* inst, int64 operand_num,
@@ -1290,6 +1344,22 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
     TF_RETURN_IF_ERROR(DynamicShapeRemovingVisitor::Run(
         computation, op_supports_dynamism_handler_, dynamic_dimension_inference,
         /*require_dynamic_output=*/require_dynamic_output));
+  }
+
+  for (auto* computation : module->computations()) {
+    for (auto instruction : computation->MakeInstructionPostOrder()) {
+      TF_ASSIGN_OR_RETURN(
+          bool replaced_get_size,
+          ReplaceGetSize(instruction, &dynamic_dimension_inference));
+      changed = changed || replaced_get_size;
+    }
+  }
+
+  for (auto* computation : module->computations()) {
+    for (auto instruction : computation->MakeInstructionPostOrder()) {
+      TF_ASSIGN_OR_RETURN(bool replaced_set_size, ReplaceSetSize(instruction));
+      changed = changed || replaced_set_size;
+    }
   }
 
   HloDCE dce;

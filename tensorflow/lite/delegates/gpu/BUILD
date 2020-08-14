@@ -251,6 +251,7 @@ cc_library(
             "//tensorflow/lite/delegates/gpu/gl:api2",
         ],
     }) + [
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
         "//tensorflow/lite:kernel_api",

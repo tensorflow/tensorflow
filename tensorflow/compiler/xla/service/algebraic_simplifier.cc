@@ -4161,8 +4161,8 @@ Status AlgebraicSimplifierVisitor::HandleDynamicSlice(
     return ReplaceWithNewInstruction(dynamic_slice, std::move(new_broadcast));
   }
 
-  // Convert a dynamic slice into a slice if all offsets are  constant and the
-  // operand is not constant. If ev
+  // Convert a dynamic slice into a slice if all offsets are constant and the
+  // operand is not constant.
   if (operand->opcode() != HloOpcode::kConstant &&
       absl::c_all_of(absl::MakeSpan(dynamic_slice->operands().begin() + 1,
                                     dynamic_slice->operands().end()),

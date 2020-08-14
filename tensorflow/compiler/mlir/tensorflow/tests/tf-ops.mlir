@@ -848,7 +848,7 @@ func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 
 // Test invalid tf.Yield operation (parent should be IfRegion)
 func @testInvalidYieldOp(%arg0: f32) -> () {
-  // expected-error @+1 {{'tf.Yield' op expects parent op to be one of 'tf.IfRegion, tf.WhileRegion'}}
+  // expected-error @+1 {{'tf.Yield' op expects parent op to be one of 'tf.CaseRegion, tf.IfRegion, tf.WhileRegion'}}
   "tf.Yield"(%arg0) : (f32) -> ()
 }
 
@@ -3314,6 +3314,65 @@ func @testBatchToSpaceInvalidOutputDepth(%arg0: tensor<16x8x8x3xf32>, %arg1: ten
   return
 }
 
+// -----
+
+func @testCaseRegionNoRegions(%arg0: tensor<i32>) {
+  // expected-error @+1 {{expects to have at least 1 region}}
+  "tf.CaseRegion"(%arg0) {is_stateless = false} : (tensor<i32>) -> ()
+  return
+}
+
+// -----
+
+func @testCaseRegionBadBranchIndicesShape(%arg0: tensor<8xi32>) {
+  // expected-error @+1 {{expects 'branch_index' to be a scalar, but got 'tensor<8xi32>'}}
+  "tf.CaseRegion"(%arg0) ( {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false} : (tensor<8xi32>) -> ()
+  return
+}
+
+// -----
+
+func @testCaseRegionBadBranchIndicesNegative() {
+  %0 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{expects 'branch_index' to be non-negative, but got -1}}
+  "tf.CaseRegion"(%0) ( {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false} : (tensor<i32>) -> ()
+  return
+}
+
+// -----
+
+func @testCaseRegionBadBranchIndicesPositive() {
+  %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{expects 'branch_index' to be less than the number of regions (1), but got 1}}
+  "tf.CaseRegion"(%0) ( {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false} : (tensor<i32>) -> ()
+  return
+}
+
+// -----
+
+func @testCaseRegionMismatchedNumResults(%arg0: tensor<i32>) {
+  // expected-error @+1 {{region #0 should have same number (1) of results as tf.CaseRegion but has 0 results}}
+  %1 = "tf.CaseRegion"(%arg0) ( {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false} : (tensor<i32>) -> tensor<i1>
+  return
+}
+
+// -----
+
+func @testCaseRegionMismatchedResultTypes(%arg0: tensor<i32>, %arg1: tensor<f32>) {
+  // expected-error @+1 {{region #0 result type tensor<f32> is incompatible with tf.CaseRegion result type tensor<i1> at index 0}}
+  %1 = "tf.CaseRegion"(%arg0) ( {
+    "tf.Yield"(%arg1) : (tensor<f32>) -> ()
+  }) {is_stateless = false} : (tensor<i32>) -> tensor<i1>
+  return
+}
 
 // -----
 

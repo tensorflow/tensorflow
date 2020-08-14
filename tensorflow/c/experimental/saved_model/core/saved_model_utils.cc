@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/stringpiece.h"
 #include "tensorflow/core/protobuf/saved_object_graph.pb.h"
 #include "tensorflow/core/protobuf/struct.pb.h"
@@ -36,52 +37,8 @@ namespace tensorflow {
 namespace internal {
 namespace {
 
-// This returns the size of `tf.nest.flatten(value)`, on values that are
-// used in tf.function's input_signatures.
-int FlattenedSize(const tensorflow::StructuredValue& value, Status* status) {
-  // This follows the logic from
-  // https://github.com/tensorflow/tensorflow/blob/1c064ab76064c58e54261b805027474885a1534d/tensorflow/compiler/mlir/tensorflow/translate/import_model.cc#L2775
-  switch (value.kind_case()) {
-    case StructuredValue::kDictValue: {
-      const DictValue& dict = value.dict_value();
-      int size = 0;
-      for (const auto& field : dict.fields()) {
-        size += FlattenedSize(field.second, status);
-      }
-      return size;
-    }
-    case StructuredValue::kTupleValue: {
-      const TupleValue& tuple = value.tuple_value();
-      int size = 0;
-      for (const StructuredValue& value : tuple.values()) {
-        size += FlattenedSize(value, status);
-      }
-      return size;
-    }
-    case StructuredValue::kListValue: {
-      const ListValue& list = value.list_value();
-      int size = 0;
-      for (const StructuredValue& value : list.values()) {
-        size += FlattenedSize(value, status);
-      }
-      return size;
-    }
-    case StructuredValue::kTensorSpecValue: {
-      return 1;
-    }
-    case StructuredValue::kNoneValue: {
-      // Base case: do nothing.
-      // This arises, for example, as the top-level object of an output
-      // signature when there are no return values.
-      return 0;
-    }
-    default: {
-      status->Update(errors::Internal("Unhandled structured value kind ",
-                                      value.kind_case()));
-      return 0;
-    }
-  }
-}
+using StructuredValueDictEntry =
+    protobuf::MapPair<std::string, StructuredValue>;
 
 // Perform some basic sanity checks on SavedConcreteFunction's input and
 // output signatures with respect to the corresponding FunctionDef's input
@@ -111,34 +68,34 @@ Status ValidateSavedFunctionCompatibleWithFunctionDef(
   // https://github.com/tensorflow/tensorflow/blob/1c064ab76064c58e54261b805027474885a1534d/tensorflow/python/eager/function.py#L1974-L1979
 
   const std::string& name = function_def->signature().name();
+
   const StructuredValue& input_signature =
       saved_concrete_function.canonicalized_input_signature();
-  Status status;
-  int input_signature_size = FlattenedSize(input_signature, &status);
-  TF_RETURN_IF_ERROR(status);
-  if (input_signature_size + saved_concrete_function.bound_inputs_size() !=
+  std::vector<const TensorSpecProto*> input_specs;
+  TF_RETURN_IF_ERROR(FlattenSignature(input_signature, &input_specs));
+  if (input_specs.size() + saved_concrete_function.bound_inputs_size() !=
       function_def->signature().input_arg_size()) {
     return errors::FailedPrecondition(
         "FunctionDef ", name, " has ",
         function_def->signature().input_arg_size(),
-        " inputs, but the SavedConcreteFunction has ", input_signature_size,
+        " inputs, but the SavedConcreteFunction has ", input_specs.size(),
         " flattened user inputs and ",
         saved_concrete_function.bound_inputs_size(), " captured inputs.");
   }
 
   const StructuredValue& output_signature =
       saved_concrete_function.output_signature();
-  int output_signature_size = FlattenedSize(output_signature, &status);
-  TF_RETURN_IF_ERROR(status);
-  if (output_signature_size != function_def->signature().output_arg_size()) {
+  std::vector<const TensorSpecProto*> output_specs;
+  TF_RETURN_IF_ERROR(FlattenSignature(output_signature, &output_specs));
+  if (output_specs.size() != function_def->signature().output_arg_size()) {
     return errors::FailedPrecondition(
         "FunctionDef ", name, " has ",
         function_def->signature().output_arg_size(),
-        " outputs, but the SavedConcreteFunction has ", output_signature_size,
+        " outputs, but the SavedConcreteFunction has ", output_specs.size(),
         " flattened outputs.");
   }
 
-  return status;
+  return Status();
 }
 
 }  // namespace
@@ -195,6 +152,62 @@ Status LoadTFConcreteFunction(
 
   return TFConcreteFunction::Create(function_def, std::move(captures), {}, ctx,
                                     out);
+}
+
+Status FlattenSignature(const StructuredValue& signature,
+                        std::vector<const TensorSpecProto*>* flattened_specs) {
+  // This follows the logic from
+  // https://github.com/tensorflow/tensorflow/blob/1c064ab76064c58e54261b805027474885a1534d/tensorflow/compiler/mlir/tensorflow/translate/import_model.cc#L2775
+  switch (signature.kind_case()) {
+    case StructuredValue::kDictValue: {
+      // Dictionaries must be sorted in order of keys
+      const DictValue& dict = signature.dict_value();
+      std::vector<const StructuredValueDictEntry*> entries;
+      entries.reserve(dict.fields_size());
+      for (const auto& field : dict.fields()) {
+        entries.push_back(&field);
+      }
+
+      std::sort(entries.begin(), entries.end(),
+                [](const StructuredValueDictEntry* x,
+                   const StructuredValueDictEntry* y) {
+                  return x->first < y->first;
+                });
+
+      for (const auto& entry : entries) {
+        TF_RETURN_IF_ERROR(FlattenSignature(entry->second, flattened_specs));
+      }
+      return Status();
+    }
+    case StructuredValue::kTupleValue: {
+      const TupleValue& tuple = signature.tuple_value();
+      for (const StructuredValue& value : tuple.values()) {
+        TF_RETURN_IF_ERROR(FlattenSignature(value, flattened_specs));
+      }
+      return Status();
+    }
+    case StructuredValue::kListValue: {
+      const ListValue& list = signature.list_value();
+      for (const StructuredValue& value : list.values()) {
+        TF_RETURN_IF_ERROR(FlattenSignature(value, flattened_specs));
+      }
+      return Status();
+    }
+    case StructuredValue::kTensorSpecValue: {
+      flattened_specs->push_back(&signature.tensor_spec_value());
+      return Status();
+    }
+    case StructuredValue::kNoneValue: {
+      // Base case: do nothing.
+      // This arises, for example, as the top-level object of an output
+      // signature when there are no return values.
+      return Status();
+    }
+    default: {
+      return errors::Internal("Unhandled structured value kind ",
+                              signature.kind_case());
+    }
+  }
 }
 
 const SavedObject* FindNodeAtPath(StringPiece path,

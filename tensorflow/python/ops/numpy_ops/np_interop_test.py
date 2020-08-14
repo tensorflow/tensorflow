@@ -98,6 +98,18 @@ class InteropTest(tf.test.TestCase):
     self.assertAllClose(dx, 2.0)
     self.assertAllClose(dy, 3.0)
 
+  def testGradientTapeNoneGradients(self):
+    y = np.asarray(2.0)
+
+    with tf.GradientTape() as t:
+      x = np.asarray(3.0)
+      t.watch([x])
+      z = 2 * x
+
+    dz = t.gradient(z, y)
+
+    self.assertIsNone(dz)
+
   def testCondInterop(self):
     x = np.asarray(3.0)
 
@@ -293,12 +305,12 @@ class InteropTest(tf.test.TestCase):
 
     model = tf.keras.Sequential(
         [tf.keras.layers.Dense(100), ProjectionLayer(2)])
-    output = model.call(np.random.randn(10, 100))
+    output = model.call(np.random.randn(10, 100).astype(np.float32))
 
     self.assertIsInstance(output, np.ndarray)
 
     dense_layer = tf.keras.layers.Dense(100)
-    output = dense_layer(np.random.randn(10, 100))
+    output = dense_layer(np.random.randn(10, 100).astype(np.float32))
 
   def testPForInterop(self):
     def outer_product(a):

@@ -39,8 +39,8 @@ SE_PlatformId TpuPlatform_Id(SE_Platform* platform);
 int64_t TpuPlatform_VisibleDeviceCount(SE_Platform* platform);
 int64_t TpuPlatform_TpuMemoryLimit(SE_Platform* platform);
 bool TpuPlatform_ShouldRegisterTpuDeviceToDeviceCopy(SE_Platform* platform);
-void* TpuPlatform_GetTopologyPtr(SE_Platform* platform);
-void* TpuPlatform_GetHostLocation(SE_Platform* platform);
+SE_TpuTopology* TpuPlatform_GetTopologyPtr(SE_Platform* platform);
+SE_TpuTopology_Host* TpuPlatform_GetHostLocation(SE_Platform* platform);
 
 void TpuExecutor_Init(SE_StreamExecutor* executor, int device_ordinal,
                       SE_DeviceOptions* device_options, SE_Status* status);
@@ -182,29 +182,62 @@ void TpuTransferManager_WriteSingleTupleIndexTable(
     XLA_TransferManager* manager, SE_Stream* stream,
     SE_DeviceMemoryBase* elements, size_t elements_len, XLA_Shape* shape,
     SE_DeviceMemoryBase* region, SE_Status* status);
+void TpuTransferManager_GetInfeedLayout(XLA_Shape* shape,
+                                        XLA_Shape* infeed_shape);
+void TpuTransferManager_LinearizeToBuffers(
+    XLA_TransferManager* manager, XLA_Literal* c_literal, char*** buffers_array,
+    int64_t** buffers_size, int64_t* buffers_array_size, SE_Status* status);
+void TpuTransferManager_FreeBuffers(char** buffers_array, int64_t* buffers_size,
+                                    int64_t buffers_array_size);
+void TpuTransferManager_TransferLiteralToInfeed(XLA_TransferManager* manager,
+                                                SE_StreamExecutor* executor,
+                                                XLA_Literal* c_literal,
+                                                SE_Status* status);
+void TpuTransferManager_TransferBuffersToInfeed(XLA_TransferManager* manager,
+                                                SE_StreamExecutor* executor,
+                                                uint32_t** buffers_array,
+                                                int64_t* buffers_size_in_uint32,
+                                                int64_t buffers_array_size,
+                                                SE_Status* status);
+void TpuTransferManager_TransferLiteralFromOutfeed(XLA_TransferManager* manager,
+                                                   SE_StreamExecutor* executor,
+                                                   XLA_Shape* shape,
+                                                   XLA_Literal* c_literal,
+                                                   SE_Status* status);
+void TpuTransferManager_ResetDevices(XLA_TransferManager* manager,
+                                     SE_StreamExecutor** executors,
+                                     int64_t num_executors, SE_Status* status);
 
 XLA_ComputationPlacer* TpuComputationPlacer_New();
 void TpuComputationPlacer_Free(XLA_ComputationPlacer* placer);
 
-int TpuTopology_LogicalDevicesPerHost(void* tpu_topology,
+int TpuTopology_LogicalDevicesPerHost(SE_TpuTopology* tpu_topology,
                                       TpuCoreTypeEnum tpu_core_type);
-int TpuTopology_LogicalDevicesPerChip(void* tpu_topology,
+int TpuTopology_LogicalDevicesPerChip(SE_TpuTopology* tpu_topology,
                                       TpuCoreTypeEnum tpu_core_type);
-int TpuTopology_ChipBounds_X(void* tpu_topology);
-int TpuTopology_ChipBounds_Y(void* tpu_topology);
-int TpuTopology_ChipBounds_Z(void* tpu_topology);
-bool TpuTopology_HasChip(void* tpu_topology, int x, int y, int z);
-void* TpuTopology_Core(void* tpu_topology, int x, int y, int z,
-                       TpuCoreTypeEnum tpu_core_type, int index);
-int TpuTopology_IdForHost(void* tpu_topology, int x, int y, int z);
-void TpuCoreLocation_ChipCoordinates(void* tpu_core_location, int* x, int* y,
-                                     int* z);
-void TpuCoreLocation_HostCoordinates(void* tpu_core_location, int* x, int* y,
-                                     int* z);
-int TpuCoreLocation_Index(void* tpu_core_location);
-int TpuCoreLocation_Id(void* tpu_core_location);
+int TpuTopology_ChipBounds_X(SE_TpuTopology* tpu_topology);
+int TpuTopology_ChipBounds_Y(SE_TpuTopology* tpu_topology);
+int TpuTopology_ChipBounds_Z(SE_TpuTopology* tpu_topology);
+bool TpuTopology_HasChip(SE_TpuTopology* tpu_topology, int x, int y, int z);
+SE_TpuTopology_Core* TpuTopology_Core(SE_TpuTopology* tpu_topology, int x,
+                                      int y, int z,
+                                      TpuCoreTypeEnum tpu_core_type, int index);
+int TpuTopology_NumCores(SE_TpuTopology* tpu_topology,
+                         TpuCoreTypeEnum tpu_core_type);
+// 'cores' should be a preallocated array of size TpuTopology_NumCores.
+void TpuTopology_Cores(SE_TpuTopology* tpu_topology,
+                       TpuCoreTypeEnum tpu_core_type,
+                       SE_TpuTopology_Core** cores);
+int TpuTopology_IdForHost(SE_TpuTopology* tpu_topology, int x, int y, int z);
+TpuVersionEnum TpuTopology_Version(SE_TpuTopology* tpu_topology);
+void TpuCoreLocation_ChipCoordinates(SE_TpuTopology_Core* tpu_core_location,
+                                     int* x, int* y, int* z);
+void TpuCoreLocation_HostCoordinates(SE_TpuTopology_Core* tpu_core_location,
+                                     int* x, int* y, int* z);
+int TpuCoreLocation_Index(SE_TpuTopology_Core* tpu_core_location);
+int TpuCoreLocation_Id(SE_TpuTopology_Core* tpu_core_location);
 
-int TpuHostLocation_Id(void* tpu_host_location);
+int TpuHostLocation_Id(SE_TpuTopology_Host* tpu_host_location);
 
 // C API for XLA::Compiler interface
 
@@ -336,6 +369,13 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromDevice);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetByteSizeRequirement);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_WriteSingleTupleIndexTable);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetInfeedLayout);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_LinearizeToBuffers);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_FreeBuffers);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralToInfeed);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferBuffersToInfeed);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromOutfeed);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_ResetDevices);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_Free);
@@ -347,7 +387,10 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_ChipBounds_Z);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_HasChip);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Core);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_NumCores);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Cores);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_IdForHost);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTopology_Version);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_ChipCoordinates);
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_HostCoordinates);

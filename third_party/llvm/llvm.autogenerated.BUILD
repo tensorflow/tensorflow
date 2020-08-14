@@ -685,26 +685,36 @@ cc_library(
     ],
 )
 
-gentbl(
-    name = "omp_gen",
-    tbl_outs = [("--gen-directive-decl", "include/llvm/Frontend/OpenMP/OMP.h.inc")],
-    tblgen = ":llvm-tblgen",
-    td_file = "include/llvm/Frontend/OpenMP/OMP.td",
-    td_srcs = glob([
+exports_files([
+    "include/llvm/Frontend/OpenMP/OMP.td",
+])
+
+filegroup(
+    name = "omp_td_files",
+    srcs = glob([
         "include/llvm/Frontend/OpenMP/*.td",
         "include/llvm/Frontend/Directive/*.td",
     ]),
 )
 
 gentbl(
-    name = "omp_gen_impl",
-    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp.inc")],
+    name = "omp_gen",
+    tbl_outs = [("--gen-directive-decl", "include/llvm/Frontend/OpenMP/OMP.h.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenMP/OMP.td",
-    td_srcs = glob([
-        "include/llvm/Frontend/OpenMP/*.td",
-        "include/llvm/Frontend/Directive/*.td",
-    ]),
+    td_srcs = [
+        ":omp_td_files",
+    ],
+)
+
+gentbl(
+    name = "omp_gen_impl",
+    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenMP/OMP.td",
+    td_srcs = [
+        ":omp_td_files",
+    ],
 )
 
 # TODO(b/159809163): autogenerate this after enabling release-mode ML
@@ -1556,7 +1566,9 @@ cc_library(
         ":BPFInfo",
         ":CodeGen",
         ":Core",
+        ":IPO",
         ":MC",
+        ":Scalar",
         ":SelectionDAG",
         ":Support",
         ":Target",
@@ -2092,7 +2104,7 @@ cc_library(
         "lib/Frontend/OpenMP/*.cpp",
         "lib/Frontend/OpenMP/*.inc",
         "lib/Frontend/OpenMP/*.h",
-    ]),
+    ]) + ["include/llvm/Frontend/OpenMP/OMP.cpp"],
     hdrs = glob([
         "include/llvm/Frontend/OpenMP/*.h",
         "include/llvm/Frontend/OpenMP/*.def",

@@ -47,6 +47,9 @@ class RemoteMgr {
       const gtl::ArraySlice<tensorflow::TensorHandle*> handles,
       int64 operation_id);
 
+  void AddOperationOutput(tensorflow::TensorHandle* handles, int64 operation_id,
+                          int32 output_num);
+
   Status GetTensorHandle(const RemoteTensorHandleInternal& remote_handle,
                          tensorflow::TensorHandle** handle);
 

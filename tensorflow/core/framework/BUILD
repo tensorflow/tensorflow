@@ -214,6 +214,7 @@ filegroup(
         "shared_ptr_variant.h",
         "stats_aggregator.h",
         "tensor.h",
+        "tensor_key.h",
         "tensor_reference.h",
         "tensor_shape.h",
         "tensor_slice.h",
@@ -293,6 +294,7 @@ filegroup(
         "resource_handle.h",
         "tensor.cc",
         "tensor.h",
+        "tensor_key.h",
         "tensor_shape.cc",
         "tensor_shape.h",
         "tensor_types.h",
@@ -612,7 +614,6 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
-        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],

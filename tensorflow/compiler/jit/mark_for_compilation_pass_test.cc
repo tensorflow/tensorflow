@@ -44,6 +44,11 @@ using ::tensorflow::testing::FindNodeByName;
 namespace tensorflow {
 namespace {
 
+static bool Initialized = [] {
+  tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
+  return true;
+}();
+
 REGISTER_OP("UncompilableNullary").Output("o: float");
 REGISTER_OP("UncompilableUnary").Input("a: float").Output("o: float");
 

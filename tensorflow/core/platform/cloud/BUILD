@@ -20,7 +20,7 @@ package_group(
     packages = [
         "//learning/brain/tfrc/...",
         "//tensorflow/...",
-        "//third_party/gstpufs/...",
+        "//third_party/gsmemcachedfs/...",
     ],
 )
 

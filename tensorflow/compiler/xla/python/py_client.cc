@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/python/py_client.h"
 
+#include <memory>
+
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
@@ -120,7 +122,7 @@ StatusOr<std::unique_ptr<PyBuffer>> PyClient::BufferFromPyval(
                                     std::move(traceback));
 }
 
-StatusOr<std::unique_ptr<PyExecutable>> PyClient::Compile(
+StatusOr<std::shared_ptr<PyExecutable>> PyClient::Compile(
     const XlaComputation& computation, CompileOptions options) {
   std::unique_ptr<PjRtExecutable> executable;
   absl::optional<std::string> fingerprint;
@@ -133,7 +135,7 @@ StatusOr<std::unique_ptr<PyExecutable>> PyClient::Compile(
                         pjrt_client_->ExecutableFingerprint(*executable));
   }
   auto traceback = Traceback::Get();
-  return std::make_unique<PyExecutable>(
+  return std::make_shared<PyExecutable>(
       shared_from_this(), std::move(executable), std::move(traceback),
       std::move(fingerprint));
 }

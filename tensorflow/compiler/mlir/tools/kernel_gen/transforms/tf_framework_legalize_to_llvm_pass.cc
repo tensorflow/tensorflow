@@ -40,7 +40,7 @@ class TestTFFrameworkToLLVMPass
     // Populate type conversions.
     LLVMTypeConverter type_converter(m.getContext());
     type_converter.addConversion([&](tf_framework::OpKernelContextType type) {
-      return LLVM::LLVMType::getInt8PtrTy(type_converter.getDialect());
+      return LLVM::LLVMType::getInt8PtrTy(m.getContext());
     });
 
     // Populate patterns.

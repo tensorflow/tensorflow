@@ -24,8 +24,7 @@ namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {
 
-TFFrameworkDialect::TFFrameworkDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context) {
+void TFFrameworkDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.cc.inc"
@@ -49,13 +48,11 @@ Type TFFrameworkDialect::parseType(DialectAsmParser &parser) const {
 
 /// Print a type registered to this dialect.
 void TFFrameworkDialect::printType(Type type, DialectAsmPrinter &os) const {
-  switch (type.getKind()) {
-    case TFFrameworkTypes::OpKernelContextType:
-      os << "op_kernel_context";
-      return;
-    default:
-      llvm_unreachable("unexpected TF Framework type kind");
+  if (type.isa<OpKernelContextType>()) {
+    os << "op_kernel_context";
+    return;
   }
+  llvm_unreachable("unexpected TF Framework type kind");
 }
 
 template <typename OpTy>

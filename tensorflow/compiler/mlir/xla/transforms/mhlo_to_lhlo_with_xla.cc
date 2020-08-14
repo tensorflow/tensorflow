@@ -34,7 +34,6 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
@@ -182,7 +181,10 @@ template <typename OpType>
 StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
     HloInstruction* instr) {
   Location loc = getLocation(instr);
-  ArrayRef<std::pair<Identifier, Attribute>> attrs;
+  std::pair<Identifier, Attribute> attrs[] = {
+      {Identifier::get("name", builder_.getContext()),
+       builder_.getStringAttr(instr->name())},
+  };
   ArrayRef<Type> rets{};
 
   llvm::SmallVector<Value, 4> operands;
@@ -252,15 +254,14 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   return Status::OK();
 }
 
-StatusOr<mlir::Operation*> LhloDialectEmitter::EmitSortOp(
-    HloInstruction* instr) {
+StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto sort, CreateOpWithoutAttrs<lmhlo::SortOp>(instr));
   auto* sort_instr = ::xla::Cast<::xla::HloSortInstruction>(instr);
   sort.dimensionAttr(builder_.getI64IntegerAttr(sort_instr->sort_dimension()));
   sort.is_stableAttr(builder_.getBoolAttr(sort_instr->is_stable()));
   TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
       *sort_instr->called_computations()[0], &sort.comparator(), &builder_));
-  return sort.getOperation();
+  return sort;
 }
 
 Status LhloDialectEmitter::HandleSort(HloInstruction* instr) {
@@ -327,19 +328,17 @@ Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
 // create another view to adjust the slice for the shape of the instruction.
 Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
                                            SmallVectorImpl<Value>* values) {
-  // In terms of cache key, we have several choices:
-  // * Use `instr`. It's the easiest, but it creates different cache entries for
-  // aliased buffers, which could have been deduplicated.
-  // * Use the actual content as the key, aka a tree of allocation slices.
-  // * Somewhere in the middle, use the allocation slice for the instruction. If
-  // `instr` is a tuple, the key is the allocated buffer for the tuple itself
-  // (an array of pointers).
+  // Cache generated ViewOp and StaticMemRefCastOp by instruction. We could have
+  // gone fancier to do the following cacheing:
+  //   %range = ViewOp(%allocation, %offset) : memref<i8xSIZE>
+  //   %typed_range = ViewOp(%range) : memref<f32x...>
   //
-  // We choose the third approach for simplicity.
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                      assignment_.GetUniqueTopLevelSlice(instr));
-  SliceKey slice_key(slice.allocation(), slice.offset(), slice.size());
-  auto result = slices_.try_emplace(slice_key, llvm::SmallVector<Value, 4>{});
+  // where %range is cached. This in theory gives easier time for alias
+  // analysis, since the identity of %range defines alias. However,
+  // %typed_range can't be cached, as different buffers with different types and
+  // shapes may still alias. Creating two ViewOps doesn't seem to worth the
+  // effort for a slightly easier aliasing, so we don't over optimize here.
+  auto result = slices_.try_emplace(instr, llvm::SmallVector<Value, 4>{});
   llvm::SmallVectorImpl<Value>& new_values = result.first->second;
   if (result.second) {
     ::xla::ShapeIndex shape_index;

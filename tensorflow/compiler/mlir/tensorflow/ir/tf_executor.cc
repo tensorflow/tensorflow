@@ -54,9 +54,6 @@ namespace tf_executor {
 
 namespace {
 
-using TF::DropRefType;
-using TF::DropTypeSubTypes;
-
 struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
@@ -92,7 +89,8 @@ struct TensorFlowExecutorOpFolderDialectInterface
 }  // namespace
 
 TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
-    : Dialect(/*name=*/"tf_executor", context) {
+    : Dialect(/*name=*/"tf_executor", context,
+              TypeID::get<TensorFlowExecutorDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
@@ -550,8 +548,8 @@ LogicalResult Verify(SwitchNOp switchn) {
              << operand0_tensor_type << " vs " << output_tensor_type;
     }
     Type broadcasted_type = OpTrait::util::getBroadcastedType(
-        DropRefType(DropTypeSubTypes(operand0_tensor_type)),
-        DropRefType(DropTypeSubTypes(output_tensor_type)));
+        TF::DropRefAndSubTypes(operand0_tensor_type),
+        TF::DropRefAndSubTypes(output_tensor_type));
     if (!broadcasted_type) {
       return switchn.emitOpError()
              << "expects data operand to be broadcastable with all output types"
@@ -667,8 +665,8 @@ LogicalResult Verify(MergeOp merge) {
              << operand_tensor_ty << " vs " << output_tensor_ty;
     }
     Type broadcasted_type = OpTrait::util::getBroadcastedType(
-        DropRefType(DropTypeSubTypes(output_tensor_ty)),
-        DropRefType(DropTypeSubTypes(operand_tensor_ty)));
+        TF::DropRefAndSubTypes(output_tensor_ty),
+        TF::DropRefAndSubTypes(operand_tensor_ty));
     if (!broadcasted_type)
       return merge.emitOpError()
              << "expects all operands to be broadcastable with output type"

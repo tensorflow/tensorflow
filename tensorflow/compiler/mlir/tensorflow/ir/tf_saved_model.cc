@@ -113,7 +113,8 @@ static LogicalResult Verify(SessionInitializerOp session_initializer) {
 //===----------------------------------------------------------------------===//
 
 TensorFlowSavedModelDialect::TensorFlowSavedModelDialect(MLIRContext *context)
-    : Dialect(/*name=*/"tf_saved_model", context) {
+    : Dialect(/*name=*/"tf_saved_model", context,
+              TypeID::get<TensorFlowSavedModelDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_saved_model.cc.inc"

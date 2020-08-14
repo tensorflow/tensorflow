@@ -23,6 +23,7 @@ keras_packages = [
     "tensorflow.python.keras.applications.inception_v3",
     "tensorflow.python.keras.applications.mobilenet",
     "tensorflow.python.keras.applications.mobilenet_v2",
+    "tensorflow.python.keras.applications.mobilenet_v3",
     "tensorflow.python.keras.applications.nasnet",
     "tensorflow.python.keras.applications.resnet",
     "tensorflow.python.keras.applications.resnet_v2",

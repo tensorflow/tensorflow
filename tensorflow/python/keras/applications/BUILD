@@ -25,6 +25,7 @@ py_library(
         "inception_v3.py",
         "mobilenet.py",
         "mobilenet_v2.py",
+        "mobilenet_v3.py",
         "nasnet.py",
         "resnet.py",
         "resnet_v2.py",
@@ -197,6 +198,22 @@ tf_py_test(
     name = "applications_load_weight_test_mobilenet_v2",
     srcs = ["applications_load_weight_test.py"],
     args = ["--module=mobilenet_v2"],
+    main = "applications_load_weight_test.py",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
+    deps = [
+        ":applications",
+        "//tensorflow/python:client_testlib",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "applications_load_weight_test_mobilenet_v3",
+    srcs = ["applications_load_weight_test.py"],
+    args = ["--module=mobilenet_v3"],
     main = "applications_load_weight_test.py",
     tags = [
         "no_oss",

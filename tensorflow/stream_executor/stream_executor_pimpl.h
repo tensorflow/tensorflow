@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/rng.h"
-#include "tensorflow/stream_executor/shared_memory_config.h"
 #include "tensorflow/stream_executor/stream.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 #include "tensorflow/stream_executor/trace_listener.h"
@@ -54,8 +53,8 @@ struct AllocRecord {
 };
 
 // Forward declaration of private friend class.
-template <typename BeginCallT, typename CompleteCallT,
-          typename ReturnT, typename... BeginArgsT>
+template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
+          typename... BeginArgsT>
 class ScopedTracer;
 
 // A StreamExecutor manages a single device, in terms of executing work (kernel
@@ -322,14 +321,6 @@ class StreamExecutor {
   // this is more an up-front test as to whether it's expressly forbidden.
   bool CanEnablePeerAccessTo(StreamExecutor *other);
 
-  // Gets the preferred shared memory configuration for the device to which this
-  // executor is bound.
-  SharedMemoryConfig GetDeviceSharedMemoryConfig();
-
-  // Sets the preferred shared memory configuration for the device to which this
-  // executor is bound.
-  port::Status SetDeviceSharedMemoryConfig(SharedMemoryConfig config);
-
   // Obtains metadata about the underlying device.
   // The value is cached on first use.
   const DeviceDescription &GetDeviceDescription() const;
@@ -507,12 +498,12 @@ class StreamExecutor {
   // To register a listener for all executors for a given platform, see
   // Platform::RegisterTraceListener().
   // Does not take ownership of listener.
-  void RegisterTraceListener(TraceListener* listener);
+  void RegisterTraceListener(TraceListener *listener);
 
   // Removes a TraceListener from this StreamExecutor instance.
   // Returns false (and logs) in cases where the argument listener was not
   // previously registered.
-  bool UnregisterTraceListener(TraceListener* listener);
+  bool UnregisterTraceListener(TraceListener *listener);
 
   // Return allocator statistics.
   absl::optional<AllocatorStats> GetAllocatorStats();
@@ -522,8 +513,8 @@ class StreamExecutor {
   StreamExecutorMemoryAllocator *GetAllocator() { return &allocator_; }
 
  private:
-  template <typename BeginCallT, typename CompleteCallT,
-            typename ReturnT, typename... BeginArgsT>
+  template <typename BeginCallT, typename CompleteCallT, typename ReturnT,
+            typename... BeginArgsT>
   friend class ScopedTracer;
   friend class Event;
   friend class Stream;
@@ -648,7 +639,7 @@ class StreamExecutor {
   // Calls the relevant TraceListener routine to begin tracing for the specified
   // asynchronous method.
   template <typename TraceCallT, typename... ArgsT>
-  void SubmitTrace(TraceCallT trace_call, ArgsT&&... args);
+  void SubmitTrace(TraceCallT trace_call, ArgsT &&...args);
 
   // Reader/writer lock for class-static StreamExecutor members.
   static absl::Mutex static_mu_;

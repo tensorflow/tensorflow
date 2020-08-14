@@ -48,6 +48,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/service:tuple_simplifier",
+        "//tensorflow/core:lib",
         "//tensorflow/core/platform:numbers",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",

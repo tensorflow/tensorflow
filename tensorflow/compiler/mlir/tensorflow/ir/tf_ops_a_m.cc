@@ -339,15 +339,19 @@ void BatchToSpaceOp::getCanonicalizationPatterns(
 //   are not unknown.
 //
 static LogicalResult Verify(BiasAddOp op) {
-  StringRef format = op.data_format();
-  if (format == "NHWC") {
+  absl::string_view data_format(op.data_format().data(),
+                                op.data_format().size());
+  tensorflow::TensorFormat format;
+  bool is_valid = FormatFromString(data_format, &format);
+  DCHECK(is_valid) << data_format;
+  if (format == tensorflow::TensorFormat::FORMAT_NHWC) {
     if (!HasRankAtLeast(op.value(), 2))
       return op.emitOpError(
           "requires value operand to have rank at least two with `NHWC` data "
           "format");
   } else {
     // Op definition requires data_format to be either NHWC or NCHW.
-    DCHECK_EQ(format.str(), "NCHW");
+    DCHECK_EQ(format, tensorflow::TensorFormat::FORMAT_NCHW);
     if (!HasRankAtLeast(op.value(), 3))
       return op.emitOpError(
           "requires value operand to have rank at least three with `NCHW` data "
@@ -361,9 +365,8 @@ static LogicalResult Verify(BiasAddOp op) {
   RankedTensorType bias_ty = op.bias().getType().dyn_cast<RankedTensorType>();
   if (!bias_ty || !value_ty) return success();
 
-  // TODO(hinsu): Leverage tensor_format.h utility in TensorFlow to compute
-  // dimension indices based on format.
-  int64_t feature_dim_idx = format == "NHWC" ? value_ty.getRank() - 1 : 1;
+  int64_t feature_dim_idx =
+      tensorflow::GetTensorFeatureDimIndex(value_ty.getRank(), format);
   int64_t feature_dim = value_ty.getDimSize(feature_dim_idx);
   int64_t bias_len = bias_ty.getDimSize(0);
   if (feature_dim != -1 && bias_len != -1 && feature_dim != bias_len) {
@@ -383,15 +386,19 @@ static LogicalResult Verify(BiasAddOp op) {
 // * the out_backprop operands have valid ranks or are unranked.
 //
 static LogicalResult Verify(BiasAddGradOp op) {
-  StringRef format = op.data_format();
-  if (format == "NHWC") {
+  absl::string_view data_format(op.data_format().data(),
+                                op.data_format().size());
+  tensorflow::TensorFormat format;
+  bool is_valid = FormatFromString(data_format, &format);
+  DCHECK(is_valid) << data_format;
+  if (format == tensorflow::TensorFormat::FORMAT_NHWC) {
     if (!HasRankAtLeast(op.out_backprop(), 2))
       return op.emitOpError(
           "requires out_backprop operand to have rank at least two with `NHWC` "
           "data format");
   } else {
     // Op definition requires data_format to be either NHWC or NCHW.
-    DCHECK_EQ(format.str(), "NCHW");
+    DCHECK_EQ(format, tensorflow::TensorFormat::FORMAT_NCHW);
     if (!HasRankAtLeast(op.out_backprop(), 3))
       return op.emitOpError(
           "requires out_backprop operand to have rank at least three with "
@@ -470,7 +477,47 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
 
 void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  results.insert<FoldConstantCaseOp>(context);
+  results.insert<FoldConstantCaseOp, DropAttributes<CaseOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// CaseRegionOp
+//===----------------------------------------------------------------------===//
+
+// TODO(lyandy): Extract similar checks for CaseOp.
+static LogicalResult Verify(CaseRegionOp op) {
+  if (op.branches().empty())
+    return op.emitOpError() << "expects to have at least 1 region";
+
+  if (!IsOfRankOrUnranked(op.branch_index(), 0))
+    return op.emitOpError() << "expects 'branch_index' to be a scalar, but got "
+                            << op.branch_index().getType();
+
+  DenseIntElementsAttr branch_index_attr;
+  if (matchPattern(op.branch_index(), m_Constant(&branch_index_attr))) {
+    assert(branch_index_attr.getNumElements() == 1);
+    int64_t branch_index = branch_index_attr.getSplatValue<IntegerAttr>()
+                               .getValue()
+                               .getSExtValue();
+    if (branch_index < 0)
+      return op.emitOpError()
+             << "expects 'branch_index' to be non-negative, but got "
+             << branch_index;
+
+    if (branch_index >= op.branches().size())
+      return op.emitOpError()
+             << "expects 'branch_index' to be less than the number of regions ("
+             << op.branches().size() << "), but got " << branch_index;
+  }
+
+  for (auto region_and_idx : llvm::enumerate(op.branches())) {
+    std::string region_name =
+        llvm::formatv("region #{0}", region_and_idx.index()).str();
+    if (failed(VerifyRegionResults(op, region_and_idx.value(), region_name)))
+      return failure();
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -990,7 +1037,8 @@ static LogicalResult Verify(OpT op) {
 
   int64_t input_channels = -1;
   if (auto ty = op.input().getType().template dyn_cast<RankedTensorType>()) {
-    std::string data_format = op.data_format().str();
+    absl::string_view data_format(op.data_format().data(),
+                                  op.data_format().size());
     tensorflow::TensorFormat format;
     auto is_valid = FormatFromString(data_format, &format);
     DCHECK(is_valid) << data_format;

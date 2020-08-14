@@ -28,15 +28,15 @@ enum Comparison : byte {
 // The structure describes a decision tree, with multiple matching branches.
 // The branches are applied depth-first.
 table DeviceDatabase {
-  root:[tflite.acceleration.DeviceDecisionTreeNode];
+  root:[DeviceDecisionTreeNode];
 }
 
 table DeviceDecisionTreeNode {
   // The variables are strings, as we have multiple clients that want to
   // introduce their own fields. Known variables are listed in variables.h.
   variable:string (shared);
-  comparison:tflite.acceleration.Comparison;
-  items:[tflite.acceleration.DeviceDecisionTreeEdge];
+  comparison:Comparison;
+  items:[DeviceDecisionTreeEdge];
 }
 
 table DeviceDecisionTreeEdge {
@@ -44,9 +44,9 @@ table DeviceDecisionTreeEdge {
   value:string (key, shared);
   // Which child branches should also be consulted and used to override this
   // node.
-  children:[tflite.acceleration.DeviceDecisionTreeNode];
+  children:[DeviceDecisionTreeNode];
   // What information can be derived about this device.
-  derived_properties:[tflite.acceleration.DerivedProperty];
+  derived_properties:[DerivedProperty];
 }
 
 // Derived variable value to combine with detected variables.

@@ -116,7 +116,10 @@ class XlaOpKernelContext {
   // returns a one-element list.
   Status InputList(absl::string_view name, std::vector<xla::XlaOp>* handles,
                    std::vector<TensorShape>* shapes);
-
+  // Evaluates input and returns their dynamism vector in a vector of
+  // predicates.
+  Status ResolveInputDynamismIntoPredVector(int index, std::vector<bool>* out);
+  Status ResolveInputDynamismIntoPred(int index, bool* out);
   // Helper methods for constant inputs.
 
   // Evaluates input `index` and stores it in `*constant_literal`. If the

@@ -77,10 +77,10 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   }
   std::unique_ptr<GPUOperation>* gpu_op =
       InitSingleOpSubgraph(dw_inputs, conv_outputs, gpu_subgraph);
-  DepthwiseConvPlus1x1Conv operation;
+  GPUOperation operation;
   RETURN_IF_ERROR(CreateDepthwiseConvPlus1x1Conv(
       creation_context, op_def, dw_attr, conv_attr, &operation));
-  *gpu_op = absl::make_unique<DepthwiseConvPlus1x1Conv>(std::move(operation));
+  *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
   consumed_nodes->insert(dw_node->id);
   consumed_nodes->insert(conv_node->id);
   return absl::OkStatus();

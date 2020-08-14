@@ -257,6 +257,7 @@ cc_library(
     srcs = ["device_info.cc"],
     hdrs = ["device_info.h"],
     deps = [
+        "//tensorflow/lite/delegates/gpu/common:data_type",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -388,6 +389,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:util",
         "//tensorflow/lite/delegates/gpu/common/transformations:add_bias",
         "//tensorflow/lite/delegates/gpu/common/transformations:merge_padding_with",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -454,6 +457,7 @@ cc_library(
         ":compiled_program_cache_cc_fbs",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:status",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:span",
         "@farmhash_archive//:farmhash",
         "@flatbuffers",
@@ -465,11 +469,11 @@ cc_library(
     srcs = ["storage_type_util.cc"],
     hdrs = ["storage_type_util.h"],
     deps = [
-        ":cl_context",
-        ":cl_device",
+        ":device_info",
         ":tensor_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:shape",
+        "//tensorflow/lite/delegates/gpu/common:util",
     ],
 )
 

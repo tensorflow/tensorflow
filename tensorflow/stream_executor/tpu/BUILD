@@ -203,10 +203,12 @@ cc_library(
 
 cc_library(
     name = "tpu_transfer_manager_interface",
+    srcs = ["tpu_transfer_manager_interface.cc"],
     hdrs = ["tpu_transfer_manager_interface.h"],
     visibility = ["//visibility:public"],
     deps = [
         ":noncopyable_buffer",
+        ":tpu_platform_interface",
         "//tensorflow/compiler/xla/service:transfer_manager",
     ],
 )
@@ -228,6 +230,7 @@ cc_library(
     hdrs = ["tpu_transfer_manager.h"],
     deps = [
         ":c_api_conversions",
+        ":noncopyable_buffer",
         ":proto_helper",
         ":status_helper",
         ":tpu_executor_base",
@@ -292,6 +295,7 @@ cc_library(
     hdrs = ["tpu_platform_interface.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_decl",
         ":tpu_topology_external",
         "//tensorflow/core:lib",
         "//tensorflow/stream_executor",

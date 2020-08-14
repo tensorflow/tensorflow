@@ -104,7 +104,7 @@ absl::Status SelectFullyConnected(const FullyConnectedAttributes& attr,
                                   const CreationContext& creation_context,
                                   const OperationDef& op_def, int batch_size,
                                   std::unique_ptr<GPUOperation>* ptr) {
-  const auto& device_info = creation_context.device->GetInfo();
+  const auto& device_info = creation_context.device->info_;
   if (device_info.IsAdreno()) {
     return SelectFullyConnectedAdreno(attr, creation_context, op_def,
                                       batch_size, ptr);

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
@@ -44,7 +45,9 @@ namespace data {
 
 namespace {
 // The name of the journal directory inside the dispatcher's working directory.
-constexpr char kJournalDir[] = "journal";
+constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
+// The name of the datasets directory inside the dispatcher's working directory.
+constexpr char kDatasetsDir[] = "datasets";
 
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
@@ -54,6 +57,14 @@ using Task = DispatcherState::Task;
 
 std::string JournalDir(const std::string& work_dir) {
   return io::JoinPath(work_dir, kJournalDir);
+}
+
+std::string DatasetsDir(const std::string& work_dir) {
+  return io::JoinPath(work_dir, kDatasetsDir);
+}
+
+std::string DatasetKey(int64 id, uint64 fingerprint) {
+  return absl::StrCat("id_", id, "_fp_", fingerprint);
 }
 
 Status CreateWorkerStub(const std::string& address, const std::string& protocol,
@@ -72,10 +83,20 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
     const experimental::DispatcherConfig& config)
     : config_(config) {
+  if (config_.work_dir().empty()) {
+    dataset_store_ = absl::make_unique<MemoryDatasetStore>();
+  } else {
+    dataset_store_ = absl::make_unique<FileSystemDatasetStore>(
+        DatasetsDir(config_.work_dir()));
+  }
 }
 
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
+  if (!config_.work_dir().empty()) {
+    TF_RETURN_IF_ERROR(
+        Env::Default()->RecursivelyCreateDir(DatasetsDir(config_.work_dir())));
+  }
   if (!config_.fault_tolerant_mode()) {
     LOG(INFO) << "Running with fault_tolerant_mode=False. The dispatcher will "
                  "not be able to recover its state on restart.";
@@ -87,21 +108,25 @@ Status DataServiceDispatcherImpl::Start() {
   }
   journal_writer_ = absl::make_unique<FileJournalWriter>(
       Env::Default(), JournalDir(config_.work_dir()));
+  LOG(INFO) << "Restoring dispatcher state from journal in "
+            << JournalDir(config_.work_dir());
   Update update;
   bool end_of_journal = false;
   FileJournalReader reader(Env::Default(), JournalDir(config_.work_dir()));
   Status s = reader.Read(&update, &end_of_journal);
   if (errors::IsNotFound(s)) {
     LOG(INFO) << "No journal found. Starting dispatcher from new state.";
-    return Status::OK();
+  } else if (!s.ok()) {
+    return s;
+  } else {
+    while (!end_of_journal) {
+      TF_RETURN_IF_ERROR(ApplyWithoutJournaling(update));
+      TF_RETURN_IF_ERROR(reader.Read(&update, &end_of_journal));
+    }
   }
-  TF_RETURN_IF_ERROR(s);
-  LOG(INFO) << "Restoring dispatcher state from journal in "
-            << JournalDir(config_.work_dir());
-  while (!end_of_journal) {
-    TF_RETURN_IF_ERROR(ApplyWithoutJournaling(update));
-    TF_RETURN_IF_ERROR(reader.Read(&update, &end_of_journal));
-  }
+  // Initialize the journal writer in `Start` so that we fail fast in case it
+  // can't be initialized.
+  TF_RETURN_IF_ERROR(journal_writer_.value()->EnsureInitialized());
   return Status::OK();
 }
 
@@ -144,7 +169,10 @@ Status DataServiceDispatcherImpl::RegisterWorker(
     TaskDef* task_def = response->add_tasks();
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, &dataset));
-    *(task_def->mutable_dataset()) = dataset->dataset_def;
+    std::shared_ptr<const DatasetDef> dataset_def;
+    TF_RETURN_IF_ERROR(dataset_store_->Get(
+        DatasetKey(dataset->dataset_id, dataset->fingerprint), dataset_def));
+    *(task_def->mutable_dataset()) = *dataset_def;
     task_def->set_dataset_id(job->dataset_id);
     task_def->set_job_id(job->job_id);
     task_def->set_task_id(task->task_id);
@@ -213,7 +241,8 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(*dataset_id);
   register_dataset->set_fingerprint(fingerprint);
-  *register_dataset->mutable_dataset_def() = dataset;
+  TF_RETURN_IF_ERROR(
+      dataset_store_->Put(DatasetKey(*dataset_id, fingerprint), dataset));
   return Apply(update);
 }
 
@@ -402,7 +431,10 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, &dataset));
-    *task_def->mutable_dataset() = dataset->dataset_def;
+    std::shared_ptr<const DatasetDef> dataset_def;
+    TF_RETURN_IF_ERROR(dataset_store_->Get(
+        DatasetKey(dataset->dataset_id, dataset->fingerprint), dataset_def));
+    *task_def->mutable_dataset() = *dataset_def;
   }
   task_def->set_task_id(task->task_id);
   ProcessTaskResponse resp;

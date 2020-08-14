@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -1180,12 +1181,45 @@ class DepthwiseConv2dNativeBackpropFilterOp : public OpKernel {
       return;
     }
 
-    auto out_backprop_ptr = out_backprop.template flat<T>().data();
-    auto input_ptr = input.template flat<T>().data();
-    auto filter_backprop_ptr = filter_backprop->template flat<T>().data();
-    LaunchDepthwiseConvBackpropFilterOp<Device, T>()(
+    // For GPU inputs with type half, we cast inputs to float and outputs back
+    // to half, as half implementation is slow and does not use full precision
+    // accumulation in some cases.
+    constexpr bool cast_to_float = std::is_same<T, Eigen::half>::value &&
+                                   std::is_same<Device, GPUDevice>::value;
+    using U = typename std::conditional<cast_to_float, float, T>::type;
+    Tensor casted_out_backprop = out_backprop;
+    Tensor casted_input = input;
+    Tensor casted_filter_backprop = *filter_backprop;
+    const Device& device = context->template eigen_device<Device>();
+    if (cast_to_float) {
+      functor::CastFunctor<Device, float, Eigen::half> cast;
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, out_backprop.shape(),
+                                            &casted_out_backprop));
+      cast(device, casted_out_backprop.template flat<float>(),
+           out_backprop.template flat<Eigen::half>());
+      OP_REQUIRES_OK(context, context->allocate_temp(DT_FLOAT, input.shape(),
+                                                     &casted_input));
+      cast(device, casted_input.template flat<float>(),
+           input.template flat<Eigen::half>());
+      OP_REQUIRES_OK(context,
+                     context->allocate_temp(DT_FLOAT, filter_backprop->shape(),
+                                            &casted_filter_backprop));
+    }
+
+    auto out_backprop_ptr = casted_out_backprop.template flat<U>().data();
+    auto input_ptr = casted_input.template flat<U>().data();
+    auto filter_backprop_ptr = casted_filter_backprop.template flat<U>().data();
+    LaunchDepthwiseConvBackpropFilterOp<Device, U>()(
         context, args, out_backprop_ptr, input_ptr, filter_backprop_ptr,
         data_format_);
+
+    if (cast_to_float) {
+      functor::CastFunctor<Device, Eigen::half, float> cast;
+      const Tensor& casted_filter_backprop_const = casted_filter_backprop;
+      cast(device, filter_backprop->template flat<Eigen::half>(),
+           casted_filter_backprop_const.template flat<float>());
+    }
   }
 
  protected:

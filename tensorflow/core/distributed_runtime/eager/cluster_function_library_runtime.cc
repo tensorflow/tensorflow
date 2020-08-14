@@ -97,7 +97,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   StripDefaultAttributesInRegisterFunctionOp(register_function);
 
   eager_client->EnqueueAsync(
-      request.get(), response.get(),
+      /*call_opts=*/nullptr, request.get(), response.get(),
       [this, request, response, handle, released_op = released_op.release(),
        target, eager_client = eager_client.get(), done](const Status& s) {
         {
@@ -270,7 +270,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
   // CleanUp() needs to be non-blocking since it would be invoked inside the
   // enqueue done callback of Run(). So we don't use StreamingEnqueueAsync here.
   eager_client->EnqueueAsync(
-      request.get(), response.get(),
+      /*call_opts=*/nullptr, request.get(), response.get(),
       [request, response, done](const Status& status) { done(status); });
 }
 

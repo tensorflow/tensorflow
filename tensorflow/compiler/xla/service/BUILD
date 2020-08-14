@@ -1700,7 +1700,10 @@ cc_library(
 cc_library(
     name = "hlo_creation_utils",
     srcs = ["hlo_creation_utils.cc"],
-    hdrs = ["hlo_creation_utils.h"],
+    hdrs = [
+        "hlo_creation_utils.h",
+        "//tensorflow/compiler/xla:literal_util",
+    ],
     deps = [
         ":hlo",
         ":hlo_module_config",
@@ -1813,6 +1816,21 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:util",
         "@com_google_absl//absl/algorithm:container",
+    ],
+)
+
+cc_library(
+    name = "comparison_expander",
+    srcs = ["comparison_expander.cc"],
+    hdrs = ["comparison_expander.h"],
+    deps = [
+        ":hlo",
+        ":hlo_creation_utils",
+        ":hlo_pass",
+        ":op_expander_pass",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/client/lib:comparators",
     ],
 )
 
@@ -2259,6 +2277,7 @@ tf_cc_test(
     srcs = ["gather_expander_test.cc"],
     deps = [
         ":gather_expander",
+        ":hlo_query",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_macros_header",
@@ -2665,6 +2684,7 @@ cc_library(
         ":hlo_casting_utils",
         ":hlo_dce",
         ":hlo_pass",
+        ":shape_inference",
         "//tensorflow/compiler/xla:comparison_util",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:literal_util",
@@ -2688,7 +2708,6 @@ xla_test(
         ":dynamic_padder",
         ":hlo",
         ":hlo_dce",
-        ":hlo_get_dimension_size_rewriter",
         ":hlo_matchers",
         ":hlo_parser",
         "//tensorflow/compiler/xla:debug_options_flags",
@@ -3408,12 +3427,22 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_space_assignment_repacking",
+    hdrs = ["memory_space_assignment_repacking.h"],
+    deps = [
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+    ],
+)
+
+cc_library(
     name = "memory_space_assignment",
     srcs = ["memory_space_assignment.cc"],
     hdrs = ["memory_space_assignment.h"],
     deps = [
         ":heap_simulator",
         ":hlo_cost_analysis",
+        ":memory_space_assignment_repacking",
         ":memory_space_assignment_utils",
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/core/lib/math:math_util",
@@ -3952,42 +3981,6 @@ tf_cc_test(
     deps = [
         ":conditional_canonicalizer",
         ":hlo",
-        ":hlo_matchers",
-        ":hlo_parser",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/compiler/xla:xla_data_proto_cc",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-    ],
-)
-
-cc_library(
-    name = "hlo_get_dimension_size_rewriter",
-    srcs = ["hlo_get_dimension_size_rewriter.cc"],
-    hdrs = ["hlo_get_dimension_size_rewriter.h"],
-    deps = [
-        ":dynamic_dimension_inference",
-        ":hlo",
-        ":hlo_pass",
-        ":shape_inference",
-        "//tensorflow/compiler/xla:literal_util",
-        "@com_google_absl//absl/algorithm:container",
-    ],
-)
-
-tf_cc_test(
-    name = "hlo_get_dimension_size_rewriter_test",
-    srcs = ["hlo_get_dimension_size_rewriter_test.cc"],
-    deps = [
-        ":hlo",
-        ":hlo_get_dimension_size_rewriter",
         ":hlo_matchers",
         ":hlo_parser",
         "//tensorflow/compiler/xla:literal",

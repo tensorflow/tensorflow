@@ -24,6 +24,9 @@ NumPy" section.
 
 ## Getting Started
 
+Please also see [TensorFlow NumPy Guide](
+https://www.tensorflow.org/guide/tf_numpy).
+
 In the code snippets below, we will assume that `tf.experimental.numpy` is
 imported as `tnp` and NumPy is imported as `np`
 
@@ -125,7 +128,7 @@ during runtime. Some differences are:
     may need to change to explicit shape operations or control flow
     constructs.
 *   Also note the [autograph limitations](
-https://www.tensorflow.org/code/tensorflow/python/autograph/g3doc/reference/limitations.md).
+https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/autograph/g3doc/reference/limitations.md).
 
 
 ## Mutation and Variables

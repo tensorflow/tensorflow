@@ -194,6 +194,7 @@ class HloParserImpl : public HloParser {
     kBracedHloComputationList,
     kFftType,
     kComparisonDirection,
+    kComparisonType,
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
@@ -327,6 +328,7 @@ class HloParserImpl : public HloParser {
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
+  bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParseRandomAlgorithm(RandomAlgorithm* result);
@@ -552,31 +554,37 @@ bool HloParserImpl::ParseAliasing(AliasingData* data) {
       return false;
     }
 
-    if (lexer_.GetKind() != TokKind::kLparen) {
-      // Short form: "{0}: 0", output index "{}" is assumed.
-      int64 param_num;
-      ParseInt64(&param_num);
-      data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
-                    std::forward_as_tuple(param_num, ShapeIndex{}));
-    } else {
-      // Long form: "{0}: (0, {0})", output index is explicitly specified.
-      if (!ParseToken(TokKind::kLparen, errmsg)) {
-        return false;
+    if (!ParseToken(TokKind::kLparen, errmsg)) {
+      return false;
+    }
+    int64 param_num;
+    ParseInt64(&param_num);
+    if (!ParseToken(TokKind::kComma, errmsg)) {
+      return false;
+    }
+    ShapeIndex param_idx;
+    if (!ParseShapeIndex(&param_idx)) {
+      return false;
+    }
+
+    HloInputOutputAliasConfig::AliasKind alias_kind =
+        HloInputOutputAliasConfig::kMayAlias;
+    if (EatIfPresent(TokKind::kComma)) {
+      std::string type;
+      ParseName(&type);
+      if (type == "must-alias") {
+        alias_kind = HloInputOutputAliasConfig::kMustAlias;
+      } else if (type == "may-alias") {
+        alias_kind = HloInputOutputAliasConfig::kMayAlias;
+      } else {
+        return TokenError("Unexpected aliasing kind; expected SYSTEM or USER");
       }
-      int64 param_num;
-      ParseInt64(&param_num);
-      if (!ParseToken(TokKind::kComma, errmsg)) {
-        return false;
-      }
-      ShapeIndex param_idx;
-      if (!ParseShapeIndex(&param_idx)) {
-        return false;
-      }
-      data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
-                    std::forward_as_tuple(param_num, param_idx));
-      if (!ParseToken(TokKind::kRparen, errmsg)) {
-        return false;
-      }
+    }
+
+    data->emplace(std::piecewise_construct, std::forward_as_tuple(out),
+                  std::forward_as_tuple(param_num, param_idx, alias_kind));
+    if (!ParseToken(TokKind::kRparen, errmsg)) {
+      return false;
     }
 
     if (!EatIfPresent(TokKind::kComma)) {
@@ -624,8 +632,9 @@ bool HloParserImpl::ParseHloModule(HloModule* module) {
   if (aliasing_data) {
     HloInputOutputAliasConfig alias_config(module->result_shape());
     for (auto& p : *aliasing_data) {
-      Status st = alias_config.SetUpAlias(p.first, p.second.parameter_number,
-                                          p.second.parameter_index);
+      Status st =
+          alias_config.SetUpAlias(p.first, p.second.parameter_number,
+                                  p.second.parameter_index, p.second.kind);
       if (!st.ok()) {
         return TokenError(st.error_message());
       }
@@ -1355,14 +1364,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kCompare: {
       optional<ComparisonDirection> direction;
+      optional<Comparison::Type> type;
       attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
                             &direction};
+      attrs["type"] = {/*required=*/false, AttrTy::kComparisonType, &type};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateCompare(
-          shape, operands[0], operands[1], *direction));
+          shape, operands[0], operands[1], *direction, type));
       break;
     }
     case HloOpcode::kCholesky: {
@@ -3011,6 +3022,14 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+      case AttrTy::kComparisonType: {
+        Comparison::Type result;
+        if (!ParseComparisonType(&result)) {
+          return false;
+        }
+        static_cast<optional<Comparison::Type>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
       case AttrTy::kEnum: {
         if (lexer_.GetKind() != TokKind::kIdent) {
           return TokenError("expects an enumeration value");
@@ -4132,6 +4151,21 @@ bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects comparison direction but sees: %s", val));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseComparisonType(Comparison::Type* result) {
+  VLOG(1) << "ParseComparisonType";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects comparison type");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToComparisonType(val);
+  if (!status_or_result.ok()) {
+    return TokenError(StrFormat("expects comparison type but sees: %s", val));
   }
   *result = status_or_result.ValueOrDie();
   lexer_.Lex();

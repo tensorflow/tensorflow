@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
@@ -127,6 +128,8 @@ class DataServiceDispatcherImpl {
   // Cached worker stubs for communicating with workers.
   absl::flat_hash_map<std::string, std::unique_ptr<WorkerService::Stub>>
       worker_stubs_ TF_GUARDED_BY(mu_);
+  // Store of dataset definitions.
+  std::unique_ptr<DatasetStore> dataset_store_ TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);
