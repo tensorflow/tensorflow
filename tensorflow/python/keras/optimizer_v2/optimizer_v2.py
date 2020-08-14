@@ -332,9 +332,9 @@ class OptimizerV2(trackable.Trackable):
       if kwargs[k] is not None and kwargs[k] < 0:
         raise ValueError("Expected {} >= 0, received: {}".format(k, kwargs[k]))
 
+    self._hyper = {}
     self._use_locking = True
     self._init_set_name(name)
-    self._hyper = {}
     # dict: {variable name : {slot name : variable}}
     self._slots = {}
     self._slot_names = []
@@ -750,27 +750,25 @@ class OptimizerV2(trackable.Trackable):
     self._create_hypers()
     self._create_slots(var_list)
 
-  def __getattribute__(self, name):
+  def __getattr__(self, name):
     """Overridden to support hyperparameter access."""
-    try:
-      return super(OptimizerV2, self).__getattribute__(name)
-    except AttributeError as e:
-      # Needed to avoid infinite recursion with __setattr__.
-      if name == "_hyper":
-        raise e
-      # Backwards compatibility with Keras optimizers.
-      if name == "lr":
-        name = "learning_rate"
-      if name in self._hyper:
-        return self._get_hyper(name)
-      raise e
+    # Backwards compatibility with Keras optimizers.
+    if name == "lr":
+      name = "learning_rate"
+    if "_hyper" in self.__dict__ and name in self._hyper:
+      return self._get_hyper(name)
+    raise AttributeError("'{}' object has no attribute '{}'".format(
+        self.__class__.__name__, name))
 
   def __setattr__(self, name, value):
     """Override setattr to support dynamic hyperparameter setting."""
     # Backwards compatibility with Keras optimizers.
     if name == "lr":
       name = "learning_rate"
-    if hasattr(self, "_hyper") and name in self._hyper:
+
+    if name == "_hyper":
+      super(OptimizerV2, self).__setattr__(name, value)
+    elif name in self._hyper:
       self._set_hyper(name, value)
     else:
       super(OptimizerV2, self).__setattr__(name, value)
