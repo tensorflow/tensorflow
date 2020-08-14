@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/lib/qr.h"
 
+#include "tensorflow/core/platform/tf32_utils.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -33,6 +34,7 @@ namespace {
 using QrTest = xla::ClientLibraryTestBase;
 
 XLA_TEST_F(QrTest, Simple) {
+  tensorflow::allow_tf32_execution(false);
   xla::XlaBuilder builder(TestName());
 
   xla::Array2D<float> a_vals({
@@ -61,6 +63,7 @@ XLA_TEST_F(QrTest, Simple) {
 }
 
 XLA_TEST_F(QrTest, ZeroDiagonal) {
+  tensorflow::allow_tf32_execution(false);
   xla::XlaBuilder builder(TestName());
 
   xla::Array2D<float> a_vals({
@@ -88,6 +91,7 @@ XLA_TEST_F(QrTest, ZeroDiagonal) {
 }
 
 XLA_TEST_F(QrTest, SimpleBatched) {
+  tensorflow::allow_tf32_execution(false);
   xla::XlaBuilder builder(TestName());
 
   xla::Array3D<float> a_vals({

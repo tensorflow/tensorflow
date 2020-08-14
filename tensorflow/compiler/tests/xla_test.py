@@ -235,14 +235,24 @@ class XLATestCase(test.TestCase):
         'test_session not supported on XLATestCase, please use session')
 
   @contextlib.contextmanager
-  def test_scope(self):
-    """Test scope that runs tests on `self.device`.
+  def device_scope(self):
+    """Scope that runs tests on `self.device`.
 
     Yields:
       A scope to apply to the operators under test.
     """
     with ops.device('device:{}:0'.format(self.device)):
       yield
+
+  def test_scope(self):
+    """Deprecated alias of `device_scope`.
+
+    This should be avoided as the name starts with `test`, so test runners
+    treat it as a test. This interferes with class decorators that operate on
+    each test method.
+    """
+    return self.device_scope()
+
 
 
 def Benchmark(tf_bench,

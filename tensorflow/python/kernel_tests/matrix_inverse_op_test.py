@@ -41,7 +41,7 @@ class InverseOpTest(test.TestCase):
       with self.cached_session(use_gpu=True):
         # Verify that x^{-1} * x == Identity matrix.
         inv = linalg_ops.matrix_inverse(y, adjoint=adjoint)
-        tf_ans = math_ops.matmul(inv, y, adjoint_b=adjoint)
+        tf_ans = test_util.matmul_without_tf32(inv, y, adjoint_b=adjoint)
         np_ans = np.identity(y.shape[-1])
         if x.ndim > 2:
           tiling = list(y.shape)

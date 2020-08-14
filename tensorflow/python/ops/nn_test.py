@@ -540,6 +540,8 @@ class DropoutTest(test_lib.TestCase):
       _ = nn_ops.dropout(x, 0.5)
 
 
+@test_util.run_all_without_tensor_float_32(
+    'Tests _compute_sampled_logits and related functions, which call matmul')
 class ComputeSampledLogitsTest(test_lib.TestCase):
 
   def setUp(self):

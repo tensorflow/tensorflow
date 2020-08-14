@@ -48,6 +48,10 @@ def GetTestConfigs():
   return test_configs
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests Conv3d, which in some cases is implemented with a matmul. With "
+    "tf32, tests fail in some of those cases (and as of August 13 2020, only "
+    "those cases)")
 class Conv3DTest(test.TestCase):
 
   def _DtypesToTest(self, use_gpu):

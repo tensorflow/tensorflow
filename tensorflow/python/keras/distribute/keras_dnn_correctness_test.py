@@ -24,6 +24,7 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.platform import test
@@ -47,6 +48,8 @@ def is_default_strategy(strategy):
     return not distribution_strategy_context.has_strategy()
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class TestDistributionStrategyDnnCorrectness(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 
@@ -240,6 +243,8 @@ class SubclassedModel(keras.Model):
     return self.dense4(x)
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
     TestDistributionStrategyDnnCorrectness):
 

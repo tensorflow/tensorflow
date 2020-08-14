@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -937,3 +938,62 @@ def use_gpu():
   """Uses gpu when requested and available."""
   with device(should_use_gpu=True):
     yield
+
+
+def for_all_test_methods(decorator, *args, **kwargs):
+  """Generate class-level decorator from given method-level decorator.
+
+  It is expected for the given decorator to take some arguments and return
+  a method that is then called on the test method to produce a decorated
+  method.
+
+  Args:
+    decorator: The decorator to apply.
+    *args: Positional arguments
+    **kwargs: Keyword arguments
+  Returns: Function that will decorate a given classes test methods with the
+    decorator.
+  """
+
+  def all_test_methods_impl(cls):
+    """Apply decorator to all test methods in class."""
+    for name in dir(cls):
+      value = getattr(cls, name)
+      if callable(value) and name.startswith(
+          'test') and (name != 'test_session'):
+        setattr(cls, name, decorator(*args, **kwargs)(value))
+    return cls
+
+  return all_test_methods_impl
+
+
+# The description is just for documentation purposes.
+def run_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute test without TensorFloat-32 being allowed.
+
+  While almost every real-world deep learning model runs fine with
+  TensorFloat-32 (TF32), many tests use assertAllClose or similar methods. TF32
+  matmuls typically will cause such methods to fail with the default tolerances.
+
+  Args:
+    description: A description used for documentation purposes, describing why
+    the test requires TensorFloat-32 to be disallowed.
+  """
+  def decorator(f):
+    @functools.wraps(f)
+    def decorated(self, *args, **kwargs):
+      allowed = config.tensor_float_32_execution_allowed()
+      try:
+        config.allow_tensor_float_32_execution(False)
+        f(self, *args, **kwargs)
+      finally:
+        config.allow_tensor_float_32_execution(allowed)
+    return decorated
+
+  return decorator
+
+
+# The description is just for documentation purposes.
+def run_all_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute all tests in a class without TensorFloat-32 being allowed."""
+  return for_all_test_methods(run_without_tensor_float_32, description)

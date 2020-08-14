@@ -2687,6 +2687,7 @@ xla_test(
     ],
     deps = [
         ":test_macros_header",
+        "//tensorflow/core/platform:tf32_utils",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:statusor",
