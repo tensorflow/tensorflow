@@ -46,6 +46,9 @@ Status Sum(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
 
 Status Sub(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
            absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status EuclideanNorm(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name);
 }  // namespace ops
 }  // namespace tensorflow
 
