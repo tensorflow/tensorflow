@@ -4518,7 +4518,7 @@ ENTRY entry {
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
-                          PartitionComputation(hlo_string, /*num_devices=*/4));
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
 
   auto lhs = AllOf(op::Shape("f32[24,50]"), op::Parameter(0));
