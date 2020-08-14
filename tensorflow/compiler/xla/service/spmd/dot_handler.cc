@@ -1233,6 +1233,27 @@ StatusOr<HloInstruction*> PartitionDot(
       return dot;
     }
   }
+
+  // Case 4: If operands are replicated but output is partially replicated,
+  // recursive call with partial replication removed.
+  if (lhs.sharding().IsReplicated() && rhs.sharding().IsReplicated() &&
+      output_sharding.ReplicateOnLastTileDim()) {
+    auto grouped_output =
+        GroupShardingOnDims(output_sharding, {output_base_shape.rank()});
+    auto inner_state = CreatePerGroupPartitioningState(
+        lhs.state(), grouped_output.device_groups, b);
+    TF_ASSIGN_OR_RETURN(
+        auto dot,
+        PartitionDot(PartitionedHlo(lhs.hlo(), lhs.base_shape(), inner_state),
+                     PartitionedHlo(rhs.hlo(), rhs.base_shape(), inner_state),
+                     output_base_shape, grouped_output.sharding, dims_mapping,
+                     output_sharding.NumTiles(), create_sharded_dot, module,
+                     original_hlo, threshold_for_windowed_einsum_mib, b,
+                     windowed_dot_general_loops));
+    if (dot) {
+      return dot;
+    }
+  }
   return nullptr;
 }
 
