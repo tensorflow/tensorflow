@@ -1868,6 +1868,16 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     return Status::OK();
   }
 
+  // Check if operand sharding and sharding are both tiled or partial replicate.
+  // If both of them are partial replicate, check num_replications are the same.
+  if (operand.sharding().ReplicateOnLastTileDim() !=
+          sharding.ReplicateOnLastTileDim() ||
+      (sharding.ReplicateOnLastTileDim() &&
+       (operand.sharding().tile_assignment().dimensions().back() !=
+        sharding.tile_assignment().dimensions().back()))) {
+    return DefaultAction(hlo);
+  }
+
   // Try use halo exchange for certain split-dim/merge-dims cases.
   // ReshapeSharding failed in these cases probably due to uneven partitioning,
   // where halo exchange could help. Specifically we check the following
@@ -1903,7 +1913,14 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   Array<int64> new_input_tile_assignment = sharding.tile_assignment();
   new_input_tile_assignment.Reshape(
       operand.sharding().tile_assignment().dimensions());
-  operand = operand.Reshard(HloSharding::Tile(new_input_tile_assignment));
+  auto aligned_sharding =
+      sharding.ReplicateOnLastTileDim()
+          ? HloSharding::PartialTile(new_input_tile_assignment)
+          : HloSharding::Tile(new_input_tile_assignment);
+  operand = operand.Reshard(aligned_sharding);
+  auto replication_count = sharding.ReplicateOnLastTileDim()
+                               ? sharding.tile_assignment().dimensions().back()
+                               : 1;
 
   int64 input_dim_size = operand.base_shape().dimensions(input_sharded_dim);
   int64 output_dim_size = hlo->shape().dimensions(output_sharded_dim);
@@ -1926,7 +1943,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
       dim->set_padding_low(0);
       if (i == input_sharded_dim) {
         dim->set_padding_high(output_shard_size * split_factor *
-                                  num_partitions_ -
+                                  num_partitions_ / replication_count -
                               input_dim_size);
       } else {
         dim->set_padding_high(0);
@@ -1964,8 +1981,8 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     tmp_reshape->set_sharding(hlo->sharding());
     auto tmp_full_shape = tmp_shard_shape;
     tmp_full_shape.set_dimensions(
-        output_sharded_dim,
-        tmp_shard_shape.dimensions(output_sharded_dim) * num_partitions_);
+        output_sharded_dim, tmp_shard_shape.dimensions(output_sharded_dim) *
+                                num_partitions_ / replication_count);
     auto tmp_output =
         PartitionedHlo(tmp_reshape, tmp_full_shape, MakePartitioningState());
 
@@ -1982,7 +1999,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
       if (i == output_sharded_dim) {
         dim->set_padding_high(output_dim_size -
                               tmp_shard_shape.dimensions(output_sharded_dim) *
-                                  num_partitions_);
+                                  num_partitions_ / replication_count);
       } else {
         dim->set_padding_high(0);
       }

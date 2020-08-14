@@ -581,7 +581,10 @@ absl::optional<int64> UniqueTiledDim(const HloSharding& sharding) {
     return absl::nullopt;
   }
   int64 dim = -1;
-  for (int64 i = 0; i < sharding.tile_assignment().num_dimensions(); ++i) {
+  int64 rank = sharding.ReplicateOnLastTileDim()
+                   ? sharding.tile_assignment().num_dimensions() - 1
+                   : sharding.tile_assignment().num_dimensions();
+  for (int64 i = 0; i < rank; ++i) {
     if (sharding.tile_assignment().dim(i) > 1) {
       if (dim != -1) {
         return absl::nullopt;

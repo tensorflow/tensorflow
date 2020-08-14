@@ -556,6 +556,43 @@ ENTRY %replicated {
               op::Sharding("{devices=[1,2,2,1]0,1,2,3}"));
 }
 
+TEST_F(ShardingPropagationTest, PartialReplicateReshapeForwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[1430,1]{1,0} parameter(0),
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %reshape = f32[10,11,13]{2,1,0} reshape(%param0)
+  ROOT %copy = f32[10,11,13]{2,1,0} copy(%reshape)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "reshape"),
+      op::Sharding("{devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, PartialReplicateReshapeBackwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[2002,1]{1,0} parameter(0)
+  %copy = f32[2002,1]{1,0} copy(f32[2002,1]{1,0} %param0)
+  ROOT %reshape = f32[14,11,13]{2,1,0} reshape(%copy),
+    sharding={devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "copy"),
+              op::Sharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}"));
+}
+
 TEST_F(ShardingPropagationTest, DontShardTuplesIfAllInputIsMaximal) {
   const char* const hlo_string = R"(
 HloModule module

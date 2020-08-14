@@ -2694,6 +2694,30 @@ ENTRY entry {
   EXPECT_THAT(root, AllOf(op::Reshape(param0), op::Shape("f32[19,38,4,81]")));
 }
 
+TEST_F(SpmdPartitioningTest, PartialReplicateShardableReshape) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[38,38,324] parameter(0)
+  %param0.copy = f32[38,38,324] copy(%param0),
+    sharding={devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}
+  ROOT %reshape = f32[38,38,4,81] reshape(%param0.copy),
+    sharding={devices=[2,1,1,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto param0 =
+      AllOf(op::Copy(op::DynamicSlice(op::Parameter(), op::Reshape(),
+                                      op::Constant(), op::Constant())),
+            op::Shape("f32[19,38,324]"));
+  EXPECT_THAT(root, AllOf(op::Reshape(param0), op::Shape("f32[19,38,4,81]")));
+}
+
 TEST_F(SpmdPartitioningTest, NonShardableReshape) {
   const char* const hlo_string = R"(
 HloModule module
@@ -2735,6 +2759,30 @@ ENTRY entry {
 
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
+  VLOG(1) << module->ToString();
+
+  auto reshape =
+      AllOf(op::Reshape(op::Parameter(0)), op::Shape("s32[3,2,1,8,5]"));
+  auto halo = op::CollectivePermute(op::Slice(reshape));
+  auto exchanged =
+      op::DynamicSlice(op::Concatenate(halo, reshape), _, _, _, _, _);
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(exchanged, op::Shape("s32[3,2,1,7,5]")));
+}
+
+TEST_F(SpmdPartitioningTest, PartialReplicateReshapeMergeDimsWithHaloExchange) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = s32[2,3,7,10] parameter(0),
+    sharding={devices=[1,1,2,1,2]0,1,2,3 last_tile_dim_replicate}
+  ROOT %reshape = s32[3,2,1,14,5] reshape(%input),
+    sharding={devices=[1,1,1,2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
   VLOG(1) << module->ToString();
 
   auto reshape =
