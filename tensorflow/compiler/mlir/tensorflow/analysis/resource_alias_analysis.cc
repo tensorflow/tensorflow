@@ -21,11 +21,13 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/SCCIterator.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
+#include "mlir/Analysis/CallGraph.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Block.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -35,6 +37,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
@@ -134,12 +137,46 @@ class BacktrackAnalysis {
     return GetAnalysisForRegion(region);
   }
 
+  // Returns the backtrack analysis for the given region if it exists.
+  // If the region has not yet been analyzed, returns llvm::None.
+  Optional<const InfoT*> GetAnalysisIfExists(Region& region) const {
+    auto it = info_map_.find(&region);
+    if (it == info_map_.end()) return llvm::None;
+    return &it->second;
+  }
+
+  Optional<const InfoT*> GetAnalysisIfExists(FuncOp func) const {
+    return GetAnalysisIfExists(func.getBody());
+  }
+
  private:
   llvm::SmallDenseMap<Region*, InfoT> info_map_;
 };
 
 // Analyzes all regions attached to all operations in the module.
 BacktrackAnalysis::BacktrackAnalysis(ModuleOp module) {
+  const CallGraph call_graph(module);
+
+  // Visit functions bottom up when doing the analysis. Note that SCC iterator
+  // has the property that if there is an edge from SCC1->SCC2, SCC1 is visited
+  // after SCC2, i.e., the graph is traversed bottom up just the way we want.
+  auto scc_begin = llvm::scc_begin(&call_graph);
+  auto scc_end = llvm::scc_end(&call_graph);
+  for (auto& scc : make_range(scc_begin, scc_end)) {
+    // Each SCC node is a collection of callgraph nodes that form a cycle. We
+    // will visit these nodes in an arbitrary order. If a node being visited
+    // calls a function that has not yet been analyzed, we will not be able to
+    // backtrack through that function call (our analysis will be correct but
+    // pessimistic).
+    for (CallGraphNode* node : scc) {
+      if (node->isExternal()) continue;
+      Region* region = node->getCallableRegion();
+      GetOrCreateAnalysis(*region);
+    }
+  }
+
+  // This above call graph analysis will cover all regions attached to functions
+  // but we also need to analyze regions attached to other ops.
   module.walk([this](Operation* op) {
     for (Region& region : op->getRegions()) GetOrCreateAnalysis(region);
   });
@@ -160,6 +197,16 @@ Value BacktrackAnalysis::BacktrackValue(Value value) {
       value = island.GetYield().getOperand(res_index);
     } else if (isa<IdentityNOp, IdentityOp>(op)) {
       value = op->getOperand(res_index);
+    } else if (auto call = dyn_cast<CallOpInterface>(op)) {
+      FuncOp func = dyn_cast<FuncOp>(call.resolveCallable());
+      if (!func) break;
+      // Check if the function being called has been analyzed. if not,
+      // we cannot backtrack the value further.
+      Optional<const InfoT*> callee_info = GetAnalysisIfExists(func);
+      if (!callee_info) break;
+      Optional<int> passthrough_arg = callee_info.getValue()->GetArg(res_index);
+      if (!passthrough_arg) break;
+      value = call.getArgOperands()[passthrough_arg.getValue()];
     } else {
       break;
     }
