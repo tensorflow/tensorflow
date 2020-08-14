@@ -647,7 +647,8 @@ def gen_zipped_test_file(name, file, toco, flags):
         cmd = (("$(locations :generate_examples) --toco $(locations {0}) " +
                 " --zip_to_output {1} {2} $(@D)").format(toco, file, flags)),
         outs = [file],
-        tools = [
+        # `exec_tools` is required for PY3 compatibility in place of `tools`.
+        exec_tools = [
             ":generate_examples",
             toco,
         ],
