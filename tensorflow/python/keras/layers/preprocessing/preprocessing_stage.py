@@ -200,6 +200,16 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
 
     nodes_by_depth = self._nodes_by_depth
     depth_keys = sorted(nodes_by_depth.keys(), reverse=True)
+
+    def build_map_fn(node, args, kwargs):
+      if not isinstance(args.element_spec, tuple):
+        def map_fn(*x):
+          return nest.flatten(node.layer(*x, **kwargs))
+      else:
+        def map_fn(*x):
+          return nest.flatten(node.layer(x, **kwargs))
+      return map_fn
+
     for depth in depth_keys:
       for node in nodes_by_depth[depth]:
         # Input node
@@ -216,10 +226,7 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
         if hasattr(node.layer, 'adapt'):
           node.layer.adapt(args, reset_state=reset_state)
 
-        def map_fn(*x, node=node, args=args, kwargs=kwargs):
-          if not isinstance(args.element_spec, tuple):
-            return nest.flatten(node.layer(*x, **kwargs))
-          return nest.flatten(node.layer(x, **kwargs))
+        map_fn = build_map_fn(node, args, kwargs)
         outputs = args.map(map_fn)
         outputs = _unzip_dataset(outputs)
 
