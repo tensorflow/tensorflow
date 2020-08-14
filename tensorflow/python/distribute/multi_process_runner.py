@@ -612,8 +612,12 @@ class MultiProcessRunner(object):
         self._watchdog_thread.join()
       process_statuses = self._get_process_statuses()
       self._reraise_if_subprocess_error(process_statuses)
-      raise SubprocessTimeoutError('one or more subprocesses timed out.',
-                                   self._get_mpr_result(process_statuses))
+      raise SubprocessTimeoutError(
+          'One or more subprocesses timed out, where timeout was set to {}s. '
+          'Please change the `timeout` argument for '
+          '`MultiProcessRunner.join()` or `multi_process_runner.run()` '
+          'if it should be adjusted.'.format(timeout),
+          self._get_mpr_result(process_statuses))
 
     for (task_type, task_id), p in self._processes.items():
       logging.info('%s-%d exit code: %s', task_type, task_id, p.exitcode)
