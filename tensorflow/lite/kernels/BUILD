@@ -1,4 +1,5 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow/lite:build_def.bzl", "tflite_linkopts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
@@ -150,6 +151,12 @@ cc_library(
         "@com_google_absl//absl/types:optional",
         "@com_googlesource_code_re2//:re2",
     ],
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-lm",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_test(
@@ -277,6 +284,12 @@ cc_test(
         "//third_party/eigen3",
         "@com_google_googletest//:gtest",
     ],
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-lm",
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_library(
@@ -460,6 +473,12 @@ cc_test(
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
+    linkopts = tflite_linkopts() + select({
+        "//tensorflow:android": [
+            "-lm"
+        ],
+        "//conditions:default": [],
+    }),
 )
 
 cc_test(
