@@ -685,15 +685,26 @@ cc_library(
     ],
 )
 
+exports_files([
+    "include/llvm/Frontend/OpenMP/OMP.td",
+])
+
+filegroup(
+    name = "omp_td_files",
+    srcs = glob([
+        "include/llvm/Frontend/OpenMP/*.td",
+        "include/llvm/Frontend/Directive/*.td",
+    ]),
+)
+
 gentbl(
     name = "omp_gen",
     tbl_outs = [("--gen-directive-decl", "include/llvm/Frontend/OpenMP/OMP.h.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenMP/OMP.td",
-    td_srcs = glob([
-        "include/llvm/Frontend/OpenMP/*.td",
-        "include/llvm/Frontend/Directive/*.td",
-    ]),
+    td_srcs = [
+        ":omp_td_files",
+    ],
 )
 
 gentbl(
@@ -701,10 +712,9 @@ gentbl(
     tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenMP/OMP.td",
-    td_srcs = glob([
-        "include/llvm/Frontend/OpenMP/*.td",
-        "include/llvm/Frontend/Directive/*.td",
-    ]),
+    td_srcs = [
+        ":omp_td_files",
+    ],
 )
 
 # TODO(b/159809163): autogenerate this after enabling release-mode ML
