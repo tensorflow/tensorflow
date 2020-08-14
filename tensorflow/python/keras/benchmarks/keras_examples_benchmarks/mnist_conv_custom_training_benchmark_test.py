@@ -178,13 +178,13 @@ class CustomMnistBenchmark(tf.test.Benchmark):
     return np.mean(train_step_time_list)
 
   def measure_performance(self,
-                          model_fn,
+                          model,
                           dataset,
                           loss_fn,
                           optimizer,
                           batch_size=32,
                           run_iters=4,
-                          epochs=2,
+                          epochs=10,
                           distribution_strategy=None):
     """Run models and measure the performance.
 
@@ -199,7 +199,7 @@ class CustomMnistBenchmark(tf.test.Benchmark):
       run_iters: Integer. Number of iterations to run the performance
         measurement. If unspecified, `run_iters` will default to 4.
       epochs: Integer. Number of epochs to train the model.
-        If unspecified, `epochs` will default to 2.
+        If unspecified, `epochs` will default to 10.
       distribution_strategy: Distribution strategies. It could be
       `multi_worker_mirrored`, `one_device`, `mirrored`. If unspecified,
       `distribution_strategy` will default to 'off'. Note that, `TPU`
@@ -230,7 +230,7 @@ class CustomMnistBenchmark(tf.test.Benchmark):
       raise ValueError('`tf.keras.optimizers` instance '
                        'for optimizer is required.')
 
-    build_time_list, avg_epoch_time_list, train_step_time_list = [], [], []
+    avg_epoch_time_list, train_step_time_list = [], []
     wall_time_list, exp_per_sec_list, warmup_time_list = [], [], []
 
     total_num_examples = epochs * self.num_examples
@@ -238,14 +238,6 @@ class CustomMnistBenchmark(tf.test.Benchmark):
     for _ in range(run_iters):
       timer = timeit.default_timer
       start_time = timer()
-
-      strategy_scope = distribution_util.get_strategy_scope(
-          distribution_strategy)
-      with strategy_scope:
-        t0 = timer()
-        model = model_fn()
-        build_time = timer() - t0
-      # Run one warm up epoch.
       t1 = timer()
       self.train_function(
           model, dataset, loss_fn, optimizer,
@@ -260,13 +252,11 @@ class CustomMnistBenchmark(tf.test.Benchmark):
 
       train_step_time_list.append(train_step_time)
       warmup_time_list.append(warmup_time)
-      build_time_list.append(build_time)
       wall_time_list.append(end_time - start_time)
       exp_per_sec_list.append(total_num_examples / (end_time - t2))
       avg_epoch_time_list.append((end_time - t2) / epochs)
 
     metrics = []
-    metrics.append({'name': 'build_time', 'value': np.mean(build_time_list)})
     metrics.append({'name': 'avg_epoch_time',
                     'value': np.mean(avg_epoch_time_list)})
     metrics.append({'name': 'exp_per_sec', 'value': np.mean(exp_per_sec_list)})
@@ -279,18 +269,18 @@ class CustomMnistBenchmark(tf.test.Benchmark):
 
     return metrics, wall_time
 
-  def benchmark_custom_training_mnist_bs_256(self):
-    """Measure performance with batch_size=128 and run_iters=1"""
+  def benchmark_custom_training_mnist_bs_256_gpu_2(self):
+    """Measure performance with batch_size=256 and run_iters=10"""
     batch_size = 256
-    run_iters = 1 # But we only support one iteration.
+    run_iters = 10
     train_dataset = self.train_dataset.shuffle(
         buffer_size=1024).batch(batch_size)
 
-    distribution_strategy = "off"
+    distribution_strategy = "mirrored"
 
     strategy = distribution_util.get_distribution_strategy(
         distribution_strategy=distribution_strategy,
-        num_gpus=0)
+        num_gpus=2)
 
     if distribution_strategy != 'off':
       train_dataset = strategy.experimental_distribute_dataset(train_dataset)
@@ -303,8 +293,9 @@ class CustomMnistBenchmark(tf.test.Benchmark):
           reduction=tf.keras.losses.Reduction.NONE)
       # Instantiate an optimizer to train the model.
       optimizer = tf.keras.optimizers.Adam()
+      model = self._build_model()
 
-    metrics, wall_time = self.measure_performance(self._build_model,
+    metrics, wall_time = self.measure_performance(model,
                                                   train_dataset,
                                                   loss_fn,
                                                   optimizer,
