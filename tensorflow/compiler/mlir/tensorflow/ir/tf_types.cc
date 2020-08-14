@@ -306,8 +306,11 @@ ArrayRef<TensorType> TensorFlowTypeWithSubtype::GetSubtypes() {
 bool BroadcastCompatible(ArrayRef<Type> lhs, ArrayRef<Type> rhs) {
   if (lhs.size() != rhs.size()) return false;
   for (auto types : llvm::zip(lhs, rhs)) {
-    auto lhs_type = std::get<0>(types);
-    auto rhs_type = std::get<1>(types);
+    // Drop ref types because they don't affect broadcast compatibility. E.g.,
+    // `tensor<!tf.f32ref>` and `tensor<f32>` should be considered broadcast
+    // compatible.
+    auto lhs_type = DropRefType(std::get<0>(types));
+    auto rhs_type = DropRefType(std::get<1>(types));
 
     // This should be true for all TF ops:
     auto lhs_tt = lhs_type.dyn_cast<TensorType>();
@@ -366,27 +369,31 @@ bool AreCastCompatible(ArrayRef<Type> types) {
   return true;
 }
 
-ShapedType DropTypeSubTypes(ShapedType ty) {
-  Type element_ty = ty.getElementType();
-  auto subtype_ty = element_ty.dyn_cast<TF::TensorFlowTypeWithSubtype>();
-  if (!subtype_ty) return ty;
+// Assumes a function `GetDefaultTypeOf(ComposedType)` that returns the default
+// type for a composed type (such as a ref type or a type with subtypes).
+template <typename ComposedType>
+Type DropTypeHelper(Type ty) {
+  Type element_ty = getElementTypeOrSelf(ty);
+  auto composed_type = element_ty.dyn_cast<ComposedType>();
+  if (!composed_type) return ty;
 
-  Type default_ty = GetDefaultTypeOf(subtype_ty);
-  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
-
-  return UnrankedTensorType::get(default_ty);
+  Type default_ty = GetDefaultTypeOf(composed_type);
+  if (auto ranked_ty = ty.dyn_cast<RankedTensorType>()) {
+    return RankedTensorType::get(ranked_ty.getShape(), default_ty);
+  } else if (ty.dyn_cast<UnrankedTensorType>()) {
+    return UnrankedTensorType::get(default_ty);
+  } else {
+    return default_ty;
+  }
 }
 
-ShapedType DropRefType(ShapedType ty) {
-  Type element_ty = ty.getElementType();
-  TF::TensorFlowRefType ref_ty = element_ty.dyn_cast<TF::TensorFlowRefType>();
-  if (!ref_ty) return ty;
-
-  Type default_ty = TF::GetDefaultTypeOf(ref_ty);
-  if (ty.hasRank()) return RankedTensorType::get(ty.getShape(), default_ty);
-
-  return UnrankedTensorType::get(default_ty);
+Type DropSubTypes(Type ty) {
+  return DropTypeHelper<TF::TensorFlowTypeWithSubtype>(ty);
 }
+
+Type DropRefType(Type ty) { return DropTypeHelper<TF::TensorFlowRefType>(ty); }
+
+Type DropRefAndSubTypes(Type ty) { return DropRefType(DropSubTypes(ty)); }
 
 }  // namespace TF
 }  // namespace mlir

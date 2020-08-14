@@ -325,15 +325,21 @@ bool HasCompatibleElementTypes(Type lhs, Type rhs,
 // compatible.
 bool AreCastCompatible(ArrayRef<Type> types);
 
-// If the given tensor has elements of type with subtypes, then returns a new
-// type after dropping subtypes info. Otherwise, returns the original type as
-// is.
-ShapedType DropTypeSubTypes(ShapedType ty);
+// If `ty` is a tensor type and its element type has subtypes, then returns a
+// new type of same shape but dropped subtypes for the element type.
+// Otherwise, if `ty` has subtypes, then returns corresponding type with dropped
+// subtypes.
+// Otherwise, returns the original type `ty`.
+Type DropSubTypes(Type ty);
 
-// If the given tensor has elements of type ref, then returns a new type
-// of the shape, but corresponding non-ref type as element type. Otherwise,
-// returns the original type as is.
-ShapedType DropRefType(ShapedType ty);
+// If `ty` is a tensor type and has elements of a ref type, then returns a new
+// type of same shape but corresponding non-ref type as element type.
+// Otherwise, if `ty` is a ref type, then returns corresponding non-ref type.
+// Otherwise, returns the original type `ty`.
+Type DropRefType(Type ty);
+
+// Convenience call for executing both `DropRefType` and `DropSubTypes`.
+Type DropRefAndSubTypes(Type ty);
 
 }  // end namespace TF
 }  // end namespace mlir
