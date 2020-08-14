@@ -40,5 +40,5 @@ using Model = std::function<Status(
 
 Status GradientCheck(AbstractContext* ctx, Model forward, 
                      std::vector<AbstractTensorHandle*> inputs,
-                     int gradIndex,
-                     AbstractTensorHandle* dtheta);
+                     float* dtheta_approx, 
+                     int gradIndex, bool use_function);

@@ -154,10 +154,28 @@ Status Sum(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
   }
 
   TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[0])); // input_vals
-  TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[1])); // reduction_i ndices
+  TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[1])); // reduction_indices
 
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(sum_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+Status EuclideanNorm(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr norm_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(norm_op->Reset("EuclideanNorm", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(norm_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(norm_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(norm_op->AddInput(inputs[0])); // input_vals
+  TF_RETURN_IF_ERROR(norm_op->AddInput(inputs[1])); // reduction_indices
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(norm_op->Execute(outputs, &num_retvals));
   return Status::OK();
 }
 
