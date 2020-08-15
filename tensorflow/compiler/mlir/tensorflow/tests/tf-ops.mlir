@@ -3373,3 +3373,28 @@ func @testCaseRegionMismatchedResultTypes(%arg0: tensor<i32>, %arg1: tensor<f32>
   }) {is_stateless = false} : (tensor<i32>) -> tensor<i1>
   return
 }
+
+// -----
+
+// Test valid tf.Cumsum
+func @testCumsum(%arg: tensor<8x16xf32>, %axis: tensor<i32>) -> tensor<8x16xf32> {
+  %0 = "tf.Cumsum"(%arg, %axis) : (tensor<8x16xf32>, tensor<i32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
+
+// -----
+
+func @testCumprod(%arg: tensor<8x16xf32>, %axis: tensor<2xi32>) -> tensor<8x16xf32> {
+  // expected-error @+1 {{requires scalar axis operand}}
+  %0 = "tf.Cumprod"(%arg, %axis) : (tensor<8x16xf32>, tensor<2xi32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
+
+// -----
+
+func @testCumprod(%arg: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %axis = constant dense<-3> : tensor<i32>
+  // expected-error @+1 {{axis operand should be within range [-2, 2)}}
+  %0 = "tf.Cumprod"(%arg, %axis) : (tensor<8x16xf32>, tensor<i32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
