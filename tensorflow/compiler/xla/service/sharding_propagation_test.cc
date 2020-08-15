@@ -1816,6 +1816,29 @@ ENTRY entry {
               op::Sharding("{devices=[2]0,1}"));
 }
 
+TEST_F(ShardingPropagationTest, GatherToIndex2) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = bf16[2,4819,4] parameter(0), sharding={replicated}
+  %p1 = s32[2,1000,2] parameter(1)
+  %indices = s32[2,1000,2] copy(%p1)
+  ROOT %gather = bf16[2,1000,4]
+    gather(bf16[2,4819,4] %input, s32[2,1000,2] %indices),
+    offset_dims={2}, collapsed_slice_dims={0,1},
+    start_index_map={0,1}, index_vector_dim=2, slice_sizes={1,1,4},
+    sharding={devices=[1,2,1]0,1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          ShardingPropagation().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "indices"),
+              op::Sharding("{devices=[1,2,1]0,1}"));
+}
+
 TEST_F(ShardingPropagationTest, GatherToDataOperand) {
   const char* hlo_string = R"(
 HloModule module

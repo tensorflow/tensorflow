@@ -357,7 +357,8 @@ HloSharding GatherOutputSharding(const HloSharding& index_sharding,
 }
 
 HloSharding GatherIndexSharding(const HloSharding& output_sharding,
-                                const HloInstruction* hlo) {
+                                const HloInstruction* hlo,
+                                const int64 index_rank) {
   if (output_sharding.IsTileMaximal()) {
     return output_sharding;
   }
@@ -370,6 +371,12 @@ HloSharding GatherIndexSharding(const HloSharding& output_sharding,
           output_sharding.tile_assignment().dim(i));
     }
   }
+
+  // Vector indices sharding is not supported yet.
+  for (int64 i = dnums.index_vector_dim(); i < index_rank; ++i) {
+    index_tile_assignment_dims.push_back(1);
+  }
+
   Array<int64> new_tile_assignment = output_sharding.tile_assignment();
   if (new_tile_assignment.num_elements() !=
       Product(index_tile_assignment_dims)) {

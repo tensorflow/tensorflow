@@ -95,7 +95,8 @@ HloSharding GatherOutputSharding(const HloSharding& index_sharding,
 // Returns the preferred index sharding for a gather op based on the sharding
 // of the output.
 HloSharding GatherIndexSharding(const HloSharding& output_sharding,
-                                const HloInstruction* hlo);
+                                const HloInstruction* hlo,
+                                const int64 index_rank);
 
 // Returns a new HloSharding for a gather op so that only non offset dimensions
 // are sharded. Assume "result" is returned by this function. It is ensured that
