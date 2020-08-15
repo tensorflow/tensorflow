@@ -117,14 +117,13 @@ class DepthToSpaceOp : public OpKernel {
         // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
         auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();
         auto Toutput_v = outputs_tensor->reinterpret_last_dimension<int32, 4>();
-        functor::DepthToSpaceOpFunctor<GPUDevice, int32, FORMAT_NCHW> functor;
-        functor(context->eigen_device<GPUDevice>(), Tinput_v, block_size_,
+        functor::DepthToSpaceOpFunctor<Device, int32, FORMAT_NCHW> functor;
+        functor(context->eigen_device<Device>(), Tinput_v, block_size_,
                 Toutput_v);
         return;
       } else if (data_format_ == FORMAT_NCHW) {
-        functor::DepthToSpaceOpFunctor<GPUDevice, T, FORMAT_NCHW> functor;
-        functor(context->eigen_device<GPUDevice>(), Tinput, block_size_,
-                Toutput);
+        functor::DepthToSpaceOpFunctor<Device, T, FORMAT_NCHW> functor;
+        functor(context->eigen_device<Device>(), Tinput, block_size_, Toutput);
         return;
       }
     }
