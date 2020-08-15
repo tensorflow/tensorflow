@@ -884,6 +884,7 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "cub_archive",
         build_file = clean_dep("//third_party:cub.BUILD"),
+        patch_file = clean_dep("//third_party:cub.Use-explict-include-guards-instead-of-pragma-once.patch"),
         sha256 = "162514b3cc264ac89d91898b58450190b8192e2af1142cf8ccac2d59aa160dda",
         strip_prefix = "cub-1.9.9",
         urls = [
