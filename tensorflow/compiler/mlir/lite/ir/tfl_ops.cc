@@ -253,9 +253,8 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   }
 };
 
-struct TensorFlowLiteOpFolderDialectInterface
-    : public OpFolderDialectInterface {
-  using OpFolderDialectInterface::OpFolderDialectInterface;
+struct TensorFlowLiteDialectFoldInterface : public DialectFoldInterface {
+  using DialectFoldInterface::DialectFoldInterface;
 
   // Registered hook to check if the given region, which is attached to an
   // operation that is *not* isolated from above (i.e. no internal regions
@@ -275,7 +274,7 @@ TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
       >();
   addInterfaces<TensorFlowLiteInlinerInterface,
-                TensorFlowLiteOpFolderDialectInterface>();
+                TensorFlowLiteDialectFoldInterface>();
 }
 
 //===----------------------------------------------------------------------===//

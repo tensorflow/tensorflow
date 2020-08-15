@@ -1271,7 +1271,7 @@ cc_library(
     name = "tf_dialect_passes",
     srcs = [
         "transforms/constant_fold.cc",
-        "transforms/dialect_hooks.cc",
+        "transforms/decode_attributes_hook.cc",
     ],
     hdrs = [
         "transforms/constant_fold.h",

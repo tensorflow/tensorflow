@@ -69,6 +69,8 @@ cc_library(
         "include/mlir/IR/*.h",
     ]) + [
         "include/mlir/Interfaces/CallInterfaces.h",
+        "include/mlir/Interfaces/DecodeAttributesInterfaces.h",
+        "include/mlir/Interfaces/FoldInterfaces.h",
     ],
     includes = ["include"],
     deps = [
