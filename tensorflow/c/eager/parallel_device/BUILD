@@ -80,6 +80,21 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "parallel_device_lib_test",
+    srcs = ["parallel_device_lib_test.cc"],
+    deps = [
+        ":parallel_device_lib",
+        "//tensorflow/c:c_api",
+        "//tensorflow/c:c_api_experimental",
+        "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_experimental",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
 cc_library(
     name = "parallel_device_testlib",
     testonly = 1,

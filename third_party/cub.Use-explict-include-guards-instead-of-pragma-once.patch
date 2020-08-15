@@ -1,0 +1,1872 @@
+From 328fa566b8cba8c194160ecd5e737afba94ccaac Mon Sep 17 00:00:00 2001
+From: Sanjoy Das <sanjoy@playingwithpointers.com>
+Date: Fri, 14 Aug 2020 17:55:28 -0700
+Subject: [PATCH] Use explict include guards instead of pragma once
+
+`#pragma once` does not work well on MSVC + bazel.
+---
+ cub/agent/agent_histogram.cuh                                 | 4 +++-
+ cub/agent/agent_radix_sort_downsweep.cuh                      | 4 +++-
+ cub/agent/agent_radix_sort_upsweep.cuh                        | 4 +++-
+ cub/agent/agent_reduce.cuh                                    | 4 +++-
+ cub/agent/agent_reduce_by_key.cuh                             | 4 +++-
+ cub/agent/agent_rle.cuh                                       | 4 +++-
+ cub/agent/agent_scan.cuh                                      | 4 +++-
+ cub/agent/agent_segment_fixup.cuh                             | 4 +++-
+ cub/agent/agent_select_if.cuh                                 | 4 +++-
+ cub/agent/agent_spmv_orig.cuh                                 | 4 +++-
+ cub/agent/single_pass_scan_operators.cuh                      | 4 +++-
+ cub/block/block_adjacent_difference.cuh                       | 4 +++-
+ cub/block/block_discontinuity.cuh                             | 4 +++-
+ cub/block/block_exchange.cuh                                  | 4 +++-
+ cub/block/block_histogram.cuh                                 | 4 +++-
+ cub/block/block_load.cuh                                      | 4 +++-
+ cub/block/block_radix_rank.cuh                                | 4 +++-
+ cub/block/block_radix_sort.cuh                                | 4 +++-
+ cub/block/block_raking_layout.cuh                             | 4 +++-
+ cub/block/block_reduce.cuh                                    | 4 +++-
+ cub/block/block_scan.cuh                                      | 4 +++-
+ cub/block/block_shuffle.cuh                                   | 4 +++-
+ cub/block/block_store.cuh                                     | 4 +++-
+ cub/block/specializations/block_histogram_atomic.cuh          | 4 +++-
+ cub/block/specializations/block_histogram_sort.cuh            | 4 +++-
+ cub/block/specializations/block_reduce_raking.cuh             | 4 +++-
+ .../specializations/block_reduce_raking_commutative_only.cuh  | 4 +++-
+ cub/block/specializations/block_reduce_warp_reductions.cuh    | 4 +++-
+ cub/block/specializations/block_scan_raking.cuh               | 4 +++-
+ cub/block/specializations/block_scan_warp_scans.cuh           | 4 +++-
+ cub/block/specializations/block_scan_warp_scans2.cuh          | 4 +++-
+ cub/block/specializations/block_scan_warp_scans3.cuh          | 4 +++-
+ cub/config.cuh                                                | 4 +++-
+ cub/cub.cuh                                                   | 4 +++-
+ cub/device/device_histogram.cuh                               | 4 +++-
+ cub/device/device_partition.cuh                               | 4 +++-
+ cub/device/device_radix_sort.cuh                              | 4 +++-
+ cub/device/device_reduce.cuh                                  | 4 +++-
+ cub/device/device_run_length_encode.cuh                       | 4 +++-
+ cub/device/device_scan.cuh                                    | 4 +++-
+ cub/device/device_segmented_radix_sort.cuh                    | 4 +++-
+ cub/device/device_segmented_reduce.cuh                        | 4 +++-
+ cub/device/device_select.cuh                                  | 4 +++-
+ cub/device/device_spmv.cuh                                    | 4 +++-
+ cub/device/dispatch/dispatch_histogram.cuh                    | 4 +++-
+ cub/device/dispatch/dispatch_radix_sort.cuh                   | 4 +++-
+ cub/device/dispatch/dispatch_reduce.cuh                       | 4 +++-
+ cub/device/dispatch/dispatch_reduce_by_key.cuh                | 4 +++-
+ cub/device/dispatch/dispatch_rle.cuh                          | 4 +++-
+ cub/device/dispatch/dispatch_scan.cuh                         | 4 +++-
+ cub/device/dispatch/dispatch_select_if.cuh                    | 4 +++-
+ cub/device/dispatch/dispatch_spmv_orig.cuh                    | 4 +++-
+ cub/grid/grid_barrier.cuh                                     | 4 +++-
+ cub/grid/grid_even_share.cuh                                  | 4 +++-
+ cub/grid/grid_mapping.cuh                                     | 4 +++-
+ cub/grid/grid_queue.cuh                                       | 4 +++-
+ cub/host/mutex.cuh                                            | 4 +++-
+ cub/iterator/arg_index_input_iterator.cuh                     | 4 +++-
+ cub/iterator/cache_modified_input_iterator.cuh                | 4 +++-
+ cub/iterator/cache_modified_output_iterator.cuh               | 4 +++-
+ cub/iterator/constant_input_iterator.cuh                      | 4 +++-
+ cub/iterator/counting_input_iterator.cuh                      | 4 +++-
+ cub/iterator/discard_output_iterator.cuh                      | 4 +++-
+ cub/iterator/tex_obj_input_iterator.cuh                       | 4 +++-
+ cub/iterator/tex_ref_input_iterator.cuh                       | 4 +++-
+ cub/iterator/transform_input_iterator.cuh                     | 4 +++-
+ cub/thread/thread_load.cuh                                    | 4 +++-
+ cub/thread/thread_operators.cuh                               | 4 +++-
+ cub/thread/thread_reduce.cuh                                  | 4 +++-
+ cub/thread/thread_scan.cuh                                    | 4 +++-
+ cub/thread/thread_search.cuh                                  | 4 +++-
+ cub/thread/thread_store.cuh                                   | 4 +++-
+ cub/util_allocator.cuh                                        | 4 +++-
+ cub/util_arch.cuh                                             | 4 +++-
+ cub/util_compiler.cuh                                         | 4 +++-
+ cub/util_cpp_dialect.cuh                                      | 4 +++-
+ cub/util_debug.cuh                                            | 4 +++-
+ cub/util_deprecated.cuh                                       | 4 +++-
+ cub/util_device.cuh                                           | 4 +++-
+ cub/util_macro.cuh                                            | 4 +++-
+ cub/util_namespace.cuh                                        | 4 +++-
+ cub/util_ptx.cuh                                              | 4 +++-
+ cub/util_type.cuh                                             | 4 +++-
+ cub/version.cuh                                               | 4 +++-
+ cub/warp/specializations/warp_reduce_shfl.cuh                 | 4 +++-
+ cub/warp/specializations/warp_reduce_smem.cuh                 | 4 +++-
+ cub/warp/specializations/warp_scan_shfl.cuh                   | 4 +++-
+ cub/warp/specializations/warp_scan_smem.cuh                   | 4 +++-
+ cub/warp/warp_reduce.cuh                                      | 4 +++-
+ cub/warp/warp_scan.cuh                                        | 4 +++-
+ experimental/sparse_matrix.h                                  | 4 +++-
+ test/half.h                                                   | 4 +++-
+ test/test_util.h                                              | 4 +++-
+ 93 files changed, 279 insertions(+), 93 deletions(-)
+
+diff --git a/cub/agent/agent_histogram.cuh b/cub/agent/agent_histogram.cuh
+index 7559bf12..973b5e17 100644
+--- a/cub/agent/agent_histogram.cuh
++++ b/cub/agent/agent_histogram.cuh
+@@ -31,7 +31,8 @@
+  * cub::AgentHistogram implements a stateful abstraction of CUDA thread blocks for participating in device-wide histogram .
+  */
+ 
+-#pragma once
++#ifndef CUB_AGENT_AGENT_HISTOGRAM_CUH_
++#define CUB_AGENT_AGENT_HISTOGRAM_CUH_
+ 
+ #include <iterator>
+ 
+@@ -785,3 +786,4 @@ struct AgentHistogram
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_AGENT_HISTOGRAM_CUH_
+diff --git a/cub/agent/agent_radix_sort_downsweep.cuh b/cub/agent/agent_radix_sort_downsweep.cuh
+index c861a41e..2d4f58d6 100644
+--- a/cub/agent/agent_radix_sort_downsweep.cuh
++++ b/cub/agent/agent_radix_sort_downsweep.cuh
+@@ -32,7 +32,8 @@
+  */
+ 
+ 
+-#pragma once
++#ifndef CUB_AGENT_AGENT_RADIX_SORT_DOWNSWEEP_CUH_
++#define CUB_AGENT_AGENT_RADIX_SORT_DOWNSWEEP_CUH_
+ 
+ #include <stdint.h>
+ 
+@@ -788,3 +789,4 @@ struct AgentRadixSortDownsweep
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_AGENT_RADIX_SORT_DOWNSWEEP_CUH_
+diff --git a/cub/agent/agent_radix_sort_upsweep.cuh b/cub/agent/agent_radix_sort_upsweep.cuh
+index c65773f1..71f298cd 100644
+--- a/cub/agent/agent_radix_sort_upsweep.cuh
++++ b/cub/agent/agent_radix_sort_upsweep.cuh
+@@ -31,7 +31,8 @@
+  * AgentRadixSortUpsweep implements a stateful abstraction of CUDA thread blocks for participating in device-wide radix sort upsweep .
+  */
+ 
+-#pragma once
++#ifndef CUB_AGENT_AGENT_RADIX_SORT_UPSWEEP_CUH_
++#define CUB_AGENT_AGENT_RADIX_SORT_UPSWEEP_CUH_
+ 
+ #include "../thread/thread_reduce.cuh"
+ #include "../thread/thread_load.cuh"
+@@ -525,3 +526,4 @@ struct AgentRadixSortUpsweep
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_AGENT_RADIX_SORT_UPSWEEP_CUH_
+diff --git a/cub/agent/agent_reduce.cuh b/cub/agent/agent_reduce.cuh
+index 0f3ba751..b3eebdf6 100644
+--- a/cub/agent/agent_reduce.cuh
++++ b/cub/agent/agent_reduce.cuh
+@@ -31,7 +31,8 @@
+  * cub::AgentReduce implements a stateful abstraction of CUDA thread blocks for participating in device-wide reduction .
+  */
+ 
+-#pragma once
++#ifndef CUB_AGENT_AGENT_REDUCE_CUH_
++#define CUB_AGENT_AGENT_REDUCE_CUH_
+ 
+ #include <iterator>
+ 
+@@ -384,3 +385,4 @@ struct AgentReduce
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_AGENT_REDUCE_CUH_
+diff --git a/cub/agent/agent_reduce_by_key.cuh b/cub/agent/agent_reduce_by_key.cuh
+index 01eded89..6244e2d9 100644
+--- a/cub/agent/agent_reduce_by_key.cuh
++++ b/cub/agent/agent_reduce_by_key.cuh
+@@ -31,7 +31,8 @@
+  * cub::AgentReduceByKey implements a stateful abstraction of CUDA thread blocks for participating in device-wide reduce-value-by-key.
+  */
+ 
+-#pragma once
++#ifndef CUB_AGENT_AGENT_REDUCE_BY_KEY_CUH_
++#define CUB_AGENT_AGENT_REDUCE_BY_KEY_CUH_
+ 
+ #include <iterator>
+ 
+@@ -545,3 +546,4 @@ struct AgentReduceByKey
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_AGENT_REDUCE_BY_KEY_CUH_
+diff --git a/cub/agent/agent_rle.cuh b/cub/agent/agent_rle.cuh
+index 79697b7e..55619a39 100644
+--- a/cub/agent/agent_rle.cuh
++++ b/cub/agent/agent_rle.cuh
+@@ -31,7 +31,8 @@
+  * cub::AgentRle implements a stateful abstraction of CUDA thread blocks for participating in device-wide run-length-encode.
+  */
+ 
+-#pragma once
++#ifndef CUB_AGENT_AGENT_RLE_CUH_
++#define CUB_AGENT_AGENT_RLE_CUH_
+ 
+ #include <iterator>
+ 
+@@ -835,3 +836,4 @@ struct AgentRle
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_AGENT_RLE_CUH_
+diff --git a/cub/agent/agent_scan.cuh b/cub/agent/agent_scan.cuh
+index 0781b3e9..96566dac 100644
+--- a/cub/agent/agent_scan.cuh
++++ b/cub/agent/agent_scan.cuh
+@@ -31,7 +31,8 @@
+  * cub::AgentScan implements a stateful abstraction of CUDA thread blocks for participating in device-wide prefix scan .
+  */
+ 
+-#pragma once
++#ifndef CUB_AGENT_AGENT_SCAN_CUH_
++#define CUB_AGENT_AGENT_SCAN_CUH_
+ 
+ #include <iterator>
+ 
+@@ -467,3 +468,4 @@ struct AgentScan
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_AGENT_SCAN_CUH_
+diff --git a/cub/agent/agent_segment_fixup.cuh b/cub/agent/agent_segment_fixup.cuh
+index 9cd524aa..d694b760 100644
+--- a/cub/agent/agent_segment_fixup.cuh
++++ b/cub/agent/agent_segment_fixup.cuh
+@@ -31,7 +31,8 @@
+  * cub::AgentSegmentFixup implements a stateful abstraction of CUDA thread blocks for participating in device-wide reduce-value-by-key.
+  */
+ 
+-#pragma once
++#ifndef CUB_AGENT_AGENT_SEGMENT_FIXUP_CUH_
++#define CUB_AGENT_AGENT_SEGMENT_FIXUP_CUH_
+ 
+ #include <iterator>
+ 
+@@ -373,3 +374,4 @@ struct AgentSegmentFixup
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_AGENT_SEGMENT_FIXUP_CUH_
+diff --git a/cub/agent/agent_select_if.cuh b/cub/agent/agent_select_if.cuh
+index e9568f3b..5c1e3ef8 100644
+--- a/cub/agent/agent_select_if.cuh
++++ b/cub/agent/agent_select_if.cuh
+@@ -31,7 +31,8 @@
+  * cub::AgentSelectIf implements a stateful abstraction of CUDA thread blocks for participating in device-wide select.
+  */
+ 
+-#pragma once
++#ifndef CUB_AGENT_AGENT_SELECT_IF_CUH_
++#define CUB_AGENT_AGENT_SELECT_IF_CUH_
+ 
+ #include <iterator>
+ 
+@@ -701,3 +702,4 @@ struct AgentSelectIf
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_AGENT_SELECT_IF_CUH_
+diff --git a/cub/agent/agent_spmv_orig.cuh b/cub/agent/agent_spmv_orig.cuh
+index 810f893f..43fd688b 100644
+--- a/cub/agent/agent_spmv_orig.cuh
++++ b/cub/agent/agent_spmv_orig.cuh
+@@ -31,7 +31,8 @@
+  * cub::AgentSpmv implements a stateful abstraction of CUDA thread blocks for participating in device-wide SpMV.
+  */
+ 
+-#pragma once
++#ifndef CUB_AGENT_AGENT_SPMV_ORIG_CUH_
++#define CUB_AGENT_AGENT_SPMV_ORIG_CUH_
+ 
+ #include <iterator>
+ 
+@@ -668,3 +669,4 @@ struct AgentSpmv
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_AGENT_SPMV_ORIG_CUH_
+diff --git a/cub/agent/single_pass_scan_operators.cuh b/cub/agent/single_pass_scan_operators.cuh
+index 924ef2a7..3aa70190 100644
+--- a/cub/agent/single_pass_scan_operators.cuh
++++ b/cub/agent/single_pass_scan_operators.cuh
+@@ -31,7 +31,8 @@
+  * Callback operator types for supplying BlockScan prefixes
+  */
+ 
+-#pragma once
++#ifndef CUB_AGENT_SINGLE_PASS_SCAN_OPERATORS_CUH_
++#define CUB_AGENT_SINGLE_PASS_SCAN_OPERATORS_CUH_
+ 
+ #include <iterator>
+ 
+@@ -812,3 +813,4 @@ struct TilePrefixCallbackOp
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_AGENT_SINGLE_PASS_SCAN_OPERATORS_CUH_
+diff --git a/cub/block/block_adjacent_difference.cuh b/cub/block/block_adjacent_difference.cuh
+index c8953756..ec84a26d 100644
+--- a/cub/block/block_adjacent_difference.cuh
++++ b/cub/block/block_adjacent_difference.cuh
+@@ -31,7 +31,8 @@
+  * The cub::BlockDiscontinuity class provides [<em>collective</em>](index.html#sec0) methods for flagging discontinuities within an ordered set of items partitioned across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_ADJACENT_DIFFERENCE_CUH_
++#define CUB_BLOCK_BLOCK_ADJACENT_DIFFERENCE_CUH_
+ 
+ #include "../config.cuh"
+ #include "../util_type.cuh"
+@@ -594,3 +595,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_BLOCK_BLOCK_ADJACENT_DIFFERENCE_CUH_
+diff --git a/cub/block/block_discontinuity.cuh b/cub/block/block_discontinuity.cuh
+index 37b8c299..682ac692 100644
+--- a/cub/block/block_discontinuity.cuh
++++ b/cub/block/block_discontinuity.cuh
+@@ -31,7 +31,8 @@
+  * The cub::BlockDiscontinuity class provides [<em>collective</em>](index.html#sec0) methods for flagging discontinuities within an ordered set of items partitioned across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_DISCONTINUITY_CUH_
++#define CUB_BLOCK_BLOCK_DISCONTINUITY_CUH_
+ 
+ #include "../config.cuh"
+ #include "../util_type.cuh"
+@@ -1146,3 +1147,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_BLOCK_BLOCK_DISCONTINUITY_CUH_
+diff --git a/cub/block/block_exchange.cuh b/cub/block/block_exchange.cuh
+index 35a03334..f0c1430f 100644
+--- a/cub/block/block_exchange.cuh
++++ b/cub/block/block_exchange.cuh
+@@ -31,7 +31,8 @@
+  * The cub::BlockExchange class provides [<em>collective</em>](index.html#sec0) methods for rearranging data partitioned across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_EXCHANGE_CUH_
++#define CUB_BLOCK_BLOCK_EXCHANGE_CUH_
+ 
+ #include "../config.cuh"
+ #include "../util_ptx.cuh"
+@@ -1244,3 +1245,4 @@ public:
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_BLOCK_EXCHANGE_CUH_
+diff --git a/cub/block/block_histogram.cuh b/cub/block/block_histogram.cuh
+index 03020906..d42403ef 100644
+--- a/cub/block/block_histogram.cuh
++++ b/cub/block/block_histogram.cuh
+@@ -31,7 +31,8 @@
+  * The cub::BlockHistogram class provides [<em>collective</em>](index.html#sec0) methods for constructing block-wide histograms from data samples partitioned across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_HISTOGRAM_CUH_
++#define CUB_BLOCK_BLOCK_HISTOGRAM_CUH_
+ 
+ #include "specializations/block_histogram_sort.cuh"
+ #include "specializations/block_histogram_atomic.cuh"
+@@ -412,3 +413,4 @@ public:
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_BLOCK_HISTOGRAM_CUH_
+diff --git a/cub/block/block_load.cuh b/cub/block/block_load.cuh
+index fc91f11e..0ea0f0aa 100644
+--- a/cub/block/block_load.cuh
++++ b/cub/block/block_load.cuh
+@@ -31,7 +31,8 @@
+  * Operations for reading linear tiles of data into the CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_LOAD_CUH_
++#define CUB_BLOCK_BLOCK_LOAD_CUH_
+ 
+ #include <iterator>
+ 
+@@ -1227,3 +1228,4 @@ public:
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_BLOCK_LOAD_CUH_
+diff --git a/cub/block/block_radix_rank.cuh b/cub/block/block_radix_rank.cuh
+index a98976fc..b0f327ff 100644
+--- a/cub/block/block_radix_rank.cuh
++++ b/cub/block/block_radix_rank.cuh
+@@ -31,7 +31,8 @@
+  * cub::BlockRadixRank provides operations for ranking unsigned integer types within a CUDA thread block
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_RADIX_RANK_CUH_
++#define CUB_BLOCK_BLOCK_RADIX_RANK_CUH_
+ 
+ #include <stdint.h>
+ 
+@@ -693,3 +694,4 @@ public:
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_BLOCK_BLOCK_RADIX_RANK_CUH_
+diff --git a/cub/block/block_radix_sort.cuh b/cub/block/block_radix_sort.cuh
+index e6669021..a9687b0a 100644
+--- a/cub/block/block_radix_sort.cuh
++++ b/cub/block/block_radix_sort.cuh
+@@ -32,7 +32,8 @@
+  */
+ 
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_RADIX_SORT_CUH_
++#define CUB_BLOCK_BLOCK_RADIX_SORT_CUH_
+ 
+ #include "block_exchange.cuh"
+ #include "block_radix_rank.cuh"
+@@ -860,3 +861,4 @@ public:
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_BLOCK_RADIX_SORT_CUH_
+diff --git a/cub/block/block_raking_layout.cuh b/cub/block/block_raking_layout.cuh
+index bbacdf3e..38f15482 100644
+--- a/cub/block/block_raking_layout.cuh
++++ b/cub/block/block_raking_layout.cuh
+@@ -32,7 +32,8 @@
+  */
+ 
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_RAKING_LAYOUT_CUH_
++#define CUB_BLOCK_BLOCK_RAKING_LAYOUT_CUH_
+ 
+ #include "../config.cuh"
+ #include "../util_type.cuh"
+@@ -148,3 +149,4 @@ struct BlockRakingLayout
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_BLOCK_RAKING_LAYOUT_CUH_
+diff --git a/cub/block/block_reduce.cuh b/cub/block/block_reduce.cuh
+index 1bf971f0..a92400ba 100644
+--- a/cub/block/block_reduce.cuh
++++ b/cub/block/block_reduce.cuh
+@@ -31,7 +31,8 @@
+  * The cub::BlockReduce class provides [<em>collective</em>](index.html#sec0) methods for computing a parallel reduction of items partitioned across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_REDUCE_CUH_
++#define CUB_BLOCK_BLOCK_REDUCE_CUH_
+ 
+ #include "specializations/block_reduce_raking.cuh"
+ #include "specializations/block_reduce_raking_commutative_only.cuh"
+@@ -605,3 +606,4 @@ public:
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_BLOCK_REDUCE_CUH_
+diff --git a/cub/block/block_scan.cuh b/cub/block/block_scan.cuh
+index 513ef358..0db43368 100644
+--- a/cub/block/block_scan.cuh
++++ b/cub/block/block_scan.cuh
+@@ -31,7 +31,8 @@
+  * The cub::BlockScan class provides [<em>collective</em>](index.html#sec0) methods for computing a parallel prefix sum/scan of items partitioned across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_SCAN_CUH_
++#define CUB_BLOCK_BLOCK_SCAN_CUH_
+ 
+ #include "specializations/block_scan_raking.cuh"
+ #include "specializations/block_scan_warp_scans.cuh"
+@@ -2139,3 +2140,4 @@ public:
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_BLOCK_SCAN_CUH_
+diff --git a/cub/block/block_shuffle.cuh b/cub/block/block_shuffle.cuh
+index 723228c7..3600719f 100644
+--- a/cub/block/block_shuffle.cuh
++++ b/cub/block/block_shuffle.cuh
+@@ -31,7 +31,8 @@
+  * The cub::BlockShuffle class provides [<em>collective</em>](index.html#sec0) methods for shuffling data partitioned across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_SHUFFLE_CUH_
++#define CUB_BLOCK_BLOCK_SHUFFLE_CUH_
+ 
+ #include "../config.cuh"
+ #include "../util_ptx.cuh"
+@@ -301,3 +302,4 @@ public:
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_BLOCK_SHUFFLE_CUH_
+diff --git a/cub/block/block_store.cuh b/cub/block/block_store.cuh
+index 495a1553..4be53270 100644
+--- a/cub/block/block_store.cuh
++++ b/cub/block/block_store.cuh
+@@ -31,7 +31,8 @@
+  * Operations for writing linear segments of data from the CUDA thread block
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_BLOCK_STORE_CUH_
++#define CUB_BLOCK_BLOCK_STORE_CUH_
+ 
+ #include <iterator>
+ 
+@@ -997,3 +998,4 @@ public:
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_BLOCK_STORE_CUH_
+diff --git a/cub/block/specializations/block_histogram_atomic.cuh b/cub/block/specializations/block_histogram_atomic.cuh
+index 3be0a3df..bc14c941 100644
+--- a/cub/block/specializations/block_histogram_atomic.cuh
++++ b/cub/block/specializations/block_histogram_atomic.cuh
+@@ -31,7 +31,8 @@
+  * The cub::BlockHistogramAtomic class provides atomic-based methods for constructing block-wide histograms from data samples partitioned across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_SPECIALIZATIONS_BLOCK_HISTOGRAM_ATOMIC_CUH_
++#define CUB_BLOCK_SPECIALIZATIONS_BLOCK_HISTOGRAM_ATOMIC_CUH_
+ 
+ #include "../../config.cuh"
+ 
+@@ -80,3 +81,4 @@ struct BlockHistogramAtomic
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_SPECIALIZATIONS_BLOCK_HISTOGRAM_ATOMIC_CUH_
+diff --git a/cub/block/specializations/block_histogram_sort.cuh b/cub/block/specializations/block_histogram_sort.cuh
+index f1173554..d6ea93ca 100644
+--- a/cub/block/specializations/block_histogram_sort.cuh
++++ b/cub/block/specializations/block_histogram_sort.cuh
+@@ -31,7 +31,8 @@
+  * The cub::BlockHistogramSort class provides sorting-based methods for constructing block-wide histograms from data samples partitioned across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_SPECIALIZATIONS_BLOCK_HISTOGRAM_SORT_CUH_
++#define CUB_BLOCK_SPECIALIZATIONS_BLOCK_HISTOGRAM_SORT_CUH_
+ 
+ #include "../../block/block_radix_sort.cuh"
+ #include "../../block/block_discontinuity.cuh"
+@@ -224,3 +225,4 @@ struct BlockHistogramSort
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_SPECIALIZATIONS_BLOCK_HISTOGRAM_SORT_CUH_
+diff --git a/cub/block/specializations/block_reduce_raking.cuh b/cub/block/specializations/block_reduce_raking.cuh
+index 2a57521b..fc13bd0a 100644
+--- a/cub/block/specializations/block_reduce_raking.cuh
++++ b/cub/block/specializations/block_reduce_raking.cuh
+@@ -31,7 +31,8 @@
+  * cub::BlockReduceRaking provides raking-based methods of parallel reduction across a CUDA thread block.  Supports non-commutative reduction operators.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_SPECIALIZATIONS_BLOCK_REDUCE_RAKING_CUH_
++#define CUB_BLOCK_SPECIALIZATIONS_BLOCK_REDUCE_RAKING_CUH_
+ 
+ #include "../../block/block_raking_layout.cuh"
+ #include "../../warp/warp_reduce.cuh"
+@@ -224,3 +225,4 @@ struct BlockReduceRaking
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_SPECIALIZATIONS_BLOCK_REDUCE_RAKING_CUH_
+diff --git a/cub/block/specializations/block_reduce_raking_commutative_only.cuh b/cub/block/specializations/block_reduce_raking_commutative_only.cuh
+index 78a32b82..daaedd7c 100644
+--- a/cub/block/specializations/block_reduce_raking_commutative_only.cuh
++++ b/cub/block/specializations/block_reduce_raking_commutative_only.cuh
+@@ -31,7 +31,8 @@
+  * cub::BlockReduceRakingCommutativeOnly provides raking-based methods of parallel reduction across a CUDA thread block.  Does not support non-commutative reduction operators.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_SPECIALIZATIONS_BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY_CUH_
++#define CUB_BLOCK_SPECIALIZATIONS_BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY_CUH_
+ 
+ #include "block_reduce_raking.cuh"
+ #include "../../warp/warp_reduce.cuh"
+@@ -197,3 +198,4 @@ struct BlockReduceRakingCommutativeOnly
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_SPECIALIZATIONS_BLOCK_REDUCE_RAKING_COMMUTATIVE_ONLY_CUH_
+diff --git a/cub/block/specializations/block_reduce_warp_reductions.cuh b/cub/block/specializations/block_reduce_warp_reductions.cuh
+index 4dd3451b..a2cefd96 100644
+--- a/cub/block/specializations/block_reduce_warp_reductions.cuh
++++ b/cub/block/specializations/block_reduce_warp_reductions.cuh
+@@ -31,7 +31,8 @@
+  * cub::BlockReduceWarpReductions provides variants of warp-reduction-based parallel reduction across a CUDA thread block.  Supports non-commutative reduction operators.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_SPECIALIZATIONS_BLOCK_REDUCE_WARP_REDUCTIONS_CUH_
++#define CUB_BLOCK_SPECIALIZATIONS_BLOCK_REDUCE_WARP_REDUCTIONS_CUH_
+ 
+ #include "../../warp/warp_reduce.cuh"
+ #include "../../config.cuh"
+@@ -215,3 +216,4 @@ struct BlockReduceWarpReductions
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_SPECIALIZATIONS_BLOCK_REDUCE_WARP_REDUCTIONS_CUH_
+diff --git a/cub/block/specializations/block_scan_raking.cuh b/cub/block/specializations/block_scan_raking.cuh
+index 1d6c2f70..92fa2f78 100644
+--- a/cub/block/specializations/block_scan_raking.cuh
++++ b/cub/block/specializations/block_scan_raking.cuh
+@@ -32,7 +32,8 @@
+  * cub::BlockScanRaking provides variants of raking-based parallel prefix scan across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_RAKING_CUH_
++#define CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_RAKING_CUH_
+ 
+ #include "../../config.cuh"
+ #include "../../util_ptx.cuh"
+@@ -663,3 +664,4 @@ struct BlockScanRaking
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_RAKING_CUH_
+diff --git a/cub/block/specializations/block_scan_warp_scans.cuh b/cub/block/specializations/block_scan_warp_scans.cuh
+index 3835e484..a68fd456 100644
+--- a/cub/block/specializations/block_scan_warp_scans.cuh
++++ b/cub/block/specializations/block_scan_warp_scans.cuh
+@@ -31,7 +31,8 @@
+  * cub::BlockScanWarpscans provides warpscan-based variants of parallel prefix scan across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_WARP_SCANS_CUH_
++#define CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_WARP_SCANS_CUH_
+ 
+ #include "../../config.cuh"
+ #include "../../util_ptx.cuh"
+@@ -389,3 +390,4 @@ struct BlockScanWarpScans
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_WARP_SCANS_CUH_
+diff --git a/cub/block/specializations/block_scan_warp_scans2.cuh b/cub/block/specializations/block_scan_warp_scans2.cuh
+index 6617160d..479df24d 100644
+--- a/cub/block/specializations/block_scan_warp_scans2.cuh
++++ b/cub/block/specializations/block_scan_warp_scans2.cuh
+@@ -31,7 +31,8 @@
+  * cub::BlockScanWarpscans provides warpscan-based variants of parallel prefix scan across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_WARP_SCANS2_CUH_
++#define CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_WARP_SCANS2_CUH_
+ 
+ #include "../../config.cuh"
+ #include "../../util_ptx.cuh"
+@@ -433,3 +434,4 @@ struct BlockScanWarpScans
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_WARP_SCANS2_CUH_
+diff --git a/cub/block/specializations/block_scan_warp_scans3.cuh b/cub/block/specializations/block_scan_warp_scans3.cuh
+index a8279d57..6de6435e 100644
+--- a/cub/block/specializations/block_scan_warp_scans3.cuh
++++ b/cub/block/specializations/block_scan_warp_scans3.cuh
+@@ -31,7 +31,8 @@
+  * cub::BlockScanWarpscans provides warpscan-based variants of parallel prefix scan across a CUDA thread block.
+  */
+ 
+-#pragma once
++#ifndef CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_WARP_SCANS3_CUH_
++#define CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_WARP_SCANS3_CUH_
+ 
+ #include "../../config.cuh"
+ #include "../../util_ptx.cuh"
+@@ -415,3 +416,4 @@ struct BlockScanWarpScans
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_BLOCK_SPECIALIZATIONS_BLOCK_SCAN_WARP_SCANS3_CUH_
+diff --git a/cub/config.cuh b/cub/config.cuh
+index b909bbf7..56f63df3 100644
+--- a/cub/config.cuh
++++ b/cub/config.cuh
+@@ -30,7 +30,8 @@
+  * Static configuration header for the CUB project.
+  */
+ 
+-#pragma once
++#ifndef CUB_CONFIG_CUH_
++#define CUB_CONFIG_CUH_
+ 
+ #include "util_arch.cuh"
+ #include "util_compiler.cuh"
+@@ -38,3 +39,4 @@
+ #include "util_deprecated.cuh"
+ #include "util_macro.cuh"
+ #include "util_namespace.cuh"
++#endif // CUB_CONFIG_CUH_
+diff --git a/cub/cub.cuh b/cub/cub.cuh
+index a71d78fe..1c5373ae 100644
+--- a/cub/cub.cuh
++++ b/cub/cub.cuh
+@@ -31,7 +31,8 @@
+  * CUB umbrella include file
+  */
+ 
+-#pragma once
++#ifndef CUB_CUB_CUH_
++#define CUB_CUB_CUH_
+ 
+ // Static configuration
+ #include "config.cuh"
+@@ -97,3 +98,4 @@
+ #include "util_ptx.cuh"
+ #include "util_type.cuh"
+ 
++#endif // CUB_CUB_CUH_
+diff --git a/cub/device/device_histogram.cuh b/cub/device/device_histogram.cuh
+index 2ee967b1..6ec3b61b 100644
+--- a/cub/device/device_histogram.cuh
++++ b/cub/device/device_histogram.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceHistogram provides device-wide parallel operations for constructing histogram(s) from a sequence of samples data residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DEVICE_HISTOGRAM_CUH_
++#define CUB_DEVICE_DEVICE_HISTOGRAM_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -864,3 +865,4 @@ struct DeviceHistogram
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DEVICE_HISTOGRAM_CUH_
+diff --git a/cub/device/device_partition.cuh b/cub/device/device_partition.cuh
+index 65db3b7b..123d85e9 100644
+--- a/cub/device/device_partition.cuh
++++ b/cub/device/device_partition.cuh
+@@ -32,7 +32,8 @@
+  * cub::DevicePartition provides device-wide, parallel operations for partitioning sequences of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DEVICE_PARTITION_CUH_
++#define CUB_DEVICE_DEVICE_PARTITION_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -271,3 +272,4 @@ struct DevicePartition
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DEVICE_PARTITION_CUH_
+diff --git a/cub/device/device_radix_sort.cuh b/cub/device/device_radix_sort.cuh
+index df218a7c..2a705620 100644
+--- a/cub/device/device_radix_sort.cuh
++++ b/cub/device/device_radix_sort.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceRadixSort provides device-wide, parallel operations for computing a radix sort across a sequence of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DEVICE_RADIX_SORT_CUH_
++#define CUB_DEVICE_DEVICE_RADIX_SORT_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -794,3 +795,4 @@ struct DeviceRadixSort
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DEVICE_RADIX_SORT_CUH_
+diff --git a/cub/device/device_reduce.cuh b/cub/device/device_reduce.cuh
+index 4f01c244..25fa2b60 100644
+--- a/cub/device/device_reduce.cuh
++++ b/cub/device/device_reduce.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceReduce provides device-wide, parallel operations for computing a reduction across a sequence of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DEVICE_REDUCE_CUH_
++#define CUB_DEVICE_DEVICE_REDUCE_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -732,3 +733,4 @@ struct DeviceReduce
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DEVICE_REDUCE_CUH_
+diff --git a/cub/device/device_run_length_encode.cuh b/cub/device/device_run_length_encode.cuh
+index e31ebf01..bf7f99ca 100644
+--- a/cub/device/device_run_length_encode.cuh
++++ b/cub/device/device_run_length_encode.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceRunLengthEncode provides device-wide, parallel operations for computing a run-length encoding across a sequence of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DEVICE_RUN_LENGTH_ENCODE_CUH_
++#define CUB_DEVICE_DEVICE_RUN_LENGTH_ENCODE_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -276,3 +277,4 @@ struct DeviceRunLengthEncode
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DEVICE_RUN_LENGTH_ENCODE_CUH_
+diff --git a/cub/device/device_scan.cuh b/cub/device/device_scan.cuh
+index ae8a5902..4f22c077 100644
+--- a/cub/device/device_scan.cuh
++++ b/cub/device/device_scan.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceScan provides device-wide, parallel operations for computing a prefix scan across a sequence of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DEVICE_SCAN_CUH_
++#define CUB_DEVICE_DEVICE_SCAN_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -441,3 +442,4 @@ struct DeviceScan
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DEVICE_SCAN_CUH_
+diff --git a/cub/device/device_segmented_radix_sort.cuh b/cub/device/device_segmented_radix_sort.cuh
+index 2ab2a7dd..45046733 100644
+--- a/cub/device/device_segmented_radix_sort.cuh
++++ b/cub/device/device_segmented_radix_sort.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceSegmentedRadixSort provides device-wide, parallel operations for computing a batched radix sort across multiple, non-overlapping sequences of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DEVICE_SEGMENTED_RADIX_SORT_CUH_
++#define CUB_DEVICE_DEVICE_SEGMENTED_RADIX_SORT_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -873,3 +874,4 @@ struct DeviceSegmentedRadixSort
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DEVICE_SEGMENTED_RADIX_SORT_CUH_
+diff --git a/cub/device/device_segmented_reduce.cuh b/cub/device/device_segmented_reduce.cuh
+index 97308c5a..e47c2411 100644
+--- a/cub/device/device_segmented_reduce.cuh
++++ b/cub/device/device_segmented_reduce.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceSegmentedReduce provides device-wide, parallel operations for computing a batched reduction across multiple sequences of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DEVICE_SEGMENTED_REDUCE_CUH_
++#define CUB_DEVICE_DEVICE_SEGMENTED_REDUCE_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -617,3 +618,4 @@ struct DeviceSegmentedReduce
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DEVICE_SEGMENTED_REDUCE_CUH_
+diff --git a/cub/device/device_select.cuh b/cub/device/device_select.cuh
+index 136d2604..231905a1 100644
+--- a/cub/device/device_select.cuh
++++ b/cub/device/device_select.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceSelect provides device-wide, parallel operations for compacting selected items from sequences of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DEVICE_SELECT_CUH_
++#define CUB_DEVICE_DEVICE_SELECT_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -367,3 +368,4 @@ struct DeviceSelect
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DEVICE_SELECT_CUH_
+diff --git a/cub/device/device_spmv.cuh b/cub/device/device_spmv.cuh
+index 0be0c20e..77ea9121 100644
+--- a/cub/device/device_spmv.cuh
++++ b/cub/device/device_spmv.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceSpmv provides device-wide parallel operations for performing sparse-matrix * vector multiplication (SpMV).
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DEVICE_SPMV_CUH_
++#define CUB_DEVICE_DEVICE_SPMV_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -172,3 +173,4 @@ struct DeviceSpmv
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DEVICE_SPMV_CUH_
+diff --git a/cub/device/dispatch/dispatch_histogram.cuh b/cub/device/dispatch/dispatch_histogram.cuh
+index 339b3d67..f55dd929 100644
+--- a/cub/device/dispatch/dispatch_histogram.cuh
++++ b/cub/device/dispatch/dispatch_histogram.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceHistogram provides device-wide parallel operations for constructing histogram(s) from a sequence of samples data residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DISPATCH_DISPATCH_HISTOGRAM_CUH_
++#define CUB_DEVICE_DISPATCH_DISPATCH_HISTOGRAM_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -1090,3 +1091,4 @@ struct DipatchHistogram
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DISPATCH_DISPATCH_HISTOGRAM_CUH_
+diff --git a/cub/device/dispatch/dispatch_radix_sort.cuh b/cub/device/dispatch/dispatch_radix_sort.cuh
+index 2b0919fa..24f6cc1c 100644
+--- a/cub/device/dispatch/dispatch_radix_sort.cuh
++++ b/cub/device/dispatch/dispatch_radix_sort.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceRadixSort provides device-wide, parallel operations for computing a radix sort across a sequence of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DISPATCH_DISPATCH_RADIX_SORT_CUH_
++#define CUB_DEVICE_DISPATCH_DISPATCH_RADIX_SORT_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -1658,3 +1659,4 @@ struct DispatchSegmentedRadixSort :
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DISPATCH_DISPATCH_RADIX_SORT_CUH_
+diff --git a/cub/device/dispatch/dispatch_reduce.cuh b/cub/device/dispatch/dispatch_reduce.cuh
+index c9a5e4fb..239d6814 100644
+--- a/cub/device/dispatch/dispatch_reduce.cuh
++++ b/cub/device/dispatch/dispatch_reduce.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceReduce provides device-wide, parallel operations for computing a reduction across a sequence of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DISPATCH_DISPATCH_REDUCE_CUH_
++#define CUB_DEVICE_DISPATCH_DISPATCH_REDUCE_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -883,3 +884,4 @@ struct DispatchSegmentedReduce :
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DISPATCH_DISPATCH_REDUCE_CUH_
+diff --git a/cub/device/dispatch/dispatch_reduce_by_key.cuh b/cub/device/dispatch/dispatch_reduce_by_key.cuh
+index d8d8dcac..af1cdbb2 100644
+--- a/cub/device/dispatch/dispatch_reduce_by_key.cuh
++++ b/cub/device/dispatch/dispatch_reduce_by_key.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceReduceByKey provides device-wide, parallel operations for reducing segments of values residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DISPATCH_DISPATCH_REDUCE_BY_KEY_CUH_
++#define CUB_DEVICE_DISPATCH_DISPATCH_REDUCE_BY_KEY_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -558,3 +559,4 @@ struct DispatchReduceByKey
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DISPATCH_DISPATCH_REDUCE_BY_KEY_CUH_
+diff --git a/cub/device/dispatch/dispatch_rle.cuh b/cub/device/dispatch/dispatch_rle.cuh
+index b68f166d..9dd25b72 100644
+--- a/cub/device/dispatch/dispatch_rle.cuh
++++ b/cub/device/dispatch/dispatch_rle.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceRle provides device-wide, parallel operations for run-length-encoding sequences of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DISPATCH_DISPATCH_RLE_CUH_
++#define CUB_DEVICE_DISPATCH_DISPATCH_RLE_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -540,3 +541,4 @@ struct DeviceRleDispatch
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DISPATCH_DISPATCH_RLE_CUH_
+diff --git a/cub/device/dispatch/dispatch_scan.cuh b/cub/device/dispatch/dispatch_scan.cuh
+index 24b30f10..cc0e6a9d 100644
+--- a/cub/device/dispatch/dispatch_scan.cuh
++++ b/cub/device/dispatch/dispatch_scan.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceScan provides device-wide, parallel operations for computing a prefix scan across a sequence of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DISPATCH_DISPATCH_SCAN_CUH_
++#define CUB_DEVICE_DISPATCH_DISPATCH_SCAN_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -491,3 +492,4 @@ struct DispatchScan:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_DEVICE_DISPATCH_DISPATCH_SCAN_CUH_
+diff --git a/cub/device/dispatch/dispatch_select_if.cuh b/cub/device/dispatch/dispatch_select_if.cuh
+index 5fec4cff..c98cf260 100644
+--- a/cub/device/dispatch/dispatch_select_if.cuh
++++ b/cub/device/dispatch/dispatch_select_if.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceSelect provides device-wide, parallel operations for selecting items from sequences of data items residing within device-accessible memory.
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DISPATCH_DISPATCH_SELECT_IF_CUH_
++#define CUB_DEVICE_DISPATCH_DISPATCH_SELECT_IF_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -544,3 +545,4 @@ struct DispatchSelectIf
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DISPATCH_DISPATCH_SELECT_IF_CUH_
+diff --git a/cub/device/dispatch/dispatch_spmv_orig.cuh b/cub/device/dispatch/dispatch_spmv_orig.cuh
+index fb431df2..38c2afe8 100644
+--- a/cub/device/dispatch/dispatch_spmv_orig.cuh
++++ b/cub/device/dispatch/dispatch_spmv_orig.cuh
+@@ -32,7 +32,8 @@
+  * cub::DeviceSpmv provides device-wide parallel operations for performing sparse-matrix * vector multiplication (SpMV).
+  */
+ 
+-#pragma once
++#ifndef CUB_DEVICE_DISPATCH_DISPATCH_SPMV_ORIG_CUH_
++#define CUB_DEVICE_DISPATCH_DISPATCH_SPMV_ORIG_CUH_
+ 
+ #include <stdio.h>
+ #include <iterator>
+@@ -848,3 +849,4 @@ struct DispatchSpmv
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_DEVICE_DISPATCH_DISPATCH_SPMV_ORIG_CUH_
+diff --git a/cub/grid/grid_barrier.cuh b/cub/grid/grid_barrier.cuh
+index 1bcb533e..97f2031f 100644
+--- a/cub/grid/grid_barrier.cuh
++++ b/cub/grid/grid_barrier.cuh
+@@ -31,7 +31,8 @@
+  * cub::GridBarrier implements a software global barrier among thread blocks within a CUDA grid
+  */
+ 
+-#pragma once
++#ifndef CUB_GRID_GRID_BARRIER_CUH_
++#define CUB_GRID_GRID_BARRIER_CUH_
+ 
+ #include "../util_debug.cuh"
+ #include "../config.cuh"
+@@ -209,3 +210,4 @@ public:
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_GRID_GRID_BARRIER_CUH_
+diff --git a/cub/grid/grid_even_share.cuh b/cub/grid/grid_even_share.cuh
+index d5f8b340..6f176b3a 100644
+--- a/cub/grid/grid_even_share.cuh
++++ b/cub/grid/grid_even_share.cuh
+@@ -32,7 +32,8 @@
+  */
+ 
+ 
+-#pragma once
++#ifndef CUB_GRID_GRID_EVEN_SHARE_CUH_
++#define CUB_GRID_GRID_EVEN_SHARE_CUH_
+ 
+ #include "../config.cuh"
+ #include "../util_namespace.cuh"
+@@ -222,3 +223,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_GRID_GRID_EVEN_SHARE_CUH_
+diff --git a/cub/grid/grid_mapping.cuh b/cub/grid/grid_mapping.cuh
+index 889a94c9..6d602a68 100644
+--- a/cub/grid/grid_mapping.cuh
++++ b/cub/grid/grid_mapping.cuh
+@@ -31,7 +31,8 @@
+  * cub::GridMappingStrategy enumerates alternative strategies for mapping constant-sized tiles of device-wide data onto a grid of CUDA thread blocks.
+  */
+ 
+-#pragma once
++#ifndef CUB_GRID_GRID_MAPPING_CUH_
++#define CUB_GRID_GRID_MAPPING_CUH_
+ 
+ #include "../config.cuh"
+ 
+@@ -111,3 +112,4 @@ enum GridMappingStrategy
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_GRID_GRID_MAPPING_CUH_
+diff --git a/cub/grid/grid_queue.cuh b/cub/grid/grid_queue.cuh
+index 6b5f676b..7ef35062 100644
+--- a/cub/grid/grid_queue.cuh
++++ b/cub/grid/grid_queue.cuh
+@@ -31,7 +31,8 @@
+  * cub::GridQueue is a descriptor utility for dynamic queue management.
+  */
+ 
+-#pragma once
++#ifndef CUB_GRID_GRID_QUEUE_CUH_
++#define CUB_GRID_GRID_QUEUE_CUH_
+ 
+ #include "../config.cuh"
+ #include "../util_debug.cuh"
+@@ -242,3 +243,4 @@ __global__ void FillAndResetDrainKernel(
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ 
++#endif // CUB_GRID_GRID_QUEUE_CUH_
+diff --git a/cub/host/mutex.cuh b/cub/host/mutex.cuh
+index 39ed4e9a..6baece69 100644
+--- a/cub/host/mutex.cuh
++++ b/cub/host/mutex.cuh
+@@ -33,7 +33,8 @@
+ 
+ #include "../util_cpp_dialect.cuh"
+ 
+-#pragma once
++#ifndef CUB_HOST_MUTEX_CUH_
++#define CUB_HOST_MUTEX_CUH_
+ 
+ #if CUB_CPP_DIALECT >= 2011
+     #include <mutex>
+@@ -170,3 +171,4 @@ struct Mutex
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
++#endif // CUB_HOST_MUTEX_CUH_
+diff --git a/cub/iterator/arg_index_input_iterator.cuh b/cub/iterator/arg_index_input_iterator.cuh
+index f16fab8c..39294b68 100644
+--- a/cub/iterator/arg_index_input_iterator.cuh
++++ b/cub/iterator/arg_index_input_iterator.cuh
+@@ -31,7 +31,8 @@
+  * Random-access iterator types
+  */
+ 
+-#pragma once
++#ifndef CUB_ITERATOR_ARG_INDEX_INPUT_ITERATOR_CUH_
++#define CUB_ITERATOR_ARG_INDEX_INPUT_ITERATOR_CUH_
+ 
+ #include <iterator>
+ #include <iostream>
+@@ -257,3 +258,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_ITERATOR_ARG_INDEX_INPUT_ITERATOR_CUH_
+diff --git a/cub/iterator/cache_modified_input_iterator.cuh b/cub/iterator/cache_modified_input_iterator.cuh
+index 5219e502..ce5e6359 100644
+--- a/cub/iterator/cache_modified_input_iterator.cuh
++++ b/cub/iterator/cache_modified_input_iterator.cuh
+@@ -31,7 +31,8 @@
+  * Random-access iterator types
+  */
+ 
+-#pragma once
++#ifndef CUB_ITERATOR_CACHE_MODIFIED_INPUT_ITERATOR_CUH_
++#define CUB_ITERATOR_CACHE_MODIFIED_INPUT_ITERATOR_CUH_
+ 
+ #include <iterator>
+ #include <iostream>
+@@ -238,3 +239,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_ITERATOR_CACHE_MODIFIED_INPUT_ITERATOR_CUH_
+diff --git a/cub/iterator/cache_modified_output_iterator.cuh b/cub/iterator/cache_modified_output_iterator.cuh
+index e1697013..9c6fd700 100644
+--- a/cub/iterator/cache_modified_output_iterator.cuh
++++ b/cub/iterator/cache_modified_output_iterator.cuh
+@@ -31,7 +31,8 @@
+  * Random-access iterator types
+  */
+ 
+-#pragma once
++#ifndef CUB_ITERATOR_CACHE_MODIFIED_OUTPUT_ITERATOR_CUH_
++#define CUB_ITERATOR_CACHE_MODIFIED_OUTPUT_ITERATOR_CUH_
+ 
+ #include <iterator>
+ #include <iostream>
+@@ -252,3 +253,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_ITERATOR_CACHE_MODIFIED_OUTPUT_ITERATOR_CUH_
+diff --git a/cub/iterator/constant_input_iterator.cuh b/cub/iterator/constant_input_iterator.cuh
+index 44fb56c9..372dd320 100644
+--- a/cub/iterator/constant_input_iterator.cuh
++++ b/cub/iterator/constant_input_iterator.cuh
+@@ -31,7 +31,8 @@
+  * Random-access iterator types
+  */
+ 
+-#pragma once
++#ifndef CUB_ITERATOR_CONSTANT_INPUT_ITERATOR_CUH_
++#define CUB_ITERATOR_CONSTANT_INPUT_ITERATOR_CUH_
+ 
+ #include <iterator>
+ #include <iostream>
+@@ -233,3 +234,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_ITERATOR_CONSTANT_INPUT_ITERATOR_CUH_
+diff --git a/cub/iterator/counting_input_iterator.cuh b/cub/iterator/counting_input_iterator.cuh
+index c7167a70..e22f2457 100644
+--- a/cub/iterator/counting_input_iterator.cuh
++++ b/cub/iterator/counting_input_iterator.cuh
+@@ -31,7 +31,8 @@
+  * Random-access iterator types
+  */
+ 
+-#pragma once
++#ifndef CUB_ITERATOR_COUNTING_INPUT_ITERATOR_CUH_
++#define CUB_ITERATOR_COUNTING_INPUT_ITERATOR_CUH_
+ 
+ #include <iterator>
+ #include <iostream>
+@@ -226,3 +227,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_ITERATOR_COUNTING_INPUT_ITERATOR_CUH_
+diff --git a/cub/iterator/discard_output_iterator.cuh b/cub/iterator/discard_output_iterator.cuh
+index e665c784..befc5789 100644
+--- a/cub/iterator/discard_output_iterator.cuh
++++ b/cub/iterator/discard_output_iterator.cuh
+@@ -31,7 +31,8 @@
+  * Random-access iterator types
+  */
+ 
+-#pragma once
++#ifndef CUB_ITERATOR_DISCARD_OUTPUT_ITERATOR_CUH_
++#define CUB_ITERATOR_DISCARD_OUTPUT_ITERATOR_CUH_
+ 
+ #include <iterator>
+ #include <iostream>
+@@ -217,3 +218,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_ITERATOR_DISCARD_OUTPUT_ITERATOR_CUH_
+diff --git a/cub/iterator/tex_obj_input_iterator.cuh b/cub/iterator/tex_obj_input_iterator.cuh
+index aae069ed..26f00021 100644
+--- a/cub/iterator/tex_obj_input_iterator.cuh
++++ b/cub/iterator/tex_obj_input_iterator.cuh
+@@ -31,7 +31,8 @@
+  * Random-access iterator types
+  */
+ 
+-#pragma once
++#ifndef CUB_ITERATOR_TEX_OBJ_INPUT_ITERATOR_CUH_
++#define CUB_ITERATOR_TEX_OBJ_INPUT_ITERATOR_CUH_
+ 
+ #include <iterator>
+ #include <iostream>
+@@ -316,3 +317,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_ITERATOR_TEX_OBJ_INPUT_ITERATOR_CUH_
+diff --git a/cub/iterator/tex_ref_input_iterator.cuh b/cub/iterator/tex_ref_input_iterator.cuh
+index e63650aa..36187674 100644
+--- a/cub/iterator/tex_ref_input_iterator.cuh
++++ b/cub/iterator/tex_ref_input_iterator.cuh
+@@ -31,7 +31,8 @@
+  * Random-access iterator types
+  */
+ 
+-#pragma once
++#ifndef CUB_ITERATOR_TEX_REF_INPUT_ITERATOR_CUH_
++#define CUB_ITERATOR_TEX_REF_INPUT_ITERATOR_CUH_
+ 
+ #include <iterator>
+ #include <iostream>
+@@ -378,3 +379,4 @@ public:
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
+ 
+ #endif // CUDART_VERSION
++#endif // CUB_ITERATOR_TEX_REF_INPUT_ITERATOR_CUH_
+diff --git a/cub/iterator/transform_input_iterator.cuh b/cub/iterator/transform_input_iterator.cuh
+index dee2fea9..ccea51b0 100644
+--- a/cub/iterator/transform_input_iterator.cuh
++++ b/cub/iterator/transform_input_iterator.cuh
+@@ -31,7 +31,8 @@
+  * Random-access iterator types
+  */
+ 
+-#pragma once
++#ifndef CUB_ITERATOR_TRANSFORM_INPUT_ITERATOR_CUH_
++#define CUB_ITERATOR_TRANSFORM_INPUT_ITERATOR_CUH_
+ 
+ #include <iterator>
+ #include <iostream>
+@@ -250,3 +251,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_ITERATOR_TRANSFORM_INPUT_ITERATOR_CUH_
+diff --git a/cub/thread/thread_load.cuh b/cub/thread/thread_load.cuh
+index 31e75960..1df4c42e 100644
+--- a/cub/thread/thread_load.cuh
++++ b/cub/thread/thread_load.cuh
+@@ -31,7 +31,8 @@
+  * Thread utilities for reading memory using PTX cache modifiers.
+  */
+ 
+-#pragma once
++#ifndef CUB_THREAD_THREAD_LOAD_CUH_
++#define CUB_THREAD_THREAD_LOAD_CUH_
+ 
+ #include <iterator>
+ 
+@@ -425,3 +426,4 @@ __device__ __forceinline__ typename std::iterator_traits<InputIteratorT>::value_
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_THREAD_THREAD_LOAD_CUH_
+diff --git a/cub/thread/thread_operators.cuh b/cub/thread/thread_operators.cuh
+index 6a3192bc..fbe23d54 100644
+--- a/cub/thread/thread_operators.cuh
++++ b/cub/thread/thread_operators.cuh
+@@ -35,7 +35,8 @@
+  * Simple functor operators
+  ******************************************************************************/
+ 
+-#pragma once
++#ifndef CUB_THREAD_THREAD_OPERATORS_CUH_
++#define CUB_THREAD_THREAD_OPERATORS_CUH_
+ 
+ #include "../config.cuh"
+ #include "../util_type.cuh"
+@@ -314,3 +315,4 @@ struct ReduceByKeyOp
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_THREAD_THREAD_OPERATORS_CUH_
+diff --git a/cub/thread/thread_reduce.cuh b/cub/thread/thread_reduce.cuh
+index 41063f97..9d1232ce 100644
+--- a/cub/thread/thread_reduce.cuh
++++ b/cub/thread/thread_reduce.cuh
+@@ -31,7 +31,8 @@
+  * Thread utilities for sequential reduction over statically-sized array types
+  */
+ 
+-#pragma once
++#ifndef CUB_THREAD_THREAD_REDUCE_CUH_
++#define CUB_THREAD_THREAD_REDUCE_CUH_
+ 
+ #include "../thread/thread_operators.cuh"
+ #include "../config.cuh"
+@@ -150,3 +151,4 @@ __device__ __forceinline__ T ThreadReduce(
+ }               // internal namespace
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_THREAD_THREAD_REDUCE_CUH_
+diff --git a/cub/thread/thread_scan.cuh b/cub/thread/thread_scan.cuh
+index fd907fca..022bdc8f 100644
+--- a/cub/thread/thread_scan.cuh
++++ b/cub/thread/thread_scan.cuh
+@@ -31,7 +31,8 @@
+  * Thread utilities for sequential prefix scan over statically-sized array types
+  */
+ 
+-#pragma once
++#ifndef CUB_THREAD_THREAD_SCAN_CUH_
++#define CUB_THREAD_THREAD_SCAN_CUH_
+ 
+ #include "../config.cuh"
+ #include "../thread/thread_operators.cuh"
+@@ -266,3 +267,4 @@ __device__ __forceinline__ T ThreadScanInclusive(
+ }               // internal namespace
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_THREAD_THREAD_SCAN_CUH_
+diff --git a/cub/thread/thread_search.cuh b/cub/thread/thread_search.cuh
+index 96b9e65a..1a646fb0 100644
+--- a/cub/thread/thread_search.cuh
++++ b/cub/thread/thread_search.cuh
+@@ -31,7 +31,8 @@
+  * Thread utilities for sequential search
+  */
+ 
+-#pragma once
++#ifndef CUB_THREAD_THREAD_SEARCH_CUH_
++#define CUB_THREAD_THREAD_SEARCH_CUH_
+ 
+ #include <iterator>
+ #include "../util_namespace.cuh"
+@@ -154,3 +155,4 @@ __device__ __forceinline__ OffsetT UpperBound(
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_THREAD_THREAD_SEARCH_CUH_
+diff --git a/cub/thread/thread_store.cuh b/cub/thread/thread_store.cuh
+index 47d6c614..cabb07a0 100644
+--- a/cub/thread/thread_store.cuh
++++ b/cub/thread/thread_store.cuh
+@@ -31,7 +31,8 @@
+  * Thread utilities for writing memory using PTX cache modifiers.
+  */
+ 
+-#pragma once
++#ifndef CUB_THREAD_THREAD_STORE_CUH_
++#define CUB_THREAD_THREAD_STORE_CUH_
+ 
+ #include "../config.cuh"
+ #include "../util_ptx.cuh"
+@@ -418,3 +419,4 @@ __device__ __forceinline__ void ThreadStore(OutputIteratorT itr, T val)
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_THREAD_THREAD_STORE_CUH_
+diff --git a/cub/util_allocator.cuh b/cub/util_allocator.cuh
+index fa03996f..028bd5bb 100644
+--- a/cub/util_allocator.cuh
++++ b/cub/util_allocator.cuh
+@@ -31,7 +31,8 @@
+  * thread-safe and capable of managing device allocations on multiple devices.
+  ******************************************************************************/
+ 
+-#pragma once
++#ifndef CUB_UTIL_ALLOCATOR_CUH_
++#define CUB_UTIL_ALLOCATOR_CUH_
+ 
+ #include "util_namespace.cuh"
+ #include "util_debug.cuh"
+@@ -707,3 +708,4 @@ struct CachingDeviceAllocator
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_UTIL_ALLOCATOR_CUH_
+diff --git a/cub/util_arch.cuh b/cub/util_arch.cuh
+index 58d0c738..589eca5e 100644
+--- a/cub/util_arch.cuh
++++ b/cub/util_arch.cuh
+@@ -31,7 +31,8 @@
+  * Static architectural properties by SM version.
+  */
+ 
+-#pragma once
++#ifndef CUB_UTIL_ARCH_CUH_
++#define CUB_UTIL_ARCH_CUH_
+ 
+ #include "util_cpp_dialect.cuh"
+ #include "util_namespace.cuh"
+@@ -184,3 +185,4 @@ struct MemBoundScaling
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_UTIL_ARCH_CUH_
+diff --git a/cub/util_compiler.cuh b/cub/util_compiler.cuh
+index 9be94922..6ac8304a 100644
+--- a/cub/util_compiler.cuh
++++ b/cub/util_compiler.cuh
+@@ -30,7 +30,8 @@
+  * Detect compiler information.
+  */
+ 
+-#pragma once
++#ifndef CUB_UTIL_COMPILER_CUH_
++#define CUB_UTIL_COMPILER_CUH_
+ 
+ // enumerate host compilers we know about
+ #define CUB_HOST_COMPILER_UNKNOWN 0
+@@ -79,3 +80,4 @@
+ #else
+ #  define CUB_DEVICE_COMPILER CUB_DEVICE_COMPILER_UNKNOWN
+ #endif
++#endif // CUB_UTIL_COMPILER_CUH_
+diff --git a/cub/util_cpp_dialect.cuh b/cub/util_cpp_dialect.cuh
+index b4cbe923..8364d5b2 100644
+--- a/cub/util_cpp_dialect.cuh
++++ b/cub/util_cpp_dialect.cuh
+@@ -29,7 +29,8 @@
+  *  \brief Detect the version of the C++ standard used by the compiler.
+  */
+ 
+-#pragma once
++#ifndef CUB_UTIL_CPP_DIALECT_CUH_
++#define CUB_UTIL_CPP_DIALECT_CUH_
+ 
+ #include "util_compiler.cuh"
+ 
+@@ -133,3 +134,4 @@
+ #undef CUB_COMP_DEPR_IMPL
+ #undef CUB_COMP_DEPR_IMPL0
+ #undef CUB_COMP_DEPR_IMPL1
++#endif // CUB_UTIL_CPP_DIALECT_CUH_
+diff --git a/cub/util_debug.cuh b/cub/util_debug.cuh
+index 354eab6c..48024ff7 100644
+--- a/cub/util_debug.cuh
++++ b/cub/util_debug.cuh
+@@ -34,7 +34,8 @@
+  * - \p CUB_LOG.  Simple event messages are printed to \p stdout.
+  */
+ 
+-#pragma once
++#ifndef CUB_UTIL_DEBUG_CUH_
++#define CUB_UTIL_DEBUG_CUH_
+ 
+ #include <stdio.h>
+ #include "util_namespace.cuh"
+@@ -160,3 +161,4 @@ __host__ __device__ __forceinline__ cudaError_t Debug(
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_UTIL_DEBUG_CUH_
+diff --git a/cub/util_deprecated.cuh b/cub/util_deprecated.cuh
+index b2bf4658..441b66bc 100644
+--- a/cub/util_deprecated.cuh
++++ b/cub/util_deprecated.cuh
+@@ -30,7 +30,8 @@
+  * Define CUB_DEPRECATED macro.
+  */
+ 
+-#pragma once
++#ifndef CUB_UTIL_DEPRECATED_CUH_
++#define CUB_UTIL_DEPRECATED_CUH_
+ 
+ #include "util_compiler.cuh"
+ 
+@@ -44,3 +45,4 @@
+ #  define CUB_DEPRECATED
+ #endif
+ 
++#endif // CUB_UTIL_DEPRECATED_CUH_
+diff --git a/cub/util_device.cuh b/cub/util_device.cuh
+index df0ee079..2a21bffc 100644
+--- a/cub/util_device.cuh
++++ b/cub/util_device.cuh
+@@ -31,7 +31,8 @@
+  * Properties of a given CUDA device and the corresponding PTX bundle
+  */
+ 
+-#pragma once
++#ifndef CUB_UTIL_DEVICE_CUH_
++#define CUB_UTIL_DEVICE_CUH_
+ 
+ #include "util_type.cuh"
+ #include "util_arch.cuh"
+@@ -705,3 +706,4 @@ struct ChainedPolicy<PTX_VERSION, PolicyT, PolicyT>
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_UTIL_DEVICE_CUH_
+diff --git a/cub/util_macro.cuh b/cub/util_macro.cuh
+index ff863654..d09ab281 100644
+--- a/cub/util_macro.cuh
++++ b/cub/util_macro.cuh
+@@ -30,7 +30,8 @@
+  * Common C/C++ macro utilities
+  ******************************************************************************/
+ 
+-#pragma once
++#ifndef CUB_UTIL_MACRO_CUH_
++#define CUB_UTIL_MACRO_CUH_
+ 
+ #include "util_namespace.cuh"
+ 
+@@ -101,3 +102,4 @@ namespace cub {
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_UTIL_MACRO_CUH_
+diff --git a/cub/util_namespace.cuh b/cub/util_namespace.cuh
+index 4488d97f..b6d2c270 100644
+--- a/cub/util_namespace.cuh
++++ b/cub/util_namespace.cuh
+@@ -31,7 +31,8 @@
+  * Place-holder for prefixing the cub namespace
+  */
+ 
+-#pragma once
++#ifndef CUB_UTIL_NAMESPACE_CUH_
++#define CUB_UTIL_NAMESPACE_CUH_
+ 
+ #include "version.cuh"
+ 
+@@ -57,3 +58,4 @@ namespace cub
+ {
+ 
+ }
++#endif // CUB_UTIL_NAMESPACE_CUH_
+diff --git a/cub/util_ptx.cuh b/cub/util_ptx.cuh
+index 3f20c11b..30ae755b 100644
+--- a/cub/util_ptx.cuh
++++ b/cub/util_ptx.cuh
+@@ -32,7 +32,8 @@
+  */
+ 
+ 
+-#pragma once
++#ifndef CUB_UTIL_PTX_CUH_
++#define CUB_UTIL_PTX_CUH_
+ 
+ #include "util_type.cuh"
+ #include "util_arch.cuh"
+@@ -732,3 +733,4 @@ inline __device__ unsigned int MatchAny(unsigned int label)
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_UTIL_PTX_CUH_
+diff --git a/cub/util_type.cuh b/cub/util_type.cuh
+index 0ba41e1e..760131b4 100644
+--- a/cub/util_type.cuh
++++ b/cub/util_type.cuh
+@@ -31,7 +31,8 @@
+  * Common type manipulation (metaprogramming) utilities
+  */
+ 
+-#pragma once
++#ifndef CUB_UTIL_TYPE_CUH_
++#define CUB_UTIL_TYPE_CUH_
+ 
+ #include <iostream>
+ #include <limits>
+@@ -1165,3 +1166,4 @@ struct Traits : NumericTraits<typename RemoveQualifiers<T>::Type> {};
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_UTIL_TYPE_CUH_
+diff --git a/cub/version.cuh b/cub/version.cuh
+index dba0a4d5..42c1c5df 100644
+--- a/cub/version.cuh
++++ b/cub/version.cuh
+@@ -33,7 +33,8 @@
+  *
+  */
+ 
+-#pragma once
++#ifndef CUB_VERSION_CUH_
++#define CUB_VERSION_CUH_
+ 
+ /*! \def CUB_VERSION
+  *  \brief The preprocessor macro \p CUB_VERSION encodes the version
+@@ -68,3 +69,4 @@
+  *         patch number of the CUB library.
+  */
+ #define CUB_PATCH_NUMBER 0
++#endif // CUB_VERSION_CUH_
+diff --git a/cub/warp/specializations/warp_reduce_shfl.cuh b/cub/warp/specializations/warp_reduce_shfl.cuh
+index dbc56ec1..6c6b36d3 100644
+--- a/cub/warp/specializations/warp_reduce_shfl.cuh
++++ b/cub/warp/specializations/warp_reduce_shfl.cuh
+@@ -31,7 +31,8 @@
+  * cub::WarpReduceShfl provides SHFL-based variants of parallel reduction of items partitioned across a CUDA thread warp.
+  */
+ 
+-#pragma once
++#ifndef CUB_WARP_SPECIALIZATIONS_WARP_REDUCE_SHFL_CUH_
++#define CUB_WARP_SPECIALIZATIONS_WARP_REDUCE_SHFL_CUH_
+ 
+ #include "../../config.cuh"
+ #include "../../thread/thread_operators.cuh"
+@@ -540,3 +541,4 @@ struct WarpReduceShfl
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_WARP_SPECIALIZATIONS_WARP_REDUCE_SHFL_CUH_
+diff --git a/cub/warp/specializations/warp_reduce_smem.cuh b/cub/warp/specializations/warp_reduce_smem.cuh
+index 2442a8c4..7177d448 100644
+--- a/cub/warp/specializations/warp_reduce_smem.cuh
++++ b/cub/warp/specializations/warp_reduce_smem.cuh
+@@ -31,7 +31,8 @@
+  * cub::WarpReduceSmem provides smem-based variants of parallel reduction of items partitioned across a CUDA thread warp.
+  */
+ 
+-#pragma once
++#ifndef CUB_WARP_SPECIALIZATIONS_WARP_REDUCE_SMEM_CUH_
++#define CUB_WARP_SPECIALIZATIONS_WARP_REDUCE_SMEM_CUH_
+ 
+ #include "../../config.cuh"
+ #include "../../thread/thread_operators.cuh"
+@@ -370,3 +371,4 @@ struct WarpReduceSmem
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_WARP_SPECIALIZATIONS_WARP_REDUCE_SMEM_CUH_
+diff --git a/cub/warp/specializations/warp_scan_shfl.cuh b/cub/warp/specializations/warp_scan_shfl.cuh
+index 18b46dd9..61311aa3 100644
+--- a/cub/warp/specializations/warp_scan_shfl.cuh
++++ b/cub/warp/specializations/warp_scan_shfl.cuh
+@@ -31,7 +31,8 @@
+  * cub::WarpScanShfl provides SHFL-based variants of parallel prefix scan of items partitioned across a CUDA thread warp.
+  */
+ 
+-#pragma once
++#ifndef CUB_WARP_SPECIALIZATIONS_WARP_SCAN_SHFL_CUH_
++#define CUB_WARP_SPECIALIZATIONS_WARP_SCAN_SHFL_CUH_
+ 
+ #include "../../config.cuh"
+ #include "../../thread/thread_operators.cuh"
+@@ -630,3 +631,4 @@ struct WarpScanShfl
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_WARP_SPECIALIZATIONS_WARP_SCAN_SHFL_CUH_
+diff --git a/cub/warp/specializations/warp_scan_smem.cuh b/cub/warp/specializations/warp_scan_smem.cuh
+index ccd1de30..2580994e 100644
+--- a/cub/warp/specializations/warp_scan_smem.cuh
++++ b/cub/warp/specializations/warp_scan_smem.cuh
+@@ -31,7 +31,8 @@
+  * cub::WarpScanSmem provides smem-based variants of parallel prefix scan of items partitioned across a CUDA thread warp.
+  */
+ 
+-#pragma once
++#ifndef CUB_WARP_SPECIALIZATIONS_WARP_SCAN_SMEM_CUH_
++#define CUB_WARP_SPECIALIZATIONS_WARP_SCAN_SMEM_CUH_
+ 
+ #include "../../config.cuh"
+ #include "../../thread/thread_operators.cuh"
+@@ -395,3 +396,4 @@ struct WarpScanSmem
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_WARP_SPECIALIZATIONS_WARP_SCAN_SMEM_CUH_
+diff --git a/cub/warp/warp_reduce.cuh b/cub/warp/warp_reduce.cuh
+index 50ee7056..eb48cfd2 100644
+--- a/cub/warp/warp_reduce.cuh
++++ b/cub/warp/warp_reduce.cuh
+@@ -31,7 +31,8 @@
+  * The cub::WarpReduce class provides [<em>collective</em>](index.html#sec0) methods for computing a parallel reduction of items partitioned across a CUDA thread warp.
+  */
+ 
+-#pragma once
++#ifndef CUB_WARP_WARP_REDUCE_CUH_
++#define CUB_WARP_WARP_REDUCE_CUH_
+ 
+ #include "../config.cuh"
+ #include "specializations/warp_reduce_shfl.cuh"
+@@ -609,3 +610,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_WARP_WARP_REDUCE_CUH_
+diff --git a/cub/warp/warp_scan.cuh b/cub/warp/warp_scan.cuh
+index e9e95008..86fd5fae 100644
+--- a/cub/warp/warp_scan.cuh
++++ b/cub/warp/warp_scan.cuh
+@@ -31,7 +31,8 @@
+  * The cub::WarpScan class provides [<em>collective</em>](index.html#sec0) methods for computing a parallel prefix scan of items partitioned across a CUDA thread warp.
+  */
+ 
+-#pragma once
++#ifndef CUB_WARP_WARP_SCAN_CUH_
++#define CUB_WARP_WARP_SCAN_CUH_
+ 
+ #include "../config.cuh"
+ #include "specializations/warp_scan_shfl.cuh"
+@@ -933,3 +934,4 @@ public:
+ 
+ }               // CUB namespace
+ CUB_NS_POSTFIX  // Optional outer namespace(s)
++#endif // CUB_WARP_WARP_SCAN_CUH_
+diff --git a/experimental/sparse_matrix.h b/experimental/sparse_matrix.h
+index 1fb52333..cc2795ba 100644
+--- a/experimental/sparse_matrix.h
++++ b/experimental/sparse_matrix.h
+@@ -30,7 +30,8 @@
+  * Matrix data structures and parsing logic
+  ******************************************************************************/
+ 
+-#pragma once
++#ifndef EXPERIMENTAL_SPARSE_MATRIX_H_
++#define EXPERIMENTAL_SPARSE_MATRIX_H_
+ 
+ #include <cmath>
+ #include <cstring>
+@@ -1242,3 +1243,4 @@ void RcmRelabel(
+ 
+ 
+ 
++#endif // EXPERIMENTAL_SPARSE_MATRIX_H_
+diff --git a/test/half.h b/test/half.h
+index f032f215..d6880254 100644
+--- a/test/half.h
++++ b/test/half.h
+@@ -26,7 +26,8 @@
+  *
+  ******************************************************************************/
+ 
+-#pragma once
++#ifndef TEST_HALF_H_
++#define TEST_HALF_H_
+ 
+ /**
+  * \file
+@@ -305,3 +306,4 @@ struct cub::FpLimits<half_t>
+ 
+ template <> struct cub::NumericTraits<half_t> : cub::BaseTraits<FLOATING_POINT, true, false, unsigned short, half_t> {};
+ 
++#endif // TEST_HALF_H_
+diff --git a/test/test_util.h b/test/test_util.h
+index d44b939e..4c758ddb 100644
+--- a/test/test_util.h
++++ b/test/test_util.h
+@@ -27,7 +27,8 @@
+  ******************************************************************************/
+ 
+ 
+-#pragma once
++#ifndef TEST_TEST_UTIL_H_
++#define TEST_TEST_UTIL_H_
+ 
+ #if defined(_WIN32) || defined(_WIN64)
+     #include <windows.h>
+@@ -1633,3 +1634,4 @@ struct GpuTimer
+         return elapsed;
+     }
+ };
++#endif // TEST_TEST_UTIL_H_
+-- 
+2.28.0.220.ged08abb693-goog
+

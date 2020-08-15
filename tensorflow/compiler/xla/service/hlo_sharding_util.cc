@@ -358,6 +358,7 @@ HloSharding GatherOutputSharding(const HloSharding& index_sharding,
 
 HloSharding GatherIndexSharding(const HloSharding& output_sharding,
                                 const HloInstruction* hlo) {
+  CHECK(hlo->opcode() == HloOpcode::kGather);
   if (output_sharding.IsTileMaximal()) {
     return output_sharding;
   }
@@ -370,6 +371,14 @@ HloSharding GatherIndexSharding(const HloSharding& output_sharding,
           output_sharding.tile_assignment().dim(i));
     }
   }
+  int64 index_rank = hlo->operand(1)->shape().rank();
+
+  // Vector indices sharding is not supported yet.
+  if (index_rank > index_tile_assignment_dims.size()) {
+    index_tile_assignment_dims.insert(
+        index_tile_assignment_dims.begin() + dnums.index_vector_dim(), 1);
+  }
+
   Array<int64> new_tile_assignment = output_sharding.tile_assignment();
   if (new_tile_assignment.num_elements() !=
       Product(index_tile_assignment_dims)) {

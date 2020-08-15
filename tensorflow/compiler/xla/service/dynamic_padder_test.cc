@@ -379,6 +379,13 @@ class ExecutionTest : public HloTestBase {
   Literal PadAndExecute(std::unique_ptr<HloModule> module,
                         absl::Span<Literal* const> arguments,
                         bool slice_dynamic_output = true) {
+    if (!slice_dynamic_output) {
+      auto new_config = module->config();
+      new_config.mutable_entry_computation_layout()
+          ->mutable_result_layout()
+          ->ClearDynamicShape();
+      module->set_config(new_config);
+    }
     DynamicPadder padder(slice_dynamic_output);
     TF_CHECK_OK(padder.Run(module.get()).status());
     HloDCE dce;
@@ -1172,6 +1179,84 @@ ENTRY main {
   // Reducing it produces 16
 
   Literal expected = LiteralUtil::CreateR0<int32>(16);
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicReshapeDoubleDynamicDimensions) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+ENTRY main {
+  param = s32[2, 3, 3] parameter(0)
+  size = s32[] constant(2)
+  param_padded_partial = s32[2, <=3, 3] set-dimension-size(param, size),
+    dimensions={1}
+  param_padded = s32[2, <=3, <=3] set-dimension-size(param_padded_partial, size),
+    dimensions={2}
+  result_size = s32[] constant(8)
+  ROOT reshaped = s32[<=18] dynamic-reshape(param_padded, result_size)
+}
+)";
+
+  // First dimension (1) is dynamic. Since dynamic size is 0, result is also 0.
+  Literal operand = LiteralUtil::CreateR3<int32>(
+      {{{0, 1, 2}, {3, 4, 5}, {6, 7, 8}}, {{0, 1, 2}, {3, 4, 5}, {6, 7, 8}}});
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand}, false);
+  result.SetDynamicSize(0, 8);
+  // Padded data looks like this (P is padding which is ignored).
+  // [[0, 1, P]
+  // [3, 4, P]
+  // [P, P, P]]
+  //
+  // [[0, 1, P]
+  // [3, 4, P]
+  // [P, P, P]]
+  //
+  // Reshaping (with correct reshape rewriting) produces:
+  // [0, 1, 3, 4, 0, 1, 3, 4]
+  Literal expected = LiteralUtil::CreateR1<int32>({0, 1, 3, 4, 0, 1, 3, 4});
+
+  EXPECT_EQ(result, expected);
+}
+
+XLA_TEST_F(ExecutionTest, DynamicReshapeOutputDoubleDynamicDimensions) {
+  const string hlo_text = R"(
+HloModule TensorFlowScatterV1
+
+ENTRY main {
+  param = s32[18] parameter(0)
+  eight = s32[] constant(8)
+  param_dynamic = s32[<=18] set-dimension-size(param, eight), dimensions={0}
+  two = s32[] constant(2)
+  // every dimension has dynamic size two.
+  ROOT reshaped = s32[2, <=3, <=3] dynamic-reshape(param_dynamic, two, two, two)
+}
+)";
+  Literal operand = LiteralUtil::CreateR1<int32>(
+      {0, 1, 3, 4, 0, 1, 3, 4, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1});
+
+  auto module = GetHloModule(hlo_text);
+
+  Literal result = PadAndExecute(std::move(module), {&operand}, false);
+
+  result.SetDynamicSize(1, 2);
+  result.SetDynamicSize(2, 2);
+  // Padded operand is:
+  // [0, 1, 3, 4, 0, 1, 3, 4, P, P ....]
+  //
+  // Reshaping it should produce:
+  // [[0, 1, P]
+  // [3, 4, P]
+  // [P, P, P]]
+  //
+  // [[0, 1, P]
+  // [3, 4, P]
+  // [P, P, P]]
+  Literal expected =
+      LiteralUtil::CreateR3<int32>({{{0, 1}, {3, 4}}, {{0, 1}, {3, 4}}});
 
   EXPECT_EQ(result, expected);
 }

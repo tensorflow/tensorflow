@@ -80,7 +80,7 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+    const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
     MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
   const HloInstruction& defining_instruction =
       *interval.buffer->defining_instruction();
@@ -570,7 +570,8 @@ std::string CostAnalysisPrefetchIntervalPicker::ToNoCopyDebugString(
 
 absl::optional<float>
 CostAnalysisPrefetchIntervalPicker::BufferIntervalAlternateMemoryBenefit(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
+    const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
+    const {
   return cost_analysis_.GetMemoryBoundedness(interval);
 }
 
@@ -733,9 +734,9 @@ void AlternateMemoryBestFitHeap::FindAliases(
   }
 }
 
-std::vector<const GlobalDecreasingSizeBestFitHeap::BufferInterval*>
+std::vector<const AlternateMemoryBestFitHeap::BufferInterval*>
 AlternateMemoryBestFitHeap::GetSortedColocatedIntervals(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
+    const AlternateMemoryBestFitHeap::BufferInterval& interval) const {
   std::vector<const BufferInterval*> colocated_intervals;
   std::vector<const BufferInterval*> worklist = {&interval};
   while (!worklist.empty()) {
@@ -864,7 +865,7 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
 }
 
 void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+    const AlternateMemoryBestFitHeap::BufferInterval& interval,
     std::string* debug_str) const {
   // Columns in buffer information:
   // buffer_id: int. This value can be used to match the allocation in
@@ -954,7 +955,7 @@ void AlternateMemoryBestFitHeap::DumpDebugStringsIfEnabled() const {
   options_.dump_fn("allocinfo", allocation_info_str_);
 }
 
-HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
+HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   std::vector<BufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
 
@@ -1390,10 +1391,10 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   MemorySpaceAssignment::Allocation* last_allocation =
       allocations_->at(1).get();
   CHECK(last_allocation->memory_space() == MemorySpace::kAlternate);
-  repack_allocation_blocks_.push_back(RepackAllocationBlock(
+  repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
       last_allocation->start_time(), last_allocation->end_time(),
       last_allocation->chunk().size, last_allocation->chunk().offset,
-      last_allocation));
+      static_cast<int64>(repack_allocation_blocks_.size()), last_allocation));
   repack_allocation_blocks_.back().colocations.push_back(
       &repack_allocation_blocks_.back());
 
@@ -1671,10 +1672,12 @@ void AlternateMemoryBestFitHeap::FinalizeAllocations(
     std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*> colocations;
     for (MemorySpaceAssignment::Allocation* colocated_allocation :
          colocation.second) {
-      repack_allocation_blocks_.push_back(RepackAllocationBlock(
+      repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
           colocated_allocation->start_time(), colocated_allocation->end_time(),
           colocated_allocation->chunk().size,
-          colocated_allocation->chunk().offset, colocated_allocation));
+          colocated_allocation->chunk().offset,
+          static_cast<int64>(repack_allocation_blocks_.size()),
+          colocated_allocation));
       colocations.push_back(&repack_allocation_blocks_.back());
     }
     for (MemorySpaceAssignmentRepacker::AllocationBlock* repack_block :
@@ -2369,8 +2372,8 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
       return x_memory_boundedness > y_memory_boundedness;
     }
     // Tie-break if the memory boundedness is the same.
-    return GlobalDecreasingSizeBestFitHeap::GetSpatialBufferIntervalCompare()(
-        x, y);
+    return GlobalDecreasingSizeBestFitHeap<
+        HloValue>::GetSpatialBufferIntervalCompare()(x, y);
   };
 }
 

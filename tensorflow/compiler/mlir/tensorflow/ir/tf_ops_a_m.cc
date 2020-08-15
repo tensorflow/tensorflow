@@ -775,6 +775,35 @@ void ConcatV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
 }
 
 //===----------------------------------------------------------------------===//
+// CumsumOp and CumprodOp
+//===----------------------------------------------------------------------===//
+
+template <typename OpT, typename std::enable_if<llvm::is_one_of<
+                            OpT, CumsumOp, CumprodOp>::value>::type * = nullptr>
+static LogicalResult Verify(OpT op) {
+  if (!IsOfRankOrUnranked(op.axis(), 0))
+    return op.emitOpError("requires scalar axis operand");
+
+  DenseIntElementsAttr axis_attr;
+  if (matchPattern(op.axis(), m_Constant(&axis_attr))) {
+    auto input_ty = op.x().getType().template dyn_cast<RankedTensorType>();
+    if (input_ty) {
+      int64_t rank = input_ty.getRank();
+      assert(axis_attr.getNumElements() == 1 &&
+             "scalar attribute should have exactly one element");
+      int64_t axis = (*axis_attr.begin()).getSExtValue();
+      if (axis < -rank || axis >= rank) {
+        return op.emitError()
+               << "axis operand should be within range [" << -rank << ", "
+               << rank << "); actual value: " << axis;
+      }
+    }
+  }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // ConcatOffsetOp
 //===----------------------------------------------------------------------===//
 

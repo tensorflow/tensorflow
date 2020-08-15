@@ -118,6 +118,9 @@ class DeviceThread {
   int expected_max_outputs_ TF_GUARDED_BY(execution_mutex_);
   //   Outputs
   std::vector<TensorHandlePtr> op_outputs_ TF_GUARDED_BY(execution_mutex_);
+  // TF_Status is an incomplete type and so can't be stack allocated. To avoid
+  // unnecessary allocations each Execute call, we keep one heap-allocated
+  // version for the thread.
   StatusPtr status_ TF_GUARDED_BY(execution_mutex_);
 
   const std::string device_;
@@ -188,6 +191,9 @@ std::vector<TensorHandlePtr> DeviceThread::Join(TF_Status* status) {
     if (TF_GetCode(status_.get()) != TF_OK) {
       TF_SetStatus(status, TF_GetCode(status_.get()),
                    TF_Message(status_.get()));
+      // Reset the member `status_` so future op executions (after recovery from
+      // the bad `status`) start with an OK status.
+      TF_SetStatus(status_.get(), TF_OK, "");
     }
     execution_state_ = ExecutionState::kIdle;
     result = std::move(op_outputs_);
@@ -319,20 +325,35 @@ ParallelDevice::Execute(TFE_Context* context,
                                 std::move(device_inputs), attributes,
                                 expected_max_outputs);
   }
+  StatusPtr first_bad_status(nullptr);
   for (int device_index = 0; device_index < underlying_devices_.size();
        ++device_index) {
     DeviceThread* device_thread = device_threads_[device_index].get();
     per_device_output_tensors.push_back(device_thread->Join(status));
-    if (TF_GetCode(status) != TF_OK) return result;
+    // We will run every Join even if there are bad statuses in case the user
+    // wants to recover and continue running ops on the parallel device (which
+    // would otherwise deadlock).
+    if (TF_GetCode(status) != TF_OK && first_bad_status == nullptr) {
+      first_bad_status.reset(TF_NewStatus());
+      TF_SetStatus(first_bad_status.get(), TF_GetCode(status),
+                   TF_Message(status));
+    }
+
     if (device_index == 0) {
       first_op_output_count = per_device_output_tensors.rbegin()->size();
     } else {
-      if (per_device_output_tensors.rbegin()->size() != first_op_output_count) {
-        TF_SetStatus(status, TF_INTERNAL,
+      if (first_bad_status == nullptr &&
+          per_device_output_tensors.rbegin()->size() != first_op_output_count) {
+        first_bad_status.reset(TF_NewStatus());
+        TF_SetStatus(first_bad_status.get(), TF_INTERNAL,
                      "Parallel ops produced different numbers of tensors.");
-        return result;
       }
     }
+  }
+  if (first_bad_status != nullptr) {
+    TF_SetStatus(status, TF_GetCode(first_bad_status.get()),
+                 TF_Message(first_bad_status.get()));
+    return result;
   }
   // For each output of the original operation, pack the per-device
   // TensorHandles we've computed into a single parallel TensorHandle.

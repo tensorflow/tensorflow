@@ -106,7 +106,7 @@ class MemorySpaceAssignmentCostAnalysis {
   // BufferInterval.  The larger this number, the higher priority it will be
   // placed in the alternate memory.
   float GetMemoryBoundedness(
-      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
       Cache* cache = nullptr) const;
 
   // Returns the elapsed time in seconds due to compute only.
@@ -235,7 +235,8 @@ class PrefetchIntervalPicker {
   // of placing the BufferInterval in the alternate memory. The larger value,
   // the more beneficial.
   virtual absl::optional<float> BufferIntervalAlternateMemoryBenefit(
-      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
+      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
+      const {
     return absl::nullopt;
   }
 
@@ -324,7 +325,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
                                   int64 end_time) const override;
 
   absl::optional<float> BufferIntervalAlternateMemoryBenefit(
-      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval)
+      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
       const override;
 
  private:
@@ -370,9 +371,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
 class MemorySpaceAssignment {
  public:
   using Chunk = HeapSimulator::Chunk;
-  using BufferInterval = GlobalDecreasingSizeBestFitHeap::BufferInterval;
+  using BufferInterval =
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval;
   using BufferIntervalCompare =
-      GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare;
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare;
   using IsAllowedInAlternateMemoryFunction =
       std::function<bool(const HloValue&)>;
 
@@ -913,7 +915,8 @@ class AsynchronousCopyOrdering {
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
 // maximum size.
-class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
+class AlternateMemoryBestFitHeap
+    : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
   using MemorySpace = MemorySpaceAssignment::MemorySpace;
   using AllocationValue = MemorySpaceAssignment::AllocationValue;
@@ -940,25 +943,13 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   void AllocateCrossProgramPrefetchBuffer(
       HloModule* module, absl::optional<BufferInterval> prefetch_candidate);
 
-  HeapSimulator::Result Finish() override;
+  HeapSimulator::Result<HloValue> Finish() override;
 
  private:
   // We inherit AllocationBlock struct to attach the Allocation information to
   // make importing repacked offsets easier.
   struct RepackAllocationBlock
       : MemorySpaceAssignmentRepacker::AllocationBlock {
-    RepackAllocationBlock(int64 start_time, int64 end_time, int64 size,
-                          int64 initial_offset,
-                          MemorySpaceAssignment::Allocation* allocation) {
-      this->start_time = start_time;
-      this->end_time = end_time;
-      this->size = size;
-      this->offset = -1;
-      this->initial_offset = initial_offset;
-      this->colocations = {};
-      this->allocation = allocation;
-    }
-
     MemorySpaceAssignment::Allocation* allocation;
   };
 
@@ -1229,6 +1220,22 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // Returns the available heap size in the alternate memory.
   int64 available_heap_size() const {
     return options_.max_size_in_bytes - reserved_in_bytes_;
+  }
+
+  // Creates and returns a RepackAllocationBlock.
+  static RepackAllocationBlock MakeRepackAllocationBlock(
+      int64 start_time, int64 end_time, int64 size, int64 initial_offset,
+      int64 id, MemorySpaceAssignment::Allocation* allocation) {
+    RepackAllocationBlock allocation_block;
+    allocation_block.start_time = start_time;
+    allocation_block.end_time = end_time;
+    allocation_block.size = size;
+    allocation_block.offset = -1;
+    allocation_block.initial_offset = initial_offset;
+    allocation_block.id = id;
+    allocation_block.colocations = {};
+    allocation_block.allocation = allocation;
+    return allocation_block;
   }
 
   MemorySpaceAssignment::AllocationSequence* allocations_;
