@@ -876,10 +876,9 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
         # `next()` raises `StopIteration` when there are no more
         # elements remaining to be generated.
         values = next(generator_state.get_iterator(iterator_id.numpy()))
-
+        
         try:
-          values = structure.normalize_element(
-            values, element_signature=output_signature)
+          values = structure.normalize_element(values, output_signature)
         except (TypeError, ValueError):
           six.reraise(
               TypeError,
