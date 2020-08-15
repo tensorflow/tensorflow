@@ -1319,8 +1319,7 @@ absl::optional<HloSharding> GetShardingFromUser(
     }
     case HloOpcode::kGather: {
       if (&instruction == user.operand(1)) {
-        return hlo_sharding_util::GatherIndexSharding(
-            user.sharding(), &user, instruction.shape().rank());
+        return hlo_sharding_util::GatherIndexSharding(user.sharding(), &user);
       }
       if (is_spmd) {
         return hlo_sharding_util::GatherDataOperandShardingFromOutput(
