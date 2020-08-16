@@ -465,3 +465,33 @@ func setAttr(cdesc *C.TF_OperationDescription, status *status, name string, valu
 	}
 	return nil
 }
+
+type LibraryHandler struct {
+	cptr	*C.TF_Library
+}
+
+func LoadLibrary(path string) (*LibraryHandler, error) {
+	status := newStatus()
+
+	cpath := C.CString(path)
+	defer C.free(unsafe.Pointer(cpath))
+	cptr := C.TF_LoadLibrary(cpath, status.c)
+	if cptr == nil || status.Code() != C.TF_OK {
+		return nil, fmt.Errorf("could not load library %s: code: %d, error: %s", path, status.Code(), status.String())
+	}
+
+	lh := &LibraryHandler {
+		cptr: cptr,
+	}
+
+	runtime.SetFinalizer(h, (*LibraryHandler).free)
+	return lh, nil
+}
+
+func (lh *LibraryHandler) free() {
+	if lh == nil || lh.cptr == nil {
+		return
+	}
+
+	C.TF_DeleteLibraryHandle(lh.cptr)
+}
