@@ -1690,5 +1690,47 @@ absl::optional<HloOpcode> ParseReductionComputation(
   return root->opcode();
 }
 
+absl::optional<std::vector<int64>> FindMatchingPartitionedDimsForGrouping(
+    const HloSharding& sharding,
+    const std::vector<std::vector<int64>>& device_groups) {
+  if (sharding.NumTiles() < device_groups.size() || device_groups.size() < 2 ||
+      device_groups[0].size() < 2) {
+    return absl::nullopt;
+  }
+  int64 rank = sharding.tile_assignment().num_dimensions();
+  if (sharding.ReplicateOnLastTileDim()) {
+    rank--;
+  }
+  absl::flat_hash_map<int64, std::vector<int64>> device_to_index;
+  sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> index, int64 device) {
+        device_to_index[device] =
+            std::vector<int64>(index.begin(), index.begin() + rank);
+      });
+  std::vector<int64> dims;
+  int64 group_count = 1;
+  for (int64 i = 0; i < rank; ++i) {
+    if (device_to_index[device_groups[0][0]][i] ==
+        device_to_index[device_groups[0][1]][i]) {
+      dims.push_back(i);
+      group_count *= sharding.tile_assignment().dim(i);
+    }
+  }
+  if (group_count != device_groups.size()) {
+    return absl::nullopt;
+  }
+  for (const auto& group : device_groups) {
+    for (int64 i = 1; i < group.size(); ++i) {
+      if (absl::c_any_of(dims, [&](const int64 dim) {
+            return device_to_index[group[i]][dim] !=
+                   device_to_index[group[0]][dim];
+          })) {
+        return absl::nullopt;
+      }
+    }
+  }
+  return dims;
+}
+
 }  // namespace spmd
 }  // namespace xla
