@@ -602,6 +602,7 @@ cc_library(
         ":numeric_types",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
