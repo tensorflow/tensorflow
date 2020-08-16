@@ -670,7 +670,7 @@ The following instructions will help you build and deploy the sample to the
 [CEVA-BX1](https://www.ceva-dsp.com/product/ceva-bx1-sound/)
 
 1. Contact CEVA at [sales@ceva-dsp.com](mailto:sales@ceva-dsp.com)
-2. Download and install CEVA-BX Toolbox v18.0.3
+2. Download and install CEVA-BX Toolbox v18.0.2 and run 
 3. Set the TARGET_TOOLCHAIN_ROOT variable in  /tensorflow/lite/micro/tools/make/templates/ceva_bx1/ceva_app_makefile.tpl
    To your installation location. For example:
    TARGET_TOOLCHAIN_ROOT := /home/myuser/work/CEVA-ToolBox/V18/BX

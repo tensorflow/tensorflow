@@ -8,7 +8,7 @@ CXX = ${TARGET_TOOLCHAIN_ROOT}/cevatools/bin/clang++
 LD = ${TARGET_TOOLCHAIN_ROOT}/cevatools/bin/ceva-elf-ld
 AS = ${TARGET_TOOLCHAIN_ROOT}/cevatools/bin/ceva-elf-as
 TOOLS_OBJS := \
-${TARGET_TOOLCHAIN_ROOT}/cevatools/lib/clang/4.0.1/cevabx1-unknown-unknown-elf/lib/rtlv1.0.0-fp1-dpfp1/crt0.o ${TARGET_TOOLCHAIN_ROOT}/cevatools/lib/clang/4.0.1/cevabx1-unknown-unknown-elf/lib/rtlv1.0.0-fp1-dpfp1/crtn.o
+${TARGET_TOOLCHAIN_ROOT}/cevatools/lib/clang/7.1.0/cevabx1-unknown-unknown-elf/lib/rtlv1.0.0-fp1-dpfp1/crt0.o ${TARGET_TOOLCHAIN_ROOT}/cevatools/lib/clang/7.1.0/cevabx1-unknown-unknown-elf/lib/rtlv1.0.0-fp1-dpfp1/crtn.o
 TOOLS_LIBS := \
 -lc++ -lc++abi -lc -lcompiler-rt
 
@@ -21,7 +21,7 @@ TOOLS_LIBS := \
 	__internal_data_size=512k \
 	-defsym \
 	__internal_code_size=256k \
-	-L${TARGET_TOOLCHAIN_ROOT}/cevatools/lib/clang/4.0.1/cevabx1-unknown-unknown-elf/lib/rtlv1.0.0-fp1-dpfp1 \
+	-L/home/yaire/CEVA-ToolBox/V18/BX/cevatools/lib/clang/7.1.0/cevabx1-unknown-unknown-elf/lib/rtlv1.0.0-fp1-dpfp1 \
 	-lc++ -lc++abi -lc -lcompiler-rt
     
 
