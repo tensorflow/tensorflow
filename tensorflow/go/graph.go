@@ -500,6 +500,7 @@ type LibraryHandler struct {
 	cptr	*C.TF_Library
 }
 
+// Load library content into current context, useful to load ops implementation into non-monolitic TF build. Returns LibraryHandler or nil and error
 func LoadLibrary(path string) (*LibraryHandler, error) {
 	status := newStatus()
 
