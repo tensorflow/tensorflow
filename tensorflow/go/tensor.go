@@ -213,7 +213,7 @@ func (t *Tensor) Reshape(new_shape []int64) error {
 	new_shape_size := numElements(new_shape)
 
 	if old_shape_size != new_shape_size {
-		return bug("unable to convert shape %v (num_elements: %d) into shape %v (num_elements: %d)", t.shape, old_shape_size, new_shape, new_shape_size)
+		return fmt.Errorf("unable to convert shape %v (num_elements: %d) into shape %v (num_elements: %d)", t.shape, old_shape_size, new_shape, new_shape_size)
 	}
 
 	if len(new_shape) == 0 {
