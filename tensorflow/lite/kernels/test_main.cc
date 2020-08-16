@@ -31,8 +31,12 @@ void InitKernelTest(int* argc, char** argv) {
     // In Android Q, the NNAPI delegate avoids delegation if the only device
     // is the reference CPU. However, for testing purposes, we still want
     // delegation coverage, so force use of this reference path.
+    const auto opt_name = "nnapi_accelerator_name";
+    std::string accelerator_name =
+        delegate_providers->ConstParams().Get<std::string>(opt_name);
     delegate_providers->MutableParams()->Set<std::string>(
-        "nnapi_accelerator_name", "nnapi-reference");
+        opt_name, accelerator_name.empty() ? "nnapi-reference"
+                                           : accelerator_name.c_str());
   }
 }
 
