@@ -8,3 +8,5 @@ We will also point to this list if we are asked who uses TensorFlow.
 
 We will not use any of the information here for promotions or to send other regular communications. You 
 should subscribe to discuss@tensorflow.org for such announcements.
+
+1. Hyperweb AI (https://hyperweb.ai)
