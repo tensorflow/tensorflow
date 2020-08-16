@@ -2622,23 +2622,18 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
                         .Reshard(HloSharding::Replicate())
                         .hlo());
     inputs.push_back(GetPartitionedHlo(hlo->operand(operand_id)));
-    if (operand_id > 0) {
+    if (hlo->shape().IsTuple() && operand_id == 0) {
+      // We cannot do tuple-reduce where partitioned dimensions are reduced.
+      // Partially replicate on those dims.
+      inputs[0] = inputs[0].Reshard(
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              inputs[0].sharding(), hlo->dimensions()));
+    } else {
       // Make sure all operands are sharded in the same way.
       inputs.back() = inputs.back().Reshard(inputs[0].sharding());
     }
     if (!inputs[0].sharding().IsTileMaximal()) {
       inputs.back() = inputs.back().PadWithValue(inits[operand_id]);
-    }
-  }
-  bool reduce_sharded_dimension = false;
-  if (!inputs[0].sharding().IsTileMaximal()) {
-    reduce_sharded_dimension = absl::c_any_of(hlo->dimensions(), [&](int64 i) {
-      return inputs[0].sharding().tile_assignment().dim(i) > 1;
-    });
-
-    // reduce_sharded_dimension is not supported for tuple-shaped reduces.
-    if (reduce_sharded_dimension && input_count > 1) {
-      return DefaultAction(hlo);
     }
   }
 
@@ -2663,6 +2658,11 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
 
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* reduce = local_reduce;
+    const bool reduce_sharded_dimension =
+        !inputs[0].sharding().IsTileMaximal() &&
+        absl::c_any_of(hlo->dimensions(), [&](int64 i) {
+          return inputs[0].sharding().tile_assignment().dim(i) > 1;
+        });
     if (reduce_sharded_dimension) {
       CHECK(local_reduce->shape().IsArray());
       std::vector<int64> preserved_dims;
