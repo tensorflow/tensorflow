@@ -472,8 +472,6 @@ int3 Winograd36To4x4::SelectBestWorkGroup(const KernelInfo& kernel_info) const {
 }
 
 absl::Status Winograd36To4x4::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   const int tiles_x = DivideRoundUp(dst_[0]->Width(), 4);
   RETURN_IF_ERROR(args_.SetInt("tiles_x", tiles_x));
   return absl::OkStatus();
