@@ -2778,6 +2778,9 @@ cc_library(
     srcs = [
         "lib/Support/MlirOptMain.cpp",
     ],
+    hdrs = [
+        "include/mlir/Support/MlirOptMain.h",
+    ],
     includes = ["include"],
     deps = [
         ":Analysis",
