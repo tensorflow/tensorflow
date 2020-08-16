@@ -285,14 +285,7 @@ func @bessel_i1e(%arg0: tensor<3xf16>, %arg1: tensor<3xf32>, %arg2: tensor<3xf64
 
 // CHECK-LABEL: diag
 func @diag(%arg0: tensor<2xf32>) -> tensor<2x2xf32> {
-  // CHECK: %[[ZERO:.*]]  = mhlo.constant dense<0.000000e+00> : tensor<2x2xf32>
-  // CHECK: %[[IOTA:.*]]  = "mhlo.iota"() {iota_dimension = 0 : i64} : () -> tensor<2xi32>
-  // CHECK: %[[BROADCAST1:.*]] = "mhlo.broadcast_in_dim"(%[[IOTA]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<2x2xi32>
-  // CHECK: %[[BROADCAST0:.*]] = "mhlo.broadcast_in_dim"(%[[IOTA]]) {broadcast_dimensions = dense<0> : tensor<1xi64>} : (tensor<2xi32>) -> tensor<2x2xi32>
-  // CHECK: %[[EQ:.*]] = "mhlo.compare"(%[[BROADCAST1]], %[[BROADCAST0]]) {comparison_direction = "EQ"} : (tensor<2x2xi32>, tensor<2x2xi32>) -> tensor<2x2xi1>
-  // CHECK: %[[BROADCAST2:.*]] = "mhlo.broadcast_in_dim"(%[[ARG0]]) {broadcast_dimensions = dense<1> : tensor<1xi64>} : (tensor<2xf32>) -> tensor<2x2xf32>
-  // CHECK: %[[RESULT:.*]] = "mhlo.select"(%[[EQ]], %[[BROADCAST2]], %[[ZERO]]) : (tensor<2x2xi1>, tensor<2x2xf32>, tensor<2x2xf32>) -> tensor<2x2xf32>
-  // CHECK: return %[[RESULT]] : tensor<2x2xf32>
+  // CHECK-NOT: tf.Diag
   %0 = "tf.Diag"(%arg0) : (tensor<2xf32>) -> tensor<2x2xf32>
   return %0 : tensor<2x2xf32>
 }
