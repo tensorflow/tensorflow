@@ -27,12 +27,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/validate.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/dump_graph.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
@@ -63,18 +66,41 @@ Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
 //     math_ops.less(y, x), lambda: math_ops.multiply(y, 17),
 //     lambda: math_ops.add(x, 23))
 //
-// Tests different node filters.
-class ConditionalTestFixture : public ::testing::TestWithParam<bool> {
+// Tests different node filters and functionalization inside of a function.
+class ConditionalTestFixture
+    : public ::testing::TestWithParam<std::tuple<bool, bool>> {
  protected:
-  void SetUp() override { restrict_to_tpu_nodes_ = GetParam(); }
+  void SetUp() override {
+    restrict_to_tpu_nodes_ = std::get<0>(GetParam());
+    wrap_condition_in_function_ = std::get<1>(GetParam());
+  }
   void RunTest();
 
  private:
+  void BuildCondGraph(Graph* cond_graph);
+  void CheckGraphDef(const GraphDef& graph_def,
+                     const FunctionLibraryDefinition& library);
+
   bool restrict_to_tpu_nodes_ = false;
+  bool wrap_condition_in_function_ = false;
 };
 
-void ConditionalTestFixture::RunTest() {
-  Graph graph(OpRegistry::Global());
+TEST_P(ConditionalTestFixture, ConditionalTests) { RunTest(); }
+
+INSTANTIATE_TEST_SUITE_P(
+    FunctionalizeControlFlow, ConditionalTestFixture,
+    ::testing::Combine(::testing::Bool(), ::testing::Bool()),
+    [](const ::testing::TestParamInfo<ConditionalTestFixture::ParamType>&
+           info) {
+      bool restrict_to_tpu_nodes = std::get<0>(info.param);
+      bool wrap_cond_in_function = std::get<1>(info.param);
+      string name =
+          absl::StrCat(restrict_to_tpu_nodes ? "with_filter" : "without_filter",
+                       wrap_cond_in_function ? "_in_function" : "_in_graph");
+      return name;
+    });
+
+void ConditionalTestFixture::BuildCondGraph(Graph* cond_graph) {
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
 
@@ -102,13 +128,117 @@ void ConditionalTestFixture::RunTest() {
     auto merge = ops::Merge(scope.WithOpName("cond/Merge"),
                             std::initializer_list<Input>{add, mul});
 
-    TF_EXPECT_OK(scope.ToGraph(&graph));
+    TF_EXPECT_OK(scope.ToGraph(cond_graph));
 
     // Set `_tpu_replicate` attribute for all nodes.
-    for (Node* n : graph.nodes()) {
+    for (Node* n : cond_graph->nodes()) {
       n->AddAttr("_tpu_replicate", "cluster");
     }
   }
+}
+
+void ConditionalTestFixture::CheckGraphDef(
+    const GraphDef& graph_def, const FunctionLibraryDefinition& library) {
+  string op_name;
+  NameAttrList then_fn;
+  NameAttrList else_fn;
+  TF_EXPECT_OK(FindIfThenAndElse(graph_def, &op_name, &then_fn, &else_fn));
+  InstantiationResultForTest else_result;
+  TF_EXPECT_OK(
+      InstantiateFunctionForTest(else_fn.name(), library, &else_result));
+
+  // Outer graph
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
+    auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
+    auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
+    auto if_op =
+        ops::If(scope.WithOpName(op_name), less,
+                std::initializer_list<Input>{less, y, x}, {DT_INT32}, then_fn,
+                else_fn, ops::If::OutputShapes({PartialTensorShape()}));
+    auto id = ops::Identity(scope.WithOpName("cond/Merge"), if_op.output[0]);
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+    TF_EXPECT_GRAPH_EQ(expected, graph_def);
+  }
+
+  // then body.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg_0 = ops::_Arg(scope.WithOpName("arg0"), DT_BOOL, 0);
+    auto arg_1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
+    auto arg_2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
+    auto identity = ops::Identity(scope.WithOpName("cond/Identity"), arg_0);
+    auto cond = ops::Const(
+        scope.WithOpName("cond").WithControlDependencies(identity), 17);
+    auto mul = ops::Mul(scope.WithOpName("cond/Mul"), arg_1, cond);
+    auto retval0 = ops::_Retval(scope.WithOpName("retval0_RetVal"), mul, 0);
+
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    TF_EXPECT_OK(InstantiateFunctionForTest(then_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    EXPECT_EQ((DataTypeVector{DT_BOOL, DT_INT32, DT_INT32}), result.arg_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+
+  // else body.
+  {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto arg_0 = ops::_Arg(scope.WithOpName("arg0"), DT_BOOL, 0);
+    auto arg_1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
+    auto arg_2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
+    auto identity = ops::Identity(scope.WithOpName("cond/Identity_1"), arg_0);
+    auto cond_1 = ops::Const(
+        scope.WithOpName("cond_1").WithControlDependencies(identity), 23);
+    auto add = ops::Add(scope.WithOpName("cond/false/add"), arg_2, cond_1);
+    auto retval0 = ops::_Retval(scope.WithOpName("retval0_RetVal"), add, 0);
+
+    GraphDef expected;
+    TF_EXPECT_OK(scope.ToGraphDef(&expected));
+
+    InstantiationResultForTest result;
+    TF_EXPECT_OK(InstantiateFunctionForTest(else_fn.name(), library, &result));
+
+    EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
+    EXPECT_EQ((DataTypeVector{DT_BOOL, DT_INT32, DT_INT32}), result.arg_types);
+    TF_EXPECT_GRAPH_EQ(expected, result.gdef);
+  }
+}
+
+void ConditionalTestFixture::RunTest() {
+  Graph graph(OpRegistry::Global());
+  if (wrap_condition_in_function_) {
+    // Wrap condition in a function which is called from `graph`.
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto source = ops::Placeholder(scope.WithOpName("source"), DT_INT32);
+
+    Graph cond_graph(OpRegistry::Global());
+    BuildCondGraph(&cond_graph);
+
+    FunctionDef cond_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(cond_graph, "cond_fn", &cond_fdef));
+
+    FunctionDefLibrary fdef_lib;
+    *(fdef_lib.add_function()) = cond_fdef;
+    TF_ASSERT_OK(scope.graph()->AddFunctionLibrary(fdef_lib));
+    NodeDef cond_fn;
+    cond_fn.set_name("cond_node");
+    cond_fn.set_op("cond_fn");
+    *(cond_fn.add_input()) = "source";
+    Status status;
+    scope.graph()->AddNode(cond_fn, &status);
+    TF_ASSERT_OK(status);
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+  } else {
+    // Build condition in `graph`.
+    BuildCondGraph(&graph);
+  }
+  FunctionLibraryDefinition library(graph.flib_def());
   // If `restrict_to_tpu_nodes_` is true let filter function return true for
   // `_tpu_replicate` nodes.
   NodeFilter node_filter =
@@ -116,98 +246,46 @@ void ConditionalTestFixture::RunTest() {
           ? [](const Node* n) { return n->attrs().Find("_tpu_replicate"); }
           : NodeFilter{};
 
-  FunctionLibraryDefinition library(OpRegistry::Global(), {});
   GraphDef optimized_graph_def;
   graph.ToGraphDef(&optimized_graph_def);
-  TF_ASSERT_OK(FunctionalizeControlFlowForGraphDef(&optimized_graph_def,
-                                                   &library, node_filter));
-  TF_ASSERT_OK(FunctionalizeControlFlow(&graph, &library, node_filter));
-  GraphDef converted_graph_def;
-  graph.ToGraphDef(&converted_graph_def);
+  TF_ASSERT_OK(FunctionalizeControlFlowForGraphDef(
+      &optimized_graph_def, &library, node_filter,
+      /*include_functions=*/wrap_condition_in_function_));
+  TF_ASSERT_OK(FunctionalizeControlFlow(
+      &graph, &library, node_filter,
+      /*include_functions=*/wrap_condition_in_function_));
 
-  for (const GraphDef& graph_def : {optimized_graph_def, converted_graph_def}) {
-    string op_name;
-    NameAttrList then_fn;
-    NameAttrList else_fn;
-    TF_EXPECT_OK(FindIfThenAndElse(graph_def, &op_name, &then_fn, &else_fn));
-    InstantiationResultForTest else_result;
-    TF_EXPECT_OK(
-        InstantiateFunctionForTest(else_fn.name(), library, &else_result));
+  if (wrap_condition_in_function_) {
+    // Check if function body was functionalized.
+    auto pflr = absl::make_unique<ProcessFunctionLibraryRuntime>(
+        /*device_mgr=*/nullptr, tensorflow::Env::Default(),
+        /*config=*/nullptr, TF_GRAPH_DEF_VERSION, &library,
+        tensorflow::OptimizerOptions());
+    FunctionLibraryRuntime* flr =
+        pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+    FunctionLibraryRuntime::Handle handle;
 
-    // Outer graph
-    {
-      Scope scope = Scope::NewRootScope().ExitOnError();
-      auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
-      auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
-      auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
-      auto if_op =
-          ops::If(scope.WithOpName(op_name), less,
-                  std::initializer_list<Input>{less, y, x}, {DT_INT32}, then_fn,
-                  else_fn, ops::If::OutputShapes({PartialTensorShape()}));
-      auto id = ops::Identity(scope.WithOpName("cond/Merge"), if_op.output[0]);
-      GraphDef expected;
-      TF_EXPECT_OK(scope.ToGraphDef(&expected));
-      TF_EXPECT_GRAPH_EQ(expected, graph_def);
+    // Functionalized function name is the type string of `cond_node`.
+    string func_name;
+    for (Node* n : graph.nodes()) {
+      if (n->name() == "cond_node") {
+        func_name = n->type_string();
+        break;
+      }
     }
-
-    // then body.
-    {
-      Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg_0 = ops::_Arg(scope.WithOpName("arg0"), DT_BOOL, 0);
-      auto arg_1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
-      auto arg_2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
-      auto identity = ops::Identity(scope.WithOpName("cond/Identity"), arg_0);
-      auto cond = ops::Const(
-          scope.WithOpName("cond").WithControlDependencies(identity), 17);
-      auto mul = ops::Mul(scope.WithOpName("cond/Mul"), arg_1, cond);
-      auto retval0 = ops::_Retval(scope.WithOpName("retval0_RetVal"), mul, 0);
-
-      GraphDef expected;
-      TF_EXPECT_OK(scope.ToGraphDef(&expected));
-
-      InstantiationResultForTest result;
-      TF_EXPECT_OK(
-          InstantiateFunctionForTest(then_fn.name(), library, &result));
-
-      EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
-      EXPECT_EQ((DataTypeVector{DT_BOOL, DT_INT32, DT_INT32}),
-                result.arg_types);
-      TF_EXPECT_GRAPH_EQ(expected, result.gdef);
-    }
-
-    // else body.
-    {
-      Scope scope = Scope::NewRootScope().ExitOnError();
-      auto arg_0 = ops::_Arg(scope.WithOpName("arg0"), DT_BOOL, 0);
-      auto arg_1 = ops::_Arg(scope.WithOpName("arg1"), DT_INT32, 1);
-      auto arg_2 = ops::_Arg(scope.WithOpName("arg2"), DT_INT32, 2);
-      auto identity = ops::Identity(scope.WithOpName("cond/Identity_1"), arg_0);
-      auto cond_1 = ops::Const(
-          scope.WithOpName("cond_1").WithControlDependencies(identity), 23);
-      auto add = ops::Add(scope.WithOpName("cond/false/add"), arg_2, cond_1);
-      auto retval0 = ops::_Retval(scope.WithOpName("retval0_RetVal"), add, 0);
-
-      GraphDef expected;
-      TF_EXPECT_OK(scope.ToGraphDef(&expected));
-
-      InstantiationResultForTest result;
-      TF_EXPECT_OK(
-          InstantiateFunctionForTest(else_fn.name(), library, &result));
-
-      EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
-      EXPECT_EQ((DataTypeVector{DT_BOOL, DT_INT32, DT_INT32}),
-                result.arg_types);
-      TF_EXPECT_GRAPH_EQ(expected, result.gdef);
-    }
+    TF_ASSERT_OK(flr->Instantiate(func_name, AttrSlice(), &handle));
+    const FunctionBody* body = flr->GetFunctionBody(handle);
+    GraphDef graph_def;
+    body->graph->ToGraphDef(&graph_def);
+    CheckGraphDef(graph_def, library);
+  } else {
+    // Check if graphs were functionalized.
+    CheckGraphDef(optimized_graph_def, library);
+    GraphDef converted_graph_def;
+    graph.ToGraphDef(&converted_graph_def);
+    CheckGraphDef(converted_graph_def, library);
   }
 }
-
-TEST_P(ConditionalTestFixture, ConditionalTests) { RunTest(); }
-
-INSTANTIATE_TEST_SUITE_P(
-    FunctionalizeControlFlow, ConditionalTestFixture, ::testing::Bool(),
-    [](const ::testing::TestParamInfo<ConditionalTestFixture::ParamType>&
-           info) { return info.param ? "with_filter" : "without_filter"; });
 
 // Returns the names of the "cond" and "body" functions for the While node
 // in a graph.

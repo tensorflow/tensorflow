@@ -709,7 +709,7 @@ gentbl(
 
 gentbl(
     name = "omp_gen_impl",
-    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp.inc")],
+    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenMP/OMP.td",
     td_srcs = [
@@ -2104,7 +2104,7 @@ cc_library(
         "lib/Frontend/OpenMP/*.cpp",
         "lib/Frontend/OpenMP/*.inc",
         "lib/Frontend/OpenMP/*.h",
-    ]),
+    ]) + ["include/llvm/Frontend/OpenMP/OMP.cpp"],
     hdrs = glob([
         "include/llvm/Frontend/OpenMP/*.h",
         "include/llvm/Frontend/OpenMP/*.def",

@@ -69,6 +69,8 @@ cc_library(
         "include/mlir/IR/*.h",
     ]) + [
         "include/mlir/Interfaces/CallInterfaces.h",
+        "include/mlir/Interfaces/DecodeAttributesInterfaces.h",
+        "include/mlir/Interfaces/FoldInterfaces.h",
     ],
     includes = ["include"],
     deps = [
@@ -2775,6 +2777,9 @@ cc_library(
     name = "MlirOptLib",
     srcs = [
         "lib/Support/MlirOptMain.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Support/MlirOptMain.h",
     ],
     includes = ["include"],
     deps = [

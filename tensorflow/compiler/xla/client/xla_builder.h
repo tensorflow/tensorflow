@@ -454,6 +454,10 @@ class XlaBuilder {
   XlaOp Reshape(const Shape& shape, XlaOp operand,
                 int64 inferred_dimension = -1);
 
+  XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                       absl::Span<const int64> new_size_bounds,
+                       const std::vector<bool>& dims_are_dynamic);
+
   XlaOp Collapse(XlaOp operand, absl::Span<const int64> dimensions);
 
   XlaOp Slice(XlaOp operand, absl::Span<const int64> start_indices,
@@ -939,6 +943,10 @@ class XlaBuilder {
   friend XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
 
   friend XlaOp Reshape(const Shape& shape, XlaOp operand);
+
+  friend XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                              absl::Span<const int64> new_size_bounds,
+                              const std::vector<bool>& dims_are_dynamic);
 
   friend XlaOp ReshapeWithInferredDimension(XlaOp operand,
                                             absl::Span<const int64> new_sizes,
@@ -1453,9 +1461,16 @@ XlaOp Pad(XlaOp operand, XlaOp padding_value,
 XlaOp Reshape(XlaOp operand, absl::Span<const int64> dimensions,
               absl::Span<const int64> new_sizes);
 
-// Enqueues an operation onto the computation that collapses the operand, from
-// first to last dimension (C order), then reshapes it to the given dimension
-// sizes. Conceptually, this is a limited form of "shape casting".
+// Enqueues a dynamic reshape operation. The dynamic reshape takes additional
+// XlaOps as sizes for the result dimension. The result dim i is a dynamic
+// dimension dimension if dims_are_dynamic[i] is true.
+XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                     absl::Span<const int64> new_size_bounds,
+                     const std::vector<bool>& dims_are_dynamic);
+
+// Enqueues an operation onto the computation that collapses the operand,
+// from first to last dimension (C order), then reshapes it to the given
+// dimension sizes. Conceptually, this is a limited form of "shape casting".
 XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
 
 // Enqueues a Reshape op that uses an explicit target shape.

@@ -76,7 +76,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     const auto& input_shapes = input_->output_shapes();
     output_shapes_.reserve(input_shapes.size());
     for (size_t i = 0; i < input_shapes.size(); ++i) {
-      if (drop_remainder_) {
+      if (drop_remainder_ || input_->Cardinality() == kInfiniteCardinality) {
         output_shapes_.push_back(
             PartialTensorShape({batch_size_}).Concatenate(padded_shapes_[i]));
       } else {

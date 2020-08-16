@@ -4669,6 +4669,20 @@ func @cumsum_dynamic(%arg0: tensor<?xf32>, %arg1: tensor<i32>) -> tensor<?xf32> 
 }
 
 //===----------------------------------------------------------------------===//
+// Cumprod op legalizations.
+//===----------------------------------------------------------------------===//
+
+// CHECK-LABEL: func @cumprod
+func @cumprod(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+  // CHECK: [[INIT:%.*]] = mhlo.constant dense<1.000000e+00> : tensor<f32>
+  // CHECK: "mhlo.reduce_window"({{.*}}, [[INIT]]) ( {
+  // CHECK:   mhlo.mul
+  %0 = "tf.Const"() {_output_shapes = ["tfshape$"], device = "", dtype = i32, value = dense<0> : tensor<i32>} : () -> tensor<i32>
+  %1 = "tf.Cumprod"(%arg0, %0) {exclusive = false, reverse = false} : (tensor<4xf32>, tensor<i32>) -> tensor<4xf32>
+  return %1 : tensor<4xf32>
+}
+
+//===----------------------------------------------------------------------===//
 // Qr op legalization
 //===----------------------------------------------------------------------===//
 

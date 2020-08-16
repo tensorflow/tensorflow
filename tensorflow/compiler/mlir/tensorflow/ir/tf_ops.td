@@ -114,6 +114,50 @@ An n-way switch statement, implementing the following:
   let hasCanonicalizer = 1;
 }
 
+def TF_CaseRegionOp : TF_Op<"CaseRegion",
+      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments]> {
+  let summary = [{
+An n-way switch statement which calls a single branch function.
+  }];
+
+  let description = [{
+An n-way switch statement, implementing the following:
+    ```
+    switch (branch_index) {
+      case 0:
+        output = branches[0](input);
+        break;
+      case 1:
+        output = branches[1](input);
+        break;
+      ...
+      case [[nbranches-1]]:
+      default:
+        output = branches[nbranches-1](input);
+        break;
+    }
+    ```
+  }];
+
+  let arguments = (ins
+    I32Tensor:$branch_index,
+
+    // Used to map StatelessCase and Case op defined in TensorFlow to a common
+    // op.
+    BoolAttr:$is_stateless
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
 // its type encoding the tensor's shape and data type.
 def TF_ConstOp : TF_Op<"Const", [ConstantLike, NoSideEffect,
@@ -293,7 +337,7 @@ else_branch: A function that takes 'inputs' and returns a list of
 }
 
 def TF_YieldOp : TF_Op<"Yield",
-      [Terminator, ParentOneOf<["IfRegionOp", "WhileRegionOp"]>]> {
+      [Terminator, ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>]> {
   let summary = "Yield operation";
 
   let description = [{

@@ -271,6 +271,9 @@ namespace TFTPU {
 // `_tpu_replicate` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
 
+// Creates a pass that removes Identity/IdentityN ops from a cluster.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUIdentityPruningPass();
+
 // Creates a pass that allows TPU program inputs to have layouts determined at
 // run time.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicLayoutPass();

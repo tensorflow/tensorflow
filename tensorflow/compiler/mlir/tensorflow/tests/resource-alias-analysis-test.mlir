@@ -252,3 +252,35 @@ func @passthru(%arg0: !tf_res) -> (!tf_res, !tf_res) {
   %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
   return %vh0, %arg0 : !tf_res, !tf_res
 }
+
+// -----
+// Test aliasing through tf_device.launch
+!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+
+// CHECK-LABEL: func @aliasing_through_launch
+func @aliasing_through_launch(%arg0: tensor<32xf32>) {
+  // expected-remark@below {{Result #0, ID 0 : 0, 1}}
+  %vh = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> !tf_res
+
+  // expected-remark@below {{Result #0, ID 1 : 0, 1}}
+  %launch = "tf_device.launch"() ({
+    tf_device.return %vh : !tf_res
+  }) {device = ""} : () -> !tf_res
+  return
+}
+
+// -----
+// Test aliasing through tf_device.cluster
+!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+
+// CHECK-LABEL: func @aliasing_through_cluster
+func @aliasing_through_cluster(%arg0: tensor<32xf32>) {
+  // expected-remark@below {{Result #0, ID 0 : 0, 1}}
+  %vh = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> !tf_res
+
+  // expected-remark@below {{Result #0, ID 1 : 0, 1}}
+  %cluster = "tf_device.cluster"() ({
+    tf_device.return %vh : !tf_res
+  }) : () -> !tf_res
+  return
+}

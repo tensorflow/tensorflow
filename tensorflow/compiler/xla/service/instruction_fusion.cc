@@ -102,6 +102,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReplicaId:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <atomic>
 
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/stream_executor/multi_platform_manager.h"
 
@@ -24,7 +25,14 @@ namespace tensorflow {
 namespace tpu {
 
 namespace {
-TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform) {
+TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform,
+                                                  int tries_left = 3) {
+  if (tries_left <= 0) {
+    LOG(ERROR) << "Unable to find a TPU platform after exhausting all tries. "
+                  "Returning nullptr...";
+    return nullptr;
+  }
+
   // Prefer TpuPlatform if it's registered.
   auto status_or_tpu_platform =
       stream_executor::MultiPlatformManager::PlatformWithName(
@@ -47,21 +55,29 @@ TpuPlatformInterface* GetRegisteredPlatformStatic(bool initialize_platform) {
                    nullptr;
           },
           initialize_platform);
-  if (!status_or_other_tpu_platforms.ok()) {
+
+  // If we encounter an error, and it is not because the platform isn't found.
+  if (!status_or_other_tpu_platforms.ok() &&
+      status_or_other_tpu_platforms.status().code() != error::NOT_FOUND) {
     LOG(WARNING) << "Error when getting other TPU platforms: "
                  << status_or_tpu_platform.status();
     return nullptr;
   }
-  auto other_tpu_platforms = status_or_other_tpu_platforms.ValueOrDie();
-  if (!other_tpu_platforms.empty()) {
+
+  // If we find at least one thing, we return the first thing we see.
+  if (status_or_other_tpu_platforms.ok()) {
+    auto other_tpu_platforms = status_or_other_tpu_platforms.ValueOrDie();
     LOG(WARNING) << other_tpu_platforms.size()
                  << " TPU platforms registered, selecting "
                  << other_tpu_platforms[0]->Name();
     return static_cast<TpuPlatformInterface*>(other_tpu_platforms[0]);
   }
 
-  LOG(WARNING) << "No TPU platform registered";
-  return nullptr;
+  LOG(WARNING)
+      << "No TPU platform registered. Waiting 1 second and trying again... ("
+      << (tries_left - 1) << " tries left)";
+  Env::Default()->SleepForMicroseconds(1000000);  // 1 second
+  return GetRegisteredPlatformStatic(initialize_platform, --tries_left);
 }
 }  // namespace
 

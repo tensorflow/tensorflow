@@ -49,20 +49,6 @@ std::string GetElementWiseCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status MergeOperations(const std::vector<GPUOperation*>& linked_ops,
-                             Arguments* merged_args, std::string* merged_code) {
-  for (int i = 0; i < linked_ops.size(); ++i) {
-    std::string code = linked_ops[i]->code_;
-    std::string unique_postfix = absl::StrCat("_link", i + 1);
-    linked_ops[i]->args_.RenameArgs(unique_postfix, &code);
-    *merged_code += "{\n" + code + "\n}\n";
-    RETURN_IF_ERROR(
-        merged_args->Merge(std::move(linked_ops[i]->args_), unique_postfix));
-    linked_ops[i]->AddUniquePostfix(unique_postfix);
-  }
-  return absl::OkStatus();
-}
-
 }  // namespace
 
 DataType OperationDef::GetDataType() const {
@@ -74,20 +60,6 @@ DataType OperationDef::GetPrimaryDataType() const {
 }
 TensorStorageType OperationDef::GetPrimaryStorageType() const {
   return src_tensors[0].storage_type;
-}
-
-bool OperationDef::HasAllTensorsOfType(TensorStorageType storage_type) const {
-  for (const auto& src : src_tensors) {
-    if (src.storage_type != storage_type) {
-      return false;
-    }
-  }
-  for (const auto& dst : dst_tensors) {
-    if (dst.storage_type != storage_type) {
-      return false;
-    }
-  }
-  return true;
 }
 
 bool OperationDef::IsBatchSupported() const {
@@ -137,7 +109,8 @@ GPUOperation::GPUOperation(GPUOperation&& operation)
       grid_size_(operation.grid_size_),
       src_tensors_names_(std::move(operation.src_tensors_names_)),
       dst_tensors_names_(std::move(operation.dst_tensors_names_)),
-      linked_operations_(std::move(operation.linked_operations_)) {}
+      linkable_count_(operation.linkable_count_),
+      elementwise_code_(std::move(operation.elementwise_code_)) {}
 
 GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
   if (this != &operation) {
@@ -156,13 +129,30 @@ GPUOperation& GPUOperation::operator=(GPUOperation&& operation) {
     std::swap(grid_size_, operation.grid_size_);
     src_tensors_names_ = std::move(operation.src_tensors_names_);
     dst_tensors_names_ = std::move(operation.dst_tensors_names_);
-    linked_operations_ = std::move(operation.linked_operations_);
+    std::swap(linkable_count_, operation.linkable_count_);
+    elementwise_code_ = std::move(operation.elementwise_code_);
   }
   return *this;
 }
 
-void GPUOperation::AddOperation(GPUOperation* operation) {
-  linked_operations_.push_back(operation);
+absl::Status GPUOperation::AddOperation(GPUOperation* operation) {
+  linkable_count_ += 1;
+  std::string code = operation->code_;
+  std::string unique_postfix = absl::StrCat("_link", linkable_count_);
+  operation->args_.RenameArgs(unique_postfix, &code);
+  elementwise_code_ += "{\n" + code + "\n}\n";
+  RETURN_IF_ERROR(args_.Merge(std::move(operation->args_), unique_postfix));
+  for (int i = 0; i < operation->src_tensors_names_.size(); ++i) {
+    definition_.src_tensors.push_back(
+        operation->definition_.src_tensors[i + 1]);
+    src_tensors_names_.push_back(operation->src_tensors_names_[i] +
+                                 unique_postfix);
+  }
+  for (int i = 0; i < operation->dst_tensors_names_.size(); ++i) {
+    dst_tensors_names_.push_back(operation->dst_tensors_names_[i] +
+                                 unique_postfix);
+  }
+  return absl::OkStatus();
 }
 
 void GPUOperation::AddSrcTensor(const std::string& tensor_name,
@@ -193,12 +183,6 @@ absl::Status GPUOperation::UpdateParams() {
   for (int i = 0; i < dst_tensors_names_.size(); ++i) {
     RETURN_IF_ERROR(args_.SetObjectRef(dst_tensors_names_[i], dst_[i]));
   }
-  for (const auto linked_op : linked_operations_) {
-    for (int i = 0; i < linked_op->src_tensors_names_.size(); ++i) {
-      RETURN_IF_ERROR(args_.SetObjectRef(linked_op->src_tensors_names_[i],
-                                         linked_op->src_[i + 1]));
-    }
-  }
   RETURN_IF_ERROR(BindArguments());
   grid_size_ = GetGridSize();
   return absl::OkStatus();
@@ -224,24 +208,18 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
 
     std::string code =
         GetElementWiseCode(definition_, check_src_channels_size_);
-    std::string element_wise_code;
-    element_wise_code += "{\n" + code_ + "\n}\n";
-    RETURN_IF_ERROR(
-        MergeOperations(linked_operations_, &args_, &element_wise_code));
+    elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
     RETURN_IF_ERROR(args_.TransformToCLCode(
         creation_context.device->info_,
-        {{dst_tensors_names_[0], element_wise_code}}, &code));
+        {{dst_tensors_names_[0], elementwise_code_}}, &code));
     code = absl::Substitute(code, args_.GetListOfArgs());
     RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
         code, "main_function", *creation_context.context,
         *creation_context.device, &kernel_));
   } else {
-    std::string element_wise_code;
-    RETURN_IF_ERROR(
-        MergeOperations(linked_operations_, &args_, &element_wise_code));
     RETURN_IF_ERROR(args_.TransformToCLCode(
         creation_context.device->info_,
-        {{dst_tensors_names_[0], element_wise_code}}, &code_));
+        {{dst_tensors_names_[0], elementwise_code_}}, &code_));
     RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
         code_, "main_function", compiler_options_, *creation_context.context,
         *creation_context.device, &kernel_));

@@ -81,7 +81,6 @@ struct OperationDef {
   // the structure of kernel, all other resources(biases) types and etc.
   DataType GetPrimaryDataType() const;
   TensorStorageType GetPrimaryStorageType() const;
-  bool HasAllTensorsOfType(TensorStorageType storage_type) const;
   bool IsBatchSupported() const;
 };
 
@@ -106,7 +105,7 @@ class GPUOperation {
   GPUOperation(const GPUOperation&) = delete;
   GPUOperation& operator=(const GPUOperation&) = delete;
 
-  void AddOperation(GPUOperation* operation);
+  absl::Status AddOperation(GPUOperation* operation);
 
   void SetSrc(Tensor* ptr, int index = 0);
   void SetDst(Tensor* ptr, int index = 0);
@@ -171,7 +170,10 @@ class GPUOperation {
   int3 grid_size_ = int3(0, 0, 0);
   std::vector<std::string> src_tensors_names_;
   std::vector<std::string> dst_tensors_names_;
-  std::vector<GPUOperation*> linked_operations_;
+
+ private:
+  int linkable_count_ = 0;
+  std::string elementwise_code_;  // temporary, used during op construction
 };
 
 }  // namespace cl

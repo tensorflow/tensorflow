@@ -63,42 +63,25 @@ bool IsReady(const absl::flat_hash_set<ValueId>& ready_tensors,
 std::vector<std::pair<ValueId, TensorDescriptor>> GetCLNodeTensors(
     const CLNode& node) {
   std::vector<std::pair<ValueId, TensorDescriptor>> result;
-  const OperationDef main_def = node.operations[0]->GetDefinition();
-  const auto& first_range = node.ranges[0];
-  for (int k = first_range.x; k < first_range.y; ++k) {
-    result.push_back({node.inputs[k], main_def.src_tensors[k - first_range.x]});
-  }
-  for (int j = 1; j < node.ranges.size(); ++j) {
-    const auto& range = node.ranges[j];
-    const OperationDef op_def = node.operations[j]->GetDefinition();
-    for (int k = range.x; k < range.y; ++k) {
-      result.push_back({node.inputs[k], op_def.src_tensors[k - range.x + 1]});
-    }
+  result.reserve(node.inputs.size() + node.outputs.size());
+  const OperationDef op_def = node.operation->GetDefinition();
+  for (int j = 0; j < node.inputs.size(); ++j) {
+    result.push_back({node.inputs[j], op_def.src_tensors[j]});
   }
   for (int j = 0; j < node.outputs.size(); ++j) {
-    result.push_back({node.outputs[j], main_def.dst_tensors[j]});
+    result.push_back({node.outputs[j], op_def.dst_tensors[j]});
   }
 
   return result;
 }
 
-void MergeCLNodes(CLNode* src, CLNode* dst) {
-  int offset = dst->inputs.size();
+absl::Status MergeCLNodes(CLNode* src, CLNode* dst) {
   for (int j = 1; j < src->inputs.size(); ++j) {
     dst->inputs.push_back(src->inputs[j]);
   }
-  auto first_range = src->ranges[0];
-  dst->ranges.push_back(
-      int2(first_range.x + offset, first_range.y - 1 + offset));
-  for (int i = 1; i < src->ranges.size(); ++i) {
-    auto range = src->ranges[i];
-    dst->ranges.push_back(int2(range.x + offset, range.y + offset));
-  }
   dst->outputs[0] = src->outputs[0];
-  for (int i = 0; i < src->operations.size(); ++i) {
-    dst->operations.push_back(std::move(src->operations[i]));
-  }
   dst->name += " linked : " + src->name;
+  return dst->operation->AddOperation(src->operation.get());
 }
 
 void AddUsage(ValueId id, int task_index,
@@ -153,18 +136,16 @@ bool IsGenericAdd(const Node& node, const std::vector<Value*>& inputs,
 }  // namespace
 
 CLNode::CLNode(CLNode&& node)
-    : operations(std::move(node.operations)),
+    : operation(std::move(node.operation)),
       inputs(std::move(node.inputs)),
       outputs(std::move(node.outputs)),
-      ranges(std::move(node.ranges)),
       name(std::move(node.name)) {}
 
 CLNode& CLNode::operator=(CLNode&& node) {
   if (this != &node) {
-    operations = std::move(node.operations);
+    operation = std::move(node.operation);
     inputs = std::move(node.inputs);
     outputs = std::move(node.outputs);
-    ranges = std::move(node.ranges);
     name = std::move(node.name);
   }
   return *this;
@@ -195,7 +176,7 @@ absl::Status InferenceContext::InitFromGraph(
   CopyInAndOutIds(graph);
   RETURN_IF_ERROR(
       ConvertOperations(creation_context, graph, create_info.hints));
-  Merge();
+  RETURN_IF_ERROR(Merge());
   RETURN_IF_ERROR(AllocateMemory(env->device(), creation_context.context));
   BindMemoryToOperations();
   RETURN_IF_ERROR(Compile(creation_context));
@@ -333,9 +314,7 @@ absl::Status InferenceContext::ConvertOperations(
     }
     for (auto& gpu_op : gpu_subgraph.operations) {
       CLNode cl_node;
-      cl_node.operations.push_back(std::move(gpu_op.operation));
-      cl_node.ranges.push_back(
-          int2(0, static_cast<int>(gpu_op.input_ids.size())));
+      cl_node.operation = std::move(gpu_op.operation);
       cl_node.inputs.resize(gpu_op.input_ids.size());
       for (int j = 0; j < gpu_op.input_ids.size(); ++j) {
         int id = gpu_op.input_ids[j];
@@ -363,7 +342,7 @@ absl::Status InferenceContext::ConvertOperations(
   return absl::OkStatus();
 }
 
-void InferenceContext::Merge() {
+absl::Status InferenceContext::Merge() {
   absl::flat_hash_set<ValueId> ready_tensors;
   for (const auto& input_id : input_ids_) {
     ready_tensors.insert(input_id);
@@ -390,27 +369,23 @@ void InferenceContext::Merge() {
       continue;
     }
     auto& linkable_node = nodes_[next_nodes[0]];
-    if (!linkable_node.operations[0]->IsLinkable() ||
+    if (!linkable_node.operation->IsLinkable() ||
         linkable_node.outputs.size() != 1 ||
         !IsReady(ready_tensors, linkable_node)) {
       continue;
     }
     const auto& original_dst_def =
-        node.operations[0]->GetDefinition().dst_tensors[0];
+        node.operation->GetDefinition().dst_tensors[0];
     const auto& link_dst_def =
-        linkable_node.operations[0]->GetDefinition().dst_tensors[0];
+        linkable_node.operation->GetDefinition().dst_tensors[0];
     if (original_dst_def != link_dst_def) {
       continue;
     }
-    MergeCLNodes(&linkable_node, &node);
+    RETURN_IF_ERROR(MergeCLNodes(&linkable_node, &node));
     nodes_.erase(nodes_.begin() + next_nodes[0]);
     i -= 1;
   }
-  for (auto& node : nodes_) {
-    for (int j = 1; j < node.operations.size(); ++j) {
-      node.operations[0]->AddOperation(node.operations[j].get());
-    }
-  }
+  return absl::OkStatus();
 }
 
 void InferenceContext::GetUsages(
@@ -536,19 +511,11 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
 
 void InferenceContext::BindMemoryToOperations() {
   for (auto& node : nodes_) {
-    const auto& first_range = node.ranges[0];
-    for (int k = first_range.x; k < first_range.y; ++k) {
-      node.operations[0]->SetSrc(GetTensor(node.inputs[k]), k - first_range.x);
+    for (int i = 0; i < node.inputs.size(); ++i) {
+      node.operation->SetSrc(GetTensor(node.inputs[i]), i);
     }
-    for (int i = 1; i < node.ranges.size(); ++i) {
-      const auto& range = node.ranges[i];
-      for (int k = range.x; k < range.y; ++k) {
-        node.operations[i]->SetSrc(GetTensor(node.inputs[k]), k - range.x + 1);
-      }
-    }
-
     for (int i = 0; i < node.outputs.size(); ++i) {
-      node.operations[0]->SetDst(GetTensor(node.outputs[i]), i);
+      node.operation->SetDst(GetTensor(node.outputs[i]), i);
     }
   }
 }
@@ -556,21 +523,21 @@ void InferenceContext::BindMemoryToOperations() {
 absl::Status InferenceContext::Compile(
     const CreationContext& creation_context) {
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.operations[0]->Compile(creation_context));
+    RETURN_IF_ERROR(node.operation->Compile(creation_context));
   }
   return absl::OkStatus();
 }
 
 absl::Status InferenceContext::Tune(const TuningParameters& tuning_parameters) {
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.operations[0]->Tune(tuning_parameters));
+    RETURN_IF_ERROR(node.operation->Tune(tuning_parameters));
   }
   return absl::OkStatus();
 }
 
 absl::Status InferenceContext::UpdateParams() {
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.operations[0]->UpdateParams());
+    RETURN_IF_ERROR(node.operation->UpdateParams());
   }
   return absl::OkStatus();
 }
@@ -584,7 +551,7 @@ absl::Status InferenceContext::AddToQueue(CLCommandQueue* queue) {
   }
   int counter = 0;
   for (auto& node : nodes_) {
-    RETURN_IF_ERROR(node.operations[0]->AddToQueue(queue));
+    RETURN_IF_ERROR(node.operation->AddToQueue(queue));
     counter++;
     if (flush_periodically_ && counter % flush_period_ == 0) {
       clFlush(queue->queue());
@@ -601,7 +568,7 @@ absl::Status InferenceContext::Profile(ProfilingCommandQueue* queue,
   queue->ResetMeasurements();
   for (auto& node : nodes_) {
     queue->SetEventsLabel(node.name);
-    RETURN_IF_ERROR(node.operations[0]->AddToQueue(queue));
+    RETURN_IF_ERROR(node.operation->AddToQueue(queue));
   }
   RETURN_IF_ERROR(queue->WaitForCompletion());
   *result = queue->GetProfilingInfo();
