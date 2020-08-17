@@ -368,7 +368,11 @@ public class Camera2BasicFragment extends Fragment
       classifier.setNumThreads(numThreads);
       if (device.equals(cpu)) {
       } else if (device.equals(gpu)) {
+        if (model.equals(mobilenetV1Quant)) {
+          classifier.useGpu(true);
+        } else  {
           classifier.useGpu();
+        }
       } else if (device.equals(nnApi)) {
         classifier.useNNAPI();
       }
