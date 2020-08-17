@@ -20,7 +20,7 @@ source tensorflow/tools/ci_build/release/common.sh
 
 install_ubuntu_16_pip_deps pip3.8
 
-pip3.7 install --upgrade auditwheel --user
+pip3.8 install --upgrade auditwheel --user
 
 install_bazelisk
 
