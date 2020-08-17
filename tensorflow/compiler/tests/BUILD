@@ -349,6 +349,7 @@ tf_xla_py_test(
     size = "small",
     timeout = "moderate",
     srcs = ["searchsorted_op_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
@@ -691,6 +692,7 @@ tf_xla_py_test(
     name = "fft_test",
     size = "medium",
     srcs = ["fft_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 6,
     tags = [
@@ -931,6 +933,7 @@ tf_xla_py_test(
     name = "pooling_ops_test",
     size = "medium",
     srcs = ["pooling_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 20,
     tags = [
@@ -1009,6 +1012,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 5,
     tags = [
@@ -1035,6 +1039,7 @@ tf_xla_py_test(
         "cpu",
         "cpu_ondemand",
     ],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     shard_count = 5,
     tags = [
@@ -1117,6 +1122,7 @@ tf_xla_py_test(
     name = "reverse_ops_test",
     size = "medium",
     srcs = ["reverse_ops_test.py"],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
