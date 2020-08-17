@@ -169,69 +169,56 @@ absl::Status ConvTexture::UploadWeights(
   DataType data_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
 
   const int elements_count = texture_width * texture_height;
+  const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
-  Texture2DDescriptor desc;
-  desc.element_type = data_type;
+  Texture2DDescriptor desc0;
+  desc0.element_type = data_type;
+  desc0.size = int2(texture_width, texture_height);
+  desc0.data.resize(elements_count * float4_size);
 
-  Texture2D weights_0;
-  Texture2D weights_1;
-  Texture2D weights_2;
-  Texture2D weights_3;
+  Texture2DDescriptor desc1;
+  desc1.element_type = data_type;
+  desc1.size = int2(texture_width, texture_height);
+  desc1.data.resize(elements_count * float4_size);
+
+  Texture2DDescriptor desc2;
+  desc2.element_type = data_type;
+  desc2.size = int2(texture_width, texture_height);
+  desc2.data.resize(elements_count * float4_size);
+
+  Texture2DDescriptor desc3;
+  desc3.element_type = data_type;
+  desc3.size = int2(texture_width, texture_height);
+  desc3.data.resize(elements_count * float4_size);
 
   if (f32_weights) {
-    std::vector<float4> gpu_data_0(elements_count);
-    std::vector<float4> gpu_data_1(elements_count);
-    std::vector<float4> gpu_data_2(elements_count);
-    std::vector<float4> gpu_data_3(elements_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data_0),
-                         absl::MakeSpan(gpu_data_1), absl::MakeSpan(gpu_data_2),
-                         absl::MakeSpan(gpu_data_3));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_0.data(),
-                                        context, &weights_0));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_1.data(),
-                                        context, &weights_1));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_2.data(),
-                                        context, &weights_2));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_3.data(),
-                                        context, &weights_3));
+    float4* ptr0 = reinterpret_cast<float4*>(desc0.data.data());
+    float4* ptr1 = reinterpret_cast<float4*>(desc1.data.data());
+    float4* ptr2 = reinterpret_cast<float4*>(desc2.data.data());
+    float4* ptr3 = reinterpret_cast<float4*>(desc3.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr0, elements_count),
+                         absl::MakeSpan(ptr1, elements_count),
+                         absl::MakeSpan(ptr2, elements_count),
+                         absl::MakeSpan(ptr3, elements_count));
   } else {
-    std::vector<half4> gpu_data_0(elements_count);
-    std::vector<half4> gpu_data_1(elements_count);
-    std::vector<half4> gpu_data_2(elements_count);
-    std::vector<half4> gpu_data_3(elements_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data_0),
-                         absl::MakeSpan(gpu_data_1), absl::MakeSpan(gpu_data_2),
-                         absl::MakeSpan(gpu_data_3));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_0.data(),
-                                        context, &weights_0));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_1.data(),
-                                        context, &weights_1));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_2.data(),
-                                        context, &weights_2));
-    RETURN_IF_ERROR(CreateTexture2DRGBA(data_type, texture_width,
-                                        texture_height, gpu_data_3.data(),
-                                        context, &weights_3));
+    half4* ptr0 = reinterpret_cast<half4*>(desc0.data.data());
+    half4* ptr1 = reinterpret_cast<half4*>(desc1.data.data());
+    half4* ptr2 = reinterpret_cast<half4*>(desc2.data.data());
+    half4* ptr3 = reinterpret_cast<half4*>(desc3.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr0, elements_count),
+                         absl::MakeSpan(ptr1, elements_count),
+                         absl::MakeSpan(ptr2, elements_count),
+                         absl::MakeSpan(ptr3, elements_count));
   }
 
-  args_.AddObject("weights0", AccessType::READ,
-                  absl::make_unique<Texture2D>(std::move(weights_0)),
-                  absl::make_unique<Texture2DDescriptor>(desc));
-  args_.AddObject("weights1", AccessType::READ,
-                  absl::make_unique<Texture2D>(std::move(weights_1)),
-                  absl::make_unique<Texture2DDescriptor>(desc));
-  args_.AddObject("weights2", AccessType::READ,
-                  absl::make_unique<Texture2D>(std::move(weights_2)),
-                  absl::make_unique<Texture2DDescriptor>(desc));
-  args_.AddObject("weights3", AccessType::READ,
-                  absl::make_unique<Texture2D>(std::move(weights_3)),
-                  absl::make_unique<Texture2DDescriptor>(desc));
+  args_.AddObject("weights0",
+                  absl::make_unique<Texture2DDescriptor>(std::move(desc0)));
+  args_.AddObject("weights1",
+                  absl::make_unique<Texture2DDescriptor>(std::move(desc1)));
+  args_.AddObject("weights2",
+                  absl::make_unique<Texture2DDescriptor>(std::move(desc2)));
+  args_.AddObject("weights3",
+                  absl::make_unique<Texture2DDescriptor>(std::move(desc3)));
   return absl::OkStatus();
 }
 

@@ -93,30 +93,25 @@ absl::Status UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
     }
   }
 
-  Buffer constants_buf;
   const bool fp32_weights = precision == CalculationsPrecision::F32;
   const int float_size = fp32_weights ? 4 : 2;
-  if (fp32_weights) {
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float_size * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &constants_buf));
-  } else {
-    std::vector<half> gpu_data_half(gpu_data.size());
-    for (int i = 0; i < gpu_data.size(); ++i) {
-      gpu_data_half[i] = gpu_data[i];
-    }
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float_size * gpu_data_half.size(),
-                                         gpu_data_half.data(), context,
-                                         &constants_buf));
-  }
-
   BufferDescriptor desc;
   desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
   desc.memory_type = MemoryType::CONSTANT;
-  op->args_.AddObject("constants", AccessType::READ,
-                      absl::make_unique<Buffer>(std::move(constants_buf)),
-                      absl::make_unique<BufferDescriptor>(desc));
+  desc.size = float_size * gpu_data.size();
+  desc.data.resize(desc.size);
+
+  if (fp32_weights) {
+    memcpy(desc.data.data(), gpu_data.data(), desc.size);
+  } else {
+    half* gpu_data_half = reinterpret_cast<half*>(desc.data.data());
+    for (int i = 0; i < gpu_data.size(); ++i) {
+      gpu_data_half[i] = gpu_data[i];
+    }
+  }
+  op->args_.AddObject("constants",
+                      absl::make_unique<BufferDescriptor>(std::move(desc)));
   return absl::OkStatus();
 }
 

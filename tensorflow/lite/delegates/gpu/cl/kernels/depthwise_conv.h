@@ -106,47 +106,29 @@ absl::Status DepthwiseConvolution::UploadWeights(
   const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
   const int float4_size = fp32_weights ? 16 : 8;
 
-  Texture2D weights_tex2d;
-  Buffer weights_buf;
+  std::vector<uint8_t> data(float4_size * elements_count);
+
   if (fp32_weights) {
-    std::vector<float4> gpu_data(elements_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    if (weights_are_buffer_) {
-      RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                           gpu_data.data(), context,
-                                           &weights_buf));
-    } else {
-      RETURN_IF_ERROR(CreateTexture2DRGBA(
-          definition_.GetDataType(), kernel_x * kernel_y, dst_slices,
-          gpu_data.data(), context, &weights_tex2d));
-    }
+    float4* ptr = reinterpret_cast<float4*>(data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
   } else {
-    std::vector<half4> gpu_data(elements_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    if (weights_are_buffer_) {
-      RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                           gpu_data.data(), context,
-                                           &weights_buf));
-    } else {
-      RETURN_IF_ERROR(CreateTexture2DRGBA(
-          definition_.GetDataType(), kernel_x * kernel_y, dst_slices,
-          gpu_data.data(), context, &weights_tex2d));
-    }
+    half4* ptr = reinterpret_cast<half4*>(data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
   }
 
   if (weights_are_buffer_) {
     BufferDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
     desc.element_size = 4;
-    args_.AddObject("weights", AccessType::READ,
-                    absl::make_unique<Buffer>(std::move(weights_buf)),
-                    absl::make_unique<BufferDescriptor>(desc));
+    desc.size = float4_size * elements_count;
+    desc.data = std::move(data);
+    args_.AddObject("weights", absl::make_unique<BufferDescriptor>(desc));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    args_.AddObject("weights", AccessType::READ,
-                    absl::make_unique<Texture2D>(std::move(weights_tex2d)),
-                    absl::make_unique<Texture2DDescriptor>(desc));
+    desc.size = int2(kernel_x * kernel_y, dst_slices);
+    desc.data = std::move(data);
+    args_.AddObject("weights", absl::make_unique<Texture2DDescriptor>(desc));
   }
 
   return absl::OkStatus();
@@ -195,47 +177,31 @@ absl::Status DepthwiseConvolution::UploadWeights(
   const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
   const int float4_size = fp32_weights ? 16 : 8;
 
-  Texture2D weights_tex2d;
-  Buffer weights_buf;
+  std::vector<uint8_t> data(float4_size * elements_count);
+
   if (fp32_weights) {
-    std::vector<float4> gpu_data(elements_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    if (weights_are_buffer_) {
-      RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                           gpu_data.data(), context,
-                                           &weights_buf));
-    } else {
-      RETURN_IF_ERROR(CreateTexture2DRGBA(
-          definition_.GetDataType(), kernel_x * kernel_y * kernel_z, dst_slices,
-          gpu_data.data(), context, &weights_tex2d));
-    }
+    float4* ptr = reinterpret_cast<float4*>(data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
   } else {
-    std::vector<half4> gpu_data(elements_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    if (weights_are_buffer_) {
-      RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                           gpu_data.data(), context,
-                                           &weights_buf));
-    } else {
-      RETURN_IF_ERROR(CreateTexture2DRGBA(
-          definition_.GetDataType(), kernel_x * kernel_y * kernel_z, dst_slices,
-          gpu_data.data(), context, &weights_tex2d));
-    }
+    half4* ptr = reinterpret_cast<half4*>(data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
   }
 
   if (weights_are_buffer_) {
     BufferDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
     desc.element_size = 4;
-    args_.AddObject("weights", AccessType::READ,
-                    absl::make_unique<Buffer>(std::move(weights_buf)),
-                    absl::make_unique<BufferDescriptor>(desc));
+    desc.size = float4_size * elements_count;
+    desc.data = std::move(data);
+    args_.AddObject("weights",
+                    absl::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
     Texture2DDescriptor desc;
     desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    args_.AddObject("weights", AccessType::READ,
-                    absl::make_unique<Texture2D>(std::move(weights_tex2d)),
-                    absl::make_unique<Texture2DDescriptor>(desc));
+    desc.size = int2(kernel_x * kernel_y * kernel_z, dst_slices);
+    desc.data = std::move(data);
+    args_.AddObject("weights",
+                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 
   return absl::OkStatus();

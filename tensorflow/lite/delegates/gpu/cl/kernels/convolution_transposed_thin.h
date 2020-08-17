@@ -76,40 +76,35 @@ absl::Status ConvolutionTransposedThin::UploadData(
       weights.shape.w * weights.shape.h * src_depth * weights.shape.o;
 
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
   desc.memory_type = MemoryType::CONSTANT;
+  desc.size = flt4_size * (flt4_count + 1);
+  desc.data.resize(desc.size);
 
-  Buffer weights_buffer;
   if (f32_weights) {
-    std::vector<float4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
+    float4* gpu_data = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data, flt4_count));
     float4 bias_value(0.0f);
     for (int i = 0; i < weights.shape.o; ++i) {
       bias_value[i] = biases.data[i];
     }
-    gpu_data.push_back(bias_value);
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(float4) * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
+    gpu_data[flt4_count] = bias_value;
   } else {
-    std::vector<half4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
+    half4* gpu_data = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data, flt4_count));
     half4 bias_value(0.0f);
     for (int i = 0; i < weights.shape.o; ++i) {
       bias_value[i] = biases.data[i];
     }
-    gpu_data.push_back(bias_value);
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(half4) * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
+    gpu_data[flt4_count] = bias_value;
   }
 
-  args_.AddObject("weights", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
 
   return absl::OkStatus();
 }

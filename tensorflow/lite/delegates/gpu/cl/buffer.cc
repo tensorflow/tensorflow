@@ -47,6 +47,30 @@ absl::Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only,
 }
 }  // namespace
 
+BufferDescriptor::BufferDescriptor(BufferDescriptor&& desc)
+    : GPUObjectDescriptor(std::move(desc)),
+      element_type(desc.element_type),
+      element_size(desc.element_size),
+      memory_type(desc.memory_type),
+      attributes(std::move(desc.attributes)),
+      size(desc.size),
+      data(std::move(desc.data)) {}
+
+BufferDescriptor& BufferDescriptor::operator=(BufferDescriptor&& desc) {
+  if (this != &desc) {
+    std::swap(element_type, desc.element_type);
+    std::swap(element_size, desc.element_size);
+    std::swap(memory_type, desc.memory_type);
+    attributes = std::move(desc.attributes);
+    std::swap(size, desc.size);
+    data = std::move(desc.data);
+    GPUObjectDescriptor::operator=(std::move(desc));
+  }
+  return *this;
+}
+
+void BufferDescriptor::Release() { data.clear(); }
+
 GPUResources BufferDescriptor::GetGPUResources() const {
   GPUResources resources;
   GPUBufferDescriptor desc;
@@ -115,6 +139,14 @@ absl::Status BufferDescriptor::PerformGetPtrSelector(
   return absl::OkStatus();
 }
 
+absl::Status BufferDescriptor::CreateGPUObject(CLContext* context,
+                                               GPUObjectPtr* result) const {
+  Buffer gpu_buffer;
+  RETURN_IF_ERROR(gpu_buffer.CreateFromBufferDescriptor(*this, context));
+  *result = absl::make_unique<Buffer>(std::move(gpu_buffer));
+  return absl::OkStatus();
+}
+
 Buffer::Buffer(cl_mem buffer, size_t size_in_bytes)
     : buffer_(buffer), size_(size_in_bytes) {}
 
@@ -148,6 +180,32 @@ absl::Status Buffer::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
   }
 
   resources->buffers.push_back({"buffer", buffer_});
+  return absl::OkStatus();
+}
+
+absl::Status Buffer::CreateFromBufferDescriptor(const BufferDescriptor& desc,
+                                                CLContext* context) {
+  cl_mem_flags flags = desc.memory_type == MemoryType::CONSTANT
+                           ? CL_MEM_READ_ONLY
+                           : CL_MEM_READ_WRITE;
+  if (!desc.data.empty()) {
+    flags |= CL_MEM_COPY_HOST_PTR;
+  }
+  cl_int error_code;
+  size_ = desc.size;
+  if (desc.data.empty()) {
+    buffer_ = clCreateBuffer(context->context(), flags, desc.size, nullptr,
+                             &error_code);
+  } else {
+    buffer_ = clCreateBuffer(context->context(), flags, desc.size,
+                             const_cast<unsigned char*>(desc.data.data()),
+                             &error_code);
+  }
+  if (!buffer_) {
+    return absl::UnknownError(
+        absl::StrCat("Failed to allocate device memory (clCreateBuffer): ",
+                     CLErrorCodeToString(error_code)));
+  }
   return absl::OkStatus();
 }
 

@@ -82,31 +82,26 @@ absl::Status ConvConstants::UploadWeights(
   const int kernel_y = weights.shape.h;
 
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int float_size = f32_weights ? 4 : 2;
+  const int float_count = src_channels_ * dst_depth * 4 * kernel_x * kernel_y;
 
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
   desc.memory_type = MemoryType::CONSTANT;
+  desc.size = float_size * float_count;
+  desc.data.resize(desc.size);
 
-  const int float_size = f32_weights ? 4 : 2;
-  const int float_count = src_channels_ * dst_depth * 4 * kernel_x * kernel_y;
-
-  Buffer weights_buffer;
   if (f32_weights) {
-    std::vector<float4> gpu_data(float_count / 4);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(
-        float_size * float_count, gpu_data.data(), context, &weights_buffer));
+    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, float_count / 4));
   } else {
-    std::vector<half4> gpu_data(float_count / 4);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(
-        float_size * float_count, gpu_data.data(), context, &weights_buffer));
+    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, float_count / 4));
   }
 
-  args_.AddObject("weigths", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
+  args_.AddObject("weigths",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
 
   return absl::OkStatus();
 }

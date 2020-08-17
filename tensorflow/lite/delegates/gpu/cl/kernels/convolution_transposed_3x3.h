@@ -96,19 +96,6 @@ absl::Status ConvolutionTransposed3x3::UploadWeights(
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
   const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
-  Buffer weights_buffer;
-  if (f32_weights) {
-    std::vector<float4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(
-        flt4_size * flt4_count, gpu_data.data(), context, &weights_buffer));
-  } else {
-    std::vector<half4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(
-        flt4_size * flt4_count, gpu_data.data(), context, &weights_buffer));
-  }
-
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
@@ -117,10 +104,19 @@ absl::Status ConvolutionTransposed3x3::UploadWeights(
               ConvolutionTransposed3x3::WeightsUploadType::CONSTANT_MEM
           ? MemoryType::CONSTANT
           : MemoryType::GLOBAL;
+  desc.size = flt4_size * flt4_count;
+  desc.data.resize(desc.size);
 
-  args_.AddObject("weights", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
+  if (f32_weights) {
+    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, flt4_count));
+  } else {
+    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, flt4_count));
+  }
+
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
 
   return absl::OkStatus();
 }
