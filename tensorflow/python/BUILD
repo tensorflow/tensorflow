@@ -6917,6 +6917,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["training/adam_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",

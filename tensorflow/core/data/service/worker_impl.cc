@@ -234,7 +234,11 @@ void DataServiceWorkerImpl::BackgroundThread(
     Status s = SendTaskUpdates(dispatcher.get());
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
-      Env::Default()->SleepForMicroseconds(kRetryIntervalMicros);
+      mutex_lock l(mu_);
+      if (!cancelled_) {
+        background_cv_.wait_for(
+            l, std::chrono::microseconds(kRetryIntervalMicros));
+      }
     }
   }
 }

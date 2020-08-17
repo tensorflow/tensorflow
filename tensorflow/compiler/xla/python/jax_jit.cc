@@ -303,7 +303,9 @@ struct ParsedArgumentsAsBuffers {
   CallSignature signature;
   // The concatenation of the dynamic positional arguments and the sorted
   // keyword arguments. We do not need ownership, thus the py::handle.
-  std::vector<py::handle> flat_dynamic_args;
+  // TODO(jblespiau): We do not need py::object here and py::handle suffice and
+  // will prevent any counter increment.
+  std::vector<py::object> flat_dynamic_args;
   std::vector<py::object> keep_alive_objects;
 
   // The following is only valid if the parsing succeeds.

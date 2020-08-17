@@ -80,8 +80,8 @@ CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
 # TODO(b/159155203): Consider TF_LITE_STATIC_MEMORY to align more with the fact
 # this flag is for an optimized micro runtime.
-CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
-CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
+CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
+CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
 ARFLAGS := -r
 
 # override these in the makefile.inc for specific compiler targets

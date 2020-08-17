@@ -209,6 +209,7 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
     std::string code =
         GetElementWiseCode(definition_, check_src_channels_size_);
     elementwise_code_ = "{\n" + code_ + "\n}\n" + elementwise_code_;
+    RETURN_IF_ERROR(args_.AllocateObjects(creation_context.context));
     RETURN_IF_ERROR(args_.TransformToCLCode(
         creation_context.device->info_,
         {{dst_tensors_names_[0], elementwise_code_}}, &code));
@@ -217,6 +218,7 @@ absl::Status GPUOperation::Compile(const CreationContext& creation_context) {
         code, "main_function", *creation_context.context,
         *creation_context.device, &kernel_));
   } else {
+    RETURN_IF_ERROR(args_.AllocateObjects(creation_context.context));
     RETURN_IF_ERROR(args_.TransformToCLCode(
         creation_context.device->info_,
         {{dst_tensors_names_[0], elementwise_code_}}, &code_));

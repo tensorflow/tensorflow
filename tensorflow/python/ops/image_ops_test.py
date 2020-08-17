@@ -249,36 +249,36 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
-  @test_util.run_deprecated_v1
   def testShapeInference(self):
-    # Shape inference works and produces expected output where possible
-    rgb_shape = [7, None, 19, 3]
-    gray_shape = rgb_shape[:-1] + [1]
-    with self.cached_session(use_gpu=True):
-      rgb_tf = array_ops.placeholder(dtypes.uint8, shape=rgb_shape)
-      gray = image_ops.rgb_to_grayscale(rgb_tf)
-      self.assertEqual(gray_shape, gray.get_shape().as_list())
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      # Shape inference works and produces expected output where possible
+      rgb_shape = [7, None, 19, 3]
+      gray_shape = rgb_shape[:-1] + [1]
+      with self.cached_session(use_gpu=True):
+        rgb_tf = array_ops.placeholder(dtypes.uint8, shape=rgb_shape)
+        gray = image_ops.rgb_to_grayscale(rgb_tf)
+        self.assertEqual(gray_shape, gray.get_shape().as_list())
 
-    with self.cached_session(use_gpu=True):
-      gray_tf = array_ops.placeholder(dtypes.uint8, shape=gray_shape)
-      rgb = image_ops.grayscale_to_rgb(gray_tf)
-      self.assertEqual(rgb_shape, rgb.get_shape().as_list())
+      with self.cached_session(use_gpu=True):
+        gray_tf = array_ops.placeholder(dtypes.uint8, shape=gray_shape)
+        rgb = image_ops.grayscale_to_rgb(gray_tf)
+        self.assertEqual(rgb_shape, rgb.get_shape().as_list())
 
-    # Shape inference does not break for unknown shapes
-    with self.cached_session(use_gpu=True):
-      rgb_tf_unknown = array_ops.placeholder(dtypes.uint8)
-      gray_unknown = image_ops.rgb_to_grayscale(rgb_tf_unknown)
-      self.assertFalse(gray_unknown.get_shape())
+      # Shape inference does not break for unknown shapes
+      with self.cached_session(use_gpu=True):
+        rgb_tf_unknown = array_ops.placeholder(dtypes.uint8)
+        gray_unknown = image_ops.rgb_to_grayscale(rgb_tf_unknown)
+        self.assertFalse(gray_unknown.get_shape())
 
-    with self.cached_session(use_gpu=True):
-      gray_tf_unknown = array_ops.placeholder(dtypes.uint8)
-      rgb_unknown = image_ops.grayscale_to_rgb(gray_tf_unknown)
-      self.assertFalse(rgb_unknown.get_shape())
+      with self.cached_session(use_gpu=True):
+        gray_tf_unknown = array_ops.placeholder(dtypes.uint8)
+        rgb_unknown = image_ops.grayscale_to_rgb(gray_tf_unknown)
+        self.assertFalse(rgb_unknown.get_shape())
 
 
 class AdjustGamma(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_float32(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
@@ -288,10 +288,10 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegex(ValueError, err_msg):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_uint8(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
@@ -301,10 +301,10 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegex(ValueError, err_msg):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_tensor(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
@@ -314,10 +314,10 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = constant_op.constant(-1.0, dtype=dtypes.float32)
 
-      image = image_ops.adjust_gamma(x, gamma=y)
-
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegex(errors.InvalidArgumentError, err_msg):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
+        image = image_ops.adjust_gamma(x, gamma=y)
         self.evaluate(image)
 
   def _test_adjust_gamma_uint8(self, gamma):
@@ -329,7 +329,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x_np = np.random.uniform(0, 255, (8, 8)).astype(np.uint8)
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_gamma(x, gamma=gamma)
-      y_tf = np.trunc(y.eval())
+      y_tf = np.trunc(self.evaluate(y))
 
       # calculate gamma correction using numpy
       # firstly, transform uint8 to float representation
@@ -349,22 +349,19 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x_np = np.random.uniform(0, 1.0, (8, 8))
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_gamma(x, gamma=gamma)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
 
       y_np = np.clip(np.power(x_np, gamma), 0, 1.0)
 
       self.assertAllClose(y_tf, y_np, 1e-6)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_one_float32(self):
     """Same image should be returned for gamma equal to one"""
     self._test_adjust_gamma_float32(1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_one_uint8(self):
     self._test_adjust_gamma_uint8(1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_zero_uint8(self):
     """White image should be returned for gamma equal
 
@@ -372,7 +369,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_uint8(gamma=0.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_one_uint8(self):
     """Verifying the output with expected results for gamma
 
@@ -380,7 +376,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_uint8(gamma=0.5)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_greater_one_uint8(self):
     """Verifying the output with expected results for gamma
 
@@ -388,7 +383,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_uint8(gamma=1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_one_float32(self):
     """Verifying the output with expected results for gamma
 
@@ -396,7 +390,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_float32(0.5)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_greater_one_float32(self):
     """Verifying the output with expected results for gamma
 
@@ -404,7 +397,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_float32(1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_zero_float32(self):
     """White image should be returned for gamma equal
 

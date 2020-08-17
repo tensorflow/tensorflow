@@ -81,6 +81,28 @@ Status CreateNamedJob(int64 job_id, int64 dataset_id, NamedJobKey named_job_key,
   return Status::OK();
 }
 
+Status AcquireJobClientId(int64 job_id, int64 job_client_id,
+                          DispatcherState* state) {
+  Update update;
+  AcquireJobClientUpdate* acquire_job_client =
+      update.mutable_acquire_job_client();
+  acquire_job_client->set_job_id(job_id);
+  acquire_job_client->set_job_client_id(job_client_id);
+  TF_RETURN_IF_ERROR(state->Apply(update));
+  return Status::OK();
+}
+
+Status ReleaseJobClientId(int64 job_client_id, int64 release_time,
+                          DispatcherState* state) {
+  Update update;
+  ReleaseJobClientUpdate* release_job_client =
+      update.mutable_release_job_client();
+  release_job_client->set_job_client_id(job_client_id);
+  release_job_client->set_time_micros(release_time);
+  TF_RETURN_IF_ERROR(state->Apply(update));
+  return Status::OK();
+}
+
 Status CreateTask(int64 task_id, int64 job_id, int64 dataset_id,
                   const std::string& worker_address, DispatcherState* state) {
   Update update;
@@ -398,6 +420,51 @@ TEST(DispatcherState, FinishMultiTaskJob) {
     TF_EXPECT_OK(state.JobFromId(job_id, &job));
     EXPECT_TRUE(job->finished);
   }
+}
+
+TEST(DispatcherState, AcquireJobClientId) {
+  int64 job_id = 3;
+  int64 job_client_id_1 = 1;
+  int64 job_client_id_2 = 2;
+  int64 dataset_id = 10;
+  DispatcherState state;
+  TF_EXPECT_OK(RegisterDataset(dataset_id, &state));
+  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, &state));
+  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id_1, &state));
+  {
+    std::shared_ptr<const Job> job;
+    TF_EXPECT_OK(state.JobFromId(job_id, &job));
+    EXPECT_EQ(job->num_clients, 1);
+    TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id_2, &state));
+    EXPECT_EQ(job->num_clients, 2);
+  }
+  {
+    std::shared_ptr<const Job> job;
+    TF_EXPECT_OK(state.JobForJobClientId(job_client_id_1, job));
+    EXPECT_EQ(job->job_id, job_id);
+  }
+  {
+    std::shared_ptr<const Job> job;
+    TF_EXPECT_OK(state.JobForJobClientId(job_client_id_2, job));
+    EXPECT_EQ(job->job_id, job_id);
+  }
+}
+
+TEST(DispatcherState, ReleaseJobClientId) {
+  int64 job_id = 3;
+  int64 dataset_id = 10;
+  int64 job_client_id = 6;
+  int64 release_time = 100;
+  DispatcherState state;
+  TF_EXPECT_OK(RegisterDataset(dataset_id, &state));
+  TF_EXPECT_OK(CreateAnonymousJob(job_id, dataset_id, &state));
+  TF_EXPECT_OK(AcquireJobClientId(job_id, job_client_id, &state));
+  TF_EXPECT_OK(ReleaseJobClientId(job_client_id, release_time, &state));
+  std::shared_ptr<const Job> job;
+  TF_EXPECT_OK(state.JobFromId(job_id, &job));
+  EXPECT_EQ(job->num_clients, 0);
+  Status s = state.JobForJobClientId(job_client_id, job);
+  EXPECT_EQ(s.code(), error::NOT_FOUND);
 }
 
 }  // namespace data

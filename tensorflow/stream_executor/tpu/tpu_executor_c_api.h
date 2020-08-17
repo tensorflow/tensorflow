@@ -65,6 +65,8 @@ bool TpuExecutor_CreateStreamDependency(SE_StreamExecutor* executor,
 void TpuExecutor_GetStatus(SE_StreamExecutor* executor, SE_Stream* stream,
                            SE_Status* status);
 
+SE_TpuTopology_Core* TpuExecutor_GetCoreLocation(SE_StreamExecutor* executor);
+
 void TpuExecutor_AllocateEvent(SE_StreamExecutor* executor, SE_Event* event,
                                SE_Status* status);
 void TpuExecutor_DeallocateEvent(SE_StreamExecutor* executor, SE_Event* event,
@@ -304,6 +306,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateStream);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_CreateStreamDependency);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetStatus);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetCoreLocation);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_AllocateEvent);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateEvent);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_PollForEventStatus);

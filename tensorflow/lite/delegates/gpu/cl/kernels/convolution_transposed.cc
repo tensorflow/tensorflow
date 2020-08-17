@@ -168,7 +168,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
        "args.dst_tensor.Height() || dst_z >= "
        "args.dst_tensor.Slices()) return;\n";
   if (weights_are_buffer) {
-    c += "  int f_base = dst_z * args.src_tensor.Slice() * args.kernel_size_x "
+    c += "  int f_base = dst_z * args.src_tensor.Slices() * args.kernel_size_x "
          "* args.kernel_size_y;\n";
   }
   for (int i = 0; i < block_size.x * block_size.y * block_size.z; ++i) {
