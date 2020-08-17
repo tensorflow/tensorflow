@@ -2557,6 +2557,7 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
         }
         *(shape.mutable_tuple_shapes(i)->mutable_layout()) = *layout;
       }
+      instr.set_constrain_layout(true);
     }
     *instr.mutable_shape() = shape.ToProto();
 
