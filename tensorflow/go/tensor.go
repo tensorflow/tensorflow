@@ -207,7 +207,7 @@ func (t *Tensor) DataType() DataType { return DataType(C.TF_TensorType(t.c)) }
 // Shape returns the shape of the Tensor.
 func (t *Tensor) Shape() []int64 { return t.shape }
 
-// Rehape  updates tensor's shape in place if this is possible or returns an error otherwise.
+// Reshape  updates tensor's shape in place if this is possible or returns an error otherwise.
 func (t *Tensor) Reshape(new_shape []int64) error {
 	old_shape_size := numElements(t.shape)
 	new_shape_size := numElements(new_shape)
