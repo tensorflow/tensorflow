@@ -475,7 +475,6 @@ tf_xla_py_test(
     enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
-        "many_xla_args",
         "no_pip",  # TODO(b/149738646): fix pip install so these tests run on kokoro pip
         "no_rocm",
     ],
