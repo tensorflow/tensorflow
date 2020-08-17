@@ -72,6 +72,8 @@ void GrpcDataServerBase::Stop() {
   }
   server_->Shutdown();
   stopped_ = true;
+  LOG(INFO) << "Shut down " << server_type_ << " server running at port "
+            << BoundPort();
 }
 
 void GrpcDataServerBase::Join() { server_->Wait(); }

@@ -257,9 +257,11 @@ Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(), processing_mode,
                                  absl::optional<NamedJobKey>(), &job));
+    int64 job_client_id;
+    TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+    response->set_job_client_id(job_client_id);
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, &tasks));
   }
-  response->set_job_id(job->job_id);
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
 
   VLOG(3) << "Creating job " << job->job_id << " for dataset "
@@ -283,7 +285,9 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     if (s.ok()) {
       TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
                                              request->dataset_id()));
-      response->set_job_id(job->job_id);
+      int64 job_client_id;
+      TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+      response->set_job_client_id(job_client_id);
       VLOG(3) << "Found existing job for name=" << key.name
               << ", index=" << key.index << ". job_id: " << job->job_id;
       return Status::OK();
@@ -292,12 +296,30 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     }
     TF_RETURN_IF_ERROR(
         CreateJob(request->dataset_id(), requested_processing_mode, key, &job));
+    int64 job_client_id;
+    TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+    response->set_job_client_id(job_client_id);
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, &tasks));
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
-  response->set_job_id(job->job_id);
   VLOG(3) << "Created job " << job->job_id << " for dataset "
           << request->dataset_id() << " and name " << request->job_name();
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::ReleaseJobClient(
+    const ReleaseJobClientRequest* request,
+    ReleaseJobClientResponse* response) {
+  mutex_lock l(mu_);
+  int64 job_client_id = request->job_client_id();
+  std::shared_ptr<const Job> job;
+  TF_RETURN_IF_ERROR(state_.JobForJobClientId(job_client_id, job));
+  Update update;
+  ReleaseJobClientUpdate* release_job_client =
+      update.mutable_release_job_client();
+  release_job_client->set_job_client_id(job_client_id);
+  release_job_client->set_time_micros(Env::Default()->NowMicros());
+  TF_RETURN_IF_ERROR(Apply(update));
   return Status::OK();
 }
 
@@ -353,6 +375,19 @@ Status DataServiceDispatcherImpl::CreateJob(
   }
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::AcquireJobClientId(
+    const std::shared_ptr<const Job>& job, int64& job_client_id)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  job_client_id = state_.NextAvailableJobClientId();
+  Update update;
+  AcquireJobClientUpdate* acquire_job_client =
+      update.mutable_acquire_job_client();
+  acquire_job_client->set_job_client_id(job_client_id);
+  acquire_job_client->set_job_id(job->job_id);
+  TF_RETURN_IF_ERROR(Apply(update));
   return Status::OK();
 }
 
@@ -452,20 +487,20 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
 Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
                                            GetTasksResponse* response) {
   mutex_lock l(mu_);
-  VLOG(3) << "Looking up tasks for job id " << request->job_id();
+  VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();
+  std::shared_ptr<const Job> job;
+  TF_RETURN_IF_ERROR(state_.JobForJobClientId(request->job_client_id(), job));
   std::vector<std::shared_ptr<const Task>> tasks;
-  TF_RETURN_IF_ERROR(state_.TasksForJob(request->job_id(), &tasks));
+  TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, &tasks));
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
     task_info->set_task_id(task->task_id);
-    task_info->set_job_id(task->job_id);
+    task_info->set_job_id(job->job_id);
   }
-  std::shared_ptr<const Job> job;
-  TF_RETURN_IF_ERROR(state_.JobFromId(request->job_id(), &job));
   response->set_job_finished(job->finished);
-  VLOG(3) << "Found " << response->task_info_size() << " tasks for job id "
-          << request->job_id();
+  VLOG(3) << "Found " << response->task_info_size()
+          << " tasks for job client id " << request->job_client_id();
   return Status::OK();
 }
 

@@ -187,11 +187,19 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
 
     ~Iterator() override {
       VLOG(1) << "Destroying data service dataset iterator for job id "
-              << job_id_;
+              << job_client_id_;
       CancelThreads();
       if (deregister_fn_) deregister_fn_();
-      // Thread destructors will block until the threads finish, no need to wait
-      // here.
+      task_thread_manager_.reset();
+      if (initialized_) {
+        Status s = dispatcher_->ReleaseJobClient(job_client_id_);
+        if (!s.ok()) {
+          LOG(WARNING) << "Failed to release job client id: " << s;
+        }
+      }
+      for (auto& worker_thread : worker_threads_) {
+        worker_thread.reset();
+      }
     }
 
     void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
@@ -209,27 +217,28 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       TF_RETURN_IF_ERROR(RegisterCancellationCallback(
           ctx->cancellation_manager(), [this]() { CancelThreads(); },
           &deregister_fn_));
-      DataServiceDispatcherClient dispatcher(dataset()->address_,
-                                             dataset()->protocol_);
+      dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
+          dataset()->address_, dataset()->protocol_);
       int64 deadline_micros = ctx->env()->NowMicros() + kRetryTimeoutMicros;
       if (dataset()->job_name_.empty()) {
         TF_RETURN_IF_ERROR(grpc_util::Retry(
             [&]() {
-              return dispatcher.CreateJob(dataset()->dataset_id_,
-                                          dataset()->processing_mode_,
-                                          &job_id_);
+              return dispatcher_->CreateJob(dataset()->dataset_id_,
+                                            dataset()->processing_mode_,
+                                            &job_client_id_);
             },
             "create job", deadline_micros));
       } else {
         TF_RETURN_IF_ERROR(grpc_util::Retry(
             [&]() {
-              return dispatcher.GetOrCreateJob(
+              return dispatcher_->GetOrCreateJob(
                   dataset()->dataset_id_, dataset()->processing_mode_,
-                  dataset()->job_name_, iterator_index_, &job_id_);
+                  dataset()->job_name_, iterator_index_, &job_client_id_);
             },
             "get or create job", deadline_micros));
       }
-      VLOG(1) << "Created data service job with id " << job_id_;
+      initialized_ = true;
+      VLOG(1) << "Created data service job with id " << job_client_id_;
       return Status::OK();
     }
 
@@ -310,8 +319,6 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       auto cleanup =
           gtl::MakeCleanup([] { VLOG(1) << "Task thread manager exiting"; });
       VLOG(1) << "Starting task thread manager";
-      DataServiceDispatcherClient dispatcher(dataset()->address_,
-                                             dataset()->protocol_);
       uint64 next_check = Env::Default()->NowMicros();
       while (true) {
         {
@@ -329,22 +336,21 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             return;
           }
         }
-        UpdateTasks(&dispatcher);
+        UpdateTasks();
         UpdateWorkerThreads(ctx.get());
         next_check = Env::Default()->NowMicros() +
                      dataset()->task_refresh_interval_ms_ * 1000;
       }
     }
 
-    void UpdateTasks(DataServiceDispatcherClient* dispatcher)
-        LOCKS_EXCLUDED(mu_) {
+    void UpdateTasks() LOCKS_EXCLUDED(mu_) {
       VLOG(3) << "Updating tasks";
       std::vector<TaskInfo> tasks;
       bool job_finished;
-      Status s = dispatcher->GetTasks(job_id_, &tasks, &job_finished);
+      Status s = dispatcher_->GetTasks(job_client_id_, &tasks, &job_finished);
       if (!s.ok()) {
-        LOG(WARNING) << "Failed to get task info for job id " << job_id_ << ": "
-                     << s;
+        LOG(WARNING) << "Failed to get task info for job client id "
+                     << job_client_id_ << ": " << s;
         return;
       }
       absl::flat_hash_map<int64, TaskInfo> task_id_to_task;
@@ -577,15 +583,13 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
     Status status_ TF_GUARDED_BY(mu_) = Status::OK();
     std::queue<std::vector<Tensor>> results_ TF_GUARDED_BY(mu_);
 
+    bool initialized_ = false;
     // Set once in Initialize().
-    int64 job_id_;
+    int64 job_client_id_;
+    std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 
     bool job_finished_ = false;
-    // Must be ordered second to last so that worker threads are joined before
-    // destroying other fields.
     std::vector<std::unique_ptr<Thread>> worker_threads_ TF_GUARDED_BY(mu_);
-    // Must be ordered last so that the thread is joined before destroying other
-    // fields.
     std::unique_ptr<Thread> task_thread_manager_ GUARDED_BY(mu_);
   };
 
