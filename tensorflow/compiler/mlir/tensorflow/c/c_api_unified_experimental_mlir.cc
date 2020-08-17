@@ -65,6 +65,9 @@ using tensorflow::AbstractTensorInterface;
 using tensorflow::dyn_cast;
 using tensorflow::OutputList;
 using tensorflow::string;
+using tensorflow::errors::FailedPrecondition;
+using tensorflow::errors::InvalidArgument;
+using tensorflow::errors::Unimplemented;
 using tensorflow::tracing::TracingContext;
 using tensorflow::tracing::TracingOperation;
 using tensorflow::tracing::TracingTensorHandle;
@@ -104,6 +107,9 @@ class MlirTensor : public TracingTensorHandle {
   }
 
   Value getValue() { return value_; }
+  Type getElementType() {
+    return value_.getType().cast<ShapedType>().getElementType();
+  }
 
   // For LLVM style RTTI.
   static bool classof(const AbstractTensorHandle* ptr) {
@@ -252,12 +258,12 @@ class MlirFunctionContext : public TracingContext {
   Status Finalize(OutputList* outputs, AbstractFunction** f) override;
 
   Status RegisterFunction(AbstractFunction* func) override {
-    return tensorflow::errors::Unimplemented(
+    return Unimplemented(
         "Registering graph functions has not been implemented yet.");
   }
 
   Status RemoveFunction(const string& func) override {
-    return tensorflow::errors::Unimplemented(
+    return Unimplemented(
         "MlirFunctionContext::RemoveFunction has not been implemented yet.");
   }
 
@@ -272,8 +278,7 @@ class MlirFunctionContext : public TracingContext {
 
 Status MlirAbstractOp::Reset(const char* op, const char* device_name) {
   if (state_) {
-    return tensorflow::errors::FailedPrecondition(
-        "Reset called on already built op.");
+    return FailedPrecondition("Reset called on already built op.");
   }
   TF_RETURN_IF_ERROR(
       tensorflow::OpRegistry::Global()->LookUpOpDef(op, &op_def_));
@@ -289,10 +294,9 @@ Status MlirAbstractOp::Reset(const char* op, const char* device_name) {
 
 Status MlirAbstractOp::SetAttrType(const char* attr_name,
                                    tensorflow::DataType dtype) {
-  if (!state_) {
-    return Status(tensorflow::error::Code::FAILED_PRECONDITION,
-                  "op_type must be specified before specifying attrs.");
-  }
+  if (!state_)
+    return FailedPrecondition(
+        "op_type must be specified before specifying attrs.");
   Type mlir_type;
   Builder builder(context_);
   TF_RETURN_IF_ERROR(ConvertDataTypeToTensor(dtype, builder, &mlir_type));
@@ -303,8 +307,7 @@ Status MlirAbstractOp::SetAttrType(const char* attr_name,
 Status MlirAbstractOp::SetOpName(const char* const op_name) {
   // TODO(aminim): should we use a location?
   if (op_name_) {
-    return tensorflow::errors::FailedPrecondition(
-        "SetOpName called on already built op.");
+    return FailedPrecondition("SetOpName called on already built op.");
   }
   op_name_ = op_name;
   return Status::OK();
@@ -313,8 +316,7 @@ Status MlirAbstractOp::SetOpName(const char* const op_name) {
 Status MlirAbstractOp::AddRef(Type type, Type* output_type) {
   Type elt_type = getElementTypeOrSelf(type);
   if (elt_type.isa<mlir::TF::TensorFlowRefType>()) {
-    return tensorflow::errors::InvalidArgument(
-        "Requested reference to a reference type");
+    return InvalidArgument("Requested reference to a reference type");
   }
   elt_type = TensorFlowRefType::get(elt_type);
   if (RankedTensorType tensor_type = type.dyn_cast<RankedTensorType>()) {
@@ -330,10 +332,10 @@ Status MlirAbstractOp::Create(ArrayRef<Value> operands,
   Builder builder(context_);
 
   if (current_ods_input_ != op_def_->input_arg_size())
-    return tensorflow::errors::InvalidArgument(
-        absl::StrCat("Mismatch in operands number: got ", current_ods_input_,
-                     " expected ", op_def_->input_arg_size(), " ; for op ",
-                     state_->name.getStringRef().str()));
+    return InvalidArgument(absl::StrCat("Mismatch in operands number: got ",
+                                        current_ods_input_, " expected ",
+                                        op_def_->input_arg_size(), " ; for op ",
+                                        state_->name.getStringRef().str()));
 
   // Process results according to the op_def and infer types for derived
   // attributes.
@@ -342,33 +344,28 @@ Status MlirAbstractOp::Create(ArrayRef<Value> operands,
     if (!output_arg.number_attr().empty()) {
       // Same type repeated "repeats" times.
       Attribute repeats_attr = attrs_[output_arg.number_attr()];
-      if (!repeats_attr) {
-        return tensorflow::errors::InvalidArgument(
-            "Missing attribute '", output_arg.number_attr(),
-            "' required for output list '", output_arg.name(), "'");
-      }
-      if (!repeats_attr.isa<IntegerAttr>()) {
-        return tensorflow::errors::InvalidArgument(
-            "Attribute '", output_arg.number_attr(),
-            "' required for output list '", output_arg.name(),
-            "' isn't an integer");
-      }
+      if (!repeats_attr)
+        return InvalidArgument("Missing attribute '", output_arg.number_attr(),
+                               "' required for output list '",
+                               output_arg.name(), "'");
+      if (!repeats_attr.isa<IntegerAttr>())
+        return InvalidArgument("Attribute '", output_arg.number_attr(),
+                               "' required for output list '",
+                               output_arg.name(), "' isn't an integer");
       int64_t repeats = repeats_attr.cast<IntegerAttr>().getInt();
 
       if (!output_arg.type_attr().empty()) {
         // Same type repeated "repeats" times.
         Attribute attr = attrs_[output_arg.type_attr()];
-        if (!attr) {
-          return tensorflow::errors::InvalidArgument(
-              "Missing attribute '", output_arg.type_attr(),
-              "' required for output '", output_arg.name(), "'");
-        }
+        if (!attr)
+          return InvalidArgument("Missing attribute '", output_arg.type_attr(),
+                                 "' required for output '", output_arg.name(),
+                                 "'");
         TypeAttr type_attr = attr.dyn_cast<TypeAttr>();
-        if (!type_attr) {
-          return tensorflow::errors::InvalidArgument(
-              "Attribute '", output_arg.type_attr(), "' required for output '",
-              output_arg.name(), "' isn't a type attribute");
-        }
+        if (!type_attr)
+          return InvalidArgument("Attribute '", output_arg.type_attr(),
+                                 "' required for output '", output_arg.name(),
+                                 "' isn't a type attribute");
         for (int i = 0; i < repeats; ++i)
           state_->types.push_back(type_attr.getType());
       } else if (output_arg.type() != tensorflow::DT_INVALID) {
@@ -379,47 +376,40 @@ Status MlirAbstractOp::Create(ArrayRef<Value> operands,
           state_->types.push_back(type);
         }
       } else {
-        return tensorflow::errors::InvalidArgument(
-            "Missing type or type_attr field in ",
-            output_arg.ShortDebugString());
+        return InvalidArgument("Missing type or type_attr field in ",
+                               output_arg.ShortDebugString());
       }
     } else if (!output_arg.type_attr().empty()) {
       Attribute attr = attrs_[output_arg.type_attr()];
-      if (!attr) {
-        return tensorflow::errors::InvalidArgument(
-            "Missing attribute '", output_arg.type_attr(),
-            "' required for output '", output_arg.name(), "'");
-      }
+      if (!attr)
+        return InvalidArgument("Missing attribute '", output_arg.type_attr(),
+                               "' required for output '", output_arg.name(),
+                               "'");
       TypeAttr type_attr = attr.dyn_cast<TypeAttr>();
-      if (!type_attr) {
-        return tensorflow::errors::InvalidArgument(
-            "Attribute '", output_arg.type_attr(), "' required for output '",
-            output_arg.name(), "' isn't a type attribute");
-      }
+      if (!type_attr)
+        return InvalidArgument("Attribute '", output_arg.type_attr(),
+                               "' required for output '", output_arg.name(),
+                               "' isn't a type attribute");
       state_->types.push_back(type_attr.getValue());
     } else if (!output_arg.type_list_attr().empty()) {
       // This is pointing to an attribute which is an array of types.
       Attribute attr = attrs_[output_arg.type_list_attr()];
-      if (!attr) {
-        return tensorflow::errors::InvalidArgument(
+      if (!attr)
+        return InvalidArgument(
             "Missing attribute '", output_arg.type_list_attr(),
             "' required for output '", output_arg.name(), "'");
-      }
       ArrayAttr array_attr = attr.dyn_cast<ArrayAttr>();
-      if (!array_attr) {
-        return tensorflow::errors::InvalidArgument(
-            "Attribute '", output_arg.type_list_attr(),
-            "' required for output '", output_arg.name(),
-            "' isn't an array attribute");
-      }
+      if (!array_attr)
+        return InvalidArgument("Attribute '", output_arg.type_list_attr(),
+                               "' required for output '", output_arg.name(),
+                               "' isn't an array attribute");
       for (Attribute attr : array_attr) {
         TypeAttr type_attr = attr.dyn_cast<TypeAttr>();
-        if (!type_attr) {
-          return tensorflow::errors::InvalidArgument(
-              "Array Attribute '", output_arg.type_list_attr(),
-              "' required for output '", output_arg.name(),
-              "' has a non-Type element");
-        }
+        if (!type_attr)
+          return InvalidArgument("Array Attribute '",
+                                 output_arg.type_list_attr(),
+                                 "' required for output '", output_arg.name(),
+                                 "' has a non-Type element");
         state_->types.push_back(type_attr.getValue());
       }
     } else if (output_arg.type() != tensorflow::DT_INVALID) {
@@ -429,8 +419,8 @@ Status MlirAbstractOp::Create(ArrayRef<Value> operands,
           ConvertDataTypeToTensor(output_arg.type(), builder, &type));
       state_->types.push_back(type);
     } else {
-      return tensorflow::errors::InvalidArgument("No type fields in ",
-                                                 output_arg.ShortDebugString());
+      return InvalidArgument("No type fields in ",
+                             output_arg.ShortDebugString());
     }
     if (output_arg.is_ref()) {
       // For all types that were added by this function call, make them refs.
@@ -464,80 +454,65 @@ Status MlirAbstractOp::AddInputList(
 
 Status MlirAbstractOp::SetAttrString(const char* attr_name, const char* data,
                                      size_t length) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrString has not been implemented yet.");
+  return Unimplemented("SetAttrString has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrInt(const char* attr_name, int64_t value) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrInt has not been implemented yet.");
+  return Unimplemented("SetAttrInt has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrFloat(const char* attr_name, float value) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrFloat has not been implemented yet.");
+  return Unimplemented("SetAttrFloat has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrBool(const char* attr_name, bool value) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrBool has not been implemented yet.");
+  return Unimplemented("SetAttrBool has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrShape(const char* attr_name, const int64_t* dims,
                                     const int num_dims) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrShape has not been implemented yet.");
+  return Unimplemented("SetAttrShape has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrFunction(const char* attr_name,
                                        const AbstractOperation* value) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrFunction has not been implemented yet.");
+  return Unimplemented("SetAttrFunction has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrFunctionName(const char* attr_name,
                                            const char* value, size_t length) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrFunctionName has not been implemented yet.");
+  return Unimplemented("SetAttrFunctionName has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrTensor(const char* attr_name,
                                      AbstractTensorInterface* tensor) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrTensor has not been implemented yet.");
+  return Unimplemented("SetAttrTensor has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrStringList(const char* attr_name,
                                          const void* const* values,
                                          const size_t* lengths,
                                          int num_values) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrStringList has not been implemented yet.");
+  return Unimplemented("SetAttrStringList has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrFloatList(const char* attr_name,
                                         const float* values, int num_values) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrFloatList has not been implemented yet.");
+  return Unimplemented("SetAttrFloatList has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrIntList(const char* attr_name,
                                       const int64_t* values, int num_values) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrIntList has not been implemented yet.");
+  return Unimplemented("SetAttrIntList has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrTypeList(const char* attr_name,
                                        const tensorflow::DataType* values,
                                        int num_values) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrTypeList has not been implemented yet.");
+  return Unimplemented("SetAttrTypeList has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrBoolList(const char* attr_name,
                                        const unsigned char* values,
                                        int num_values) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrBoolList has not been implemented yet.");
+  return Unimplemented("SetAttrBoolList has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrShapeList(const char* attr_name,
                                         const int64_t** dims,
                                         const int* num_dims, int num_values) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrShapeList has not been implemented yet.");
+  return Unimplemented("SetAttrShapeList has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrFunctionList(
     const char* attr_name, absl::Span<const AbstractOperation*> values) {
-  return tensorflow::errors::Unimplemented(
-      "SetAttrFunctionList has not been implemented yet.");
+  return Unimplemented("SetAttrFunctionList has not been implemented yet.");
 }
 
 Status MlirFunction::GetFunctionDef(tensorflow::FunctionDef** f) {
@@ -590,15 +565,13 @@ Status MlirFunctionContext::AddParameter(tensorflow::DataType dtype,
 
 Status MlirAbstractOp::AddInput(AbstractTensorHandle* input) {
   if (current_ods_input_ >= op_def_->input_arg_size())
-    return tensorflow::errors::InvalidArgument(
+    return InvalidArgument(
         absl::StrCat("More Input() (", current_ods_input_, ") calls than the ",
                      op_def_->input_arg_size(), " allowed input_args ; for op ",
                      state_->name.getStringRef().str()));
 
   auto* operand = dyn_cast<MlirTensor>(input);
-  if (!operand)
-    return tensorflow::errors::InvalidArgument(
-        "Unable to cast input to MlirTensor");
+  if (!operand) return InvalidArgument("Unable to cast input to MlirTensor");
   operands_.push_back(operand->getValue());
 
   // Get the next ArgDef and use it to infer the derived attributes associated
@@ -629,14 +602,11 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
   SmallVector<Value, 8> ret_operands;
   for (auto* output : outputs->outputs) {
     auto* operand = dyn_cast<MlirTensor>(output);
-    if (!operand) {
-      return tensorflow::errors::InvalidArgument(
-          "Capturing eager tensors is not supported yet.");
-    }
-    if (operand->getValue().getContext() != context_.get()) {
-      return tensorflow::errors::InvalidArgument(
+    if (!operand)
+      return InvalidArgument("Capturing eager tensors is not supported yet.");
+    if (operand->getValue().getContext() != context_.get())
+      return InvalidArgument(
           "Capturing tensors from other context is not supported.");
-    }
     ret_operands.push_back(operand->getValue());
   }
   builder_.create<ReturnOp>(func_.getLoc(), ret_operands);
