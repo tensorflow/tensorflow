@@ -39,7 +39,7 @@ constexpr int kPdmSamplesPerSlot = 256;
 constexpr int kPdmSampleBufferSize = (kPdmNumSlots * kPdmSamplesPerSlot);
 uint32_t g_ui32PDMSampleBuffer0[kPdmSampleBufferSize];
 uint32_t g_ui32PDMSampleBuffer1[kPdmSampleBufferSize];
-uint32_t g_PowerOff = 0;
+//uint32_t g_PowerOff = 0;  //need to mute the compiler
 
 // Controls the double buffering between the two DMA buffers.
 int g_dma_destination_index = 0;
@@ -173,10 +173,10 @@ void enable_burst_mode(tflite::ErrorReporter* error_reporter) {
 //*****************************************************************************
 am_hal_pdm_config_t g_sPdmConfig = {
     .eClkDivider = AM_HAL_PDM_MCLKDIV_1,
-    .eLeftGain = AM_HAL_PDM_GAIN_P165DB,
-    .eRightGain = AM_HAL_PDM_GAIN_P165DB,
+    .eLeftGain = AM_HAL_PDM_GAIN_M60DB,        //Previous P165DB gain will saturate the D-Mic
+    .eRightGain = AM_HAL_PDM_GAIN_M60DB,
     .ui32DecimationRate =
-        48,  // OSR = 1500/16 = 96 = 2*SINCRATE --> SINC_RATE = 48
+        47,  // OSR = 1500/16 = 96 = 2*SINCRATE --> SINC_RATE = 47
     .bHighPassEnable = 1,
     .ui32HighPassCutoff = 0x2,
     .ePDMClkSpeed = AM_HAL_PDM_CLK_1_5MHZ,
