@@ -136,7 +136,7 @@ Inputs must be of same size and shape.
   let hasFolder = 1;
 }
 
-def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef, TF_CwiseBinary]>,
+def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef]>,
                  WithBroadcastableBinOpBuilder {
   let summary = "Returns x + y element-wise.";
 
@@ -859,15 +859,15 @@ about broadcasting
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$y,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Complex128, TF_Complex64]>:$x,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Complex128, TF_Complex64]>:$y,
 
     DefaultValuedAttr<BoolAttr, "false">:$adj_x,
     DefaultValuedAttr<BoolAttr, "false">:$adj_y
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I32, I64, TF_Complex128, TF_Complex64]>:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Complex128, TF_Complex64]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2057,12 +2057,12 @@ and `B, D, F, H` as group 1. Thus we get the outputs:
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F32, I32, TF_Uint32]>:$input,
+    TensorOf<[BF16, F16, F32, I32, TF_Uint32]>:$input,
     I32Tensor:$group_assignment
   );
 
   let results = (outs
-    TensorOf<[BF16, F32, I32, TF_Uint32]>:$output
+    TensorOf<[BF16, F16, F32, I32, TF_Uint32]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -2547,7 +2547,7 @@ this op runs. The length of the list is returned in two cases:
   );
 }
 
-def TF_DiagOp : TF_Op<"Diag", [NoSideEffect]> {
+def TF_DiagOp : TF_Op<"Diag", [NoSideEffect, SameOperandsAndResultElementType]> {
   let summary = "Returns a diagonal tensor with a given diagonal values.";
 
   let description = [{
@@ -6067,7 +6067,7 @@ def TF_MergeSummaryOp : TF_Op<"MergeSummary", [NoSideEffect, SameOperandsAndResu
 
   let description = [{
 This op creates a
-[`Summary`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/framework/summary.proto)
+[`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
 protocol buffer that contains the union of all the values in the input
 summaries.
 
@@ -6298,7 +6298,7 @@ the result here is consistent with a truncating divide. E.g.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_MulOp : TF_Op<"Mul", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef, TF_CwiseBinary]>,
+def TF_MulOp : TF_Op<"Mul", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary, TF_SameOperandsAndResultElementTypeResolveRef]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x * y element-wise.";
 
@@ -7457,9 +7457,6 @@ tf.range(start, limit, delta) ==> [3, 6, 9, 12, 15]
 def TF_RangeDatasetOp : TF_Op<"RangeDataset", []> {
   let summary = [{
 Creates a dataset with a range of values. Corresponds to python's xrange.
-  }];
-
-  let description = [{
   }];
 
   let arguments = (ins
@@ -9708,7 +9705,7 @@ I.e., \\(y = x * x = x^2\\).
 
 def TF_SquaredDifferenceOp : TF_Op<"SquaredDifference", [Commutative, NoSideEffect, ResultsBroadcastableShape]>,
                              WithBroadcastableBinOpBuilder {
-  let summary = "Returns (x - y)(x - y) element-wise.";
+  let summary = "Returns conj(x - y)(x - y) element-wise.";
 
   let description = [{
 *NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting
@@ -10185,7 +10182,7 @@ Examples:
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
 }
 
-def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef, TF_CwiseBinary]>,
+def TF_SubOp : TF_Op<"Sub", [NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary, TF_SameOperandsAndResultElementTypeResolveRef]>,
                WithBroadcastableBinOpBuilder {
   let summary = "Returns x - y element-wise.";
 
@@ -12234,6 +12231,13 @@ https://www.tensorflow.org/performance/xla/operation_semantics#pad
 def TF_XlaRecvFromHostOp : TF_Op<"XlaRecvFromHost", []> {
   let summary = "An op to receive a tensor from the host.";
 
+  let description = [{
+output: the tensor that will be received from the host.
+Toutput: element type for output.
+shape: shape for output.
+key: A unique identifier for this region used to match up host transfers.
+  }];
+
   let arguments = (ins
     TF_ShapeAttr:$shape,
     StrAttr:$key
@@ -12334,6 +12338,12 @@ i=0...N-1.
 
 def TF_XlaSendToHostOp : TF_Op<"XlaSendToHost", []> {
   let summary = "An op to send a tensor to the host.";
+
+  let description = [{
+input: the tensor that will be sent to the host.
+Tinput: element type for input.
+key: A unique identifier for this region used to match up host transfers.
+  }];
 
   let arguments = (ins
     TF_Tensor:$input,
@@ -12541,18 +12551,17 @@ Compiles a computations for execution on one or more TPU devices.
   }];
 
   let description = [{
-For the internal use of the distributed TPU compiler. Note that currently only
-single TPU device is supported.
+For the internal use of the distributed TPU compiler.
 
 'mlir_module' is a serialized MLIR module with a `main` function that contains
 target computation.
 'dynamic_shapes' contains dynamic shapes of arguments whose shapes were not
 known statically at TPUReplication rewrite time.
-'metadata' is a serialized TPUCompileMetadataProto describing
-the shapes and types of the inputs to the computation, as well as a mapping onto
-the TPU pod topology.
-'program' output is a string key that is passed to the _TPUExecute op and
-used to look up the program in the compilation cache.
+'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
+types of the inputs to the computation, as well as a mapping onto the TPU pod
+topology.
+'program' output is a string key that is passed to the TPUExecute op and used to
+look up the program in the compilation cache.
   }];
 
   let arguments = (ins
