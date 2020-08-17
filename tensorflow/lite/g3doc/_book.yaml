@@ -144,6 +144,7 @@ upper_tabs:
         path: /lite/performance/post_training_float16_quant
       - title: "Post-training integer quantization with int16 activations"
         path: /lite/performance/post_training_integer_quant_16x8
+        status: experimental
       - title: "Quantization specification"
         path: /lite/performance/quantization_spec
 
