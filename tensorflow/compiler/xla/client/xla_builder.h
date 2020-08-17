@@ -366,6 +366,7 @@ class XlaBuilder {
   //
   // TODO(b/119520625): Remove this API once we have more dynamic shape infra
   // ready.
+  ABSL_DEPRECATED("Use SetDimensionSize to set a dynamic dimension.")
   Status SetDynamicBinding(int64 dynamic_size_param_num,
                            ShapeIndex dynamic_size_param_index,
                            int64 target_param_num,
