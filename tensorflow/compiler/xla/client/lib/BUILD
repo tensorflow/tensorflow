@@ -292,7 +292,6 @@ xla_test(
     deps = [
         ":matrix",
         ":qr",
-        "//tensorflow/core/platform:tf32_utils",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
         "//tensorflow/compiler/xla:literal",
@@ -305,6 +304,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:tf32_utils",
     ],
 )
 
