@@ -431,7 +431,6 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     self._shape = tensor_shape.as_shape(shape)
     self._dtype = dtypes.as_dtype(dtype)
     self._handle = handle
-    self._graph_element = graph_element
     self._unique_id = unique_id
     self._handle_name = handle_name + ":0"
     self._constraint = constraint
