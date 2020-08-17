@@ -43,7 +43,7 @@ template <typename T>
 TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
                                    const T* expected_output_data,
                                    T* output_data, int output_length,
-                                   BuiltinOperator op,
+                                   TfLiteRegistration registration,
                                    TfLiteReducerParams* params,
                                    float tolerance = 1e-5) {
   int inputs_array_data[] = {2, 0, 1};
@@ -51,7 +51,6 @@ TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
   int outputs_array_data[] = {1, 2};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  const TfLiteRegistration registration = tflite::ops::micro::Register_MEAN();
   micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
                              outputs_array, params, micro_test::reporter);
 
@@ -75,6 +74,8 @@ void TestMeanFloatInput4D(const int* input_dims_data, const float* input_data,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
+  TfLiteRegistration registration = tflite::ops::micro::Register_MEAN();
+
   constexpr int num_of_inputs = 2;   // input and axis
   constexpr int num_of_outputs = 1;  // output
 
@@ -86,17 +87,16 @@ void TestMeanFloatInput4D(const int* input_dims_data, const float* input_data,
   };
 
   TF_LITE_MICRO_EXPECT_EQ(
-      kTfLiteOk,
-      ValidateReduceGoldens(tensors, tensors_size, expected_output_data,
-                            output_data, output_dims_count,
-                            tflite::BuiltinOperator_MEAN, params, tolerance));
+      kTfLiteOk, ValidateReduceGoldens(
+                     tensors, tensors_size, expected_output_data, output_data,
+                     output_dims_count, registration, params, tolerance));
 }
 
 void TestReduceOpFloat(const int* input_dims_data, const float* input_data,
                        const int* axis_dims_data, const int32_t* axis_data,
                        const int* output_dims_data,
                        const float* expected_output_data,
-                       BuiltinOperator op_code, int op_version,
+                       TfLiteRegistration registration,
                        TfLiteReducerParams* params, float tolerance = 1e-5) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
@@ -118,7 +118,7 @@ void TestReduceOpFloat(const int* input_dims_data, const float* input_data,
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk, ValidateReduceGoldens(
                      tensors, tensors_size, expected_output_data, output_data,
-                     output_dims_count, op_code, params, tolerance));
+                     output_dims_count, registration, params, tolerance));
 }
 
 template <typename T>
@@ -128,7 +128,7 @@ void TestReduceOpQuantized(const int* input_dims_data, const float* input_data,
                            const int* output_dims_data,
                            const float* expected_output_data,
                            float output_scale, int output_zero_point,
-                           BuiltinOperator op_code, int op_version,
+                           TfLiteRegistration registration,
                            TfLiteReducerParams* params) {
   // Convert dimesion arguments to TfLiteArrays
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
@@ -162,7 +162,7 @@ void TestReduceOpQuantized(const int* input_dims_data, const float* input_data,
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk,
       ValidateReduceGoldens(tensors, tensors_size, expected_output_data_quant,
-                            output_data_quant, output_dims_count, op_code,
+                            output_data_quant, output_dims_count, registration,
                             params, 0.01));
 }
 
@@ -236,7 +236,7 @@ TF_LITE_MICRO_TEST(FloatMaxOpTestNotKeepDims) {
 
   tflite::testing::TestReduceOpFloat(
       input_shape, input_data, axis_shape, axis_data, output_shape,
-      expected_output_data, tflite::BuiltinOperator_REDUCE_MAX, 1, &params);
+      expected_output_data, tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
 TF_LITE_MICRO_TEST(FloatMaxOpTestKeepDims) {
@@ -256,7 +256,7 @@ TF_LITE_MICRO_TEST(FloatMaxOpTestKeepDims) {
 
   tflite::testing::TestReduceOpFloat(
       input_shape, input_data, axis_shape, axis_data, output_shape,
-      expected_output_data, tflite::BuiltinOperator_REDUCE_MAX, 1, &params);
+      expected_output_data, tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
 TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDims) {
@@ -275,7 +275,7 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDims) {
   tflite::testing::TestReduceOpQuantized<int8_t>(
       input_shape, input_data, input_scale, input_zp, axis_shape, axis_data,
       output_shape, expected_output_data, input_scale, input_zp,
-      tflite::BuiltinOperator_REDUCE_MAX, 1, &params);
+      tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
 TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDimsDifferentScale) {
@@ -296,7 +296,7 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDimsDifferentScale) {
   tflite::testing::TestReduceOpQuantized<int8_t>(
       input_shape, input_data, input_scale, input_zp, axis_shape, axis_data,
       output_shape, expected_output_data, output_scale, output_zp,
-      tflite::BuiltinOperator_REDUCE_MAX, 1, &params);
+      tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
 TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDims) {
@@ -317,7 +317,7 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDims) {
   tflite::testing::TestReduceOpQuantized<int8_t>(
       input_shape, input_data, input_scale, input_zp, axis_shape, axis_data,
       output_shape, expected_output_data, output_scale, output_zp,
-      tflite::BuiltinOperator_REDUCE_MAX, 1, &params);
+      tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
 TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDimsDifferentScale) {
@@ -338,7 +338,7 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDimsDifferentScale) {
   tflite::testing::TestReduceOpQuantized<int8_t>(
       input_shape, input_data, input_scale, input_zp, axis_shape, axis_data,
       output_shape, expected_output_data, output_scale, output_zp,
-      tflite::BuiltinOperator_REDUCE_MAX, 1, &params);
+      tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
 TF_LITE_MICRO_TESTS_END
