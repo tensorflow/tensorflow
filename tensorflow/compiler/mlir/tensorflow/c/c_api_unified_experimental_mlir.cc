@@ -16,6 +16,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 
+#include "absl/strings/str_cat.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/raw_ostream.h"
@@ -184,11 +185,18 @@ class MlirAbstractOp : public TracingOperation {
   }
 
  private:
+  // Return true is there are still unfilled ODS slots for adding more inputs.
+  bool IsNextODSArgAvailable();
+
   MLIRContext* context_;
   MlirFunctionContext* function_context_;
   SmallVector<Value, 8> operands_;
   llvm::StringMap<Attribute> attrs_;
   std::unique_ptr<OperationState> state_;
+  // This is the index of the next ODS operand that will be added with AddInput
+  // or AddInput;
+  int current_ods_input_ = 0;
+  const tensorflow::OpDef* op_def_ = nullptr;
   const char* op_name_ = nullptr;
   string tf_op_type_;
   // TODO(srbs): Use this.
@@ -267,6 +275,10 @@ Status MlirAbstractOp::Reset(const char* op, const char* device_name) {
     return tensorflow::errors::FailedPrecondition(
         "Reset called on already built op.");
   }
+  TF_RETURN_IF_ERROR(
+      tensorflow::OpRegistry::Global()->LookUpOpDef(op, &op_def_));
+  assert(op_def_);
+
   tf_op_type_ = op;
   std::string name = "tf.";
   name += op;
@@ -315,45 +327,17 @@ Status MlirAbstractOp::AddRef(Type type, Type* output_type) {
 Status MlirAbstractOp::Create(ArrayRef<Value> operands,
                               OperationState** state) {
   state_->operands = llvm::to_vector<4>(operands);
-  const tensorflow::OpDef* op_def;
-  auto node_name = state_->name.getStringRef().drop_front(
-      TensorFlowDialect::getDialectNamespace().size() + 1);
-  TF_RETURN_IF_ERROR(
-      tensorflow::OpRegistry::Global()->LookUpOpDef(node_name.str(), &op_def));
   Builder builder(context_);
-  // Process operands according to the op_def and infer derived attributes.
-  int current_operand = 0;
-  for (const tensorflow::OpDef::ArgDef& input_arg : op_def->input_arg()) {
-    if (!input_arg.number_attr().empty()) {
-      // TODO(b/156122856): we don't support variadic operands.
-      return tensorflow::errors::Unimplemented(
-          "Unsupported 'number_attr' for '", input_arg.number_attr(), "'");
-    } else if (!input_arg.type_list_attr().empty()) {
-      return tensorflow::errors::InvalidArgument(
-          "Unsupported 'type_list_attr' for '", input_arg.number_attr(), "'");
-    }
-    if (current_operand >= operands.size()) {
-      return tensorflow::errors::InvalidArgument("Missing operand for '",
-                                                 input_arg.name(), "'");
-    }
-    Type expected_type;
-    if (input_arg.type() != tensorflow::DT_INVALID) {
-      TF_RETURN_IF_ERROR(
-          ConvertDataTypeToTensor(input_arg.type(), builder, &expected_type));
-      Type output_type;
-      if (input_arg.is_ref())
-        TF_RETURN_IF_ERROR(AddRef(expected_type, &output_type));
-      expected_type = output_type;
-    } else {
-      expected_type = operands[current_operand].getType();
-    }
-    if (!input_arg.type_attr().empty()) {
-      attrs_[input_arg.type_attr()] = TypeAttr::get(expected_type);
-    }
-    ++current_operand;
-  }
 
-  for (const tensorflow::OpDef::ArgDef& output_arg : op_def->output_arg()) {
+  if (current_ods_input_ != op_def_->input_arg_size())
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("Mismatch in operands number: got ", current_ods_input_,
+                     " expected ", op_def_->input_arg_size(), " ; for op ",
+                     state_->name.getStringRef().str()));
+
+  // Process results according to the op_def and infer types for derived
+  // attributes.
+  for (const tensorflow::OpDef::ArgDef& output_arg : op_def_->output_arg()) {
     int original_size = state_->types.size();
     if (!output_arg.number_attr().empty()) {
       // Same type repeated "repeats" times.
@@ -605,12 +589,38 @@ Status MlirFunctionContext::AddParameter(tensorflow::DataType dtype,
 }
 
 Status MlirAbstractOp::AddInput(AbstractTensorHandle* input) {
+  if (current_ods_input_ >= op_def_->input_arg_size())
+    return tensorflow::errors::InvalidArgument(
+        absl::StrCat("More Input() (", current_ods_input_, ") calls than the ",
+                     op_def_->input_arg_size(), " allowed input_args ; for op ",
+                     state_->name.getStringRef().str()));
+
   auto* operand = dyn_cast<MlirTensor>(input);
-  if (!operand) {
+  if (!operand)
     return tensorflow::errors::InvalidArgument(
         "Unable to cast input to MlirTensor");
-  }
   operands_.push_back(operand->getValue());
+
+  // Get the next ArgDef and use it to infer the derived attributes associated
+  // to this input.
+  const tensorflow::OpDef::ArgDef& arg_def =
+      op_def_->input_arg(current_ods_input_++);
+  Type expected_type;
+  if (arg_def.type() != tensorflow::DT_INVALID) {
+    Builder builder(context_);
+    TF_RETURN_IF_ERROR(
+        tensorflow::ConvertDataType(arg_def.type(), builder, &expected_type));
+    if (arg_def.is_ref()) {
+      Type output_type;
+      TF_RETURN_IF_ERROR(AddRef(expected_type, &output_type));
+      expected_type = output_type;
+    }
+  } else {
+    expected_type = operands_.back().getType();
+  }
+  if (!arg_def.type_attr().empty())
+    attrs_[arg_def.type_attr()] = TypeAttr::get(expected_type);
+
   return Status::OK();
 }
 Status MlirFunctionContext::Finalize(OutputList* outputs,
