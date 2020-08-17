@@ -2888,6 +2888,7 @@ cc_library(
         ":LinalgToStandard",
         ":LinalgTransforms",
         ":NVVMDialect",
+        ":OpenACCDialect",
         ":OpenMPDialect",
         ":QuantOps",
         ":QuantPassIncGen",
@@ -3189,6 +3190,65 @@ cc_binary(
     ],
 )
 
+## OpenACC dialect
+
+gentbl(
+    name = "OpenACCOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-dialect-decls -dialect=acc",
+            "include/mlir/Dialect/OpenACC/OpenACCOpsDialect.h.inc",
+        ),
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/OpenACC/OpenACCOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/OpenACC/OpenACCOps.cpp.inc",
+        ),
+        (
+            "-gen-enum-decls",
+            "include/mlir/Dialect/OpenACC/OpenACCOpsEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "include/mlir/Dialect/OpenACC/OpenACCOpsEnums.cpp.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/Dialects/OpenACC/OpenACCOps.md",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/OpenACC/OpenACCOps.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+        ":OmpCommonTdGen",
+    ],
+)
+
+cc_library(
+    name = "OpenACCDialect",
+    srcs = glob(
+        [
+            "lib/Dialect/OpenACC/IR/*.cpp",
+            "lib/Dialect/OpenACC/IR/*.h",
+        ],
+    ),
+    hdrs = glob([
+        "include/mlir/Dialect/OpenACC/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":OpenACCOpsIncGen",
+        ":StandardOps",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ## OpenMP dialect
 gentbl(
     name = "OmpCommonTdGen",
@@ -3266,6 +3326,7 @@ cc_library(
     ],
 )
 
+## QuantOps dialect
 filegroup(
     name = "QuantizationOpsTdFiles",
     srcs = [
@@ -3276,7 +3337,6 @@ filegroup(
     ],
 )
 
-## QuantOps dialect
 gentbl(
     name = "QuantOpsIncGen",
     strip_include_prefix = "include",
