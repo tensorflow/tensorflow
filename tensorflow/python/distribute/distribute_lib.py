@@ -648,7 +648,7 @@ class InputOptions(
       dataset elements are prefetched to host device memory. Must be False when
       using TPUEmbedding API.
       replication_mode: Replication mode for the input function. Currently, the 
-      InputReplicationMode.PER_WORKER works only under mirrored_strategy for the 
+      InputReplicationMode.PER_REPLICA works only under mirrored_strategy for the 
       supported input functions.
   """
 
