@@ -382,6 +382,31 @@ XlaOp MlirHloBuilder::CreateToken() {
   });
 }
 
+StatusOr<XlaOp> MlirHloBuilder::TriangularSolveInternal(
+    const Shape& shape, XlaOp a, XlaOp b, TriangularSolveOptions options) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::Type result_ty,
+      ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
+  auto op = builder_.create<mlir::mhlo::TriangularSolveOp>(
+      loc_, result_ty, GetValue(a), GetValue(b),
+      builder_.getBoolAttr(options.left_side()),
+      builder_.getBoolAttr(options.lower()),
+      builder_.getBoolAttr(options.unit_diagonal()),
+      builder_.getStringAttr(
+          TriangularSolveOptions::Transpose_Name(options.transpose_a())));
+  return MakeXlaOp(op);
+}
+
+StatusOr<XlaOp> MlirHloBuilder::CholeskyInternal(const Shape& shape, XlaOp a,
+                                                 bool lower) {
+  TF_ASSIGN_OR_RETURN(
+      mlir::Type result_ty,
+      ConvertShapeToType<mlir::RankedTensorType>(shape, builder_));
+  auto op = builder_.create<mlir::mhlo::CholeskyOp>(
+      loc_, result_ty, GetValue(a), builder_.getBoolAttr(lower));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::InfeedWithTokenInternal(
     const Shape& infeed_instruction_shape, XlaOp token, const string& config) {
   TF_ASSIGN_OR_RETURN(mlir::Type result_type,

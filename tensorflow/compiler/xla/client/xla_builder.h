@@ -558,6 +558,12 @@ class XlaBuilder {
                                       FftType fft_type,
                                       absl::Span<const int64> fft_length);
 
+  virtual StatusOr<XlaOp> TriangularSolveInternal(
+      const Shape& shape, XlaOp a, XlaOp b, TriangularSolveOptions options);
+
+  virtual StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
+                                           bool lower);
+
   XlaOp Infeed(const Shape& shape, const string& config = "");
   XlaOp InfeedWithToken(XlaOp token, const Shape& shape, const string& config);
   virtual StatusOr<XlaOp> InfeedWithTokenInternal(

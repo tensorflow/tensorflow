@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -112,6 +113,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::BucketizeOp>(),
     TypeID::get<TF::CastOp>(),
     TypeID::get<TF::ClipByValueOp>(),
+    TypeID::get<TF::CholeskyOp>(),
     TypeID::get<TF::ComplexAbsOp>(),
     TypeID::get<TF::ConjugateTransposeOp>(),
     TypeID::get<TF::CoshOp>(),
@@ -159,6 +161,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::MatMulOp>(),
     TypeID::get<TF::MatrixDiagV3Op>(),
     TypeID::get<TF::MatrixSetDiagV3Op>(),
+    TypeID::get<TF::MatrixTriangularSolveOp>(),
     TypeID::get<TF::MirrorPadOp>(),
     TypeID::get<TF::MulOp>(),
     TypeID::get<TF::NegOp>(),

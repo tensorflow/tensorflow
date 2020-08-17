@@ -124,6 +124,13 @@ class MlirHloBuilder : public XlaBuilder {
                               FftType fft_type,
                               absl::Span<const int64> fft_length) override;
 
+  StatusOr<XlaOp> TriangularSolveInternal(
+      const Shape& shape, XlaOp a, XlaOp b,
+      TriangularSolveOptions options) override;
+
+  StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
+                                   bool lower) override;
+
   StatusOr<XlaOp> CustomCallInternal(
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape, const string& opaque,
