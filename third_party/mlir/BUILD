@@ -157,23 +157,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "EDSCInterface",
-    srcs = [
-        "lib/EDSC/CoreAPIs.cpp",
-    ],
-    hdrs = [
-        "include/mlir-c/Core.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":IR",
-        ":Parser",
-        ":Support",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
 filegroup(
     name = "OpBaseTdFiles",
     srcs = [
