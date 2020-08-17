@@ -351,6 +351,13 @@ StatusOr<XlaOp> MlirHloBuilder::InDimBroadcast(
   return MakeXlaOp(op.getResult());
 }
 
+StatusOr<XlaOp> MlirHloBuilder::AddInstruction(
+    HloInstructionProto&& instr, HloOpcode opcode,
+    absl::Span<const XlaOp> operands) {
+  return Unimplemented("MlirHloBuilder does not support op %s",
+                       HloOpcodeString(opcode));
+}
+
 StatusOr<XlaOp> MlirHloBuilder::Compare(const Shape& shape, XlaOp lhs,
                                         XlaOp rhs,
                                         ComparisonDirection direction) {

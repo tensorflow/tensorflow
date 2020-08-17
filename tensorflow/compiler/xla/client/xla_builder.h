@@ -784,8 +784,13 @@ class XlaBuilder {
 
   XlaOp RemoveDynamicDimension(XlaOp operand, int64 dimension);
 
-  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
-                                 absl::Span<const XlaOp> operands = {});
+  virtual StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr,
+                                         HloOpcode opcode,
+                                         absl::Span<const XlaOp> operands);
+  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr,
+                                 HloOpcode opcode) {
+    return AddInstruction(std::move(instr), opcode, /*operands=*/{});
+  }
 
   void AddCalledComputation(const XlaComputation& computation,
                             HloInstructionProto* instr);
