@@ -51,6 +51,10 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
   "$0, (*$1.begin()).getType().cast<RankedTensorType>().getRank(), "
   "&$_builder)">;
 
+def CastElementsToI64Elements : NativeCodeCall<
+  "hlo::ConvertElementsAttr("
+    "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+
 def : Pattern<
     (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
                          $exponential_avg_factor, $data_format,
@@ -255,12 +259,16 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
           [(HasRankedFirstOperand $inputs)]>;
 
 //===----------------------------------------------------------------------===//
-// CrossReplicaSum op patterns.
+// CollectivePermute op patterns.
 //===----------------------------------------------------------------------===//
 
-def CastElementsToI64Elements : NativeCodeCall<
-  "hlo::ConvertElementsAttr("
-    "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+def : Pat<(TF_CollectivePermuteOp $input, (TF_ConstOp $source_target_pairs)),
+          (HLO_CollectivePermuteOp $input,
+            (CastElementsToI64Elements $source_target_pairs))>;
+
+//===----------------------------------------------------------------------===//
+// CrossReplicaSum op patterns.
+//===----------------------------------------------------------------------===//
 
 def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
           (HLO_CrossReplicaSumOp $input,
@@ -660,3 +668,18 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
                 ),
                 (replaceWithValue $output)
               ]>;
+
+//===----------------------------------------------------------------------===//
+// XlaGather op.
+//===----------------------------------------------------------------------===//
+
+def ToGatherDimNumsAttr : NativeCodeCall<"GetGatherDimNumsAttr($0, &$_builder)">;
+
+def HasValidGatherDims : Constraint<CPred<"HasValidGatherDims($0)">>;
+
+def : Pat<(TF_XlaGatherOp $operand, $start_indices, (TF_ConstOp $slice_sizes),
+                          $dimension_numbers, $indices_are_sorted),
+          (HLO_GatherOp $operand, $start_indices,
+                        (ToGatherDimNumsAttr $dimension_numbers),
+                        $slice_sizes, $indices_are_sorted),
+          [(HasValidGatherDims $dimension_numbers)]>;

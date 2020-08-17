@@ -3484,6 +3484,20 @@ func @conv3d_backprop_filter(%input: tensor<2x8x8x8x1xf32>, %out_backprop: tenso
   return %result : tensor<2x8x8x8x1xf32>
 }
 
+// CHECK-LABEL: @collective_permute
+func @collective_permute(%arg0: tensor<128x32xf32>) -> tensor<128x32xf32> {
+  %source_target_pairs = "tf.Const" () {
+    value = dense<[[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi32>
+  } : () -> tensor<3x2xi32>
+
+  // CHECK: "mhlo.collective_permute"
+  // CHECK-SAME: source_target_pairs = dense<{{\[}}[0, 1], [1, 2], [2, 3]]> : tensor<3x2xi64>
+  %0 = "tf.CollectivePermute"(%arg0, %source_target_pairs) {
+  } : (tensor<128x32xf32>, tensor<3x2xi32>) -> tensor<128x32xf32>
+
+  return %0 : tensor<128x32xf32>
+}
+
 // CHECK-LABEL: @cross_replica_sum
 func @cross_replica_sum(%input: tensor<10xf32>) -> tensor<10xf32> {
   %replica_groups = "tf.Const" () {
@@ -4779,4 +4793,21 @@ func @softplus_f64(%arg0: tensor<8x16xf64>) -> tensor<8x16xf64> {
 
   // CHECK:     return [[ENTRY_SELECT]] : tensor<8x16xf64>
   return %0 : tensor<8x16xf64>
+}
+
+// CHECK-LABEL: @xla_gather
+func @xla_gather(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10x1x300xf32> {
+  %cst = "tf.Const"() { value = dense<[1, 1, 300]> : tensor<3xi64> } : () -> tensor<3xi64>
+
+  // CHECK: "mhlo.gather"
+  // CHECK-SAME: dimension_numbers =
+  // CHECK-SAME:   collapsed_slice_dims = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   index_vector_dim = 1 : i64
+  // CHECK-SAME:   offset_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   start_index_map = dense<0> : tensor<1xi64>
+  // CHECK-SAME: indices_are_sorted = true
+  // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
+
+  %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\01\01\12\01\00\1A\01\00 \01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi64>) -> tensor<10x1x300xf32>
+  return %0 : tensor<10x1x300xf32>
 }

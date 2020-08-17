@@ -55,6 +55,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":attribute_importer",
         ":type_to_shape",
         ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/hlo",

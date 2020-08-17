@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/hlo_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
+#include "tensorflow/compiler/mlir/xla/attribute_importer.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/client/lib/conv_grad_size_util.h"
 #include "tensorflow/compiler/xla/client/padding.h"
@@ -1063,6 +1064,21 @@ static void BuildSortComparisonBody(llvm::ArrayRef<Type> element_types,
       loc, block->getArgument(0), block->getArgument(1), compare_direction);
 
   builder->create<mhlo::ReturnOp>(loc, compare);
+}
+
+//===----------------------------------------------------------------------===//
+// XlaGather op utilities.
+//===----------------------------------------------------------------------===//
+
+bool HasValidGatherDims(StringAttr attr) {
+  ::xla::GatherDimensionNumbers dims;
+  return dims.ParseFromString(attr.getValue().str());
+}
+
+GatherDimensionNumbers GetGatherDimNumsAttr(StringAttr attr, Builder *builder) {
+  ::xla::GatherDimensionNumbers dims;
+  if (!dims.ParseFromString(attr.getValue().str())) return {};
+  return ::xla::ConvertGatherDimensionNumbers(dims, builder);
 }
 
 //===----------------------------------------------------------------------===//
