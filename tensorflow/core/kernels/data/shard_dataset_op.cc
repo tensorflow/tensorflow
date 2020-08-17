@@ -123,6 +123,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
 
+      *end_of_sequence = false;
       if (!input_impl_) {
         *end_of_sequence = true;
         return Status::OK();
