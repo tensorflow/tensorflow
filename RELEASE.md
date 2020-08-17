@@ -88,6 +88,7 @@
       dataset when it is safe to do so. The optimization can be disabled via
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
+    * `tf.data.Options` were previously immutable and can now be overriden.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
       `tf.image.random_*` function. Added a new op
@@ -106,7 +107,8 @@
       * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be clearer and easier to understand.
     * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
       as an alternative to accepting a `callable` loss.
-    * Added `beta` parameter to FTRL optimizer to match paper.
+    * Added `beta` hyperparameter to FTRL optimizer classes (Keras and others)
+      to match FTRL paper (https://research.google.com/pubs/archive/41159.pdf).
     * Added `mobilenet_v3` to keras application model.
     * `Optimizer.__init__` now accepts a `gradient_aggregator` to allow for
       customization of how gradients are aggregated across devices, as well as
@@ -155,6 +157,14 @@
     * <ADD RELEASE NOTES HERE>
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>
+*   `tf.train.Checkpoint`:
+    * Now accepts a `root` argument in the initialization, which generates a
+      checkpoint with a root object. This allows users to create a `Checkpoint`
+      object that is compatible with Keras `model.save_weights()` and
+      `model.load_weights`. The checkpoint is also compatible with the
+      checkpoint saved in the `variables/` folder in the SavedModel.
+    * When restoring, `save_path` can be a path to a SavedModel. The function
+      will automatically find the checkpoint in the SavedModel.
 *   Other:
     * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
   and "denylist" where possible. Please see 
@@ -251,6 +261,7 @@ stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
     * Mutable tables now restore checkpointed values when loaded from SavedModel.
   * GPU
     * TF 2.3 includes PTX kernels only for [compute capability](https://developer.nvidia.com/cuda-gpus) 7.0 to reduce the TF pip binary size.  Earlier releases included PTX for a variety of older compute capabilities.
+    * Remove environmental variable `TF_USE_CUDNN`.
   * Others
     * Retain parent namescope for ops added inside `tf.while_loop`/`tf.cond`/`tf.switch_case`.
     * Update `tf.vectorized_map` to support vectorizing `tf.while_loop` and TensorList operations.

@@ -879,6 +879,14 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       int64 inferred_dimension = -1);
 
+  // Creates a dynamic reshape instruction. Similar to reshape but dynamic
+  // dimensions sizes are provided as additional variadic arguments.
+  //
+  // Precondition: dim_sizes.size() == shape.rank()
+  static std::unique_ptr<HloInstruction> CreateDynamicReshape(
+      const Shape& shape, HloInstruction* data_operand,
+      absl::Span<HloInstruction* const> dim_sizes);
+
   // Creates a transpose instruction which permutes the operand dimensions.
   static std::unique_ptr<HloInstruction> CreateTranspose(
       const Shape& shape, HloInstruction* operand,

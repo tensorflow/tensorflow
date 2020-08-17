@@ -23,6 +23,7 @@ limitations under the License.
 
 #include <cstdarg>
 #include <cstdint>
+#include <cstring>
 
 namespace {
 
@@ -125,7 +126,8 @@ char* FastFloatToBufferLeft(float f, char* buffer) {
   const int32_t exponent_shift = 23;
   const int32_t exponent_bias = 127;
   const uint32_t fraction_mask = 0x007fffff;
-  const uint32_t u = *reinterpret_cast<uint32_t*>(&f);
+  uint32_t u;
+  memcpy(&u, &f, sizeof(int32_t));
   const int32_t exponent =
       ((u & exponent_mask) >> exponent_shift) - exponent_bias;
   const uint32_t fraction = (u & fraction_mask);

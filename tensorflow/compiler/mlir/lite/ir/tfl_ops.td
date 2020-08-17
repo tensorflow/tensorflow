@@ -19,6 +19,7 @@ limitations under the License.
 #define TFL_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
@@ -3028,7 +3029,8 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
 def TFL_UnpackOp : TFL_Op<"unpack", [
     NoSideEffect,
     SameOperandsAndResultElementType,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultsScale,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Unpacks a tensor along a dimension into multiple tensors";
 
   let description = [{
@@ -3058,8 +3060,6 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
   let results = (outs
     TFL_VariadicTensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$outputs
   );
-
-  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }

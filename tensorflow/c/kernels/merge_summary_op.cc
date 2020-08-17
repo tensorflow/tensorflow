@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
-#include "tensorflow/core/platform/default/logging.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace { 
 

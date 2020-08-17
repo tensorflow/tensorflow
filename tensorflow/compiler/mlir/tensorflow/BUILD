@@ -722,6 +722,7 @@ cc_library(
         "//tensorflow/core:framework",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
@@ -787,6 +788,7 @@ cc_library(
         "transforms/tpu_extract_head_tail_outside_compilation.cc",
         "transforms/tpu_extract_outside_compilation.cc",
         "transforms/tpu_host_computation_expansion.cc",
+        "transforms/tpu_identity_pruning.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_outside_compilation_cluster.cc",
         "transforms/tpu_rewrite_pass.cc",
@@ -1269,7 +1271,7 @@ cc_library(
     name = "tf_dialect_passes",
     srcs = [
         "transforms/constant_fold.cc",
-        "transforms/dialect_hooks.cc",
+        "transforms/decode_attributes_hook.cc",
     ],
     hdrs = [
         "transforms/constant_fold.h",
@@ -1632,6 +1634,7 @@ cc_library(
     deps = [
         ":lower_tf_inc_gen",
         ":tensorflow",
+        ":tensorflow_ops",
         ":tensorflow_types",
         "//tensorflow/core:framework",
         "@llvm-project//llvm:Support",

@@ -1108,6 +1108,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
           builder->AddInstruction(HloInstruction::CreatePartitionId());
       break;
     }
+    case HloOpcode::kDynamicReshape: {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateDynamicReshape(
+              shape, operands[0],
+              absl::Span<HloInstruction* const>(operands).subspan(1)));
+      break;
+    }
     case HloOpcode::kReshape: {
       optional<int64> inferred_dimension;
       attrs["inferred_dimension"] = {/*required=*/false, AttrTy::kInt64,

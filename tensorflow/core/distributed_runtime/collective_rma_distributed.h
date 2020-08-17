@@ -29,8 +29,9 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
       const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
       std::shared_ptr<UnboundedWorkQueue> work_queue,
       WorkerCacheInterface* worker_cache, int64 step_id)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
-        worker_cache_(worker_cache) {}
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
+        worker_cache_(worker_cache),
+        work_queue_(std::move(work_queue)) {}
 
   ~CollectiveRemoteAccessDistributed() override {}
 
@@ -46,6 +47,9 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
 
  protected:
   WorkerCacheInterface* worker_cache_;  // Not owned
+  // Ownership of `work_queue_` is shared between `this` and
+  // `CollectiveExecutorMgr`.
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   CancellationManager cancel_mgr_;
 };
 

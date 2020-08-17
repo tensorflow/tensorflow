@@ -477,7 +477,47 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
 
 void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                          MLIRContext *context) {
-  results.insert<FoldConstantCaseOp>(context);
+  results.insert<FoldConstantCaseOp, DropAttributes<CaseOp>>(context);
+}
+
+//===----------------------------------------------------------------------===//
+// CaseRegionOp
+//===----------------------------------------------------------------------===//
+
+// TODO(lyandy): Extract similar checks for CaseOp.
+static LogicalResult Verify(CaseRegionOp op) {
+  if (op.branches().empty())
+    return op.emitOpError() << "expects to have at least 1 region";
+
+  if (!IsOfRankOrUnranked(op.branch_index(), 0))
+    return op.emitOpError() << "expects 'branch_index' to be a scalar, but got "
+                            << op.branch_index().getType();
+
+  DenseIntElementsAttr branch_index_attr;
+  if (matchPattern(op.branch_index(), m_Constant(&branch_index_attr))) {
+    assert(branch_index_attr.getNumElements() == 1);
+    int64_t branch_index = branch_index_attr.getSplatValue<IntegerAttr>()
+                               .getValue()
+                               .getSExtValue();
+    if (branch_index < 0)
+      return op.emitOpError()
+             << "expects 'branch_index' to be non-negative, but got "
+             << branch_index;
+
+    if (branch_index >= op.branches().size())
+      return op.emitOpError()
+             << "expects 'branch_index' to be less than the number of regions ("
+             << op.branches().size() << "), but got " << branch_index;
+  }
+
+  for (auto region_and_idx : llvm::enumerate(op.branches())) {
+    std::string region_name =
+        llvm::formatv("region #{0}", region_and_idx.index()).str();
+    if (failed(VerifyRegionResults(op, region_and_idx.value(), region_name)))
+      return failure();
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -732,6 +772,35 @@ void ConcatV2Op::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                              MLIRContext *context) {
   results.insert<HoistCwiseBinaryOutOfConcat, HoistCwiseUnaryOutOfConcat>(
       context);
+}
+
+//===----------------------------------------------------------------------===//
+// CumsumOp and CumprodOp
+//===----------------------------------------------------------------------===//
+
+template <typename OpT, typename std::enable_if<llvm::is_one_of<
+                            OpT, CumsumOp, CumprodOp>::value>::type * = nullptr>
+static LogicalResult Verify(OpT op) {
+  if (!IsOfRankOrUnranked(op.axis(), 0))
+    return op.emitOpError("requires scalar axis operand");
+
+  DenseIntElementsAttr axis_attr;
+  if (matchPattern(op.axis(), m_Constant(&axis_attr))) {
+    auto input_ty = op.x().getType().template dyn_cast<RankedTensorType>();
+    if (input_ty) {
+      int64_t rank = input_ty.getRank();
+      assert(axis_attr.getNumElements() == 1 &&
+             "scalar attribute should have exactly one element");
+      int64_t axis = (*axis_attr.begin()).getSExtValue();
+      if (axis < -rank || axis >= rank) {
+        return op.emitError()
+               << "axis operand should be within range [" << -rank << ", "
+               << rank << "); actual value: " << axis;
+      }
+    }
+  }
+
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

@@ -39,6 +39,7 @@ from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import utils as optimizer_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -48,7 +49,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base as trackable
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -1207,12 +1207,12 @@ class OptimizerV2(trackable.Trackable):
       return x.value()
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _dense_apply_args(self):
     return tf_inspect.getfullargspec(self._resource_apply_dense).args
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _sparse_apply_args(self):
     return tf_inspect.getfullargspec(self._resource_apply_sparse).args
 

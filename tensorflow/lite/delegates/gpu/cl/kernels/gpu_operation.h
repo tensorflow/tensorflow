@@ -47,7 +47,21 @@ namespace cl {
 //   grid_x = dst_[0]->Width() * dst_[0]->Batch();
 //   grid_y = dst_[0]->Height() * dst_[0]->Depth();
 //   grid_z = 1;
-enum class TensorToGrid { kCustom, kWBToX_HDToY_SToZ, kWBToX_HDToY_ZIs1 };
+// kWBToX_HToY_DToZ:
+//   grid_x = dst_[0]->Width() * dst_[0]->Batch();
+//   grid_y = dst_[0]->Height();
+//   grid_z = dst_[0]->Depth();
+// kBToX_YIs1_ZIs1:
+//   grid_x = dst_[0]->Batch();
+//   grid_y = 1;
+//   grid_z = 1;
+enum class TensorToGrid {
+  kCustom,
+  kWBToX_HDToY_SToZ,
+  kWBToX_HDToY_ZIs1,
+  kWBToX_HToY_DToZ,
+  kBToX_YIs1_ZIs1
+};
 
 struct CreationContext {
   const CLDevice* device;
@@ -67,7 +81,6 @@ struct OperationDef {
   // the structure of kernel, all other resources(biases) types and etc.
   DataType GetPrimaryDataType() const;
   TensorStorageType GetPrimaryStorageType() const;
-  bool HasAllTensorsOfType(TensorStorageType storage_type) const;
   bool IsBatchSupported() const;
 };
 
@@ -92,7 +105,7 @@ class GPUOperation {
   GPUOperation(const GPUOperation&) = delete;
   GPUOperation& operator=(const GPUOperation&) = delete;
 
-  void AddOperation(GPUOperation* operation);
+  absl::Status AddOperation(GPUOperation* operation);
 
   void SetSrc(Tensor* ptr, int index = 0);
   void SetDst(Tensor* ptr, int index = 0);
@@ -134,6 +147,8 @@ class GPUOperation {
 
   Arguments args_;
   std::string code_;
+  int3 work_group_size_ = int3(8, 4, 1);
+  std::vector<CompilerOptions> compiler_options_;
   // not applicable to elementwise
   TensorToGrid tensor_to_grid_ = TensorToGrid::kCustom;
 
@@ -152,12 +167,13 @@ class GPUOperation {
   std::vector<Tensor*> src_;
   std::vector<Tensor*> dst_;
   CLKernel kernel_;
-  int3 work_group_size_ = int3(8, 4, 1);
   int3 grid_size_ = int3(0, 0, 0);
   std::vector<std::string> src_tensors_names_;
   std::vector<std::string> dst_tensors_names_;
-  std::vector<CompilerOptions> compiler_options_;
-  std::vector<GPUOperation*> linked_operations_;
+
+ private:
+  int linkable_count_ = 0;
+  std::string elementwise_code_;  // temporary, used during op construction
 };
 
 }  // namespace cl

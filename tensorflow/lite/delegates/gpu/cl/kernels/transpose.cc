@@ -24,29 +24,9 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-Transpose::Transpose(const OperationDef& definition,
-                     const TransposeAttributes& attr)
-    : GPUOperation(definition), attr_(attr) {
-  code_ = GetTransposeCode(definition_, attr_);
-}
-
-Transpose::Transpose(Transpose&& operation)
-    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
-
-Transpose& Transpose::operator=(Transpose&& operation) {
-  if (this != &operation) {
-    attr_ = operation.attr_;
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-std::string Transpose::GetTransposeCode(const OperationDef& op_def,
-                                        const TransposeAttributes& attr) {
-  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
-  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-
+namespace {
+std::string GetTransposeCode(const OperationDef& op_def,
+                             const TransposeAttributes& attr) {
   const std::string batch_id =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
   std::string c = GetCommonDefines(op_def.precision);
@@ -112,17 +92,16 @@ std::string Transpose::GetTransposeCode(const OperationDef& op_def,
   c += "}\n";
   return c;
 }
+}  // namespace
 
-int3 Transpose::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Slices();
-  return int3(grid_x, grid_y, grid_z);
-}
-
-Transpose CreateTranspose(const OperationDef& definition,
-                          const TransposeAttributes& attr) {
-  return Transpose(definition, attr);
+GPUOperation CreateTranspose(const OperationDef& definition,
+                             const TransposeAttributes& attr) {
+  GPUOperation op(definition);
+  op.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  op.code_ = GetTransposeCode(definition, attr);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  return op;
 }
 
 }  // namespace cl

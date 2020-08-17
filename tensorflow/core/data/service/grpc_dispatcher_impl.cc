@@ -44,6 +44,7 @@ HANDLER(RegisterWorker);
 HANDLER(WorkerUpdate);
 HANDLER(GetOrRegisterDataset);
 HANDLER(CreateJob);
+HANDLER(ReleaseJobClient);
 HANDLER(GetOrCreateJob);
 HANDLER(GetTasks);
 HANDLER(GetWorkers);

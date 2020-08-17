@@ -55,6 +55,8 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/DecodeAttributesInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -111,6 +113,22 @@ bool HasSingleUse(FuncOp func) {
   // No multiple uses seen.
   return true;
 }
+
+struct TFConstantFoldInterface : public DialectFoldInterface {
+  TFConstantFoldInterface(Dialect *dialect) : DialectFoldInterface(dialect) {}
+  LogicalResult Fold(Operation *op, ArrayRef<Attribute> operands,
+                     SmallVectorImpl<OpFoldResult> &results) const final {
+    return TensorFlowDialect::constantFold(op, operands, results);
+  }
+};
+
+struct TFDecodeAttributesInterface : public DialectDecodeAttributesInterface {
+  TFDecodeAttributesInterface(Dialect *dialect)
+      : DialectDecodeAttributesInterface(dialect) {}
+  LogicalResult decode(OpaqueElementsAttr input, ElementsAttr &output) const {
+    return TensorFlowDialect::decode(input, output);
+  }
+};
 
 struct TFInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
@@ -206,6 +224,9 @@ std::vector<TensorFlowDialect::AdditionalOpFunction>
     *TensorFlowDialect::additional_operation_hooks_ =
         new std::vector<TensorFlowDialect::AdditionalOpFunction>();
 
+TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
+TensorFlowDialect::DecodeConstantHook TensorFlowDialect::decode_constant_hook_;
+
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context, TypeID::get<TensorFlowDialect>()) {
   addOperations<
@@ -217,7 +238,8 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
       >();
-  addInterfaces<TFInlinerInterface>();
+  addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
+                TFConstantFoldInterface>();
   addAttributes<ShapeAttr, FuncAttr>();
 
   // Support unknown operations because not all TensorFlow operations are
@@ -385,20 +407,20 @@ Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
 // Prints a type registered to this dialect.
 void TensorFlowDialect::printType(Type ty, DialectAsmPrinter &os) const {
   assert(ty.isa<TensorFlowType>());
-  switch (ty.getKind()) {
-    default:
-      llvm_unreachable("unexpected tensorflow type kind");
-#define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  case TensorFlowTypes::enumerant:              \
-    os << name;                                 \
-    break;
+#define HANDLE_TF_TYPE(tftype, enumerant, name)        \
+  if (auto derived_ty = ty.dyn_cast<tftype##Type>()) { \
+    os << name;                                        \
+    return;                                            \
+  }
 #define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name) \
-  case TensorFlowTypes::enumerant:                     \
-    Print##tftype##Type(ty.cast<tftype##Type>(), os);  \
-    break;
+  if (auto derived_ty = ty.dyn_cast<tftype##Type>()) { \
+    Print##tftype##Type(derived_ty, os);               \
+    return;                                            \
+  }
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-  }
+
+  llvm_unreachable("unexpected tensorflow type kind");
 }
 
 namespace {

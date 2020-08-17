@@ -1974,5 +1974,101 @@ TEST_F(OpLevelCostEstimatorTest, PureMemoryOpExecutionTime) {
     EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
   }
 }
+TEST_F(OpLevelCostEstimatorTest, ResizeBilinearExecutionTime) {
+  const int kImageDim = 255;
+  const int kChannelSize = 10;
+  const int kComputeLerpCost = 9;
+  {
+    // Test with size 0 output.
+    OpContext op_context;
+    SetCpuDevice(&op_context.op_info);
+    op_context.op_info.set_op("ResizeBilinear");
+
+    DescribeTensor4D(1, kImageDim, kImageDim, kChannelSize,
+                     op_context.op_info.add_inputs());
+    const int kExpectedMemoryTime = kImageDim * kImageDim * 4;
+    DescribeTensor4D(0, 0, 0, 0, op_context.op_info.add_outputs());
+
+    // As the half_pixel_centers attr was not set, cost should be inaccurate
+    // with 0 compute time.
+    auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(0));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+
+    AttrValue half_pixel_centers;
+    half_pixel_centers.set_b(false);
+    (*op_context.op_info.mutable_attr())["half_pixel_centers"] =
+        half_pixel_centers;
+    cost = PredictCosts(op_context);
+    // Compute time depends only on output size, so compute time is 0.
+    EXPECT_EQ(cost.compute_time, Costs::Duration(0));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
+
+  // Test with non-zero output size.
+  const int kOutputImageDim = 100;
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("ResizeBilinear");
+  DescribeTensor4D(1, kImageDim, kImageDim, kChannelSize,
+                   op_context.op_info.add_inputs());
+  DescribeTensor4D(1, kOutputImageDim, kOutputImageDim, kChannelSize,
+                   op_context.op_info.add_outputs());
+  const int kExpectedMemoryTime =
+      (kImageDim * kImageDim + kOutputImageDim * kOutputImageDim) * 4;
+
+  {
+    // Cost of calculating weights without using half_pixel_centers.
+    AttrValue half_pixel_centers;
+    half_pixel_centers.set_b(false);
+    (*op_context.op_info.mutable_attr())["half_pixel_centers"] =
+        half_pixel_centers;
+    const int kInterpWeightCost = 10;
+    const int num_ops =
+        kInterpWeightCost * (kOutputImageDim * 2) +
+        kComputeLerpCost * (kOutputImageDim * kOutputImageDim * kChannelSize);
+    const int expected_compute_time = std::ceil(
+        num_ops /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    const auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(kExpectedMemoryTime + expected_compute_time));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
+
+  {
+    // Cost of calculating weights using half_pixel_centers.
+    AttrValue half_pixel_centers;
+    half_pixel_centers.set_b(true);
+    (*op_context.op_info.mutable_attr())["half_pixel_centers"] =
+        half_pixel_centers;
+    const int kInterpWeightCost = 12;
+    const int num_ops =
+        kInterpWeightCost * (kOutputImageDim * 2) +
+        kComputeLerpCost * (kOutputImageDim * kOutputImageDim * kChannelSize);
+    const int expected_compute_time = std::ceil(
+        num_ops /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    const auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(kExpectedMemoryTime + expected_compute_time));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
+}
+
 }  // end namespace grappler
 }  // end namespace tensorflow

@@ -50,8 +50,8 @@ class CollectiveRemoteAccessLocalTest : public ::testing::Test {
     drl_ = absl::make_unique<DeviceResolverLocal>(device_mgr_.get());
     prl_ = absl::make_unique<CollectiveParamResolverLocal>(
         cp, device_mgr_.get(), drl_.get(), kTaskName);
-    rma_ = absl::make_unique<CollectiveRemoteAccessLocal>(
-        device_mgr_.get(), drl_.get(), work_queue_, kStepId);
+    rma_ = absl::make_unique<CollectiveRemoteAccessLocal>(device_mgr_.get(),
+                                                          drl_.get(), kStepId);
   }
 
   ~CollectiveRemoteAccessLocalTest() override = default;

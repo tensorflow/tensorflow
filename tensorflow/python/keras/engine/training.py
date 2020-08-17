@@ -211,7 +211,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if is_functional_model_init_params(args, kwargs) and cls == Model:
       # Functional model
       from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
-      return functional.Functional(*args, **kwargs)
+      return functional.Functional(skip_init=True, *args, **kwargs)
     else:
       return super(Model, cls).__new__(cls, *args, **kwargs)
 
@@ -780,8 +780,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
       def train_function(iterator):
         """Runs a training execution with multiple steps."""
-        outputs = step_function(self, iterator)
-        for _ in math_ops.range(self._steps_per_execution - 1):
+        for _ in math_ops.range(self._steps_per_execution):
           outputs = step_function(self, iterator)
         return outputs
 
@@ -1201,8 +1200,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
       def test_function(iterator):
         """Runs an evaluation execution with multiple steps."""
-        outputs = step_function(self, iterator)
-        for _ in math_ops.range(self._steps_per_execution - 1):
+        for _ in math_ops.range(self._steps_per_execution):
           outputs = step_function(self, iterator)
         return outputs
 

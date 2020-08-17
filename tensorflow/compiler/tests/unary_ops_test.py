@@ -96,7 +96,7 @@ class UnaryOpsTest(xla_test.XLATestCase):
     self.assertAllEqual(result, expected)
 
   @test_util.disable_mlir_bridge(
-      "MlirHloBuilder::Iota missing required for xla::Diag")
+      "Handle complex element types in DiagPart op lowering")
   def testAllTypeOps(self):
     for dtype in self.numeric_types - {np.int8, np.uint8}:
       self._assertOpOutputMatchesExpected(

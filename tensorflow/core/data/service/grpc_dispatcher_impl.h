@@ -49,6 +49,7 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
   HANDLER(WorkerUpdate);
   HANDLER(GetOrRegisterDataset);
   HANDLER(CreateJob);
+  HANDLER(ReleaseJobClient);
   HANDLER(GetOrCreateJob);
   HANDLER(GetTasks);
   HANDLER(GetWorkers);

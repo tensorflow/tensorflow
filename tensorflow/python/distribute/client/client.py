@@ -357,7 +357,7 @@ class _CoordinatedClosureQueue(object):
   This class is thread-safe.
   """
 
-  def __init__(self, cancellation_mgr):
+  def __init__(self):
     # `self._inflight_closure_count` only tracks the number of inflight closures
     # that are "in generation". Once an error occurs, error generation is
     # incremented and all subsequent arriving closures (from inflight) are
@@ -383,7 +383,7 @@ class _CoordinatedClosureQueue(object):
     self._no_inflight_closure_condition = threading.Condition(self._queue_lock)
 
     # Use to cancel in-flight closures.
-    self._cancellation_mgr = cancellation_mgr
+    self._cancellation_mgr = cancellation.CancellationManager()
 
     if _CLOSURE_QUEUE_MAX_SIZE <= 0:
       logging.warning(
@@ -420,6 +420,14 @@ class _CoordinatedClosureQueue(object):
         closure._set_output_remote_values_cancelled()  # pylint: disable=protected-access
       except queue.Empty:
         break
+    # The cancellation manager cannot be reused once cancelled. After all
+    # closures (queued or inflight) are cleaned up, recreate the cancellation
+    # manager with clean state.
+    # Note on thread-safety: this is triggered when one of theses client APIs
+    # are called: `schedule`, `wait`, and `done`. At the same time, no new
+    # closures can be constructed (which reads the _cancellation_mgr to get
+    # cancellable functions).
+    self._cancellation_mgr = cancellation.CancellationManager()
 
   def _raise_if_error(self):
     """Raises the error if one exists.
@@ -430,6 +438,8 @@ class _CoordinatedClosureQueue(object):
     This method expects self._queue_lock to be held prior to entry.
     """
     if self._error:
+      logging.error("Start cancelling closures due to error %r: %s",
+                    self._error, self._error)
       self._cancel_all_closures()
       try:
         raise self._error  # pylint: disable=raising-bad-type
@@ -668,9 +678,11 @@ class Worker(object):
           closure._fetch_output_remote_values()  # pylint: disable=protected-access
         self._cluster._closure_queue.mark_finished()  # pylint: disable=protected-access
     except Exception as e:  # pylint: disable=broad-except
-      logging.error(
-          "/job:worker/task:%d encountered the following error when processing "
-          "closure: %r:%s", self.worker_index, e, e)
+      # Avoid logging the derived cancellation error
+      if not isinstance(e, errors.CancelledError):
+        logging.error(
+            "/job:worker/task:%d encountered the following error when "
+            "processing closure: %r:%s", self.worker_index, e, e)
       nest.map_structure(
           lambda x: x._set_error(e),  # pylint: disable=protected-access
           closure._output_remote_values)  # pylint: disable=protected-access
@@ -699,7 +711,10 @@ class Worker(object):
     # status, and executing closures happen on the same thread. This allows us
     # to have simpler logic of concurrency.
     closure = Closure(
-        function, self._cluster._cancellation_mgr, args=args, kwargs=kwargs)  # pylint: disable=protected-access
+        function,
+        self._cluster._closure_queue._cancellation_mgr,  # pylint: disable=protected-access
+        args=args,
+        kwargs=kwargs)
     resource_remote_value = closure._output_remote_values  # pylint: disable=protected-access
     self._register_resource(resource_remote_value)
 
@@ -764,8 +779,7 @@ class Cluster(object):
                               protocol=cluster_resolver.rpc_layer,
                               cluster_device_filters=device_filters)
 
-    self._cancellation_mgr = cancellation.CancellationManager()
-    self._closure_queue = _CoordinatedClosureQueue(self._cancellation_mgr)
+    self._closure_queue = _CoordinatedClosureQueue()
     self.failure_handler = WorkerPreemptionHandler(context.get_server_def())
     worker_device_strings = [
         "/job:worker/replica:0/task:%d" % i for i in range(self._num_workers)
@@ -787,7 +801,10 @@ class Cluster(object):
       A structure of `RemoteValue` object.
     """
     closure = Closure(
-        function, self._cancellation_mgr, args=args, kwargs=kwargs)
+        function,
+        self._closure_queue._cancellation_mgr,  # pylint: disable=protected-access
+        args=args,
+        kwargs=kwargs)
     self._closure_queue.put(closure)
     return closure._output_remote_values  # pylint: disable=protected-access
 
@@ -1101,9 +1118,7 @@ class _PerWorkerDistributedDataset(object):
     elif not isinstance(dataset_fn, tf_function.ConcreteFunction):
       with variable_scope.variable_creator_scope(disallow_variable_creation):
         dataset_fn = def_function.function(dataset_fn).get_concrete_function()
-    self._dataset_fn = (
-        client.cluster._cancellation_mgr.get_cancelable_function(  # pylint: disable=protected-access
-            dataset_fn))
+    self._dataset_fn = dataset_fn
     self._input_workers = input_workers
     self._client = client
     self._element_spec = None

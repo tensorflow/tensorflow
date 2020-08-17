@@ -959,6 +959,7 @@ cuda_py_test(
         "optonly",  # times out
     ],
     deps = [
+        ":cancellation",
         ":context",
         ":def_function",
         ":remote",

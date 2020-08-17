@@ -593,6 +593,8 @@ class Function(object):
     """Creates a defun wrapped inside a variable creator scope."""
 
     weak_wrapped_fn = None
+    compile_with_xla = self._experimental_compile
+
     def wrapped_fn(*args, **kwds):
       """Wraps `self._python_function` in a variable creator scope."""
       # We register a variable creator with reduced priority. If an outer
@@ -607,10 +609,22 @@ class Function(object):
       # and so variable initializers can't depend on function arguments. This is
       # better than the alternative, tracing the initialization graph but giving
       # the user a variable type they didn't want.
-      with ops.get_default_graph()._variable_creator_scope(scope, priority=50):  # pylint: disable=protected-access
+      default_graph = ops.get_default_graph()
+      with default_graph._variable_creator_scope(scope, priority=50):  # pylint: disable=protected-access
         # __wrapped__ allows AutoGraph to swap in a converted function. We give
         # the function a weak reference to itself to avoid a reference cycle.
-        return weak_wrapped_fn().__wrapped__(*args, **kwds)
+        if compile_with_xla and \
+            not control_flow_util.GraphOrParentsInXlaContext(default_graph):
+          xla_context = control_flow_ops.XLAControlFlowContext()
+          try:
+            xla_context.Enter()
+            out = weak_wrapped_fn().__wrapped__(*args, **kwds)
+          finally:
+            xla_context.Exit()
+        else:
+          out = weak_wrapped_fn().__wrapped__(*args, **kwds)
+        return out
+
     weak_wrapped_fn = weakref.ref(wrapped_fn)
 
     return self._defun(tf_decorator.make_decorator(
@@ -769,23 +783,8 @@ class Function(object):
 
     tracing_count = self._get_tracing_count()
     with trace.Trace(self._name) as tm:
-      if self._experimental_compile and (
-          not control_flow_util.GraphOrParentsInXlaContext(
-              ops.get_default_graph())):
-        # V2 control flow relies on XLAControlFlowContext to generate a
-        # XLA-compatible function graph. If the function is already called
-        # inside an XLA context, we don't create nested XLA context.
-        compiler = "xla"
-        xla_context = control_flow_ops.XLAControlFlowContext()
-        try:
-          xla_context.Enter()
-          result = self._call(*args, **kwds)
-        finally:
-          xla_context.Exit()
-      else:
-        compiler = "nonXla"
-        result = self._call(*args, **kwds)
-
+      result = self._call(*args, **kwds)
+      compiler = "xla" if self._experimental_compile else "nonXla"
       new_tracing_count = self._get_tracing_count()
       without_tracing = (tracing_count == new_tracing_count)
       execution_mode = "notTraced" if without_tracing else "traced"

@@ -220,6 +220,7 @@ cc_library(
     name = "logging",
     srcs = ["logging.cc"],
     hdrs = ["logging.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":c_api_macros",
         "//tensorflow/core/platform:logging",

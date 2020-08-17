@@ -55,6 +55,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":attribute_importer",
         ":type_to_shape",
         ":xla_legalize_tf_with_tf2xla",
         "//tensorflow/compiler/mlir/hlo",
@@ -69,7 +70,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:conv_grad_size_util",
         "//tensorflow/core:framework",
         "//tensorflow/core/kernels:conv_grad_shape_utils",
-        "//tensorflow/core/lib/bfloat16",
+        "//tensorflow/core/platform:bfloat16",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:Dialect",

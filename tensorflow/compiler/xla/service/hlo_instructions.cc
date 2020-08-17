@@ -1027,6 +1027,16 @@ HloBroadcastInstruction::CloneWithNewOperandsImpl(
                                                     dimensions());
 }
 
+HloDynamicReshapeInstruction::HloDynamicReshapeInstruction(
+    const Shape& shape, HloInstruction* data_operand,
+    absl::Span<HloInstruction* const> dim_sizes)
+    : HloInstruction(HloOpcode::kDynamicReshape, shape) {
+  AppendOperand(data_operand);
+  for (auto operand : dim_sizes) {
+    AppendOperand(operand);
+  }
+}
+
 HloReshapeInstruction::HloReshapeInstruction(const Shape& shape,
                                              HloInstruction* operand,
                                              int64 inferred_dimension)

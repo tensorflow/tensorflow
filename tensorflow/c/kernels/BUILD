@@ -38,6 +38,7 @@ tf_kernel_library(
         "//third_party/eigen3",
     ],
 )
+
 tf_kernel_library(
     name = "histogram_summary_op",
     prefix = "histogram_summary_op",
@@ -51,7 +52,6 @@ tf_kernel_library(
         "//third_party/eigen3",
     ],
 )
-
 
 tf_kernel_library(
     name = "merge_summary_op",
