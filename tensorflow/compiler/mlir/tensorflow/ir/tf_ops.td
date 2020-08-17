@@ -112,6 +112,10 @@ An n-way switch statement, implementing the following:
   TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let hasCanonicalizer = 1;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 def TF_CaseRegionOp : TF_Op<"CaseRegion",

@@ -775,12 +775,30 @@ func @testInvalidIfOp(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 // -----
 
 func @testIfThen(tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
-func @testIfElse(tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+func @testIfElse(tensor<2xf32>) -> tensor<2xf32>
 
 // Test invalid tf.If operation
 func @testInvalidIfOp(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
-  // expected-error @+1 {{branches should have 1 inputs}}
+  // expected-error @+1 {{expects all branches to have 1 input(s), but 'then_branch' has 2 input(s)}}
+  %1 = "tf.If"(%arg0, %arg1) {
+    then_branch = @testIfThen,
+    else_branch = @testIfElse,
+    is_stateless = false
+  } : (tensor<i1>, tensor<2xf32>) -> tensor<2xf32>
+
+  return %1 : tensor<2xf32>
+}
+
+// -----
+
+func @testIfThen(tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+func @testIfElse(tensor<2xf32>) -> tensor<2xf32>
+
+// Test invalid tf.If operation
+func @testInvalidIfOp(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
+^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
+  // expected-error @+1 {{expects all branches to have 1 result(s), but 'then_branch' has 2 result(s)}}
   %1 = "tf.If"(%arg0, %arg1) {
     then_branch = @testIfThen,
     else_branch = @testIfElse,
@@ -798,7 +816,7 @@ func @testIfElse(tensor<*xf32>) -> tensor<*xf32>
 // Test invalid tf.If operation
 func @testInvalidIfOp(tensor<i1>, tensor<2xf32>) -> tensor<2xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<2xf32>):
-  // expected-error @+1 {{then branch input type tensor<*xf16> is incompatible with operand type tensor<2xf32>}}
+  // expected-error @+1 {{expects operand type 'tensor<2xf32>' to be cast compatible with 'then_branch' input type 'tensor<*xf16>' at index 0}}
   %1 = "tf.If"(%arg0, %arg1) {
     then_branch = @testIfThen,
     else_branch = @testIfElse,
@@ -816,7 +834,7 @@ func @testIfElse(tensor<3xf32>) -> tensor<*xf32>
 // Test invalid tf.If operation
 func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<*xf32>):
-  // expected-error @+1 {{branches inputs have incompatible types tensor<2xf32> and tensor<3xf32>}}
+  // expected-error @+1 {{expects all branch input type(s) (tensor<2xf32>, tensor<3xf32>) at index 0 to be cast compatible}}
   %1 = "tf.If"(%arg0, %arg1) {
     then_branch = @testIfThen,
     else_branch = @testIfElse,
@@ -834,7 +852,7 @@ func @testIfElse(tensor<*xf32>) -> tensor<3xf32>
 // Test invalid tf.If operation
 func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 ^bb0(%arg0: tensor<i1>, %arg1: tensor<*xf32>):
-  // expected-error @+1 {{else branch result type tensor<3xf32> is incompatible with op result type tensor<2xf32>}}
+  // expected-error @+1 {{expects result type 'tensor<2xf32>' to be cast compatible with 'else_branch' result type 'tensor<3xf32>' at index 0}}
   %1 = "tf.If"(%arg0, %arg1) {
     then_branch = @testIfThen,
     else_branch = @testIfElse,
@@ -3316,6 +3334,71 @@ func @testBatchToSpaceInvalidOutputDepth(%arg0: tensor<16x8x8x3xf32>, %arg1: ten
 
 // -----
 
+func @branch()
+
+func @testCaseBadBranchIndicesShape(%arg0: tensor<8xi32>) {
+  // expected-error @+1 {{expects 'branch_index' to be a scalar, but got 'tensor<8xi32>'}}
+  "tf.Case"(%arg0) {branches = [@branch], is_stateless = false} : (tensor<8xi32>) -> ()
+  return
+}
+
+// -----
+
+func @branch0(tensor<2xf32>, tensor<2xf32>) -> tensor<2xf32>
+func @branch1(tensor<2xf32>) -> tensor<2xf32>
+
+func @testCaseMismatchedNumOperands(%arg0: tensor<i32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{expects all branches to have 1 input(s), but branch #0 has 2 input(s)}}
+  %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch0, @branch1], is_stateless = false} : (tensor<i32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @branch0(tensor<2xf32>) -> (tensor<2xf32>, tensor<2xf32>)
+func @branch1(tensor<2xf32>) -> tensor<2xf32>
+
+func @testCaseMismatchedNumResults(%arg0: tensor<i32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{expects all branches to have 1 result(s), but branch #0 has 2 result(s)}}
+  %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch0, @branch1], is_stateless = false} : (tensor<i32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @branch0(tensor<*xf16>) -> tensor<*xf32>
+func @branch1(tensor<*xf32>) -> tensor<*xf32>
+
+func @testCaseOperandNotCastCompatible(%arg0: tensor<i32>, %arg1: tensor<2xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{expects operand type 'tensor<2xf32>' to be cast compatible with branch #0 input type 'tensor<*xf16>' at index 0}}
+  %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch0, @branch1], is_stateless = false} : (tensor<i32>, tensor<2xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @branch0(tensor<2xf32>) -> tensor<*xf32>
+func @branch1(tensor<3xf32>) -> tensor<*xf32>
+
+func @testCaseBranchArgumentsNotCastCompatible(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{expects all branch input type(s) (tensor<2xf32>, tensor<3xf32>) at index 0 to be cast compatible}}
+  %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch0, @branch1], is_stateless = false} : (tensor<i32>, tensor<*xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
+func @branch0(tensor<*xf32>) -> tensor<*xf32>
+func @branch1(tensor<*xf32>) -> tensor<3xf32>
+
+func @testCaseResultNotCastCompatible(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<2xf32> {
+  // expected-error @+1 {{expects result type 'tensor<2xf32>' to be cast compatible with branch #1 result type 'tensor<3xf32>' at index 0}}
+  %0 = "tf.Case"(%arg0, %arg1) {branches = [@branch0, @branch1], is_stateless = false} : (tensor<i32>, tensor<*xf32>) -> tensor<2xf32>
+  return %0 : tensor<2xf32>
+}
+
+// -----
+
 func @testCaseRegionNoRegions(%arg0: tensor<i32>) {
   // expected-error @+1 {{expects to have at least 1 region}}
   "tf.CaseRegion"(%arg0) {is_stateless = false} : (tensor<i32>) -> ()
@@ -3329,28 +3412,6 @@ func @testCaseRegionBadBranchIndicesShape(%arg0: tensor<8xi32>) {
   "tf.CaseRegion"(%arg0) ( {
     "tf.Yield"() : () -> ()
   }) {is_stateless = false} : (tensor<8xi32>) -> ()
-  return
-}
-
-// -----
-
-func @testCaseRegionBadBranchIndicesNegative() {
-  %0 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
-  // expected-error @+1 {{expects 'branch_index' to be non-negative, but got -1}}
-  "tf.CaseRegion"(%0) ( {
-    "tf.Yield"() : () -> ()
-  }) {is_stateless = false} : (tensor<i32>) -> ()
-  return
-}
-
-// -----
-
-func @testCaseRegionBadBranchIndicesPositive() {
-  %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
-  // expected-error @+1 {{expects 'branch_index' to be less than the number of regions (1), but got 1}}
-  "tf.CaseRegion"(%0) ( {
-    "tf.Yield"() : () -> ()
-  }) {is_stateless = false} : (tensor<i32>) -> ()
   return
 }
 
