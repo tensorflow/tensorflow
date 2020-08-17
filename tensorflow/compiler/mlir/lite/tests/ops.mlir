@@ -1189,22 +1189,7 @@ func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
   // CHECK: "tfl.unpack"(%arg0) {axis = 1 : i32, num = 3 : i32}
   %0:3 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 3 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
   return %0#0 : tensor<2xi32>
-}
 
-// -----
-
-func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
-  // CHECK: "tfl.unpack"(%arg0) {axis = -1 : i32, num = 3 : i32}
-  %0:3 = "tfl.unpack"(%arg0) {axis = -1 : i32, num = 3 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
-  return %0#0 : tensor<2xi32>
-}
-
-// -----
-
-func @unpack(%arg0: tensor<2x3xi32>) -> tensor<3xi32> {
-  // CHECK: "tfl.unpack"(%arg0) {axis = -2 : i32, num = 2 : i32}
-  %0:2 = "tfl.unpack"(%arg0) {axis = -2 : i32, num = 2 : i32} : (tensor<2x3xi32>) -> (tensor<3xi32>, tensor<3xi32>)
-  return %0#0 : tensor<3xi32>
 }
 
 // -----
@@ -1221,45 +1206,6 @@ func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
   // expected-error @+1 {{output count should match 'num' attribute}}
   %0:3 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 2 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
   return %0#0 : tensor<2xi32>
-}
-
-// -----
-
-func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
-  // expected-error @+1 {{attribute 'axis' should be in range [-rank, rank), got axis = 2, and rank = 2}}
-  %0:3 = "tfl.unpack"(%arg0) {axis = 2 : i32, num = 3 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
-  return %0#0 : tensor<2xi32>
-}
-
-// -----
-
-func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
-  // expected-error @+1 {{attribute 'axis' should be in range [-rank, rank), got axis = -3, and rank = 2}}
-  %0:3 = "tfl.unpack"(%arg0) {axis = -3 : i32, num = 3 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
-  return %0#0 : tensor<2xi32>
-}
-
-// -----
-
-func @unpack(%arg0: tensor<i32>) -> tensor<2xi32> {
-  // expected-error @+1 {{input should be of rank larger than 0}}
-  %0:3 = "tfl.unpack"(%arg0) {axis = 0 : i32, num = 3 : i32} : (tensor<i32>) -> (tensor<2xi32>, tensor<2xi32>, tensor<2xi32>)
-  return %0#0 : tensor<2xi32>
-}
-
-// -----
-
-func @unpack(%arg0: tensor<2x3xi32>) -> tensor<2xi32> {
-  // expected-error @+1 {{op inferred type incompatible with return type of operation}}
-  %0:3 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 3 : i32} : (tensor<2x3xi32>) -> (tensor<2xi32>, tensor<2x1xi32>, tensor<2xi32>)
-  return %0#0 : tensor<2xi32>
-}
-
-// -----
-
-func @unpack(%arg0: tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>) {
-  %0:2 = "tfl.unpack"(%arg0) {axis = 1 : i32, num = 2 : i32} : (tensor<*xi32>) -> (tensor<*xi32>, tensor<*xi32>)
-  return %0#0, %0#1 : tensor<*xi32>, tensor<*xi32>
 }
 
 // -----

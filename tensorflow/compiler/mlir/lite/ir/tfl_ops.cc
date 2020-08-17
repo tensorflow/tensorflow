@@ -30,7 +30,6 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -1446,59 +1445,12 @@ void FakeQuantOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 // TODO(b/133486129): Implement shape inference for unpack
 
-LogicalResult UnpackOp::inferReturnTypes(
-    MLIRContext *context, Optional<Location> loc, ValueRange operands,
-    DictionaryAttr attributes, RegionRange regions,
-    SmallVectorImpl<Type> &inferredReturnTypes) {
-  UnpackOpAdaptor op(operands, attributes);
-  // TODO(jpienaar): Refactor inferReturnTypes.
-  if (failed(op.verify(loc.hasValue() ? *loc : UnknownLoc::get(context))))
-    return failure();
+static LogicalResult Verify(UnpackOp op) {
+  // TODO(antiagainst): Implement other checks as in
+  // tensorflow/lite/kernels/unpack.cc
 
-  if (operands.size() != 1) {
-    return emitOptionalError(loc, "input count should be equal to 1");
-  }
-
-  const int64_t num_value = op.num().getInt();
-  auto input_type = operands[0].getType().dyn_cast<ShapedType>();
-  if (!input_type || !input_type.hasRank()) {
-    // If input is unranked, then so is output.
-    inferredReturnTypes.assign(
-        num_value, UnrankedTensorType::get(input_type.getElementType()));
-    return success();
-  }
-
-  if (input_type.getNumElements() <= 0) {
-    return emitOptionalError(
-        loc, "number of elements in input shoule be larger than 0");
-  }
-
-  const int64_t rank = input_type.getRank();
-  if (rank <= 0) {
-    return emitOptionalError(loc, "input should be of rank larger than 0");
-  }
-
-  int64_t axis_value = op.axis().getInt();
-  if (axis_value < 0) {
-    axis_value += rank;
-  }
-  if (axis_value < 0 || axis_value >= rank) {
-    return emitOptionalError(
-        loc, "attribute 'axis' should be in range [-rank, rank), got axis = ",
-        op.axis().getInt(), ", and rank = ", rank);
-  }
-
-  if (!ShapedType::isDynamic(input_type.getDimSize(axis_value)) &&
-      input_type.getDimSize(axis_value) != num_value) {
-    return emitOptionalError(loc, "output count should match 'num' attribute");
-  }
-
-  auto output_shape = llvm::to_vector<4>(input_type.getShape());
-  output_shape.erase(output_shape.begin() + axis_value);
-
-  auto output_type =
-      RankedTensorType::get(output_shape, input_type.getElementType());
-  inferredReturnTypes.assign(num_value, output_type);
+  if (op.getOperation()->getNumResults() != op.num())
+    return op.emitOpError("output count should match 'num' attribute");
 
   return success();
 }
