@@ -13,16 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_C_SAVED_MODEL_API_H_
-#define TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_C_SAVED_MODEL_API_H_
-
-// IWYU pragma: begin_exports
-#include "tensorflow/c/experimental/saved_model/public/concrete_function.h"
-#include "tensorflow/c/experimental/saved_model/public/concrete_function_list.h"
-#include "tensorflow/c/experimental/saved_model/public/function_metadata.h"
-#include "tensorflow/c/experimental/saved_model/public/saved_model_api.h"
-#include "tensorflow/c/experimental/saved_model/public/signature_def_function.h"
 #include "tensorflow/c/experimental/saved_model/public/signature_def_function_metadata.h"
-// IWYU pragma: end_exports
 
-#endif  // TENSORFLOW_C_EXPERIMENTAL_SAVED_MODEL_PUBLIC_C_SAVED_MODEL_API_H_
+#include "tensorflow/c/experimental/saved_model/internal/signature_def_function_metadata_type.h"
+
+// TODO(bmzhao): Add getter functions here as necessary.
