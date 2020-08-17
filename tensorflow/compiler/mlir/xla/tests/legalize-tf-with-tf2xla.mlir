@@ -283,6 +283,13 @@ func @bessel_i1e(%arg0: tensor<3xf16>, %arg1: tensor<3xf32>, %arg2: tensor<3xf64
   return %0, %1, %2 : tensor<3xf16>, tensor<3xf32>, tensor<3xf64>
 }
 
+// CHECK-LABEL: diag
+func @diag(%arg0: tensor<2xf32>) -> tensor<2x2xf32> {
+  // CHECK-NOT: tf.Diag
+  %0 = "tf.Diag"(%arg0) : (tensor<2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }
