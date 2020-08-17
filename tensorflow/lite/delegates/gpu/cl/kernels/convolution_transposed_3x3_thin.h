@@ -54,8 +54,7 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
       ConvolutionTransposed3x3Thin* result);
   explicit ConvolutionTransposed3x3Thin(
       const OperationDef& definition,
-      const ConvolutionTransposedAttributes& attr,
-      const DeviceInfo& device_info);
+      const ConvolutionTransposedAttributes& attr);
   template <DataType T>
   absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
                           const tflite::gpu::Tensor<Linear, T>& biases,
@@ -66,8 +65,7 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
                             absl::Span<T> dst);
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
-                                                int src_depth, int dst_depth,
-                                                const DeviceInfo& device_info);
+                                                int src_depth, int dst_depth);
 };
 
 template <DataType T>

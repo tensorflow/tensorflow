@@ -1241,6 +1241,26 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
     config.experimental.executor_type = "SINGLE_THREADED_EXECUTOR"
     self._runBasicWithConfig(config)
 
+  def testIsControlFlowGraph(self):
+    x = constant_op.constant(0)
+
+    @def_function.function
+    def F(c):
+
+      def Cond(i):
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i < 2
+
+      def Body(i):
+        i = i + 1
+        self.assertTrue(i.graph.is_control_flow_graph)
+        return i
+
+      return while_loop_v2(Cond, Body, [c])
+
+    ret, = F(x)
+    self.assertEqual(2, self.evaluate(ret))
+
   def testImportFromSerializedWithFunctionInBody(self):
     serialized = """node {
       name: "Const"
@@ -1809,6 +1829,18 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       grad_out, = gradients_impl.gradients(y, x)
       return grad_out
     self.assertAllEqual(F(), 8.0)
+
+  def testIndexedSlicesInIncomingGrads(self):
+    @def_function.function
+    def F():
+      x = constant_op.constant([2.])
+      # Computes x^4
+      ret = while_loop_v2(
+          lambda _: True, lambda v: v * v, [x], return_same_structure=False,
+          maximum_iterations=2)
+      v = array_ops.gather(ret, [0])
+      return gradients_impl.gradients(v, [x])[0]  # 4*x^3
+    self.assertAllEqual(self.evaluate(F()), [32.])
 
 
 def ScalarShape():

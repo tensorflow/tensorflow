@@ -33,6 +33,7 @@ cc_library(
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@com_github_googlecloudplatform_google_cloud_cpp//:storage_client",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:variant",
     ],
 )
 

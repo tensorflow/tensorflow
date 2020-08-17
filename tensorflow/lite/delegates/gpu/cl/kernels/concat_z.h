@@ -29,26 +29,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class ConcatZ : public GPUOperation {
- public:
-  ConcatZ(const OperationDef& definition, const std::vector<int>& channels,
-          const DeviceInfo& device_info);
-  int3 GetGridSize() const override;
-
-  // Move only
-  ConcatZ(ConcatZ&& kernel);
-  ConcatZ& operator=(ConcatZ&& kernel);
-  ConcatZ(const ConcatZ&) = delete;
-  ConcatZ& operator=(const ConcatZ&) = delete;
-
- private:
-  std::string GetConcatKernelCode(const OperationDef& op_def,
-                                  const std::vector<int>& channels);
-};
-
-ConcatZ CreateConcatZ(const OperationDef& definition,
-                      const std::vector<int>& channels,
-                      const DeviceInfo& device_info);
+GPUOperation CreateConcatZ(const OperationDef& definition,
+                           const std::vector<int>& channels,
+                           const DeviceInfo& device_info);
 
 }  // namespace cl
 }  // namespace gpu

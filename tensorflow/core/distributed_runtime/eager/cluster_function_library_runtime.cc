@@ -97,7 +97,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   StripDefaultAttributesInRegisterFunctionOp(register_function);
 
   eager_client->EnqueueAsync(
-      request.get(), response.get(),
+      /*call_opts=*/nullptr, request.get(), response.get(),
       [this, request, response, handle, released_op = released_op.release(),
        target, eager_client = eager_client.get(), done](const Status& s) {
         {
@@ -118,13 +118,31 @@ void EagerClusterFunctionLibraryRuntime::Run(
   for (const auto& tensor : args) {
     function_args.push_back(tensor);
   }
-  Run(opts, handle, function_args, rets, std::move(done));
+  std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
+  Run(opts, handle, function_args, function_rets,
+      [rets, function_rets, done = std::move(done)](const Status& s) {
+        Status status = s;
+        if (status.ok()) {
+          for (const auto& t : *function_rets) {
+            if (t.index() == 0) {
+              rets->push_back(absl::get<Tensor>(t));
+            } else {
+              status.Update(
+                  errors::Internal("Expect a Tensor as a remote function "
+                                   "output but got a TensorShape."));
+              break;
+            }
+          }
+        }
+        delete function_rets;
+        done(status);
+      });
 }
 
 void EagerClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::LocalHandle handle,
-    gtl::ArraySlice<FunctionArg> args, std::vector<Tensor>* rets,
+    gtl::ArraySlice<FunctionArg> args, std::vector<FunctionRet>* rets,
     FunctionLibraryRuntime::DoneCallback done) {
   FunctionData* function_data = nullptr;
   {
@@ -204,6 +222,14 @@ void EagerClusterFunctionLibraryRuntime::Run(
           done(s);
           return;
         }
+        if (!response->shape().empty() && !response->tensor().empty()) {
+          done(errors::Internal(
+              "Both shape and tensor are specified in the same response"));
+          return;
+        }
+        for (const auto& shape : response->shape()) {
+          rets->push_back(shape);
+        }
         for (const auto& tensor_proto : response->tensor()) {
           Tensor t;
           if (t.FromProto(tensor_proto)) {
@@ -244,7 +270,7 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
   // CleanUp() needs to be non-blocking since it would be invoked inside the
   // enqueue done callback of Run(). So we don't use StreamingEnqueueAsync here.
   eager_client->EnqueueAsync(
-      request.get(), response.get(),
+      /*call_opts=*/nullptr, request.get(), response.get(),
       [request, response, done](const Status& status) { done(status); });
 }
 

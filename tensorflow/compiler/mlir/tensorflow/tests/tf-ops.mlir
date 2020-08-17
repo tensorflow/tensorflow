@@ -848,7 +848,7 @@ func @testInvalidIfOp(tensor<i1>, tensor<*xf32>) -> tensor<2xf32> {
 
 // Test invalid tf.Yield operation (parent should be IfRegion)
 func @testInvalidYieldOp(%arg0: f32) -> () {
-  // expected-error @+1 {{'tf.Yield' op expects parent op to be one of 'tf.IfRegion, tf.WhileRegion'}}
+  // expected-error @+1 {{'tf.Yield' op expects parent op to be one of 'tf.CaseRegion, tf.IfRegion, tf.WhileRegion'}}
   "tf.Yield"(%arg0) : (f32) -> ()
 }
 
@@ -2040,6 +2040,71 @@ func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
   %cst = constant dense<[1, 0]> : tensor<2xi32>
   %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<3x2xf32>
   return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with partial unknown shape
+// CHECK-LABEL: testTranspose
+func @testTranspose(tensor<2x?xf32>) -> tensor<?x2xf32> {
+^bb0(%arg0: tensor<2x?xf32>):
+  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x?xf32>, tensor<2xi32>) -> tensor<?x2xf32>
+  return %0 : tensor<?x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with different partial unknown shape
+// CHECK-LABEL: testTranspose
+func @testTranspose(tensor<2x?x?xf32>) -> tensor<3x?x2xf32> {
+^bb0(%arg0: tensor<2x?x?xf32>):
+  %cst = constant dense<[2, 1, 0]> : tensor<3xi32>
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x?x?xf32>, tensor<3xi32>) -> tensor<3x?x2xf32>
+  return %0 : tensor<3x?x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with invalid rank of perm
+func @testTranspose(tensor<2x3xf32>, tensor<1x2xi32>) -> tensor<3x2xf32> {
+^bb0(%arg0: tensor<2x3xf32>, %arg1: tensor<1x2xi32>):
+  // expected-error @+1 {{expected perm to be a 1-D Tensor, got perm of rank 2}}
+  %0 = "tf.Transpose"(%arg0, %arg1) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<1x2xi32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with invalid size of perm
+func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {
+^bb0(%arg0: tensor<2x3xf32>):
+  %cst = constant dense<[1, 0, 2]> : tensor<3xi32>
+  // expected-error @+1 {{expected perm to be a 1-D Tensor of size equal to the rank of x, got perm of size 3, and x of rank 2}}
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<3x2xf32>
+  return %0 : tensor<3x2xf32>
+}
+
+// -----
+
+// Test tf.Transpose with invalid rank of y
+func @testTranspose(tensor<2x3xf32>) -> tensor<3x2x1xf32> {
+^bb0(%arg0: tensor<2x3xf32>):
+  %cst = constant dense<[1, 0]> : tensor<2xi32>
+  // expected-error @+1 {{x should be of the same rank with y, got x of rank 2, and y of rank 3}}
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<3x2x1xf32>
+  return %0 : tensor<3x2x1xf32>
+}
+
+// -----
+
+// Test tf.Transpose with invalid shape of y
+func @testTranspose(tensor<2x3x4xf32>) -> tensor<3x2x4xf32> {
+^bb0(%arg0: tensor<2x3x4xf32>):
+  %cst = constant dense<[2, 0, 1]> : tensor<3xi32>
+  // expected-error @+1 {{requires y.shape[0] (3) to be equal to x.shape[perm[2]] (4)}}
+  %0 = "tf.Transpose"(%arg0, %cst) {T = "tfdtype$DT_FLOAT", Tperm = "tfdtype$DT_INT32"} : (tensor<2x3x4xf32>, tensor<3xi32>) -> tensor<3x2x4xf32>
+  return %0 : tensor<3x2x4xf32>
 }
 
 // -----
@@ -3247,4 +3312,89 @@ func @testBatchToSpaceInvalidOutputDepth(%arg0: tensor<16x8x8x3xf32>, %arg1: ten
   // expected-error @+1 {{'tf.BatchToSpace' op requires output depth (dimension 3) to be equal to input depth (dimension 3), but got output depth 8 and input depth 3}}
   %0 = "tf.BatchToSpace"(%arg0, %arg1) {block_size = 2 : i64} : (tensor<16x8x8x3xf32>, tensor<*xi32>) -> tensor<4x8x8x8xf32>
   return
+}
+
+// -----
+
+func @testCaseRegionNoRegions(%arg0: tensor<i32>) {
+  // expected-error @+1 {{expects to have at least 1 region}}
+  "tf.CaseRegion"(%arg0) {is_stateless = false} : (tensor<i32>) -> ()
+  return
+}
+
+// -----
+
+func @testCaseRegionBadBranchIndicesShape(%arg0: tensor<8xi32>) {
+  // expected-error @+1 {{expects 'branch_index' to be a scalar, but got 'tensor<8xi32>'}}
+  "tf.CaseRegion"(%arg0) ( {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false} : (tensor<8xi32>) -> ()
+  return
+}
+
+// -----
+
+func @testCaseRegionBadBranchIndicesNegative() {
+  %0 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{expects 'branch_index' to be non-negative, but got -1}}
+  "tf.CaseRegion"(%0) ( {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false} : (tensor<i32>) -> ()
+  return
+}
+
+// -----
+
+func @testCaseRegionBadBranchIndicesPositive() {
+  %0 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
+  // expected-error @+1 {{expects 'branch_index' to be less than the number of regions (1), but got 1}}
+  "tf.CaseRegion"(%0) ( {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false} : (tensor<i32>) -> ()
+  return
+}
+
+// -----
+
+func @testCaseRegionMismatchedNumResults(%arg0: tensor<i32>) {
+  // expected-error @+1 {{region #0 should have same number (1) of results as tf.CaseRegion but has 0 results}}
+  %1 = "tf.CaseRegion"(%arg0) ( {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false} : (tensor<i32>) -> tensor<i1>
+  return
+}
+
+// -----
+
+func @testCaseRegionMismatchedResultTypes(%arg0: tensor<i32>, %arg1: tensor<f32>) {
+  // expected-error @+1 {{region #0 result type tensor<f32> is incompatible with tf.CaseRegion result type tensor<i1> at index 0}}
+  %1 = "tf.CaseRegion"(%arg0) ( {
+    "tf.Yield"(%arg1) : (tensor<f32>) -> ()
+  }) {is_stateless = false} : (tensor<i32>) -> tensor<i1>
+  return
+}
+
+// -----
+
+// Test valid tf.Cumsum
+func @testCumsum(%arg: tensor<8x16xf32>, %axis: tensor<i32>) -> tensor<8x16xf32> {
+  %0 = "tf.Cumsum"(%arg, %axis) : (tensor<8x16xf32>, tensor<i32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
+
+// -----
+
+func @testCumprod(%arg: tensor<8x16xf32>, %axis: tensor<2xi32>) -> tensor<8x16xf32> {
+  // expected-error @+1 {{requires scalar axis operand}}
+  %0 = "tf.Cumprod"(%arg, %axis) : (tensor<8x16xf32>, tensor<2xi32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
+}
+
+// -----
+
+func @testCumprod(%arg: tensor<8x16xf32>) -> tensor<8x16xf32> {
+  %axis = constant dense<-3> : tensor<i32>
+  // expected-error @+1 {{axis operand should be within range [-2, 2)}}
+  %0 = "tf.Cumprod"(%arg, %axis) : (tensor<8x16xf32>, tensor<i32>) -> tensor<8x16xf32>
+  return %0 : tensor<8x16xf32>
 }

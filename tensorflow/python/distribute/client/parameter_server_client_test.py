@@ -374,6 +374,15 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
     self.iteration.assign_add(1.0)
     return self.iteration
 
+  @def_function.function
+  def _long_function(self):
+    x = random_ops.random_uniform((1000, 1000))
+    for _ in math_ops.range(10000):
+      a = random_ops.random_uniform((1000, 1000))
+      b = random_ops.random_uniform((1000, 1000))
+      x += math_ops.matmul(a, b)
+    return x
+
   def testJoinRaiseError(self):
     for _ in range(3):
       self.client.schedule(self._normal_function)
@@ -435,6 +444,22 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
 
     with self.assertRaises(client.InputError):
       self.client.join()
+
+  def testCancellation(self):
+    for _ in range(3):
+      self.client.schedule(self._normal_function)
+    long_function = self.client.schedule(self._long_function)
+    self.client.schedule(self._error_function)
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.client.join()
+
+    with self.assertRaises(client.FunctionRetryableError):
+      long_function.fetch()
+
+    for _ in range(3):
+      self.client.schedule(self._normal_function)
+    self.client.join()
 
 
 class LimitedClosureQueueErrorTest(ErrorReportingTest):

@@ -19,6 +19,7 @@ limitations under the License.
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
+#include "mlir/IR/AsmState.h"
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/InitAllDialects.h"
@@ -80,6 +81,8 @@ int main(int argc, char **argv) {
   llvm::InitLLVM y(argc, argv);
 
   // Register any pass manager command line options.
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerMLIRContextCLOptions();
   mlir::registerPassManagerCLOptions();
   mlir::PassPipelineCLParser passPipeline("", "Compiler passes to run");
 

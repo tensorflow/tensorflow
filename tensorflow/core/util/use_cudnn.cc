@@ -22,23 +22,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool CanUseCudnn() {
-  static bool is_enabled = [] {
-    bool is_enabled = true;
-    // TODO(b/155239286): Remove TF_USE_CUDNN after TF 2.3 is released.
-    Status status =
-        ReadBoolFromEnvVar("TF_USE_CUDNN", /*default_val=*/true, &is_enabled);
-    if (!status.ok()) {
-      LOG(ERROR) << status;
-    }
-    if (!is_enabled) {
-      LOG(WARNING) << "The environmental variable TF_USE_CUDNN is deprecated "
-                      "and will be ignored in the future";
-    }
-    return is_enabled;
-  }();
-  return is_enabled;
-}
+// TODO(b/155239286): Remove this function
+bool CanUseCudnn() { return true; }
 
 #define ADD_BOOL_CUDNN_FLAG(func_name, flag_name, default_value)           \
   bool func_name() {                                                       \

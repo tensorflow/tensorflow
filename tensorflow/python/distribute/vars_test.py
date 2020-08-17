@@ -95,8 +95,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       sess.run({"complicated": mirrored})
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testAssign(self, distribution, experimental_run_tf_function,
-                 use_var_policy):
+  def testAssign(self, distribution, experimental_run_tf_function):
 
     def assign(fn, v, update_value, cross_replica):
       update_fn = lambda: getattr(v, fn)(update_value)
@@ -136,8 +135,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
                             self.evaluate(array_ops.ones_like(component)))
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testAssignOnWriteVar(self, distribution, experimental_run_tf_function,
-                           use_var_policy):
+  def testAssignOnWriteVar(self, distribution, experimental_run_tf_function):
 
     with distribution.scope():
       v_to_assign = variable_scope.variable(
@@ -182,8 +180,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(2.0, self.evaluate(component.read_value()))
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testAssignPerReplicaVal(self, distribution, experimental_run_tf_function,
-                              use_var_policy):
+  def testAssignPerReplicaVal(self, distribution, experimental_run_tf_function):
 
     if isinstance(distribution, _TPU_STRATEGIES):
       self.skipTest("Assigning PerReplica values is not supported. See"
@@ -241,7 +238,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
         self.assertAllEqual(expected, self.evaluate(component.read_value()))
 
   @combinations.generate(strategy_with_var_policy())
-  def testValueInReplicaContext(self, distribution, use_var_policy):
+  def testValueInReplicaContext(self, distribution):
     with distribution.scope():
       v = variables_lib.Variable(
           1., aggregation=variables_lib.VariableAggregation.MEAN)
@@ -260,8 +257,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
   def testReadValueInReplicaContext(self, distribution,
-                                    experimental_run_tf_function,
-                                    use_var_policy):
+                                    experimental_run_tf_function):
     aggregations = [
         variables_lib.VariableAggregation.NONE,
         variables_lib.VariableAggregation.SUM,
@@ -286,8 +282,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
 
   @combinations.generate(strategy_and_run_tf_function_combinations())
   def testReadValueInCrossReplicaContext(self, distribution,
-                                         experimental_run_tf_function,
-                                         use_var_policy):
+                                         experimental_run_tf_function):
     aggregations = [
         variables_lib.VariableAggregation.NONE,
         variables_lib.VariableAggregation.SUM,
@@ -312,7 +307,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
                          self.evaluate(results))
 
   @combinations.generate(strategy_with_var_policy())
-  def testAssignOutOfScope(self, distribution, use_var_policy):
+  def testAssignOutOfScope(self, distribution):
     with distribution.scope():
       mirrored = variables_lib.Variable(1.)
     self.evaluate(mirrored.assign(3.))
@@ -321,8 +316,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(component.read_value()), 3.)
 
   @combinations.generate(strategy_with_var_policy())
-  def testAssignAggregationMeanDTypeNonFloat(self, distribution,
-                                             use_var_policy):
+  def testAssignAggregationMeanDTypeNonFloat(self, distribution):
     if isinstance(distribution, _TPU_STRATEGIES):
       self.skipTest("Fix sponge/6e8ab540-4c0f-4da5-aedf-86505ff810c9 before "
                     "reenabling test.")
@@ -379,8 +373,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(v.read_value()), 4)
 
   @combinations.generate(strategy_with_var_policy())
-  def testInitializedToSameValueInsideEagerRun(self, distribution,
-                                               use_var_policy):
+  def testInitializedToSameValueInsideEagerRun(self, distribution):
     if not context.executing_eagerly(): self.skipTest("eager only test")
     v = [None]
 
@@ -399,7 +392,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(vals[0], vals[1])
 
   @combinations.generate(strategy_with_var_policy())
-  def testAggregationOnlyFirstReplica(self, distribution, use_var_policy):
+  def testAggregationOnlyFirstReplica(self, distribution):
     with distribution.scope():
       v = variable_scope.variable(
           15.,
@@ -420,7 +413,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
         per_replica_results)
 
   @combinations.generate(strategy_with_var_policy())
-  def testInitScope(self, distribution, use_var_policy):
+  def testInitScope(self, distribution):
     if not context.executing_eagerly(): self.skipTest("eager only")
 
     class C(object):
@@ -448,7 +441,7 @@ class OnWriteVariableSync(test.TestCase, parameterized.TestCase):
     self.assertAllEqual([2, 2], per_replica_results)
 
   @combinations.generate(strategy_with_var_policy())
-  def testOperatorOverride(self, distribution, use_var_policy):
+  def testOperatorOverride(self, distribution):
 
     with distribution.scope():
       v = variable_scope.variable(

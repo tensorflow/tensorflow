@@ -107,12 +107,22 @@ class Functional(training_lib.Model):
   ))
 
   @trackable.no_automatic_dependency_tracking
-  def __init__(self, inputs=None, outputs=None, name=None, trainable=True):
+  def __init__(self, inputs=None, outputs=None, name=None, trainable=True,
+               **kwargs):
+    # This is used by the Model class, since we have some logic to swap the
+    # class in the __new__ method, which will lead to __init__ get invoked
+    # twice. Using the skip_init to skip one of the invocation of __init__ to
+    # avoid any side effects
+    skip_init = kwargs.pop('skip_init', False)
+    if skip_init:
+      return
+    generic_utils.validate_kwargs(kwargs, {})
     super(Functional, self).__init__(name=name, trainable=trainable)
     self._init_graph_network(inputs, outputs)
 
   @trackable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs):
+    base_layer.keras_api_gauge.get_cell('Functional').set(True)
     # This method is needed for Sequential to reinitialize graph network when
     # layer is added or removed.
     self._is_graph_network = True
@@ -485,6 +495,19 @@ class Functional(training_lib.Model):
     # Return shapes as TensorShapes.
     return output_shapes
 
+  def _init_set_name(self, name, zero_based=True):
+    if not name:
+      cls_name = self.__class__.__name__
+      if self.__class__ == Functional:
+        # Hide the functional class name from user, since its not a public
+        # visible class. Use "Model" instead,
+        cls_name = 'Model'
+      self._name = backend.unique_object_name(
+          generic_utils.to_snake_case(cls_name),
+          zero_based=zero_based)
+    else:
+      self._name = name
+
   def _run_internal_graph(self, inputs, training=None, mask=None):
     """Computes output tensors for new inputs.
 
@@ -667,7 +690,7 @@ class Functional(training_lib.Model):
       if len(layer._inbound_nodes) > 1 or (
           layer._inbound_nodes and not layer._inbound_nodes[0].is_input):
         cls_name = self.__class__.__name__
-        logging.warning(cls_name + ' inputs must come from '
+        logging.warning(cls_name + ' model inputs must come from '
                         '`tf.keras.Input` (thus holding past layer metadata), '
                         'they cannot be the output of '
                         'a previous non-Input layer. '
@@ -696,7 +719,7 @@ class Functional(training_lib.Model):
     for x in self.outputs:
       if not hasattr(x, '_keras_history'):
         cls_name = self.__class__.__name__
-        raise ValueError('Output tensors to a ' + cls_name + ' must be '
+        raise ValueError('Output tensors of a ' + cls_name + ' model must be '
                          'the output of a TensorFlow `Layer` '
                          '(thus holding past layer metadata). Found: ' + str(x))
 
@@ -1128,7 +1151,18 @@ def reconstruct_from_config(config, custom_objects=None, created_layers=None):
         tensor_index = t[2]
 
         layer = layer_map[layer_name]
-        node = layer._inbound_nodes[get_node_index(layer, node_index)]
+        new_node_index = get_node_index(layer, node_index)
+        if new_node_index is None:
+          # The inbound node may not have been processed yet,
+          # (This can happen e.g. if it depends on a different set
+          # of inputs than those that have been processed already).
+          # raise an IndexError so that the current node puts itself
+          # back on the unprocessed queue.
+          # Caution: This may lead to infinite loops for malformed
+          # network configurations! (or when there is a bug in
+          # the network config loading code).
+          raise IndexError
+        node = layer._inbound_nodes[new_node_index]
         return nest.flatten(node.outputs)[tensor_index]
       return t
 

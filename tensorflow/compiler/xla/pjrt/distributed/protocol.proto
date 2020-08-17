@@ -61,6 +61,7 @@ message ConnectRequest {
   int32 protocol_version = 1;  // Always 1 at present.
 
   LocalTopologyProto local_topology = 2;
+  int32 timeout_milliseconds = 3;
 }
 
 message ConnectResponse {

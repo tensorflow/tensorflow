@@ -62,6 +62,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.platform import app
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.profiler import trace
 from tensorflow.python.types import core as core_tf_types
 from tensorflow.python.types import internal
 from tensorflow.python.util import compat
@@ -1472,6 +1473,7 @@ def pack_eager_tensors(tensors, ctx=None):
   return packed_tensor
 
 
+@trace.trace_wrapper("convert_to_tensor")
 def convert_to_tensor(value,
                       dtype=None,
                       name=None,

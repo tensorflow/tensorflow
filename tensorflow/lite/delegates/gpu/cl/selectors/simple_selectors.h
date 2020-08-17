@@ -41,12 +41,10 @@ absl::Status SelectPReLU(const PReLUAttributes& attr,
                          std::unique_ptr<GPUOperation>* ptr);
 
 void SelectPooling(const Pooling2DAttributes& attr, const OperationDef& op_def,
-                   const DeviceInfo& device_info,
                    std::unique_ptr<GPUOperation>* ptr);
 
 void SelectMaxUnpooling(const MaxUnpooling2DAttributes& attr,
                         const OperationDef& op_def,
-                        const DeviceInfo& device_info,
                         std::unique_ptr<GPUOperation>* ptr);
 
 void SelectAdd(const OperationDef& op_def, const std::vector<int>& channels,

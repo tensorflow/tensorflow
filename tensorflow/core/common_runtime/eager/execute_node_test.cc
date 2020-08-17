@@ -94,9 +94,9 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
       TensorHandle::CreateLocalHandle(std::move(t1), device0, device0, ctx);
   // Create two remote TensorHandles
   TensorHandle* h2 = TensorHandle::CreateLazyRemoteHandle(
-      /*op_id=*/1, /*output_num=*/0, dtype, device1, ctx);
+      /*op_id=*/1, /*output_num=*/0, dtype, device1, /*is_ready=*/true, ctx);
   TensorHandle* h3 = TensorHandle::CreateLazyRemoteHandle(
-      /*op_id=*/2, /*output_num=*/1, dtype, device1, ctx);
+      /*op_id=*/2, /*output_num=*/1, dtype, device1, /*is_ready=*/true, ctx);
   // Create a packed TensorHandle
   TensorHandle* packed_h = nullptr;
   TF_ASSERT_OK(TensorHandle::CreatePackedHandle({h1, h2}, ctx, &packed_h));

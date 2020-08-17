@@ -160,7 +160,7 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
         dtypes.complex128,
     ]
 
-    matrix = ops.convert_to_tensor(matrix, name="matrix")
+    matrix = ops.convert_to_tensor_v2_with_dispatch(matrix, name="matrix")
 
     dtype = matrix.dtype
     if dtype not in allowed_dtypes:

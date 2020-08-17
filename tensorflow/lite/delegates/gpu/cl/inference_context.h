@@ -20,9 +20,9 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
@@ -40,12 +40,9 @@ namespace gpu {
 namespace cl {
 
 struct CLNode {
-  std::vector<std::unique_ptr<GPUOperation>> operations;
+  std::unique_ptr<GPUOperation> operation;
   std::vector<ValueId> inputs;
   std::vector<ValueId> outputs;
-  // So as CLNode can have few operations, ranges keep range of ids from inputs,
-  // for every operation.
-  std::vector<int2> ranges;
 
   // Mostly for debug purposes.
   std::string name;
@@ -98,7 +95,7 @@ class InferenceContext {
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
                            const CreationContext& creation_context,
                            const GraphFloat32& graph);
-  void Merge();
+  absl::Status Merge();
   absl::Status AllocateMemory(const CLDevice& device, CLContext* context);
 
   absl::Status AllocateMemoryForBuffers(const CLDevice& device,
@@ -160,7 +157,7 @@ class InferenceContext {
     DummyTensor Get(ValueId id) { return reservations_[id]; }
 
    private:
-    std::unordered_map<ValueId, DummyTensor> reservations_;
+    absl::flat_hash_map<ValueId, DummyTensor> reservations_;
     ValueId next_;
   };
   TensorReserver tensor_reserver_;

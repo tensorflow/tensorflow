@@ -15,9 +15,9 @@ limitations under the License.
 #ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
 #define TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
 
+#include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
-#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
 namespace tensorflow {

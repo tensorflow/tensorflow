@@ -627,6 +627,11 @@ message OpSharding {
   // applied, this is inferred from the instruction this sharding gets attached
   // to.
   repeated OpSharding tuple_shardings = 5;
+
+  // Only used for OTHER type. If true, data is sharded according to other
+  // dimensions of tile_assignment(), but replicated across devices along the
+  // last dimension. (Experimental)
+  bool replicate_on_last_tile_dim = 6;
 }
 
 // Describes the replica groups in a cross replica op (e.g., all-reduce and

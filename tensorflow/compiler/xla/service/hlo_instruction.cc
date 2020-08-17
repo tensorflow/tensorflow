@@ -174,8 +174,19 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
             comparison_direction,
             StringToComparisonDirection(proto.comparison_direction()));
       }
-      instruction =
-          CreateCompare(shape, operands(0), operands(1), *comparison_direction);
+      auto comparison_type_str = proto.comparison_type();
+      if (!comparison_type_str.empty()) {
+        // If a comparison type is specified, it *must* be valid.
+        TF_ASSIGN_OR_RETURN(auto comparison_type,
+                            StringToComparisonType(comparison_type_str));
+        instruction = CreateCompare(shape, operands(0), operands(1),
+                                    *comparison_direction, comparison_type);
+      } else {
+        // Allow the specify of comparison type to be optional.
+        // The comparison type will be determined by the types of the operands.
+        instruction = CreateCompare(shape, operands(0), operands(1),
+                                    *comparison_direction);
+      }
       break;
     }
     case HloOpcode::kTriangularSolve: {
@@ -689,6 +700,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = CreateReshape(shape, operands(0), inferred_dimension);
       break;
     }
+    case HloOpcode::kDynamicReshape: {
+      TF_RET_CHECK(shape.IsArray() && operands(0)->shape().IsArray() &&
+                   ShapeUtil::ElementsIn(shape) ==
+                       ShapeUtil::ElementsIn(operands(0)->shape()))
+          << "shape: " << ShapeUtil::HumanString(shape)
+          << " operand: " << ShapeUtil::HumanString(operands(0)->shape());
+      const auto& operand_vector = all_operands();
+      instruction = CreateDynamicReshape(
+          shape, operands(0), absl::MakeSpan(operand_vector).subspan(1));
+      break;
+    }
     default: {
       instruction = absl::WrapUnique(new HloInstruction(opcode, shape));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -926,8 +948,9 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
-    ComparisonDirection direction) {
-  return absl::make_unique<HloCompareInstruction>(shape, lhs, rhs, direction);
+    ComparisonDirection direction, absl::optional<Comparison::Type> type) {
+  return absl::make_unique<HloCompareInstruction>(shape, lhs, rhs, direction,
+                                                  type);
 }
 
 /* static */ std::unique_ptr<HloInstruction>
@@ -1361,6 +1384,19 @@ HloInstruction::CreateBroadcastSequence(
                                                   inferred_dimension);
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateDynamicReshape(
+    const Shape& shape, HloInstruction* data_operand,
+    absl::Span<HloInstruction* const> dim_sizes) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape),
+           ShapeUtil::ElementsIn(data_operand[0].shape()))
+      << "shape: " << ShapeUtil::HumanString(shape)
+      << " operand: " << ShapeUtil::HumanString(data_operand[0].shape());
+  CHECK_EQ(shape.rank(), dim_sizes.size());
+  return absl::make_unique<HloDynamicReshapeInstruction>(shape, data_operand,
+                                                         dim_sizes);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTranspose(
     const Shape& shape, HloInstruction* operand,
     absl::Span<const int64> dimensions) {
@@ -1557,6 +1593,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTranspose:
     case HloOpcode::kBroadcast:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kMap:
     case HloOpcode::kSlice:
     case HloOpcode::kConstant:
@@ -1995,6 +2032,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kReplicaId:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRsqrt:
@@ -2207,7 +2245,7 @@ Status HloInstruction::ReplaceUsesWith(absl::Span<HloInstruction* const> users,
 Status HloInstruction::ReplaceAllUsesWithDifferentShape(
     absl::Span<HloInstruction* const> users, HloInstruction* new_producer) {
   for (HloInstruction* user : users) {
-    TF_RETURN_IF_ERROR(ReplaceUseWith(user, new_producer));
+    TF_RETURN_IF_ERROR(ReplaceUseWithDifferentShape(user, new_producer));
   }
 
   if (parent_ && parent_->root_instruction() == this) {
@@ -2800,7 +2838,8 @@ HloInstructionProto HloInstruction::ToProto() const {
 
 string HloInstruction::ToCategory() const {
   if (opcode() == HloOpcode::kTranspose || opcode() == HloOpcode::kCopy ||
-      opcode() == HloOpcode::kReshape) {
+      opcode() == HloOpcode::kReshape ||
+      opcode() == HloOpcode::kDynamicReshape) {
     return "data formatting";
   }
 
@@ -3021,6 +3060,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandlePad(this);
     case HloOpcode::kReshape:
       return visitor->HandleReshape(this);
+    case HloOpcode::kDynamicReshape:
+      return visitor->HandleDynamicReshape(this);
     case HloOpcode::kTranspose:
       return visitor->HandleTranspose(this);
     case HloOpcode::kReverse:

@@ -12,6 +12,9 @@ message DispatcherConfig {
   // An optional work directory to use for storing dispatcher state, and for
   // recovering during restarts.
   string work_dir = 3;
+  // Whether to run in fault tolerant mode, where dispatcher state is saved
+  // across restarts.
+  bool fault_tolerant_mode = 4;
 }
 
 // Configuration for a tf.data service WorkerServer.

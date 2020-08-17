@@ -133,63 +133,59 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     return Status(error::INVALID_ARGUMENT,
                   "'isSigned' can only be set for 8-bits integer type");
   }
-  switch (type.getKind()) {
-    case mlir::StandardTypes::F32:
-      return tflite::TensorType_FLOAT32;
-    case mlir::StandardTypes::F16:
-      return tflite::TensorType_FLOAT16;
-    case mlir::StandardTypes::F64:
-      return tflite::TensorType_FLOAT64;
-    case mlir::TF::TensorFlowTypes::STRING:
-      return tflite::TensorType_STRING;
-    case mlir::TF::TensorFlowTypes::QUINT8:
-      return tflite::TensorType_UINT8;
-    case mlir::StandardTypes::Complex: {
-      auto ftype = type.cast<mlir::ComplexType>().getElementType();
-      if (ftype && ftype.isF32()) {
-        return tflite::TensorType_COMPLEX64;
-      }
-      if (ftype && ftype.isF64()) {
-        return tflite::TensorType_COMPLEX128;
-      }
-      return Status(error::INVALID_ARGUMENT, "Unsupported type");
+
+  if (type.isF32()) {
+    return tflite::TensorType_FLOAT32;
+  } else if (type.isF16()) {
+    return tflite::TensorType_FLOAT16;
+  } else if (type.isF64()) {
+    return tflite::TensorType_FLOAT64;
+  } else if (type.isa<mlir::TF::StringType>()) {
+    return tflite::TensorType_STRING;
+  } else if (type.isa<mlir::TF::Quint8Type>()) {
+    return tflite::TensorType_UINT8;
+  } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+    auto ftype = complex_type.getElementType();
+    if (ftype.isF32()) {
+      return tflite::TensorType_COMPLEX64;
     }
-    case mlir::StandardTypes::Integer: {
-      const auto& itype = type.cast<mlir::IntegerType>();
-      switch (itype.getWidth()) {
-        case 1:
-          return tflite::TensorType_BOOL;
-        case 8:
-          return itype.isUnsigned() ? tflite::TensorType_UINT8
-                                    : tflite::TensorType_INT8;
-        case 16:
-          return tflite::TensorType_INT16;
-        case 32:
-          return tflite::TensorType_INT32;
-        case 64:
-          return tflite::TensorType_INT64;
-      }
+    if (ftype.isF64()) {
+      return tflite::TensorType_COMPLEX128;
     }
-    case mlir::quant::QuantizationTypes::UniformQuantized: {
-      auto qtype = type.cast<mlir::quant::UniformQuantizedType>();
-      return GetTFLiteType(qtype.getStorageType(), qtype.isSigned());
+    return Status(error::INVALID_ARGUMENT, "Unsupported type");
+  } else if (auto itype = type.dyn_cast<mlir::IntegerType>()) {
+    switch (itype.getWidth()) {
+      case 1:
+        return tflite::TensorType_BOOL;
+      case 8:
+        return itype.isUnsigned() ? tflite::TensorType_UINT8
+                                  : tflite::TensorType_INT8;
+      case 16:
+        return tflite::TensorType_INT16;
+      case 32:
+        return tflite::TensorType_INT32;
+      case 64:
+        return tflite::TensorType_INT64;
     }
-    case mlir::quant::QuantizationTypes::UniformQuantizedPerAxis: {
-      auto qtype = type.cast<mlir::quant::UniformQuantizedPerAxisType>();
-      return GetTFLiteType(qtype.getStorageType(), qtype.isSigned());
-    }
-    case mlir::TF::TensorFlowTypes::RESOURCE: {
-      // Treat tf.resource values as integer values in flatbuffer.
-      // TODO(b/146131919): Maybe need to have a detailed design for supporting
-      // other resource types beyonds hash table resources and resource
-      // variables.
-      return tflite::TensorType_INT32;
-    }
-    default:
-      // TFLite export fills FLOAT32 for unknown data types. Returning an error
-      // for now for safety and this could be revisited when required.
-      return Status(error::INVALID_ARGUMENT, "Unsupported type");
+  } else if (auto q_uniform_type =
+                 type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    return GetTFLiteType(q_uniform_type.getStorageType(),
+                         q_uniform_type.isSigned());
+
+  } else if (auto q_peraxis_type =
+                 type.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    return GetTFLiteType(q_peraxis_type.getStorageType(),
+                         q_peraxis_type.isSigned());
+  } else if (type.isa<mlir::TF::ResourceType>()) {
+    // Treat tf.resource values as integer values in flatbuffer.
+    // TODO(b/146131919): Maybe need to have a detailed design for supporting
+    // other resource types beyonds hash table resources and resource
+    // variables.
+    return tflite::TensorType_INT32;
   }
+  // TFLite export fills FLOAT32 for unknown data types. Returning an error
+  // for now for safety and this could be revisited when required.
+  return Status(error::INVALID_ARGUMENT, "Unsupported type");
 }
 
 static bool IsConst(Operation* op) {

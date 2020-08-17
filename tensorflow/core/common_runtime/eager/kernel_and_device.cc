@@ -46,9 +46,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 #if !defined(IS_MOBILE_PLATFORM)
-#if !defined(PLATFORM_WINDOWS)
-#include "tensorflow/compiler/jit/xla_kernel_creator_util.h"
-#endif  // !PLATFORM_WINDOWS
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 #endif  // !IS_MOBILE_PLATFORM
 
@@ -242,7 +239,8 @@ struct OpExecutionState : public core::RefCounted {
 
 Status KernelAndDeviceOp::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+    std::vector<EagerKernelRet>* outputs,
+    CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   OpKernelContext::Params params;
   params.device = device_;
@@ -319,7 +317,8 @@ Status KernelAndDeviceOp::Run(
 
 Status KernelAndDeviceFunc::Run(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+    std::vector<EagerKernelRet>* outputs,
+    CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params) {
   Notification n;
   Status status;
@@ -334,7 +333,8 @@ Status KernelAndDeviceFunc::Run(
 
 void KernelAndDeviceFunc::RunAsync(
     ScopedStepContainer* step_container, const EagerKernelArgs& inputs,
-    std::vector<Tensor>* outputs, CancellationManager* cancellation_manager,
+    std::vector<EagerKernelRet>* outputs,
+    CancellationManager* cancellation_manager,
     const absl::optional<EagerRemoteFunctionParams>& remote_func_params,
     std::function<void(const Status&)> done) {
   std::shared_ptr<FunctionLibraryRuntime::Options> opts = nullptr;

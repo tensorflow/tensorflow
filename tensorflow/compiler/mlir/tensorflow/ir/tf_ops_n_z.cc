@@ -932,24 +932,75 @@ static LogicalResult Verify(ShapeNOp op) {
   return success();
 }
 
-LogicalResult ShapeNOp::fold(ArrayRef<Attribute> operands,
-                             SmallVectorImpl<OpFoldResult> &results) {
-  if (getNumOperands() == 0) return success();
-  int width =
-      getType(0).cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
-
-  for (Type input_ty : getOperandTypes()) {
-    OpFoldResult result = ConvertShapeToAttr(input_ty, width);
-    if (!result) return failure();
-
-    results.push_back(result);
-  }
-  return success();
-}
-
-// TODO(hinsu): Add canonicalization pattern for ShapeN ops that don't have all
+namespace {
+// Canonicalization pattern for ShapeNOp that don't have all
 // static input shapes. Replacing output values corresponding to static input
 // types may enable optimizations in users of the values.
+class ShapeNPartialStaticInputShape : public OpRewritePattern<ShapeNOp> {
+  using OpRewritePattern<ShapeNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ShapeNOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() == 0) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+
+    int width = getElementTypeOrSelf(op.getType(0)).getIntOrFloatBitWidth();
+
+    SmallVector<Value, 4> results(op.getNumOperands());
+    SmallVector<int64_t, 4> dynamic_indices;
+    SmallVector<Value, 4> dynamic_inputs;
+    SmallVector<Type, 4> result_types;
+    for (auto e : llvm::enumerate(op.getOperands())) {
+      if (Attribute result = ConvertShapeToAttr(e.value().getType(), width)) {
+        results[e.index()] = rewriter.create<TF::ConstOp>(op.getLoc(), result);
+      } else {
+        dynamic_indices.push_back(e.index());
+        dynamic_inputs.push_back(e.value());
+        result_types.push_back(op.getType(e.index()));
+      }
+    }
+
+    if (dynamic_inputs.size() == op.getNumOperands()) {
+      // Cannot canonicalize ShapeN if all inputs are dynamic.
+      return failure();
+    }
+
+    // Create a ShapeNOp for all dynamic inputs.
+    if (!dynamic_inputs.empty()) {
+      auto dynamic_shape_n = rewriter.create<TF::ShapeNOp>(
+          op.getLoc(), result_types, dynamic_inputs);
+      for (auto index_result :
+           llvm::zip(dynamic_indices, dynamic_shape_n.getResults())) {
+        results[std::get<0>(index_result)] = std::get<1>(index_result);
+      }
+    }
+
+    rewriter.replaceOp(op, results);
+    return success();
+  }
+};
+
+// Canonicalize ShapeNOp to ShapeOp if there is only one operand.
+class ShapeNToShape : public OpRewritePattern<ShapeNOp> {
+  using OpRewritePattern<ShapeNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ShapeNOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 1) {
+      return failure();
+    }
+    auto shape = rewriter.create<TF::ShapeOp>(op.getLoc(), op.getType(0),
+                                              op.getOperand(0));
+    rewriter.replaceOp(op, {shape});
+    return success();
+  }
+};
+}  // namespace
+
+void ShapeNOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<ShapeNToShape, ShapeNPartialStaticInputShape>(context);
+}
 
 //===----------------------------------------------------------------------===//
 // SizeOp
@@ -1759,11 +1810,52 @@ void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(TransposeOp op) {
-  // TODO(hinsu): Verify using a custom verifier that,
-  // * Transpose permutation is 1-D of size equal to the rank of the first
-  //   input, if the shapes are partially known. Requires use of a more
-  //   restrictive type than TF_Tensor.
-  // * Result shape dimensions are possible based on the input shape.
+  auto perm_type = op.perm().getType().dyn_cast<RankedTensorType>();
+  auto x_type = op.x().getType().dyn_cast<RankedTensorType>();
+  auto y_type = op.y().getType().dyn_cast<RankedTensorType>();
+
+  if (perm_type && perm_type.getRank() != 1) {
+    return op.emitOpError()
+           << "expected perm to be a 1-D Tensor, got perm of rank "
+           << perm_type.getRank();
+  }
+
+  if (x_type && y_type && x_type.getRank() != y_type.getRank()) {
+    return op.emitOpError() << "x should be of the same rank with y, got "
+                            << "x of rank " << x_type.getRank()
+                            << ", and y of rank " << y_type.getRank();
+  }
+
+  if (!x_type || !y_type || !perm_type || !perm_type.hasStaticShape()) {
+    return success();
+  }
+
+  if (x_type.getRank() != perm_type.getNumElements()) {
+    return op.emitOpError() << "expected perm to be a 1-D Tensor of size "
+                            << "equal to the rank of x, got perm of size "
+                            << perm_type.getNumElements() << ", and x of rank "
+                            << x_type.getRank();
+  }
+
+  DenseIntElementsAttr attr_perm;
+  if (matchPattern(op.perm(), m_Constant(&attr_perm))) {
+    // y.shape[i] should be equal to x.shape[perm[i]]
+    // for i = [0, 1, ..., rank(x) - 1]
+    for (auto e : llvm::enumerate(attr_perm)) {
+      const int64_t y_idx = e.index();
+      const int64_t y_dim = y_type.getDimSize(y_idx);
+      const int64_t x_idx = e.value().getSExtValue();
+      const int64_t x_dim = x_type.getDimSize(x_idx);
+      if (y_dim != ShapedType::kDynamicSize &&
+          x_dim != ShapedType::kDynamicSize && y_dim != x_dim) {
+        return op.emitOpError()
+               << "requires y.shape[" << y_idx << "] (" << y_dim << ") "
+               << "to be equal to x.shape[perm[" << x_idx << "]] "
+               << "(" << x_dim << ")";
+      }
+    }
+  }
+
   return success();
 }
 

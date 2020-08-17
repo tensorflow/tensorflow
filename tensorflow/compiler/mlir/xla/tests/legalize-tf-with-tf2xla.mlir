@@ -265,6 +265,31 @@ func @non_max_suppression_v4(%arg0: tensor<3x4xf32>, %arg1: tensor<3xf32>, %arg2
   return %0#0 : tensor<2xi32>
 }
 
+// CHECK-LABEL: bessel_i0e
+func @bessel_i0e(%arg0: tensor<3xf16>, %arg1: tensor<3xf32>, %arg2: tensor<3xf64>) -> (tensor<3xf16>, tensor<3xf32>, tensor<3xf64>) {
+  // CHECK-NOT: tf.BesselI0e
+  %0 = "tf.BesselI0e"(%arg0) : (tensor<3xf16>) -> (tensor<3xf16>)
+  %1 = "tf.BesselI0e"(%arg1) : (tensor<3xf32>) -> (tensor<3xf32>)
+  %2 = "tf.BesselI0e"(%arg2) : (tensor<3xf64>) -> (tensor<3xf64>)
+  return %0, %1, %2 : tensor<3xf16>, tensor<3xf32>, tensor<3xf64>
+}
+
+// CHECK-LABEL: bessel_i1e
+func @bessel_i1e(%arg0: tensor<3xf16>, %arg1: tensor<3xf32>, %arg2: tensor<3xf64>) -> (tensor<3xf16>, tensor<3xf32>, tensor<3xf64>) {
+  // CHECK-NOT: tf.BesselI1e
+  %0 = "tf.BesselI1e"(%arg0) : (tensor<3xf16>) -> (tensor<3xf16>)
+  %1 = "tf.BesselI1e"(%arg1) : (tensor<3xf32>) -> (tensor<3xf32>)
+  %2 = "tf.BesselI1e"(%arg2) : (tensor<3xf64>) -> (tensor<3xf64>)
+  return %0, %1, %2 : tensor<3xf16>, tensor<3xf32>, tensor<3xf64>
+}
+
+// CHECK-LABEL: diag
+func @diag(%arg0: tensor<2xf32>) -> tensor<2x2xf32> {
+  // CHECK-NOT: tf.Diag
+  %0 = "tf.Diag"(%arg0) : (tensor<2xf32>) -> tensor<2x2xf32>
+  return %0 : tensor<2x2xf32>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }

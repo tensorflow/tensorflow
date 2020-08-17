@@ -18,7 +18,7 @@ limitations under the License.
 namespace xla {
 
 bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) {
+    const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval) {
   // If the buffer is a tuple, don't use this algorithm for now. The buffers
   // that are pointed to by the tuple will still use this algorithm.  Because
   // tuples are cheap to place in the alternate memory (they are just pointers)

@@ -16,8 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_STORAGE_TYPE_UTIL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_STORAGE_TYPE_UTIL_H_
 
-#include "tensorflow/lite/delegates/gpu/cl/cl_context.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
@@ -26,16 +25,13 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
-                              const BHWDC& shape,
+bool CanCreateTensorWithShape(const DeviceInfo& device_info, const BHWDC& shape,
                               const TensorDescriptor& descriptor);
 
-bool CanCreateTensorWithShape(const CLContext& context, const CLDevice& device,
-                              const BHWC& shape,
+bool CanCreateTensorWithShape(const DeviceInfo& device_info, const BHWC& shape,
                               const TensorDescriptor& descriptor);
 
-TensorStorageType SelectBestStorageType(const CLContext& context,
-                                        const CLDevice& device,
+TensorStorageType SelectBestStorageType(const DeviceInfo& device_info,
                                         const BHWC& shape,
                                         const TensorStorageType& desired,
                                         const DataType& data_type,

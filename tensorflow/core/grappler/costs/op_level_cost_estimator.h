@@ -88,6 +88,8 @@ class OpLevelCostEstimator {
   Costs PredictEinsum(const OpContext& op_context) const;
   Costs PredictAssignVariableOps(const OpContext& op_context) const;
   Costs PredictPureMemoryOp(const OpContext& op_context) const;
+  Costs PredictSoftmax(const OpContext& op_context) const;
+  Costs PredictResizeBilinear(const OpContext& op_context) const;
 
   // Generic cost prediction method for fused operations.
   Costs PredictFusedOp(const OpContext& op_context,

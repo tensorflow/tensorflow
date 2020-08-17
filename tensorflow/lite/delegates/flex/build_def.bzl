@@ -136,6 +136,7 @@ def tflite_flex_cc_library(
                 "@com_google_absl//absl/types:optional",
                 "@gemmlowp",
                 "//tensorflow/core:protos_all_cc",
+                "@icu//:common",
                 "//tensorflow/core:portable_tensorflow_lib_lite",
                 "//tensorflow/core/platform:strong_hash",
             ],
@@ -234,6 +235,7 @@ def tflite_flex_jni_library(
 def tflite_flex_android_library(
         name,
         models = [],
+        additional_deps = [],
         custom_package = "org.tensorflow.lite.flex",
         visibility = ["//visibility:private"]):
     """A rule to generate an android library based on the selective-built jni library.
@@ -243,12 +245,14 @@ def tflite_flex_android_library(
       models: TFLite models used for selective build. The library will only include ops
           and kernels to support these models. If empty, the library will include all
           Tensorflow ops and kernels.
+      additional_deps: Dependencies for additional TF ops.
       custom_package: Java package for which java sources will be generated.
       visibility: visibility of the generated rules.
     """
     tflite_flex_jni_library(
         name = name,
         models = models,
+        additional_deps = additional_deps,
         visibility = visibility,
     )
 

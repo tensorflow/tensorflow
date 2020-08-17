@@ -1,3 +1,4 @@
+load("@bazel_skylib//lib:selects.bzl", "selects")
 load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
@@ -489,6 +490,7 @@ cc_library(
             "reference/integer_ops/mean.h",
             "reference/integer_ops/transpose_conv.h",
             "reference/reference_ops.h",
+            "reference/string_comparisons.h",
             "reference/sparse_ops/fully_connected.h",
         ],
     }),
@@ -560,6 +562,7 @@ cc_library(
         "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
+        "reference/string_comparisons.h",
         "reference/sub.h",
         "reference/tanh.h",
     ],
@@ -597,9 +600,14 @@ cc_library(
 cc_library(
     name = "tensor",
     hdrs = [
-        "tensor.h",
+        "portable_tensor.h",
         "tensor_ctypes.h",
-    ],
+    ] + select({
+        ":tf_lite_static_memory": [],
+        "//conditions:default": [
+            "tensor.h",
+        ],
+    }),
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -612,9 +620,14 @@ cc_library(
 cc_library(
     name = "reference",
     hdrs = [
-        "tensor.h",
+        "portable_tensor.h",
         "tensor_ctypes.h",
-    ],
+    ] + select({
+        ":tf_lite_static_memory": [],
+        "//conditions:default": [
+            "tensor.h",
+        ],
+    }),
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -735,70 +748,36 @@ cc_library(
         ":cpu_check",
         "//third_party/eigen3",
         "//tensorflow/lite/c:common",
-    ] + select({
-        ":aarch64": [
-            ":neon_tensor_utils",
-        ],
-        ":arm": [
-            ":neon_tensor_utils",
-        ],
-        ":arm64-v8a": [
-            ":neon_tensor_utils",
-        ],
-        ":armeabi-v7a": [
-            ":neon_tensor_utils",
-        ],
-        ":armhf": [
-            ":neon_tensor_utils",
-        ],
-        ":armv7a": [
-            ":neon_tensor_utils",
-        ],
-        ":haswell": [
+    ] + selects.with_or({
+        (
+            ":aarch64",
+            ":arm",
+            ":arm64-v8a",
+            ":armeabi-v7a",
+            ":armhf",
+            ":armv7a",
+            ":ios_armv7",
+            ":ios_arm64",
+            ":ios_arm64e",
+            ":raspberry_pi_with_neon",
+        ): [":neon_tensor_utils"],
+        (
+            ":darwin",
+            ":darwin_x86_64",
+            ":freebsd",
+            ":haswell",
+            ":ios_x86_64",
+            ":x86_64",
+            ":x86",
+            ":k8",
+            ":windows",
+        ): [
             ":sse_tensor_utils",
         ],
-        ":ios_armv7": [
-            ":neon_tensor_utils",
-        ],
-        ":ios_arm64": [
-            ":neon_tensor_utils",
-        ],
-        ":ios_arm64e": [
-            ":neon_tensor_utils",
-        ],
-        ":raspberry_pi_with_neon": [
-            ":neon_tensor_utils",
-        ],
-        ":ios_x86_64": [
-            ":sse_tensor_utils",
-        ],
-        ":x86_64": [
-            ":sse_tensor_utils",
-        ],
-        ":x86": [
-            ":sse_tensor_utils",
-        ],
-        ":k8": [
-            ":sse_tensor_utils",
-        ],
-        ":darwin": [
-            ":sse_tensor_utils",
-        ],
-        ":darwin_x86_64": [
-            ":sse_tensor_utils",
-        ],
-        ":freebsd": [
-            ":sse_tensor_utils",
-        ],
-        ":windows": [
-            ":sse_tensor_utils",
-        ],
-        ":tf_lite_static_memory": [
-            ":portable_tensor_utils",
-        ],
-        "//conditions:default": [
-            ":portable_tensor_utils",
-        ],
+        (
+            ":tf_lite_static_memory",
+            "//conditions:default",
+        ): [":portable_tensor_utils"],
     }),
 )
 

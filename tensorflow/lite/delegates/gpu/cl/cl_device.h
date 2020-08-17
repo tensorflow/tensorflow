@@ -46,9 +46,6 @@ class CLDevice {
   cl_platform_id platform() const { return platform_id_; }
   std::string GetPlatformVersion() const;
 
-  const DeviceInfo& GetInfo() const { return info_; }
-  const DeviceInfo* GetInfoPtr() const { return &info_; }
-
   Vendor vendor() const { return info_.vendor; }
   OpenCLVersion cl_version() const { return info_.cl_version; }
   bool SupportsFP16() const;
@@ -76,10 +73,13 @@ class CLDevice {
   bool SupportsOneLayerTextureArray() const;
   void DisableOneLayerTextureArray();
 
+  // We update device info during context creation, so as supported texture
+  // formats can be requested from context only.
+  mutable DeviceInfo info_;
+
  private:
   cl_device_id id_ = nullptr;
   cl_platform_id platform_id_ = nullptr;
-  DeviceInfo info_;
 };
 
 absl::Status CreateDefaultGPUDevice(CLDevice* result);

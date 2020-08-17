@@ -69,6 +69,8 @@ cc_library(
         "include/mlir/IR/*.h",
     ]) + [
         "include/mlir/Interfaces/CallInterfaces.h",
+        "include/mlir/Interfaces/DecodeAttributesInterfaces.h",
+        "include/mlir/Interfaces/FoldInterfaces.h",
     ],
     includes = ["include"],
     deps = [
@@ -120,6 +122,38 @@ cc_library(
         ":IR",
         ":Support",
         "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "CAPIIR",
+    srcs = [
+        "lib/CAPI/IR/IR.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/IR.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":Parser",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "CAPIRegistration",
+    srcs = [
+        "lib/CAPI/Registration/Registration.cpp",
+    ],
+    hdrs = [
+        "include/mlir-c/Registration.h",
+    ],
+    includes = ["include"],
+    deps = [
+        ":AllPassesAndDialectsNoRegistration",
+        ":CAPIIR",
     ],
 )
 
@@ -431,7 +465,6 @@ cc_library(
         "lib/Dialect/*.h",
     ]),
     hdrs = glob([
-        "include/mlir/Dialect/*.h",
         "include/mlir/Dialect/*.h",
     ]),
     includes = ["include"],
@@ -928,6 +961,7 @@ cc_library(
         ":DialectUtils",
         ":EDSC",
         ":IR",
+        ":LinalgOps",
         ":SCFDialect",
         ":SideEffectInterfaces",
         ":StandardOps",
@@ -1459,6 +1493,7 @@ cc_library(
         ":IR",
         ":LLVMDialect",
         ":Pass",
+        ":StandardToLLVM",
         ":Support",
         ":TargetNVVMIR",
         "@llvm-project//llvm:Core",
@@ -2369,6 +2404,7 @@ cc_library(
         ":ConversionPassIncGen",
         ":IR",
         ":LLVMDialect",
+        ":Parser",
         ":Pass",
         ":StandardOps",
         ":Support",
@@ -2597,9 +2633,11 @@ cc_library(
         "lib/Target/LLVMIR/DebugTranslation.cpp",
         "lib/Target/LLVMIR/DebugTranslation.h",
         "lib/Target/LLVMIR/ModuleTranslation.cpp",
+        "lib/Target/LLVMIR/TypeTranslation.cpp",
     ],
     hdrs = [
         "include/mlir/Target/LLVMIR/ModuleTranslation.h",
+        "include/mlir/Target/LLVMIR/TypeTranslation.h",
     ],
     includes = ["include"],
     deps = [
@@ -2739,6 +2777,9 @@ cc_library(
     name = "MlirOptLib",
     srcs = [
         "lib/Support/MlirOptMain.cpp",
+    ],
+    hdrs = [
+        "include/mlir/Support/MlirOptMain.h",
     ],
     includes = ["include"],
     deps = [
@@ -3150,6 +3191,24 @@ cc_binary(
 
 ## OpenMP dialect
 gentbl(
+    name = "OmpCommonTdGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-directive-decl",
+            "include/mlir/Dialect/OpenMP/OmpCommon.td",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "@llvm-project//llvm:include/llvm/Frontend/OpenMP/OMP.td",
+    td_includes = ["external/llvm-project/llvm/include"],
+    td_srcs = [
+        "@llvm-project//llvm:omp_td_files",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
     name = "OpenMPOpsIncGen",
     strip_include_prefix = "include",
     tbl_outs = [
@@ -3182,6 +3241,8 @@ gentbl(
     td_file = "include/mlir/Dialect/OpenMP/OpenMPOps.td",
     td_srcs = [
         ":OpBaseTdFiles",
+        ":OmpCommonTdGen",
+        "include/mlir/Dialect/OpenMP/OmpCommon.td",
     ],
 )
 
@@ -3656,6 +3717,7 @@ cc_library(
         ":EDSC",
         ":IR",
         ":LLVMDialect",
+        ":LLVMIRModuleTranslation",
         ":Pass",
         ":StandardOps",
         ":StandardToLLVM",

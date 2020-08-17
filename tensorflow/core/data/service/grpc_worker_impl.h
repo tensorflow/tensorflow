@@ -35,16 +35,16 @@ namespace data {
 //
 class GrpcWorkerImpl : public WorkerService::Service {
  public:
-  explicit GrpcWorkerImpl(grpc::ServerBuilder* server_builder,
+  explicit GrpcWorkerImpl(::grpc::ServerBuilder* server_builder,
                           const experimental::WorkerConfig& config);
   ~GrpcWorkerImpl() override {}
 
-  void Start(const std::string& worker_address);
+  Status Start(const std::string& worker_address);
 
-#define HANDLER(method)                               \
-  grpc::Status method(grpc::ServerContext* context,   \
-                      const method##Request* request, \
-                      method##Response* response) override;
+#define HANDLER(method)                                 \
+  ::grpc::Status method(::grpc::ServerContext* context, \
+                        const method##Request* request, \
+                        method##Response* response) override;
   HANDLER(ProcessTask);
   HANDLER(GetElement);
 #undef HANDLER

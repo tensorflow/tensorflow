@@ -42,52 +42,38 @@ class AssetManagerFileSystem : public FileSystem {
   AssetManagerFileSystem(AAssetManager* asset_manager, const string& prefix);
   ~AssetManagerFileSystem() override = default;
 
-  Status FileExists(
-      const string& fname /*, TransactionToken* token = nullptr*/) override;
-  Status NewRandomAccessFile(
-      const string& filename,
-      std::unique_ptr<RandomAccessFile>*
-          result /*, TransactionToken* token = nullptr*/) override;
-  Status NewReadOnlyMemoryRegionFromFile(
-      const string& filename,
-      std::unique_ptr<ReadOnlyMemoryRegion>*
-          result /*, TransactionToken* token = nullptr*/) override;
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  Status GetFileSize(
-      const string& f,
-      uint64* s /*, TransactionToken* token = nullptr*/) override;
+  Status FileExists(const string& fname, TransactionToken* token) override;
+  Status NewRandomAccessFile(
+      const string& filename, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override;
+  Status NewReadOnlyMemoryRegionFromFile(
+      const string& filename, TransactionToken* token,
+      std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
+
+  Status GetFileSize(const string& f, TransactionToken* token,
+                     uint64* s) override;
   // Currently just returns size.
-  Status Stat(
-      const string& fname,
-      FileStatistics* stat /*, TransactionToken* token = nullptr*/) override;
-  Status GetChildren(
-      const string& dir,
-      std::vector<string>* r /*, TransactionToken* token = nullptr*/) override;
+  Status Stat(const string& fname, TransactionToken* token,
+              FileStatistics* stat) override;
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* r) override;
 
   // All these functions return Unimplemented error. Asset storage is
   // read only.
-  Status NewWritableFile(
-      const string& fname,
-      std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr*/) override;
-  Status NewAppendableFile(
-      const string& fname,
-      std::unique_ptr<WritableFile>*
-          result /*, TransactionToken* token = nullptr*/) override;
-  Status DeleteFile(
-      const string& f /*, TransactionToken* token = nullptr*/) override;
-  Status CreateDir(
-      const string& d /*, TransactionToken* token = nullptr*/) override;
-  Status DeleteDir(
-      const string& d /*, TransactionToken* token = nullptr*/) override;
-  Status RenameFile(
-      const string& s,
-      const string& t /*, TransactionToken* token = nullptr*/) override;
+  Status NewWritableFile(const string& fname, TransactionToken* token,
+                         std::unique_ptr<WritableFile>* result) override;
+  Status NewAppendableFile(const string& fname, TransactionToken* token,
+                           std::unique_ptr<WritableFile>* result) override;
+  Status DeleteFile(const string& f, TransactionToken* token) override;
+  Status CreateDir(const string& d, TransactionToken* token) override;
+  Status DeleteDir(const string& d, TransactionToken* token) override;
+  Status RenameFile(const string& s, const string& t,
+                    TransactionToken* token) override;
 
-  Status GetMatchingPaths(
-      const string& pattern,
-      std::vector<string>* results /*, TransactionToken* token = nullptr*/)
-      override;
+  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
+                          std::vector<string>* results) override;
 
  private:
   string RemoveAssetPrefix(const string& name);

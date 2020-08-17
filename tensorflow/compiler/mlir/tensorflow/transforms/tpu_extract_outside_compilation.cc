@@ -17,11 +17,21 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -77,31 +87,203 @@ struct TPUExtractOutsideCompilation
   void runOnOperation() override;
 };
 
-// Collects and clusters ops in `block` with the same `_xla_outside_compilation`
-// attribute into `clusters` This returns an error if a
-// `_xla_outside_compilation` attribute of an op is empty.
-LogicalResult CollectAndGroupOutsideClusterOps(Block* block,
-                                               OutsideClusterMap* clusters) {
-  for (Operation& op : *block) {
-    if (auto attr = op.getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
-      if (attr.getValue().empty())
-        return op.emitError()
-               << "attribute '" << kXlaOutsideCompilationAttr << "' is empty";
+// Holds information about control flow operations that wrap outside compiled
+// op. Currently only tf.If op is supported.
+class ControlFlowStackInfo {
+ public:
+  enum ControlFlowBranchType { kIfThen, kIfElse };
 
-      auto it = clusters->try_emplace(attr.getValue());
-      it.first->getSecond().push_back(&op);
+  explicit ControlFlowStackInfo(Operation* wrapping_op, Operation* nested_op)
+      : callsite_op_(wrapping_op) {
+    // Only tf.IfRegion op is supported for now.
+    auto control_flow_op = llvm::cast<TF::IfRegionOp>(callsite_op_);
+    assert(control_flow_op);
+
+    auto parent_region = nested_op->getParentRegion();
+    if (&control_flow_op.then_branch() == parent_region) {
+      type_ = ControlFlowBranchType::kIfThen;
+    } else {
+      type_ = ControlFlowBranchType::kIfElse;
     }
   }
 
-  return success();
+  Value GetIfPredicateValue() {
+    auto if_op = llvm::cast<TF::IfRegionOp>(callsite_op_);
+    return if_op.cond();
+  }
+
+  ControlFlowBranchType GetBranchType() const { return type_; }
+
+  Operation* GetCallSiteOp() const { return callsite_op_; }
+
+ private:
+  ControlFlowBranchType type_;
+
+  // `this` does not hold ownership of `callsite_op_`.
+  Operation* callsite_op_;
+};
+
+// Returns a list of ControlFlowStackInfo that represents a stack of control
+// flow operations that wraps `op`.
+llvm::SmallVector<ControlFlowStackInfo, 4> GetControlFlowStackForOp(
+    tf_device::ClusterOp tpu_cluster, Operation* op) {
+  assert(tpu_cluster.getOperation()->isProperAncestor(op));
+
+  llvm::SmallVector<ControlFlowStackInfo, 4> controlflow_stack;
+  Operation* op_in_stack = op;
+  while (op_in_stack != tpu_cluster.getOperation()) {
+    auto parent_op = op_in_stack->getParentOp();
+    if (llvm::isa<TF::IfRegionOp>(parent_op)) {
+      controlflow_stack.insert(controlflow_stack.begin(),
+                               ControlFlowStackInfo(parent_op, op_in_stack));
+    }
+    op_in_stack = parent_op;
+  }
+
+  return controlflow_stack;
 }
 
-// Moves `cluster_ops` to associated `launch_op` body.
-void MoveOutsideClusterOpsToLaunchOp(tf_device::LaunchOp launch_op,
-                                     llvm::ArrayRef<Operation*> cluster_ops) {
-  MLIRContext* context = launch_op.getContext();
-  Operation* terminator = launch_op.GetBody().getTerminator();
+// Creates a IfRegionOp with `predicate` and then/else region with yield op and
+// an empty block.
+TF::IfRegionOp CloneEmptyIfWithPredicate(Value predicate, bool is_stateless,
+                                         Location loc, OpBuilder* builder) {
+  auto host_side_if = builder->create<TF::IfRegionOp>(
+      loc, llvm::SmallVector<Type, 4>{}, predicate, is_stateless);
 
+  // Create empty then branch region.
+  auto& then_branch = host_side_if.then_branch();
+  then_branch.push_back(new Block);
+  builder->setInsertionPointToEnd(&then_branch.front());
+  builder->create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+
+  // Create empty else branch region.
+  auto& else_branch = host_side_if.else_branch();
+  else_branch.push_back(new Block);
+  builder->setInsertionPointToEnd(&else_branch.front());
+  builder->create<TF::YieldOp>(loc, /*operands=*/ArrayRef<Value>{});
+  return host_side_if;
+}
+
+// Replicates tf.IfRegion op to host side computation.
+Operation* ReplicateIf(const ControlFlowStackInfo& controlflow_info,
+                       llvm::StringRef outside_cluster_name, ModuleOp module,
+                       Value compilation_key, OpBuilder* builder,
+                       int* send_recv_counter) {
+  // Create XlaSendToHostOp to send predicate value from device to host.
+  OpBuilder::InsertPoint insert_point = builder->saveInsertionPoint();
+  auto if_callsite_op =
+      llvm::cast<TF::IfRegionOp>(controlflow_info.GetCallSiteOp());
+  builder->setInsertionPoint(if_callsite_op);
+
+  const auto predicate_send_recv_key =
+      llvm::formatv("if_predicate_channel_{0}_{1}", outside_cluster_name,
+                    *send_recv_counter)
+          .str();
+  *send_recv_counter += 1;
+
+  auto predicate = if_callsite_op.cond();
+  auto predicate_shape = predicate.getType();
+  builder->create<TF::XlaSendToHostOp>(if_callsite_op.getLoc(), predicate,
+                                       predicate_send_recv_key);
+
+  // Create XlaRecvAtHostOp to receive predicate value from host.
+  builder->restoreInsertionPoint(insert_point);
+  auto recv_predicate_at_host = builder->create<TF::_XlaRecvAtHostOp>(
+      if_callsite_op.getLoc(), llvm::ArrayRef<Type>{predicate_shape},
+      /*dynamic_key=*/compilation_key,
+      builder->getStringAttr(predicate_send_recv_key),
+      /*device_ordinal=*/builder->getI64IntegerAttr(0));
+
+  // Create host side if op.
+  return CloneEmptyIfWithPredicate(recv_predicate_at_host.getResult(0),
+                                   if_callsite_op.is_stateless(),
+                                   if_callsite_op.getLoc(), builder);
+}
+
+// TODO(b/157054714): Use a better abstraction instead of
+// _TPUCompileMlirOp and _XlaRecvAtHostOp and _XlaSendFromHostOp.
+// Creates a compilation key as placeholder. A placeholder compilation cache key
+// is created because it is a required input to _XlaRecvAtHost and
+// _XlaSendFromHost but the _TPUCompileMlir has not yet been created for the TPU
+// cluster that contains the outside compiled ops. This placeholder should be
+// replaced by the TPU cluster _TPUCompileMlir in a subsequent pass.
+Value CreateCompilationKeyPlaceholder(Location loc, OpBuilder* builder) {
+  auto result_type =
+      RankedTensorType::get({2}, builder->getType<TF::StringType>());
+  return builder->create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
+      loc, /*program=*/result_type, llvm::ArrayRef<Value>{});
+}
+
+// Replicates the control flow operations that wraps outside compiled ops to
+// `destination_block`.
+Block* ReplicateControlFlowStack(
+    llvm::StringRef outside_cluster_name,
+    const llvm::SmallVectorImpl<ControlFlowStackInfo>& stack_info,
+    tf_device::ClusterOp tpu_cluster, ModuleOp module, Value compilation_key,
+    Block* destination_block, int* send_recv_counter) {
+  assert(stack_info.size());
+  OpBuilder builder = OpBuilder::atBlockTerminator(destination_block);
+  Operation* previous_replicated_controlflow_op = nullptr;
+  for (const auto& controlflow_stack_info : stack_info) {
+    // Create control flow op given provided insertion point and
+    // ControlFlowStackInfo.
+    previous_replicated_controlflow_op =
+        ReplicateIf(controlflow_stack_info, outside_cluster_name, module,
+                    compilation_key, &builder, send_recv_counter);
+    auto if_op = llvm::cast<TF::IfRegionOp>(previous_replicated_controlflow_op);
+    auto type = controlflow_stack_info.GetBranchType();
+
+    // Update the insertion point to proper region inside the newly created
+    // control flow op.
+    if (type == ControlFlowStackInfo::kIfThen) {
+      builder.setInsertionPoint(&if_op.then_branch().front().front());
+    } else {
+      builder.setInsertionPoint(&if_op.else_branch().front().front());
+    }
+  }
+
+  // Return the inner most branch at which outside compiled op is located.
+  // This block will later be used as insertion point to create send/recv ops.
+  auto inner_most_controlflow_stack = stack_info.back();
+  auto inner_most_if =
+      llvm::cast<TF::IfRegionOp>(previous_replicated_controlflow_op);
+  if (inner_most_controlflow_stack.GetBranchType() ==
+      ControlFlowStackInfo::kIfThen) {
+    return &inner_most_if.then_branch().front();
+  } else {
+    return &inner_most_if.else_branch().front();
+  }
+}
+
+// Collects and clusters ops in `block` with the same `_xla_outside_compilation`
+// attribute into `clusters` This returns an error if a
+// `_xla_outside_compilation` attribute of an op is empty.
+// TODO(b/163141763): Make sure ops inside control flow regions are not outside
+// compiled if the entire control flow op is marked as outside compiled.
+LogicalResult CollectAndGroupOutsideClusterOps(Block* block,
+                                               OutsideClusterMap* clusters) {
+  auto walk_result = block->walk([&](Operation* op) {
+    if (auto attr = op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+      if (attr.getValue().empty()) {
+        op->emitError() << "attribute '" << kXlaOutsideCompilationAttr
+                        << "' is empty";
+        return WalkResult::interrupt();
+      }
+
+      auto it = clusters->try_emplace(attr.getValue());
+      it.first->getSecond().push_back(op);
+    }
+    return WalkResult::advance();
+  });
+
+  return failure(walk_result.wasInterrupted());
+}
+
+// Moves `cluster_ops` to associated `block`.
+void MoveOutsideClusterOpsToBlock(Block& block,
+                                  llvm::ArrayRef<Operation*> cluster_ops,
+                                  MLIRContext* context) {
+  Operation* terminator = block.getTerminator();
   for (Operation* cluster_op : cluster_ops) {
     // Remove `_xla_outside_compilation` and `device` attribute from ops in the
     // cluster as that information will be present in the `launch_op`.
@@ -112,16 +294,15 @@ void MoveOutsideClusterOpsToLaunchOp(tf_device::LaunchOp launch_op,
   }
 }
 
-// Creates a `tf_device::LaunchOp` to wrap cluster ops.
+// Creates a `tf_device.launch` to wrap cluster ops.
 tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
     OpBuilder* builder, Operation* last_cluster_op,
     llvm::StringRef host_device) {
   // An empty string placeholder is used for the device as that will be later
   // populated with the device of the associated TPUReplicateMetadata op.
-  llvm::SmallVector<Type, 8> result_types;
   auto launch_op = builder->create<tf_device::LaunchOp>(
       last_cluster_op->getLoc(), builder->getStringAttr(host_device),
-      result_types);
+      /*result_types=*/ArrayRef<Type>{});
 
   launch_op.body().push_back(new Block);
 
@@ -212,34 +393,43 @@ TF::_XlaHostComputeMlirOp CreateHostCompute(
 }
 
 void MoveOutsideCompiledOps(
-    tf_device::ClusterOp tpu_cluster, llvm::StringRef outside_cluster_name,
-    tf_device::LaunchOp host_launch_op, llvm::ArrayRef<Operation*> cluster_ops,
+    ModuleOp module, tf_device::ClusterOp tpu_cluster,
+    llvm::StringRef outside_cluster_name, tf_device::LaunchOp host_launch_op,
+    llvm::ArrayRef<Operation*> cluster_ops,
     const llvm::SmallSetVector<Value, 4>& external_inputs,
     llvm::ArrayRef<Value> external_outputs) {
+  // Since ops in `cluster_ops` do not cross function/control flow boundary, it
+  // is sufficient to identify the control flow that wraps `cluster_ops` by
+  // looking at any arbitary op inside `cluster_ops`.
+  auto controlflow_stack =
+      GetControlFlowStackForOp(tpu_cluster, cluster_ops.front());
+
+  Value compilation_key;
+  if (!controlflow_stack.empty() || !external_inputs.empty() ||
+      !external_outputs.empty()) {
+    OpBuilder builder(&host_launch_op.GetBody().front());
+    compilation_key =
+        CreateCompilationKeyPlaceholder(tpu_cluster.getLoc(), &builder);
+  }
+
+  Block* block_to_move_host_cluster = nullptr;
+  if (controlflow_stack.empty()) {
+    block_to_move_host_cluster = &host_launch_op.GetBody();
+  } else {
+    int send_recv_counter = 0;
+    block_to_move_host_cluster = ReplicateControlFlowStack(
+        outside_cluster_name, controlflow_stack, tpu_cluster, module,
+        compilation_key, &host_launch_op.GetBody(), &send_recv_counter);
+  }
+
+  MLIRContext* context = host_launch_op.getContext();
   if (external_inputs.empty() && external_outputs.empty()) {
-    MoveOutsideClusterOpsToLaunchOp(host_launch_op, cluster_ops);
+    MoveOutsideClusterOpsToBlock(*block_to_move_host_cluster, cluster_ops,
+                                 context);
     return;
   }
 
-  OpBuilder builder(host_launch_op.GetBody().getTerminator());
-  auto result_type =
-      RankedTensorType::get({}, builder.getType<TF::StringType>());
-
-  std::string txt_metadata;
-  std::string txt_module;
-  // TODO(b/157054714): Use a better abstraction instead of _TPUCompileMlirOp
-  // and _XlaRecvAtHostOp and _XlaSendFromHostOp.
-
-  // A placeholder compilation cache key is created because it is a required
-  // input to _XlaRecvAtHost and _XlaSendFromHost but the _TPUCompileMlir has
-  // not yet been created for the TPU cluster that contains the outside compiled
-  // ops. This placeholder should be replaced by the TPU cluster _TPUCompileMlir
-  // in a subsequent pass.
-  auto compilation_key =
-      builder.create<TF::_TPUCompileMlirPlaceholderProgramKeyOp>(
-          tpu_cluster.getLoc(), /*program=*/result_type,
-          llvm::ArrayRef<Value>{});
-
+  OpBuilder builder(block_to_move_host_cluster->getTerminator());
   llvm::SmallVector<Type, 4> host_output_types;
   for (const auto& external_input : external_inputs)
     host_output_types.push_back(external_input.getType());
@@ -250,6 +440,7 @@ void MoveOutsideCompiledOps(
   std::string retvals_communication_key =
       llvm::formatv("host_compute_channel_{0}_retvals", outside_cluster_name)
           .str();
+
   auto recv_at_host = builder.create<TF::_XlaRecvAtHostOp>(
       tpu_cluster.getLoc(), host_output_types,
       /*dynamic_key=*/compilation_key,
@@ -259,9 +450,10 @@ void MoveOutsideCompiledOps(
   auto host_compute = CreateHostCompute(
       &builder, tpu_cluster, cluster_ops, external_inputs, external_outputs,
       args_communication_key, retvals_communication_key);
-  MoveOutsideClusterOpsToLaunchOp(host_launch_op, cluster_ops);
+  MoveOutsideClusterOpsToBlock(*block_to_move_host_cluster, cluster_ops,
+                               context);
 
-  builder.setInsertionPoint(host_launch_op.GetBody().getTerminator());
+  builder.setInsertionPoint(block_to_move_host_cluster->getTerminator());
   builder.create<TF::_XlaSendFromHostOp>(
       tpu_cluster.getLoc(), external_outputs,
       /*dynamic_key=*/compilation_key,
@@ -279,7 +471,8 @@ void MoveOutsideCompiledOps(
 
 // Creates a `parallel_execute` op in place of launch with 'clusters` and
 // 'launch` as regions.
-void CreateParallelExecuteFromOutsideClusters(tf_device::ClusterOp tpu_cluster,
+void CreateParallelExecuteFromOutsideClusters(ModuleOp module,
+                                              tf_device::ClusterOp tpu_cluster,
                                               const OutsideClusterMap& clusters,
                                               llvm::StringRef host_device) {
   OpBuilder builder(tpu_cluster);
@@ -295,6 +488,7 @@ void CreateParallelExecuteFromOutsideClusters(tf_device::ClusterOp tpu_cluster,
 
     Block& outside_block =
         parallel_execute_op.GetRegionBlockWithIndex(cluster.index());
+
     builder.setInsertionPointToEnd(&outside_block);
     tf_device::LaunchOp host_launch_op = CreateLaunchOpForOutsideCluster(
         &builder, cluster_ops.back(), host_device);
@@ -303,10 +497,9 @@ void CreateParallelExecuteFromOutsideClusters(tf_device::ClusterOp tpu_cluster,
     auto external_inputs = GetExternalOperands(cluster_ops);
     auto external_outputs = GetExternalOutputs(cluster_ops);
 
-    MoveOutsideCompiledOps(tpu_cluster, cluster.value().getFirst(),
+    MoveOutsideCompiledOps(module, tpu_cluster, cluster.value().getFirst(),
                            host_launch_op, cluster_ops, external_inputs,
                            external_outputs);
-
     builder.setInsertionPointToEnd(&outside_block);
     builder.create<tf_device::ReturnOp>(tpu_cluster.getLoc(),
                                         ArrayRef<Value>{});
@@ -352,7 +545,8 @@ void TPUExtractOutsideCompilation::runOnOperation() {
         std::string host_device;
         tensorflow::GetHostDeviceOutsideComputation(devices, tpu_cluster,
                                                     &host_device);
-        CreateParallelExecuteFromOutsideClusters(tpu_cluster, clusters,
+
+        CreateParallelExecuteFromOutsideClusters(module, tpu_cluster, clusters,
                                                  host_device);
 
         return WalkResult::advance();

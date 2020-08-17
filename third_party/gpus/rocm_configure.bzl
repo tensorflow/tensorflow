@@ -389,7 +389,7 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
-            ("hip_hcc", rocm_config.rocm_toolkit_path),
+            ("hip_hcc", rocm_config.rocm_toolkit_path + "/hip"),
             ("rocblas", rocm_config.rocm_toolkit_path + "/rocblas"),
             ("rocfft", rocm_config.rocm_toolkit_path + "/rocfft"),
             ("hiprand", rocm_config.rocm_toolkit_path + "/hiprand"),
@@ -708,7 +708,7 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
-            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/bin/hipcc",
+            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/hip/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{hipcc_is_hipclang}": _hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin),
             "%{rocr_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",

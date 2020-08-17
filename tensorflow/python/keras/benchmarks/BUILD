@@ -33,6 +33,12 @@ py_library(
     ],
 )
 
+# This lib is mainly for running benchmarks on mlcompass infra.
+py_library(
+    name = "profiler_lib",
+    visibility = ["//tensorflow:internal"],
+)
+
 COMMON_TAGS = [
     "no_pip",  # b/161253163
     "no_windows",  # b/160628318
@@ -46,6 +52,7 @@ py_test(
     tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
+        ":profiler_lib",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
@@ -90,6 +97,7 @@ cuda_py_test(
     tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
+        ":profiler_lib",
         "//tensorflow:tensorflow_py",
     ],
 )

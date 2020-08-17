@@ -55,6 +55,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "tf_lite_static_memory",
+    values = {
+        "copt": "-DTF_LITE_STATIC_MEMORY",
+        "cpu": "k8",
+    },
+)
+
 TFLITE_DEFAULT_COPTS = if_not_windows([
     "-Wall",
     "-Wno-comment",
@@ -412,9 +420,11 @@ cc_test(
         "tflite_smoke_test",
     ],
     deps = [
+        ":builtin_op_data",
         ":external_cpu_backend_context",
         ":framework",
         ":string_util",
+        ":util",
         ":version",
         "//tensorflow/lite/core/api",
         "//tensorflow/lite/kernels:builtin_ops",
@@ -614,7 +624,14 @@ cc_library(
 
 cc_library(
     name = "type_to_tflitetype",
-    hdrs = ["type_to_tflitetype.h"],
+    hdrs = [
+        "portable_type_to_tflitetype.h",
+    ] + select({
+        ":tf_lite_static_memory": [],
+        "//conditions:default": [
+            "type_to_tflitetype.h",
+        ],
+    }),
     deps = ["//tensorflow/lite/c:common"],
 )
 
