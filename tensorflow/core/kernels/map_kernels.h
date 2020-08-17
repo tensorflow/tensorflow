@@ -16,10 +16,10 @@ limitations under the License.
 #define TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_
 
 #include <iostream>
+#include <string>
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/tensor_map.h"
-//#include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/util/batch_util.h"
 #include "tensorflow/core/util/tensor_ops_util.h"
 
@@ -118,7 +118,7 @@ class TensorMapLookup : public OpKernel {
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
 
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
-                errors::InvalidArgument("Trying to lookup non-existent key."));
+                errors::InvalidArgument("Trying to lookup non-existent key. Could not find " + key.DeviceSafeDebugString()));
 
     c->set_output(0, m->tensors().find(key)->second);
   }
@@ -186,7 +186,7 @@ class TensorMapStackKeys : public OpKernel {
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
     
     OP_REQUIRES(c, m->size() != 0,
-                errors::InvalidArgument("Empty map has no keys."));
+                errors::InvalidArgument("TensorMapStackKeys cannot be called on empty map."));
 
     auto it = m->tensors().begin();
     size_t sz = m->tensors().size();
@@ -195,9 +195,11 @@ class TensorMapStackKeys : public OpKernel {
     Tensor* result;
     OP_REQUIRES_OK(c, c->allocate_output(0, shape, &result));
     int i = 0;
+    string error_str = "Key does not match requested dtype. Requested " + DataTypeString(key_dtype_) + ", but saw " + DataTypeString(it->first.dtype());
+    string simple = "Key does not match requested dtype.";
     while (it != m->tensors().end() && i < sz) {
       OP_REQUIRES(c, it->first.dtype() == key_dtype_,
-                  errors::InvalidArgument("Key does not match requested dtype."));
+                     errors::InvalidArgument("Key does not match requested dtype."));
       batch_util::CopyElementToSlice(it->first, result, i);
       i++;
       it++;

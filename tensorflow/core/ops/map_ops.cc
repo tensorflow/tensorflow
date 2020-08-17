@@ -79,7 +79,7 @@ REGISTER_OP("TensorMapStackKeys")
     .Output("keys: key_dtype")
     .Attr("key_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->UnknownShape()); // output keys
+      c->set_output(0, c->UnknownShape());  // output keys
       return Status::OK();
     });
 
