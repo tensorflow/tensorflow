@@ -539,14 +539,13 @@ Status TensorHandle::TensorValue(const Device* d, tensorflow::TensorValue* t) {
 }
 
 Status TensorHandle::WaitUnknownDevice() const {
-  // TODO(b/164506563): uncomment this when b/164506563 is fixed.
-  // if (unknown_device_) {
-  //   TF_RETURN_IF_ERROR(absl::visit(
-  //       [](auto& data) {
-  //         return data.WaitReady("TensorHandle::UnknownDevice");
-  //       },
-  //       data_));
-  // }
+  if (unknown_device_) {
+    TF_RETURN_IF_ERROR(absl::visit(
+        [](auto& data) {
+          return data.WaitReady("TensorHandle::UnknownDevice");
+        },
+        data_));
+  }
   return Status::OK();
 }
 
