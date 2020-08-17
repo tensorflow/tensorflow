@@ -254,7 +254,6 @@ class XLATestCase(test.TestCase):
     return self.device_scope()
 
 
-
 def Benchmark(tf_bench,
               builder_fn,
               use_xla_jit,

@@ -34,7 +34,7 @@ namespace {
 using QrTest = xla::ClientLibraryTestBase;
 
 XLA_TEST_F(QrTest, Simple) {
-  tensorflow::allow_tf32_execution(false);
+  tensorflow::allow_tf32_execution(false);  // Test fails with tf32 allowed
   xla::XlaBuilder builder(TestName());
 
   xla::Array2D<float> a_vals({
@@ -63,7 +63,7 @@ XLA_TEST_F(QrTest, Simple) {
 }
 
 XLA_TEST_F(QrTest, ZeroDiagonal) {
-  tensorflow::allow_tf32_execution(false);
+  tensorflow::allow_tf32_execution(false);  // Test fails with tf32 allowed
   xla::XlaBuilder builder(TestName());
 
   xla::Array2D<float> a_vals({
@@ -91,7 +91,7 @@ XLA_TEST_F(QrTest, ZeroDiagonal) {
 }
 
 XLA_TEST_F(QrTest, SimpleBatched) {
-  tensorflow::allow_tf32_execution(false);
+  tensorflow::allow_tf32_execution(false);  // Test fails with tf32 allowed
   xla::XlaBuilder builder(TestName());
 
   xla::Array3D<float> a_vals({

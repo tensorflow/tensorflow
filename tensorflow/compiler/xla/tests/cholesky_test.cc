@@ -38,7 +38,6 @@ namespace {
 using CholeskyTest = ClientLibraryTestBase;
 
 XLA_TEST_F(CholeskyTest, NonPSDInput) {
-  tensorflow::allow_tf32_execution(false);
   XlaBuilder builder(TestName());
 
   Array2D<float> a_vals({
@@ -63,7 +62,6 @@ XLA_TEST_F(CholeskyTest, NonPSDInput) {
 }
 
 XLA_TEST_F(CholeskyTest, Lower) {
-  tensorflow::allow_tf32_execution(false);
   XlaBuilder builder(TestName());
 
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -90,7 +88,6 @@ XLA_TEST_F(CholeskyTest, Lower) {
 }
 
 XLA_TEST_F(CholeskyTest, Upper) {
-  tensorflow::allow_tf32_execution(false);
   XlaBuilder builder(TestName());
 
   float nan = std::numeric_limits<float>::quiet_NaN();
@@ -117,7 +114,6 @@ XLA_TEST_F(CholeskyTest, Upper) {
 }
 
 XLA_TEST_F(CholeskyTest, Simple2) {
-  tensorflow::allow_tf32_execution(false);
   XlaBuilder builder(TestName());
 
   Array2D<float> a_vals({
@@ -141,7 +137,6 @@ XLA_TEST_F(CholeskyTest, Simple2) {
 }
 
 XLA_TEST_F(CholeskyTest, SimpleBatched) {
-  tensorflow::allow_tf32_execution(false);
   XlaBuilder builder(TestName());
 
   Array3D<float> a_vals({
@@ -187,7 +182,7 @@ class RandomCholeskyTest
       public ::testing::WithParamInterface<CholeskyTestCase> {};
 
 XLA_TEST_P(RandomCholeskyTest, Random) {
-  tensorflow::allow_tf32_execution(false);
+  tensorflow::allow_tf32_execution(false);  // Test fails with tf32 allowed
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();
