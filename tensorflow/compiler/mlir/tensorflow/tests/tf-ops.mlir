@@ -913,7 +913,7 @@ func @testValidIfRegionOpWithMultipleResults(%arg0: tensor<i1>, %arg1: tensor<2x
 
 // Test invalid type for operand #0 for tf.IfRegion operation
 func @testInvalidIfRegionOpType0(%arg0: f32, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // expected-error @+1 {{operand #0 must be tensor of tf.dtype values}}
+  // expected-error @+1 {{operand #0 must be 0D tensor of 1-bit signless integer values, but got 'f32'}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()

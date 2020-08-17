@@ -377,7 +377,7 @@ else_branch: A region that computes the outputs of the op if cond = false.
   }];
 
   let arguments = (ins
-    TF_Tensor:$cond,
+    0DTensorOf<[I1]>:$cond,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
     BoolAttr:$is_stateless
