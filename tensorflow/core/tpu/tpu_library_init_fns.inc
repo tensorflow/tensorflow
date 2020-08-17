@@ -96,6 +96,7 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuExecutor_DeallocateStream);
   TFTPU_SET_FN(executor_fn, TpuExecutor_CreateStreamDependency);
   TFTPU_SET_FN(executor_fn, TpuExecutor_GetStatus);
+  TFTPU_SET_FN(executor_fn, TpuExecutor_GetCoreLocation);
   TFTPU_SET_FN(executor_fn, TpuExecutor_AllocateEvent);
   TFTPU_SET_FN(executor_fn, TpuExecutor_DeallocateEvent);
   TFTPU_SET_FN(executor_fn, TpuExecutor_PollForEventStatus);
