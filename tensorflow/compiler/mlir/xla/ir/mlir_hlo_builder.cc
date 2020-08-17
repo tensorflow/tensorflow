@@ -312,6 +312,16 @@ StatusOr<XlaOp> MlirHloBuilder::RngOpInternal(
   return CreateOp(op_name, shape, operands);
 }
 
+StatusOr<XlaOp> MlirHloBuilder::RngBitGeneratorInternal(
+    const Shape& full_result_shape, RandomAlgorithm algorithm,
+    XlaOp initial_state) {
+  TF_ASSIGN_OR_RETURN(mlir::Type ty, ConvertShapeToType<mlir::RankedTensorType>(
+                                         full_result_shape, builder_));
+  auto op = builder_.create<mlir::mhlo::RngBitGeneratorOp>(
+      loc_, ty, builder_.getI32IntegerAttr(algorithm), GetValue(initial_state));
+  return MakeXlaOp(op);
+}
+
 StatusOr<XlaOp> MlirHloBuilder::ReshapeInternal(const Shape& shape,
                                                 XlaOp operand,
                                                 int64 inferred_dimension) {

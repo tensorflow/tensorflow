@@ -290,6 +290,14 @@ func @diag(%arg0: tensor<2xf32>) -> tensor<2x2xf32> {
   return %0 : tensor<2x2xf32>
 }
 
+// CHECK-LABEL: random_uniform_int
+func @random_uniform_int(%arg0: tensor<i32>, %arg1: tensor<i32>) -> tensor<1000xi32> {
+  %0 = "tf.Const"() {value = dense<1000> : tensor<1xi32>} : () -> tensor<1xi32>
+  // CHECK-NOT: tf.RandomUniformInt
+  %1 = "tf.RandomUniformInt"(%0, %arg0, %arg1) {seed = 0 : i64, seed2 = 0 : i64} : (tensor<1xi32>, tensor<i32>, tensor<i32>) -> tensor<1000xi32>
+  return %1 : tensor<1000xi32>
+}
+
 // TODO(hinsu): Add a test with a valid TF op for which tf2xla kernel is
 // available but doesn't support this instance.
 }

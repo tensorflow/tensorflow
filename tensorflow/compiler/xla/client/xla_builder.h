@@ -712,6 +712,11 @@ class XlaBuilder {
 
   XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
                         const Shape& shape);
+  // Internal variant for the op with the full result shape containing both data
+  // and state shape as a tuple.
+  virtual StatusOr<XlaOp> RngBitGeneratorInternal(
+      const Shape& full_result_shape, RandomAlgorithm algorithm,
+      XlaOp initial_state);
 
   XlaOp While(const XlaComputation& condition, const XlaComputation& body,
               XlaOp init);

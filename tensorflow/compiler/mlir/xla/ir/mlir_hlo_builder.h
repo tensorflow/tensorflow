@@ -183,6 +183,9 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
                                 absl::Span<const XlaOp> parameters,
                                 const Shape& shape) override;
+  StatusOr<XlaOp> RngBitGeneratorInternal(const Shape& full_result_shape,
+                                          RandomAlgorithm algorithm,
+                                          XlaOp initial_state) override;
 
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
