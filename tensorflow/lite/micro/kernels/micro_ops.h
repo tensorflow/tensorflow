@@ -76,6 +76,7 @@ TfLiteRegistration Register_RSQRT();
 TfLiteRegistration Register_SIN();
 TfLiteRegistration Register_SOFTMAX();
 TfLiteRegistration Register_SPLIT();
+TfLiteRegistration Register_SPLIT_V();
 TfLiteRegistration Register_SQRT();
 TfLiteRegistration Register_SQUARE();
 TfLiteRegistration Register_STRIDED_SLICE();
