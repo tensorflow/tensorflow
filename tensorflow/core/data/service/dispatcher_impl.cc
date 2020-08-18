@@ -54,6 +54,8 @@ using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
 using Job = DispatcherState::Job;
 using Task = DispatcherState::Task;
+using ::tensorflow::data::experimental::RPC;
+using ::tensorflow::data::experimental::SHARED_FILESYSTEM;
 
 std::string JournalDir(const std::string& work_dir) {
   return io::JoinPath(work_dir, kJournalDir);
@@ -93,7 +95,17 @@ DataServiceDispatcherImpl::DataServiceDispatcherImpl(
 
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
-  if (!config_.work_dir().empty()) {
+  if (config_.work_dir().empty()) {
+    if (config_.fault_tolerant_mode()) {
+      return errors::InvalidArgument(
+          "fault_tolerant_mode is True, but no work_dir is configured.");
+    }
+    if (config_.dataset_sharing_mode() == SHARED_FILESYSTEM) {
+      return errors::InvalidArgument(
+          "dataset sharing mode is shared_filesystem, but no work_dir is "
+          "configured.");
+    }
+  } else {
     TF_RETURN_IF_ERROR(
         Env::Default()->RecursivelyCreateDir(DatasetsDir(config_.work_dir())));
   }
@@ -101,10 +113,6 @@ Status DataServiceDispatcherImpl::Start() {
     LOG(INFO) << "Running with fault_tolerant_mode=False. The dispatcher will "
                  "not be able to recover its state on restart.";
     return Status::OK();
-  }
-  if (config_.work_dir().empty()) {
-    return errors::InvalidArgument(
-        "fault_tolerant_mode is True, but no work_dir is configured.");
   }
   journal_writer_ = absl::make_unique<FileJournalWriter>(
       Env::Default(), JournalDir(config_.work_dir()));
@@ -169,10 +177,25 @@ Status DataServiceDispatcherImpl::RegisterWorker(
     TaskDef* task_def = response->add_tasks();
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, &dataset));
-    std::shared_ptr<const DatasetDef> dataset_def;
-    TF_RETURN_IF_ERROR(dataset_store_->Get(
-        DatasetKey(dataset->dataset_id, dataset->fingerprint), dataset_def));
-    *(task_def->mutable_dataset()) = *dataset_def;
+    std::string dataset_key =
+        DatasetKey(dataset->dataset_id, dataset->fingerprint);
+    switch (config_.dataset_sharing_mode()) {
+      case SHARED_FILESYSTEM: {
+        std::string path =
+            io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
+        task_def->set_path(path);
+        break;
+      }
+      case RPC: {
+        std::shared_ptr<const DatasetDef> dataset_def;
+        TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
+        *task_def->mutable_dataset_def() = *dataset_def;
+        break;
+      }
+      default:
+        return errors::Internal("Unrecognized dataset sharing mode: ",
+                                config_.dataset_sharing_mode());
+    }
     task_def->set_dataset_id(job->dataset_id);
     task_def->set_job_id(job->job_id);
     task_def->set_task_id(task->task_id);
@@ -458,6 +481,8 @@ Status DataServiceDispatcherImpl::GetOrCreateWorkerStub(
 
 Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     LOCKS_EXCLUDED(mu_) {
+  VLOG(2) << "Started assigning task " << task->task_id << " to worker "
+          << task->worker_address;
   grpc::ClientContext client_ctx;
   ProcessTaskRequest req;
   TaskDef* task_def = req.mutable_task();
@@ -466,10 +491,25 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, &dataset));
-    std::shared_ptr<const DatasetDef> dataset_def;
-    TF_RETURN_IF_ERROR(dataset_store_->Get(
-        DatasetKey(dataset->dataset_id, dataset->fingerprint), dataset_def));
-    *task_def->mutable_dataset() = *dataset_def;
+    std::string dataset_key =
+        DatasetKey(dataset->dataset_id, dataset->fingerprint);
+    switch (config_.dataset_sharing_mode()) {
+      case SHARED_FILESYSTEM: {
+        std::string path =
+            io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
+        task_def->set_path(path);
+        break;
+      }
+      case RPC: {
+        std::shared_ptr<const DatasetDef> dataset_def;
+        TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
+        *task_def->mutable_dataset_def() = *dataset_def;
+        break;
+      }
+      default:
+        return errors::Internal("Unrecognized dataset sharing mode: ",
+                                config_.dataset_sharing_mode());
+    }
   }
   task_def->set_task_id(task->task_id);
   ProcessTaskResponse resp;
@@ -481,6 +521,8 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
         absl::StrCat("Failed to submit task to worker ", task->worker_address),
         s);
   }
+  VLOG(2) << "Finished assigning task " << task->task_id << " to worker "
+          << task->worker_address;
   return Status::OK();
 }
 
