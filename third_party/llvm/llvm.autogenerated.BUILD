@@ -4115,8 +4115,6 @@ cc_library(
         "include/llvm/TextAPI/*.def",
         "include/llvm/TextAPI/*.inc",
     ]) + [
-        "include/llvm/TextAPI/ELF/TBEHandler.h",
-        "include/llvm/TextAPI/ELF/ELFStub.h",
         "include/llvm/TextAPI/MachO/Architecture.def",
         "include/llvm/TextAPI/MachO/PackedVersion.h",
         "include/llvm/TextAPI/MachO/InterfaceFile.h",
