@@ -1792,3 +1792,17 @@ py_library(
         "//tensorflow/python/distribute:values",
     ],
 )
+
+tf_py_test(
+    name = "parameter_server_strategy_v2_test",
+    srcs = ["parameter_server_strategy_v2_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":multi_worker_test_base",
+        ":parameter_server_strategy_v2",
+        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:test",
+    ],
+)
