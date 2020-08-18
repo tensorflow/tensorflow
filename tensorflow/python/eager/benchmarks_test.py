@@ -1484,6 +1484,19 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
 
     self._run(fn, 10000)
 
+  def benchmark_tf_nest_flatten_none(self):
+    def fn():
+      nest.flatten(None)
+
+    self._run(fn, 100000)
+
+  def benchmark_tf_nest_flatten(self):
+    nested = {"a": [1, 2, 3], "b": (4, 5, 6)}
+    def fn():
+      nest.flatten(nested)
+
+    self._run(fn, 100000)
+
   def benchmark_tf_nn_convolution_overhead(self):
     inputs = array_ops.ones((1, 1, 1, 1))
     filters = array_ops.ones((1, 1, 1, 1))
