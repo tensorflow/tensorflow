@@ -118,7 +118,8 @@ class TensorMapLookup : public OpKernel {
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
 
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
-                errors::InvalidArgument("Trying to lookup non-existent key. Could not find " + key.DeviceSafeDebugString()));
+                errors::InvalidArgument("Trying to lookup non-existent key. Could" 
+                                        "not find " + key.DeviceSafeDebugString()));
 
     c->set_output(0, m->tensors().find(key)->second);
   }
@@ -189,18 +190,21 @@ class TensorMapStackKeys : public OpKernel {
                 errors::InvalidArgument("TensorMapStackKeys cannot be called on empty map."));
 
     auto it = m->tensors().begin();
-    size_t sz = m->tensors().size();
-    TensorShape shape = it->first.shape();
-    shape.InsertDim(0, m->tensors().size());
+    TensorShape output_shape = it->first.shape();
+    output_shape.InsertDim(0, m->tensors().size());
     Tensor* result;
-    OP_REQUIRES_OK(c, c->allocate_output(0, shape, &result));
+    OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &result));
+
+    //string error_str = "Key does not match requested dtype. Requested " + DataTypeString(key_dtype_) + ", but saw " + DataTypeString(it->first.dtype());
     int i = 0;
-    string error_str = "Key does not match requested dtype. Requested " + DataTypeString(key_dtype_) + ", but saw " + DataTypeString(it->first.dtype());
-    string simple = "Key does not match requested dtype.";
+    size_t sz = m->tensors().size();
+    TensorShape key_shape = it->first.shape();
     while (it != m->tensors().end() && i < sz) {
       OP_REQUIRES(c, it->first.dtype() == key_dtype_,
-                     errors::InvalidArgument("Key does not match requested dtype."));
-      batch_util::CopyElementToSlice(it->first, result, i);
+                  errors::InvalidArgument("Key does not match requested dtype."));
+      OP_REQUIRES(c, it->first.shape() == key_shape,
+                 errors::InvalidArgument("Keys must all have the same shape."));
+      OP_REQUIRES_OK(c, batch_util::CopyElementToSlice(it->first, result, i));
       i++;
       it++;
     }
