@@ -68,7 +68,8 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     k2 = constant_op.constant(2.0)
     v = constant_op.constant(11.0)
     m = map_ops.tensor_map_insert(m, k, v)
-    with self.assertRaisesRegex(errors.InvalidArgumentError, "Trying to lookup non-existent key. *"):
+    with self.assertRaisesRegex(errors.InvalidArgumentError,
+                                "Trying to lookup non-existent key. *"):
       l = map_ops.tensor_map_lookup(m, k2, dtypes.float32)
       self.evaluate(l)
 
@@ -155,16 +156,16 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
   def testStackKeysEmptyMapFails(self):
     m = map_ops.empty_tensor_map()
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "TensorMapStackKeys cannot be called on empty map."):
+                                "TensorMapStackKeys cannot be called "
+                                "on empty map."):
       keys = map_ops.tensor_map_stack_keys(m, dtypes.float32)
       self.evaluate(keys)
 
   def testStackKeysIncorrectDtypeFails(self):
     m = map_ops.empty_tensor_map()
-    k = constant_op.constant("mismatched_key")
+    k = constant_op.constant("key_with_wrong_dtype")
     v = constant_op.constant(2.0)
     m = map_ops.tensor_map_insert(m, k, v)
-    error_string = "Key does not match requested dtype. Requested " + str(dtypes.float32) + ", but saw " + str(k.dtype)
     simple = "Key does not match requested dtype."
     with self.assertRaisesRegex(errors.InvalidArgumentError,
                                 simple):

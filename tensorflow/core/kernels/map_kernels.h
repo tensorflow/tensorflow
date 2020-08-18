@@ -15,9 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_
 #define TENSORFLOW_CORE_KERNELS_MAP_KERNELS_H_
 
-#include <iostream>
-#include <string>
-
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/tensor_map.h"
 #include "tensorflow/core/util/batch_util.h"
@@ -195,7 +192,6 @@ class TensorMapStackKeys : public OpKernel {
     Tensor* result;
     OP_REQUIRES_OK(c, c->allocate_output(0, output_shape, &result));
 
-    //string error_str = "Key does not match requested dtype. Requested " + DataTypeString(key_dtype_) + ", but saw " + DataTypeString(it->first.dtype());
     int i = 0;
     size_t sz = m->tensors().size();
     TensorShape key_shape = it->first.shape();
