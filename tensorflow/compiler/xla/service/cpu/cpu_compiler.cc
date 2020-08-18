@@ -290,7 +290,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       /*expansion_type=*/LogisticExpansionType::kExp);
   pipeline.AddPass<ConditionalCanonicalizer>();
   pipeline.AddPass<DynamicPadder>();
-  pipeline.AddPass<ScatterExpander>();
+  pipeline.AddPass<ScatterExpander>(ScatterExpander::kEliminateAllScatters);
   pipeline.AddPass<ConvCanonicalization>(target_machine_features);
   {
     auto& pass =

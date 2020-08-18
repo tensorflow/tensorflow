@@ -1843,6 +1843,7 @@ cc_library(
         ":hlo",
         ":hlo_creation_utils",
         ":hlo_pass",
+        ":op_expander_pass",
         ":while_util",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:statusor",
