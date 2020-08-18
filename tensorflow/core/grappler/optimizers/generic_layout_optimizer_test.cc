@@ -601,6 +601,32 @@ TEST_F(GenericLayoutOptimizerTest, CancelTransposeAroundPad) {
   test::ExpectTensorEqual<float>(tensors_expected[1], tensors[1]);
 }
 
+TEST_F(GenericLayoutOptimizerTest, PreserveInputShapes) {
+  using test::function::NDef;
+
+  GenericLayoutOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+
+  AttrValue output_shapes;
+  auto* shape = output_shapes.mutable_list()->add_shape();
+  shape->add_dim()->set_size(-1);
+
+  GrapplerItem item;
+  item.graph = test::function::GDef({NDef(
+      "x", "_Arg", {},
+      {{"T", DT_FLOAT}, {"index", 0}, {"_output_shapes", output_shapes}})});
+
+  GraphDef output;
+  TF_ASSERT_OK(optimizer.Optimize(virtual_cluster_.get(), item, &output));
+
+  Status status;
+  utils::GraphView graph_view(&output, &status);
+  TF_ASSERT_OK(status);
+
+  auto* arg = graph_view.GetNode("x");
+  ASSERT_NE(arg, nullptr);
+  EXPECT_TRUE(arg->HasAttr("_output_shapes"));
+}
+
 // TODO(yanzha): Add more complex Graph for test.
 
 }  // namespace grappler
