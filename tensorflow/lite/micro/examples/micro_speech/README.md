@@ -23,6 +23,7 @@ kilobytes of Flash.
 -   [Deploy to STM32F746](#deploy-to-STM32F746)
 -   [Deploy to NXP FRDM K66F](#deploy-to-nxp-frdm-k66f)
 -   [Deploy to HIMAX WE1 EVB](#deploy-to-himax-we1-evb)
+-   [Deploy to CEVA-SP500](#deploy-to-ceva-SP500)
 -   [Run on macOS](#run-on-macos)
 -   [Run the tests on a development machine](#run-the-tests-on-a-development-machine)
 -   [Train your own model](#train-your-own-model)
@@ -663,6 +664,31 @@ After these steps, press reset button on the HIMAX WE1 EVB, you will see
 application output in the serial terminal and lighting LED.
 
 ![Animation on Himax WE1 EVB](https://raw.githubusercontent.com/HimaxWiseEyePlus/bsp_tflu/master/HIMAX_WE1_EVB_user_guide/images/tflm_example_micro_speech_int8_led.gif)
+
+## Deploy to CEVA-SP500
+The following instructions will help you build and deploy the sample to the 
+[CEVA-SP500](https://www.ceva-dsp.com/product/ceva-senspro/)
+
+1. Contact CEVA at [sales@ceva-dsp.com](mailto:sales@ceva-dsp.com)
+2. Download and install CEVA-BX Toolbox v20.0.1 and run CEVA-SensPro_set.sh
+3. Set the TARGET_TOOLCHAIN_ROOT variable in  /tensorflow/lite/micro/tools/make/templates/ceva_SP500/ceva_app_makefile.tpl
+   To your installation location. For example:
+   TARGET_TOOLCHAIN_ROOT := /home/myuser/work/CEVA-ToolBox/V20/SensPro
+4. Generate the Makefile for the project:
+	/tensorflow$ make -f tensorflow/lite/micro/tools/make/Makefile TARGET=ceva TARGET_ARCH=SP500  generate_micro_speech_make_project
+5. Build the project:
+	/tensorflow/lite/micro/tools/make/gen/ceva_SP500/prj/micro_speech/make$ make
+5. This should build the project and create a file called micro_speech.elf.
+6. The supplied configuarion reads input from a files and expects a file called input.wav (easily changed in audio_provider.cc)
+   to be placed in the same directory of the .elf file
+7. We used Google's speech command dataset:
+	V0.0.2: http://download.tensorflow.org/data/speech_commands_v0.02.tar.gz
+	V0.0.1: http://download.tensorflow.org/data/speech_commands_v0.01.tar.gz
+8. Follow CEVA Toolbox instructions for creating a debug target and running the project.
+9. Output should look like:
+Heard silence (208) @352ms
+Heard no (201) @1696ms
+Heard yes (203) @3904ms
 
 ## Run on macOS
 
