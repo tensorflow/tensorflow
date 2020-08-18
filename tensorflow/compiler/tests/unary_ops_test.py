@@ -538,8 +538,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
             np.array([-40, 40], dtype=dtype),
             expected=np.array([1.0, 0.025], dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.QuantizeAndDequantize compilation")
   def testQuantizeAndDequantize(self):
     for dtype in self.float_types:
 
@@ -1070,8 +1068,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
         ],
         equality_test=self.ListsAreClose)
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.DepthToSpace compilation")
   def testDepthToSpace(self):
 
     def make_op(data_format):
@@ -1124,8 +1120,6 @@ class UnaryOpsTest(xla_test.XLATestCase):
                                [[20, 21, 22, 23], [28, 29, 30, 31]]]]],
                             dtype=dtype))
 
-  @test_util.disable_mlir_bridge(
-      "TODO(b/153812660): Handle tf.SpaceToDepth compilation")
   def testSpaceToDepth(self):
 
     def make_op(data_format):
