@@ -127,12 +127,9 @@ absl::Status Conv3D::UploadData(const tflite::gpu::Tensor<OHWDI, T>& weights,
                           ? LinearStorageType::BUFFER
                           : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition_.GetDataType();
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(CreateLinearStorage(desc, biases, context, &lt));
-  args_.AddObject("biases", AccessType::READ,
-                  absl::make_unique<LinearStorage>(std::move(lt)),
-                  absl::make_unique<TensorLinearDescriptor>(desc));
+  desc.UploadLinearData(biases);
+  args_.AddObject("biases",
+                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return absl::OkStatus();
 }
 

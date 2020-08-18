@@ -178,16 +178,10 @@ absl::Status ConvBuffer1x1::UploadBiases(
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::BUFFER;
   desc.element_type = definition_.GetDataType();
-
-  tflite::gpu::Tensor<Linear, DataType::FLOAT32> bias = biases;
-  int channels = AlignByN(biases.shape.v, 4 * conv_params_.block_size.z);
-  bias.shape = Linear(channels);
-  bias.data.resize(channels, 0.0f);
-  LinearStorage lt;
-  RETURN_IF_ERROR(CreateLinearStorage(desc, bias, context, &lt));
-  args_.AddObject("biases", AccessType::READ,
-                  absl::make_unique<LinearStorage>(std::move(lt)),
-                  absl::make_unique<TensorLinearDescriptor>(desc));
+  int depth = AlignByN(biases.shape.v, 4 * conv_params_.block_size.z) / 4;
+  desc.UploadLinearData(biases, depth);
+  args_.AddObject("biases",
+                  absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return absl::OkStatus();
 }
 

@@ -28,19 +28,10 @@ namespace {
 absl::Status CreateBuffer(size_t size_in_bytes, bool gpu_read_only,
                           const void* data, CLContext* context,
                           Buffer* result) {
-  cl_mem_flags flags = gpu_read_only ? CL_MEM_READ_ONLY : CL_MEM_READ_WRITE;
-  if (data != nullptr) {
-    flags |= CL_MEM_COPY_HOST_PTR;
-  }
-  cl_int error_code;
-  cl_mem buffer = clCreateBuffer(context->context(), flags, size_in_bytes,
-                                 const_cast<void*>(data), &error_code);
-  if (!buffer) {
-    return absl::UnknownError(
-        absl::StrCat("Failed to allocate device memory (clCreateBuffer): ",
-                     CLErrorCodeToString(error_code)));
-  }
-
+  cl_mem buffer;
+  RETURN_IF_ERROR(CreateCLBuffer(context->context(), size_in_bytes,
+                                 gpu_read_only, const_cast<void*>(data),
+                                 &buffer));
   *result = Buffer(buffer, size_in_bytes);
 
   return absl::OkStatus();
@@ -185,28 +176,13 @@ absl::Status Buffer::GetGPUResources(const GPUObjectDescriptor* obj_ptr,
 
 absl::Status Buffer::CreateFromBufferDescriptor(const BufferDescriptor& desc,
                                                 CLContext* context) {
-  cl_mem_flags flags = desc.memory_type == MemoryType::CONSTANT
-                           ? CL_MEM_READ_ONLY
-                           : CL_MEM_READ_WRITE;
-  if (!desc.data.empty()) {
-    flags |= CL_MEM_COPY_HOST_PTR;
-  }
-  cl_int error_code;
+  bool read_only = desc.memory_type == MemoryType::CONSTANT;
+  uint8_t* data_ptr = desc.data.empty()
+                          ? nullptr
+                          : const_cast<unsigned char*>(desc.data.data());
   size_ = desc.size;
-  if (desc.data.empty()) {
-    buffer_ = clCreateBuffer(context->context(), flags, desc.size, nullptr,
-                             &error_code);
-  } else {
-    buffer_ = clCreateBuffer(context->context(), flags, desc.size,
-                             const_cast<unsigned char*>(desc.data.data()),
-                             &error_code);
-  }
-  if (!buffer_) {
-    return absl::UnknownError(
-        absl::StrCat("Failed to allocate device memory (clCreateBuffer): ",
-                     CLErrorCodeToString(error_code)));
-  }
-  return absl::OkStatus();
+  return CreateCLBuffer(context->context(), desc.size, read_only, data_ptr,
+                        &buffer_);
 }
 
 absl::Status CreateReadOnlyBuffer(size_t size_in_bytes, CLContext* context,

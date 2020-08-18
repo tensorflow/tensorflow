@@ -400,11 +400,9 @@ cc_library(
     srcs = ["linear_storage.cc"],
     hdrs = ["linear_storage.h"],
     deps = [
-        ":buffer",
         ":gpu_object",
         ":opencl_wrapper",
         ":tensor_type",
-        ":texture2d",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",
