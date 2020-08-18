@@ -108,18 +108,10 @@ def _make_input_signature_hashable(elem):
   try:
     hash(elem)
   except TypeError:
-    return _make_input_signature_hashable_helper(elem)
-  return elem
+    # TODO(slebedev): consider using nest.
+    if isinstance(elem, tuple):
+      return tuple(map(_make_input_signature_hashable, elem))
 
-
-def _make_input_signature_hashable_helper(elem):
-  # TODO(slebedev): consider using nest.
-  if isinstance(elem, tuple):
-    return tuple(map(_make_input_signature_hashable_helper, elem))
-
-  try:
-    hash(elem)
-  except TypeError:
     # TFE_Py_EncodeArg weakrefs arguments it does not recognize, and we expect
     # all recognized types to be hashable.
     assert isinstance(elem, weakref.ReferenceType)
