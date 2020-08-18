@@ -501,7 +501,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       graph_ids_to_strong_shape_tensors_[t.first] = id;
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
-        RETURN_IF_ERROR(CreateTensor(*context, device, shape, t.second,
+        RETURN_IF_ERROR(CreateTensor(*context, shape, t.second,
                                      &strong_shape_tensors_[id]));
       }
     }

@@ -171,9 +171,8 @@ absl::Status CreateElementwiseTwoInput(
       definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   Tensor gpu_tensor;
-  RETURN_IF_ERROR(CreateTensor(*creation_context.context,
-                               *creation_context.device, shape, desc,
-                               &gpu_tensor));
+  RETURN_IF_ERROR(
+      CreateTensor(*creation_context.context, shape, desc, &gpu_tensor));
   RETURN_IF_ERROR(
       gpu_tensor.WriteData(creation_context.queue, constant_tensor));
 
@@ -209,9 +208,8 @@ absl::Status CreateElementwiseTwoInput(
       definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
   Tensor gpu_tensor;
-  RETURN_IF_ERROR(CreateTensor(*creation_context.context,
-                               *creation_context.device, shape, desc,
-                               &gpu_tensor));
+  RETURN_IF_ERROR(
+      CreateTensor(*creation_context.context, shape, desc, &gpu_tensor));
   RETURN_IF_ERROR(
       gpu_tensor.WriteData(creation_context.queue, constant_tensor));
 
