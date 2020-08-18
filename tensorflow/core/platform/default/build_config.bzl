@@ -369,6 +369,7 @@ def tf_proto_library_cc(
         cc_api_version = 2,
         js_codegen = "jspb",
         create_service = False,
+        create_java_code = False,
         make_default_target_header_only = False):
     js_codegen = js_codegen  # unused argument
     native.filegroup(
@@ -377,7 +378,7 @@ def tf_proto_library_cc(
         testonly = testonly,
         visibility = visibility,
     )
-    _ignore = create_service
+    _ignore = (create_service, create_java_code)
 
     use_grpc_plugin = None
     if cc_grpc_version:
