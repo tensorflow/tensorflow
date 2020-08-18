@@ -469,9 +469,12 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSharedJobName(self):
     dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
     num_elements = 100
-    ds = dataset_ops.Dataset.range(num_elements)
-    ds1 = _make_distributed_dataset(ds, dispatcher, job_name="job_name")
-    ds2 = _make_distributed_dataset(ds, dispatcher, job_name="job_name")
+
+    def make_ds():
+      return dataset_ops.Dataset.range(num_elements).shuffle(num_elements)
+
+    ds1 = _make_distributed_dataset(make_ds(), dispatcher, job_name="job_name")
+    ds2 = _make_distributed_dataset(make_ds(), dispatcher, job_name="job_name")
     iter1 = iter(ds1)
     iter2 = iter(ds2)
     results = []

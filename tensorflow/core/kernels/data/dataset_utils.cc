@@ -52,6 +52,7 @@ constexpr std::array<const char*, 3> kOpsWithSeed = {
 
 constexpr char kSeedInputName[] = "seed";
 constexpr char kSeed2InputName[] = "seed2";
+constexpr char kSeedGeneratorInputName[] = "seed_generator";
 constexpr char kComponent[] = "component";
 constexpr char kNumElements[] = "num_elements";
 constexpr char kNumComponents[] = "num_components";
@@ -60,7 +61,9 @@ template <std::size_t SIZE>
 bool IsNodeOfType(const NodeDef& node,
                   const std::array<const char*, SIZE>& op_types) {
   for (const auto& type : op_types) {
-    if (node.op() == type) return true;
+    if (MatchesAnyVersionRE(type, node.op())) {
+      return true;
+    }
   }
   return false;
 }
@@ -111,7 +114,8 @@ Status ShouldIgnoreInput(const NodeDef& node, int i, bool* result) {
       if (reg->op_def.input_arg_size() > i) {
         const std::string input_arg_name = reg->op_def.input_arg(i).name();
         if (input_arg_name == kSeedInputName ||
-            input_arg_name == kSeed2InputName) {
+            input_arg_name == kSeed2InputName ||
+            input_arg_name == kSeedGeneratorInputName) {
           VLOG(2) << "Ignoring arg: " << input_arg_name
                   << " from node: " << node.name();
           *result = true;
