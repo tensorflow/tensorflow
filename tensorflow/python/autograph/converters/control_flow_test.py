@@ -38,7 +38,6 @@ from tensorflow.python.util import nest
 
 
 for_unaffected_global = None
-for_mixed_globals_nonglobals = None
 
 
 class ControlFlowTestBase(converter_testing.TestCase):
@@ -73,25 +72,6 @@ class NestedControlFlowTest(ControlFlowTestBase):
         i += 1
         j = 0
       return s, i, j, n
-
-    self.assertTransformedResult(f, constant_op.constant(5),
-                                 (25, 5, 0, 5))
-
-  def test_mixed_globals_nonglobals(self):
-
-    def f(n):
-      global for_mixed_globals_nonglobals
-      i = 0
-      j = 0
-      for_mixed_globals_nonglobals = 0
-      while i < n:
-        while j < i:
-          j += 3
-        u = i + j  # 'u' is not defined within the inner loop
-        for_mixed_globals_nonglobals += u
-        i += 1
-        j = 0
-      return for_mixed_globals_nonglobals, i, j, n
 
     self.assertTransformedResult(f, constant_op.constant(5),
                                  (25, 5, 0, 5))
