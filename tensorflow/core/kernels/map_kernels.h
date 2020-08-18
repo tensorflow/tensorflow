@@ -115,8 +115,8 @@ class TensorMapLookup : public OpKernel {
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
 
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
-                errors::InvalidArgument("Trying to lookup non-existent key. Could" 
-                                        " not find " + key.SummarizeValue(100)));
+                errors::InvalidArgument("Trying to lookup non-existent key. Could not " 
+                                        "find key \"" + key.SummarizeValue(100) + "\"."));
 
     c->set_output(0, m->tensors().find(key)->second);
   }
@@ -149,7 +149,8 @@ class TensorMapErase : public OpKernel {
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
 
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
-                errors::InvalidArgument("Trying to erase non-existent item."));
+                errors::InvalidArgument("Trying to erase non-existent item. Could not " 
+                                        "find key \"" + key.SummarizeValue(100) + "\"."));
 
     TensorMap* output_map = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
