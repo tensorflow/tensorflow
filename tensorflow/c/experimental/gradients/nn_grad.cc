@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
+
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/experimental/ops/nn_ops.h"
@@ -34,8 +35,7 @@ class ReluGradientFunction : public GradientFunction {
   explicit ReluGradientFunction(vector<AbstractTensorHandle*> f_outputs)
       : forward_outputs(f_outputs) {}
 
-  Status Compute(Context* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_inputs,
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
     AbstractTensorHandle* upstream_grad = grad_inputs[0];
     AbstractTensorHandle* activations = forward_outputs[0];
@@ -43,38 +43,33 @@ class ReluGradientFunction : public GradientFunction {
     vector<AbstractTensorHandle*> relugrad_outputs(1);
 
     // Calculate Grad
-    std::string name = "relu_grad" + std::to_string(counter);
+    std::string name = "relu_grad";
 
     TF_RETURN_IF_ERROR(ReluGrad(ctx->ctx, {upstream_grad, activations},
                                 absl::MakeSpan(relugrad_outputs),
                                 name.c_str()));
-
     (*grad_outputs)[0] = relugrad_outputs[0];
 
-    counter += 1;
     return Status::OK();
   }
   ~ReluGradientFunction() override {}
 
  private:
-  int64_t counter;
   vector<AbstractTensorHandle*> forward_outputs;
 };
 
 class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
  public:
   explicit SparseSoftmaxCrossEntropyLossGradientFunction(
-      vector<AbstractTensorHandle*> f_inputs,
       vector<AbstractTensorHandle*> f_outputs)
-      : forward_inputs(f_inputs), forward_outputs(f_outputs) {}
+      : forward_outputs(f_outputs) {}
 
-  Status Compute(Context* ctx,
-                 absl::Span<AbstractTensorHandle* const> grad_inputs,
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
     grad_outputs->resize(2);
 
     // Grad for Softmax Input
-    std::string name = "Mul_Softmax_Grad_" + std::to_string(counter);
+    std::string name = "Mul_Softmax_Grad";
     vector<AbstractTensorHandle*> mul_outputs(1);
     TF_RETURN_IF_ERROR(
         ops::Mul(ctx->ctx, {grad_inputs[0], forward_outputs[1]},
@@ -83,29 +78,33 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
     (*grad_outputs)[0] = mul_outputs[0];
 
     // Grad for labels is null
-    (*grad_outputs)[1] = nullptr; 
+    (*grad_outputs)[1] = nullptr;
 
-    counter += 1;
     return Status::OK();
   }
   ~SparseSoftmaxCrossEntropyLossGradientFunction() override {}
 
  private:
-  int64_t counter;
-  vector<AbstractTensorHandle*> forward_inputs;
   vector<AbstractTensorHandle*> forward_outputs;
 };
 
 }  // namespace
 
-GradientFunction* ReluRegisterer(const ForwardOperation& op) {
-  return new ReluGradientFunction(op.outputs);
+BackwardFunction* ReluRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new ReluGradientFunction(op.outputs);
+  // For ops with a single output, the gradient function is not called if there
+  // is no incoming gradient. So we do not need to worry about creating zeros
+  // grads in this case.
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
 }
 
-GradientFunction* SparseSoftmaxCrossEntropyLossRegisterer(
+BackwardFunction* SparseSoftmaxCrossEntropyLossRegisterer(
     const ForwardOperation& op) {
-  return new SparseSoftmaxCrossEntropyLossGradientFunction(op.inputs,
-                                                           op.outputs);
+  auto gradient_function =
+      new SparseSoftmaxCrossEntropyLossGradientFunction(op.outputs);
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
 }
 
 }  // namespace gradients

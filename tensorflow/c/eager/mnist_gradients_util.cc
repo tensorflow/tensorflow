@@ -168,18 +168,19 @@ Status AddGradModel(AbstractContext* ctx,
   auto tape = new Tape(/*persistent=*/false);
   tape->Watch(ToId(inputs[0]));  // Watch x.
   tape->Watch(ToId(inputs[1]));  // Watch y.
-  vector<AbstractTensorHandle*> add_outputs(1);
+  std::vector<AbstractTensorHandle*> add_outputs(1);
   TF_RETURN_IF_ERROR(Add(ctx, tape, inputs, absl::MakeSpan(add_outputs),
                          registry));  // Compute x+y.
   std::unordered_map<tensorflow::int64, TapeTensor>
       source_tensors_that_are_targets;
 
-  vector<AbstractTensorHandle*> out_grads;
+  std::vector<AbstractTensorHandle*> out_grads;
   TF_RETURN_IF_ERROR(tape->ComputeGradient(
       vspace, /*target_tensor_ids=*/{ToId(add_outputs[0])},
       /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
       source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
   for (auto add_output : add_outputs) {
     add_output->Unref();
   }
@@ -213,7 +214,8 @@ Status MatMulGradModel(AbstractContext* ctx,
       vspace, /*target_tensor_ids=*/{ToId(mm_outputs[0])},
       /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
       source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
   for (auto mm_output : mm_outputs) {
     mm_output->Unref();
   }
@@ -322,7 +324,8 @@ Status ReluGradModel(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(tape->ComputeGradient(
       vspace, /*target_tensor_ids=*/{ToId(relu_outputs[0])},
       /*source_tensor_ids=*/{ToId(inputs[0])}, source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
 
   for (auto relu_output : relu_outputs) {
     relu_output->Unref();
@@ -353,7 +356,8 @@ Status SoftmaxLossGradModel(AbstractContext* ctx,
       vspace, /*target_tensor_ids=*/{ToId(sm_outputs[0])},
       /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
       source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
 
   outputs[0] = out_grads[0];
   outputs[1] = out_grads[1];
@@ -410,7 +414,8 @@ Status MNISTGradModel(AbstractContext* ctx,
       tape->ComputeGradient(vspace, /*target_tensor_ids=*/{ToId(loss)},
                             /*source_tensor_ids=*/{ToId(W1), ToId(W2)},
                             source_tensors_that_are_targets,
-                            /*output_gradients=*/{}, &out_grads));
+                            /*output_gradients=*/{}, &out_grads,
+                            /*build_default_zeros_grads=*/false));
 
   // Only release 2nd temp output as first holds loss values.
   temp_outputs[1]->Unref();
@@ -445,8 +450,7 @@ Status ScalarMulModel(AbstractContext* ctx,
 
 // ============================= End Models ================================
 
-Status UpdateWeights(AbstractContext* ctx,
-                     vector<AbstractTensorHandle*>& grads,
+Status UpdateWeights(AbstractContext* ctx, vector<AbstractTensorHandle*>& grads,
                      vector<AbstractTensorHandle*>& weights,
                      AbstractTensorHandle* learning_rate) {
   /* Update weights one by one using gradient update rule:
