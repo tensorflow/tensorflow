@@ -392,6 +392,10 @@ Status EraseOutputShapeAttrs(TransposeContext* context) {
 
 }  // namespace
 
+// When there is a GPU, the computation graph is converted to NCHW format.
+// When there is only CPU, there will be no conversion by default, unless user
+// chose to convert the graph to a desired format. Currently, NCHW -> NHWC
+// format conversion is available on CPU.
 Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
                                         const GrapplerItem& item,
                                         GraphDef* output) {
@@ -402,22 +406,37 @@ Status GenericLayoutOptimizer::Optimize(Cluster* cluster,
   }
   const auto num_gpus_and_num_volta = GetNumGPUs(*cluster);
   const int num_gpus = num_gpus_and_num_volta.first;
-  if (num_gpus < 1) {
-    return errors::Aborted(
-        "No GPUs found: GenericLayoutOptimizer is currently only tuned for "
-        "GPU.");
-  }
 
   const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
 
   TransposeContext context;
-  TF_RETURN_IF_ERROR(
-      TransposeContext::InitializeTransposeContext(item, cluster, &context));
+  if (num_gpus > 0) {
+    TF_RETURN_IF_ERROR(
+        TransposeContext::InitializeTransposeContext(item, cluster, &context));
 
-  const auto src_dst_formats =
-      GetSrcAndDstDataFormats(context, num_gpus, num_gpus_and_num_volta.second);
-  context.AssignDeviceAndDataFormats(kGPU, src_dst_formats.first,
-                                     src_dst_formats.second);
+    const auto src_dst_formats = GetSrcAndDstDataFormats(
+        context, num_gpus, num_gpus_and_num_volta.second);
+    context.AssignDeviceAndDataFormats(kGPU, src_dst_formats.first,
+                                       src_dst_formats.second);
+  } else {
+    TF_RETURN_IF_ERROR(
+        TransposeContext::InitializeTransposeContext(item, cluster, &context));
+    switch (cpu_layout_conversion_) {
+      case RewriterConfig::NCHW_TO_NHWC:
+        context.AssignDeviceAndDataFormats(kCPU, kNCHW, kNHWC);
+        break;
+      // TODO(intel-tf): Add functionality for NHWC_TO_NCHW layout conversion on
+      // CPU.
+      case RewriterConfig::NHWC_TO_NCHW:
+        return errors::Aborted(
+            "Conversion from NHWC to NCHW is currently not  available for "
+            "CPU.");
+      default:
+        *output = item.graph;
+        VLOG(2) << "No layout conversion will take place for CPU.";
+        return Status::OK();
+    }
+  }
 
   TransposerFactory transposer_factory;
   TF_RETURN_IF_ERROR(ExpandLayoutSensitiveOp(&context, &transposer_factory));
