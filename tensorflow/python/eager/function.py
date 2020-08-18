@@ -2467,7 +2467,7 @@ class FunctionSpec(object):
     self._args_to_indices = {arg: i for i, arg in enumerate(args)}
     self._arg_names = args
 
-    self._num_req_args = (len(args) - len(self._fullargspec.defaults or []))
+    self._num_req_args = len(args) - len(self._fullargspec.defaults or [])
 
     if input_signature is None:
       self._input_signature = None
@@ -2648,12 +2648,14 @@ class FunctionSpec(object):
           raise TypeError("{} missing required arguments: {}".format(
               self.signature_summary(), ", ".join(missing_args)))
         inputs += tuple(
-            self._fullargspec.defaults[len(args) - self._num_req_args:])
+            self._fullargspec.defaults[i]
+            for i in range(len(args) - self._num_req_args,
+                           len(self._arg_names) - self._num_req_args))
 
       if self._fullargspec.kwonlydefaults:
         kwargs.update(self._fullargspec.kwonlydefaults)
     else:
-      # Fill in any remaining positional arguments which were not called as 
+      # Fill in any remaining positional arguments which were not called as
       # pure positional arguments by the user, using values provided by the
       # user if called in a keyword-like fashion, or otherwise the default
       # values.
