@@ -628,7 +628,7 @@ tf_kernel_library(
         "//tensorflow/stream_executor/cuda:cusparse_lib",
         "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
-        "@local_config_rocm//rocm:hipsparse",
+        "//tensorflow/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
 
