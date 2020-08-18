@@ -17,9 +17,8 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-
-bool IsValueAllowedInAlternateMemory(const HloValue* value) {
+bool MemorySpaceAssignmentUtils::IsValueAllowedInAlternateMemory(
+    const HloValue* value) {
   // If the buffer is a tuple, don't use this algorithm for now. The buffers
   // that are pointed to by the tuple will still use this algorithm.  Because
   // tuples are cheap to place in the alternate memory (they are just pointers)
@@ -92,8 +91,6 @@ bool IsValueAllowedInAlternateMemory(const HloValue* value) {
 
   return true;
 }
-
-}  // namespace
 
 bool MemorySpaceAssignmentUtils::IsIntervalAllowedInAlternateMemory(
     const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval) {
