@@ -19,6 +19,9 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#ifdef PLATFORM_GOOGLE
+#include "file/logging/log_lines.h"
+#endif
 #include "grpcpp/create_channel.h"
 #include "grpcpp/impl/codegen/server_context.h"
 #include "grpcpp/security/credentials.h"
@@ -232,10 +235,15 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     const GetOrRegisterDatasetRequest* request,
     GetOrRegisterDatasetResponse* response) {
   uint64 fingerprint;
-  TF_RETURN_IF_ERROR(HashGraph(request->dataset().graph(), &fingerprint));
+  const GraphDef& graph = request->dataset().graph();
+  TF_RETURN_IF_ERROR(HashGraph(graph, &fingerprint));
   mutex_lock l(mu_);
-  VLOG(4) << "Registering dataset graph: "
-          << request->dataset().graph().DebugString();
+#if defined(PLATFORM_GOOGLE)
+  VLOG_LINES(4,
+             absl::StrCat("Registering dataset graph: ", graph.DebugString()));
+#else
+  VLOG(4) << "Registering dataset graph: " << graph.DebugString();
+#endif
   std::shared_ptr<const Dataset> dataset;
   Status s = state_.DatasetFromFingerprint(fingerprint, &dataset);
   if (s.ok()) {
