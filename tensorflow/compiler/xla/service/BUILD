@@ -3437,6 +3437,26 @@ cc_library(
 )
 
 cc_library(
+    name = "memory_space_assignment_best_fit_repacker",
+    srcs = ["memory_space_assignment_best_fit_repacker.cc"],
+    hdrs = ["memory_space_assignment_best_fit_repacker.h"],
+    deps = [
+        ":heap_simulator",
+        ":memory_space_assignment_repacking",
+    ],
+)
+
+tf_cc_test(
+    name = "memory_space_assignment_best_fit_repacker_test",
+    srcs = ["memory_space_assignment_best_fit_repacker_test.cc"],
+    deps = [
+        ":memory_space_assignment_best_fit_repacker",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
     name = "memory_space_assignment",
     srcs = ["memory_space_assignment.cc"],
     hdrs = ["memory_space_assignment.h"],
