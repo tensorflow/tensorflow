@@ -707,7 +707,6 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
   // Fold reshape if operand and result types are the same and all dimensions
   // are statically known (no-op reshape).
-  // TODO(ezhulenev): Add the same folding for BroadcastToOp.
   auto result_ty = getType().dyn_cast<ShapedType>();
   if (result_ty && result_ty.hasStaticShape() &&
       result_ty == tensor.getType()) {

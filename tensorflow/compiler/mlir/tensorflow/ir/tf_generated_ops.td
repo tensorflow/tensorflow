@@ -1353,6 +1353,7 @@ subsequent operation and then be optimized away, however.)
   let verifier = [{
     return Verify(*this);
   }];
+  let hasFolder = 1;
 }
 
 def TF_BucketizeOp : TF_Op<"Bucketize", [NoSideEffect, SameOperandsAndResultShape]> {

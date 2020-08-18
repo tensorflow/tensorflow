@@ -444,6 +444,14 @@ func @testReshapeNoOp(%arg0: tensor<2x4xf32>, %arg1: tensor<2xi32>) -> tensor<2x
   return %0 : tensor<2x4xf32>
 }
 
+// CHECK-LABEL: func @testBroadcastToNoOp
+func @testBroadcastToNoOp(%arg0: tensor<2x4xf32>, %arg1: tensor<2xi32>) -> tensor<2x4xf32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<2x4xf32>, tensor<2xi32>) -> tensor<2x4xf32>
+
+  // CHECK: return %arg0
+  return %0 : tensor<2x4xf32>
+}
+
 // CHECK-LABEL: func @testPackShapeComputation
 func @testPackShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>, %arg2: tensor<*xf32>) -> (tensor<2xi32>, tensor<3xi32>, tensor<3xi32>,  tensor<3xi32>, tensor<3xi32>, tensor<*xi32>) {
   // Test dimensions sizes.

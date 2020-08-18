@@ -440,6 +440,19 @@ static LogicalResult Verify(BroadcastToOp op) {
   return success();
 }
 
+OpFoldResult BroadcastToOp::fold(ArrayRef<Attribute> operands) {
+  Value input = this->input();
+
+  // Fold broadcast if operand and result types are the same and all dimensions
+  // are statically known (no-op broadcast).
+  auto result_ty = getType().dyn_cast<ShapedType>();
+  if (result_ty && result_ty.hasStaticShape() && result_ty == input.getType()) {
+    return input;
+  }
+
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // CaseOp
 //===----------------------------------------------------------------------===//
