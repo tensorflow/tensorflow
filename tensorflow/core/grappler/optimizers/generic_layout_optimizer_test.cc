@@ -353,7 +353,7 @@ TEST_F(GenericLayoutOptimizerTest, CPUDevice) {
   VerifyDataFormatAttributeMatch(conv_node, "NHWC");
 #else
   VerifyDataFormatAttributeMatch(conv_node, DST_DATA_FORMAT);
-#endif // (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
+#endif  // (GOOGLE_CUDA || TENSORFLOW_USE_ROCM)
 }
 
 TEST_F(GenericLayoutOptimizerTest, Connectivity) {
