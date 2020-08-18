@@ -503,6 +503,7 @@ def tf_proto_library(
         j2objc_api_version = 1,
         js_codegen = "jspb",
         create_service = False,
+        create_java_proto = False,
         make_default_target_header_only = False,
         exports = []):
     """Make a proto library, possibly depending on other proto libraries."""
@@ -510,7 +511,7 @@ def tf_proto_library(
     # TODO(b/145545130): Add docstring explaining what rules this creates and how
     # opensource projects importing TF in bazel can use them safely (i.e. w/o ODR or
     # ABI violations).
-    _ignore = (js_codegen, exports, create_service)
+    _ignore = (js_codegen, exports, create_service, create_java_proto)
 
     native.proto_library(
         name = name,
