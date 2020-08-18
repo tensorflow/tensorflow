@@ -105,9 +105,17 @@ def _make_input_signature_hashable(elem):
   Returns:
     A hashable object for the requested input signature
   """
+  try:
+    hash(elem)
+  except TypeError:
+    return _make_input_signature_hashable_helper(elem)
+  return elem
+
+
+def _make_input_signature_hashable_helper(elem):
   # TODO(slebedev): consider using nest.
   if isinstance(elem, tuple):
-    return tuple(map(_make_input_signature_hashable, elem))
+    return tuple(map(_make_input_signature_hashable_helper, elem))
 
   try:
     hash(elem)
