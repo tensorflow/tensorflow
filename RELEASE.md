@@ -81,6 +81,12 @@
       server and set `dispatcher_fault_tolerance=True`. The dispatcher will
       store its state to `work_dir`, so that on restart it can continue from its
       previous state after restart.
+    * Added tf.data service support for sharing dataset graphs via shared
+      filesystem instead of over RPC. This reduces load on the dispatcher,
+      improving performance of distributing datasets. For this to work, the
+      dispatcher's `work_dir` must be accessible from workers. If the worker
+      fails to read from the `work_dir`, it falls back to using RPC for dataset
+      graph transfer.
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
       the complement of `select_cols`; at most one of these should be specified.
     * We have implemented an optimization which reorders data-discarding

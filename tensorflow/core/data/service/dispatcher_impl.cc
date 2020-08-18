@@ -57,8 +57,6 @@ using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
 using Job = DispatcherState::Job;
 using Task = DispatcherState::Task;
-using ::tensorflow::data::experimental::RPC;
-using ::tensorflow::data::experimental::SHARED_FILESYSTEM;
 
 std::string JournalDir(const std::string& work_dir) {
   return io::JoinPath(work_dir, kJournalDir);
@@ -102,11 +100,6 @@ Status DataServiceDispatcherImpl::Start() {
     if (config_.fault_tolerant_mode()) {
       return errors::InvalidArgument(
           "fault_tolerant_mode is True, but no work_dir is configured.");
-    }
-    if (config_.dataset_sharing_mode() == SHARED_FILESYSTEM) {
-      return errors::InvalidArgument(
-          "dataset sharing mode is shared_filesystem, but no work_dir is "
-          "configured.");
     }
   } else {
     TF_RETURN_IF_ERROR(
@@ -182,22 +175,14 @@ Status DataServiceDispatcherImpl::RegisterWorker(
     TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, &dataset));
     std::string dataset_key =
         DatasetKey(dataset->dataset_id, dataset->fingerprint);
-    switch (config_.dataset_sharing_mode()) {
-      case SHARED_FILESYSTEM: {
-        std::string path =
-            io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
-        task_def->set_path(path);
-        break;
-      }
-      case RPC: {
-        std::shared_ptr<const DatasetDef> dataset_def;
-        TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
-        *task_def->mutable_dataset_def() = *dataset_def;
-        break;
-      }
-      default:
-        return errors::Internal("Unrecognized dataset sharing mode: ",
-                                config_.dataset_sharing_mode());
+    if (config_.work_dir().empty()) {
+      std::shared_ptr<const DatasetDef> dataset_def;
+      TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
+      *task_def->mutable_dataset_def() = *dataset_def;
+    } else {
+      std::string path =
+          io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
+      task_def->set_path(path);
     }
     task_def->set_dataset_id(job->dataset_id);
     task_def->set_job_id(job->job_id);
@@ -228,6 +213,18 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
               << " completed";
     }
   }
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::GetDatasetDef(
+    const GetDatasetDefRequest* request, GetDatasetDefResponse* response) {
+  mutex_lock l(mu_);
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), &dataset));
+  std::string key = DatasetKey(dataset->dataset_id, dataset->fingerprint);
+  std::shared_ptr<const DatasetDef> dataset_def;
+  TF_RETURN_IF_ERROR(dataset_store_->Get(key, dataset_def));
+  *response->mutable_dataset_def() = *dataset_def;
   return Status::OK();
 }
 
@@ -501,22 +498,14 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, &dataset));
     std::string dataset_key =
         DatasetKey(dataset->dataset_id, dataset->fingerprint);
-    switch (config_.dataset_sharing_mode()) {
-      case SHARED_FILESYSTEM: {
-        std::string path =
-            io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
-        task_def->set_path(path);
-        break;
-      }
-      case RPC: {
-        std::shared_ptr<const DatasetDef> dataset_def;
-        TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
-        *task_def->mutable_dataset_def() = *dataset_def;
-        break;
-      }
-      default:
-        return errors::Internal("Unrecognized dataset sharing mode: ",
-                                config_.dataset_sharing_mode());
+    if (config_.work_dir().empty()) {
+      std::shared_ptr<const DatasetDef> dataset_def;
+      TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
+      *task_def->mutable_dataset_def() = *dataset_def;
+    } else {
+      std::string path =
+          io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
+      task_def->set_path(path);
     }
   }
   task_def->set_task_id(task->task_id);

@@ -2,17 +2,6 @@ syntax = "proto3";
 
 package tensorflow.data.experimental;
 
-enum DatasetSharingMode {
-  // Unknown default value.
-  UNKNOWN = 0;
-  // Pass dataset definitions over the wire.
-  RPC = 1;
-  // Write dataset definitions to a shared filesystem, then send only the path
-  // over the wire. This reduces the load on the dispatcher, but requires that
-  // that the dispatcher's work_dir is accessible from the workers.
-  SHARED_FILESYSTEM = 2;
-}
-
 // Configuration for a tf.data service DispatchServer.
 message DispatcherConfig {
   // The port for the dispatcher to bind to. A value of 0 indicates that the
@@ -26,8 +15,6 @@ message DispatcherConfig {
   // Whether to run in fault tolerant mode, where dispatcher state is saved
   // across restarts.
   bool fault_tolerant_mode = 4;
-  // How to share datasets with workers.
-  DatasetSharingMode dataset_sharing_mode = 5;
 }
 
 // Configuration for a tf.data service WorkerServer.

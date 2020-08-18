@@ -94,8 +94,6 @@ class DispatchServer(object):
     """
     self._protocol = DEFAULT_PROTOCOL if protocol is None else protocol
     self._work_dir = "" if work_dir is None else work_dir
-    self._dataset_sharing_mode = ("shared_filesystem"
-                                  if self._work_dir else "rpc")
     self._fault_tolerant_mode = (False if fault_tolerant_mode is None else
                                  fault_tolerant_mode)
     if self._fault_tolerant_mode and not self._work_dir:
@@ -105,9 +103,7 @@ class DispatchServer(object):
         port=port,
         protocol=self._protocol,
         work_dir=self._work_dir,
-        fault_tolerant_mode=self._fault_tolerant_mode,
-        dataset_sharing_mode=service_config_pb2.DatasetSharingMode.Value(
-            self._dataset_sharing_mode.upper()))
+        fault_tolerant_mode=self._fault_tolerant_mode)
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
         config.SerializeToString())
     if start:

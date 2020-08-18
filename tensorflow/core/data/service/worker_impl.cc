@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/data/dataset.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
@@ -62,21 +63,19 @@ Status DataServiceWorkerImpl::Start(const std::string& worker_address) {
   VLOG(3) << "Starting tf.data service worker at address " << worker_address;
   worker_address_ = worker_address;
 
-  std::unique_ptr<DispatcherService::Stub> dispatcher;
-  TF_RETURN_IF_ERROR(MakeDispatcherStub(&dispatcher));
+  dispatcher_ = absl::make_unique<DataServiceDispatcherClient>(
+      config_.dispatcher_address(), config_.protocol());
+  TF_RETURN_IF_ERROR(dispatcher_->Initialize());
 
-  Status s = Register(dispatcher.get());
+  Status s = Register();
   while (!s.ok()) {
     LOG(WARNING) << "Failed to register with dispatcher at "
                  << config_.dispatcher_address() << ": " << s;
     Env::Default()->SleepForMicroseconds(kRetryIntervalMicros);
-    s = Register(dispatcher.get());
+    s = Register();
   }
-  Thread* thread =
-      Env::Default()->StartThread({}, "data-service-worker-background",
-                                  [this, dispatcher = dispatcher.release()]() {
-                                    BackgroundThread(dispatcher);
-                                  });
+  Thread* thread = Env::Default()->StartThread(
+      {}, "data-service-worker-background", [this]() { BackgroundThread(); });
   LOG(INFO) << "Worker registered with dispatcher running at "
             << config_.dispatcher_address();
   background_thread_.reset(thread);
@@ -120,7 +119,13 @@ Status DataServiceWorkerImpl::EnsureTaskInitialized(
       break;
     case TaskDef::kPath: {
       DatasetDef def;
-      TF_RETURN_IF_ERROR(ReadDatasetDef(task.task_def.path(), def));
+      Status s = ReadDatasetDef(task.task_def.path(), def);
+      if (!s.ok()) {
+        LOG(INFO) << "Failed to read dataset from " << task.task_def.path()
+                  << ": " << s << ". Falling back to reading from dispatcher.";
+        TF_RETURN_IF_ERROR(
+            dispatcher_->GetDatasetDef(task.task_def.dataset_id(), def));
+      }
       TF_RETURN_IF_ERROR(
           standalone::Dataset::FromGraph(params, def.graph(), &task.dataset));
       break;
@@ -207,30 +212,11 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
   return Status::OK();
 }
 
-Status DataServiceWorkerImpl::MakeDispatcherStub(
-    std::unique_ptr<DispatcherService::Stub>* stub) {
-  ::grpc::ChannelArguments args;
-  std::shared_ptr<::grpc::ChannelCredentials> credentials;
-  TF_RETURN_IF_ERROR(CredentialsFactory::CreateClientCredentials(
-      config_.protocol(), &credentials));
-  auto channel = ::grpc::CreateCustomChannel(config_.dispatcher_address(),
-                                             credentials, args);
-  *stub = DispatcherService::NewStub(channel);
-  return Status::OK();
-}
-
-Status DataServiceWorkerImpl::Register(DispatcherService::Stub* dispatcher_stub)
-    LOCKS_EXCLUDED(mu_) {
+Status DataServiceWorkerImpl::Register() LOCKS_EXCLUDED(mu_) {
   VLOG(3) << "Registering with dispatcher at " << config_.dispatcher_address();
-  RegisterWorkerRequest req;
-  req.set_worker_address(worker_address_);
-  RegisterWorkerResponse resp;
-  grpc::ClientContext ctx;
-  grpc::Status s = dispatcher_stub->RegisterWorker(&ctx, req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to register worker", s);
-  }
-  for (const TaskDef& task : resp.tasks()) {
+  std::vector<TaskDef> tasks;
+  TF_RETURN_IF_ERROR(dispatcher_->RegisterWorker(worker_address_, tasks));
+  for (const TaskDef& task : tasks) {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(ProcessTaskInternal(task));
   }
@@ -238,10 +224,7 @@ Status DataServiceWorkerImpl::Register(DispatcherService::Stub* dispatcher_stub)
   return Status::OK();
 }
 
-void DataServiceWorkerImpl::BackgroundThread(
-    DispatcherService::Stub* dispatcher_ptr) LOCKS_EXCLUDED(mu_) {
-  std::unique_ptr<DispatcherService::Stub> dispatcher =
-      absl::WrapUnique(dispatcher_ptr);
+void DataServiceWorkerImpl::BackgroundThread() LOCKS_EXCLUDED(mu_) {
   while (true) {
     {
       mutex_lock l(mu_);
@@ -253,7 +236,7 @@ void DataServiceWorkerImpl::BackgroundThread(
         return;
       }
     }
-    Status s = SendTaskUpdates(dispatcher.get());
+    Status s = SendTaskUpdates();
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
       mutex_lock l(mu_);
@@ -265,27 +248,22 @@ void DataServiceWorkerImpl::BackgroundThread(
   }
 }
 
-Status DataServiceWorkerImpl::SendTaskUpdates(
-    DispatcherService::Stub* dispatcher) LOCKS_EXCLUDED(mu_) {
+Status DataServiceWorkerImpl::SendTaskUpdates() LOCKS_EXCLUDED(mu_) {
   WorkerUpdateRequest req;
+  std::vector<TaskProgress> task_progress;
   {
     mutex_lock l(mu_);
     VLOG(3) << "Sending " << pending_completed_tasks_.size()
             << " task updates to dispatcher";
-    req.set_worker_address(worker_address_);
+    task_progress.reserve(pending_completed_tasks_.size());
     for (int task_id : pending_completed_tasks_) {
-      TaskProgress* update = req.add_updates();
-      update->set_task_id(task_id);
-      update->set_completed(true);
+      task_progress.emplace_back();
+      task_progress.back().set_task_id(task_id);
+      task_progress.back().set_completed(true);
     }
   }
 
-  WorkerUpdateResponse resp;
-  grpc::ClientContext ctx;
-  grpc::Status s = dispatcher->WorkerUpdate(&ctx, req, &resp);
-  if (!s.ok()) {
-    return grpc_util::WrapError("Failed to send task updates", s);
-  }
+  TF_RETURN_IF_ERROR(dispatcher_->WorkerUpdate(worker_address_, task_progress));
   mutex_lock l(mu_);
   for (const auto& update : req.updates()) {
     pending_completed_tasks_.erase(update.task_id());

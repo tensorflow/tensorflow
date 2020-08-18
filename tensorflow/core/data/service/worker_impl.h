@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
@@ -63,25 +64,21 @@ class DataServiceWorkerImpl {
     std::unique_ptr<standalone::Iterator> iterator;
   };
 
-  Status MakeDispatcherStub(std::unique_ptr<DispatcherService::Stub>* stub);
   // Registers the worker with the dispatcher.
-  Status Register(DispatcherService::Stub* dispatcher) LOCKS_EXCLUDED(mu_);
+  Status Register() LOCKS_EXCLUDED(mu_);
   // Sends task status to the dispatcher and checks for dispatcher commands.
-  Status SendTaskUpdates(DispatcherService::Stub* dispatcher)
-      LOCKS_EXCLUDED(mu_);
+  Status SendTaskUpdates() LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
   Status ProcessTaskInternal(const TaskDef& task) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   Status EnsureTaskInitialized(Task& task);
   // A thread for doing async background processing not associated with a
-  // specific RPC, such as reporting finished tasks. The thread takes
-  // ownership of the passed dispatcher_ptr. We use a raw pointer instead of
-  // unique_ptr since unique_ptr cannot be passed to std::function.
-  void BackgroundThread(DispatcherService::Stub* dispatcher_ptr)
-      LOCKS_EXCLUDED(mu_);
+  // specific RPC, such as reporting finished tasks.
+  void BackgroundThread() LOCKS_EXCLUDED(mu_);
 
   const experimental::WorkerConfig config_;
   // The worker's own address.
   std::string worker_address_;
+  std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 
   mutex mu_;
   // Information about tasks, keyed by task ids.

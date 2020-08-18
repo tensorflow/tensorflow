@@ -47,6 +47,7 @@ class GrpcDispatcherImpl : public DispatcherService::Service {
                         method##Response* response) override;
   HANDLER(RegisterWorker);
   HANDLER(WorkerUpdate);
+  HANDLER(GetDatasetDef);
   HANDLER(GetOrRegisterDataset);
   HANDLER(CreateJob);
   HANDLER(ReleaseJobClient);
