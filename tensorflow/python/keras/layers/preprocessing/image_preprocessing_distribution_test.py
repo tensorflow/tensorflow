@@ -62,7 +62,7 @@ class ImagePreprocessingDistributionTest(
       cls_layer = keras.layers.Dense(units=1, activation="sigmoid")
       output = cls_layer(output)
       model = keras.Model(inputs=input_data, outputs=output)
-    model.compile(loss="binary_crossentropy", optimizer='sgd')
+      model.compile(loss="binary_crossentropy", optimizer='sgd')
     model.fit(image_dataset, epochs=1)
     _ = model.predict(image_dataset)
 
