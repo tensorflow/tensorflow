@@ -4730,6 +4730,34 @@ ENTRY entry {
   EXPECT_THAT(root, op::AllReduce(op::AllReduce(dot)));
 }
 
+TEST_F(SpmdPartitioningTest, DotLHSMutiNonContractingRHSNotMatch) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[24,8,10] parameter(0), sharding={devices=[2,2,1]0,1,2,3}
+  %rhs = f32[10,50] parameter(1),
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+  ROOT %dot = f32[24,8,50] dot(%lhs, %rhs),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    sharding={devices=[2,2,1]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto lhs = AllOf(op::Shape("f32[12,4,10]"), op::Parameter(0));
+  auto rhs = AllOf(op::Shape("f32[5,50]"), op::Parameter(1));
+  auto dot = AllOf(
+      op::Shape("f32[12,4,50]"),
+      op::Dot(lhs, AllOf(op::Shape("f32[10,50]"),
+                         op::AllReduce(op::DynamicUpdateSlice(_, rhs, _, _)))));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, dot) << module->ToString();
+}
+
 TEST_F(SpmdPartitioningTest,
        ElementwiseTest_PartialReplicateToTiledHaloExchange) {
   const char* const hlo_string = R"(

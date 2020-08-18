@@ -889,8 +889,8 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
                                  : dims_mapping.lhs_non_contracting_dims) {
         other_group_dims.push_back(lhs_matching ? dim.rhs : dim.lhs);
       }
-    } else if (!other.sharding().IsReplicated()) {
-      return nullptr;
+    } else {
+      other = other.Replicate();
     }
   }
 
