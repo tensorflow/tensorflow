@@ -105,6 +105,8 @@ TEST_F(IsotonicRegressionOpTest, Decreasing) {
   test::ExpectTensorEqual<int>(expected_ord, *GetOutput((1)));
 }
 
+#ifdef PLATFORM_GOOGLE
+
 static void BM_IncreasingSequence(benchmark::State& state) {
   int batch_size = state.range(0);
   int input_size = state.range(1);
@@ -134,6 +136,8 @@ BENCHMARK(BM_IncreasingSequence)
     ->Args({1 << 6, 1 << 10})
     ->Args({1 << 9, 1 << 10})
     ->Args({1 << 10, 1 << 10});
+
+#endif  // PLATFORM_GOOGLE
 
 }  // namespace
 }  // namespace tensorflow
