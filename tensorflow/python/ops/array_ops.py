@@ -4493,28 +4493,17 @@ def where_v2(condition, x=None, y=None, name=None):
   no asymptote, and to avoid computing a value whose gradient is NaN by
   replacing dangerous inputs with safe inputs.
 
-  Here down a couple of examples:
-  
-  1. Instead of this
-  
-  >>> y = float(-1)
-  >>> tf.where(y > 0, tf.sqrt(y), y)
-  
-  Use this
-  
-  >>> tf.where(y > 0, tf.sqrt(tf.where(y > 0, y, 1)), y)
-  <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
-
-  2. Instead of this
+  Instead of this,
 
   >>> y = tf.constant(-1, dtype=tf.float32)
   >>> tf.where(y > 0, tf.sqrt(y), y)
+  <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
 
   Use this
 
   >>> tf.where(y > 0, tf.sqrt(tf.where(y > 0, y, 1)), y)
-
   <tf.Tensor: shape=(), dtype=float32, numpy=-1.0>
+
   Args:
     condition: A `tf.Tensor` of type `bool`
     x: If provided, a Tensor which is of the same type as `y`, and has a shape
