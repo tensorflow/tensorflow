@@ -61,7 +61,7 @@ template <std::size_t SIZE>
 bool IsNodeOfType(const NodeDef& node,
                   const std::array<const char*, SIZE>& op_types) {
   for (const auto& type : op_types) {
-    if (MatchesAnyVersionRE(type, node.op())) {
+    if (MatchesAnyVersion(type, node.op())) {
       return true;
     }
   }
@@ -903,10 +903,18 @@ std::string DeterminismPolicy::String() const {
   }
 }
 
-bool MatchesAnyVersionRE(StringPiece op_prefix, StringPiece op_to_match) {
-  // Matches all versions of an op by appending an optional version suffix
-  auto expected_re = strings::StrCat(RE2::QuoteMeta(op_prefix), "(V\\d+)?");
-  return RE2::FullMatch(op_to_match, expected_re);
+bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match) {
+  if (!absl::StartsWith(op_to_match, op_prefix)) {
+    return false;
+  }
+  if (op_to_match.length() == op_prefix.length()) {
+    return true;
+  }
+  size_t index = op_to_match.length() - 1;
+  while (isdigit(op_to_match[index])) {
+    index--;
+  }
+  return (op_to_match[index] == 'V') && (op_prefix.length() == index);
 }
 
 std::vector<tstring> SelectOptimizations(

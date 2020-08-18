@@ -122,8 +122,8 @@ template <std::size_t SIZE>
 bool IsDatasetNodeOfType(const NodeDef& node,
                          const std::array<const char*, SIZE>& arr) {
   for (const auto& dataset_op_name : arr) {
-    if (tensorflow::data::MatchesAnyVersionRE(/*op_prefix=*/dataset_op_name,
-                                              /*op_to_match=*/node.op())) {
+    if (tensorflow::data::MatchesAnyVersion(/*op_prefix=*/dataset_op_name,
+                                            /*op_to_match=*/node.op())) {
       return true;
     }
   }
