@@ -116,7 +116,7 @@ class TensorMapLookup : public OpKernel {
 
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
                 errors::InvalidArgument("Trying to lookup non-existent key. Could" 
-                                        "not find " + key.DeviceSafeDebugString()));
+                                        " not find " + key.SummarizeValue(100)));
 
     c->set_output(0, m->tensors().find(key)->second);
   }
