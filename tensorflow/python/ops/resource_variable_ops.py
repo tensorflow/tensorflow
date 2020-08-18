@@ -886,7 +886,15 @@ class BaseResourceVariable(variables.VariableV1, core.Tensor):
     # initialize the variable.
     with _handle_graph(self.handle):
       value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
-      self._shape.assert_is_compatible_with(value_tensor.shape)
+      if not self._shape.is_compatible_with(value_tensor.shape):
+        if self.name is None:
+          tensor_name = ""
+        else:
+          tensor_name = " " + str(self.name)
+        raise ValueError(
+            ("Cannot assign to variable%s due to variable shape %s and value "
+             "shape %s are incompatible") %
+            (tensor_name, self._shape, value_tensor.shape))
       assign_op = gen_resource_variable_ops.assign_variable_op(
           self.handle, value_tensor, name=name)
       if read_value:
