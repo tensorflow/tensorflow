@@ -7533,3 +7533,32 @@ tf_kernel_library(
     name = "einsum_op",
     deps = ["//tensorflow/core/kernels/linalg:einsum_op"],
 )
+
+tf_kernel_library(
+    name = "isotonic_regression_op",
+    srcs = [
+        "isotonic_regression_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "isotonic_regression_op_test",
+    size = "small",
+    srcs = ["isotonic_regression_op_test.cc"],
+    deps = [
+        ":isotonic_regression_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
