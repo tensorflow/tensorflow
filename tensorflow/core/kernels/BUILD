@@ -1653,7 +1653,10 @@ tf_cuda_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
-    tags = ["no_cuda11"],  # b/159664089
+    tags = [
+        "no_cuda11",  # b/159664089
+        "no_oss",
+    ],
     deps = [
         ":conv_ops",
         ":ops_testutil",
