@@ -56,7 +56,20 @@ def make_conv_activation_tests(activation_op):
             "constant_filter": [True],
             "channel_multiplier": [1, 2],
             "fully_quantize": [True],
-            "quant_16x8": [False, True],
+            "quant_16x8": [False],
+            "dynamic_range_quantize": [False],
+        },
+        {
+            "input_shape": [[4, 6, 6, 1]],
+            "filter_shape": [[1, 1], [2, 3]],
+            "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+            "dilations": [[1, 1, 1, 1], [1, 3, 2, 1]],
+            "padding": ["SAME", "VALID"],
+            "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
+            "constant_filter": [True],
+            "channel_multiplier": [1, 2],
+            "fully_quantize": [True],
+            "quant_16x8": [True],
             "dynamic_range_quantize": [False],
         },
         {
