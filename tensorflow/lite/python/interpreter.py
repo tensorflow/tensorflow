@@ -185,8 +185,8 @@ class Interpreter(object):
           objects returned by lite.load_delegate().
       num_threads: Sets the number of threads used by the interpreter and
         available to CPU kernels. If not set, the interpreter will use an
-        implementation-dependent default number of threads. Currently,
-        only a subset of kernels, such as conv, support multi-threading.
+        implementation-dependent default number of threads. Currently, only a
+        subset of kernels, such as conv, support multi-threading.
 
     Raises:
       ValueError: If the interpreter was unable to create.
@@ -194,19 +194,33 @@ class Interpreter(object):
     if not hasattr(self, '_custom_op_registerers'):
       self._custom_op_registerers = []
     if model_path and not model_content:
+      custom_op_registerers_by_name = [
+          x for x in self._custom_op_registerers if isinstance(x, str)
+      ]
+      custom_op_registerers_by_func = [
+          x for x in self._custom_op_registerers if not isinstance(x, str)
+      ]
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromFile(
-              model_path, self._custom_op_registerers))
+              model_path, custom_op_registerers_by_name,
+              custom_op_registerers_by_func))
       if not self._interpreter:
         raise ValueError('Failed to open {}'.format(model_path))
     elif model_content and not model_path:
+      custom_op_registerers_by_name = [
+          x for x in self._custom_op_registerers if isinstance(x, str)
+      ]
+      custom_op_registerers_by_func = [
+          x for x in self._custom_op_registerers if not isinstance(x, str)
+      ]
       # Take a reference, so the pointer remains valid.
       # Since python strings are immutable then PyString_XX functions
       # will always return the same pointer.
       self._model_content = model_content
       self._interpreter = (
           _interpreter_wrapper.CreateWrapperFromBuffer(
-              model_content, self._custom_op_registerers))
+              model_content, custom_op_registerers_by_name,
+              custom_op_registerers_by_func))
     elif not model_content and not model_path:
       raise ValueError('`model_path` or `model_content` must be specified.')
     else:
@@ -573,8 +587,10 @@ class InterpreterWithCustomOps(Interpreter):
       experimental_delegates: Experimental. Subject to change. List of
         [TfLiteDelegate](https://www.tensorflow.org/lite/performance/delegates)
           objects returned by lite.load_delegate().
-      custom_op_registerers: List of str, symbol names of functions that take a
-        pointer to a MutableOpResolver and register a custom op.
+      custom_op_registerers: List of str (symbol names) or functions that take a
+        pointer to a MutableOpResolver and register a custom op. When passing
+        functions, use a pybind function that takes a uintptr_t that can be
+        recast as a pointer to a MutableOpResolver.
 
     Raises:
       ValueError: If the interpreter was unable to create.
