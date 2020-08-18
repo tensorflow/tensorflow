@@ -58,7 +58,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Trying to lookup non-existent key."):
+                                "Trying to lookup non-existent key. *"):
       l = map_ops.tensor_map_lookup(m, k, dtypes.float32)
       self.evaluate(l)
 
@@ -88,7 +88,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     m = map_ops.empty_tensor_map()
     k = constant_op.constant(1.0)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Trying to erase non-existent item."):
+                                "Trying to erase non-existent item. *"):
       m = map_ops.tensor_map_erase(m, k, dtypes.float32)
       self.evaluate(m)
 
@@ -99,7 +99,7 @@ class MapOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     v = constant_op.constant(2.0)
     m = map_ops.tensor_map_insert(m, k2, v)
     with self.assertRaisesRegex(errors.InvalidArgumentError,
-                                "Trying to erase non-existent item."):
+                                "Trying to erase non-existent item. *"):
       m = map_ops.tensor_map_erase(m, k, dtypes.float32)
       self.evaluate(m)
 
