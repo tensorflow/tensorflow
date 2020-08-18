@@ -1175,7 +1175,7 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
     auto* interface = dialect->getRegisteredInterface<DialectFoldInterface>();
     if (!interface) return failure();
 
-    if (failed(interface->Fold(op, constant_operands, fold_results)))
+    if (failed(interface->fold(op, constant_operands, fold_results)))
       return failure();
   }
 

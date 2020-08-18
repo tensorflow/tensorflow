@@ -116,7 +116,7 @@ bool HasSingleUse(FuncOp func) {
 
 struct TFConstantFoldInterface : public DialectFoldInterface {
   TFConstantFoldInterface(Dialect *dialect) : DialectFoldInterface(dialect) {}
-  LogicalResult Fold(Operation *op, ArrayRef<Attribute> operands,
+  LogicalResult fold(Operation *op, ArrayRef<Attribute> operands,
                      SmallVectorImpl<OpFoldResult> &results) const final {
     return TensorFlowDialect::constantFold(op, operands, results);
   }

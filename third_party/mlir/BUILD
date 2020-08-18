@@ -128,10 +128,17 @@ cc_library(
 cc_library(
     name = "CAPIIR",
     srcs = [
+        "lib/CAPI/IR/AffineMap.cpp",
         "lib/CAPI/IR/IR.cpp",
+        "lib/CAPI/IR/StandardTypes.cpp",
     ],
     hdrs = [
+        "include/mlir-c/AffineMap.h",
         "include/mlir-c/IR.h",
+        "include/mlir-c/StandardTypes.h",
+        "include/mlir/CAPI/AffineMap.h",
+        "include/mlir/CAPI/IR.h",
+        "include/mlir/CAPI/Wrap.h",
     ],
     includes = ["include"],
     deps = [
