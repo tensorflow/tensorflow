@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
@@ -64,7 +66,8 @@ static inline float local_reduce(float input, __local float* tmp) {
 }
 }  // namespace
 
-MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition)
+MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
+                                                 const DeviceInfo& device_info)
     : GPUOperation(definition) {
   // The kernel code does not inherently need a fixed size, but in order to not
   // hardcode the __local array's size for the reductions, we would need to pass
@@ -74,6 +77,11 @@ MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition)
   work_group_size_.y = 1;  // Required
   work_group_size_.z = 1;  // Required
   code_ = GetNormalizationCode();
+  if (device_info.cl_version >= OpenCLVersion::CL_3_0) {
+    compiler_options_.push_back(CompilerOptions::CL_3_0);
+  } else if (device_info.cl_version >= OpenCLVersion::CL_2_0) {
+    compiler_options_.push_back(CompilerOptions::CL_2_0);
+  }
 }
 
 std::string MeanStdDevNormalization::GetNormalizationCode() {
@@ -145,8 +153,8 @@ int3 MeanStdDevNormalization::GetGridSize() const {
 }
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
-    const OperationDef& definition) {
-  return MeanStdDevNormalization(definition);
+    const OperationDef& definition, const DeviceInfo& device_info) {
+  return MeanStdDevNormalization(definition, device_info);
 }
 
 }  // namespace cl

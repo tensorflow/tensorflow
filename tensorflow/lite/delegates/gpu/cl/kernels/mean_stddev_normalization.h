@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_LSTM_NORMALIZATION_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_LSTM_NORMALIZATION_H_
 
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
@@ -28,7 +29,8 @@ namespace cl {
 // Implements tensor_utils::MeanStddevNormalization
 class MeanStdDevNormalization : public GPUOperation {
  public:
-  explicit MeanStdDevNormalization(const OperationDef& definition);
+  explicit MeanStdDevNormalization(const OperationDef& definition,
+                                   const DeviceInfo& device_info);
 
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const DeviceInfo& device_info,
@@ -50,7 +52,7 @@ class MeanStdDevNormalization : public GPUOperation {
 };
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
-    const OperationDef& definition);
+    const OperationDef& definition, const DeviceInfo& device_info);
 
 }  // namespace cl
 }  // namespace gpu

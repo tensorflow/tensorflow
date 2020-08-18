@@ -262,7 +262,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       return SelectMean(attr, op_def, creation_context.device->info_, gpu_op);
     }
     case OperationType::MEAN_STDDEV_NORMALIZATION: {
-      MeanStdDevNormalization operation = CreateMeanStdDevNormalization(op_def);
+      MeanStdDevNormalization operation =
+          CreateMeanStdDevNormalization(op_def, creation_context.device->info_);
       *gpu_op =
           absl::make_unique<MeanStdDevNormalization>(std::move(operation));
       return absl::OkStatus();
