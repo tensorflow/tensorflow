@@ -263,8 +263,9 @@ absl::Status InferenceContext::ConvertOperations(
     }
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
-        GPUSubgraphFromGraph(creation_context, precision_, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
+        GPUSubgraphFromGraph(creation_context.device->info_, precision_, graph,
+                             node.id, tensor_descriptors, &consumed_nodes,
+                             &gpu_subgraph)
             .ok()) {
       // Mapping of subgraph (set of nodes) to GPU operations. Should happen
       // before straigtforward mapping.

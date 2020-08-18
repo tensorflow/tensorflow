@@ -284,12 +284,7 @@ CLDevice& CLDevice::operator=(CLDevice&& device) {
 bool CLDevice::SupportsFP16() const { return info_.supports_fp16; }
 
 bool CLDevice::SupportsExtension(const std::string& extension) const {
-  for (const auto& ext : info_.extensions) {
-    if (ext == extension) {
-      return true;
-    }
-  }
-  return false;
+  return info_.SupportsExtension(extension);
 }
 
 bool CLDevice::SupportsTextureArray() const {
