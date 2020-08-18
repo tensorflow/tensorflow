@@ -46,10 +46,10 @@ std::string GetReduceCode() {
 #define local_reduce(input, tmp) work_group_reduce_add(input)
 #else  // !defined(__opencl_c_work_group_collective_functions)
 static inline float local_reduce(float input, __local float* tmp) {
-  const size_t local_id = get_local_id(0);
+  const int local_id = get_local_id(0);
   tmp[local_id] = input;
   mem_fence(CLK_LOCAL_MEM_FENCE);
-  size_t reduction_size = get_local_size(0) / 2;
+  int reduction_size = get_local_size(0) / 2;
   while (reduction_size > 0) {
     if (local_id < reduction_size) {
       tmp[local_id] += tmp[local_id + reduction_size];
@@ -90,7 +90,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
   __local float tmp[)" +
        std::to_string(work_group_size_.x) + R"(];
 #endif
-  size_t B = get_global_id(1);
+  const int B = get_global_id(1);
   if (get_global_id(2) > 0) { return; }
   if (B >= args.src_tensor.Batch()) { return; }
   // Calculate the total sum of the input tensor.
