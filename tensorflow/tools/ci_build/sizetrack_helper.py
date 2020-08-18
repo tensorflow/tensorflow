@@ -127,7 +127,7 @@ CL_TRAILER = "PiperOrigin-RevId"
 PRETTY_COMMIT_DATE = "%cI"
 PRETTY_CL = "%(trailers:key={},valueonly)".format(CL_TRAILER)
 PRETTY_HEAD_INFO = "%h\t{cl}\t%s\t%ae\t%aI\t%ce\t%cI".format(cl=PRETTY_CL)
-PRETTY_EARLY = "{cl}\t%aI\t%cI".format(cl=PRETTY_CL)
+PRETTY_EARLY = "%aI\t{cl}\t%cI".format(cl=PRETTY_CL)
 PRETTY_COMMIT = "%h"
 # This is a BigQuery table schema defined as CSV
 # See https://cloud.google.com/bigquery/docs/schemas
@@ -271,7 +271,7 @@ def get_all_tested_commits():
   if earliest_commit:
 
     earliest_commit = earliest_commit.splitlines()[-1]  # Ignore CSV header
-    early_cl, early_author_date, early_commit_date = git_pretty(
+    early_author_date, early_cl, early_commit_date = git_pretty(
         earliest_commit, PRETTY_EARLY, n=1)[0].split("\t")
 
     all_range = "{commit}..HEAD".format(commit=earliest_commit)
