@@ -2317,10 +2317,6 @@ _pywrap_utils.RegisterType("EagerTensor", ops.EagerTensor)
 _pywrap_utils.RegisterType("IndexedSlices", ops.IndexedSlices)
 
 
-def _deterministic_dict_values(dictionary):
-  return tuple(dictionary[key] for key in sorted(dictionary))
-
-
 class FunctionSpec(object):
   """Specification of how to bind arguments to a function."""
 
@@ -2460,13 +2456,8 @@ class FunctionSpec(object):
     self._args_to_indices = {arg: i for i, arg in enumerate(args)}
     self._arg_names = args
 
-    # A cache mapping from arg index to default value, for canonicalization.
-    default_values = fullargspec.defaults
-    offset = len(args) - len(default_values or [])
-    self._arg_indices_to_default_values = {
-        offset + index: default
-        for index, default in enumerate(default_values or [])
-    }
+    self._num_req_args = len(args) - len(self._fullargspec.defaults or [])
+
     if input_signature is None:
       self._input_signature = None
     else:
@@ -2534,8 +2525,8 @@ class FunctionSpec(object):
     """
     args = list(self._arg_names)
     if default_values:
-      for (i, default) in self._arg_indices_to_default_values.items():
-        args[i] += "={}".format(default)
+      for i, default in enumerate(self._fullargspec.defaults):
+        args[self._num_req_args + i] += "={}".format(default)
     if self._fullargspec.kwonlyargs:
       args.append("*")
       for arg_name in self._fullargspec.kwonlyargs:
@@ -2640,44 +2631,58 @@ class FunctionSpec(object):
 
     if not kwargs:
       inputs = args
-      if self._arg_indices_to_default_values:
-        try:
-          inputs += tuple(
-              self._arg_indices_to_default_values[i]
-              for i in range(len(args), len(self._arg_names)))
-        except KeyError:
-          missing_args = [
-              self._arg_names[i]
-              for i in range(len(args), len(self._arg_names))
-              if i not in self._arg_indices_to_default_values
-          ]
+      if self._fullargspec.defaults:
+        if len(args) < self._num_req_args:
+          missing_args = self._arg_names[len(args):self._num_req_args]
           raise TypeError("{} missing required arguments: {}".format(
               self.signature_summary(), ", ".join(missing_args)))
+        inputs += tuple(self._fullargspec.defaults[i] for i in range(
+            len(args) - self._num_req_args,
+            len(self._arg_names) - self._num_req_args))
 
       if self._fullargspec.kwonlydefaults:
         kwargs.update(self._fullargspec.kwonlydefaults)
     else:
-      # Maps from index of arg to its corresponding value, according to `args`
-      # and `kwargs`; seeded with the default values for the named args that
-      # aren't in `args`.
-      arg_indices_to_values = {
-          index: default for index, default in six.iteritems(
-              self._arg_indices_to_default_values) if index >= len(args)
-      }
-      consumed_args = []
+      # Fill in any remaining positional arguments which were not called as
+      # pure positional arguments by the user, using values provided by the
+      # user if called in a keyword-like fashion, or otherwise the default
+      # values.
+      remaining_args = [None] * (len(self._arg_names) - len(args))
+      for i in range(len(args), len(self._arg_names)):
+        arg_name = self._arg_names[i]
+        if arg_name in kwargs:
+          # Value provided by user using arg name (keyword-like fashion).
+          # Guaranteed to be unique, as Python does not allow passing the same
+          # keyword more than once to the same function call.
+          remaining_args[i - len(args)] = kwargs[arg_name]
+          del kwargs[arg_name]
+        else:
+          # Use default value
+          if i < self._num_req_args:
+            # Default value does not exist
+            missing_args = [arg_name]
+            for j in range(i + 1, self._num_req_args):
+              if self._arg_names[j] not in kwargs:
+                missing_args.append(self._arg_names[j])
+            raise TypeError("{} missing required arguments: {}".format(
+                self.signature_summary(), ", ".join(missing_args)))
+          remaining_args[i - len(args)] = \
+              self._fullargspec.defaults[i - self._num_req_args]
+
+      # Check for any keyword-like arguments coinciding with purely positional
+      # arguments.
       for arg, value in six.iteritems(kwargs):
         index = self._args_to_indices.get(arg, None)
         if index is not None:
-          if index < len(args):
-            raise TypeError("{} got two values for argument '{}'".format(
-                self.signature_summary(), arg))
-          arg_indices_to_values[index] = value
-          consumed_args.append(arg)
-      for arg in consumed_args:
-        # After this loop, `kwargs` will only contain keyword_only arguments,
-        # and all positional_or_keyword arguments have been moved to `inputs`.
-        kwargs.pop(arg)
-      inputs = args + _deterministic_dict_values(arg_indices_to_values)
+          # By here, index < len(args) necessarily (i.e. purely positional),
+          # as all greater indices will have been removed from kwargs above.
+          raise TypeError("{} got two values for argument '{}'".format(
+              self.signature_summary(), arg))
+
+      # After this point, `kwargs` will only contain keyword_only arguments,
+      # and all positional_or_keyword arguments have been moved to `inputs`.
+
+      inputs = args + tuple(remaining_args)
 
       if kwargs and self._input_signature is not None:
         raise TypeError(
