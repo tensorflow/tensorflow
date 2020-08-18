@@ -1520,7 +1520,7 @@ PjRtExecutable::MakeExecutionInputsAndWaitForEvents(
   LocalDeviceState* device_state = &client_->device_state(device_ordinal);
   // Lift tuple_handle outside the conditional so that the event it returns is
   // not destroyed until after the loop below that waits on events.
-  std::optional<TupleHandle> tuple_handle;
+  absl::optional<TupleHandle> tuple_handle;
   if (parameter_is_tupled_arguments_ && !options.arguments_are_tupled) {
     TF_ASSIGN_OR_RETURN(tuple_handle,
                         MakeTupleHelper(client_, device_state, argument_handles,
