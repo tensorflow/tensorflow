@@ -1118,10 +1118,10 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self._assertOpOutputMatchesExpected(
           make_op("NCHW_VECT_C"),
           np.arange(32, dtype=dtype).reshape((1, 8, 1, 1, 4)),
-          expected=np.array([[[[[0, 1], [8, 9]], [[16, 17], [24, 25]]],
-                              [[[2, 3], [10, 11]], [[18, 19], [26, 27]]],
-                              [[[4, 5], [12, 13]], [[20, 21], [28, 29]]],
-                              [[[6, 7], [14, 15]], [[22, 23], [30, 31]]]]],
+          expected=np.array([[[[[0, 1, 2, 3], [8, 9, 10, 11]],
+                               [[16, 17, 18, 19], [24, 25, 26, 27]]],
+                              [[[4, 5, 6, 7], [12, 13, 14, 15]],
+                               [[20, 21, 22, 23], [28, 29, 30, 31]]]]],
                             dtype=dtype))
 
   @test_util.disable_mlir_bridge(
@@ -1172,11 +1172,11 @@ class UnaryOpsTest(xla_test.XLATestCase):
       self._assertOpOutputMatchesExpected(
           make_op("NCHW_VECT_C"),
           np.arange(32, dtype=dtype).reshape((1, 2, 2, 2, 4)),
-          expected=np.array([[[[[0, 1, 2, 3, 16, 17, 18, 19]]],
-                              [[[4, 5, 6, 7, 20, 21, 22, 23]]],
-                              [[[8, 9, 10, 11, 24, 25, 26, 27]]],
-                              [[[12, 13, 14, 15, 28, 29, 30, 31]]]]],
-                            dtype=dtype))
+          expected=np.array(
+              [[[[[0, 1, 2, 3]]], [[[16, 17, 18, 19]]], [[[4, 5, 6, 7]]],
+                [[[20, 21, 22, 23]]], [[[8, 9, 10, 11]]], [[[24, 25, 26, 27]]],
+                [[[12, 13, 14, 15]]], [[[28, 29, 30, 31]]]]],
+              dtype=dtype))
 
   def _assertSoftplusMatchesExpected(self,
                                      features,
