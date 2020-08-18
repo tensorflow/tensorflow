@@ -18,8 +18,10 @@ limitations under the License.
 
 #include "grpcpp/grpcpp.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/rpc/grpc.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -36,9 +38,13 @@ template <typename T>
 std::unique_ptr<typename T::Stub> CreateStub(const std::string& service_addr) {
   ::grpc::ChannelArguments channel_args;
   channel_args.SetMaxReceiveMessageSize(std::numeric_limits<int32>::max());
-  return T::NewStub(::grpc::CreateCustomChannel(
-      "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
-      channel_args));
+  // Default URI prefix is "dns:///" if not provided.
+  auto channel = ::grpc::CreateCustomChannel(
+      service_addr, GetDefaultChannelCredentials(), channel_args);
+  if (!channel) {
+    LOG(ERROR) << "Unable to create channel" << service_addr;
+  }
+  return T::NewStub(channel);
 }
 
 }  // namespace
