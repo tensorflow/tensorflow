@@ -104,6 +104,7 @@ class Regularizer(object):
   as if it is a one-argument function.
 
   E.g.
+  
   >>> regularizer = tf.keras.regularizers.L2(2.)
   >>> tensor = tf.ones(shape=(5, 5))
   >>> regularizer(tensor)
