@@ -951,6 +951,7 @@ void CopyConv2DAttributes(const NodeDef& conv2d, NodeDef* fused_conv2d,
   (*attr)["dilations"] = src_attr.at("dilations");
   (*attr)["data_format"] = src_attr.at("data_format");
   (*attr)["use_cudnn_on_gpu"] = src_attr.at("use_cudnn_on_gpu");
+  // Copy LeakyRelu's attr alpha to FusedConv2D's attr leakyrelu_alpha
   if (activation != nullptr && IsLeakyRelu(*activation)) {
     auto& activation_attr = activation->attr();
     (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
@@ -971,6 +972,7 @@ void CopyDepthwiseConv2dNativeAttributes(const NodeDef& dw_conv2d,
   (*attr)["padding"] = src_attr.at("padding");
   (*attr)["dilations"] = src_attr.at("dilations");
   (*attr)["data_format"] = src_attr.at("data_format");
+  // Copy LeakyRelu's attr alpha to FusedDepthwiseConv2d's attr leakyrelu_alpha
   if (activation != nullptr && IsLeakyRelu(*activation)) {
     auto& activation_attr = activation->attr();
     (*attr)["leakyrelu_alpha"] = activation_attr.at("alpha");
