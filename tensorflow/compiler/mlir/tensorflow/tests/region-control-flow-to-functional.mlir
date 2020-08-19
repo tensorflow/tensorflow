@@ -642,3 +642,36 @@ func @testWhileRegionTrivial(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tens
   // CHECK: return [[Result]]#0
   return %0#0 : tensor<*xf32>
 }
+
+// -----
+
+// Test tf.IfRegion device is preserved.
+// CHECK-LABEL: func @testIfRegionDevice
+func @testIfRegionDevice(%arg0: tensor<i1>) {
+  "tf.IfRegion"(%arg0) ({
+    "tf.Yield"() : () -> ()
+  }, {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false, device = "/device:CPU:0"} : (tensor<i1>) -> ()
+
+  // CHECK: "tf.If"
+  // CHECK-SAME: device = "/device:CPU:0"
+  return
+}
+
+// -----
+
+// Test tf.WhileRegion device is preserved.
+// CHECK-LABEL: func @testWhileRegionDevice
+func @testWhileRegionDevice() {
+  "tf.WhileRegion"() ( {
+    %0 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+    "tf.Yield"(%0) : (tensor<i1>) -> ()
+  }, {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false, device = "/device:CPU:0"} : () -> ()
+
+  // CHECK: "tf.While"
+  // CHECK-SAME: device = "/device:CPU:0"
+  return
+}

@@ -36,6 +36,12 @@ inline void CopyUnderscoredAttributes(Operation *from, Operation *to) {
   });
 }
 
+// Copies device attribute, if present, from `from` to `to`.
+inline void CopyDeviceAttribute(Operation *from, Operation *to) {
+  if (auto device = from->getAttrOfType<StringAttr>("device"))
+    to->setAttr("device", device);
+}
+
 }  // namespace TF
 }  // namespace mlir
 

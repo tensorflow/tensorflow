@@ -97,6 +97,7 @@ LogicalResult ConvertIfOp(IfOp if_op) {
   auto if_region = OpBuilder(if_op).create<TF::IfRegionOp>(
       if_op.getLoc(), if_op.getResultTypes(), cond, if_op.is_stateless());
   CopyUnderscoredAttributes(if_op, if_region);
+  CopyDeviceAttribute(if_op, if_region);
 
   CreateCall(if_op, if_op.then_func(),
              /*caller_region=*/if_region.then_branch(), if_op.input(),
@@ -114,6 +115,7 @@ LogicalResult ConvertWhileOp(WhileOp while_op) {
       while_op.getLoc(), while_op.getResultTypes(), while_op.input(),
       while_op.is_stateless(), while_op.parallel_iterations());
   CopyUnderscoredAttributes(while_op, while_region);
+  CopyDeviceAttribute(while_op, while_region);
 
   YieldOp cond_yield =
       CreateCall(while_op, while_op.cond_func(),

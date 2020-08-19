@@ -321,6 +321,7 @@ LogicalResult RegionControlFlowToFunctional::ConvertIfOp(IfRegionOp if_region) {
       if_region.getLoc(), if_region.getResultTypes(), cond, extern_values,
       then_name, else_name, if_region.is_stateless());
   CopyUnderscoredAttributes(if_region, if_op);
+  CopyDeviceAttribute(if_region, if_op);
   if_region.replaceAllUsesWith(if_op.getResults());
   if_region.erase();
 
@@ -400,6 +401,7 @@ LogicalResult RegionControlFlowToFunctional::ConvertWhileOp(
       while_region.getLoc(), new_result_types, new_inputs, cond_name, body_name,
       while_region.parallel_iterations(), while_region.is_stateless());
   CopyUnderscoredAttributes(while_region, while_op);
+  CopyDeviceAttribute(while_region, while_op);
 
   // Redirect old results to new results.
   for (auto it : llvm::zip(

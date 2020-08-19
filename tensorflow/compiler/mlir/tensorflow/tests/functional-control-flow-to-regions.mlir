@@ -246,3 +246,33 @@ func @testWhileResult(tensor<*xf32>) -> (tensor<*xf32>) {
   // CHECK: return [[Result0]]
   return %1 : tensor<*xf32>
 }
+
+// -----
+
+func @then_branch() -> ()
+func @else_branch() -> ()
+
+// Test tf.If device is preserved.
+// CHECK-LABEL: func @testIfDevice
+func @testIfDevice(%arg0: tensor<i1>) {
+  "tf.If"(%arg0) {then_branch = @then_branch, else_branch = @else_branch, is_stateless = false, device = "/device:CPU:0"} : (tensor<i1>) -> ()
+
+  // CHECK: "tf.IfRegion"
+  // CHECK: device = "/device:CPU:0"
+  return
+}
+
+// -----
+
+func @cond() -> tensor<i1>
+func @body() -> ()
+
+// Test tf.While device is preserved.
+// CHECK-LABEL: func @testWhileDevice
+func @testWhileDevice() {
+  "tf.While"() {cond = @cond, body = @body, is_stateless = false, device = "/device:CPU:0"} : () -> ()
+
+  // CHECK: "tf.WhileRegion"
+  // CHECK: device = "/device:CPU:0"
+  return
+}
