@@ -224,10 +224,11 @@ void AddOperationToRunComponentFunctionRequest(
     const std::vector<absl::variant<TensorProto, std::pair<int64, int32>>>&
         inputs,
     const std::unordered_map<string, AttrValue>& attrs, const string& device,
-    RunComponentFunctionRequest* request) {
+    const int output_num, RunComponentFunctionRequest* request) {
   auto* operation = request->mutable_operation();
   operation->set_is_function(true);
   operation->set_is_component_function(true);
+  request->add_output_num(output_num);
   BuildOperation(operation, id, name, inputs, attrs, device);
 }
 
@@ -610,10 +611,12 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
     RunComponentFunctionRequest run_comp_func_request;
     run_comp_func_request.set_context_id(context_id);
     RunComponentFunctionResponse run_comp_func_response;
+    const int output_num = 5;
     AddOperationToRunComponentFunctionRequest(
         2, function_name, {std::make_pair(1, 0)},
         std::unordered_map<string, AttrValue>(),
-        "/job:localhost/replica:0/task:0/device:CPU:0", &run_comp_func_request);
+        "/job:localhost/replica:0/task:0/device:CPU:0", output_num,
+        &run_comp_func_request);
 
     CallOptions call_opts;
     Notification n;
@@ -636,7 +639,8 @@ class EagerServiceImplFunctionTest : public EagerServiceImplTest {
       const tensorflow::Tensor* t = nullptr;
       tensorflow::TensorHandle* tensor_handle;
       TF_ASSERT_OK(eager_service_impl.GetTensorHandle(
-          context_id, RemoteTensorHandleInternal(2, 0), &tensor_handle));
+          context_id, RemoteTensorHandleInternal(2, output_num),
+          &tensor_handle));
       TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
       auto actual = t->flat<float>();
