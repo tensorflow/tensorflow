@@ -254,7 +254,6 @@ cc_library(
         ":shared_library",
         ":simple_memory_arena",
         ":string",
-        ":tflite_with_xnnpack_optional",
         ":type_to_tflitetype",
         ":util",
         ":version",

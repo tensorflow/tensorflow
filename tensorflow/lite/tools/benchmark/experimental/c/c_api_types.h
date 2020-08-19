@@ -47,7 +47,8 @@ extern "C" {
 typedef enum TfLiteStatus {
   kTfLiteOk = 0,
   kTfLiteError = 1,
-  kTfLiteDelegateError = 2
+  kTfLiteDelegateError = 2,
+  kTfLiteApplicationError = 3
 } TfLiteStatus;
 
 // The list of external context types known to TF Lite. This list exists solely
