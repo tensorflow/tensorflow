@@ -171,13 +171,9 @@ public abstract class ImageClassifier {
   }
 
   public void useGpu() {
-    useGpu(false);
-  }
-
-  public void useGpu(boolean allowQuantizedModels) {
     if (gpuDelegate == null) {
       GpuDelegate.Options options = new GpuDelegate.Options();
-      options.setQuantizedModelsAllowed(allowQuantizedModels);
+      options.setQuantizedModelsAllowed(true);
 
       gpuDelegate = new GpuDelegate(options);
       tfliteOptions.addDelegate(gpuDelegate);
