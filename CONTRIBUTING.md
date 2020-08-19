@@ -15,7 +15,7 @@ Before sending your pull requests, make sure you followed this list.
 
 ### Contributor License Agreements
 
-We'd love to accept your patches! Before we can take them, we have to jump a couple of legal hurdles.
+We'd love to accept your patches! Before we can take them, you have to jump a couple of legal hurdles.
 
 Please fill out either the individual or corporate Contributor License Agreement (CLA).
 
@@ -33,7 +33,7 @@ just getting started, Github has a
 [how to](https://help.github.com/articles/using-pull-requests/).
 
 TensorFlow team members will be assigned to review your pull requests. Once the
-pull requests are approved and pass continuous integration checks, a TensorFlow
+pull requests are approved and passes continuous integration checks, a TensorFlow
 team member will apply `ready to pull` label to your change. This means we are
 working on getting your pull request submitted to our internal repository. After
 the change has been submitted internally, your pull request will be merged
