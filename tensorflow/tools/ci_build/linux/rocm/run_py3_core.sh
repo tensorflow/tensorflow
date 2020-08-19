@@ -27,12 +27,18 @@ echo ""
 echo "Bazel will use ${N_BUILD_JOBS} concurrent build job(s) and ${N_TEST_JOBS} concurrent test job(s)."
 echo ""
 
+# First positional argument (if any) specifies the ROCM_INSTALL_DIR
+ROCM_INSTALL_DIR=/opt/rocm-3.5.0
+if [[ -n $1 ]]; then
+    ROCM_INSTALL_DIR=$1
+fi
+
 # Run configure.
 export PYTHON_BIN_PATH=`which python3`
 export CC_OPT_FLAGS='-mavx'
 
 export TF_NEED_ROCM=1
-export ROCM_PATH=/opt/rocm-3.5.0
+export ROCM_PATH=$ROCM_INSTALL_DIR
 
 yes "" | $PYTHON_BIN_PATH configure.py
 

@@ -9,6 +9,14 @@
 # press enter all the way
 #
 
+# First positional argument (if any) specifies the ROCM_INSTALL_DIR
+ROCM_INSTALL_DIR=/opt/rocm-3.5.0
+if [[ -n $1 ]]; then
+    ROCM_INSTALL_DIR=$1
+fi
+
+ROCM_PATH=$ROCM_INSTALL_DIR ./dummy.sh
+
 # Explicitly delete the old whl packages in the /tmp/tensorflow_pkg dir
 # Doing so comes in handy when the TF version number changes, because
 # it will cause the last line in this script (pip3 install ...) to fail.
@@ -20,7 +28,7 @@
 TF_PKG_LOC=/tmp/tensorflow_pkg
 rm -f $TF_PKG_LOC/tensorflow*.whl
 
-yes "" | ROCM_PATH=/opt/rocm-3.5.0 TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure
+yes "" | ROCM_PATH=$ROCM_INSTALL_DIR TF_NEED_ROCM=1 PYTHON_BIN_PATH=/usr/bin/python3 ./configure
 bazel build --config=opt --config=rocm //tensorflow/tools/pip_package:build_pip_package --verbose_failures &&
 bazel-bin/tensorflow/tools/pip_package/build_pip_package $TF_PKG_LOC &&
 pip3 install --upgrade $TF_PKG_LOC/tensorflow*.whl
