@@ -146,18 +146,22 @@ class KPLTest(test.TestCase):
 
       @def_function.function
       def worker_fn(iterator):
-        batch_data, labels = next(iterator)
-        with backprop.GradientTape() as tape:
-          pred = model(batch_data, training=True)
-          loss = nn.compute_average_loss(
-              keras.losses.BinaryCrossentropy(
-                  reduction=loss_reduction.ReductionV2.NONE)(labels, pred))
-          gradients = tape.gradient(loss, model.trainable_variables)
 
-        optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+        def train_step(iterator):
+          batch_data, labels = next(iterator)
+          with backprop.GradientTape() as tape:
+            pred = model(batch_data, training=True)
+            loss = nn.compute_average_loss(
+                keras.losses.BinaryCrossentropy(
+                    reduction=loss_reduction.ReductionV2.NONE)(labels, pred))
+            gradients = tape.gradient(loss, model.trainable_variables)
 
-        actual_pred = math_ops.cast(math_ops.greater(pred, 0.5), dtypes.int64)
-        accuracy.update_state(labels, actual_pred)
+          optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+
+          actual_pred = math_ops.cast(math_ops.greater(pred, 0.5), dtypes.int64)
+          accuracy.update_state(labels, actual_pred)
+
+        self.client._strategy.run(train_step, args=(iterator,))
 
     distributed_iterator = iter(distributed_dataset)
     for _ in range(10):
