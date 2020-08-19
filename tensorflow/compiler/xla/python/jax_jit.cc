@@ -217,7 +217,7 @@ std::string CallSignature::DebugString() const {
 
 struct CacheEntry {
   std::shared_ptr<xla::PyExecutable> executable;
-  xla::Device* device;
+  xla::PjRtDevice* device;
   PyTreeDef out_pytree_def;
   // These are the objects required to create a `DeviceArray` object.
   // We use Python types within the vector because this is what we will be
@@ -235,7 +235,7 @@ class CompiledFunction {
   CompiledFunction(py::function cache_miss_fun, py::function python_f_jitted,
                    bool jax_enable_x64, std::vector<int> static_argnums,
                    std::shared_ptr<xla::PyClient> pyclient,
-                   xla::Device* device);
+                   xla::PjRtDevice* device);
   ~CompiledFunction();
 
   // This function will:
@@ -268,7 +268,7 @@ class CompiledFunction {
   absl::flat_hash_map<CallSignature, std::unique_ptr<CacheEntry>> executables_;
 
   const std::shared_ptr<xla::PyClient> pyclient_;
-  xla::Device* const default_device_;
+  xla::PjRtDevice* const default_device_;
 };
 
 CompiledFunction::CompiledFunction(py::function cache_miss_fun,
@@ -276,7 +276,7 @@ CompiledFunction::CompiledFunction(py::function cache_miss_fun,
                                    bool jax_enable_x64,
                                    std::vector<int> static_argnums,
                                    std::shared_ptr<xla::PyClient> pyclient,
-                                   xla::Device* device)
+                                   xla::PjRtDevice* device)
     : cache_miss_fun_(std::move(cache_miss_fun)),
       python_f_jitted_(std::move(python_f_jitted)),
       jax_enable_x64_(jax_enable_x64),
@@ -374,9 +374,9 @@ void FlattenArguments(const py::args& args, const py::kwargs& py_kwargs,
 }
 
 template <typename CppType, typename Pybind11Type>
-std::unique_ptr<xla::PjRtBuffer> ConvertToScalarBuffer(const py::handle& scalar,
-                                                       xla::PjRtClient* client,
-                                                       xla::Device* device) {
+std::unique_ptr<xla::PjRtBuffer> ConvertToScalarBuffer(
+    const py::handle& scalar, xla::PjRtClient* client,
+    xla::PjRtDevice* device) {
   CppType data = py::cast<Pybind11Type>(scalar);
   xla::Shape shape = xla::ShapeUtil::MakeShapeWithType<CppType>({});
   return ValueOrThrow(xla::PjRtBuffer::FromHostBuffer(
@@ -389,7 +389,7 @@ std::unique_ptr<xla::PjRtBuffer> ConvertToScalarBuffer(const py::handle& scalar,
 // not convertible (thus, this must be called after other checks).
 StatusOr<std::unique_ptr<xla::PjRtBuffer>> ScalarToBuffer(
     py::handle scalar, bool jax_enable_x64, xla::PjRtClient* client,
-    xla::Device* device) {
+    xla::PjRtDevice* device) {
   // Important: In Python, isinstance(True, int) returns True. Thus, we have
   // to check for bool before int.
   if (py::isinstance<py::bool_>(scalar)) {
@@ -467,7 +467,7 @@ const py::dtype* DtypeTo32BitDtype(const py::dtype& dtype) {
 //
 // Returns `OkStatus()` on success.
 Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
-                            xla::Device* default_device,
+                            xla::PjRtDevice* default_device,
                             ParsedArgumentsAsBuffers& arguments) {
   std::vector<xla::PjRtBuffer*>& arg_buffers = arguments.arg_buffers;
   auto& keep_alive = arguments.keep_alive;
@@ -490,12 +490,12 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
   // https://github.com/google/jax/pull/1916 for the rationale why the
   // computation follows the data locality.
   // It's also similar to PyTorch's behavior.
-  xla::Device* data_device = nullptr;
+  xla::PjRtDevice* data_device = nullptr;
   for (py::handle arg : arguments.flat_dynamic_args) {
     if (py::isinstance(arg, device_array)) {
       xla::PyBuffer* buffer =
           py::cast<xla::PyBuffer*>(arg.attr("device_buffer"));
-      xla::Device* device = buffer->buffer()->device();
+      xla::PjRtDevice* device = buffer->buffer()->device();
       if (data_device && (device != data_device)) {
         return InvalidArgument(
             "%s",
@@ -682,7 +682,7 @@ void BuildJaxjitSubmodule(pybind11::module& m) {
              [](py::function cache_miss_fun,
                 py::function fallback_on_unsupported_argument,
                 bool jax_enable_x64, std::vector<int> static_argnums,
-                xla::ClientAndPtr<xla::Device> client_and_device)
+                xla::ClientAndPtr<xla::PjRtDevice> client_and_device)
                  -> std::unique_ptr<CompiledFunction> {
                return std::make_unique<CompiledFunction>(
                    std::move(cache_miss_fun),
