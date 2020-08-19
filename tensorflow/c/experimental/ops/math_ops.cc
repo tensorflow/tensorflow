@@ -106,5 +106,59 @@ Status Neg(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
   return neg_op->Execute(outputs, &num_retvals);
 }
 
+Status Sum(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+          absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+ AbstractOperationPtr sum_op(ctx->CreateOperation());
+ TF_RETURN_IF_ERROR(sum_op->Reset("Sum", /*raw_device_name=*/nullptr));
+ 
+ if (isa<tracing::TracingOperation>(sum_op.get())) {
+   TF_RETURN_IF_ERROR(
+       dyn_cast<tracing::TracingOperation>(sum_op.get())->SetOpName(name));
+ }
+ 
+ TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[0])); // input_vals
+ TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[1])); // reduction_i ndices
+ 
+ int num_retvals = 1;
+ TF_RETURN_IF_ERROR(sum_op->Execute(outputs, &num_retvals));
+ return Status::OK();
+}
+ 
+Status Mean(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+          absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+ AbstractOperationPtr mean_op(ctx->CreateOperation());
+ TF_RETURN_IF_ERROR(mean_op->Reset("Mean", /*raw_device_name=*/nullptr));
+ 
+ if (isa<tracing::TracingOperation>(mean_op.get())) {
+   TF_RETURN_IF_ERROR(
+       dyn_cast<tracing::TracingOperation>(mean_op.get())->SetOpName(name));
+ }
+ 
+ TF_RETURN_IF_ERROR(mean_op->AddInput(inputs[0])); // input_vals
+ TF_RETURN_IF_ERROR(mean_op->AddInput(inputs[1])); // reduction_indices
+ 
+ int num_retvals = 1;
+ TF_RETURN_IF_ERROR(mean_op->Execute(outputs, &num_retvals));
+ return Status::OK();
+}
+ 
+Status Sub(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+          absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+ AbstractOperationPtr sub_op(ctx->CreateOperation());
+ TF_RETURN_IF_ERROR(sub_op->Reset("Sub", /*raw_device_name=*/nullptr));
+ 
+ if (isa<tracing::TracingOperation>(sub_op.get())) {
+   TF_RETURN_IF_ERROR(
+       dyn_cast<tracing::TracingOperation>(sub_op.get())->SetOpName(name));
+ }
+ 
+ TF_RETURN_IF_ERROR(sub_op->AddInput(inputs[0]));
+ TF_RETURN_IF_ERROR(sub_op->AddInput(inputs[1]));
+ 
+ int num_retvals = 1;
+ TF_RETURN_IF_ERROR(sub_op->Execute(outputs, &num_retvals));
+ return Status::OK();
+}
+
 }  // namespace ops
 }  // namespace tensorflow

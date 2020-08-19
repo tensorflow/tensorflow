@@ -31,6 +31,44 @@ Status ReluGrad(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
+Status BiasAddGrad(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status FusedBatchNormV3(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status FusedBatchNormGradV3(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status FusedBatchNormV2(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status FusedBatchNormGradV2(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status Conv2D(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs,
+               int64_t* strides, int num_dims, const char* padding,
+               const char* name);
+
+Status Conv2DBackpropInput(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs,
+               int64_t* strides, int num_dims, const char* padding,
+               const char* name);
+
+Status Conv2DBackpropFilter(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs,
+               int64_t* strides, int num_dims,
+               const char* padding, const char* name);
+
 }  // namespace ops
 }  // namespace tensorflow
 

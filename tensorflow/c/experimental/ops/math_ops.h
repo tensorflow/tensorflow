@@ -33,7 +33,12 @@ Status MatMul(AbstractContext* ctx,
               bool transpose_a, bool transpose_b);
 Status Neg(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
            absl::Span<AbstractTensorHandle*> outputs, const char* name);
-
+Status Sum(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+          absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status Mean(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+          absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status Sub(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+          absl::Span<AbstractTensorHandle*> outputs, const char* name);
 }  // namespace ops
 }  // namespace tensorflow
 

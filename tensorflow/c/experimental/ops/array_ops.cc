@@ -26,10 +26,12 @@ Status Identity(AbstractContext* ctx,
   AbstractOperationPtr identity_op(ctx->CreateOperation());
   TF_RETURN_IF_ERROR(
       identity_op->Reset("Identity", /*raw_device_name=*/nullptr));
+
   if (isa<tensorflow::tracing::TracingOperation>(identity_op.get())) {
     TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(identity_op.get())
                            ->SetOpName(name));
   }
+  
   TF_RETURN_IF_ERROR(identity_op->AddInput(inputs[0]));
   int num_retvals = 1;
   return identity_op->Execute(outputs, &num_retvals);
@@ -44,10 +46,50 @@ Status ZerosLike(AbstractContext* ctx,
     TF_RETURN_IF_ERROR(
         dyn_cast<tracing::TracingOperation>(z_op.get())->SetOpName(name));
   }
+
   TF_RETURN_IF_ERROR(z_op->AddInput(inputs[0]));
+
   int num_retvals = 1;
   return z_op->Execute(outputs, &num_retvals);
 }
+
+Status OnesLike(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+ AbstractOperationPtr oneslike_op(ctx->CreateOperation());
+ TF_RETURN_IF_ERROR(
+     oneslike_op->Reset("OnesLike", /*raw_device_name=*/nullptr));
+ if (isa<tensorflow::tracing::TracingOperation>(oneslike_op.get())) {
+   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(oneslike_op.get())
+                          ->SetOpName(name));
+ }
+
+ TF_RETURN_IF_ERROR(oneslike_op->AddInput(inputs[0]));
+
+ int num_retvals = 1;
+ return oneslike_op->Execute(outputs, &num_retvals);
+}
+ 
+Status Shape(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr shape_op(ctx->CreateOperation());
+ TF_RETURN_IF_ERROR(
+     shape_op->Reset("Shape", /*raw_device_name=*/nullptr));
+ 
+ if (isa<tracing::TracingOperation>(shape_op.get())) {
+   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(shape_op.get())
+                          ->SetOpName(name));
+ }
+
+ TF_RETURN_IF_ERROR(shape_op->AddInput(inputs[0])); // input
+
+ int num_retvals = 1;
+ TF_RETURN_IF_ERROR(shape_op->Execute(outputs, &num_retvals));
+ return Status::OK();
+ }
+
+
 
 }  // namespace ops
 }  // namespace tensorflow
