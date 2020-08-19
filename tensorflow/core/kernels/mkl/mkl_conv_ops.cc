@@ -66,6 +66,7 @@ struct MklConvFwdParams {
   memory::dims padding_left;
   memory::dims padding_right;
   MKL_TENSOR_FORMAT tf_fmt;
+  bool native_format;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -79,7 +80,7 @@ struct MklConvFwdParams {
                    memory::dims bias_dims, memory::dims dst_dims,
                    memory::dims strides, memory::dims dilations,
                    memory::dims padding_left, memory::dims padding_right,
-                   MKL_TENSOR_FORMAT tf_fmt)
+                   MKL_TENSOR_FORMAT tf_fmt, bool native_format)
       : src_dims(src_dims),
         filter_dims(filter_dims),
         bias_dims(bias_dims),
@@ -88,13 +89,13 @@ struct MklConvFwdParams {
         dilations(dilations),
         padding_left(padding_left),
         padding_right(padding_right),
-        tf_fmt(tf_fmt) {}
+        tf_fmt(tf_fmt),
+        native_format(native_format) {}
 };
 
 // With quantization, input, filter, and output can have different types
 // so we use different template parameter for each type
-template <typename Tinput, typename Tfilter, typename Tbias, typename Toutput,
-          bool native_format>
+template <typename Tinput, typename Tfilter, typename Tbias, typename Toutput>
 class MklConvFwdPrimitive : public MklPrimitive {
  public:
   explicit MklConvFwdPrimitive(const MklConvFwdParams& convFwdDims)
@@ -233,7 +234,7 @@ class MklConvFwdPrimitive : public MklPrimitive {
 
   void Setup(const MklConvFwdParams& convFwdDims) {
     MEMORY_FORMAT user_data_fmt;
-    if (native_format) {
+    if (convFwdDims.native_format) {
       user_data_fmt = MklTensorFormatToMklDnnDataFormat(convFwdDims.tf_fmt);
     } else {
       // Create memory descriptors for convolution data w/ no specified format
@@ -370,31 +371,29 @@ class MklConvFwdPrimitive : public MklPrimitive {
 // TODO(nhasabni): We should not require passing a type to MklPrimitiveFactory.
 // But removing the need for type in MklPrimitiveFactory is going to require
 // change to every MKL op. So not doing it now. Instead passing float.
-template <typename Tinput, typename Tfilter, typename Tbias, typename Toutput,
-          bool native_format>
+template <typename Tinput, typename Tfilter, typename Tbias, typename Toutput>
 class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
  public:
-  static MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput, native_format>*
-  Get(const MklConvFwdParams& convFwdDims, bool do_not_cache) {
-    MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput, native_format>*
-        conv_fwd = nullptr;
+  static MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput>* Get(
+      const MklConvFwdParams& convFwdDims, bool do_not_cache) {
+    MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput>* conv_fwd = nullptr;
 
     if (do_not_cache) {
       // Always create a new primitive
-      conv_fwd = new MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput,
-                                         native_format>(convFwdDims);
+      conv_fwd =
+          new MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput>(convFwdDims);
     } else {
       // Try to find a suitable one in pool
-      conv_fwd = dynamic_cast<
-          MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput, native_format>*>(
-          MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias, Toutput,
-                                     native_format>::GetInstance()
-              .GetConvFwd(convFwdDims));
+      conv_fwd =
+          dynamic_cast<MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput>*>(
+              MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias,
+                                         Toutput>::GetInstance()
+                  .GetConvFwd(convFwdDims));
       if (conv_fwd == nullptr) {
-        conv_fwd = new MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput,
-                                           native_format>(convFwdDims);
-        MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias, Toutput,
-                                   native_format>::GetInstance()
+        conv_fwd = new MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Toutput>(
+            convFwdDims);
+        MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias,
+                                   Toutput>::GetInstance()
             .SetConvFwd(convFwdDims, conv_fwd);
       }
     }
@@ -426,7 +425,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
     key_creator.AddAsKey(convFwdDims.padding_left);
     key_creator.AddAsKey(convFwdDims.padding_right);
     key_creator.AddAsKey(convFwdDims.dtypes);
-    if (native_format) {
+    if (convFwdDims.native_format) {
       key_creator.AddAsKey(convFwdDims.tf_fmt);
     }
 
@@ -689,23 +688,22 @@ class MklConvOp : public OpKernel {
            IsConv1x1StrideNot1(filter_dims, strides));
 
       // Get a conv2d fwd from primitive pool
-      MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Ttemp_output, native_format>*
-          conv_fwd = nullptr;
+      MklConvFwdPrimitive<Tinput, Tfilter, Tbias, Ttemp_output>* conv_fwd =
+          nullptr;
       memory::dims bias_dims = {};
       if (fuse_biasadd_) {
         conv_utl.GetBiasSizeInMklOrder(kInputIndex_Bias, &bias_dims);
       }
-      MklConvFwdParams convFwdDims(src_dims, filter_dims,
-                                   fuse_biasadd_ ? bias_dims : NONE_DIMS,
-                                   dst_dims_mkl_order, strides, dilations,
-                                   padding_left, padding_right, tf_fmt);
+      MklConvFwdParams convFwdDims(
+          src_dims, filter_dims, fuse_biasadd_ ? bias_dims : NONE_DIMS,
+          dst_dims_mkl_order, strides, dilations, padding_left, padding_right,
+          tf_fmt, native_format);
 
       // TODO(mdfaijul): Extend the basic parameters for data types and fusions
       this->ExtendConvFwdParams(context, convFwdDims);
       conv_fwd =
-          MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias, Ttemp_output,
-                                     native_format>::Get(convFwdDims,
-                                                         do_not_cache);
+          MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias, Ttemp_output>::Get(
+              convFwdDims, do_not_cache);
       // Allocate output tensors `dst_tensor` and `filter_out_tensor`
       MklDnnShape output_mkl_shape;
       std::shared_ptr<ConvFwdPd> conv_fwd_pd = conv_fwd->GetPrimitiveDesc();
