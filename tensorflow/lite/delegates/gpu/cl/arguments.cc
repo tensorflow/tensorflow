@@ -263,6 +263,12 @@ void Arguments::AddObject(const std::string& name, AccessType access_type,
   objects_[name] = {std::move(object), std::move(descriptor_ptr)};
 }
 
+void Arguments::AddObject(const std::string& name,
+                          GPUObjectDescriptorPtr&& descriptor_ptr) {
+  descriptor_ptr->SetAccess(AccessType::READ);
+  objects_[name] = {nullptr, std::move(descriptor_ptr)};
+}
+
 void Arguments::AddGPUResources(const std::string& name,
                                 const GPUResources& resources) {
   for (const auto& r : resources.ints) {
@@ -836,6 +842,15 @@ absl::Status Arguments::ResolveSelectorsPass(
       position = arg_pos + strlen(kArgsPrefix);
     }
     next_position = code->find(kArgsPrefix, position);
+  }
+  return absl::OkStatus();
+}
+
+absl::Status Arguments::AllocateObjects(CLContext* context) {
+  for (auto& t : objects_) {
+    RETURN_IF_ERROR(
+        t.second.descriptor->CreateGPUObject(context, &t.second.obj_ptr));
+    t.second.descriptor->Release();
   }
   return absl::OkStatus();
 }

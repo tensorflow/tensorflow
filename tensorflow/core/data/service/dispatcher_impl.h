@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/dispatcher_state.h"
 #include "tensorflow/core/data/service/worker.grpc.pb.h"
@@ -66,6 +67,8 @@ class DataServiceDispatcherImpl {
                    CreateJobResponse* response);
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
+  Status ReleaseJobClient(const ReleaseJobClientRequest* request,
+                          ReleaseJobClientResponse* response);
   Status GetTasks(const GetTasksRequest* request, GetTasksResponse* response);
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
@@ -86,6 +89,11 @@ class DataServiceDispatcherImpl {
                    absl::optional<DispatcherState::NamedJobKey> named_job_key,
                    std::shared_ptr<const DispatcherState::Job>* job)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Acquires a job client id to read from the given job and sets
+  // `job_client_id`.
+  Status AcquireJobClientId(
+      const std::shared_ptr<const DispatcherState::Job>& job,
+      int64& job_client_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates one task for each worker, for the given job. The created tasks are
   // stored in `*tasks`. This method only updates dispatcher metadata with the
   // new tasks, but doesn't assign the tasks to the workers.
@@ -127,6 +135,8 @@ class DataServiceDispatcherImpl {
   // Cached worker stubs for communicating with workers.
   absl::flat_hash_map<std::string, std::unique_ptr<WorkerService::Stub>>
       worker_stubs_ TF_GUARDED_BY(mu_);
+  // Store of dataset definitions.
+  std::unique_ptr<DatasetStore> dataset_store_ TF_GUARDED_BY(mu_);
 
   absl::optional<std::unique_ptr<JournalWriter>> journal_writer_
       TF_GUARDED_BY(mu_);

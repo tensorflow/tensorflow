@@ -353,6 +353,7 @@ cc_library(
     srcs = ["gpu_object.cc"],
     hdrs = ["gpu_object.h"],
     deps = [
+        ":cl_context",
         ":opencl_wrapper",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",

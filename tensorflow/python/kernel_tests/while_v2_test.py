@@ -1830,6 +1830,18 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
       return grad_out
     self.assertAllEqual(F(), 8.0)
 
+  def testIndexedSlicesInIncomingGrads(self):
+    @def_function.function
+    def F():
+      x = constant_op.constant([2.])
+      # Computes x^4
+      ret = while_loop_v2(
+          lambda _: True, lambda v: v * v, [x], return_same_structure=False,
+          maximum_iterations=2)
+      v = array_ops.gather(ret, [0])
+      return gradients_impl.gradients(v, [x])[0]  # 4*x^3
+    self.assertAllEqual(self.evaluate(F()), [32.])
+
 
 def ScalarShape():
   return ops.convert_to_tensor([], dtype=dtypes.int32)

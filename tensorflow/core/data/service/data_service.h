@@ -79,21 +79,25 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   Status RegisterDataset(GraphDef dataset, int64* dataset_id);
 
   // Creates a new tf.data service job for the specified dataset. The id for the
-  // created job will be stored in `*job_id`.
+  // created job will be stored in `*job_client_id`.
   Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
-                   int64* job_id);
+                   int64* job_client_id);
 
   // Gets the job id for the job represented by the tuple
-  // (job_name, job_name_index), and stores the id in *job_id. If the
+  // (job_name, job_name_index), and stores the id in *job_client_id. If the
   // job doesn't exist yet, it will be created.
   Status GetOrCreateJob(int64 dataset_id, ProcessingMode processing_mode,
                         const std::string& job_name, int job_name_index,
-                        int64* job_id);
+                        int64* job_client_id);
+
+  // Releases a job client id, indicating that the id will no longer be used to
+  // read from the job.
+  Status ReleaseJobClient(int64 job_client_id);
 
   // Queries the dispatcher for the tasks associated with the specified job.
   // The tasks will be stored in *tasks, and whether the job is finished will
   // be stored in `*job_finished`.
-  Status GetTasks(int64 job_id, std::vector<TaskInfo>* tasks,
+  Status GetTasks(int64 job_client_id, std::vector<TaskInfo>* tasks,
                   bool* job_finished);
 
   // Queries the dispatcher for its registered workers. The worker info will be

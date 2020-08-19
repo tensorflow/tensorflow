@@ -328,19 +328,17 @@ Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
 // create another view to adjust the slice for the shape of the instruction.
 Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
                                            SmallVectorImpl<Value>* values) {
-  // In terms of cache key, we have several choices:
-  // * Use `instr`. It's the easiest, but it creates different cache entries for
-  // aliased buffers, which could have been deduplicated.
-  // * Use the actual content as the key, aka a tree of allocation slices.
-  // * Somewhere in the middle, use the allocation slice for the instruction. If
-  // `instr` is a tuple, the key is the allocated buffer for the tuple itself
-  // (an array of pointers).
+  // Cache generated ViewOp and StaticMemRefCastOp by instruction. We could have
+  // gone fancier to do the following cacheing:
+  //   %range = ViewOp(%allocation, %offset) : memref<i8xSIZE>
+  //   %typed_range = ViewOp(%range) : memref<f32x...>
   //
-  // We choose the third approach for simplicity.
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                      assignment_.GetUniqueTopLevelSlice(instr));
-  SliceKey slice_key(slice.allocation(), slice.offset(), slice.size());
-  auto result = slices_.try_emplace(slice_key, llvm::SmallVector<Value, 4>{});
+  // where %range is cached. This in theory gives easier time for alias
+  // analysis, since the identity of %range defines alias. However,
+  // %typed_range can't be cached, as different buffers with different types and
+  // shapes may still alias. Creating two ViewOps doesn't seem to worth the
+  // effort for a slightly easier aliasing, so we don't over optimize here.
+  auto result = slices_.try_emplace(instr, llvm::SmallVector<Value, 4>{});
   llvm::SmallVectorImpl<Value>& new_values = result.first->second;
   if (result.second) {
     ::xla::ShapeIndex shape_index;

@@ -33,6 +33,7 @@ namespace TFDevice {
 namespace {
 
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
+constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
 
 // This pass marks unsupported ops in a device cluster with
 // `_xla_outside_compilation` attribute so the operations will run on the host
@@ -48,9 +49,21 @@ struct MarkOpsForOutsideCompilation
 // added.
 void AddSupportedControlFlowOps(MLIRContext* context,
                                 llvm::DenseSet<OperationName>* supported_ops) {
-  supported_ops->insert(OperationName("tf.IfRegion", context));
-  supported_ops->insert(OperationName("tf.WhileRegion", context));
-  supported_ops->insert(OperationName("tf.Yield", context));
+  supported_ops->insert(
+      OperationName(TF::IfRegionOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::WhileRegionOp::getOperationName(), context));
+  supported_ops->insert(
+      OperationName(TF::YieldOp::getOperationName(), context));
+}
+
+// These embedding ops are rewritten when running TPUCompileOp.
+void AddRewrittenEmbeddingOps(MLIRContext* context,
+                              llvm::DenseSet<OperationName>* supported_ops) {
+  supported_ops->insert(OperationName(
+      TF::RecvTPUEmbeddingActivationsOp::getOperationName(), context));
+  supported_ops->insert(OperationName(
+      TF::SendTPUEmbeddingGradientsOp::getOperationName(), context));
 }
 
 bool HasStringOperand(Operation& op) {
@@ -118,6 +131,25 @@ LogicalResult MarkUncompilableOps(
   return success();
 }
 
+// Unmarks outside compilation for any op that has parents already
+// marked for outside compilation since the child will be extracted
+// anyways.
+void UnmarkChildren(Block* block) {
+  block->walk([&](Operation* op) {
+    if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) return;
+    Operation* iter_op = op;
+    bool remove_attr = false;
+    while (auto* parent_op = iter_op->getParentOp()) {
+      if (parent_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+        remove_attr = true;
+        break;
+      }
+      iter_op = parent_op;
+    }
+    if (remove_attr) op->removeAttr(kXlaOutsideCompilationAttr);
+  });
+}
+
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
   const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
@@ -137,8 +169,16 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
     supported_ops.insert(*pattern->getRootKind());
   }
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
+  AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
 
   auto result = module.walk([&](tf_device::ClusterOp cluster) {
+    // Only if `allow_soft_placement` attribute is true should we mark ops
+    // for outside compilation.
+    auto soft_placement_attr =
+        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
+      return WalkResult::advance();
+    }
     if (failed(
             MarkUncompilableOps(tf_dialect, &cluster.GetBody(), supported_ops)))
       return WalkResult::interrupt();
@@ -147,6 +187,17 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   });
 
   if (result.wasInterrupted()) return signalPassFailure();
+
+  module.walk([&](tf_device::ClusterOp cluster) {
+    // Only if `allow_soft_placement` attribute is true should we unmark ops
+    // for outside compilation.
+    auto soft_placement_attr =
+        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
+      return;
+    }
+    UnmarkChildren(&cluster.GetBody());
+  });
 }
 
 }  // namespace

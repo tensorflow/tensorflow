@@ -89,8 +89,11 @@ void RearrangeFCWeightsToIOO4I4(const tflite::gpu::Tensor<OHWI, T>& weights,
 class FullyConnected : public GPUOperation {
  public:
   FullyConnected() = default;
-  absl::Status Tune(const TuningParameters& params) override {
-    return absl::OkStatus();
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override {
+    work_groups->push_back(work_group_size_);
   }
   int3 GetGridSize() const override;
 
@@ -128,26 +131,19 @@ absl::Status FullyConnected::UploadWeights(
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 16;
+  desc.size = float4_size * elements_count;
+  desc.data.resize(desc.size);
 
-  Buffer weights_buffer;
   if (f32_weights) {
-    std::vector<float4> gpu_data(dst_depth * src_depth * 4);
-    RearrangeFCWeightsToIOO4I4(weights, absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
+    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeFCWeightsToIOO4I4(weights, absl::MakeSpan(ptr, elements_count));
   } else {
-    std::vector<half4> gpu_data(dst_depth * src_depth * 4);
-    RearrangeFCWeightsToIOO4I4(weights, absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
+    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeFCWeightsToIOO4I4(weights, absl::MakeSpan(ptr, elements_count));
   }
 
-  args_.AddObject("weights", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
-
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
   return absl::OkStatus();
 }
 

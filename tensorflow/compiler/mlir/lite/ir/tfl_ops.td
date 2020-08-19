@@ -107,7 +107,11 @@ def OpaqueBytesAttr : ElementsAttrBase<
           ".getElementType().isInteger(8)">,
   ]>,
   "opaque bytes attribute"
- >;
+ > {
+  let storageType = [{ OpaqueElementsAttr }];
+  let returnType = [{ OpaqueElementsAttr }];
+  let convertFromStorage = "$_self";
+}
 
 //===----------------------------------------------------------------------===//
 // Derived shape attribute class.

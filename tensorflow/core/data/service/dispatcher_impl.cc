@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/common.pb.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 #include "tensorflow/core/data/service/data_service.h"
+#include "tensorflow/core/data/service/dataset_store.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
 #include "tensorflow/core/data/service/journal.h"
@@ -45,15 +46,27 @@ namespace data {
 namespace {
 // The name of the journal directory inside the dispatcher's working directory.
 constexpr char kJournalDir[] = "tf_data_dispatcher_journal";
+// The name of the datasets directory inside the dispatcher's working directory.
+constexpr char kDatasetsDir[] = "datasets";
 
 using Dataset = DispatcherState::Dataset;
 using Worker = DispatcherState::Worker;
 using NamedJobKey = DispatcherState::NamedJobKey;
 using Job = DispatcherState::Job;
 using Task = DispatcherState::Task;
+using ::tensorflow::data::experimental::RPC;
+using ::tensorflow::data::experimental::SHARED_FILESYSTEM;
 
 std::string JournalDir(const std::string& work_dir) {
   return io::JoinPath(work_dir, kJournalDir);
+}
+
+std::string DatasetsDir(const std::string& work_dir) {
+  return io::JoinPath(work_dir, kDatasetsDir);
+}
+
+std::string DatasetKey(int64 id, uint64 fingerprint) {
+  return absl::StrCat("id_", id, "_fp_", fingerprint);
 }
 
 Status CreateWorkerStub(const std::string& address, const std::string& protocol,
@@ -72,18 +85,34 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
 DataServiceDispatcherImpl::DataServiceDispatcherImpl(
     const experimental::DispatcherConfig& config)
     : config_(config) {
+  if (config_.work_dir().empty()) {
+    dataset_store_ = absl::make_unique<MemoryDatasetStore>();
+  } else {
+    dataset_store_ = absl::make_unique<FileSystemDatasetStore>(
+        DatasetsDir(config_.work_dir()));
+  }
 }
 
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
+  if (config_.work_dir().empty()) {
+    if (config_.fault_tolerant_mode()) {
+      return errors::InvalidArgument(
+          "fault_tolerant_mode is True, but no work_dir is configured.");
+    }
+    if (config_.dataset_sharing_mode() == SHARED_FILESYSTEM) {
+      return errors::InvalidArgument(
+          "dataset sharing mode is shared_filesystem, but no work_dir is "
+          "configured.");
+    }
+  } else {
+    TF_RETURN_IF_ERROR(
+        Env::Default()->RecursivelyCreateDir(DatasetsDir(config_.work_dir())));
+  }
   if (!config_.fault_tolerant_mode()) {
     LOG(INFO) << "Running with fault_tolerant_mode=False. The dispatcher will "
                  "not be able to recover its state on restart.";
     return Status::OK();
-  }
-  if (config_.work_dir().empty()) {
-    return errors::InvalidArgument(
-        "fault_tolerant_mode is True, but no work_dir is configured.");
   }
   journal_writer_ = absl::make_unique<FileJournalWriter>(
       Env::Default(), JournalDir(config_.work_dir()));
@@ -148,7 +177,25 @@ Status DataServiceDispatcherImpl::RegisterWorker(
     TaskDef* task_def = response->add_tasks();
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, &dataset));
-    *(task_def->mutable_dataset()) = dataset->dataset_def;
+    std::string dataset_key =
+        DatasetKey(dataset->dataset_id, dataset->fingerprint);
+    switch (config_.dataset_sharing_mode()) {
+      case SHARED_FILESYSTEM: {
+        std::string path =
+            io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
+        task_def->set_path(path);
+        break;
+      }
+      case RPC: {
+        std::shared_ptr<const DatasetDef> dataset_def;
+        TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
+        *task_def->mutable_dataset_def() = *dataset_def;
+        break;
+      }
+      default:
+        return errors::Internal("Unrecognized dataset sharing mode: ",
+                                config_.dataset_sharing_mode());
+    }
     task_def->set_dataset_id(job->dataset_id);
     task_def->set_job_id(job->job_id);
     task_def->set_task_id(task->task_id);
@@ -217,7 +264,8 @@ Status DataServiceDispatcherImpl::RegisterDataset(uint64 fingerprint,
   RegisterDatasetUpdate* register_dataset = update.mutable_register_dataset();
   register_dataset->set_dataset_id(*dataset_id);
   register_dataset->set_fingerprint(fingerprint);
-  *register_dataset->mutable_dataset_def() = dataset;
+  TF_RETURN_IF_ERROR(
+      dataset_store_->Put(DatasetKey(*dataset_id, fingerprint), dataset));
   return Apply(update);
 }
 
@@ -232,9 +280,11 @@ Status DataServiceDispatcherImpl::CreateJob(const CreateJobRequest* request,
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(CreateJob(request->dataset_id(), processing_mode,
                                  absl::optional<NamedJobKey>(), &job));
+    int64 job_client_id;
+    TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+    response->set_job_client_id(job_client_id);
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, &tasks));
   }
-  response->set_job_id(job->job_id);
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
 
   VLOG(3) << "Creating job " << job->job_id << " for dataset "
@@ -258,7 +308,9 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     if (s.ok()) {
       TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
                                              request->dataset_id()));
-      response->set_job_id(job->job_id);
+      int64 job_client_id;
+      TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+      response->set_job_client_id(job_client_id);
       VLOG(3) << "Found existing job for name=" << key.name
               << ", index=" << key.index << ". job_id: " << job->job_id;
       return Status::OK();
@@ -267,12 +319,30 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
     }
     TF_RETURN_IF_ERROR(
         CreateJob(request->dataset_id(), requested_processing_mode, key, &job));
+    int64 job_client_id;
+    TF_RETURN_IF_ERROR(AcquireJobClientId(job, job_client_id));
+    response->set_job_client_id(job_client_id);
     TF_RETURN_IF_ERROR(CreateTasksForJob(job, &tasks));
   }
   TF_RETURN_IF_ERROR(AssignTasks(tasks));
-  response->set_job_id(job->job_id);
   VLOG(3) << "Created job " << job->job_id << " for dataset "
           << request->dataset_id() << " and name " << request->job_name();
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::ReleaseJobClient(
+    const ReleaseJobClientRequest* request,
+    ReleaseJobClientResponse* response) {
+  mutex_lock l(mu_);
+  int64 job_client_id = request->job_client_id();
+  std::shared_ptr<const Job> job;
+  TF_RETURN_IF_ERROR(state_.JobForJobClientId(job_client_id, job));
+  Update update;
+  ReleaseJobClientUpdate* release_job_client =
+      update.mutable_release_job_client();
+  release_job_client->set_job_client_id(job_client_id);
+  release_job_client->set_time_micros(Env::Default()->NowMicros());
+  TF_RETURN_IF_ERROR(Apply(update));
   return Status::OK();
 }
 
@@ -328,6 +398,19 @@ Status DataServiceDispatcherImpl::CreateJob(
   }
   TF_RETURN_IF_ERROR(Apply(update));
   TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
+  return Status::OK();
+}
+
+Status DataServiceDispatcherImpl::AcquireJobClientId(
+    const std::shared_ptr<const Job>& job, int64& job_client_id)
+    EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  job_client_id = state_.NextAvailableJobClientId();
+  Update update;
+  AcquireJobClientUpdate* acquire_job_client =
+      update.mutable_acquire_job_client();
+  acquire_job_client->set_job_client_id(job_client_id);
+  acquire_job_client->set_job_id(job->job_id);
+  TF_RETURN_IF_ERROR(Apply(update));
   return Status::OK();
 }
 
@@ -398,6 +481,8 @@ Status DataServiceDispatcherImpl::GetOrCreateWorkerStub(
 
 Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     LOCKS_EXCLUDED(mu_) {
+  VLOG(2) << "Started assigning task " << task->task_id << " to worker "
+          << task->worker_address;
   grpc::ClientContext client_ctx;
   ProcessTaskRequest req;
   TaskDef* task_def = req.mutable_task();
@@ -406,7 +491,25 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, &dataset));
-    *task_def->mutable_dataset() = dataset->dataset_def;
+    std::string dataset_key =
+        DatasetKey(dataset->dataset_id, dataset->fingerprint);
+    switch (config_.dataset_sharing_mode()) {
+      case SHARED_FILESYSTEM: {
+        std::string path =
+            io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
+        task_def->set_path(path);
+        break;
+      }
+      case RPC: {
+        std::shared_ptr<const DatasetDef> dataset_def;
+        TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
+        *task_def->mutable_dataset_def() = *dataset_def;
+        break;
+      }
+      default:
+        return errors::Internal("Unrecognized dataset sharing mode: ",
+                                config_.dataset_sharing_mode());
+    }
   }
   task_def->set_task_id(task->task_id);
   ProcessTaskResponse resp;
@@ -418,26 +521,28 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
         absl::StrCat("Failed to submit task to worker ", task->worker_address),
         s);
   }
+  VLOG(2) << "Finished assigning task " << task->task_id << " to worker "
+          << task->worker_address;
   return Status::OK();
 }
 
 Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
                                            GetTasksResponse* response) {
   mutex_lock l(mu_);
-  VLOG(3) << "Looking up tasks for job id " << request->job_id();
+  VLOG(3) << "Looking up tasks for job client id " << request->job_client_id();
+  std::shared_ptr<const Job> job;
+  TF_RETURN_IF_ERROR(state_.JobForJobClientId(request->job_client_id(), job));
   std::vector<std::shared_ptr<const Task>> tasks;
-  TF_RETURN_IF_ERROR(state_.TasksForJob(request->job_id(), &tasks));
+  TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, &tasks));
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
     task_info->set_task_id(task->task_id);
-    task_info->set_job_id(task->job_id);
+    task_info->set_job_id(job->job_id);
   }
-  std::shared_ptr<const Job> job;
-  TF_RETURN_IF_ERROR(state_.JobFromId(request->job_id(), &job));
   response->set_job_finished(job->finished);
-  VLOG(3) << "Found " << response->task_info_size() << " tasks for job id "
-          << request->job_id();
+  VLOG(3) << "Found " << response->task_info_size()
+          << " tasks for job client id " << request->job_client_id();
   return Status::OK();
 }
 

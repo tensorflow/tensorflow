@@ -51,6 +51,18 @@ class DataServiceWorkerImpl {
                     GetElementResponse* response);
 
  private:
+  struct Task {
+    explicit Task(TaskDef task_def) : task_def(std::move(task_def)) {}
+
+    TaskDef task_def;
+    mutex mu;
+    bool initialized TF_GUARDED_BY(mu) = false;
+    // TODO(aaudibert): Have standalone::Iterator own a reference to
+    // standalone::Dataset so that we don't need to store the dataset here.
+    std::unique_ptr<standalone::Dataset> dataset;
+    std::unique_ptr<standalone::Iterator> iterator;
+  };
+
   Status MakeDispatcherStub(std::unique_ptr<DispatcherService::Stub>* stub);
   // Registers the worker with the dispatcher.
   Status Register(DispatcherService::Stub* dispatcher) LOCKS_EXCLUDED(mu_);
@@ -59,6 +71,7 @@ class DataServiceWorkerImpl {
       LOCKS_EXCLUDED(mu_);
   // Creates an iterator to process a task.
   Status ProcessTaskInternal(const TaskDef& task) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status EnsureTaskInitialized(Task& task);
   // A thread for doing async background processing not associated with a
   // specific RPC, such as reporting finished tasks. The thread takes
   // ownership of the passed dispatcher_ptr. We use a raw pointer instead of
@@ -66,21 +79,13 @@ class DataServiceWorkerImpl {
   void BackgroundThread(DispatcherService::Stub* dispatcher_ptr)
       LOCKS_EXCLUDED(mu_);
 
-  typedef struct Task {
-    int64 task_id;
-    // TODO(aaudibert): Have standalone::Iterator own a reference to
-    // standalone::Dataset so that we don't need to store the dataset here.
-    std::unique_ptr<standalone::Dataset> dataset;
-    std::unique_ptr<standalone::Iterator> iterator;
-  } Task;
-
   const experimental::WorkerConfig config_;
   // The worker's own address.
   std::string worker_address_;
 
   mutex mu_;
   // Information about tasks, keyed by task ids.
-  absl::flat_hash_map<int64, Task> tasks_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64, std::unique_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
   // Completed tasks which haven't yet been communicated to the dispatcher.
   absl::flat_hash_set<int64> pending_completed_tasks_ TF_GUARDED_BY(mu_);
   bool cancelled_ TF_GUARDED_BY(mu_) = false;

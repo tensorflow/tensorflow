@@ -32,7 +32,10 @@ void init_types(py::module& m) {
            [](mlir::FunctionType& ft) { return ft.getResults().vec(); });
 
   py::class_<mlir::FloatType, mlir::Type>(m, "FloatType")
-      .def("get", &mlir::FloatType::get);
+      .def("getBF16", &mlir::FloatType::getBF16)
+      .def("getF16", &mlir::FloatType::getF16)
+      .def("getF32", &mlir::FloatType::getF32)
+      .def("getF64", &mlir::FloatType::getF64);
 
   py::class_<mlir::IntegerType, mlir::Type>(m, "IntegerType")
       .def("get", py::overload_cast<unsigned, mlir::MLIRContext*>(

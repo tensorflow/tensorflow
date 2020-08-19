@@ -366,6 +366,7 @@ class XlaBuilder {
   //
   // TODO(b/119520625): Remove this API once we have more dynamic shape infra
   // ready.
+  ABSL_DEPRECATED("Use SetDimensionSize to set a dynamic dimension.")
   Status SetDynamicBinding(int64 dynamic_size_param_num,
                            ShapeIndex dynamic_size_param_index,
                            int64 target_param_num,
@@ -453,6 +454,10 @@ class XlaBuilder {
 
   XlaOp Reshape(const Shape& shape, XlaOp operand,
                 int64 inferred_dimension = -1);
+
+  XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                       absl::Span<const int64> new_size_bounds,
+                       const std::vector<bool>& dims_are_dynamic);
 
   XlaOp Collapse(XlaOp operand, absl::Span<const int64> dimensions);
 
@@ -552,6 +557,12 @@ class XlaBuilder {
   virtual StatusOr<XlaOp> FftInternal(const Shape& shape, XlaOp operand,
                                       FftType fft_type,
                                       absl::Span<const int64> fft_length);
+
+  virtual StatusOr<XlaOp> TriangularSolveInternal(
+      const Shape& shape, XlaOp a, XlaOp b, TriangularSolveOptions options);
+
+  virtual StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
+                                           bool lower);
 
   XlaOp Infeed(const Shape& shape, const string& config = "");
   XlaOp InfeedWithToken(XlaOp token, const Shape& shape, const string& config);
@@ -701,6 +712,11 @@ class XlaBuilder {
 
   XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
                         const Shape& shape);
+  // Internal variant for the op with the full result shape containing both data
+  // and state shape as a tuple.
+  virtual StatusOr<XlaOp> RngBitGeneratorInternal(
+      const Shape& full_result_shape, RandomAlgorithm algorithm,
+      XlaOp initial_state);
 
   XlaOp While(const XlaComputation& condition, const XlaComputation& body,
               XlaOp init);
@@ -773,8 +789,13 @@ class XlaBuilder {
 
   XlaOp RemoveDynamicDimension(XlaOp operand, int64 dimension);
 
-  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
-                                 absl::Span<const XlaOp> operands = {});
+  virtual StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr,
+                                         HloOpcode opcode,
+                                         absl::Span<const XlaOp> operands);
+  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr,
+                                 HloOpcode opcode) {
+    return AddInstruction(std::move(instr), opcode, /*operands=*/{});
+  }
 
   void AddCalledComputation(const XlaComputation& computation,
                             HloInstructionProto* instr);
@@ -939,6 +960,10 @@ class XlaBuilder {
   friend XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
 
   friend XlaOp Reshape(const Shape& shape, XlaOp operand);
+
+  friend XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                              absl::Span<const int64> new_size_bounds,
+                              const std::vector<bool>& dims_are_dynamic);
 
   friend XlaOp ReshapeWithInferredDimension(XlaOp operand,
                                             absl::Span<const int64> new_sizes,
@@ -1453,9 +1478,16 @@ XlaOp Pad(XlaOp operand, XlaOp padding_value,
 XlaOp Reshape(XlaOp operand, absl::Span<const int64> dimensions,
               absl::Span<const int64> new_sizes);
 
-// Enqueues an operation onto the computation that collapses the operand, from
-// first to last dimension (C order), then reshapes it to the given dimension
-// sizes. Conceptually, this is a limited form of "shape casting".
+// Enqueues a dynamic reshape operation. The dynamic reshape takes additional
+// XlaOps as sizes for the result dimension. The result dim i is a dynamic
+// dimension dimension if dims_are_dynamic[i] is true.
+XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                     absl::Span<const int64> new_size_bounds,
+                     const std::vector<bool>& dims_are_dynamic);
+
+// Enqueues an operation onto the computation that collapses the operand,
+// from first to last dimension (C order), then reshapes it to the given
+// dimension sizes. Conceptually, this is a limited form of "shape casting".
 XlaOp Reshape(XlaOp operand, absl::Span<const int64> new_sizes);
 
 // Enqueues a Reshape op that uses an explicit target shape.

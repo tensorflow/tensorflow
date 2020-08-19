@@ -26,6 +26,7 @@ cc_library(
     }),
     deps = [
         ":aws_crypto",
+        "//tensorflow/c:logging",
         "//tensorflow/c:tf_status",
         "//tensorflow/c/experimental/filesystem:filesystem_interface",
         "@aws",

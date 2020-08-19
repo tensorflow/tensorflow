@@ -95,5 +95,20 @@ int TpuTopologyExternal::IdForHost(TpuDimensionsExternal host) const {
                                                        host.y, host.z);
 }
 
+TpuVersionEnum TpuTopologyExternal::version() const {
+  return tpu::ExecutorApiFn()->TpuTopology_VersionFn(topology_);
+}
+
+std::string TpuVersionEnumToString(TpuVersionEnum version) {
+  switch (version) {
+    case kUnknownTpuVersion:
+      return "Unknown TPU version";
+    case kTpuV2:
+      return "TPU v2";
+    case kTpuV3:
+      return "TPU v3";
+  }
+}
+
 }  // namespace tpu
 }  // namespace tensorflow

@@ -579,9 +579,8 @@ class AutoMixedPrecisionTest(test.TestCase, parameterized.TestCase):
   def test_depthwise_conv2d(self, mode):
     """Test grad ops with depthwise convolution2d graph."""
     self._maybe_skip(mode)
-    cudnn_version = tuple([
-        int(x) for x in sysconfig.get_build_info()['cudnn_version'].split('.')
-    ])
+    cudnn_version_str = sysconfig.get_build_info().get('cudnn_version', '0.0')
+    cudnn_version = tuple([int(x) for x in cudnn_version_str.split('.')])
     if cudnn_version < (8,):
       # Depthwise conv2d ops are only enabled in auto_mixed_precision as of
       # cuDNN v8.

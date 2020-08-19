@@ -59,6 +59,25 @@ absl::Status CreateTexture2D(int width, int height, cl_channel_type type,
 }
 }  // namespace
 
+Texture2DDescriptor::Texture2DDescriptor(Texture2DDescriptor&& desc)
+    : GPUObjectDescriptor(std::move(desc)),
+      element_type(desc.element_type),
+      size(desc.size),
+      data(std::move(desc.data)) {}
+
+Texture2DDescriptor& Texture2DDescriptor::operator=(
+    Texture2DDescriptor&& desc) {
+  if (this != &desc) {
+    std::swap(element_type, desc.element_type);
+    std::swap(size, desc.size);
+    data = std::move(desc.data);
+    GPUObjectDescriptor::operator=(std::move(desc));
+  }
+  return *this;
+}
+
+void Texture2DDescriptor::Release() { data.clear(); }
+
 GPUResources Texture2DDescriptor::GetGPUResources() const {
   GPUResources resources;
   GPUImage2DDescriptor desc;
@@ -90,6 +109,14 @@ absl::Status Texture2DDescriptor::PerformReadSelector(
       element_type == DataType::FLOAT16 ? "read_imageh" : "read_imagef";
   *result = absl::StrCat(read, "(tex2d, smp_none, (int2)(", args[0],
                          ", " + args[1] + "))");
+  return absl::OkStatus();
+}
+
+absl::Status Texture2DDescriptor::CreateGPUObject(CLContext* context,
+                                                  GPUObjectPtr* result) const {
+  Texture2D gpu_texture;
+  RETURN_IF_ERROR(gpu_texture.CreateFromTexture2DDescriptor(*this, context));
+  *result = absl::make_unique<Texture2D>(std::move(gpu_texture));
   return absl::OkStatus();
 }
 
@@ -136,6 +163,49 @@ absl::Status Texture2D::GetGPUResources(
   }
 
   resources->images2d.push_back({"tex2d", texture_});
+  return absl::OkStatus();
+}
+
+absl::Status Texture2D::CreateFromTexture2DDescriptor(
+    const Texture2DDescriptor& tex_desc, CLContext* context) {
+  cl_image_desc desc;
+  desc.image_type = CL_MEM_OBJECT_IMAGE2D;
+  desc.image_width = tex_desc.size.x;
+  desc.image_height = tex_desc.size.y;
+  desc.image_depth = 0;
+  desc.image_row_pitch = 0;
+  desc.image_slice_pitch = 0;
+  desc.num_mip_levels = 0;
+  desc.num_samples = 0;
+  desc.buffer = nullptr;
+
+  cl_image_format format;
+  format.image_channel_order = CL_RGBA;
+  format.image_channel_data_type =
+      tex_desc.element_type == DataType::FLOAT32 ? CL_FLOAT : CL_HALF_FLOAT;
+
+  cl_mem_flags flags = CL_MEM_READ_WRITE;
+  if (!tex_desc.data.empty()) {
+    flags |= CL_MEM_COPY_HOST_PTR;
+  }
+
+  cl_int error_code;
+  width_ = tex_desc.size.x;
+  height_ = tex_desc.size.y;
+  channel_type_ = format.image_channel_data_type;
+  if (tex_desc.data.empty()) {
+    texture_ = CreateImage2DLegacy(context->context(), flags, &format, &desc,
+                                   nullptr, &error_code);
+  } else {
+    texture_ = CreateImage2DLegacy(
+        context->context(), flags, &format, &desc,
+        const_cast<unsigned char*>(tex_desc.data.data()), &error_code);
+  }
+  if (error_code != CL_SUCCESS) {
+    return absl::UnknownError(
+        absl::StrCat("Failed to create 2D texture (clCreateImage): ",
+                     CLErrorCodeToString(error_code)));
+  }
   return absl::OkStatus();
 }
 

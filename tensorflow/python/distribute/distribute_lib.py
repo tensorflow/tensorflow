@@ -1659,7 +1659,7 @@ class Strategy(StrategyBase):
       number of partitions specified by the device assignment.
 
     Returns:
-      Annotated tensor with idential value as `tensor`.
+      Annotated tensor with identical value as `tensor`.
     """
     return self._extended._experimental_assign_to_logical_device(  # pylint: disable=protected-access
         tensor, logical_device_id)
@@ -1722,7 +1722,7 @@ class Strategy(StrategyBase):
         value in `partition_dimensions`.
 
     Returns:
-      Annotated tensor with idential value as `tensor`.
+      Annotated tensor with identical value as `tensor`.
     """
     return self._extended._experimental_split_to_logical_devices(  # pylint: disable=protected-access
         tensor, partition_dimensions)
@@ -1772,7 +1772,7 @@ class Strategy(StrategyBase):
       tensor: Input tensor to annotate.
 
     Returns:
-      Annotated tensor with idential value as `tensor`.
+      Annotated tensor with identical value as `tensor`.
     """
     return self._extended._experimental_replicate_to_logical_devices(tensor)  # pylint: disable=protected-access
 

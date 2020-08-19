@@ -64,7 +64,7 @@ const T* GetTensorData(const TfLiteEvalTensor* tensor) {
 
 // Returns the shape of a TfLiteEvalTensor struct.
 inline const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor) {
-  if (tensor == nullptr) {
+  if (tensor == nullptr || tensor->dims == nullptr) {
     return RuntimeShape();
   }
   TfLiteIntArray* dims = tensor->dims;

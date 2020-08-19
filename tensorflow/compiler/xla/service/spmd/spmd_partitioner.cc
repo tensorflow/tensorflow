@@ -353,6 +353,65 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
     }
   }
 
+  // Tiled to partial replicate
+  if (!sharding().ReplicateOnLastTileDim() && !sharding().IsTileMaximal() &&
+      target.ReplicateOnLastTileDim()) {
+    // Get the comptible sharding to target with resharding by all reduce.
+    auto compatible_sharding = PartialReplicateToTileCompatibleSharding(
+        target, sharding().tile_assignment().dimensions());
+    if (compatible_sharding.has_value()) {
+      auto temp_sharding = compatible_sharding.value();
+      auto partitioned_hlo = *this;
+      // Use collective permute to adjust device assignment if needed.
+      if (CanReshardWithCollectivePermute(sharding(), temp_sharding)) {
+        partitioned_hlo =
+            partitioned_hlo.ReshardWithCollectivePermute(temp_sharding);
+      }
+
+      // Get replicate dims and replicate factor of each dimensions.
+      int64 rank = hlo_->shape().rank();
+      std::vector<int64> replicate_dims;
+      std::vector<int64> replicate_factors;
+      for (int64 dim = 0; dim < rank; dim++) {
+        int64 replicate_factor = temp_sharding.tile_assignment().dim(dim) /
+                                 target.tile_assignment().dim(dim);
+        if (replicate_factor > 1) {
+          replicate_dims.emplace_back(dim);
+          replicate_factors.emplace_back(replicate_factor);
+        }
+      }
+
+      // Do left halo exchange if all-reduce directly will remove useful data
+      // from the source.
+      auto halo_exchange = TileToPartialReplicateHaloExchange(
+          partitioned_hlo.hlo_, base_shape_, temp_sharding, target,
+          replicate_dims, partitioned_hlo.state().collective_ops_creator,
+          partitioned_hlo.state().next_channel_id,
+          partitioned_hlo.state().partition_id, partitioned_hlo.state().b);
+      if (halo_exchange.has_value()) {
+        auto halo_exchange_hlo = halo_exchange.value();
+        // Grouped on replicate dimensions.
+        auto sharding_grouped = GroupShardingOnDims(
+            temp_sharding, replicate_dims, replicate_factors);
+        auto per_group_partitioner_state = CreatePerGroupPartitioningState(
+            partitioned_hlo.state(), sharding_grouped.device_groups,
+            partitioned_hlo.state().b);
+        auto base_shape = MakePartitionedShape(base_shape_, target);
+        // It's possible that halo_exchange_hlo == hlo.hlo().
+        // Record the sharding of hlo here, and reset it before return.
+        auto original_sharding = partitioned_hlo.sharding();
+        halo_exchange_hlo->set_sharding(sharding_grouped.sharding);
+        auto partial_replicate_hlo = PartitionedHlo(
+            halo_exchange_hlo, base_shape, per_group_partitioner_state);
+        HloInstruction* result =
+            partial_replicate_hlo.ReplicatePartial(replicate_dims);
+        partitioned_hlo.hlo()->set_sharding(original_sharding);
+        result->set_sharding(target);
+        return PartitionedHlo(result, base_shape_, partitioned_hlo.state());
+      }
+    }
+  }
+
   // If not replicated yet, first replicate and then reshard to use one of the
   // two implementations below.
   if (!sharding().IsReplicated()) {
@@ -808,7 +867,7 @@ HloInstruction* PartitionedHlo::ReplicatePartial(absl::Span<const int64> dims) {
     std::vector<int64> strides(target_shape.rank(), 1);
     result = state_.b->AddInstruction(
         HloInstruction::CreateSlice(target_shape, result, start_indices,
-                                    base_shape_.dimensions(), strides));
+                                    target_shape.dimensions(), strides));
   }
   return result;
 }
@@ -1316,8 +1375,10 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
         update_dim_to_index_dim[update_scatter_dims[i]] = indices_scatter_dim;
         index_dim_to_update_dim[indices_scatter_dim] = update_scatter_dims[i];
       }
-      auto new_updates_sharding = TransposeShardingWithCollapsedDims(
-          indices.sharding(), index_dim_to_update_dim, update_dim_to_index_dim);
+      auto new_updates_sharding =
+          hlo_sharding_util::TransposeShardingWithCollapsedDims(
+              indices.sharding(), index_dim_to_update_dim,
+              update_dim_to_index_dim);
       CHECK(new_updates_sharding.has_value());
       updates = updates.Reshard(*new_updates_sharding);
       // To avoid accumulating the initial operand multiple times during
@@ -1807,6 +1868,16 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     return Status::OK();
   }
 
+  // Check if operand sharding and sharding are both tiled or partial replicate.
+  // If both of them are partial replicate, check num_replications are the same.
+  if (operand.sharding().ReplicateOnLastTileDim() !=
+          sharding.ReplicateOnLastTileDim() ||
+      (sharding.ReplicateOnLastTileDim() &&
+       (operand.sharding().tile_assignment().dimensions().back() !=
+        sharding.tile_assignment().dimensions().back()))) {
+    return DefaultAction(hlo);
+  }
+
   // Try use halo exchange for certain split-dim/merge-dims cases.
   // ReshapeSharding failed in these cases probably due to uneven partitioning,
   // where halo exchange could help. Specifically we check the following
@@ -1842,7 +1913,14 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
   Array<int64> new_input_tile_assignment = sharding.tile_assignment();
   new_input_tile_assignment.Reshape(
       operand.sharding().tile_assignment().dimensions());
-  operand = operand.Reshard(HloSharding::Tile(new_input_tile_assignment));
+  auto aligned_sharding =
+      sharding.ReplicateOnLastTileDim()
+          ? HloSharding::PartialTile(new_input_tile_assignment)
+          : HloSharding::Tile(new_input_tile_assignment);
+  operand = operand.Reshard(aligned_sharding);
+  auto replication_count = sharding.ReplicateOnLastTileDim()
+                               ? sharding.tile_assignment().dimensions().back()
+                               : 1;
 
   int64 input_dim_size = operand.base_shape().dimensions(input_sharded_dim);
   int64 output_dim_size = hlo->shape().dimensions(output_sharded_dim);
@@ -1865,7 +1943,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
       dim->set_padding_low(0);
       if (i == input_sharded_dim) {
         dim->set_padding_high(output_shard_size * split_factor *
-                                  num_partitions_ -
+                                  num_partitions_ / replication_count -
                               input_dim_size);
       } else {
         dim->set_padding_high(0);
@@ -1903,8 +1981,8 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
     tmp_reshape->set_sharding(hlo->sharding());
     auto tmp_full_shape = tmp_shard_shape;
     tmp_full_shape.set_dimensions(
-        output_sharded_dim,
-        tmp_shard_shape.dimensions(output_sharded_dim) * num_partitions_);
+        output_sharded_dim, tmp_shard_shape.dimensions(output_sharded_dim) *
+                                num_partitions_ / replication_count);
     auto tmp_output =
         PartitionedHlo(tmp_reshape, tmp_full_shape, MakePartitioningState());
 
@@ -1921,7 +1999,7 @@ Status SpmdPartitioningVisitor::HandleReshape(HloInstruction* hlo) {
       if (i == output_sharded_dim) {
         dim->set_padding_high(output_dim_size -
                               tmp_shard_shape.dimensions(output_sharded_dim) *
-                                  num_partitions_);
+                                  num_partitions_ / replication_count);
       } else {
         dim->set_padding_high(0);
       }
@@ -2184,8 +2262,10 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
         output_dim_to_index_dim[batch_dims[i]] = indices_batch_dim;
         index_dim_to_output_dim[indices_batch_dim] = batch_dims[i];
       }
-      auto pgather_sharding = TransposeShardingWithCollapsedDims(
-          indices.sharding(), index_dim_to_output_dim, output_dim_to_index_dim);
+      auto pgather_sharding =
+          hlo_sharding_util::TransposeShardingWithCollapsedDims(
+              indices.sharding(), index_dim_to_output_dim,
+              output_dim_to_index_dim);
       CHECK(pgather_sharding.has_value());
       pgather->set_sharding(*pgather_sharding);
       SetPartitionedHlo(hlo, [&]() {
@@ -2542,23 +2622,18 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
                         .Reshard(HloSharding::Replicate())
                         .hlo());
     inputs.push_back(GetPartitionedHlo(hlo->operand(operand_id)));
-    if (operand_id > 0) {
+    if (hlo->shape().IsTuple() && operand_id == 0) {
+      // We cannot do tuple-reduce where partitioned dimensions are reduced.
+      // Partially replicate on those dims.
+      inputs[0] = inputs[0].Reshard(
+          hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+              inputs[0].sharding(), hlo->dimensions()));
+    } else {
       // Make sure all operands are sharded in the same way.
       inputs.back() = inputs.back().Reshard(inputs[0].sharding());
     }
     if (!inputs[0].sharding().IsTileMaximal()) {
       inputs.back() = inputs.back().PadWithValue(inits[operand_id]);
-    }
-  }
-  bool reduce_sharded_dimension = false;
-  if (!inputs[0].sharding().IsTileMaximal()) {
-    reduce_sharded_dimension = absl::c_any_of(hlo->dimensions(), [&](int64 i) {
-      return inputs[0].sharding().tile_assignment().dim(i) > 1;
-    });
-
-    // reduce_sharded_dimension is not supported for tuple-shaped reduces.
-    if (reduce_sharded_dimension && input_count > 1) {
-      return DefaultAction(hlo);
     }
   }
 
@@ -2583,6 +2658,11 @@ Status SpmdPartitioningVisitor::HandleReduce(HloInstruction* hlo) {
 
   SetPartitionedHlo(hlo, [&]() {
     HloInstruction* reduce = local_reduce;
+    const bool reduce_sharded_dimension =
+        !inputs[0].sharding().IsTileMaximal() &&
+        absl::c_any_of(hlo->dimensions(), [&](int64 i) {
+          return inputs[0].sharding().tile_assignment().dim(i) > 1;
+        });
     if (reduce_sharded_dimension) {
       CHECK(local_reduce->shape().IsArray());
       std::vector<int64> preserved_dims;

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/dispatcher.pb.h"
 #include "tensorflow/core/data/service/grpc_util.h"
+#include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/data/standalone.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -94,24 +95,43 @@ Status DataServiceWorkerImpl::ProcessTask(const ProcessTaskRequest* request,
 
 Status DataServiceWorkerImpl::ProcessTaskInternal(const TaskDef& task_def)
     EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-  VLOG(3) << "Received request to process task " << task_def.task_id();
-  standalone::Dataset::Params params;
-  std::unique_ptr<standalone::Dataset> dataset;
-  TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
-      params, task_def.dataset().graph(), &dataset));
-
-  std::unique_ptr<standalone::Iterator> iterator;
-  TF_RETURN_IF_ERROR(dataset->MakeIterator(&iterator));
-
-  if (tasks_.contains(task_def.task_id())) {
+  std::unique_ptr<Task>& task = tasks_[task_def.task_id()];
+  if (task) {
     return errors::AlreadyExists("A task with id ", task_def.task_id(),
                                  " already exists.");
   }
-  Task& task = tasks_[task_def.task_id()];
-  task.task_id = task_def.task_id();
-  task.dataset = std::move(dataset);
-  task.iterator = std::move(iterator);
+  task = absl::make_unique<Task>(task_def);
   VLOG(3) << "Began processing for task " << task_def.task_id();
+  return Status::OK();
+}
+
+Status DataServiceWorkerImpl::EnsureTaskInitialized(
+    DataServiceWorkerImpl::Task& task) {
+  mutex_lock l(task.mu);
+  if (task.initialized) {
+    return Status::OK();
+  }
+  standalone::Dataset::Params params;
+
+  switch (task.task_def.dataset_case()) {
+    case TaskDef::kDatasetDef:
+      TF_RETURN_IF_ERROR(standalone::Dataset::FromGraph(
+          params, task.task_def.dataset_def().graph(), &task.dataset));
+      break;
+    case TaskDef::kPath: {
+      DatasetDef def;
+      TF_RETURN_IF_ERROR(ReadDatasetDef(task.task_def.path(), def));
+      TF_RETURN_IF_ERROR(
+          standalone::Dataset::FromGraph(params, def.graph(), &task.dataset));
+      break;
+    }
+    case TaskDef::DATASET_NOT_SET:
+      return errors::Internal("Unrecognized dataset case: ",
+                              task.task_def.dataset_case());
+  }
+  TF_RETURN_IF_ERROR(task.dataset->MakeIterator(&task.iterator));
+  task.initialized = true;
+  VLOG(3) << "Created iterator for task " << task.task_def.task_id();
   return Status::OK();
 }
 
@@ -134,7 +154,9 @@ Status DataServiceWorkerImpl::GetElement(const GetElementRequest* request,
       return errors::NotFound("DataServiceWorkerImpl::GetElement failed. ",
                               "Task id ", request->task_id(), " not found");
     }
-    std::unique_ptr<standalone::Iterator>& iter = it->second.iterator;
+    auto& task = it->second;
+    TF_RETURN_IF_ERROR(EnsureTaskInitialized(*task));
+    std::unique_ptr<standalone::Iterator>& iter = task->iterator;
     if (iter == nullptr) {
       VLOG(3) << "Task " << request->task_id() << " is already finished";
       response->set_end_of_sequence(true);
@@ -234,7 +256,11 @@ void DataServiceWorkerImpl::BackgroundThread(
     Status s = SendTaskUpdates(dispatcher.get());
     if (!s.ok()) {
       LOG(WARNING) << "Failed to send task updates to dispatcher: " << s;
-      Env::Default()->SleepForMicroseconds(kRetryIntervalMicros);
+      mutex_lock l(mu_);
+      if (!cancelled_) {
+        background_cv_.wait_for(
+            l, std::chrono::microseconds(kRetryIntervalMicros));
+      }
     }
   }
 }

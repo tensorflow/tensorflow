@@ -36,6 +36,12 @@ Status DispatcherState::Apply(Update update) {
     case Update::kCreateJob:
       CreateJob(update.create_job());
       break;
+    case Update::kAcquireJobClient:
+      AcquireJobClient(update.acquire_job_client());
+      break;
+    case Update::kReleaseJobClient:
+      ReleaseJobClient(update.release_job_client());
+      break;
     case Update::kCreateTask:
       CreateTask(update.create_task());
       break;
@@ -53,8 +59,7 @@ void DispatcherState::RegisterDataset(
     const RegisterDatasetUpdate& register_dataset) {
   int64 id = register_dataset.dataset_id();
   int64 fingerprint = register_dataset.fingerprint();
-  auto dataset = std::make_shared<Dataset>(id, fingerprint,
-                                           register_dataset.dataset_def());
+  auto dataset = std::make_shared<Dataset>(id, fingerprint);
   DCHECK(!datasets_by_id_.contains(id));
   datasets_by_id_[id] = dataset;
   DCHECK(!datasets_by_fingerprint_.contains(fingerprint));
@@ -88,6 +93,29 @@ void DispatcherState::CreateJob(const CreateJobUpdate& create_job) {
     named_jobs_[named_job_key.value()] = job;
   }
   next_available_job_id_ = std::max(next_available_job_id_, job_id + 1);
+}
+
+void DispatcherState::AcquireJobClient(
+    const AcquireJobClientUpdate& acquire_job_client) {
+  int64 job_client_id = acquire_job_client.job_client_id();
+  std::shared_ptr<Job>& job = jobs_for_client_ids_[job_client_id];
+  DCHECK(!job);
+  job = jobs_[acquire_job_client.job_id()];
+  DCHECK(job);
+  job->num_clients++;
+  next_available_job_client_id_ =
+      std::max(next_available_job_client_id_, job_client_id + 1);
+}
+
+void DispatcherState::ReleaseJobClient(
+    const ReleaseJobClientUpdate& release_job_client) {
+  int64 job_client_id = release_job_client.job_client_id();
+  std::shared_ptr<Job>& job = jobs_for_client_ids_[job_client_id];
+  DCHECK(job);
+  job->num_clients--;
+  DCHECK_GE(job->num_clients, 0);
+  job->last_client_released_micros = release_job_client.time_micros();
+  jobs_for_client_ids_.erase(job_client_id);
 }
 
 void DispatcherState::CreateTask(const CreateTaskUpdate& create_task) {
@@ -195,6 +223,19 @@ Status DispatcherState::NamedJobByKey(NamedJobKey named_job_key,
 
 int64 DispatcherState::NextAvailableJobId() const {
   return next_available_job_id_;
+}
+
+Status DispatcherState::JobForJobClientId(int64 job_client_id,
+                                          std::shared_ptr<const Job>& job) {
+  job = jobs_for_client_ids_[job_client_id];
+  if (!job) {
+    return errors::NotFound("Job client id not found: ", job_client_id);
+  }
+  return Status::OK();
+}
+
+int64 DispatcherState::NextAvailableJobClientId() const {
+  return next_available_job_client_id_;
 }
 
 Status DispatcherState::TaskFromId(int64 id,

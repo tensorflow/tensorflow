@@ -990,20 +990,6 @@ Status XlaCompiler::BuildArguments(
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
 
-    for (int i = 0, end = input_to_args->size(); i < end; ++i) {
-      const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
-      for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
-        int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
-        VLOG(1) << "Setting dynamic binding " << i << " -> "
-                << dynamic_size_param_index;
-
-        TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
-            /*dynamic_size_param_num=*/0, {dynamic_size_param_index},
-            /*target_param_num=*/0, /*target_param_index=*/{i},
-            dim_and_arg_num.first));
-      }
-    }
-
     for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
       auto it = arg_shardings.find(i);
       xla::XlaScopedShardingAssignment assign_sharding(
@@ -1035,16 +1021,17 @@ Status XlaCompiler::BuildArguments(
                                         absl::StrCat("arg", i));
       }
     }
+  }
 
-    for (int i = 0, end = input_to_args->size(); i < end; ++i) {
-      const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
-      for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
-        int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
-        TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
-            /*dynamic_size_param_num=*/dynamic_size_param_index, {},
-            /*target_param_num=*/i, /*target_param_index=*/{},
-            dim_and_arg_num.first));
-      }
+  for (int i = 0, end = input_to_args->size(); i < end; ++i) {
+    const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
+    for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
+      int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
+      VLOG(1) << "Setting dynamic size " << i << " -> "
+              << dynamic_size_param_index;
+      arg_handles[i] = xla::SetDimensionSize(
+          arg_handles[i], arg_handles[dynamic_size_param_index],
+          dim_and_arg_num.first);
     }
   }
 

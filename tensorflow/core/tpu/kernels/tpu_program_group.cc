@@ -112,7 +112,7 @@ void TpuProgramGroup::Initialize(
       xla_tpu_programs.size());
   std::vector<xla::HloProto> hlo_metadatas(xla_tpu_programs.size());
   for (size_t i = 0; i < xla_tpu_programs.size(); ++i) {
-    const XLA_TpuProgram* xla_tpu_program = xla_tpu_programs[i];
+    const XLA_TpuProgram* xla_tpu_program = tpu_programs_[i];
     bool may_modify_variables;
     TpuProgramApiFn()->TpuProgram_GetMayModifyVariablesFn(
         xla_tpu_program, &may_modify_variables);
@@ -250,10 +250,11 @@ TpuProgramGroup::TpuProgramGroup(TpuProgramGroup&& other)
   RefreshHloMetadatasPtrs();
 }
 
-void TpuProgramGroup::set_hlo_metadata(const xla::HloProto& hlo_metadata) {
-  // TODO(henrytan): initialize hlo_metadatas_ for multi program support.
-  if (hlo_metadatas_.empty()) {
-    hlo_metadatas_.push_back(hlo_metadata);
+void TpuProgramGroup::set_hlo_metadatas(
+    absl::Span<const xla::HloProto> hlo_metadatas) {
+  hlo_metadatas_.resize(hlo_metadatas.size());
+  for (size_t i = 0; i < hlo_metadatas.size(); ++i) {
+    hlo_metadatas_[i] = hlo_metadatas[i];
   }
   RefreshHloMetadatasPtrs();
 }

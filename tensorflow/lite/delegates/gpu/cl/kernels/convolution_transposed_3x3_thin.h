@@ -79,46 +79,41 @@ absl::Status ConvolutionTransposed3x3Thin::UploadData(
   const int flt4_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
 
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
   desc.memory_type = MemoryType::CONSTANT;
+  desc.size = flt4_size * (flt4_count + dst_depth);
+  desc.data.resize(desc.size);
 
-  Buffer weights_buffer;
   if (f32_weights) {
-    std::vector<float4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
+    float4* gpu_data = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data, flt4_count));
     for (int i = 0; i < dst_depth; ++i) {
       float4 bias_value(0.0f);
       for (int c = 0; c < 4; ++c) {
         int ch = i * 4 + c;
         bias_value[c] = ch < weights.shape.o ? biases.data[ch] : 0.0f;
       }
-      gpu_data.push_back(bias_value);
+      gpu_data[flt4_count + i] = bias_value;
     }
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(float4) * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
   } else {
-    std::vector<half4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
+    half4* gpu_data = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data, flt4_count));
     for (int i = 0; i < dst_depth; ++i) {
       half4 bias_value(0.0f);
       for (int c = 0; c < 4; ++c) {
         int ch = i * 4 + c;
         bias_value[c] = ch < weights.shape.o ? biases.data[ch] : 0.0f;
       }
-      gpu_data.push_back(bias_value);
+      gpu_data[flt4_count + i] = bias_value;
     }
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(half4) * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
   }
 
-  args_.AddObject("weights", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
 
   return absl::OkStatus();
 }

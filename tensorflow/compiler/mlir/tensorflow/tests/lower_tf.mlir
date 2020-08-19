@@ -353,12 +353,41 @@ func @ZerosLike_variant(%arg0: tensor<!tf.variant<tensor<2xi32>>>) -> tensor<!tf
   return %0 : tensor<!tf.variant<tensor<2xi32>>>
 }
 
-// CHECK-LABEL: func @addN
-func @addN(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<*xf32> {
+// CHECK-LABEL: func @addN_2
+func @addN_2(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
+  // return %[[SUM0]]
+  %0 = "tf.AddN"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @addN_3
+func @addN_3(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
   // CHECK: %[[SUM1:.*]] = "tf.AddV2"(%[[SUM0]], %arg2)
   // return %[[SUM1]]
   %0 = "tf.AddN"(%arg0, %arg1, %arg2) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @addN_4
+func @addN_4(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
+  // CHECK: %[[SUM1:.*]] = "tf.AddV2"(%arg2, %arg3)
+  // CHECK: %[[SUM2:.*]] = "tf.AddV2"(%[[SUM0]], %[[SUM1]])
+  // return %[[SUM2]]
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2, %arg3) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// CHECK-LABEL: func @addN_5
+func @addN_5(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>, %arg2: tensor<*xf32>, %arg3: tensor<*xf32>, %arg4: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: %[[SUM0:.*]] = "tf.AddV2"(%arg0, %arg1)
+  // CHECK: %[[SUM1:.*]] = "tf.AddV2"(%arg2, %arg3)
+  // CHECK: %[[SUM2:.*]] = "tf.AddV2"(%[[SUM0]], %[[SUM1]])
+  // CHECK: %[[SUM3:.*]] = "tf.AddV2"(%[[SUM2]], %arg4)
+  // return %[[SUM3]]
+  %0 = "tf.AddN"(%arg0, %arg1, %arg2, %arg3, %arg4) : (tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
@@ -450,6 +479,7 @@ func @DynamicStitch_duplicates(%arg0: tensor<2x2xf32>) -> tensor<1x2xf32> {
   return %0 : tensor<1x2xf32>
 }
 
+// CHECK-LABEL: @Reciprocal
 func @Reciprocal(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   // CHECK: %[[ONE:.*]] = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
   // CHECK: "tf.Div"(%[[ONE]], %arg0) : (tensor<f32>, tensor<*xf32>) -> tensor<*xf32>
@@ -457,6 +487,7 @@ func @Reciprocal(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
+// CHECK-LABEL: @ScatterNd
 func @ScatterNd(%arg0: tensor<4x1xi32>, %arg1: tensor<4xf32>) -> tensor<8xf32> {
   // CHECK: %[[ZERO:.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<8xf32>} : () -> tensor<8xf32>
   // CHECK: "tf.TensorScatterUpdate"(%[[ZERO]], %arg0, %arg1) : (tensor<8xf32>, tensor<4x1xi32>, tensor<4xf32>) -> tensor<8xf32>
@@ -464,4 +495,17 @@ func @ScatterNd(%arg0: tensor<4x1xi32>, %arg1: tensor<4xf32>) -> tensor<8xf32> {
   %shape = "tf.Const"() {value = dense<[8]> : tensor<1xi32>} : () -> tensor<1xi32>
   %0 = "tf.ScatterNd"(%arg0, %arg1, %shape) : (tensor<4x1xi32>, tensor<4xf32>, tensor<1xi32>) -> tensor<8xf32>
   return %0 : tensor<8xf32>
+}
+
+// CHECK-LABEL: @_UnaryOpsComposition
+// CHECK-SAME: %[[ARG0:.*]]: tensor<4xf32>
+func @_UnaryOpsComposition(%arg0: tensor<4xf32>) -> tensor<4xf32> {
+
+  // CHECK: %[[RESULT0:.*]] = "tf.Asin"(%[[ARG0]])
+  // CHECK: %[[RESULT1:.*]] = "tf.Abs"(%[[RESULT0]])
+  // CHECK: %[[RESULT2:.*]] = "tf.Log"(%[[RESULT1]])
+  // CHECK: return %[[RESULT2]]
+
+  %0 = "tf._UnaryOpsComposition"(%arg0) {op_names = ["Asin", "Abs", "Log"]} : (tensor<4xf32>) -> tensor<4xf32>
+  return %0 : tensor<4xf32>
 }

@@ -633,10 +633,14 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       TF_LITE_ENSURE(error_reporter, params != nullptr);
       if (const auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
         const auto* squeeze_dims = schema_params->squeeze_dims();
-        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
-            sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
-            error_reporter, "squeeze"));
-        params->num_squeeze_dims = squeeze_dims->size();
+        if (squeeze_dims != nullptr) {
+          TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+              sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
+              error_reporter, "squeeze"));
+          params->num_squeeze_dims = squeeze_dims->size();
+        } else {
+          params->num_squeeze_dims = 0;
+        }
       }
       *builtin_data = params.release();
       return kTfLiteOk;
