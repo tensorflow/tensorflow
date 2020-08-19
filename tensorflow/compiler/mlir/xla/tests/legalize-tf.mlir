@@ -3518,8 +3518,9 @@ func @cross_replica_sum(%input: tensor<10xf32>) -> tensor<10xf32> {
 func @size_scalar_i32(%input: tensor<f32>) -> (tensor<i32>) {
   // CHECK: %[[CONST:.*]] = mhlo.constant dense<1>
   // CHECK-SAME: tensor<i32>
+  // CHECK: %[[CAST:.*]] = tensor_cast %[[CONST]] : tensor<i32> to tensor<i32>
   %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<f32>) -> tensor<i32>
-  // CHECK: return %[[CONST]]
+  // CHECK: return %[[CAST]]
   return %size : tensor<i32>
 }
 
@@ -3527,8 +3528,9 @@ func @size_scalar_i32(%input: tensor<f32>) -> (tensor<i32>) {
 func @size_scalar_i64(%input: tensor<f32>) -> (tensor<i64>) {
   // CHECK: %[[CONST:.*]] = mhlo.constant dense<1>
   // CHECK-SAME: tensor<i64>
+  // CHECK: %[[CAST:.*]] = tensor_cast %[[CONST]] : tensor<i64> to tensor<i64>
   %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT64"} : (tensor<f32>) -> tensor<i64>
-  // CHECK: return %[[CONST]]
+  // CHECK: return %[[CAST]]
   return %size : tensor<i64>
 }
 
@@ -4809,5 +4811,22 @@ func @xla_gather(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> ten
   // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
 
   %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\01\01\12\01\00\1A\01\00 \01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi64>) -> tensor<10x1x300xf32>
+  return %0 : tensor<10x1x300xf32>
+}
+
+// CHECK-LABEL: @xla_gather_i32
+func @xla_gather_i32(%arg0: tensor<200x100x300xf32>, %arg1: tensor<10x2xi32>) -> tensor<10x1x300xf32> {
+  %cst = "tf.Const"() { value = dense<[1, 1, 300]> : tensor<3xi32> } : () -> tensor<3xi32>
+
+  // CHECK: "mhlo.gather"
+  // CHECK-SAME: dimension_numbers =
+  // CHECK-SAME:   collapsed_slice_dims = dense<0> : tensor<1xi64>
+  // CHECK-SAME:   index_vector_dim = 1 : i64
+  // CHECK-SAME:   offset_dims = dense<1> : tensor<1xi64>
+  // CHECK-SAME:   start_index_map = dense<0> : tensor<1xi64>
+  // CHECK-SAME: indices_are_sorted = true
+  // CHECK-SAME: slice_sizes = dense<[1, 1, 300]> : tensor<3xi64>
+
+  %0 = "tf.XlaGather"(%arg0, %arg1, %cst) {dimension_numbers = "\0A\01\01\12\01\00\1A\01\00 \01", indices_are_sorted = true} : (tensor<200x100x300xf32>, tensor<10x2xi32>, tensor<3xi32>) -> tensor<10x1x300xf32>
   return %0 : tensor<10x1x300xf32>
 }

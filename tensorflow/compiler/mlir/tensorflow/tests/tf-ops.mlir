@@ -913,7 +913,7 @@ func @testValidIfRegionOpWithMultipleResults(%arg0: tensor<i1>, %arg1: tensor<2x
 
 // Test invalid type for operand #0 for tf.IfRegion operation
 func @testInvalidIfRegionOpType0(%arg0: f32, %arg1: tensor<2xf32>) -> tensor<2xf32> {
-  // expected-error @+1 {{operand #0 must be tensor of tf.dtype values}}
+  // expected-error @+1 {{operand #0 must be 0D tensor of 1-bit signless integer values, but got 'f32'}}
   %0 = "tf.IfRegion"(%arg0) ({
      %t = "tf.Abs"(%arg1) : (tensor<2xf32>) -> tensor<2xf32>
      "tf.Yield"(%t) : (tensor<2xf32>) -> ()
@@ -2047,6 +2047,15 @@ func @testConst() -> tensor<f32> {
   // expected-error @+1 {{attribute 'value' failed to satisfy constraint: constant vector/tensor}}
   %0 = "tf.Const"() {T = "tfdtype$DT_FLOAT", value = 1.0 : f32} : () -> tensor<f32>
   return %0 : tensor<f32>
+}
+
+// -----
+
+// Test invalid tf.ToBool
+func @testInvalidToBool(%arg0: tensor<i32>) -> tensor<1xi1> {
+  // expected-error @+1 {{op result #0 must be 0D tensor of 1-bit signless integer values, but got 'tensor<1xi1>'}}
+  %0 = "tf.ToBool"(%arg0) : (tensor<i32>) -> tensor<1xi1>
+  return %0 : tensor<1xi1>
 }
 
 // -----

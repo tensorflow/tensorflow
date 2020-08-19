@@ -48,14 +48,12 @@ class DepthwiseConvolution : public GPUOperation {
   DepthwiseConvolution& operator=(const DepthwiseConvolution&) = delete;
 
  private:
-  friend absl::Status CreateDepthwiseConvolution(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const DepthwiseConvolution2DAttributes& attr,
-      DepthwiseConvolution* result);
-  friend absl::Status CreateDepthwiseConvolution(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const DepthwiseConvolution3DAttributes& attr,
-      DepthwiseConvolution* result);
+  friend DepthwiseConvolution CreateDepthwiseConvolution(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const DepthwiseConvolution2DAttributes& attr);
+  friend DepthwiseConvolution CreateDepthwiseConvolution(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const DepthwiseConvolution3DAttributes& attr);
   DepthwiseConvolution(const OperationDef& definition,
                        const DepthwiseConvolution2DAttributes& attr,
                        bool weights_are_buffer);
@@ -64,16 +62,14 @@ class DepthwiseConvolution : public GPUOperation {
                        bool weights_are_buffer);
 
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
-                             CLContext* context);
+  void UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
@@ -94,8 +90,8 @@ class DepthwiseConvolution : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status DepthwiseConvolution::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+void DepthwiseConvolution::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_slices = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -130,8 +126,6 @@ absl::Status DepthwiseConvolution::UploadWeights(
     desc.data = std::move(data);
     args_.AddObject("weights", absl::make_unique<Texture2DDescriptor>(desc));
   }
-
-  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
@@ -164,8 +158,8 @@ void DepthwiseConvolution::RearrangeWeightsData(
 }
 
 template <DataType T>
-absl::Status DepthwiseConvolution::UploadWeights(
-    const tflite::gpu::Tensor<OHWDI, T>& weights, CLContext* context) {
+void DepthwiseConvolution::UploadWeights(
+    const tflite::gpu::Tensor<OHWDI, T>& weights) {
   const int dst_channels = weights.shape.i * weights.shape.o;
   const int dst_slices = DivideRoundUp(dst_channels, 4);
   const int kernel_x = weights.shape.w;
@@ -203,8 +197,6 @@ absl::Status DepthwiseConvolution::UploadWeights(
     args_.AddObject("weights",
                     absl::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
-
-  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
@@ -239,9 +231,13 @@ void DepthwiseConvolution::RearrangeWeightsData(
   }
 }
 
-absl::Status CreateDepthwiseConvolution(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr, DepthwiseConvolution* result);
+DepthwiseConvolution CreateDepthwiseConvolution(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr);
+
+DepthwiseConvolution CreateDepthwiseConvolution(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const DepthwiseConvolution3DAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

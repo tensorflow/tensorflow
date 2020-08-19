@@ -53,13 +53,10 @@ absl::Status CreatePReLU(const CreationContext& creation_context,
   desc.storage_type =
       DeduceLinearStorageType(definition.GetPrimaryStorageType());
   desc.element_type = definition.GetPrimaryDataType();
+  desc.UploadLinearData(*alpha);
 
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, *alpha, creation_context.context, &lt));
-  result->args_.AddObject("alpha", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
+  result->args_.AddObject(
+      "alpha", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
   return absl::OkStatus();
 }

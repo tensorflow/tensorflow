@@ -94,9 +94,6 @@ cc_library(
         ":grpc_util",
         ":journal",
         ":worker_cc_grpc_proto",
-        ":worker_proto_cc",
-        "//tensorflow/c:c_api_internal",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
@@ -152,6 +149,7 @@ cc_library(
     deps = [
         ":common_proto_cc",
         ":credentials_factory",
+        ":data_service",
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_proto_cc",
         ":grpc_util",

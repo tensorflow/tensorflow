@@ -59,6 +59,8 @@ class DataServiceDispatcherImpl {
                         RegisterWorkerResponse* response);
   Status WorkerUpdate(const WorkerUpdateRequest* request,
                       WorkerUpdateResponse* response);
+  Status GetDatasetDef(const GetDatasetDefRequest* request,
+                       GetDatasetDefResponse* response);
 
   /// Client-facing API.
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,

@@ -130,31 +130,36 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
     profiler_server.release();
   });
 
-  m.def("trace", [](const char* service_addr, const char* logdir,
-                    const char* worker_list, bool include_dataset_ops,
-                    int duration_ms, int num_tracing_attempts,
-                    py::dict options) {
-    tensorflow::Status status = ValidateHostPortPair(service_addr);
-    tensorflow::MaybeRaiseRegisteredFromStatus(status);
-    tensorflow::ProfileOptions opts = GetOptions(options);
-    opts.set_include_dataset_ops(include_dataset_ops);
-    status =
-        tensorflow::profiler::Trace(service_addr, logdir, worker_list,
-                                    duration_ms, num_tracing_attempts, opts);
-    tensorflow::MaybeRaiseRegisteredFromStatus(status);
-  });
+  m.def(
+      "trace",
+      [](const char* service_addr, const char* logdir, const char* worker_list,
+         bool include_dataset_ops, int duration_ms, int num_tracing_attempts,
+         py::dict options) {
+        tensorflow::Status status = ValidateHostPortPair(service_addr);
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
+        tensorflow::ProfileOptions opts = GetOptions(options);
+        opts.set_include_dataset_ops(include_dataset_ops);
+        status = tensorflow::profiler::Trace(service_addr, logdir, worker_list,
+                                             duration_ms, num_tracing_attempts,
+                                             opts);
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
+      },
+      py::call_guard<py::gil_scoped_release>());
 
-  m.def("monitor", [](const char* service_addr, int duration_ms,
-                      int monitoring_level, bool display_timestamp) {
-    tensorflow::Status status = ValidateHostPortPair(service_addr);
-    tensorflow::MaybeRaiseRegisteredFromStatus(status);
-    tensorflow::string content;
-    status = tensorflow::profiler::Monitor(service_addr, duration_ms,
-                                           monitoring_level, display_timestamp,
-                                           &content);
-    tensorflow::MaybeRaiseRegisteredFromStatus(status);
-    return content;
-  });
+  m.def(
+      "monitor",
+      [](const char* service_addr, int duration_ms, int monitoring_level,
+         bool display_timestamp) {
+        tensorflow::Status status = ValidateHostPortPair(service_addr);
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
+        tensorflow::string content;
+        status = tensorflow::profiler::Monitor(service_addr, duration_ms,
+                                               monitoring_level,
+                                               display_timestamp, &content);
+        tensorflow::MaybeRaiseRegisteredFromStatusWithGIL(status);
+        return content;
+      },
+      py::call_guard<py::gil_scoped_release>());
 
   m.def("xspace_to_trace_events", [](const py::bytes& serialized_xspace_proto) {
     tensorflow::string content;

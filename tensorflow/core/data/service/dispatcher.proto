@@ -28,6 +28,14 @@ message WorkerUpdateRequest {
 
 message WorkerUpdateResponse {}
 
+message GetDatasetDefRequest {
+  int64 dataset_id = 1;
+}
+
+message GetDatasetDefResponse {
+  DatasetDef dataset_def = 1;
+}
+
 message GetOrRegisterDatasetRequest {
   // The dataset to register.
   DatasetDef dataset = 1;
@@ -107,6 +115,9 @@ service DispatcherService {
 
   // Updates the dispatcher with information about the worker's state.
   rpc WorkerUpdate(WorkerUpdateRequest) returns (WorkerUpdateResponse);
+
+  // Gets a dataset defintion.
+  rpc GetDatasetDef(GetDatasetDefRequest) returns (GetDatasetDefResponse);
 
   // Registers a dataset with the server, or returns its id if it is already
   // registered.

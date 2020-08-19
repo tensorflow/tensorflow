@@ -66,6 +66,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -440,6 +441,19 @@ static LogicalResult Verify(BroadcastToOp op) {
   return success();
 }
 
+OpFoldResult BroadcastToOp::fold(ArrayRef<Attribute> operands) {
+  Value input = this->input();
+
+  // Fold broadcast if operand and result types are the same and all dimensions
+  // are statically known (no-op broadcast).
+  auto result_ty = getType().dyn_cast<ShapedType>();
+  if (result_ty && result_ty.hasStaticShape() && result_ty == input.getType()) {
+    return input;
+  }
+
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // CaseOp
 //===----------------------------------------------------------------------===//
@@ -467,7 +481,7 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
   auto call_op = rewriter.create<PartitionedCallOp>(
       op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
       /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-  PropagateDeviceAndInternalAttrs(op.getOperation(), call_op);
+  CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
   rewriter.replaceOp(op, call_op.getResults());
   return success();
 }
@@ -1954,7 +1968,7 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
     auto call_op = rewriter.create<typename decltype(op_type)::CallOp>(
         op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
         /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-    PropagateDeviceAndInternalAttrs(op.getOperation(), call_op);
+    CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
     rewriter.replaceOp(op, call_op.getResults());
   };
 

@@ -58,9 +58,9 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-filegroup(
+cc_library(
     name = "pywrap_required_hdrs",
-    srcs = [
+    textual_hdrs = [
         "c_api_internal.h",
         "c_api_macros.h",
         "conversion_macros.h",

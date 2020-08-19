@@ -212,6 +212,13 @@ void TpuTransferManager_ResetDevices(XLA_TransferManager* manager,
 
 XLA_ComputationPlacer* TpuComputationPlacer_New();
 void TpuComputationPlacer_Free(XLA_ComputationPlacer* placer);
+// `assignment` should be a preallocated array of size `replicate_count` *
+// `computation_count`. The assignment will be constructed as a 2D array where
+// assignment[replica][computation] = device_id.
+void TpuComputationPlacer_AssignDevices(XLA_ComputationPlacer* placer,
+                                        int replica_count,
+                                        int computation_count, int* assignment,
+                                        SE_Status* status);
 
 int TpuTopology_LogicalDevicesPerHost(SE_TpuTopology* tpu_topology,
                                       TpuCoreTypeEnum tpu_core_type);
@@ -382,6 +389,7 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_AssignDevices);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerChip);

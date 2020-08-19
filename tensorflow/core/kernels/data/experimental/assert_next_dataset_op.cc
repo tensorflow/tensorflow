@@ -97,8 +97,8 @@ class AssertNextDatasetOp::Dataset : public DatasetBase {
       }
       int n = tokens.size();
       for (size_t i = 0; i < dataset()->transformations_.size(); ++i) {
-        if (!MatchesAnyVersionRE(dataset()->transformations_[i],
-                                 tokens[n - 2 - i])) {
+        if (!MatchesAnyVersion(dataset()->transformations_[i],
+                               tokens[n - 2 - i])) {
           return errors::InvalidArgument("Asserted transformation matching ",
                                          dataset()->transformations_[i],
                                          " at offset ", i, " but encountered ",

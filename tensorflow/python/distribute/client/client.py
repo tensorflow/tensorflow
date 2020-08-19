@@ -31,8 +31,6 @@ import threading
 import weakref
 from absl import logging
 from six.moves import queue
-
-from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.client import metric_utils
@@ -42,8 +40,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import function as tf_function
 from tensorflow.python.eager import remote
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -943,13 +939,8 @@ class Client(object):
         scheduled function since the last time an error was thrown or since
         the beginning of the program.
     """
-    # TODO(b/160702436): Invoke `strategy.run` for user's function so it enters
-    # a `ReplicaContext` in a logically correct way.
-    with distribute_lib.ReplicaContext(
-        self._strategy,
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
-      with self._translate_parameter_server_failure():
-        return self.cluster.schedule(fn, args=args, kwargs=kwargs)
+    with self._translate_parameter_server_failure():
+      return self.cluster.schedule(fn, args=args, kwargs=kwargs)
 
   def join(self):
     """Blocks until all the scheduled functions have finished execution.

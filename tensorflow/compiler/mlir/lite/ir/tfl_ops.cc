@@ -1451,7 +1451,7 @@ LogicalResult UnpackOp::inferReturnTypes(
     DictionaryAttr attributes, RegionRange regions,
     SmallVectorImpl<Type> &inferredReturnTypes) {
   UnpackOpAdaptor op(operands, attributes);
-  // TODO(jpienaar): Refactor inferReturnTypes.
+  // TODO(jpienaar): Refactor verify
   if (failed(op.verify(loc.hasValue() ? *loc : UnknownLoc::get(context))))
     return failure();
 
@@ -1468,7 +1468,7 @@ LogicalResult UnpackOp::inferReturnTypes(
     return success();
   }
 
-  if (input_type.getNumElements() <= 0) {
+  if (input_type.hasStaticShape() && input_type.getNumElements() <= 0) {
     return emitOptionalError(
         loc, "number of elements in input shoule be larger than 0");
   }

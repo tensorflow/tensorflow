@@ -60,10 +60,10 @@ class ControlFlowTransformer(converter.Base):
   def _create_nonlocal_declarations(self, vars_):
     vars_ = set(vars_)
     results = []
-    global_vars = self.state[_Function].scope.globals & vars_
+    global_vars = self.state[_Function].scope.globals
 
     if global_vars:
-      results.append(gast.Global([str(v) for v in global_vars]))
+      results.append(gast.Global([str(v) for v in vars_]))
 
     nonlocal_vars = [
         v for v in vars_ if not v.is_composite() and v not in global_vars]

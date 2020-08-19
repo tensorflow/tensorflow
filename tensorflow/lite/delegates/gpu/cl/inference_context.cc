@@ -263,8 +263,9 @@ absl::Status InferenceContext::ConvertOperations(
     }
     GPUOperationsSubgraph gpu_subgraph;
     if (hints.Check(ModelHints::kAllowSpecialKernels) &&
-        GPUSubgraphFromGraph(creation_context, precision_, graph, node.id,
-                             tensor_descriptors, &consumed_nodes, &gpu_subgraph)
+        GPUSubgraphFromGraph(creation_context.device->info_, precision_, graph,
+                             node.id, tensor_descriptors, &consumed_nodes,
+                             &gpu_subgraph)
             .ok()) {
       // Mapping of subgraph (set of nodes) to GPU operations. Should happen
       // before straigtforward mapping.
@@ -501,7 +502,7 @@ absl::Status InferenceContext::AllocateMemoryForStrongShapes(
       graph_ids_to_strong_shape_tensors_[t.first] = id;
       const auto& it = strong_shape_tensors_.find(id);
       if (it == strong_shape_tensors_.end()) {
-        RETURN_IF_ERROR(CreateTensor(*context, device, shape, t.second,
+        RETURN_IF_ERROR(CreateTensor(*context, shape, t.second,
                                      &strong_shape_tensors_[id]));
       }
     }

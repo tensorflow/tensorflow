@@ -24,14 +24,6 @@ exports_files([
     "run_lit.sh",
 ])
 
-cc_library(
-    name = "DialectSymbolRegistry",
-    # strip_include_prefix does not apply to textual_hdrs.
-    hdrs = ["include/mlir/IR/DialectSymbolRegistry.def"],
-    strip_include_prefix = "include/mlir/IR",
-    textual_hdrs = ["include/mlir/IR/DialectSymbolRegistry.def"],
-)
-
 [
     gentbl(
         name = name + "IncGen",
@@ -75,7 +67,6 @@ cc_library(
     includes = ["include"],
     deps = [
         ":CallOpInterfacesIncGen",
-        ":DialectSymbolRegistry",
         ":InferTypeOpInterfaceIncGen",
         ":OpAsmInterfaceIncGen",
         ":RegionKindInterfaceIncGen",
@@ -128,10 +119,17 @@ cc_library(
 cc_library(
     name = "CAPIIR",
     srcs = [
+        "lib/CAPI/IR/AffineMap.cpp",
         "lib/CAPI/IR/IR.cpp",
+        "lib/CAPI/IR/StandardTypes.cpp",
     ],
     hdrs = [
+        "include/mlir-c/AffineMap.h",
         "include/mlir-c/IR.h",
+        "include/mlir-c/StandardTypes.h",
+        "include/mlir/CAPI/AffineMap.h",
+        "include/mlir/CAPI/IR.h",
+        "include/mlir/CAPI/Wrap.h",
     ],
     includes = ["include"],
     deps = [
@@ -967,9 +965,14 @@ cc_library(
             "lib/Support/MlirOptMain.cpp",
         ],
     ),
-    hdrs = glob([
-        "include/mlir/Support/*.h",
-    ]),
+    hdrs = glob(
+        [
+            "include/mlir/Support/*.h",
+        ],
+        exclude = [
+            "include/mlir/Support/MlirOptMain.h",
+        ],
+    ),
     includes = ["include"],
     deps = [
         "@llvm-project//llvm:Support",
@@ -2914,9 +2917,8 @@ cc_library(
     alwayslink = 1,
 )
 
-# TODO(jpienaar): This library should be removed.
-cc_library(
-    name = "MlirOptMain",
+cc_binary(
+    name = "mlir-opt",
     srcs = [
         "tools/mlir-opt/mlir-opt.cpp",
     ],
@@ -2926,22 +2928,11 @@ cc_library(
         ":Analysis",
         ":IR",
         ":MlirOptLib",
-        ":Pass",
-        ":Support",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_binary(
-    name = "mlir-opt",
-    deps = [
-        ":Analysis",
-        ":IR",
-        ":MlirOptLib",
-        ":MlirOptMain",
         ":OpenMPDialect",
+        ":Pass",
         ":QuantOps",
         ":SCFToGPUPass",
+        ":Support",
         ":Transforms",
         "@llvm-project//llvm:AllTargetsCodeGens",
         "@llvm-project//llvm:Support",

@@ -444,6 +444,14 @@ func @testReshapeNoOp(%arg0: tensor<2x4xf32>, %arg1: tensor<2xi32>) -> tensor<2x
   return %0 : tensor<2x4xf32>
 }
 
+// CHECK-LABEL: func @testBroadcastToNoOp
+func @testBroadcastToNoOp(%arg0: tensor<2x4xf32>, %arg1: tensor<2xi32>) -> tensor<2x4xf32> {
+  %0 = "tf.BroadcastTo"(%arg0, %arg1) : (tensor<2x4xf32>, tensor<2xi32>) -> tensor<2x4xf32>
+
+  // CHECK: return %arg0
+  return %0 : tensor<2x4xf32>
+}
+
 // CHECK-LABEL: func @testPackShapeComputation
 func @testPackShapeComputation(%arg0: tensor<?x1xf32>, %arg1: tensor<?x1x2xf32>, %arg2: tensor<*xf32>) -> (tensor<2xi32>, tensor<3xi32>, tensor<3xi32>,  tensor<3xi32>, tensor<3xi32>, tensor<*xi32>) {
   // Test dimensions sizes.
@@ -620,6 +628,15 @@ func @testLogicalNotOfLessEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>
 // CHECK: return %0
 }
 
+// CHECK-LABEL: testSizeFolding
+func @testSizeFolding(%arg0: tensor<3x5x7xf32>) -> tensor<i32> {
+  %0 = "tf.Size"(%arg0) : (tensor<3x5x7xf32>) -> tensor<i32>
+  return %0: tensor<i32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<105> : tensor<i32>} : () -> tensor<i32>
+// CHECK: return %0 : tensor<i32>
+}
+
 // CHECK-LABEL: testDivWithSqrtDivisor
 func @testDivWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Sqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>
@@ -725,10 +742,69 @@ func @addN(%arg0: tensor<*xf32>) -> tensor<*xf32> {
   return %0 : tensor<*xf32>
 }
 
-// CHECK-LABEL: func @ToBool_0DScalar
-func @ToBool_0DScalar(%arg0: tensor<i1>) -> tensor<i1> {
+// CHECK-LABEL: func @ToBool_0DScalarI1
+func @ToBool_0DScalarI1(%arg0: tensor<i1>) -> tensor<i1> {
   // CHECK: return %arg0
   %0 = "tf.ToBool"(%arg0) : (tensor<i1>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_0DScalarInt
+func @ToBool_0DScalarInt(%arg0: tensor<i32>) -> tensor<i1> {
+  // CHECK: [[Zero:%.*]] = "tf.Const"() {value = dense<0> : tensor<i32>}
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[Zero]])
+  // CHECK: return [[NE]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<i32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_0DScalarFloat
+func @ToBool_0DScalarFloat(%arg0: tensor<f32>) -> tensor<i1> {
+  // CHECK: [[Zero:%.*]] = "tf.Const"() {value = dense<0.000000e+00> : tensor<f32>} : () -> tensor<f32>
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[Zero]])
+  // CHECK: return [[NE]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<f32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_0DScalarString
+func @ToBool_0DScalarString(%arg0: tensor<!tf.string>) -> tensor<i1> {
+  // CHECK: [[EmptyStr:%.*]] = "tf.Const"() {value = dense<""> : tensor<!tf.string>} : () -> tensor<!tf.string>
+  // CHECK: [[NE:%.*]] = "tf.NotEqual"(%arg0, [[EmptyStr]]) {incompatible_shape_error = false} : (tensor<!tf.string>, tensor<!tf.string>) -> tensor<i1>
+  // CHECK: return [[NE]] : tensor<i1>
+  %0 = "tf.ToBool"(%arg0) : (tensor<!tf.string>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_1DTensor
+func @ToBool_1DTensor(%arg0: tensor<1xf32>) -> tensor<i1> {
+  // CHECK: [[Const:%.*]] = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+  // CHECK: return [[Const]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<1xf32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_1DTensorZeroDim
+func @ToBool_1DTensorZeroDim(%arg0: tensor<0xf32>) -> tensor<i1> {
+  // CHECK: [[Const:%.*]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  // CHECK: return [[Const]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<0xf32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_2DTensor
+func @ToBool_2DTensor(%arg0: tensor<1x5xf32>) -> tensor<i1> {
+  // CHECK: [[Const:%.*]] = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+  // CHECK: return [[Const]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<1x5xf32>) -> tensor<i1>
+  return %0 : tensor<i1>
+}
+
+// CHECK-LABEL: func @ToBool_2DTensorZeroDim
+func @ToBool_2DTensorZeroDim(%arg0: tensor<1x0xf32>) -> tensor<i1> {
+  // CHECK: [[Const:%.*]] = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  // CHECK: return [[Const]]
+  %0 = "tf.ToBool"(%arg0) : (tensor<1x0xf32>) -> tensor<i1>
   return %0 : tensor<i1>
 }
 

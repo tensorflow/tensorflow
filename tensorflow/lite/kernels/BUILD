@@ -757,6 +757,7 @@ cc_library(
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -774,6 +775,7 @@ cc_library(
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -791,6 +793,7 @@ cc_library(
     deps = [
         ":builtin_op_kernels_ruy_and_caching",
         "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],

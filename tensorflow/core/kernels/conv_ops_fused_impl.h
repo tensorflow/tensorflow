@@ -669,9 +669,7 @@ class FusedConv2DOp : public OpKernel {
   explicit FusedConv2DOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, InitConv2DParameters(context, &params_));
 
-    OP_REQUIRES_OK(context,
-                   context->GetAttribute("use_cudnn_on_gpu", &use_cudnn_));
-    use_cudnn_ &= CanUseCudnn();
+    OP_REQUIRES_OK(context, context->GetAttribute("use_cudnn_on_gpu", &use_cudnn_));
     cudnn_use_autotune_ = CudnnUseAutotune();
 
     using FCT = FusedComputationType;

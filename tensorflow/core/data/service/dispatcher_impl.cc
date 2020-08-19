@@ -19,6 +19,9 @@ limitations under the License.
 #include <tuple>
 #include <utility>
 
+#ifdef PLATFORM_GOOGLE
+#include "file/logging/log_lines.h"
+#endif
 #include "grpcpp/create_channel.h"
 #include "grpcpp/impl/codegen/server_context.h"
 #include "grpcpp/security/credentials.h"
@@ -93,7 +96,12 @@ DataServiceDispatcherImpl::DataServiceDispatcherImpl(
 
 Status DataServiceDispatcherImpl::Start() {
   mutex_lock l(mu_);
-  if (!config_.work_dir().empty()) {
+  if (config_.work_dir().empty()) {
+    if (config_.fault_tolerant_mode()) {
+      return errors::InvalidArgument(
+          "fault_tolerant_mode is True, but no work_dir is configured.");
+    }
+  } else {
     TF_RETURN_IF_ERROR(
         Env::Default()->RecursivelyCreateDir(DatasetsDir(config_.work_dir())));
   }
@@ -101,10 +109,6 @@ Status DataServiceDispatcherImpl::Start() {
     LOG(INFO) << "Running with fault_tolerant_mode=False. The dispatcher will "
                  "not be able to recover its state on restart.";
     return Status::OK();
-  }
-  if (config_.work_dir().empty()) {
-    return errors::InvalidArgument(
-        "fault_tolerant_mode is True, but no work_dir is configured.");
   }
   journal_writer_ = absl::make_unique<FileJournalWriter>(
       Env::Default(), JournalDir(config_.work_dir()));
@@ -169,10 +173,17 @@ Status DataServiceDispatcherImpl::RegisterWorker(
     TaskDef* task_def = response->add_tasks();
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, &dataset));
-    std::shared_ptr<const DatasetDef> dataset_def;
-    TF_RETURN_IF_ERROR(dataset_store_->Get(
-        DatasetKey(dataset->dataset_id, dataset->fingerprint), dataset_def));
-    *(task_def->mutable_dataset()) = *dataset_def;
+    std::string dataset_key =
+        DatasetKey(dataset->dataset_id, dataset->fingerprint);
+    if (config_.work_dir().empty()) {
+      std::shared_ptr<const DatasetDef> dataset_def;
+      TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
+      *task_def->mutable_dataset_def() = *dataset_def;
+    } else {
+      std::string path =
+          io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
+      task_def->set_path(path);
+    }
     task_def->set_dataset_id(job->dataset_id);
     task_def->set_job_id(job->job_id);
     task_def->set_task_id(task->task_id);
@@ -205,14 +216,31 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
   return Status::OK();
 }
 
+Status DataServiceDispatcherImpl::GetDatasetDef(
+    const GetDatasetDefRequest* request, GetDatasetDefResponse* response) {
+  mutex_lock l(mu_);
+  std::shared_ptr<const Dataset> dataset;
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), &dataset));
+  std::string key = DatasetKey(dataset->dataset_id, dataset->fingerprint);
+  std::shared_ptr<const DatasetDef> dataset_def;
+  TF_RETURN_IF_ERROR(dataset_store_->Get(key, dataset_def));
+  *response->mutable_dataset_def() = *dataset_def;
+  return Status::OK();
+}
+
 Status DataServiceDispatcherImpl::GetOrRegisterDataset(
     const GetOrRegisterDatasetRequest* request,
     GetOrRegisterDatasetResponse* response) {
   uint64 fingerprint;
-  TF_RETURN_IF_ERROR(HashGraph(request->dataset().graph(), &fingerprint));
+  const GraphDef& graph = request->dataset().graph();
+  TF_RETURN_IF_ERROR(HashGraph(graph, &fingerprint));
   mutex_lock l(mu_);
-  VLOG(4) << "Registering dataset graph: "
-          << request->dataset().graph().DebugString();
+#if defined(PLATFORM_GOOGLE)
+  VLOG_LINES(4,
+             absl::StrCat("Registering dataset graph: ", graph.DebugString()));
+#else
+  VLOG(4) << "Registering dataset graph: " << graph.DebugString();
+#endif
   std::shared_ptr<const Dataset> dataset;
   Status s = state_.DatasetFromFingerprint(fingerprint, &dataset);
   if (s.ok()) {
@@ -458,6 +486,8 @@ Status DataServiceDispatcherImpl::GetOrCreateWorkerStub(
 
 Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     LOCKS_EXCLUDED(mu_) {
+  VLOG(2) << "Started assigning task " << task->task_id << " to worker "
+          << task->worker_address;
   grpc::ClientContext client_ctx;
   ProcessTaskRequest req;
   TaskDef* task_def = req.mutable_task();
@@ -466,10 +496,17 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
     TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, &dataset));
-    std::shared_ptr<const DatasetDef> dataset_def;
-    TF_RETURN_IF_ERROR(dataset_store_->Get(
-        DatasetKey(dataset->dataset_id, dataset->fingerprint), dataset_def));
-    *task_def->mutable_dataset() = *dataset_def;
+    std::string dataset_key =
+        DatasetKey(dataset->dataset_id, dataset->fingerprint);
+    if (config_.work_dir().empty()) {
+      std::shared_ptr<const DatasetDef> dataset_def;
+      TF_RETURN_IF_ERROR(dataset_store_->Get(dataset_key, dataset_def));
+      *task_def->mutable_dataset_def() = *dataset_def;
+    } else {
+      std::string path =
+          io::JoinPath(DatasetsDir(config_.work_dir()), dataset_key);
+      task_def->set_path(path);
+    }
   }
   task_def->set_task_id(task->task_id);
   ProcessTaskResponse resp;
@@ -481,6 +518,8 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
         absl::StrCat("Failed to submit task to worker ", task->worker_address),
         s);
   }
+  VLOG(2) << "Finished assigning task " << task->task_id << " to worker "
+          << task->worker_address;
   return Status::OK();
 }
 

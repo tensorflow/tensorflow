@@ -122,6 +122,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::CrossOp>(),
     TypeID::get<TF::DataFormatDimMapOp>(),
     TypeID::get<TF::DataFormatVecPermuteOp>(),
+    TypeID::get<TF::DepthToSpaceOp>(),
     TypeID::get<TF::DepthwiseConv2dNativeBackpropFilterOp>(),
     TypeID::get<TF::DepthwiseConv2dNativeBackpropInputOp>(),
     TypeID::get<TF::DiagOp>(),
@@ -183,6 +184,12 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::PadOp>(),
     TypeID::get<TF::PlaceholderWithDefaultOp>(),
     TypeID::get<TF::PowOp>(),
+    // TODO(hinsu): Canonicalize QuantizeAndDequantize and
+    // QuantizeAndDequantizeV2 to QuantizeAndDequantizeV3 by converting
+    // attributes to operands.
+    TypeID::get<TF::QuantizeAndDequantizeOp>(),
+    TypeID::get<TF::QuantizeAndDequantizeV2Op>(),
+    TypeID::get<TF::QuantizeAndDequantizeV3Op>(),
     TypeID::get<TF::RFFT2DOp>(),
     TypeID::get<TF::RFFT3DOp>(),
     TypeID::get<TF::RGBToHSVOp>(),
@@ -211,6 +218,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SoftsignOp>(),
     TypeID::get<TF::SpaceToBatchNDOp>(),
     TypeID::get<TF::SpaceToBatchOp>(),
+    TypeID::get<TF::SpaceToDepthOp>(),
     TypeID::get<TF::SparseToDenseOp>(),
     TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),

@@ -3053,7 +3053,7 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
   let arguments = (ins
     TFL_TensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$input,
 
-    I32Attr:$num,
+    Confined<I32Attr, [IntNonNegative]>:$num,
     I32Attr:$axis
   );
 

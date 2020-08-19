@@ -511,9 +511,7 @@ class Conv2DOp : public BinaryOp<T> {
   explicit Conv2DOp(OpKernelConstruction* context) : BinaryOp<T>(context) {
     OP_REQUIRES_OK(context, InitConv2DParameters(context, &params_));
 
-    OP_REQUIRES_OK(context,
-                   context->GetAttribute("use_cudnn_on_gpu", &use_cudnn_));
-    use_cudnn_ &= CanUseCudnn();
+    OP_REQUIRES_OK(context, context->GetAttribute("use_cudnn_on_gpu", &use_cudnn_));
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
 

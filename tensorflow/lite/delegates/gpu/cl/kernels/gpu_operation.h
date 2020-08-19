@@ -68,6 +68,8 @@ struct CreationContext {
   CLContext* context;
   CLCommandQueue* queue;
   ProgramCache* cache;
+
+  const DeviceInfo& GetDeviceInfo() const { return device->info_; }
 };
 
 struct OperationDef {

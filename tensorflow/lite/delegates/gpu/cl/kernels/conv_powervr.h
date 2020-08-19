@@ -128,75 +128,68 @@ class ConvPowerVR : public GPUOperation {
   };
 
   ConvPowerVR(const OperationDef& definition,
-              const Convolution2DAttributes& attr, const CLDevice& device,
-              const BHWC* dst_shape = nullptr);
+              const Convolution2DAttributes& attr,
+              const DeviceInfo& device_info, const BHWC* dst_shape = nullptr);
   ConvPowerVR(const OperationDef& definition,
               const Convolution2DAttributes& attr, const BHWC& weights_shape,
-              const CLDevice& device, const BHWC* dst_shape = nullptr);
+              const DeviceInfo& device_info, const BHWC* dst_shape = nullptr);
   ConvPowerVR(const OperationDef& definition,
-              const FullyConnectedAttributes& attr, const CLDevice& device,
-              const BHWC* dst_shape = nullptr);
+              const FullyConnectedAttributes& attr,
+              const DeviceInfo& device_info, const BHWC* dst_shape = nullptr);
   explicit ConvPowerVR(const OperationDef& definition);
 
   void GenerateCode(const DeviceInfo& device_info);
 
   template <DataType T>
-  absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
-                          const tflite::gpu::Tensor<Linear, T>& biases,
-                          CLContext* context);
+  void UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                  const tflite::gpu::Tensor<Linear, T>& biases);
   template <DataType T>
-  absl::Status UploadDataForWinograd4x4To6x6(
-      const tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
-      CLContext* context);
+  void UploadDataForWinograd4x4To6x6(
+      const tflite::gpu::Tensor<OHWI, T>& weights);
 
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
   template <DataType T>
-  absl::Status UploadBias(const tflite::gpu::Tensor<Linear, T>& bias,
-                          CLContext* context);
+  void UploadBias(const tflite::gpu::Tensor<Linear, T>& bias);
 
-  friend absl::Status CreateConvPowerVR(const CreationContext& creation_context,
-                                        const OperationDef& definition,
-                                        const Convolution2DAttributes& attr,
-                                        ConvPowerVR* result,
-                                        const BHWC* dst_shape);
+  friend ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,
+                                       const OperationDef& definition,
+                                       const Convolution2DAttributes& attr,
+                                       const BHWC* dst_shape);
 
-  friend absl::Status CreateConvPowerVR(const CreationContext& creation_context,
-                                        const OperationDef& definition,
-                                        const FullyConnectedAttributes& attr,
-                                        ConvPowerVR* result,
-                                        const BHWC* dst_shape);
+  friend ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,
+                                       const OperationDef& definition,
+                                       const FullyConnectedAttributes& attr,
+                                       const BHWC* dst_shape);
 
-  friend absl::Status CreateConvPowerVRDynamicWeights(
-      const CreationContext& creation_context, const OperationDef& definition,
+  friend ConvPowerVR CreateConvPowerVRDynamicWeights(
+      const DeviceInfo& device_info, const OperationDef& definition,
       const Convolution2DAttributes& attr, const BHWC& weights_shape,
-      ConvPowerVR* result, const BHWC* dst_shape);
-
-  friend absl::Status CreateConvPowerVRWino4x4To6x6(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const Convolution2DAttributes& attr, ConvPowerVR* result,
       const BHWC* dst_shape);
 
-  ConvParams GuessBestParams(const CLDevice& device,
+  friend ConvPowerVR CreateConvPowerVRWino4x4To6x6(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const Convolution2DAttributes& attr, const BHWC* dst_shape);
+
+  ConvParams GuessBestParams(const DeviceInfo& device_info,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
                              const BHWC* dst_shape = nullptr);
-  ConvParams GuessBestParams(const CLDevice& device,
+  ConvParams GuessBestParams(const DeviceInfo& device_info,
                              const OperationDef& definition,
                              const Convolution2DAttributes& attr,
                              const BHWC& weights_shape,
                              const BHWC* dst_shape = nullptr);
-  ConvParams GuessBestParams(const CLDevice& device,
+  ConvParams GuessBestParams(const DeviceInfo& device_info,
                              const OperationDef& definition,
                              const FullyConnectedAttributes& attr,
                              const BHWC* dst_shape = nullptr);
-  ConvParams GuessBestParamsWinograd(const CLDevice& device,
+  ConvParams GuessBestParamsWinograd(const DeviceInfo& device_info,
                                      const OperationDef& definition,
                                      const Convolution2DAttributes& attr,
                                      const BHWC* dst_shape = nullptr);
-  ConvParams GuessBestParams(const CLDevice& device,
+  ConvParams GuessBestParams(const DeviceInfo& device_info,
                              const OperationDef& definition, int src_depth,
                              int dst_depth, bool x_kernel_is_1,
                              bool y_kernel_is_1,
@@ -213,31 +206,26 @@ class ConvPowerVR : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvPowerVR::UploadData(
-    const tflite::gpu::Tensor<OHWI, T>& weights,
-    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
-  RETURN_IF_ERROR(UploadWeights(weights, context));
-  RETURN_IF_ERROR(UploadBias(biases, context));
-  return absl::OkStatus();
+void ConvPowerVR::UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                             const tflite::gpu::Tensor<Linear, T>& biases) {
+  UploadWeights(weights);
+  UploadBias(biases);
 }
 
 template <DataType T>
-absl::Status ConvPowerVR::UploadDataForWinograd4x4To6x6(
-    const tflite::gpu::Tensor<OHWI, T>& weights, const CLDevice& device,
-    CLContext* context) {
+void ConvPowerVR::UploadDataForWinograd4x4To6x6(
+    const tflite::gpu::Tensor<OHWI, T>& weights) {
   tflite::gpu::Tensor<OHWI, T> wino_weights;
   RearrangeWeightsToWinograd4x4To6x6Weights(weights, &wino_weights);
-  RETURN_IF_ERROR(UploadWeights(wino_weights, context));
+  UploadWeights(wino_weights);
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> biases;
   biases.shape = Linear(weights.shape.o);
   biases.data.resize(weights.shape.o, 0.0f);
-  RETURN_IF_ERROR(UploadBias(biases, context));
-  return absl::OkStatus();
+  UploadBias(biases);
 }
 
 template <DataType T>
-absl::Status ConvPowerVR::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias,
-                                     CLContext* context) {
+void ConvPowerVR::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias) {
   BufferDescriptor desc;
   desc.element_type = conv_params_.weights_data_type;
   desc.element_size = 4;
@@ -264,12 +252,10 @@ absl::Status ConvPowerVR::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias,
   }
   args_.AddObject("biases",
                   absl::make_unique<BufferDescriptor>(std::move(desc)));
-  return absl::OkStatus();
 }
 
 template <DataType T>
-absl::Status ConvPowerVR::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
 
@@ -301,30 +287,28 @@ absl::Status ConvPowerVR::UploadWeights(
   }
   args_.AddObject("weights",
                   absl::make_unique<BufferDescriptor>(std::move(desc)));
-  return absl::OkStatus();
 }
 
-absl::Status CreateConvPowerVR(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const Convolution2DAttributes& attr,
-                               ConvPowerVR* result,
-                               const BHWC* dst_shape = nullptr);
+ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const Convolution2DAttributes& attr,
+                              const BHWC* dst_shape = nullptr);
 
-absl::Status CreateConvPowerVR(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const FullyConnectedAttributes& attr,
-                               ConvPowerVR* result,
-                               const BHWC* dst_shape = nullptr);
+ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const FullyConnectedAttributes& attr,
+                              const BHWC* dst_shape = nullptr);
 
-absl::Status CreateConvPowerVRDynamicWeights(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const Convolution2DAttributes& attr, const BHWC& weights_shape,
-    ConvPowerVR* result, const BHWC* dst_shape = nullptr);
+ConvPowerVR CreateConvPowerVRDynamicWeights(const DeviceInfo& device_info,
+                                            const OperationDef& definition,
+                                            const Convolution2DAttributes& attr,
+                                            const BHWC& weights_shape,
+                                            const BHWC* dst_shape = nullptr);
 
-absl::Status CreateConvPowerVRWino4x4To6x6(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const Convolution2DAttributes& attr, ConvPowerVR* result,
-    const BHWC* dst_shape = nullptr);
+ConvPowerVR CreateConvPowerVRWino4x4To6x6(const DeviceInfo& device_info,
+                                          const OperationDef& definition,
+                                          const Convolution2DAttributes& attr,
+                                          const BHWC* dst_shape = nullptr);
 
 }  // namespace cl
 }  // namespace gpu

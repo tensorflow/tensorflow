@@ -425,9 +425,7 @@ class Conv2DBackpropInputOp : public OpKernel {
     OP_REQUIRES_OK(context, CheckValidPadding(padding_, explicit_paddings_,
                                               /*num_dims=*/4, data_format_));
 
-    OP_REQUIRES_OK(context,
-                   context->GetAttribute("use_cudnn_on_gpu", &use_cudnn_));
-    use_cudnn_ &= CanUseCudnn();
+    OP_REQUIRES_OK(context, context->GetAttribute("use_cudnn_on_gpu", &use_cudnn_));
     cudnn_use_autotune_ = CudnnUseAutotune();
 
     if (std::is_same<Device, CPUDevice>::value ||

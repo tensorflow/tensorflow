@@ -54,6 +54,56 @@ std::string ProcessingModeToString(ProcessingMode mode) {
   }
 }
 
+Status DataServiceDispatcherClient::RegisterWorker(
+    const std::string& worker_address, std::vector<TaskDef>& tasks) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  RegisterWorkerRequest req;
+  req.set_worker_address(worker_address);
+  RegisterWorkerResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->RegisterWorker(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to register worker", status);
+  }
+  for (const auto& task : resp.tasks()) {
+    tasks.push_back(task);
+  }
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::WorkerUpdate(
+    const std::string& worker_address,
+    std::vector<TaskProgress>& task_progress) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  WorkerUpdateRequest req;
+  req.set_worker_address(worker_address);
+  for (const auto& update : task_progress) {
+    *(req.add_updates()) = update;
+  }
+  WorkerUpdateResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->WorkerUpdate(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to send worker update", status);
+  }
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::GetDatasetDef(int64 dataset_id,
+                                                  DatasetDef& dataset_def) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  GetDatasetDefRequest req;
+  req.set_dataset_id(dataset_id);
+  GetDatasetDefResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->GetDatasetDef(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to get dataset def", status);
+  }
+  dataset_def = resp.dataset_def();
+  return Status::OK();
+}
+
 Status DataServiceDispatcherClient::RegisterDataset(GraphDef dataset,
                                                     int64* dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
@@ -163,6 +213,10 @@ Status DataServiceDispatcherClient::GetWorkers(
 }
 
 Status DataServiceDispatcherClient::EnsureInitialized() {
+  mutex_lock l(mu_);
+  if (stub_) {
+    return Status::OK();
+  }
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
@@ -191,6 +245,10 @@ Status DataServiceWorkerClient::GetElement(int64 task_id,
 }
 
 Status DataServiceWorkerClient::EnsureInitialized() {
+  mutex_lock l(mu_);
+  if (stub_) {
+    return Status::OK();
+  }
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateClientCredentials(protocol_, &credentials));

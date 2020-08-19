@@ -24,6 +24,7 @@ import threading
 from absl import logging
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.client import client
@@ -477,6 +478,40 @@ class LimitedClosureQueueErrorTest(ErrorReportingTest):
 
     with cls.client.context():
       cls.iteration = variables.Variable(initial_value=0.0)
+
+
+class StrategyRunTest(test.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super(StrategyRunTest, cls).setUpClass()
+    cls.client = make_client(num_workers=1, num_ps=1)
+
+  def testStrategyRun(self):
+    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    with self.client._strategy.scope():
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      v = variables.Variable(initial_value=1)
+
+      @def_function.function
+      def worker_fn(input_tensor):
+
+        def replica_fn(input_tensor):
+          # Within `replica_fn`, it has to be in a replica context.
+          self.assertFalse(
+              distribution_strategy_context.in_cross_replica_context())
+          return input_tensor + v
+
+        return self.client._strategy.run(replica_fn, args=(input_tensor,))
+
+      # Asserting scheduling in scope has the expected behavior.
+      result = self.client.schedule(worker_fn, args=(constant_op.constant(3),))
+      self.assertIsInstance(result, client.RemoteValue)
+      self.assertEqual(result.fetch(), 4)
+
+    # Asserting scheduling out of scope has the expected behavior.
+    result = self.client.schedule(worker_fn, args=(constant_op.constant(3),))
+    self.assertEqual(result.fetch(), 4)
 
 
 if __name__ == "__main__":

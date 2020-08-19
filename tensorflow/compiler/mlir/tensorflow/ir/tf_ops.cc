@@ -116,7 +116,7 @@ bool HasSingleUse(FuncOp func) {
 
 struct TFConstantFoldInterface : public DialectFoldInterface {
   TFConstantFoldInterface(Dialect *dialect) : DialectFoldInterface(dialect) {}
-  LogicalResult Fold(Operation *op, ArrayRef<Attribute> operands,
+  LogicalResult fold(Operation *op, ArrayRef<Attribute> operands,
                      SmallVectorImpl<OpFoldResult> &results) const final {
     return TensorFlowDialect::constantFold(op, operands, results);
   }
@@ -358,16 +358,12 @@ Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
 
 void TensorFlowDialect::printAttribute(Attribute attr,
                                        DialectAsmPrinter &os) const {
-  switch (attr.getKind()) {
-    case AttrKind::SHAPE:
-      PrintShapeAttr(attr.cast<ShapeAttr>(), os);
-      break;
-    case AttrKind::FUNC:
-      PrintFuncAttr(attr.cast<FuncAttr>(), os);
-      break;
-    default:
-      llvm_unreachable("unexpected tensorflow attribute kind");
-  }
+  if (auto shape_attr = attr.dyn_cast<ShapeAttr>())
+    PrintShapeAttr(shape_attr, os);
+  else if (auto func_attr = attr.dyn_cast<FuncAttr>())
+    PrintFuncAttr(func_attr, os);
+  else
+    llvm_unreachable("unexpected tensorflow attribute type");
 }
 
 // Parses a type registered to this dialect.
@@ -376,32 +372,18 @@ Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
   if (parser.parseKeyword(&data)) return Type();
 
   Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
-  auto typeKind = llvm::StringSwitch<unsigned>(data)
+
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  .Case(name, TensorFlowTypes::enumerant)
+  if (data == name) return tftype##Type::get(getContext());
 // Custom TensorFlow types are handled separately at the end as they do partial
 // match.
 #define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-                      .StartsWith("resource", TensorFlowTypes::RESOURCE)
-                      .StartsWith("variant", TensorFlowTypes::VARIANT)
-                      .Default(0);
-  switch (typeKind) {
-    default:
-      return (emitError(loc, "unknown TensorFlow type: " + data), nullptr);
 
-#define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  case TensorFlowTypes::enumerant:              \
-    return tftype##Type::get(getContext());
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
-// NOLINTNEXTLINE
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-    case TensorFlowTypes::RESOURCE:
-      return ParseResourceType(parser, loc);
-    case TensorFlowTypes::VARIANT:
-      return ParseVariantType(parser, loc);
-  }
+  if (data.startswith("resource")) return ParseResourceType(parser, loc);
+  if (data.startswith("variant")) return ParseVariantType(parser, loc);
+  return (emitError(loc, "unknown TensorFlow type: " + data), nullptr);
 }
 
 // Prints a type registered to this dialect.
