@@ -275,8 +275,9 @@ def get_all_tested_commits():
         earliest_commit, PRETTY_EARLY, n=1)[0].split("\t")
 
     all_range = "{commit}..HEAD".format(commit=earliest_commit)
-    all_commits = ",".join(git_pretty(all_range, PRETTY_COMMIT))
-    all_changelists = ",".join(git_pretty(all_range, PRETTY_CL))
+    # Reversed: convert to chronological
+    all_commits = ",".join(reversed(git_pretty(all_range, PRETTY_COMMIT)))
+    all_changelists = ",".join(reversed(git_pretty(all_range, PRETTY_CL)))
 
     return [
         earliest_commit, early_cl, early_author_date, early_commit_date,
