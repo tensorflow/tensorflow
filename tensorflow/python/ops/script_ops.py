@@ -81,7 +81,7 @@ class EagerFunc(object):
       is_grad_func: Whether this EagerFunc is the gradient of another
         EagerPyFunc.
       use_tape_cache: (Optional.) Whether to cache `func` in the `tape_cache`.
-        NOTE(lithuak): see the note for `_eager_py_func`.
+        For additional information, see description of `_eager_py_func`.
         This parameter should be removed once the #35084 issue is fixed.
     """
     self._func = func
@@ -376,15 +376,36 @@ def _EagerPyFuncGrad(op, *dy):
         is_grad_func=True)
 
 
-# NOTE(lithuak): this function as a layer of indirection was added with one
-# specific purpose: as a workaround for github issue #35084.
-# It does all the same as `eager_py_func` used to do with one difference:
-# it can be used to instruct underlying EagerFunc not to use `tape_cache`
-# to avoid memory leak. When the issue #35084 is fixed - this function should
-# be removed, its body should be moved back to become the body of
-# `eager_py_func` and all the call sites should be reverted to
-# using `eager_py_func` without `use_tape_cache` argument of any value.
 def _eager_py_func(func, inp, Tout, name=None, use_tape_cache=True):
+  """Wraps a python function into a TensorFlow op that executes it eagerly.
+
+  This function is the internal implementation for `eager_py_func`, see the
+  `eager_py_func` docstring for the full description.
+
+  Note: this function as a layer of indirection was added with one
+  specific purpose: as a workaround for github issue #35084.
+  It does all the same as `eager_py_func` used to do with one difference:
+  it can be used to instruct underlying EagerFunc not to use `tape_cache`
+  to avoid memory leak. When the issue #35084 is fixed - this function should
+  be removed, its body should be moved back to become the body of
+  `eager_py_func` and all the call sites should be reverted to
+  using `eager_py_func` without `use_tape_cache` argument of any value.
+
+  Args:
+    func: A Python function which accepts a list of `Tensor` objects having
+      element types that match the corresponding `tf.Tensor` objects in `inp`
+      and returns a list of `Tensor` objects (or a single `Tensor`, or `None`)
+      having element types that match the corresponding values in `Tout`.
+    inp: A list of `Tensor` objects.
+    Tout: A list or tuple of tensorflow data types or a single tensorflow data
+      type if there is only one, indicating what `func` returns; an empty list
+      if no value is returned (i.e., if the return value is `None`).
+    name: A name for the operation (optional).
+
+  Returns:
+    A list of `Tensor` or a single `Tensor` which `func` computes; an empty list
+    if `func` returns None.
+  """
   if ops.executing_eagerly_outside_functions():
     with ops.device(context.context().host_address_space()):
       return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True,
