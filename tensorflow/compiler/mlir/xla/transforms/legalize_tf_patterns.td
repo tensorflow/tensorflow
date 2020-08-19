@@ -681,5 +681,6 @@ def : Pat<(TF_XlaGatherOp $operand, $start_indices, (TF_ConstOp $slice_sizes),
                           $dimension_numbers, $indices_are_sorted),
           (HLO_GatherOp $operand, $start_indices,
                         (ToGatherDimNumsAttr $dimension_numbers),
-                        $slice_sizes, $indices_are_sorted),
+                        (CastElementsToI64Elements $slice_sizes),
+                        $indices_are_sorted),
           [(HasValidGatherDims $dimension_numbers)]>;
