@@ -962,12 +962,12 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       device.
     inference_input_type: Data type of the input layer. Note that integer types
       (tf.int8 and tf.uint8) are currently only supported for post training
-      integer quantization. (default tf.float32, must be in {tf.float32,
-      tf.int8, tf.uint8})
+      integer quantization and quantization aware training. (default tf.float32,
+      must be in {tf.float32, tf.int8, tf.uint8})
     inference_output_type: Data type of the output layer. Note that integer
       types (tf.int8 and tf.uint8) are currently only supported for post
-      training integer quantization. (default tf.float32, must be in
-      {tf.float32, tf.int8, tf.uint8})
+      training integer quantization and quantization aware training. (default
+      tf.float32, must be in {tf.float32, tf.int8, tf.uint8})
     experimental_new_converter: Experimental flag, subject to change. Enables
       MLIR-based conversion instead of TOCO conversion. (default True)
 
