@@ -931,9 +931,13 @@ StatusOr<HloInstruction*> PartitionDotGroupOnNonContracting(
         AlignGroupsWith(GroupShardingOnDims(other.sharding(), other_group_dims),
                         output_grouped, /*ignore_group_order=*/true);
     other = other.Reshard(UngroupSharding(other_grouped));
-    // TODO(yuanzx): Use reshard to replicate when ready.
     partially_replicated_other =
-        other.ReplicatePartial(other_grouped.group_dims);
+        other
+            .Reshard(hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(
+                other.sharding(), other_grouped.group_dims))
+            .hlo();
+    top_level_sharding_to_reset.emplace_back(
+        partially_replicated_other, partially_replicated_other->sharding());
     partially_replicated_other->set_sharding(other_grouped.sharding);
   }
   auto other_p = PartitionedHlo(partially_replicated_other, other.base_shape(),
