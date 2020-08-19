@@ -690,6 +690,10 @@ class HloDynamicReshapeInstruction : public HloInstruction {
     return absl::MakeSpan(operands()).subspan(1, operand_count());
   }
 
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
   // Returns the input dim size dimension, which is operands[1+i]
   HloInstruction* dim_sizes(int64 i) const { return operands()[i + 1]; }
 };

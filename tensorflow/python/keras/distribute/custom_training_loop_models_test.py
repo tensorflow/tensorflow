@@ -304,7 +304,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     x, y = create_lstm_data()
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
-    dataset = dataset.batch(batch_size, drop_remainder=True)
+    dataset = dataset.batch(batch_size)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():
