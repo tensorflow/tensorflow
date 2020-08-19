@@ -294,7 +294,7 @@ class IteratorTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     with self.cached_session() as sess:
       with self.assertRaisesRegex(errors.FailedPreconditionError,
-                                   "iterator has not been initialized"):
+                                  "iterator has not been initialized"):
         sess.run(get_next)
 
   @combinations.generate(test_base.graph_only_combinations())
