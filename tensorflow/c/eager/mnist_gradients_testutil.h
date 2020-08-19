@@ -126,6 +126,11 @@ Status MatMulModel(AbstractContext* ctx,
                             absl::Span<AbstractTensorHandle*> outputs,
                             const GradientRegistry& registry);
 
+Status MulModel(AbstractContext* ctx,
+                            absl::Span<AbstractTensorHandle* const> inputs,
+                            absl::Span<AbstractTensorHandle*> outputs,
+                            const GradientRegistry& registry);
+
 // Updates the weights for a neural network given incoming grads and learning
 // rate
 Status UpdateWeights(AbstractContext* ctx,

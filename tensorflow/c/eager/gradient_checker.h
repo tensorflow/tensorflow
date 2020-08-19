@@ -38,7 +38,17 @@ using Model = std::function<Status(
     AbstractContext*, absl::Span<AbstractTensorHandle* const>,
     absl::Span<AbstractTensorHandle*>, const GradientRegistry&)>;
 
+/** Returns numerical grad inside `dtheta_approx` given `forward` model and parameter
+  * specified by `gradIndex`
+  *
+  * `use_function` indicates whether to use graph mode(true) or eager(false)
+  *
+  * `is_scalar_out` should be true when `forward` returns a scalar TensorHandle; 
+  *  else GradientCheck will reduce_sum the tensor to get a scalar to estimate
+  *  the gradient with. Default is false. 
+  */
 Status GradientCheck(AbstractContext* ctx, Model forward, 
                      std::vector<AbstractTensorHandle*> inputs,
                      float* dtheta_approx, 
-                     int gradIndex, bool use_function);
+                     int gradIndex, bool use_function,
+                     bool is_scalar_out=false);

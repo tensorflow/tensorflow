@@ -121,7 +121,7 @@ void Range(int data[], int start, int end, int step = 1) {
 }
 
 // Returns AbstractTensorHandlePtr containing [0, ..., n-1]
-AbstractTensorHandlePtr GetRangeTensorHandleUtil(AbstractContext* ctx, int n) {
+AbstractTensorHandlePtr GetRangeTensorHandleUtil(AbstractContext* ctx, int n) { 
   int vals[n];
   int64_t vals_shape[] = {n};
   Range(vals, 0, n);
@@ -137,10 +137,8 @@ void GetDims(const TF_Tensor* t, int64_t* out_dims) {
   }
 }
 
-// Runs given forward model and reduce_sums it to numerically calculate gradient
-// on a scalar value.
 Status RunModelAndSum(AbstractContext* ctx, Model forward,
-                      std::vector<AbstractTensorHandle*> inputs,
+                      absl::Span<AbstractTensorHandle*> inputs,
                       absl::Span<AbstractTensorHandle*> outputs, int num_dims,
                       bool use_function) {
   GradientRegistry registry;
@@ -150,10 +148,10 @@ Status RunModelAndSum(AbstractContext* ctx, Model forward,
   AbstractTensorHandlePtr sum_dims = GetRangeTensorHandleUtil(ctx, num_dims);
 
   // Run the model
-  Status s = RunModel(forward, ctx, absl::MakeSpan(inputs),
+  Status s = RunModel(forward, ctx, inputs,
                       absl::MakeSpan(model_outputs), use_function, registry);
   AbstractTensorHandle* f_toSum = model_outputs[0];
-
+  
   // Reduce sum the output on all dimensions
   std::vector<AbstractTensorHandle*> sum_inputs(2);
   sum_inputs[0] = f_toSum;
@@ -161,26 +159,42 @@ Status RunModelAndSum(AbstractContext* ctx, Model forward,
 
   s = ops::Sum(ctx, absl::MakeSpan(sum_inputs), absl::MakeSpan(model_outputs),
                "sum_output");
-
   outputs[0] = model_outputs[0];
-
   return Status::OK();
 }
+
+// Runs model as is if output is a scalar,
+// else sums the output tensor before returning
+Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
+                      absl::Span<AbstractTensorHandle*> inputs,
+                      absl::Span<AbstractTensorHandle*> outputs, int num_dims,
+                      bool use_function, bool is_scalar_out) { 
+    Status s;
+    if(is_scalar_out){
+      GradientRegistry registry; 
+      s = RunModel(forward, ctx, inputs,
+                   outputs, use_function, registry); 
+    } else {
+      s = RunModelAndSum(ctx, forward, inputs, outputs,
+                         num_dims, use_function);  
+    }
+    return Status::OK();                 
+  }
 // ========================= End Util Functions==============================
 
-// Returns numerical grad inside dtheta_approx given forward model and parameter
-// to check
 Status GradientCheck(AbstractContext* ctx, Model forward,
                      std::vector<AbstractTensorHandle*> inputs,
-                     float* dtheta_approx, int gradIndex, bool use_function) {
+                     float* dtheta_approx, int gradIndex, 
+                     bool use_function, bool is_scalar_out) {
   Status s;
+  GradientRegistry registry;
   AbstractTensorHandle* theta =
       inputs[gradIndex];  // parameter we are grad checking
 
   // Convert from AbstractTensor to TF_Tensor
   TF_Tensor* theta_tensor;
   s = GetValue(theta, &theta_tensor);
-
+  
   // Get number of elements and fill data
   int num_elems = TF_TensorElementCount(theta_tensor);
   float theta_data[num_elems] = {0};
@@ -195,7 +209,6 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
   // Initialize data structures
   float thetaPlus_data[num_elems];
   float thetaMinus_data[num_elems];
-  // float dtheta_approx[num_elems];
   std::vector<AbstractTensorHandle*> f_outputs(1);
 
   // Numerical Grad Check
@@ -217,16 +230,16 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
     AbstractTensorHandlePtr thetaMinus =
         GetTensorHandleUtilFloat(ctx, thetaMinus_data, theta_dims, num_dims);
 
-    // Get f(theta + eps)
+    // Get f(theta + eps):
     inputs[gradIndex] = thetaPlus.get();
-    s = RunModelAndSum(ctx, forward, inputs, absl::MakeSpan(f_outputs),
-                       num_dims, use_function);
+    s = RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs), absl::MakeSpan(f_outputs),
+                       num_dims, use_function, is_scalar_out);  
     AbstractTensorHandle* fPlus = f_outputs[0];
 
-    // Get f(theta - eps)
+    // Get f(theta - eps): 
     inputs[gradIndex] = thetaMinus.get();
-    s = RunModelAndSum(ctx, forward, inputs, absl::MakeSpan(f_outputs),
-                       num_dims, use_function);
+    s = RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs), absl::MakeSpan(f_outputs),
+                       num_dims, use_function, is_scalar_out);  
     AbstractTensorHandle* fMinus = f_outputs[0];
 
     // Take Difference of both estimates: (f(x + eps) - f(x - eps))
