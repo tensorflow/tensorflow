@@ -55,14 +55,13 @@ class DepthwiseConv3x3 : public GPUOperation {
                             bool weights_are_buffer, bool local_mem_uploads,
                             const DeviceInfo& device_info);
   template <DataType T>
-  absl::Status UploadWeightsAndBiases(
-      const tflite::gpu::Tensor<OHWI, T>& weights,
-      const tflite::gpu::Tensor<Linear, T>& biases, bool weights_are_buffer,
-      CLContext* context);
+  void UploadWeightsAndBiases(const tflite::gpu::Tensor<OHWI, T>& weights,
+                              const tflite::gpu::Tensor<Linear, T>& biases,
+                              bool weights_are_buffer);
 
-  friend absl::Status CreateDepthwiseConv3x3(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const DepthwiseConvolution2DAttributes& attr, DepthwiseConv3x3* result);
+  friend DepthwiseConv3x3 CreateDepthwiseConv3x3(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const DepthwiseConvolution2DAttributes& attr);
 
   template <DataType S, typename T>
   void RearrangeWeightsAndBiasesData(
@@ -77,10 +76,9 @@ class DepthwiseConv3x3 : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status DepthwiseConv3x3::UploadWeightsAndBiases(
+void DepthwiseConv3x3::UploadWeightsAndBiases(
     const tflite::gpu::Tensor<OHWI, T>& weights,
-    const tflite::gpu::Tensor<Linear, T>& biases, bool weights_are_buffer,
-    CLContext* context) {
+    const tflite::gpu::Tensor<Linear, T>& biases, bool weights_are_buffer) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   int texture_width = 10;  // 3x3 kernel + 1 bias
   int texture_height = src_depth;
@@ -115,8 +113,6 @@ absl::Status DepthwiseConv3x3::UploadWeightsAndBiases(
     args_.AddObject("weights",
                     absl::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
-
-  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
@@ -154,9 +150,9 @@ void DepthwiseConv3x3::RearrangeWeightsAndBiasesData(
 
 bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr);
 
-absl::Status CreateDepthwiseConv3x3(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr, DepthwiseConv3x3* result);
+DepthwiseConv3x3 CreateDepthwiseConv3x3(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

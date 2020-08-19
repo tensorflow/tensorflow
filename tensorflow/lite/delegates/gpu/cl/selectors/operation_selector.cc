@@ -237,7 +237,9 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::DEPTHWISE_CONVOLUTION: {
       auto attr = absl::any_cast<DepthwiseConvolution2DAttributes>(
           node.operation.attributes);
-      return SelectDWConvolution(attr, creation_context, op_def, gpu_op);
+      *gpu_op =
+          SelectDWConvolution(attr, creation_context.GetDeviceInfo(), op_def);
+      return absl::OkStatus();
     }
     case OperationType::FULLY_CONNECTED: {
       auto attr =

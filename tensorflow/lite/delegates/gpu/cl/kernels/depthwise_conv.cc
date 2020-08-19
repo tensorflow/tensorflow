@@ -306,42 +306,38 @@ int3 DepthwiseConvolution::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status CreateDepthwiseConvolution(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr,
-    DepthwiseConvolution* result) {
-  bool weights_are_buffer = creation_context.device->IsMali();
-  *result = DepthwiseConvolution(definition, attr, weights_are_buffer);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+DepthwiseConvolution CreateDepthwiseConvolution(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr) {
+  bool weights_are_buffer = device_info.IsMali();
+  DepthwiseConvolution result(definition, attr, weights_are_buffer);
+  result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;
   desc.storage_type = weights_are_buffer ? LinearStorageType::BUFFER
                                          : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
-  result->args_.AddObject(
+  result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
-  return absl::OkStatus();
+  return result;
 }
 
-absl::Status CreateDepthwiseConvolution(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const DepthwiseConvolution3DAttributes& attr,
-    DepthwiseConvolution* result) {
-  bool weights_are_buffer = creation_context.device->IsMali();
-  *result = DepthwiseConvolution(definition, attr, weights_are_buffer);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+DepthwiseConvolution CreateDepthwiseConvolution(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const DepthwiseConvolution3DAttributes& attr) {
+  bool weights_are_buffer = device_info.IsMali();
+  DepthwiseConvolution result(definition, attr, weights_are_buffer);
+  result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;
   desc.storage_type = weights_are_buffer ? LinearStorageType::BUFFER
                                          : LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
-  result->args_.AddObject(
+  result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
-  return absl::OkStatus();
+  return result;
 }
 
 }  // namespace cl
