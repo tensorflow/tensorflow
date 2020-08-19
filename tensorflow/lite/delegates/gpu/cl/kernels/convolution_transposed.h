@@ -52,16 +52,14 @@ class ConvolutionTransposed : public GPUOperation {
   ConvolutionTransposed& operator=(const ConvolutionTransposed&) = delete;
 
  private:
-  friend absl::Status CreateConvolutionTransposed(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const ConvolutionTransposedAttributes& attr,
-      ConvolutionTransposed* result);
+  friend ConvolutionTransposed CreateConvolutionTransposed(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
   explicit ConvolutionTransposed(const OperationDef& definition,
                                  const ConvolutionTransposedAttributes& attr,
                                  const DeviceInfo& device_info);
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
@@ -82,8 +80,8 @@ class ConvolutionTransposed : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvolutionTransposed::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+void ConvolutionTransposed::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int dst_depth =
       AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.z);
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
@@ -146,8 +144,6 @@ absl::Status ConvolutionTransposed::UploadWeights(
     args_.AddObject("weights3",
                     absl::make_unique<Texture2DDescriptor>(std::move(desc3)));
   }
-
-  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
@@ -202,9 +198,9 @@ void ConvolutionTransposed::RearrangeWeightsData(
   }
 }
 
-absl::Status CreateConvolutionTransposed(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr, ConvolutionTransposed* result);
+ConvolutionTransposed CreateConvolutionTransposed(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

@@ -401,23 +401,20 @@ void ConvolutionTransposed3D::GetPossibleKernelWorkGroups(
                             work_groups);
 }
 
-absl::Status CreateConvolutionTransposed3D(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposed3DAttributes& attr,
-    ConvolutionTransposed3D* result) {
-  *result =
-      ConvolutionTransposed3D(definition, attr, creation_context.device->info_);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+ConvolutionTransposed3D CreateConvolutionTransposed3D(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposed3DAttributes& attr) {
+  ConvolutionTransposed3D result(definition, attr, device_info);
+  result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;
   desc.storage_type =
       DeduceLinearStorageType(definition.GetPrimaryStorageType());
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(attr.bias);
-  result->args_.AddObject(
+  result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
-  return absl::OkStatus();
+  return result;
 }
 
 }  // namespace cl

@@ -231,8 +231,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::CONVOLUTION_TRANSPOSED: {
       auto attr = absl::any_cast<ConvolutionTransposedAttributes>(
           node.operation.attributes);
-      return SelectConvolutionTransposed(attr, creation_context, op_def,
-                                         gpu_op);
+      return SelectConvolutionTransposed(attr, creation_context.GetDeviceInfo(),
+                                         op_def, gpu_op);
     }
     case OperationType::DEPTHWISE_CONVOLUTION: {
       auto attr = absl::any_cast<DepthwiseConvolution2DAttributes>(
