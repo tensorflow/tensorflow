@@ -2051,6 +2051,15 @@ func @testConst() -> tensor<f32> {
 
 // -----
 
+// Test invalid tf.ToBool
+func @testInvalidToBool(%arg0: tensor<i32>) -> tensor<1xi1> {
+  // expected-error @+1 {{op result #0 must be 0D tensor of 1-bit signless integer values, but got 'tensor<1xi1>'}}
+  %0 = "tf.ToBool"(%arg0) : (tensor<i32>) -> tensor<1xi1>
+  return %0 : tensor<1xi1>
+}
+
+// -----
+
 // Test valid tf.Transpose
 // CHECK-LABEL: testTranspose
 func @testTranspose(tensor<2x3xf32>) -> tensor<3x2xf32> {

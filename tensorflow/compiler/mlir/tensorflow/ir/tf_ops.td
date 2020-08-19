@@ -1216,7 +1216,7 @@ as true/false for a branch condition.
   );
 
   let results = (outs
-    I1Tensor:$output
+    0DTensorOf<[I1]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
