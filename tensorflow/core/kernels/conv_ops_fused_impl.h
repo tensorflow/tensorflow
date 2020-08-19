@@ -57,13 +57,13 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
-#include "third_party/gpus/cudnn/cudnn.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/util/proto/proto_utils.h"
 #include "tensorflow/stream_executor/gpu/gpu_asm_opts.h"
 #include "tensorflow/stream_executor/gpu/redzone_allocator.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
+#include "third_party/gpus/cudnn/cudnn.h"
 #endif  // GOOGLE_CUDA
 
 namespace tensorflow {
@@ -185,14 +185,26 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 
     BiasAddArgs<T> bias_add_args;
     if (BiasAddArgs<T>::IsSupported(fusion)) {
-      OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args));
+      if (fusion == FusedComputationType::kBiasAddWithLeakyRelu) {
+        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args,
+                                                &fusion_args.leakyrelu_alpha));
+      } else {
+        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args));
+      }
     }
 
     FusedBatchNormArgs<T> fused_batch_norm_args;
     if (FusedBatchNormArgs<T>::IsSupported(fusion)) {
-      OP_REQUIRES_OK(context,
-                     InitFusedBatchNormArgs(context, fusion_args.epsilon,
-                                            &fused_batch_norm_args));
+      if (fusion == FusedComputationType::kFusedBatchNormWithLeakyRelu) {
+        OP_REQUIRES_OK(context,
+                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
+                                              &fused_batch_norm_args,
+                                              &fusion_args.leakyrelu_alpha));
+      } else {
+        OP_REQUIRES_OK(context,
+                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
+                                              &fused_batch_norm_args));
+      }
     }
 
     LaunchFusedConv2DWithOutputKernel<T> conv2d(
@@ -215,6 +227,10 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
         conv2d(WithBiasAddAndRelu6<T>(bias_add_args), context, input, filter,
                output);
         break;
+      case FusedComputationType::kBiasAddWithLeakyRelu:
+        conv2d(WithBiasAddAndLeakyRelu<T>(bias_add_args), context, input,
+               filter, output);
+        break;
       case FusedComputationType::kBiasAddWithElu:
         conv2d(WithBiasAddAndElu<T>(bias_add_args), context, input, filter,
                output);
@@ -232,6 +248,11 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
       case FusedComputationType::kFusedBatchNormWithRelu6:
         conv2d(WithFusedBatchNormAndRelu6<T>(fusion_args.epsilon,
                                              fused_batch_norm_args),
+               context, input, filter, output);
+        break;
+      case FusedComputationType::kFusedBatchNormWithLeakyRelu:
+        conv2d(WithFusedBatchNormAndLeakyRelu<T>(fusion_args.epsilon,
+                                                 fused_batch_norm_args),
                context, input, filter, output);
         break;
       case FusedComputationType::kFusedBatchNormWithElu:
@@ -681,10 +702,12 @@ class FusedConv2DOp : public OpKernel {
           {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
           {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
           {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
+          {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
           {FCT::kFusedBatchNorm, {"FusedBatchNorm"}},
           {FCT::kFusedBatchNormWithRelu, {"FusedBatchNorm", "Relu"}},
           {FCT::kFusedBatchNormWithRelu6, {"FusedBatchNorm", "Relu6"}},
           {FCT::kFusedBatchNormWithElu, {"FusedBatchNorm", "Elu"}},
+          {FCT::kFusedBatchNormWithLeakyRelu, {"FusedBatchNorm", "LeakyRelu"}},
       };
     }
 
