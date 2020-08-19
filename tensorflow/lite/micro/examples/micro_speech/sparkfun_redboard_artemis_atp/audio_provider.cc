@@ -154,10 +154,11 @@ extern "C" void pdm_init(void) {
                                               AM_HAL_PDM_INT_UNDFL  | 
                                               AM_HAL_PDM_INT_OVF));
 
-  NVIC_EnableIRQ(PDM_IRQn);
-
   // Enable PDM
   am_hal_pdm_enable(g_pdm_handle);
+
+  //Enable PDM interrupt after PDM was enabled
+  NVIC_EnableIRQ(PDM_IRQn);
 }
 
 // Start the DMA fetch of PDM samples.
