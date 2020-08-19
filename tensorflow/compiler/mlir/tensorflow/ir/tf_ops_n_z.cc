@@ -1015,10 +1015,8 @@ static LogicalResult Verify(SizeOp op) {
         "requires ranked input tensor to be of rank INT32_MAX or less");
 
   // Output type needs to be scalar.
-  ShapedType output_type = op.getType().cast<ShapedType>();
-  if (output_type.hasStaticShape() && output_type.getRank() != 0) {
+  if (!IsOfRankOrUnranked(op.output(), /*rank=*/0))
     return op.emitOpError("requires scalar output");
-  }
 
   return success();
 }
