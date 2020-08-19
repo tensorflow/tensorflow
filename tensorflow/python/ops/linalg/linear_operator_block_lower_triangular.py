@@ -231,15 +231,6 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
       ValueError:  If `operators` is empty, contains an erroneous number of
         elements, or contains operators with incompatible shapes.
     """
-    parameters = dict(
-        operators=operators,
-        is_non_singular=is_non_singular,
-        is_self_adjoint=is_self_adjoint,
-        is_positive_definite=is_positive_definite,
-        is_square=is_square,
-        name=name
-    )
-
     # Validate operators.
     check_ops.assert_proper_iterable(operators)
     for row in operators:
@@ -265,7 +256,6 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
-          parameters=parameters,
           name=name)
 
   def _validate_num_operators(self):
