@@ -38,19 +38,19 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
+#include "mlir/Analysis/LoopAnalysis.h"           // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Support/LLVM.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/UniformSupport.h"    // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"      // from @llvm-project
+#include "mlir/IR/Attributes.h"                   // from @llvm-project
+#include "mlir/IR/Function.h"                     // from @llvm-project
+#include "mlir/IR/MLIRContext.h"                  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"                 // from @llvm-project
+#include "mlir/IR/StandardTypes.h"                // from @llvm-project
+#include "mlir/Pass/Pass.h"                       // from @llvm-project
+#include "mlir/Support/LLVM.h"                    // from @llvm-project
+#include "mlir/Support/LogicalResult.h"           // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"    // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -727,6 +727,33 @@ struct ConvertTFBroadcastTo : public RewritePattern {
   }
 };
 
+struct ConvertFusedBatchNorm : public RewritePattern {
+  explicit ConvertFusedBatchNorm(MLIRContext *context)
+      : RewritePattern(TF::FusedBatchNormOp::getOperationName(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto tf_fused_batch_norm_op = cast<TF::FusedBatchNormOp>(op);
+
+    // FusedBatchNormV3 expects a 5th output reserve_space_3,
+    // but the output is unused; it doesn't matter what we pass there.
+    rewriter.replaceOpWithNewOp<TF::FusedBatchNormV3Op>(
+        op, tf_fused_batch_norm_op.y().getType(),
+        tf_fused_batch_norm_op.batch_mean().getType(),
+        tf_fused_batch_norm_op.batch_variance().getType(),
+        tf_fused_batch_norm_op.reserve_space_1().getType(),
+        tf_fused_batch_norm_op.reserve_space_2().getType(),
+        /*reserve_space_3=*/tf_fused_batch_norm_op.reserve_space_2().getType(),
+        tf_fused_batch_norm_op.x(), tf_fused_batch_norm_op.scale(),
+        tf_fused_batch_norm_op.offset(), tf_fused_batch_norm_op.mean(),
+        tf_fused_batch_norm_op.variance(), tf_fused_batch_norm_op.epsilon(),
+        tf_fused_batch_norm_op.exponential_avg_factor(),
+        tf_fused_batch_norm_op.data_format(),
+        tf_fused_batch_norm_op.is_training());
+    return success();
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_prepare_tf.inc"
 
 // Returns success if all the operations in the `op`'s regions including `op`
@@ -888,6 +915,8 @@ void PrepareTFPass::runOnFunction() {
   // replaced with a single Conv op with dilation parameter.
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
+
+  patterns.insert<ConvertFusedBatchNorm>(ctx);
   TFL::populateWithGenerated(ctx, &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.
