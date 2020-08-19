@@ -140,6 +140,7 @@ message SavedVariable {
   VariableSynchronization synchronization = 4;
   VariableAggregation aggregation = 5;
   string name = 6;
+  string device = 7;
 }
 
 // Represents `FunctionSpec` used in `Function`. This represents a
