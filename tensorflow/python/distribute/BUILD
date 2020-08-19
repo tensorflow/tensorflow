@@ -1136,6 +1136,7 @@ distribute_py_test(
         ":distribute_utils",
         ":packed_distributed_variable",
         ":parameter_server_strategy",
+        ":ps_values",
         ":strategy_combinations",
         ":test_util",
         ":tpu_strategy",

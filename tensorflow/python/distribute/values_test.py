@@ -32,6 +32,7 @@ from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import packed_distributed_variable as packed
 from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import test_util as ds_test_util
 from tensorflow.python.distribute import tpu_strategy
@@ -549,12 +550,17 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
       self.assertIsInstance(v2, type(v1))
       self.assertEqual(v1.aggregation, v2.aggregation)
       self.assertEqual(v1.distribute_strategy, v2.distribute_strategy)
-      self.assertEqual(v1._policy, v2._policy)  # pylint: disable=protected-access
-      self.assertEqual(len(v1.values), len(v2.values))
-      for (v1v, v2v) in zip(v1.values, v2.values):
-        self.assertEqual(v1v.device, v2v.device)
-        self.assertNotEqual(id(v1v), id(v2v))
-      self.assertAllEqual(self.evaluate(v1.values), self.evaluate(v2.values))
+      if isinstance(v1, ps_values.AggregatingVariable):
+        self.assertIsInstance(v2.get(), type(v1.get()))
+        self.assertNotEqual(id(v1.get()), id(v2.get()))
+      else:
+        self.assertEqual(v1._policy, v2._policy)  # pylint: disable=protected-access
+        self.assertEqual(len(v1.values), len(v2.values))
+        for (v1v, v2v) in zip(v1.values, v2.values):
+          self.assertEqual(v1v.device, v2v.device)
+          self.assertNotEqual(id(v1v), id(v2v))
+          self.assertAllEqual(self.evaluate(v1.values),
+                              self.evaluate(v2.values))
 
     self.evaluate(variables_lib.global_variables_initializer())
     if not isinstance(distribution.extended, tpu_strategy.TPUExtended):
