@@ -31,9 +31,8 @@ namespace cl {
 void SelectLSTM(const OperationDef& op_def, const DeviceInfo& device_info,
                 std::unique_ptr<GPUOperation>* ptr);
 
-void SelectReLU(const CreationContext& creation_context,
-                const ReLUAttributes& attr, const OperationDef& op_def,
-                std::unique_ptr<GPUOperation>* ptr);
+std::unique_ptr<GPUOperation> SelectReLU(const ReLUAttributes& attr,
+                                         const OperationDef& op_def);
 
 absl::Status SelectPReLU(const PReLUAttributes& attr,
                          const CreationContext& creation_context,
@@ -93,10 +92,8 @@ std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
     const DeviceInfo& device_info, const OperationDef& op_def,
     const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases);
 
-void SelectQuantizeAndDequantize(const QuantizeAndDequantizeAttributes& attr,
-                                 const CreationContext& creation_context,
-                                 const OperationDef& op_def,
-                                 std::unique_ptr<GPUOperation>* ptr);
+std::unique_ptr<GPUOperation> SelectQuantizeAndDequantize(
+    const QuantizeAndDequantizeAttributes& attr, const OperationDef& op_def);
 
 }  // namespace cl
 }  // namespace gpu

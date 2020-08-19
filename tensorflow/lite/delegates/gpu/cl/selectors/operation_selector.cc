@@ -156,9 +156,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
         auto attr =
             absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-        GPUOperation operation;
-        RETURN_IF_ERROR(CreateElementwise(creation_context, op_def, op_type,
-                                          attr, &operation));
+        GPUOperation operation = CreateElementwise(
+            creation_context.GetDeviceInfo(), op_def, op_type, attr);
         *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       }
@@ -286,12 +285,12 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::QUANTIZE_AND_DEQUANTIZE: {
       auto attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
           node.operation.attributes);
-      SelectQuantizeAndDequantize(attr, creation_context, op_def, gpu_op);
+      *gpu_op = SelectQuantizeAndDequantize(attr, op_def);
       return absl::OkStatus();
     }
     case OperationType::RELU: {
       auto attr = absl::any_cast<ReLUAttributes>(node.operation.attributes);
-      SelectReLU(creation_context, attr, op_def, gpu_op);
+      *gpu_op = SelectReLU(attr, op_def);
       return absl::OkStatus();
     }
     case OperationType::RESHAPE: {
@@ -357,9 +356,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
         auto attr =
             absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-        GPUOperation operation;
-        RETURN_IF_ERROR(CreateElementwise(creation_context, op_def, op_type,
-                                          attr, &operation));
+        GPUOperation operation = CreateElementwise(
+            creation_context.GetDeviceInfo(), op_def, op_type, attr);
         *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       }
