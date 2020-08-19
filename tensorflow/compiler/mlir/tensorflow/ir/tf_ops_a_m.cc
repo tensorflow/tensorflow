@@ -66,6 +66,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -480,7 +481,7 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
   auto call_op = rewriter.create<PartitionedCallOp>(
       op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
       /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-  PropagateDeviceAndInternalAttrs(op.getOperation(), call_op);
+  CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
   rewriter.replaceOp(op, call_op.getResults());
   return success();
 }
@@ -1967,7 +1968,7 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
     auto call_op = rewriter.create<typename decltype(op_type)::CallOp>(
         op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
         /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-    PropagateDeviceAndInternalAttrs(op.getOperation(), call_op);
+    CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
     rewriter.replaceOp(op, call_op.getResults());
   };
 

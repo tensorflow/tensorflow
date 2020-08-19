@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_ATTRIBUTE_UTILS_H_
-#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_ATTRIBUTE_UTILS_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_ATTRIBUTE_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_ATTRIBUTE_UTILS_H_
 
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
@@ -36,13 +36,18 @@ inline void CopyUnderscoredAttributes(Operation *from, Operation *to) {
   });
 }
 
-// Copies device attribute, if present, from `from` to `to`.
-inline void CopyDeviceAttribute(Operation *from, Operation *to) {
-  if (auto device = from->getAttrOfType<StringAttr>("device"))
-    to->setAttr("device", device);
+// Copies attributes that are either `device` or whose name begins with an _
+// from `from` to `to`.
+// TODO(b/158769932): This should be a general feature instead post some policy
+// discussion.
+inline void CopyDeviceAndUnderscoredAttributes(Operation *from, Operation *to) {
+  auto device = mlir::Identifier::get("device", from->getContext());
+  CopyAttributes(from, to, [&device](const NamedAttribute &attr) {
+    return attr.first.strref().front() == '_' || attr.first == device;
+  });
 }
 
 }  // namespace TF
 }  // namespace mlir
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSFORMS_ATTRIBUTE_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_ATTRIBUTE_UTILS_H_
