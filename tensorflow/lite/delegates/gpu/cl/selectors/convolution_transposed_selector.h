@@ -26,9 +26,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-absl::Status SelectConvolutionTransposed(
+std::unique_ptr<GPUOperation> SelectConvolutionTransposed(
     const ConvolutionTransposedAttributes& attr, const DeviceInfo& device_info,
-    const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr);
+    const OperationDef& op_def);
 
 }  // namespace cl
 }  // namespace gpu

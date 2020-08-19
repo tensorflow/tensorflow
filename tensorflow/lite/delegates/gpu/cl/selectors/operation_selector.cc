@@ -105,8 +105,8 @@ absl::Status WinogradFromNode(const DeviceInfo& device_info,
   auto& conv = gpu_subgraph->operations[1];
   conv.input_ids = {-1};
   conv.output_ids = {-2};
-  RETURN_IF_ERROR(SelectConvolutionForWinograd(
-      attr, input_shape, device_info, conv_def, hints, &conv.operation));
+  conv.operation = SelectConvolutionForWinograd(attr, input_shape, device_info,
+                                                conv_def, hints);
 
   OperationDef winograd_down_def;
   winograd_down_def.precision = op_def.precision;
@@ -186,9 +186,10 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
           return absl::OkStatus();
         } else {
           gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
-          return SelectConvolution(attr, output_shape,
-                                   creation_context.GetDeviceInfo(), op_def,
-                                   hints, gpu_op);
+          *gpu_op = SelectConvolution(attr, output_shape,
+                                      creation_context.GetDeviceInfo(), op_def,
+                                      hints);
+          return absl::OkStatus();
         }
       } else {
         auto weights_shape = inputs[1]->tensor.shape;
@@ -204,9 +205,9 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         OperationDef conv_def = op_def;
         conv_def.src_tensors[1] = weights_desc;
         ConvWeightsDescription conv_weights_desc;
-        RETURN_IF_ERROR(SelectConvolutionWithDynamicWeights(
+        conv_op.operation = SelectConvolutionWithDynamicWeights(
             attr, weights_shape, output_shape, creation_context.GetDeviceInfo(),
-            conv_def, hints, &conv_op.operation, &conv_weights_desc));
+            conv_def, hints, &conv_weights_desc);
 
         int aligned_output =
             AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
@@ -223,15 +224,17 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
 
         converter_op.input_ids = {static_cast<int>(inputs[1]->id)};
         converter_op.output_ids = {-1};
-        return SelectConverterToConvWeights(conv_weights_desc, converter_def,
-                                            hints, &converter_op.operation);
+        converter_op.operation = SelectConverterToConvWeights(
+            conv_weights_desc, converter_def, hints);
+        return absl::OkStatus();
       }
     }
     case OperationType::CONVOLUTION_TRANSPOSED: {
       auto attr = absl::any_cast<ConvolutionTransposedAttributes>(
           node.operation.attributes);
-      return SelectConvolutionTransposed(attr, creation_context.GetDeviceInfo(),
-                                         op_def, gpu_op);
+      *gpu_op = SelectConvolutionTransposed(
+          attr, creation_context.GetDeviceInfo(), op_def);
+      return absl::OkStatus();
     }
     case OperationType::DEPTHWISE_CONVOLUTION: {
       auto attr = absl::any_cast<DepthwiseConvolution2DAttributes>(
@@ -243,8 +246,9 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::FULLY_CONNECTED: {
       auto attr =
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
-      return SelectFullyConnected(attr, creation_context.GetDeviceInfo(),
-                                  op_def, inputs[0]->tensor.shape.b, gpu_op);
+      *gpu_op = SelectFullyConnected(attr, creation_context.GetDeviceInfo(),
+                                     op_def, inputs[0]->tensor.shape.b);
+      return absl::OkStatus();
     }
     case OperationType::LSTM: {
       SelectLSTM(op_def, creation_context.device->info_, gpu_op);
