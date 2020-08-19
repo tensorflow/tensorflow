@@ -235,9 +235,9 @@ Status MNISTForwardModel(AbstractContext* ctx,
    *
    *   def mnist_forward(X, W1, W2, y_labels):
    *     mm_out_1 = tf.matmul(X,W1)
-   *     hidden_layer = tf.ReLu(mm_out_1)
+   *     hidden_layer = tf.nn.relu(mm_out_1)
    *     scores = tf.matmul(hidden_layer,W2)
-   *     softmax = tf.softmaxLoss(scores,y_labels)
+   *     softmax = tf.nn.sparse_softmax_cross_entropy_with_logits(scores,y_labels)
    *     return scores, softmax
    *
    * Use this convention for inputs:

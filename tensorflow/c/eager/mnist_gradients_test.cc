@@ -700,6 +700,9 @@ TEST_P(CppGradients, TestMNIST_Training) {
   AbstractTensorHandlePtr X =
       GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
 
+  // TODO(amturati): use random initializer for weights instead of
+  // constant values.
+
   // W1 = first weights
   float W1_vals[] = {-.01f, 0.4f, 0.5f, -.2f};
   int64_t dims[] = {2, 2};
@@ -759,8 +762,6 @@ TEST_P(CppGradients, TestMNIST_Training) {
   mnist_outputs[2]->Unref();  // release loss
 }
 
-// TODO(b/160888630): Enable this test with mlir after AddInputList is
-// supported. It is needed for AddN op which is used for gradient aggregation.
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,
