@@ -5374,7 +5374,9 @@ TEST_P(OpConverterTest1, ConvertReduce) {
         expected_output_dims.erase(std::remove(expected_output_dims.begin(),
                                                expected_output_dims.end(), 0),
                                    expected_output_dims.end());
-        VLOG(2) << "out dims " << expected_output_dims;
+        VLOG(2) << "out dims "
+                << absl::StrCat("[", absl::StrJoin(expected_output_dims, ","),
+                                "]");
         std::vector<float> expected_values = CalcReduce(
             op.name, p.helper_array, p.stride, op.val_func, op.init_val);
         TestOpConverter("my_reduce", node_def, expected_output_dims,

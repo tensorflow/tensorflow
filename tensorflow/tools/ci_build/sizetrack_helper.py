@@ -100,6 +100,10 @@ parser.add_argument(
     type=str,
     help="Name of job calling this script. Default: $KOKORO_JOB_NAME.")
 parser.add_argument(
+    "--build_id",
+    type=str,
+    help="UUID of build calling this script. Default: $KOKORO_BUILD_ID.")
+parser.add_argument(
     "--print_schema",
     action="store_true",
     help="Print the table schema and don't do anything else.")
@@ -123,7 +127,7 @@ CL_TRAILER = "PiperOrigin-RevId"
 PRETTY_COMMIT_DATE = "%cI"
 PRETTY_CL = "%(trailers:key={},valueonly)".format(CL_TRAILER)
 PRETTY_HEAD_INFO = "%h\t{cl}\t%s\t%ae\t%aI\t%ce\t%cI".format(cl=PRETTY_CL)
-PRETTY_EARLY = "{cl}\t%aI\t%cI".format(cl=PRETTY_CL)
+PRETTY_EARLY = "%aI\t{cl}\t%cI".format(cl=PRETTY_CL)
 PRETTY_COMMIT = "%h"
 # This is a BigQuery table schema defined as CSV
 # See https://cloud.google.com/bigquery/docs/schemas
@@ -151,6 +155,7 @@ SCHEMA = ",".join([
     "logged_date:timestamp",
     "uploaded_to:string",
     "job:string",
+    "build_id:string",
 ])
 # Select the earliest recorded commit in the same table for the same artifact
 # and team. Used to determine the full range of tested commits for each
@@ -266,7 +271,7 @@ def get_all_tested_commits():
   if earliest_commit:
 
     earliest_commit = earliest_commit.splitlines()[-1]  # Ignore CSV header
-    early_cl, early_author_date, early_commit_date = git_pretty(
+    early_author_date, early_cl, early_commit_date = git_pretty(
         earliest_commit, PRETTY_EARLY, n=1)[0].split("\t")
 
     all_range = "{commit}..HEAD".format(commit=earliest_commit)
@@ -328,6 +333,7 @@ def build_row():
       current_time,
       get_upload_path(),
       FLAGS.job,
+      FLAGS.build_id,
   ]
 
 
@@ -347,6 +353,8 @@ def main():
 
   if not FLAGS.job:
     FLAGS.job = os.environ.get("KOKORO_JOB_NAME", "NO_JOB")
+  if not FLAGS.build_id:
+    FLAGS.build_id = os.environ.get("KOKORO_BUILD_ID", "NO_BUILD")
 
   # Generate data about this artifact into a Tab Separated Value file
   next_tsv_row = build_row()

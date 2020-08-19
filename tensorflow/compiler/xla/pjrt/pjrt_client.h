@@ -668,6 +668,11 @@ struct CompileOptions {
   bool compile_portable_executable = false;
 };
 
+class ExecuteContext {
+ public:
+  virtual ~ExecuteContext() = default;
+};
+
 struct ExecuteOptions {
   // If true, the client must pass a single PjRtBuffer which contains all of
   // the arguments as a single XLA tuple, otherwise each argument must be
@@ -682,6 +687,9 @@ struct ExecuteOptions {
   // multi-host programs are launched in different orders on different hosts,
   // the launch IDs may be used by the runtime to detect the mismatch.
   int32 launch_id = 0;
+  // If non-null, an opaque context passed to an execution that may be used to
+  // supply additional arguments to a derived class of PjRtExecutable.
+  std::unique_ptr<ExecuteContext> context;
 };
 
 // Represents a compiled computation that can be executed given handles to
@@ -756,10 +764,24 @@ class PjRtExecutable {
 
   const string& name() const;
 
+ protected:
+  bool parameter_is_tupled_arguments() const {
+    return parameter_is_tupled_arguments_;
+  }
+
  private:
   // Initializes information about which arguments to which executables must be
   // donated due to aliases that were specified by the computation.
   Status SetUpDonation(PjRtClient* client, bool tuple_inputs);
+
+  virtual bool MustDonateParameter(int executable_idx, int parameter) const;
+
+  virtual StatusOr<std::vector<ExecutionInput>>
+  MakeExecutionInputsAndWaitForEvents(
+      int device_ordinal, const ExecuteOptions& options,
+      absl::Span<PjRtBuffer* const> argument_handles,
+      absl::Span<const PjRtBuffer::ScopedHold> device_buffers,
+      absl::flat_hash_set<BufferSequencingEvent*>& events) const;
 
   StatusOr<ScopedShapedBuffer> EnqueueExecution(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,
@@ -767,6 +789,12 @@ class PjRtExecutable {
       const ExecuteOptions& options, Device* device,
       std::vector<PjRtBuffer::ScopedHold>* device_buffers,
       std::shared_ptr<DeviceAssignment> device_assignment) const;
+
+  virtual std::vector<std::unique_ptr<PjRtBuffer>> MakeOutputBuffers(
+      int device_ordinal, const ExecuteOptions& options,
+      ScopedShapedBuffer result_buffer,
+      std::shared_ptr<BufferSequencingEvent> definition_event,
+      Device* device) const;
 
   StatusOr<std::vector<std::unique_ptr<PjRtBuffer>>> ExecuteHelper(
       absl::Span<PjRtBuffer* const> argument_handles, int replica,

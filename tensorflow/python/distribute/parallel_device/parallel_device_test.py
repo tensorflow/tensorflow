@@ -34,6 +34,8 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training.tracking import util as tracking
 from tensorflow.python.util import nest
@@ -100,13 +102,10 @@ class _VirtualDeviceTestCase(test.TestCase):
         context.LogicalDeviceConfiguration()
     ])
 
-    # TODO(allenl): Make CPU:0 and CPU:1 work (right now "CPU:1" soft-places
-    # onto CPU:0, which seems wrong).
-    components = [
-        "/job:localhost/replica:0/task:0/device:CPU:0",
-        "/job:localhost/replica:0/task:0/device:CPU:1"
-    ]
-    self.device = parallel_device.ParallelDevice(components)
+    self.device = parallel_device.ParallelDevice(
+        components=["/job:localhost/device:CPU:0", "CPU:1"])
+    self.assertIn("CPU:0", self.device.components[0])
+    self.assertIn("CPU:1", self.device.components[1])
 
 
 class ParallelDeviceTests(_VirtualDeviceTestCase):
@@ -199,9 +198,16 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
       result = broadcast_send_recv(self.device.device_ids)
     self.assertAllClose([[2], [6]], self.device.unpack(result))
 
+  def test_use_in_graph_error_is_informative(self):
+    @def_function.function
+    def uses_parallel():
+      with self.device:
+        return self.device.unpack(array_ops.ones([]))
+
+    with self.assertRaisesRegex(NotImplementedError, "inside `tf.function`"):
+      uses_parallel()
+
   def test_checkpointing(self):
-    self.skipTest(
-        "Disable saving until SaveableObject's methods are traceable.")
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     with self.device:
       different_values = self.device.pack(
@@ -216,6 +222,47 @@ class ParallelDeviceTests(_VirtualDeviceTestCase):
     with self.device:
       outputs = self.device.unpack(v)
     self.assertAllClose([-1., 3.], outputs)
+
+    with self.device:
+      restore_on_create = tracking.Checkpoint()
+      restore_on_create.restore(save_path)
+      restore_on_create.v = variables.Variable(0.)
+      outputs = self.device.unpack(restore_on_create.v)
+    self.assertAllClose([-1., 3.], outputs)
+
+    # Changing the number of devices / restoring into a single-device copy is OK
+    single_device = tracking.Checkpoint(v=variables.Variable(0.))
+    status = single_device.restore(save_path)
+    status.assert_existing_objects_matched()
+    self.assertAllClose(-1., single_device.v)
+    with self.assertRaisesRegex(AssertionError, "parallel_component_1"):
+      # There are parts of the variable that aren't restored into a
+      # single-device copy.
+      status.assert_consumed()
+
+  def test_saved_model(self):
+    with self.device:
+      different_values = self.device.pack(
+          [constant_op.constant(-1.),
+           constant_op.constant(3.)])
+      m = module.Module()
+      m.v = variables.Variable(different_values)
+      m.f = def_function.function(lambda: m.v * 2.)
+      self.assertAllClose([-2., 6.], self.device.unpack(m.f()))
+    saved_model_path = os.path.join(self.get_temp_dir(), "saved_model")
+    save.save(m, saved_model_path)
+
+    context._reset_context()
+    self.setUp()
+
+    single_device_loaded = load.load(saved_model_path)
+    self.assertAllClose(-2., single_device_loaded.f())
+    with self.device:
+      parallel_loaded = load.load(saved_model_path)
+      self.assertAllClose([-2., 6.], self.device.unpack(parallel_loaded.f()))
+      self.assertAllClose([-1., 3.], self.device.unpack(parallel_loaded.v))
+      parallel_loaded.v.assign(self.device.pack([.1, .2]))
+      self.assertAllClose([.2, .4], self.device.unpack(parallel_loaded.f()))
 
   def _assert_close_to_non_parallel(self, computation):
     """Asserts that replication of `computation` works and is equivalent."""
@@ -329,8 +376,6 @@ class LayerTests(_VirtualDeviceTestCase):
     self.assertIn(self.device.components[1], final_kernels[1].backing_device)
 
   def test_training_loop(self):
-    self.skipTest(
-        "Disable saving until SaveableObject's methods are traceable.")
     for _ in range(5):
       layer = _Dense(5)
       checkpoint = tracking.Checkpoint(layer=layer)

@@ -26,34 +26,10 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-DepthwiseConvPlus1x1Conv::DepthwiseConvPlus1x1Conv(
-    const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr)
-    : GPUOperation(definition), dw_attr_(dw_attr) {
-  work_group_size_ = int3(8, 8, 1);
-  code_ = GenerateCode(definition_, dw_attr_,
-                       DivideRoundUp(conv_attr.weights.shape.o, 4));
-}
-
-DepthwiseConvPlus1x1Conv::DepthwiseConvPlus1x1Conv(
-    DepthwiseConvPlus1x1Conv&& operation)
-    : GPUOperation(std::move(operation)),
-      dw_attr_(std::move(operation.dw_attr_)) {}
-
-DepthwiseConvPlus1x1Conv& DepthwiseConvPlus1x1Conv::operator=(
-    DepthwiseConvPlus1x1Conv&& operation) {
-  if (this != &operation) {
-    dw_attr_ = std::move(operation.dw_attr_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status DepthwiseConvPlus1x1Conv::UploadWeights(
-    const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr, CLContext* context) {
+namespace {
+void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
+                   const Convolution2DAttributes& conv_attr,
+                   CalculationsPrecision precision, GPUOperation* op) {
   int dw_dst_ch_aligned = AlignByN(dw_attr.weights.shape.i, 4);
   int dw_weights_count =
       dw_dst_ch_aligned * dw_attr.weights.shape.h * dw_attr.weights.shape.w;
@@ -116,47 +92,41 @@ absl::Status DepthwiseConvPlus1x1Conv::UploadWeights(
     }
   }
 
-  Buffer constants_buf;
-  const bool fp32_weights = definition_.precision == CalculationsPrecision::F32;
+  const bool fp32_weights = precision == CalculationsPrecision::F32;
   const int float_size = fp32_weights ? 4 : 2;
-  if (fp32_weights) {
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float_size * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &constants_buf));
-  } else {
-    std::vector<half> gpu_data_half(gpu_data.size());
-    for (int i = 0; i < gpu_data.size(); ++i) {
-      gpu_data_half[i] = gpu_data[i];
-    }
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float_size * gpu_data_half.size(),
-                                         gpu_data_half.data(), context,
-                                         &constants_buf));
-  }
-
   BufferDescriptor desc;
   desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
   desc.memory_type = MemoryType::CONSTANT;
-  args_.AddObject("constants", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(constants_buf)),
-                  absl::make_unique<BufferDescriptor>(desc));
-  return absl::OkStatus();
+  desc.size = float_size * gpu_data.size();
+  desc.data.resize(desc.size);
+
+  if (fp32_weights) {
+    memcpy(desc.data.data(), gpu_data.data(), desc.size);
+  } else {
+    half* gpu_data_half = reinterpret_cast<half*>(desc.data.data());
+    for (int i = 0; i < gpu_data.size(); ++i) {
+      gpu_data_half[i] = gpu_data[i];
+    }
+  }
+  op->args_.AddObject("constants",
+                      absl::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
-std::string DepthwiseConvPlus1x1Conv::GenerateCode(
-    const OperationDef& op_def, const DepthwiseConvolution2DAttributes& dw_attr,
-    int result_depth) {
+std::string GenerateCode(const OperationDef& op_def,
+                         const DepthwiseConvolution2DAttributes& dw_attr,
+                         int result_depth, GPUOperation* result) {
   auto src_desc = op_def.src_tensors[0];
   src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
-  AddSrcTensor("src_tensor", src_desc);
-  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+  result->AddSrcTensor("src_tensor", src_desc);
+  result->AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
-  args_.AddInt("stride_x", dw_attr.strides.w);
-  args_.AddInt("padding_x", -dw_attr.padding.prepended.w);
-  args_.AddInt("dilation_x", dw_attr.dilations.w);
-  args_.AddInt("stride_y", dw_attr.strides.h);
-  args_.AddInt("padding_y", -dw_attr.padding.prepended.h);
-  args_.AddInt("dilation_y", dw_attr.dilations.h);
+  result->args_.AddInt("stride_x", dw_attr.strides.w);
+  result->args_.AddInt("padding_x", -dw_attr.padding.prepended.w);
+  result->args_.AddInt("dilation_x", dw_attr.dilations.w);
+  result->args_.AddInt("stride_y", dw_attr.strides.h);
+  result->args_.AddInt("padding_y", -dw_attr.padding.prepended.h);
+  result->args_.AddInt("dilation_y", dw_attr.dilations.h);
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
 
@@ -241,14 +211,10 @@ std::string DepthwiseConvPlus1x1Conv::GenerateCode(
   return c;
 }
 
-int3 DepthwiseConvPlus1x1Conv::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  return int3(grid_x, grid_y, 1);
-}
+}  // namespace
 
 bool IsDepthwiseConvPlus1x1ConvSupported(
-    const CLDevice& device, const OperationDef& definition,
+    const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr) {
   const auto dw_shape = dw_attr.weights.shape;
@@ -267,15 +233,17 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
   return good_dw && good_conv && recommended_dw && recommended_conv;
 }
 
-absl::Status CreateDepthwiseConvPlus1x1Conv(
-    const CreationContext& creation_context, const OperationDef& definition,
+GPUOperation CreateDepthwiseConvPlus1x1Conv(
+    const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr,
-    DepthwiseConvPlus1x1Conv* result) {
-  *result = DepthwiseConvPlus1x1Conv(definition, dw_attr, conv_attr);
-  RETURN_IF_ERROR(
-      result->UploadWeights(dw_attr, conv_attr, creation_context.context));
-  return absl::OkStatus();
+    const Convolution2DAttributes& conv_attr) {
+  GPUOperation result(definition);
+  result.code_ =
+      GenerateCode(definition, dw_attr,
+                   DivideRoundUp(conv_attr.weights.shape.o, 4), &result);
+  result.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_ZIs1;
+  UploadWeights(dw_attr, conv_attr, definition.precision, &result);
+  return result;
 }
 
 }  // namespace cl

@@ -707,7 +707,6 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
   // Fold reshape if operand and result types are the same and all dimensions
   // are statically known (no-op reshape).
-  // TODO(ezhulenev): Add the same folding for BroadcastToOp.
   auto result_ty = getType().dyn_cast<ShapedType>();
   if (result_ty && result_ty.hasStaticShape() &&
       result_ty == tensor.getType()) {
@@ -1015,7 +1014,21 @@ static LogicalResult Verify(SizeOp op) {
     return op.emitOpError(
         "requires ranked input tensor to be of rank INT32_MAX or less");
 
+  // Output type needs to be scalar.
+  if (!IsOfRankOrUnranked(op.output(), /*rank=*/0))
+    return op.emitOpError("requires scalar output");
+
   return success();
+}
+
+OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
+  ShapedType output_type = getType().cast<ShapedType>();
+  ShapedType input_type = getOperand().getType().cast<ShapedType>();
+  if (!input_type.hasStaticShape()) return {};
+  int size = input_type.getNumElements();
+  return DenseElementsAttr::get(
+      output_type,
+      IntegerAttr::get(output_type.getElementType(), /*value=*/size));
 }
 
 //===----------------------------------------------------------------------===//

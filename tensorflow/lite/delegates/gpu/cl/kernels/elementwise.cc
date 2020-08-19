@@ -170,18 +170,12 @@ absl::Status CreateElementwiseTwoInput(
       creation_context.device->info_, shape, definition.GetPrimaryStorageType(),
       definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
-  Tensor gpu_tensor;
-  RETURN_IF_ERROR(CreateTensor(*creation_context.context,
-                               *creation_context.device, shape, desc,
-                               &gpu_tensor));
-  RETURN_IF_ERROR(
-      gpu_tensor.WriteData(creation_context.queue, constant_tensor));
+  desc.UploadData(constant_tensor);
 
   *result = GPUOperation(definition);
   result->elementwise_ = true;
-  result->args_.AddObject("second_tensor", AccessType::READ,
-                          absl::make_unique<Tensor>(std::move(gpu_tensor)),
-                          absl::make_unique<TensorDescriptor>(desc));
+  result->args_.AddObject("second_tensor",
+                          absl::make_unique<TensorDescriptor>(std::move(desc)));
   const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";
   result->code_ = absl::StrCat(
       "FLT4 second_val = args.second_tensor.Read(0, 0, ", s_coord, ");\n");
@@ -208,18 +202,12 @@ absl::Status CreateElementwiseTwoInput(
       creation_context.device->info_, shape, definition.GetPrimaryStorageType(),
       definition.GetDataType(), Layout::HWC);
   TensorDescriptor desc{definition.GetDataType(), storage_type, Layout::HWC};
-  Tensor gpu_tensor;
-  RETURN_IF_ERROR(CreateTensor(*creation_context.context,
-                               *creation_context.device, shape, desc,
-                               &gpu_tensor));
-  RETURN_IF_ERROR(
-      gpu_tensor.WriteData(creation_context.queue, constant_tensor));
+  desc.UploadData(constant_tensor);
 
   *result = GPUOperation(definition);
   result->elementwise_ = true;
-  result->args_.AddObject("second_tensor", AccessType::READ,
-                          absl::make_unique<Tensor>(std::move(gpu_tensor)),
-                          absl::make_unique<TensorDescriptor>(desc));
+  result->args_.AddObject("second_tensor",
+                          absl::make_unique<TensorDescriptor>(std::move(desc)));
   const std::string x_coord = shape.w == 1 ? "0" : "X_COORD";
   const std::string y_coord = shape.h == 1 ? "0" : "Y_COORD";
   const std::string s_coord = shape.c == 1 ? "0" : "S_COORD";

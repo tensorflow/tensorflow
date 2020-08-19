@@ -56,9 +56,7 @@ Allocator::~Allocator() {}
 // If true, cpu allocator collects full stats.
 static bool cpu_allocator_collect_full_stats = false;
 
-void EnableCPUAllocatorFullStats(bool enable) {
-  cpu_allocator_collect_full_stats = enable;
-}
+void EnableCPUAllocatorFullStats() { cpu_allocator_collect_full_stats = true; }
 bool CPUAllocatorFullStatsEnabled() { return cpu_allocator_collect_full_stats; }
 
 string AllocatorAttributes::DebugString() const {

@@ -245,6 +245,7 @@ class DfsHloVisitorBase {
   virtual Status HandleBitcast(HloInstructionPtr hlo) = 0;
   virtual Status HandleBroadcast(HloInstructionPtr hlo) = 0;
   virtual Status HandleReshape(HloInstructionPtr hlo) = 0;
+  virtual Status HandleDynamicReshape(HloInstructionPtr hlo) = 0;
   virtual Status HandleTranspose(HloInstructionPtr hlo) = 0;
   virtual Status HandleParameter(HloInstructionPtr hlo) = 0;
   virtual Status HandleFusion(HloInstructionPtr hlo) = 0;

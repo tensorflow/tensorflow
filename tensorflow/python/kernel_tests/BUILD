@@ -142,6 +142,10 @@ tf_py_test(
     size = "small",
     srcs = ["map_ops_test.py"],
     grpc_enabled = True,
+    tags = [
+        "noasan",  # TODO(b/164696004)
+        "notsan",  # TODO(b/164696004)
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -976,24 +980,6 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:io_ops",
         "//tensorflow/python:io_ops_gen",
-    ],
-)
-
-cuda_py_test(
-    name = "scatter_nd_ops_test",
-    size = "medium",
-    srcs = ["scatter_nd_ops_test.py"],
-    tags = ["noasan"],  # http://b/32635055
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:variables",
-        "//third_party/py/numpy",
     ],
 )
 

@@ -44,7 +44,9 @@ cc_library(
     ],
     deps = [
         ":concrete_function",
+        ":signature_def_function",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -67,6 +69,26 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "signature_def_function",
+    hdrs = [
+        "signature_def_function.h",
+    ],
+    deps = [
+        ":signature_def_function_metadata",
+        "//tensorflow/c/eager:immediate_execution_operation",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "signature_def_function_metadata",
+    hdrs = [
+        "signature_def_function_metadata.h",
     ],
 )
 
@@ -115,6 +137,7 @@ cc_library(
         ":concrete_function",
         ":saved_model_api",
         ":saved_model_utils",
+        ":signature_def_function",
         "//tensorflow/c:tensor_interface",
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_tensor_handle",

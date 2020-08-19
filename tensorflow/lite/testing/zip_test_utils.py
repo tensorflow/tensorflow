@@ -162,7 +162,8 @@ def format_result(t):
     values = ["{:.9f}".format(value) for value in list(t.flatten())]
     return ",".join(values)
   else:
-    return _pywrap_string_util.SerializeAsHexString(t.flatten())
+    # SerializeAsHexString returns bytes in PY3, so decode if appropriate.
+    return _pywrap_string_util.SerializeAsHexString(t.flatten()).decode("utf-8")
 
 
 def write_examples(fp, examples):

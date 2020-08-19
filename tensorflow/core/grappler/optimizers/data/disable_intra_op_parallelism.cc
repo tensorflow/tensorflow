@@ -29,6 +29,7 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
+constexpr char kRetValOp[] = "_Retval";
 constexpr char kMaxIntraOpParallelismDataset[] = "MaxIntraOpParallelismDataset";
 
 constexpr std::array<const char*, 2> kMaxIntraOpParallelismDatasetOps = {
@@ -44,7 +45,24 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
   *output = item.graph;
   MutableGraphView graph(output);
 
-  const NodeDef* sink_node;
+  for (const auto& fetch_name : item.fetch) {
+    // If the GrapplerItem is derived from a FunctionDef, we don't optimize it,
+    // because we only want to disable intra op parallelism on the main dataset
+    // pipeline.
+    auto fetch = graph.GetNode(fetch_name);
+    if (fetch == nullptr || fetch->op() == kRetValOp) {
+      // Heuristic: If the fetch nodes are Retval ops, this item is from a
+      // function.
+      return Status::OK();
+    }
+  }
+
+  if (item.fetch.size() != 1) {
+    return errors::InvalidArgument(
+        "Expected only one fetch node but there were ", item.fetch.size(), ": ",
+        absl::StrJoin(item.fetch, ", "));
+  }
+
   for (const NodeDef& node : item.graph.node()) {
     for (const auto& target_dataset_op : kMaxIntraOpParallelismDatasetOps) {
       if (node.op() == target_dataset_op) {
@@ -53,11 +71,9 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
         return Status::OK();
       }
     }
-    if (node.name() == "Sink") {
-      sink_node = &node;
-    }
   }
 
+  NodeDef* sink_node = graph.GetNode(item.fetch.at(0));
   NodeDef* last_node = graph_utils::GetInputNode(*sink_node, graph);
 
   // Add a const node with value 1

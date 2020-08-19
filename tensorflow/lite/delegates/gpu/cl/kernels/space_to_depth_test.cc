@@ -69,7 +69,7 @@ TEST_F(OpenCLOperationTest, SpaceToDepthTensorShape1x2x2x2BlockSize2) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      SpaceToDepth operation = CreateSpaceToDepth(op_def, attr);
+      GPUOperation operation = CreateSpaceToDepth(op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 1, 1, 8), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -95,7 +95,7 @@ TEST_F(OpenCLOperationTest, SpaceToDepthTensorShape1x2x2x3BlockSize2) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      SpaceToDepth operation = CreateSpaceToDepth(op_def, attr);
+      GPUOperation operation = CreateSpaceToDepth(op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 1, 1, 12), &dst_tensor));
       EXPECT_THAT(
@@ -124,7 +124,7 @@ TEST_F(OpenCLOperationTest, SpaceToDepthTensorShape1x4x4x1BlockSize2) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      SpaceToDepth operation = CreateSpaceToDepth(op_def, attr);
+      GPUOperation operation = CreateSpaceToDepth(op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 2, 4), &dst_tensor));
       EXPECT_THAT(

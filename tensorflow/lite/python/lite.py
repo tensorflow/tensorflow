@@ -962,12 +962,12 @@ class TFLiteConverterV2(TFLiteFrozenGraphConverterV2):
       device.
     inference_input_type: Data type of the input layer. Note that integer types
       (tf.int8 and tf.uint8) are currently only supported for post training
-      integer quantization. (default tf.float32, must be in {tf.float32,
-      tf.int8, tf.uint8})
+      integer quantization and quantization aware training. (default tf.float32,
+      must be in {tf.float32, tf.int8, tf.uint8})
     inference_output_type: Data type of the output layer. Note that integer
       types (tf.int8 and tf.uint8) are currently only supported for post
-      training integer quantization. (default tf.float32, must be in
-      {tf.float32, tf.int8, tf.uint8})
+      training integer quantization and quantization aware training. (default
+      tf.float32, must be in {tf.float32, tf.int8, tf.uint8})
     experimental_new_converter: Experimental flag, subject to change. Enables
       MLIR-based conversion instead of TOCO conversion. (default True)
 
@@ -1752,24 +1752,26 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
 
     ```python
     # Converting a GraphDef from session.
-    converter = tf.compat.v1.TFLiteConverter.from_session(
+    converter = tf.compat.v1.lite.TFLiteConverter.from_session(
       sess, in_tensors, out_tensors)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a GraphDef from file.
-    converter = tf.compat.v1.TFLiteConverter.from_frozen_graph(
+    converter = tf.compat.v1.lite.TFLiteConverter.from_frozen_graph(
       graph_def_file, input_arrays, output_arrays)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a SavedModel.
-    converter = tf.compat.v1.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = tf.compat.v1.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a tf.keras model.
-    converter = tf.compat.v1.TFLiteConverter.from_keras_model_file(keras_model)
+    converter = tf.compat.v1.lite.TFLiteConverter.from_keras_model_file(
+        keras_model)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
     ```

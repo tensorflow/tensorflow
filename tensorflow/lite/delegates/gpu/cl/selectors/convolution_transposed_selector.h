@@ -27,9 +27,8 @@ namespace gpu {
 namespace cl {
 
 absl::Status SelectConvolutionTransposed(
-    const ConvolutionTransposedAttributes& attr,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr);
+    const ConvolutionTransposedAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def, std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace cl
 }  // namespace gpu

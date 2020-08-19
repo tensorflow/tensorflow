@@ -49,6 +49,7 @@ cc_library(
     hdrs = ["default_selector.h"],
     deps = [
         ":subgraph",
+        "//tensorflow/lite/delegates/gpu/cl:device_info",
         "//tensorflow/lite/delegates/gpu/cl:model_hints",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",

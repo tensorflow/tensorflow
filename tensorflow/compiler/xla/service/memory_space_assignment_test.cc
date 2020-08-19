@@ -4069,12 +4069,12 @@ TEST_P(MemorySpaceAssignmentTest, MoveCopyDoneEarlier) {
 // A mock MemorySpaceAssignmentRepacker class that accepst a map of
 // (start_time,offset) -> new_offset values. Using this map, the repacker
 // repacks the allocations to the new_offset.
-class FakeMemorySpaceAssignmentRepacker
-    : public MemorySpaceAssignmentRepacker<MemorySpaceAssignment::Allocation*> {
+class FakeMemorySpaceAssignmentRepacker : public MemorySpaceAssignmentRepacker {
  public:
-  FakeMemorySpaceAssignmentRepacker(
+  explicit FakeMemorySpaceAssignmentRepacker(
       absl::flat_hash_map<std::pair<int64, int64>, int64>& repack_map)
-      : repack_map_(repack_map) {}
+      : MemorySpaceAssignmentRepacker(/*max_size=*/128, /*alignment=*/8),
+        repack_map_(repack_map) {}
 
   StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) override {
     bool modified = false;

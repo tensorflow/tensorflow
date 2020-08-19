@@ -14,6 +14,7 @@ cc_library(
     name = "data",
     visibility = ["//visibility:public"],
     deps = [
+        ":disable_intra_op_parallelism",
         ":filter_fusion",
         ":filter_with_random_uniform_fusion",
         ":hoist_random_uniform",

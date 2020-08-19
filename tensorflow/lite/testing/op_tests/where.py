@@ -33,6 +33,11 @@ def make_where_tests(options):
           "input_shape_set": [([1, 2, 3, 4], [1, 2, 3, 4]),],
           "use_where_v2": [False, True],
       },
+      {
+          "input_dtype": [tf.float32, tf.int32],
+          "input_shape_set": [([], []),],
+          "use_where_v2": [],
+      },
   ]
 
   def build_graph(parameters):

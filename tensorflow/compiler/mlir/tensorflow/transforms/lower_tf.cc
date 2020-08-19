@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -427,12 +428,38 @@ class LowerSparseMatMulOp : public OpRewritePattern<TF::SparseMatMulOp> {
   }
 };
 
+// Lowers _UnaryOpsComposition op as a series of original TensorFlow ops that
+// were fused together.
+class Lower_UnaryOpsComposition
+    : public OpRewritePattern<TF::_UnaryOpsCompositionOp> {
+ public:
+  using OpRewritePattern<TF::_UnaryOpsCompositionOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::_UnaryOpsCompositionOp op,
+                                PatternRewriter &rewriter) const override {
+    Value result = op.x();
+    for (StringRef op_name :
+         op.op_names().getAsRange<StringAttr, StringRef>()) {
+      std::string full_name = "tf." + op_name.str();
+      // All ops in the sequences have the same result type as the original
+      // result type.
+      OperationState state(op.getLoc(), full_name, /*operands=*/{result},
+                           /*types=*/{op.getType()}, /*attributes=*/{});
+      Operation *op = rewriter.createOperation(state);
+      result = op->getResult(0);
+    }
+    rewriter.replaceOp(op, {result});
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
   patterns->insert<LowerAddNOp, LowerDynamicStitchOp, LowerInvertPermutationOp,
-                   LowerPackOp, LowerSparseMatMulOp>(context);
+                   LowerPackOp, LowerSparseMatMulOp, Lower_UnaryOpsComposition>(
+      context);
   populateWithGenerated(context, patterns);
 }
 

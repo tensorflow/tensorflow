@@ -301,7 +301,6 @@ class Conv2DBackpropFilterOp : public OpKernel {
                                               /*num_dims=*/4, data_format_));
 
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
-    use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
 
     if (std::is_same<Device, CPUDevice>::value) {

@@ -28,6 +28,14 @@ message WorkerUpdateRequest {
 
 message WorkerUpdateResponse {}
 
+message GetDatasetDefRequest {
+  int64 dataset_id = 1;
+}
+
+message GetDatasetDefResponse {
+  DatasetDef dataset_def = 1;
+}
+
 message GetOrRegisterDatasetRequest {
   // The dataset to register.
   DatasetDef dataset = 1;
@@ -46,8 +54,9 @@ message CreateJobRequest {
 }
 
 message CreateJobResponse {
-  // An id for the created job.
-  int64 job_id = 1;
+  // An id for the client that will read from the job. When the client is done
+  // with the job, they should call ReleaseJobClient with this id.
+  int64 job_client_id = 1;
 }
 
 message GetOrCreateJobRequest {
@@ -63,13 +72,20 @@ message GetOrCreateJobRequest {
 }
 
 message GetOrCreateJobResponse {
-  // The id of the (potentially newly created) job.
-  int64 job_id = 1;
+  // An id for the client that will read from the job. When the client is done
+  // with the job, they should call ReleaseJobClient with this id.
+  int64 job_client_id = 1;
 }
 
+message ReleaseJobClientRequest {
+  int64 job_client_id = 1;
+}
+
+message ReleaseJobClientResponse {}
+
 message GetTasksRequest {
-  // The job to look up tasks for.
-  int64 job_id = 1;
+  // The job client id to look up tasks for.
+  int64 job_client_id = 1;
 }
 
 message GetTasksResponse {
@@ -100,6 +116,9 @@ service DispatcherService {
   // Updates the dispatcher with information about the worker's state.
   rpc WorkerUpdate(WorkerUpdateRequest) returns (WorkerUpdateResponse);
 
+  // Gets a dataset defintion.
+  rpc GetDatasetDef(GetDatasetDefRequest) returns (GetDatasetDefResponse);
+
   // Registers a dataset with the server, or returns its id if it is already
   // registered.
   //
@@ -113,6 +132,10 @@ service DispatcherService {
 
   // Creates a job for reading from the tf.data service.
   rpc CreateJob(CreateJobRequest) returns (CreateJobResponse);
+
+  // Releases a job client so that a job may eventually be cleaned up.
+  rpc ReleaseJobClient(ReleaseJobClientRequest)
+      returns (ReleaseJobClientResponse);
 
   // Reports a list of all tasks for a job.
   rpc GetTasks(GetTasksRequest) returns (GetTasksResponse);

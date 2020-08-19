@@ -15,6 +15,7 @@
 
 SET PYTHON_DIRECTORY=Python35
 
-CALL tensorflow\tools\ci_build\rel\windows\common_win_cuda11.bat
+CALL tensorflow\tools\ci_build\rel\windows_cuda11\common_win_cuda11.bat
 
-call tensorflow\tools\ci_build\windows\cpu\pip\run.bat --release_build --extra_test_flags "--test_env=TF2_BEHAVIOR=1" --project_name "tensorflow_cpu"
+:: TODO(angerson) Set this based on some env param before merging with nightly
+call tensorflow\tools\ci_build\windows\cpu\pip\run.bat --tf_nightly --project_name "tf_nightly_cpu"

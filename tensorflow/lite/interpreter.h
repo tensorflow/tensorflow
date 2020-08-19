@@ -21,6 +21,7 @@ limitations under the License.
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -56,35 +57,39 @@ namespace impl {
 /// Usage:
 ///
 /// <pre><code>
-/// // Create basic model
-/// Interpreter foo(2, 1);
-/// foo.SetTensorParametersReadWrite(0, ...);
-/// foo.SetTensorParametersReadOnly(1, ...);
-/// foo.SetNodeParameters(0, ...)
-/// // Resize input array to 1 length.
-/// foo.ResizeInputTensor(0, 1);
-/// foo.AllocateTensors();
-/// // Install array data
-/// foo.typed_tensor<float>(0)[0] = 3;
-/// foo.Invoke();
-/// foo.typed_tensor<float>(0)[0] = 4;
-/// foo.Invoke();
-/// // Resize input array and set data.
-/// foo.ResizeInputTensor(0, 2);
-/// foo.AllocateTensors();
-/// foo.typed_tensor<float>(0)[0] = 4;
-/// foo.typed_tensor<float>(0)[1] = 8;
-/// foo.Invoke();
+/// // Create model from file. Note that the model instance must outlive the
+/// // interpreter instance.
+/// auto model = tflite::FlatBufferModel::BuildFromFile(...);
+/// if (model == nullptr) {
+///   // Return error.
+/// }
+/// // Create an Interpreter with an InterpreterBuilder.
+/// std::unique_ptr<tflite::Interpreter> interpreter;
+/// tflite::ops::builtin::BuiltinOpResolver resolver;
+/// if (InterpreterBuilder(*model, resolver)(&interpreter) != kTfLiteOk) {
+///   // Return failure.
+/// }
+/// interpreter->AllocateTensors();
+///
+/// auto input = interpreter->typed_tensor<float>(0);
+/// for (int i = 0; i < input_size; i++) {
+///   input[i] = ...;
+//  }
+/// interpreter.Invoke();
 /// </code></pre>
 ///
+/// Note: for nearly all practical use cases, one should not directly construct
+/// an Interpreter object, but rather use the InterpreterBuilder.
 
 class Interpreter {
  public:
-  /// Instantiate an interpreter. All errors associated with reading and
-  /// processing this model will be forwarded to the error_reporter object.
+  // Instantiate an interpreter. All errors associated with reading and
+  // processing this model will be forwarded to the error_reporter object.
   //
-  /// Note, if error_reporter is nullptr, then a default StderrReporter is
-  /// used. Ownership of 'error_reporter' remains with the caller.
+  // Note, if error_reporter is nullptr, then a default StderrReporter is
+  // used. Ownership of 'error_reporter' remains with the caller.
+  // WARNING: Use of this constructor outside of an InterpreterBuilder is not
+  // recommended.
   explicit Interpreter(ErrorReporter* error_reporter = DefaultErrorReporter());
 
   ~Interpreter();
@@ -418,10 +423,29 @@ class Interpreter {
       std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
   /// Same as ModifyGraphWithDelegate except this interpreter takes
-  /// ownership of the provided delegate. Be sure to construct the unique_ptr
-  /// with a suitable destruction function.
+  /// ownership of the provided delegate.
   /// WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate);
+  template <typename Delegate, typename Deleter>
+  inline TfLiteStatus ModifyGraphWithDelegate(
+      std::unique_ptr<Delegate, Deleter> delegate) {
+    Deleter deleter = std::move(delegate.get_deleter());
+
+    // Note that we retain ownership of the delegate even if graph modification
+    // fails, as delegate use will be in an indeterminate state at that point.
+    owned_delegates_.emplace_back(
+        delegate.release(), [deleter](TfLiteDelegate* delegate_to_delete) {
+          deleter(
+              static_cast<typename std::unique_ptr<Delegate, Deleter>::pointer>(
+                  delegate_to_delete));
+        });
+    return ModifyGraphWithDelegate(owned_delegates_.back().get());
+  }
+
+  /// This overload is *never* OK. TfLiteDelegate is a C structure, so it has no
+  /// virtual destructor. The default deleter of the unique_ptr does not know
+  /// how to delete C++ objects deriving from TfLiteDelegate.
+  TfLiteStatus ModifyGraphWithDelegate(
+      std::unique_ptr<TfLiteDelegate> delegate) = delete;
 
   /// Ensure the data in `tensor.data` is readable. In case delegate is used,
   /// it might require to copy the data from delegate buffer to raw memory.
@@ -600,7 +624,9 @@ class Interpreter {
   // interpreter instance. Useful if client delegate ownership is burdensome.
   // WARNING: This is an experimental API and subject to change.
   // TODO(b/116667551): Use TfLiteExternalContext for storing state.
-  std::vector<TfLiteDelegatePtr> owned_delegates_;
+  std::vector<
+      std::unique_ptr<TfLiteDelegate, std::function<void(TfLiteDelegate*)>>>
+      owned_delegates_;
 
   // Profiler that has been installed and is owned by this interpreter instance.
   // Useful if client profiler ownership is burdensome.
@@ -627,10 +653,10 @@ class Interpreter {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
 
-  // Indicating a delegate that the TFLite interpreter will apply by default.
-  // A nullptr value means there's no delegate to be applied by default or the
-  // delegate has been applied and doesn't need to be applied again.
-  TfLiteDelegatePtr lazy_delegate_provider_;
+  // Indicating delegates that the TFLite interpreter will apply by default.
+  // An empty one means there's no delegate to be applied by default or
+  // delegates have been applied and doesn't need to be applied again.
+  std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
 };
 
 }  // namespace impl

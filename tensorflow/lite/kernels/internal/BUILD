@@ -490,6 +490,7 @@ cc_library(
             "reference/integer_ops/mean.h",
             "reference/integer_ops/transpose_conv.h",
             "reference/reference_ops.h",
+            "reference/string_comparisons.h",
             "reference/sparse_ops/fully_connected.h",
         ],
     }),
@@ -561,6 +562,7 @@ cc_library(
         "reference/round.h",
         "reference/softmax.h",
         "reference/strided_slice.h",
+        "reference/string_comparisons.h",
         "reference/sub.h",
         "reference/tanh.h",
     ],
@@ -598,9 +600,14 @@ cc_library(
 cc_library(
     name = "tensor",
     hdrs = [
-        "tensor.h",
+        "portable_tensor.h",
         "tensor_ctypes.h",
-    ],
+    ] + select({
+        ":tf_lite_static_memory": [],
+        "//conditions:default": [
+            "tensor.h",
+        ],
+    }),
     copts = tflite_copts(),
     deps = [
         ":types",
@@ -613,9 +620,14 @@ cc_library(
 cc_library(
     name = "reference",
     hdrs = [
-        "tensor.h",
+        "portable_tensor.h",
         "tensor_ctypes.h",
-    ],
+    ] + select({
+        ":tf_lite_static_memory": [],
+        "//conditions:default": [
+            "tensor.h",
+        ],
+    }),
     copts = tflite_copts(),
     deps = [
         ":types",

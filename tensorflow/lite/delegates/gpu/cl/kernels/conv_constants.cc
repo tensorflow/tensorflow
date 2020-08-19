@@ -255,10 +255,11 @@ int3 ConvConstants::GetGridSize() const {
   return int3(grid_x, grid_y, 1);
 }
 
-bool IsConvConstantsSupported(const CLDevice& device,
+bool IsConvConstantsSupported(const DeviceInfo& device_info,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr) {
-  if (device.IsAMD() && definition.precision != CalculationsPrecision::F32 &&
+  if (device_info.IsAMD() &&
+      definition.precision != CalculationsPrecision::F32 &&
       definition.src_tensors[0].storage_type != TensorStorageType::BUFFER) {
     // BUG, some AMD gpus crashe without it
     return false;
@@ -271,34 +272,25 @@ bool IsConvConstantsSupported(const CLDevice& device,
                              ? sizeof(float)
                              : sizeof(half);
   const int filters_buffer_size = filters_count * float_size;
-  const int kConstantMaxSize = GetOptimalMaxConstantSize(device.info_);
+  const int kConstantMaxSize = GetOptimalMaxConstantSize(device_info);
   const int flt4_registers = DivideRoundUp(w_shape.o, 4);
   return filters_buffer_size <= kConstantMaxSize && flt4_registers <= 8;
 }
 
-absl::Status CreateConvConstants(const CreationContext& creation_context,
-                                 const OperationDef& definition,
-                                 const Convolution2DAttributes& attr,
-                                 ConvConstants* result) {
-  if (!IsConvConstantsSupported(*creation_context.device, definition, attr)) {
-    return absl::InvalidArgumentError("ConvConstants doesn't supported");
-  }
-  *result = ConvConstants(definition, attr, creation_context.device->info_);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+ConvConstants CreateConvConstants(const DeviceInfo& device_info,
+                                  const OperationDef& definition,
+                                  const Convolution2DAttributes& attr) {
+  ConvConstants result(definition, attr, device_info);
+  result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::BUFFER;
   desc.element_type = definition.GetDataType();
   desc.memory_type = MemoryType::CONSTANT;
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
-  return absl::OkStatus();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return result;
 }
 
 }  // namespace cl

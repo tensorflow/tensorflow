@@ -72,7 +72,6 @@ tf_cc_binary(
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:MlirOptMain",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],

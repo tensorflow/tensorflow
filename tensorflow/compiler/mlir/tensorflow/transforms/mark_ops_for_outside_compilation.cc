@@ -33,6 +33,7 @@ namespace TFDevice {
 namespace {
 
 constexpr char kXlaOutsideCompilationAttr[] = "_xla_outside_compilation";
+constexpr char kAllowSoftPlacementAttr[] = "allow_soft_placement";
 
 // This pass marks unsupported ops in a device cluster with
 // `_xla_outside_compilation` attribute so the operations will run on the host
@@ -130,6 +131,25 @@ LogicalResult MarkUncompilableOps(
   return success();
 }
 
+// Unmarks outside compilation for any op that has parents already
+// marked for outside compilation since the child will be extracted
+// anyways.
+void UnmarkChildren(Block* block) {
+  block->walk([&](Operation* op) {
+    if (!op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) return;
+    Operation* iter_op = op;
+    bool remove_attr = false;
+    while (auto* parent_op = iter_op->getParentOp()) {
+      if (parent_op->getAttrOfType<StringAttr>(kXlaOutsideCompilationAttr)) {
+        remove_attr = true;
+        break;
+      }
+      iter_op = parent_op;
+    }
+    if (remove_attr) op->removeAttr(kXlaOutsideCompilationAttr);
+  });
+}
+
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
   const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
@@ -152,6 +172,13 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);
 
   auto result = module.walk([&](tf_device::ClusterOp cluster) {
+    // Only if `allow_soft_placement` attribute is true should we mark ops
+    // for outside compilation.
+    auto soft_placement_attr =
+        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
+      return WalkResult::advance();
+    }
     if (failed(
             MarkUncompilableOps(tf_dialect, &cluster.GetBody(), supported_ops)))
       return WalkResult::interrupt();
@@ -160,6 +187,17 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   });
 
   if (result.wasInterrupted()) return signalPassFailure();
+
+  module.walk([&](tf_device::ClusterOp cluster) {
+    // Only if `allow_soft_placement` attribute is true should we unmark ops
+    // for outside compilation.
+    auto soft_placement_attr =
+        cluster.getAttrOfType<BoolAttr>(kAllowSoftPlacementAttr);
+    if (!(soft_placement_attr && soft_placement_attr.getValue())) {
+      return;
+    }
+    UnmarkChildren(&cluster.GetBody());
+  });
 }
 
 }  // namespace

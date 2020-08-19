@@ -185,7 +185,10 @@ std::string Flag::GetTypeName() const {
 
     const auto it = processed_flags.find(flag.name_);
     if (it != processed_flags.end()) {
+#ifndef NDEBUG
+      // Only log this in debug builds.
       TFLITE_LOG(WARN) << "Duplicate flags: " << flag.name_;
+#endif
       if (it->second != -1) {
         bool value_parsing_ok;
         flag.Parse(argv[it->second], &value_parsing_ok);

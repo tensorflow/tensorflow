@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/tpu/noncopyable_buffer.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
+#include "tensorflow/stream_executor/tpu/tpu_executor.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 
@@ -78,6 +79,82 @@ Status TpuTransferManager::TransferLiteralToDeviceAsync(
       &c_literal, &c_device_buffer, status.c_status);
   ApiConverter::Free(&c_device_buffer);
   ApiConverter::Free(&c_literal);
+  return status.status();
+}
+
+Status TpuTransferManager::TransferLiteralToInfeed(
+    stream_executor::StreamExecutor* executor,
+    const xla::LiteralSlice& literal) {
+  StatusHelper status;
+  XLA_Literal c_literal;
+  ApiConverter::ToC(literal, &c_literal);
+  auto* tpu_executor = static_cast<TpuExecutor*>(executor->implementation());
+
+  tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralToInfeedFn(
+      manager_, tpu_executor->se_executor(), &c_literal, status.c_status);
+
+  ApiConverter::Free(&c_literal);
+
+  return status.status();
+}
+
+Status TpuTransferManager::TransferBuffersToInfeed(
+    se::StreamExecutor* executor,
+    const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) {
+  StatusHelper status;
+  auto* tpu_executor = static_cast<TpuExecutor*>(executor->implementation());
+
+  std::vector<int64_t> buffers_size;
+  std::vector<uint32_t*> buffers_array;
+
+  buffers_size.reserve(buffers.size());
+  buffers_array.reserve(buffers.size());
+
+  for (int64_t i = 0; i < buffers.size(); ++i) {
+    buffers_array.push_back(
+        const_cast<unsigned int*>(buffers[i].const_data().data()));
+    buffers_size.push_back(buffers[i].const_data().size());
+  }
+
+  tpu::ExecutorApiFn()->TpuTransferManager_TransferBuffersToInfeedFn(
+      manager_, tpu_executor->se_executor(), buffers_array.data(),
+      buffers_size.data(), buffers_size.size(), status.c_status);
+  return status.status();
+}
+
+Status TpuTransferManager::TransferLiteralFromOutfeed(
+    stream_executor::StreamExecutor* executor, const xla::Shape& literal_shape,
+    xla::MutableBorrowingLiteral literal) {
+  StatusHelper status;
+  XLA_Shape c_shape;
+  XLA_Literal c_literal;
+  auto* tpu_executor = static_cast<TpuExecutor*>(executor->implementation());
+
+  ApiConverter::ToC(literal_shape, &c_shape);
+  ApiConverter::ToC(literal, &c_literal);
+
+  tpu::ExecutorApiFn()->TpuTransferManager_TransferLiteralFromOutfeedFn(
+      manager_, tpu_executor->se_executor(), &c_shape, &c_literal,
+      status.c_status);
+
+  ApiConverter::Free(&c_shape);
+  ApiConverter::Free(&c_literal);
+
+  return status.status();
+}
+
+Status TpuTransferManager::ResetDevices(
+    absl::Span<stream_executor::StreamExecutor* const> executor) {
+  StatusHelper status;
+  std::vector<SE_StreamExecutor*> se;
+  se.reserve(executor.size());
+  for (int64_t i = 0; i < executor.size(); ++i) {
+    se.push_back(static_cast<TpuExecutor*>(executor[i]->implementation())
+                     ->se_executor());
+  }
+
+  tpu::ExecutorApiFn()->TpuTransferManager_ResetDevicesFn(
+      manager_, se.data(), executor.size(), status.c_status);
   return status.status();
 }
 
@@ -193,6 +270,7 @@ Status TpuTransferManager::LinearizeToBuffers(
   tpu::ExecutorApiFn()->TpuTransferManager_FreeBuffersFn(
       buffers_array, buffers_size, buffers_array_size);
 
+  ApiConverter::Free(&c_literal);
   return status.status();
 }
 

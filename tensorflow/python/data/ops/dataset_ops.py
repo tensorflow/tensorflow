@@ -30,7 +30,6 @@ from six.moves import queue as Queue  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python import tf2
-from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import distribute_options
 from tensorflow.python.data.experimental.ops import optimization_options
 from tensorflow.python.data.experimental.ops import stats_options
@@ -377,19 +376,20 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
     graph_rewrites = options._graph_rewrites()
     graph_rewrite_configs = options._graph_rewrite_configs()
     # pylint: enable=protected-access
-    if graph_rewrites.enabled or graph_rewrites.default:
-      if self._has_captured_ref():
+    if self._has_captured_ref():
+      if graph_rewrites.enabled or graph_rewrites.default:
         warnings.warn(
             "tf.data graph rewrites are not compatible with tf.Variable. "
             "The following rewrites will be disabled: %s. To enable "
             "rewrites, use resource variables instead by calling "
             "`tf.enable_resource_variables()` at the start of the program." %
             ", ".join(graph_rewrites.enabled + graph_rewrites.default))
-      else:
-        dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
-                                   graph_rewrites.disabled,
-                                   graph_rewrites.default,
-                                   graph_rewrite_configs)
+    elif (graph_rewrites.enabled or graph_rewrites.default or
+          (options.experimental_optimization.apply_default_optimizations  # pylint: disable=g-bool-id-comparison
+           is not False)):
+      dataset = _OptimizeDataset(dataset, graph_rewrites.enabled,
+                                 graph_rewrites.disabled,
+                                 graph_rewrites.default, graph_rewrite_configs)
 
     # (3) Apply autotune options
     autotune, algorithm, cpu_budget = options._autotune_settings()  # pylint: disable=protected-access
@@ -2835,20 +2835,37 @@ def get_legacy_output_types(dataset_or_iterator):
 
 @tf_export("data.Options")
 class Options(options_lib.OptionsBase):
-  """Represents options for tf.data.Dataset.
+  """Represents options for `tf.data.Dataset`.
 
-  An `Options` object can be, for instance, used to control which graph
-  optimizations to apply or whether to use performance modeling to dynamically
-  tune the parallelism of operations such as `tf.data.Dataset.map` or
-  `tf.data.Dataset.interleave`.
+  A `tf.data.Options` object can be, for instance, used to control which static
+  optimizations to apply to the input pipeline graph or whether to use
+  performance modeling to dynamically tune the parallelism of operations such as
+  `tf.data.Dataset.map` or `tf.data.Dataset.interleave`.
 
-  After constructing an `Options` object, use `dataset.with_options(options)` to
-  apply the options to a dataset.
+  The options are set for the entire dataset and are carried over to datasets
+  created through tf.data transformations.
 
-  >>> dataset = tf.data.Dataset.range(3)
+  The options can be set either by mutating the object returned by
+  `tf.data.Dataset.options()` or by constructing an `Options` object and using
+  the `tf.data.Dataset.with_options(options)` transformation, which returns a
+  dataset with the options set.
+
+  >>> dataset = tf.data.Dataset.range(42)
+  >>> dataset.options().experimental_deterministic = False
+  >>> print(dataset.options().experimental_deterministic)
+  False
+
+  >>> dataset = tf.data.Dataset.range(42)
   >>> options = tf.data.Options()
-  >>> # Set options here.
+  >>> options.experimental_deterministic = False
   >>> dataset = dataset.with_options(options)
+  >>> print(dataset.options().experimental_deterministic)
+  False
+
+  Note: A known limitation of the `tf.data.Options` implementation is that the
+  options are not preserved across tf.function boundaries. In particular, to
+  set options for a dataset that is iterated within a tf.function, the options
+  need to be set within the same tf.function.
   """
 
   experimental_deterministic = options_lib.create_option(
@@ -2967,17 +2984,15 @@ class Options(options_lib.OptionsBase):
   def merge(self, options):
     """Merges itself with the given `tf.data.Options`.
 
-    The given `tf.data.Options` can be merged as long as there does not exist an
-    attribute that is set to different values in `self` and `options`.
+    If this object and the `options` to merge set an option differently, a
+    warning is generated and this object's value is updated with the `options`
+    object's value.
 
     Args:
       options: a `tf.data.Options` to merge with
 
-    Raises:
-      ValueError: if the given `tf.data.Options` cannot be merged
-
     Returns:
-      New `tf.data.Options()` object which is the result of merging self with
+      New `tf.data.Options` object which is the result of merging self with
       the input `tf.data.Options`.
     """
     return options_lib.merge_options(self, options)
@@ -4437,45 +4452,30 @@ class _OptimizeDataset(UnaryUnchangedStructureDataset):
     if optimization_configs is None:
       optimization_configs = []
 
-    if compat.forward_compatible(2020, 8, 6):
-      self._optimizations_enabled = convert.optional_param_to_tensor(
-          argument_name="optimizations_enabled",
-          argument_value=optimizations_enabled,
-          argument_default=[],
-          argument_dtype=dtypes.string)
-      self._optimizations_disabled = convert.optional_param_to_tensor(
-          argument_name="optimizations_disabled",
-          argument_value=optimizations_disabled,
-          argument_default=[],
-          argument_dtype=dtypes.string)
-      self._optimizations_default = convert.optional_param_to_tensor(
-          argument_name="optimizations_default",
-          argument_value=optimizations_default,
-          argument_default=[],
-          argument_dtype=dtypes.string)
+    self._optimizations_enabled = convert.optional_param_to_tensor(
+        argument_name="optimizations_enabled",
+        argument_value=optimizations_enabled,
+        argument_default=[],
+        argument_dtype=dtypes.string)
+    self._optimizations_disabled = convert.optional_param_to_tensor(
+        argument_name="optimizations_disabled",
+        argument_value=optimizations_disabled,
+        argument_default=[],
+        argument_dtype=dtypes.string)
+    self._optimizations_default = convert.optional_param_to_tensor(
+        argument_name="optimizations_default",
+        argument_value=optimizations_default,
+        argument_default=[],
+        argument_dtype=dtypes.string)
 
-      variant_tensor = gen_dataset_ops.optimize_dataset_v2(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._optimizations_enabled,
-          self._optimizations_disabled,
-          self._optimizations_default,
-          optimization_configs=optimization_configs,
-          **self._flat_structure)
-    else:
-      if optimizations_enabled is None:
-        optimizations_enabled = []
-      if optimizations_default is None:
-        optimizations_default = []
+    variant_tensor = gen_dataset_ops.optimize_dataset_v2(
+        input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._optimizations_enabled,
+        self._optimizations_disabled,
+        self._optimizations_default,
+        optimization_configs=optimization_configs,
+        **self._flat_structure)
 
-      self._optimizations = ops.convert_to_tensor(
-          optimizations_enabled + optimizations_default,
-          dtype=dtypes.string,
-          name="optimizations")
-      variant_tensor = gen_dataset_ops.optimize_dataset(
-          input_dataset._variant_tensor,  # pylint: disable=protected-access
-          self._optimizations,
-          optimization_configs=optimization_configs,
-          **self._flat_structure)
     super(_OptimizeDataset, self).__init__(input_dataset, variant_tensor)
 
 
