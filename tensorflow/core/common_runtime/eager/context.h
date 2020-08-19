@@ -458,6 +458,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   tensorflow::ServerInterface* GetServer() { return server_.get(); }
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractContext* ptr) {
+    return ptr->getKind() == kEager;
+  }
+
 #endif  // IS_MOBILE_PLATFORM
 
   // Closes remote eager contexts, waits for all RPCs to finish, and
@@ -658,11 +663,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
-
-  // For LLVM style RTTI.
-  static bool classof(const AbstractContext* ptr) {
-    return ptr->getKind() == kEager;
-  }
 
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should
