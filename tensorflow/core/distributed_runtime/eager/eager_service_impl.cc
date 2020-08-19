@@ -171,8 +171,7 @@ Status TensorHandleShape(TensorHandle* handle, TensorShapeProto* proto) {
 
 Status AddOpRetvalsToResponse(
     EagerContext* eager_context, int op_id, int num_retvals,
-    const std::vector<int32>& output_nums, TensorHandle** retvals,
-    std::function<TensorProto*()> add_tensor_proto_fn,
+    TensorHandle** retvals, std::function<TensorProto*()> add_tensor_proto_fn,
     std::function<TensorShapeProto*()> add_shape_proto_fn,
     std::function<string*()> add_device_fn = nullptr) {
   if (op_id == kInvalidRemoteOpId) {
@@ -196,9 +195,7 @@ Status AddOpRetvalsToResponse(
       if (is_remote) {
         retvals[i]->Unref();
       } else {
-        const int output_num = output_nums.empty() ? i : output_nums.at(i);
-        eager_context->RemoteMgr()->AddOperationOutput(retvals[i], op_id,
-                                                       output_num);
+        eager_context->RemoteMgr()->AddOperationOutput(retvals[i], op_id, i);
       }
     }
   }
@@ -477,10 +474,6 @@ void EagerServiceImpl::RunComponentFunction(
   auto* retvals = new absl::FixedArray<TensorHandle*>(*num_retvals);
   VLOG(3) << "ServerContext: Calling EagerLocalExecuteAsync for op "
           << operation.id();
-  std::vector<int32> output_nums;
-  for (const int32 output_num : request->output_num()) {
-    output_nums.push_back(output_num);
-  }
 
   auto cm = std::make_shared<CancellationManager>();
   op->SetCancellationManager(cm.get());
@@ -489,8 +482,8 @@ void EagerServiceImpl::RunComponentFunction(
   context->Ref();
   EagerLocalExecuteAsync(
       op, retvals->data(), num_retvals,
-      [op, op_id = operation.id(), num_retvals, retvals, output_nums, cm,
-       call_opts, response, eager_context, context,
+      [op, op_id = operation.id(), num_retvals, retvals, cm, call_opts,
+       response, eager_context, context,
        done = std::move(done)](const Status& status) {
         call_opts->ClearCancelCallback();
         auto wrapped_done = [&](const Status& status) {
@@ -507,7 +500,7 @@ void EagerServiceImpl::RunComponentFunction(
         // The output device of a component function is the component device
         // which is known on the default device of it's parent function.
         wrapped_done(AddOpRetvalsToResponse(
-            eager_context, op_id, *num_retvals, output_nums, retvals->data(),
+            eager_context, op_id, *num_retvals, retvals->data(),
             [response] { return response->add_tensor(); },
             [response] { return response->add_shape(); }));
       });
@@ -546,8 +539,8 @@ Status EagerServiceImpl::ExecuteOp(CallOptions* call_opts,
   }
 
   return AddOpRetvalsToResponse(
-      eager_context, operation.id(), num_retvals, /*output_nums=*/{},
-      retvals.data(), [queue_response] { return queue_response->add_tensor(); },
+      eager_context, operation.id(), num_retvals, retvals.data(),
+      [queue_response] { return queue_response->add_tensor(); },
       [queue_response] { return queue_response->add_shape(); },
       std::move(add_device_fn));
 }

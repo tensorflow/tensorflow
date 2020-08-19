@@ -105,7 +105,6 @@ cc_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
-        "@com_google_absl//absl/types:optional",
     ],
 )
 

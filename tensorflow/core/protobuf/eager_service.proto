@@ -180,9 +180,6 @@ message RunComponentFunctionRequest {
   fixed64 context_id = 1;
 
   Operation operation = 2;
-
-  // The output indices of its parent function.
-  repeated int32 output_num = 3;
 }
 
 message RunComponentFunctionResponse {
