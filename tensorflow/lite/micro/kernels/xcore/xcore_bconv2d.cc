@@ -2,6 +2,7 @@
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xcore/xcore_dispatcher.h"
+#include "tensorflow/lite/micro/kernels/xcore/xcore_custom_options.h"
 #include "flatbuffers/flexbuffers.h"
 
 extern "C" {
@@ -99,25 +100,6 @@ struct BConv2DBinOutOpData {
   int stack_scratch_index; //The index where the above stack will be allocated
 
 };
-
-uint32_t named_uint32_custom_option(TfLiteContext *context, const char *buffer, 
-    size_t length, std::string named_key){
-
-  const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
-
-  auto map = flexbuffers::GetRoot(buffer_t, length).AsMap();
-
-  auto keys = map.Keys();
-  auto values = map.Values();
-  for (int i = 0; i < map.size(); ++i) {
-    const std::string &key = keys[i].AsString().str();
-    if (key.compare(named_key) == 0) {
-       return values[i].AsUInt32();
-    }
-  }
-  assert(0);
-  return 0;
-}
 
 void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   BConv2DBinOutOpData *op = nullptr;
