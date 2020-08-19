@@ -60,6 +60,7 @@ struct MklConvBwdFilterParams {
   memory::dims diff_dst_dims;
   memory::dims strides;
   MKL_TENSOR_FORMAT tf_fmt;
+  bool native_format;
   memory::dims dilations;
   memory::dims padding_left;
   memory::dims padding_right;
@@ -70,8 +71,8 @@ struct MklConvBwdFilterParams {
   MklConvBwdFilterParams(memory::dims src_dims, memory::dims diff_filter_dims,
                          memory::dims diff_bias_dims,
                          memory::dims diff_dst_dims, memory::dims strides,
-                         MKL_TENSOR_FORMAT tf_fmt, memory::dims dilations,
-                         memory::dims padding_left,
+                         MKL_TENSOR_FORMAT tf_fmt, bool native_format,
+                         memory::dims dilations, memory::dims padding_left,
 #ifndef ENABLE_MKLDNN_V1
                          memory::dims padding_right, padding_kind padding)
 #else
@@ -83,6 +84,7 @@ struct MklConvBwdFilterParams {
         diff_dst_dims(diff_dst_dims),
         strides(strides),
         tf_fmt(tf_fmt),
+        native_format(native_format),
         dilations(dilations),
         padding_left(padding_left),
 #ifndef ENABLE_MKLDNN_V1
@@ -95,7 +97,7 @@ struct MklConvBwdFilterParams {
 #endif  // !ENABLE_MKLDNN_V1
 };
 
-template <typename T, bool native_format>
+template <typename T>
 class MklConvBwdFilterPrimitive : public MklPrimitive {
  public:
   explicit MklConvBwdFilterPrimitive(
@@ -247,7 +249,7 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
 
   void Setup(const MklConvBwdFilterParams& convBwdFilterDims) {
     MEMORY_FORMAT user_data_fmt;
-    if (native_format) {
+    if (convBwdFilterDims.native_format) {
       user_data_fmt =
           MklTensorFormatToMklDnnDataFormat(convBwdFilterDims.tf_fmt);
     } else {
@@ -370,28 +372,25 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
   struct ConvBwdFilterContext context_;
 };
 
-template <typename T, bool native_format>
+template <typename T>
 class MklConvBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
  public:
-  static MklConvBwdFilterPrimitive<T, native_format>* Get(
+  static MklConvBwdFilterPrimitive<T>* Get(
       const MklConvBwdFilterParams& convBwdFilterDims, bool do_not_cache) {
-    MklConvBwdFilterPrimitive<T, native_format>* conv_bwd_filter = nullptr;
+    MklConvBwdFilterPrimitive<T>* conv_bwd_filter = nullptr;
 
     if (do_not_cache) { /* Create new primitive always */
-      conv_bwd_filter =
-          new MklConvBwdFilterPrimitive<T, native_format>(convBwdFilterDims);
+      conv_bwd_filter = new MklConvBwdFilterPrimitive<T>(convBwdFilterDims);
     } else {
       // Look into the pool for reusable primitive.
-      conv_bwd_filter =
-          dynamic_cast<MklConvBwdFilterPrimitive<T, native_format>*>(
-              MklConvBwdFilterPrimitiveFactory<T, native_format>::GetInstance()
-                  .GetConvBwdFilter(convBwdFilterDims));
+      conv_bwd_filter = dynamic_cast<MklConvBwdFilterPrimitive<T>*>(
+          MklConvBwdFilterPrimitiveFactory<T>::GetInstance().GetConvBwdFilter(
+              convBwdFilterDims));
 
       if (conv_bwd_filter == nullptr) {
-        conv_bwd_filter =
-            new MklConvBwdFilterPrimitive<T, native_format>(convBwdFilterDims);
-        MklConvBwdFilterPrimitiveFactory<T, native_format>::GetInstance()
-            .SetConvBwdFilter(convBwdFilterDims, conv_bwd_filter);
+        conv_bwd_filter = new MklConvBwdFilterPrimitive<T>(convBwdFilterDims);
+        MklConvBwdFilterPrimitiveFactory<T>::GetInstance().SetConvBwdFilter(
+            convBwdFilterDims, conv_bwd_filter);
       }
     }
 
@@ -419,7 +418,7 @@ class MklConvBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(convBwdFilterDims.dilations);
     key_creator.AddAsKey(convBwdFilterDims.padding_left);
     key_creator.AddAsKey(convBwdFilterDims.padding_right);
-    if (native_format) {
+    if (convBwdFilterDims.native_format) {
       key_creator.AddAsKey(convBwdFilterDims.tf_fmt);
     }
     return key_creator.GetKey();
@@ -549,7 +548,7 @@ class MklConvCustomBackpropFilterOp
       for (int i = 0; i < dilations.size(); ++i) --dilations[i];
       MklConvBwdFilterParams convBwdFilterDims(
           fwd_src_dims, fwd_filter_dims, diff_bias_dims, diff_dst_dims, strides,
-          tf_fmt,
+          tf_fmt, native_format,
 #ifndef ENABLE_MKLDNN_V1
           dilations, padding_left, padding_right,
           TFPaddingToMklDnnPadding(this->padding_));
@@ -562,9 +561,9 @@ class MklConvCustomBackpropFilterOp
       // variable TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE is set to true.
       bool do_not_cache = MklPrimitiveFactory<T>::IsPrimitiveMemOptEnabled();
 
-      MklConvBwdFilterPrimitive<T, native_format>* conv_bwd_filter =
-          MklConvBwdFilterPrimitiveFactory<T, native_format>::Get(
-              convBwdFilterDims, do_not_cache);
+      MklConvBwdFilterPrimitive<T>* conv_bwd_filter =
+          MklConvBwdFilterPrimitiveFactory<T>::Get(convBwdFilterDims,
+                                                   do_not_cache);
 
       // Allocate output tensors: diff_filter and diff_bias (w bias).
       auto diff_filter_dims = GetOutputDims(fwd_src_dims, fwd_filter_dims);

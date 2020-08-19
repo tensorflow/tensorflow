@@ -64,6 +64,7 @@ struct MklConvBwdInputParams {
   memory::dims diff_dst_dims;
   memory::dims strides;
   MKL_TENSOR_FORMAT tf_fmt;
+  bool native_format;
   memory::dims dilations;
   memory::dims padding_left;
   memory::dims padding_right;
@@ -73,8 +74,8 @@ struct MklConvBwdInputParams {
 
   MklConvBwdInputParams(memory::dims diff_src_dims, memory::dims filter_dims,
                         memory::dims diff_dst_dims, memory::dims strides,
-                        MKL_TENSOR_FORMAT tf_fmt, memory::dims dilations,
-                        memory::dims padding_left,
+                        MKL_TENSOR_FORMAT tf_fmt, bool native_format,
+                        memory::dims dilations, memory::dims padding_left,
 #ifndef ENABLE_MKLDNN_V1
                         memory::dims padding_right, padding_kind padding)
 #else
@@ -85,6 +86,7 @@ struct MklConvBwdInputParams {
         diff_dst_dims(diff_dst_dims),
         strides(strides),
         tf_fmt(tf_fmt),
+        native_format(native_format),
         dilations(dilations),
         padding_left(padding_left),
 #ifndef ENABLE_MKLDNN_V1
@@ -97,7 +99,7 @@ struct MklConvBwdInputParams {
 #endif  // !ENABLE_MKLDNN_V1
 };
 
-template <typename T, bool native_format>
+template <typename T>
 class MklConvBwdInputPrimitive : public MklPrimitive {
  public:
   explicit MklConvBwdInputPrimitive(
@@ -219,7 +221,7 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
 
   void Setup(const MklConvBwdInputParams& convBwdInputDims) {
     MEMORY_FORMAT user_data_fmt;
-    if (native_format) {
+    if (convBwdInputDims.native_format) {
       user_data_fmt =
           MklTensorFormatToMklDnnDataFormat(convBwdInputDims.tf_fmt);
     } else {
@@ -308,31 +310,28 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
   struct ConvBwdInputContext context_;
 };
 
-template <typename T, bool native_format>
+template <typename T>
 class MklConvBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
  private:
   MklConvBwdInputPrimitiveFactory() {}
   ~MklConvBwdInputPrimitiveFactory() {}
 
  public:
-  static MklConvBwdInputPrimitive<T, native_format>* Get(
+  static MklConvBwdInputPrimitive<T>* Get(
       const MklConvBwdInputParams& convBwdInputDims, bool do_not_cache) {
-    MklConvBwdInputPrimitive<T, native_format>* conv_bwd_input = nullptr;
+    MklConvBwdInputPrimitive<T>* conv_bwd_input = nullptr;
 
     if (do_not_cache) {  // Always allocate primitive.
-      conv_bwd_input =
-          new MklConvBwdInputPrimitive<T, native_format>(convBwdInputDims);
+      conv_bwd_input = new MklConvBwdInputPrimitive<T>(convBwdInputDims);
     } else {
       // look into the pool for reusable primitive.
-      conv_bwd_input =
-          dynamic_cast<MklConvBwdInputPrimitive<T, native_format>*>(
-              MklConvBwdInputPrimitiveFactory<T, native_format>::GetInstance()
-                  .GetConvBwdInput(convBwdInputDims));
+      conv_bwd_input = dynamic_cast<MklConvBwdInputPrimitive<T>*>(
+          MklConvBwdInputPrimitiveFactory<T>::GetInstance().GetConvBwdInput(
+              convBwdInputDims));
       if (conv_bwd_input == nullptr) {
-        conv_bwd_input =
-            new MklConvBwdInputPrimitive<T, native_format>(convBwdInputDims);
-        MklConvBwdInputPrimitiveFactory<T, native_format>::GetInstance()
-            .SetConvBwdInput(convBwdInputDims, conv_bwd_input);
+        conv_bwd_input = new MklConvBwdInputPrimitive<T>(convBwdInputDims);
+        MklConvBwdInputPrimitiveFactory<T>::GetInstance().SetConvBwdInput(
+            convBwdInputDims, conv_bwd_input);
       }
     }
 
@@ -356,7 +355,7 @@ class MklConvBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(convBwdInputDims.dilations);
     key_creator.AddAsKey(convBwdInputDims.padding_left);
     key_creator.AddAsKey(convBwdInputDims.padding_right);
-    if (native_format) {
+    if (convBwdInputDims.native_format) {
       key_creator.AddAsKey(convBwdInputDims.tf_fmt);
     }
     return key_creator.GetKey();
@@ -492,7 +491,7 @@ class MklConvCustomBackpropInputOp
       for (int i = 0; i < dilations.size(); ++i) --dilations[i];
       MklConvBwdInputParams convBwdInputDims(
           fwd_src_dims, fwd_filter_dims, diff_dst_dims, strides, tf_fmt,
-          dilations,
+          native_format, dilations,
 #ifndef ENABLE_MKLDNN_V1
           padding_left, padding_right,
           TFPaddingToMklDnnPadding(this->padding_));
@@ -510,9 +509,9 @@ class MklConvCustomBackpropInputOp
                           (MklPrimitiveFactory<T>::IsLegacyPlatform() ||
                            IsConv1x1StrideNot1(fwd_filter_dims, strides));
 
-      MklConvBwdInputPrimitive<T, native_format>* conv_bwd_input =
-          MklConvBwdInputPrimitiveFactory<T, native_format>::Get(
-              convBwdInputDims, do_not_cache);
+      MklConvBwdInputPrimitive<T>* conv_bwd_input =
+          MklConvBwdInputPrimitiveFactory<T>::Get(convBwdInputDims,
+                                                  do_not_cache);
 
       auto bwd_input_pd = conv_bwd_input->GetPrimitiveDesc();
       auto diff_src_pd = bwd_input_pd.get()->PRIMITIVE_DESC_DIFF_SRC;
