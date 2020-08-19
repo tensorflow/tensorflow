@@ -941,6 +941,7 @@ class CondV2Test(test.TestCase):
     self.assertEqual(fn_output[0].op.type, "StatefulPartitionedCall")
     self.assertAllEqual(self.evaluate(fn_output), [2.0, 4.0])
 
+  @test_util.disable_tfrt("GPU to host copy not implemented yet.")
   def testGradientTapeOfCondWithResourceVariableInFunction(self):
     with context.eager_mode():
       v = variables.Variable(2.)

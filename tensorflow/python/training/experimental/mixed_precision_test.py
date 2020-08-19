@@ -102,6 +102,7 @@ class MixedPrecisionTest(test.TestCase, parameterized.TestCase):
 
   @test_util.run_gpu_only
   @test_util.run_in_graph_and_eager_modes
+  @test_util.disable_tfrt('Grappler rewrite doesn\'t apply to tfrt.')
   def test_grappler_pass_enabled(self):
     opt = gradient_descent_v1.GradientDescentOptimizer(1.0)
     enable_mixed_precision_graph_rewrite(opt, 123.)
