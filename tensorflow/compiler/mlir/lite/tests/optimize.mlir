@@ -1127,3 +1127,51 @@ func @ReshapeAddUnknownShape(%arg0: tensor<*xf32>) -> tensor<3x4xf32> {
 // CHECK: %[[rs2:.*]] = tfl.add %[[rs1]]
 // CHECK: return %[[rs2]]
 }
+
+func @FoldSumKeepDim(%arg0: tensor<8x128xf32>) -> tensor<8x1xf32> {
+  %cst = constant dense<1> : tensor<1xi32>
+  %cst_1 = constant dense<[8, 1]> : tensor<2xi32>
+  %0 = "tfl.sum"(%arg0, %cst) {keep_dims = false} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8xf32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<8xf32>, tensor<2xi32>) -> tensor<8x1xf32>
+  return %1 : tensor<8x1xf32>
+
+// CHECK-LABEL: FoldSumKeepDim
+// CHECK: %[[RESULT:.*]] = "tfl.sum"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<8x1xf32>
+// CHECK: return %[[RESULT]] : tensor<8x1xf32>
+}
+
+func @FoldReduceMinKeepDim(%arg0: tensor<8x128xf32>) -> tensor<1x128xf32> {
+  %cst = constant dense<0> : tensor<1xi32>
+  %cst_1 = constant dense<[1, 128]> : tensor<2xi32>
+  %0 = "tfl.reduce_min"(%arg0, %cst) {keep_dims = false} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<128xf32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<128xf32>, tensor<2xi32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+// CHECK-LABEL: FoldReduceMinKeepDim
+// CHECK: %[[RESULT:.*]] = "tfl.reduce_min"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<1x128xf32>
+// CHECK: return %[[RESULT]] : tensor<1x128xf32>
+}
+
+func @FoldReduceMaxKeepDim(%arg0: tensor<8x128xf32>) -> tensor<1x128xf32> {
+  %cst = constant dense<0> : tensor<1xi32>
+  %cst_1 = constant dense<[1, 128]> : tensor<2xi32>
+  %0 = "tfl.reduce_max"(%arg0, %cst) {keep_dims = false} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<128xf32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<128xf32>, tensor<2xi32>) -> tensor<1x128xf32>
+  return %1 : tensor<1x128xf32>
+
+// CHECK-LABEL: FoldReduceMaxKeepDim
+// CHECK: %[[RESULT:.*]] = "tfl.reduce_max"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<1xi32>) -> tensor<1x128xf32>
+// CHECK: return %[[RESULT]] : tensor<1x128xf32>
+}
+
+func @FoldReduceProdKeepDim(%arg0: tensor<8x128xf32>) -> tensor<1x1xf32> {
+  %cst = constant dense<[0, 1]> : tensor<2xi32>
+  %cst_1 = constant dense<[1, 1]> : tensor<2xi32>
+  %0 = "tfl.reduce_prod"(%arg0, %cst) {keep_dims = false} : (tensor<8x128xf32>, tensor<2xi32>) -> tensor<f32>
+  %1 = "tfl.reshape"(%0, %cst_1) : (tensor<f32>, tensor<2xi32>) -> tensor<1x1xf32>
+  return %1 : tensor<1x1xf32>
+
+// CHECK-LABEL: FoldReduceProdKeepDim
+// CHECK: %[[RESULT:.*]] = "tfl.reduce_prod"(%arg0, %cst) {keep_dims = true} : (tensor<8x128xf32>, tensor<2xi32>) -> tensor<1x1xf32>
+// CHECK: return %[[RESULT]] : tensor<1x1xf32>
+}
