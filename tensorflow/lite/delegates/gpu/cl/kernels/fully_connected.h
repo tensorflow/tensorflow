@@ -105,21 +105,20 @@ class FullyConnected : public GPUOperation {
 
  private:
   FullyConnected(const OperationDef& definition, const DeviceInfo& device_info);
-  friend absl::Status CreateFullyConnected(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const FullyConnectedAttributes& attr, FullyConnected* result);
+  friend FullyConnected CreateFullyConnected(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const FullyConnectedAttributes& attr);
 
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
   std::string GetFullyConnectedKernelCode(const OperationDef& op_def,
                                           const int3& work_group_size);
 };
 
 template <DataType T>
-absl::Status FullyConnected::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+void FullyConnected::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
 
@@ -144,13 +143,11 @@ absl::Status FullyConnected::UploadWeights(
 
   args_.AddObject("weights",
                   absl::make_unique<BufferDescriptor>(std::move(desc)));
-  return absl::OkStatus();
 }
 
-absl::Status CreateFullyConnected(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const FullyConnectedAttributes& attr,
-                                  FullyConnected* result);
+FullyConnected CreateFullyConnected(const DeviceInfo& device_info,
+                                    const OperationDef& definition,
+                                    const FullyConnectedAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

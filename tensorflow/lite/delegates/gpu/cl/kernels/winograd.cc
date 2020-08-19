@@ -234,7 +234,7 @@ std::string Winograd4x4To36::GetWinograd4x4To36Code(
   return c;
 }
 
-absl::Status Winograd4x4To36::UploadBt(CLContext* context) {
+void Winograd4x4To36::UploadBt() {
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> bt_aligned;
   bt_aligned.shape = Linear(6 * 8);
   bt_aligned.data.resize(6 * 8);
@@ -253,7 +253,6 @@ absl::Status Winograd4x4To36::UploadBt(CLContext* context) {
   desc.UploadLinearData(bt_aligned);
   args_.AddObject("bt",
                   absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
-  return absl::OkStatus();
 }
 
 int3 Winograd4x4To36::SelectBestWorkGroup(const KernelInfo& kernel_info) const {
@@ -298,13 +297,12 @@ void Winograd4x4To36::GetPossibleKernelWorkGroups(
   }
 }
 
-absl::Status CreateWinograd4x4To36(const CreationContext& creation_context,
-                                   const OperationDef& definition,
-                                   const Padding2D& padding,
-                                   Winograd4x4To36* result) {
-  *result =
-      Winograd4x4To36(definition, padding, creation_context.device->info_);
-  return result->UploadBt(creation_context.context);
+Winograd4x4To36 CreateWinograd4x4To36(const DeviceInfo& device_info,
+                                      const OperationDef& definition,
+                                      const Padding2D& padding) {
+  Winograd4x4To36 result(definition, padding, device_info);
+  result.UploadBt();
+  return result;
 }
 
 Winograd36To4x4::Winograd36To4x4(const OperationDef& definition,
@@ -437,7 +435,7 @@ std::string Winograd36To4x4::GetWinograd36To4x4Code(
   return c;
 }
 
-absl::Status Winograd36To4x4::UploadAt(CLContext* context) {
+void Winograd36To4x4::UploadAt() {
   tflite::gpu::Tensor<Linear, DataType::FLOAT32> at_aligned;
   at_aligned.shape = Linear(4 * 8);
   at_aligned.data.resize(4 * 8);
@@ -456,7 +454,6 @@ absl::Status Winograd36To4x4::UploadAt(CLContext* context) {
   desc.UploadLinearData(at_aligned);
   args_.AddObject("at",
                   absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
-  return absl::OkStatus();
 }
 
 int3 Winograd36To4x4::SelectBestWorkGroup(const KernelInfo& kernel_info) const {
@@ -496,18 +493,18 @@ void Winograd36To4x4::GetPossibleKernelWorkGroups(
   }
 }
 
-absl::Status CreateWinograd36To4x4(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
-    Winograd36To4x4* result) {
-  *result = Winograd36To4x4(definition, creation_context.device->info_);
+Winograd36To4x4 CreateWinograd36To4x4(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
+  Winograd36To4x4 result(definition, device_info);
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
   desc.UploadLinearData(biases);
-  result->args_.AddObject(
+  result.args_.AddObject(
       "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
-  return result->UploadAt(creation_context.context);
+  result.UploadAt();
+  return result;
 }
 
 }  // namespace cl

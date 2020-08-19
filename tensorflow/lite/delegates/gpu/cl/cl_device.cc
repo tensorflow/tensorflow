@@ -244,6 +244,26 @@ DeviceInfo DeviceInfoFromDeviceID(cl_device_id id) {
   info.max_work_group_size_x = max_work_group_sizes.x;
   info.max_work_group_size_y = max_work_group_sizes.y;
   info.max_work_group_size_z = max_work_group_sizes.z;
+
+  if (info.IsIntel()) {
+    if (info.SupportsExtension("cl_intel_required_subgroup_size")) {
+      size_t sub_groups_count;
+      cl_int status =
+          clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/, 0,
+                          nullptr, &sub_groups_count);
+      if (status == CL_SUCCESS) {
+        std::vector<size_t> sub_group_sizes(sub_groups_count);
+        status = clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/,
+                                 sizeof(size_t) * sub_groups_count,
+                                 sub_group_sizes.data(), nullptr);
+        if (status == CL_SUCCESS) {
+          for (int i = 0; i < sub_groups_count; ++i) {
+            info.supported_subgroup_sizes.push_back(sub_group_sizes[i]);
+          }
+        }
+      }
+    }
+  }
   return info;
 }
 
@@ -305,37 +325,10 @@ std::string CLDevice::GetPlatformVersion() const {
   return GetPlatformInfo(platform_id_, CL_PLATFORM_VERSION);
 }
 
-bool CLDevice::IsCL20OrHigher() const {
-  return info_.cl_version != OpenCLVersion::CL_1_0 &&
-         info_.cl_version != OpenCLVersion::CL_1_1 &&
-         info_.cl_version != OpenCLVersion::CL_1_2;
-}
+bool CLDevice::IsCL20OrHigher() const { return info_.IsCL20OrHigher(); }
 
 bool CLDevice::SupportsSubGroupWithSize(int sub_group_size) const {
-  if (IsIntel()) {
-    if (SupportsExtension("cl_intel_required_subgroup_size")) {
-      size_t sub_groups_count;
-      cl_int error =
-          clGetDeviceInfo(id_, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/, 0,
-                          nullptr, &sub_groups_count);
-      if (error != CL_SUCCESS) {
-        return false;
-      }
-      std::vector<size_t> sub_group_sizes(sub_groups_count);
-      error = clGetDeviceInfo(id_, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/,
-                              sizeof(size_t) * sub_groups_count,
-                              sub_group_sizes.data(), nullptr);
-      if (error != CL_SUCCESS) {
-        return false;
-      }
-      for (int i = 0; i < sub_groups_count; ++i) {
-        if (sub_group_sizes[i] == sub_group_size) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
+  return info_.SupportsSubGroupWithSize(sub_group_size);
 }
 
 bool CLDevice::IsAdreno() const { return info_.IsAdreno(); }

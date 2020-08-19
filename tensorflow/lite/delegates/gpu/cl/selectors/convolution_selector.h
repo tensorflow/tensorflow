@@ -31,24 +31,25 @@ namespace cl {
 
 absl::Status SelectConvolution(const Convolution2DAttributes& attr,
                                const BHWC& dst_shape,
-                               const CreationContext& creation_context,
+                               const DeviceInfo& device_info,
                                const OperationDef& op_def, ModelHints hints,
                                std::unique_ptr<GPUOperation>* ptr);
 
-absl::Status SelectConvolutionForWinograd(
-    const Convolution2DAttributes& attr, const BHWC& dst_shape,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    ModelHints hints, std::unique_ptr<GPUOperation>* ptr);
+absl::Status SelectConvolutionForWinograd(const Convolution2DAttributes& attr,
+                                          const BHWC& dst_shape,
+                                          const DeviceInfo& device_info,
+                                          const OperationDef& op_def,
+                                          ModelHints hints,
+                                          std::unique_ptr<GPUOperation>* ptr);
 
 absl::Status SelectConvolutionWithDynamicWeights(
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
-    const BHWC& dst_shape, const CreationContext& creation_context,
+    const BHWC& dst_shape, const DeviceInfo& device_info,
     const OperationDef& op_def, ModelHints hints,
     std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc);
 
 absl::Status SelectConverterToConvWeights(
-    const ConvWeightsDescription& weights_desc,
-    const CreationContext& creation_context, const OperationDef& op_def,
+    const ConvWeightsDescription& weights_desc, const OperationDef& op_def,
     ModelHints hints, std::unique_ptr<GPUOperation>* ptr);
 
 }  // namespace cl

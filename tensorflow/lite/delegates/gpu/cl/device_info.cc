@@ -262,6 +262,21 @@ bool DeviceInfo::SupportsExtension(const std::string& extension) const {
   return false;
 }
 
+bool DeviceInfo::IsCL20OrHigher() const {
+  return cl_version != OpenCLVersion::CL_1_0 &&
+         cl_version != OpenCLVersion::CL_1_1 &&
+         cl_version != OpenCLVersion::CL_1_2;
+}
+
+bool DeviceInfo::SupportsSubGroupWithSize(int sub_group_size) const {
+  for (auto subgroup_size : supported_subgroup_sizes) {
+    if (sub_group_size == subgroup_size) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool DeviceInfo::IsAdreno() const { return vendor == Vendor::kQualcomm; }
 
 bool DeviceInfo::IsAdreno3xx() const {

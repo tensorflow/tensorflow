@@ -179,26 +179,18 @@ void SelectTranspose(const TransposeAttributes& attr,
   *ptr = absl::make_unique<GPUOperation>(std::move(operation));
 }
 
-absl::Status SelectWinograd4x4To36(const CreationContext& creation_context,
-                                   const Padding2D& padding,
-                                   const OperationDef& op_def,
-                                   std::unique_ptr<GPUOperation>* ptr) {
-  Winograd4x4To36 operation;
-  RETURN_IF_ERROR(
-      CreateWinograd4x4To36(creation_context, op_def, padding, &operation));
-  *ptr = absl::make_unique<Winograd4x4To36>(std::move(operation));
-  return absl::OkStatus();
+std::unique_ptr<GPUOperation> SelectWinograd4x4To36(
+    const DeviceInfo& device_info, const Padding2D& padding,
+    const OperationDef& op_def) {
+  return absl::make_unique<Winograd4x4To36>(
+      CreateWinograd4x4To36(device_info, op_def, padding));
 }
 
-absl::Status SelectWinograd36To4x4(
-    const CreationContext& creation_context, const OperationDef& op_def,
-    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases,
-    std::unique_ptr<GPUOperation>* ptr) {
-  Winograd36To4x4 operation;
-  RETURN_IF_ERROR(
-      CreateWinograd36To4x4(creation_context, op_def, biases, &operation));
-  *ptr = absl::make_unique<Winograd36To4x4>(std::move(operation));
-  return absl::OkStatus();
+std::unique_ptr<GPUOperation> SelectWinograd36To4x4(
+    const DeviceInfo& device_info, const OperationDef& op_def,
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& biases) {
+  return absl::make_unique<Winograd36To4x4>(
+      CreateWinograd36To4x4(device_info, op_def, biases));
 }
 
 void SelectQuantizeAndDequantize(const QuantizeAndDequantizeAttributes& attr,

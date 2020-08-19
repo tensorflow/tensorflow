@@ -27,7 +27,7 @@ namespace gpu {
 namespace cl {
 
 absl::Status SelectFullyConnected(const FullyConnectedAttributes& attr,
-                                  const CreationContext& creation_context,
+                                  const DeviceInfo& device_info,
                                   const OperationDef& op_def, int batch_size,
                                   std::unique_ptr<GPUOperation>* ptr);
 

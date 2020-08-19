@@ -45,16 +45,15 @@ class ConvConstants : public GPUOperation {
   ConvConstants& operator=(const ConvConstants&) = delete;
 
  private:
-  friend absl::Status CreateConvConstants(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const Convolution2DAttributes& attr, ConvConstants* result);
+  friend ConvConstants CreateConvConstants(const DeviceInfo& device_info,
+                                           const OperationDef& definition,
+                                           const Convolution2DAttributes& attr);
   ConvConstants(const OperationDef& definition,
                 const Convolution2DAttributes& attr,
                 const DeviceInfo& device_info);
 
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
@@ -75,8 +74,7 @@ class ConvConstants : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvConstants::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+void ConvConstants::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
@@ -102,8 +100,6 @@ absl::Status ConvConstants::UploadWeights(
 
   args_.AddObject("weigths",
                   absl::make_unique<BufferDescriptor>(std::move(desc)));
-
-  return absl::OkStatus();
 }
 
 template <DataType S, typename T>
@@ -149,14 +145,13 @@ void ConvConstants::RearrangeWeightsData(
   }
 }
 
-bool IsConvConstantsSupported(const CLDevice& device,
+bool IsConvConstantsSupported(const DeviceInfo& device_info,
                               const OperationDef& definition,
                               const Convolution2DAttributes& attr);
 
-absl::Status CreateConvConstants(const CreationContext& creation_context,
-                                 const OperationDef& definition,
-                                 const Convolution2DAttributes& attr,
-                                 ConvConstants* result);
+ConvConstants CreateConvConstants(const DeviceInfo& device_info,
+                                  const OperationDef& definition,
+                                  const Convolution2DAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

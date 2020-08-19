@@ -39,7 +39,7 @@ namespace gpu {
 namespace cl {
 namespace {
 bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
-                                   const CLDevice& device,
+                                   const DeviceInfo& device_info,
                                    const BHWC& dst_shape) {
   const int tiles_x = DivideRoundUp(dst_shape.w, 4);
   const int tiles_y = DivideRoundUp(dst_shape.h, 4);
@@ -49,23 +49,22 @@ bool IsSuitableForWinograd4x4To6x6(const Convolution2DAttributes& attr,
       attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
       attr.dilations == HW(1, 1) && attr.strides == HW(1, 1);
   // Mali among other devices has smaller SIMD line size
-  const int min_depth = device.IsMali() ? 16 : 32;
-  const int min_hw = device.IsMali() ? 32 : 128;
+  const int min_depth = device_info.IsMali() ? 16 : 32;
+  const int min_hw = device_info.IsMali() ? 32 : 128;
   const bool recommended_channels =
       dst_depth % 4 == 0 && src_depth >= min_depth && dst_depth >= min_depth;
   const bool recommended_hw = tiles_x * tiles_y >= min_hw;
   return suitable_attributes && recommended_channels && recommended_hw;
 }
 
-absl::Status WinogradFromNode(const CreationContext& creation_context,
+absl::Status WinogradFromNode(const DeviceInfo& device_info,
                               const std::vector<Value*>& inputs,
                               const std::vector<Value*>& outputs,
                               const OperationDef& op_def, ModelHints hints,
                               const BHWC& input_shape, const BHWC& output_shape,
                               const Convolution2DAttributes& attr,
                               GPUOperationsSubgraph* gpu_subgraph) {
-  if (!IsSuitableForWinograd4x4To6x6(attr, *creation_context.device,
-                                     output_shape)) {
+  if (!IsSuitableForWinograd4x4To6x6(attr, device_info, output_shape)) {
     return absl::UnimplementedError("No implementation for this case.");
   }
 
@@ -75,16 +74,14 @@ absl::Status WinogradFromNode(const CreationContext& creation_context,
   const BHWC shape_1{input_shape.b, 36, tiles_x * tiles_y, output_shape.c};
   TensorDescriptor td_0;
   td_0.storage_type = SelectBestStorageType(
-      creation_context.device->info_, shape_0,
-      op_def.src_tensors[0].storage_type, op_def.src_tensors[0].data_type,
-      op_def.src_tensors[0].layout);
+      device_info, shape_0, op_def.src_tensors[0].storage_type,
+      op_def.src_tensors[0].data_type, op_def.src_tensors[0].layout);
   td_0.data_type = op_def.src_tensors[0].data_type;
   td_0.layout = op_def.src_tensors[0].layout;
   TensorDescriptor td_1;
   td_1.storage_type = SelectBestStorageType(
-      creation_context.device->info_, shape_1,
-      op_def.src_tensors[0].storage_type, op_def.src_tensors[0].data_type,
-      op_def.src_tensors[0].layout);
+      device_info, shape_1, op_def.src_tensors[0].storage_type,
+      op_def.src_tensors[0].data_type, op_def.src_tensors[0].layout);
   td_1.data_type = op_def.src_tensors[0].data_type;
   td_1.layout = op_def.src_tensors[0].layout;
   gpu_subgraph->new_tensors = {{shape_0, td_0}, {shape_1, td_1}};
@@ -96,8 +93,8 @@ absl::Status WinogradFromNode(const CreationContext& creation_context,
   winograd_up_def.src_tensors.push_back(op_def.src_tensors[0]);
   winograd_up_def.dst_tensors.push_back(td_0);
   auto& winograd_up = gpu_subgraph->operations[0];
-  RETURN_IF_ERROR(SelectWinograd4x4To36(
-      creation_context, attr.padding, winograd_up_def, &winograd_up.operation));
+  winograd_up.operation =
+      SelectWinograd4x4To36(device_info, attr.padding, winograd_up_def);
   winograd_up.input_ids = {static_cast<int>(inputs[0]->id)};
   winograd_up.output_ids = {-1};
 
@@ -109,7 +106,7 @@ absl::Status WinogradFromNode(const CreationContext& creation_context,
   conv.input_ids = {-1};
   conv.output_ids = {-2};
   RETURN_IF_ERROR(SelectConvolutionForWinograd(
-      attr, input_shape, creation_context, conv_def, hints, &conv.operation));
+      attr, input_shape, device_info, conv_def, hints, &conv.operation));
 
   OperationDef winograd_down_def;
   winograd_down_def.precision = op_def.precision;
@@ -123,8 +120,8 @@ absl::Status WinogradFromNode(const CreationContext& creation_context,
     bias_copy.shape = Linear(attr.weights.shape.o);
     bias_copy.data.resize(attr.weights.shape.o);
   }
-  RETURN_IF_ERROR(SelectWinograd36To4x4(creation_context, winograd_down_def,
-                                        bias_copy, &winograd_down.operation));
+  winograd_down.operation =
+      SelectWinograd36To4x4(device_info, winograd_down_def, bias_copy);
   return absl::OkStatus();
 }
 
@@ -183,13 +180,15 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       auto input_shape = inputs[0]->tensor.shape;
       auto output_shape = outputs[0]->tensor.shape;
       if (inputs.size() == 1) {
-        if (WinogradFromNode(creation_context, inputs, outputs, op_def, hints,
-                             input_shape, output_shape, attr, gpu_subgraph)
+        if (WinogradFromNode(creation_context.GetDeviceInfo(), inputs, outputs,
+                             op_def, hints, input_shape, output_shape, attr,
+                             gpu_subgraph)
                 .ok()) {
           return absl::OkStatus();
         } else {
           gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
-          return SelectConvolution(attr, output_shape, creation_context, op_def,
+          return SelectConvolution(attr, output_shape,
+                                   creation_context.GetDeviceInfo(), op_def,
                                    hints, gpu_op);
         }
       } else {
@@ -207,8 +206,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         conv_def.src_tensors[1] = weights_desc;
         ConvWeightsDescription conv_weights_desc;
         RETURN_IF_ERROR(SelectConvolutionWithDynamicWeights(
-            attr, weights_shape, output_shape, creation_context, conv_def,
-            hints, &conv_op.operation, &conv_weights_desc));
+            attr, weights_shape, output_shape, creation_context.GetDeviceInfo(),
+            conv_def, hints, &conv_op.operation, &conv_weights_desc));
 
         int aligned_output =
             AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
@@ -225,9 +224,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
 
         converter_op.input_ids = {static_cast<int>(inputs[1]->id)};
         converter_op.output_ids = {-1};
-        return SelectConverterToConvWeights(conv_weights_desc, creation_context,
-                                            converter_def, hints,
-                                            &converter_op.operation);
+        return SelectConverterToConvWeights(conv_weights_desc, converter_def,
+                                            hints, &converter_op.operation);
       }
     }
     case OperationType::CONVOLUTION_TRANSPOSED: {
@@ -244,8 +242,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::FULLY_CONNECTED: {
       auto attr =
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
-      return SelectFullyConnected(attr, creation_context, op_def,
-                                  inputs[0]->tensor.shape.b, gpu_op);
+      return SelectFullyConnected(attr, creation_context.GetDeviceInfo(),
+                                  op_def, inputs[0]->tensor.shape.b, gpu_op);
     }
     case OperationType::LSTM: {
       SelectLSTM(op_def, creation_context.device->info_, gpu_op);
