@@ -1796,26 +1796,57 @@ static LogicalResult Verify(TopKV2Op op) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-// If the input to ToBoolOp is a `tensor<i1>`, then the ToBoolOp is an identity
-// function and can be removed.
-class ToBoolOfZeroDBoolTensor : public OpRewritePattern<ToBoolOp> {
+// If the input to ToBoolOp is a ranked tensor, then the ToBoolOp can be folded
+// into an identity or an equality comparison.
+class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
   using OpRewritePattern<ToBoolOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(ToBoolOp op,
                                 PatternRewriter &rewriter) const override {
-    if (auto type = op.getOperand().getType().dyn_cast<RankedTensorType>()) {
-      if (type.getRank() == 0 && type.getElementType().isInteger(1)) {
-        rewriter.replaceOp(op, op.getOperand());
-        return success();
-      }
+    auto type = op.getOperand().getType().dyn_cast<RankedTensorType>();
+    // If the input is an unranked tensor, cannpt rewrite.
+    if (!type) return failure();
+
+    // Expected return type of the ToBool operation.
+    auto result_type = op.getResult().getType().cast<RankedTensorType>();
+
+    // If input is already a tensor<i1>, it can be folded into an identity.
+    if (type == result_type) {
+      rewriter.replaceOp(op, op.getOperand());
+      return success();
     }
-    return failure();
+
+    if (type.getRank() == 0) {
+      // If the input is a scalar tensor, the ToBool can be expanded to
+      // element != 0 (for numerical values) or element == empty (for string).
+      Type element_type = type.getElementType();
+      Attribute zero_attr;
+      if (element_type.isIntOrFloat())
+        zero_attr = rewriter.getZeroAttr(type);
+      else if (element_type.isa<TF::StringType>())
+        zero_attr = DenseStringElementsAttr::get(type, {""});
+
+      if (!zero_attr) return failure();
+
+      auto zero_const = rewriter.create<TF::ConstOp>(op.getLoc(), zero_attr);
+      rewriter.replaceOpWithNewOp<TF::NotEqualOp>(
+          op, result_type, op.getOperand(), zero_const, false);
+    } else {
+      // If the input is a non-scalar ranked tensor, ToBool can be expanded
+      // to numElements != 0. numElements will be 0 iff one of the dimensions is
+      // zero.
+      bool any_zero =
+          llvm::any_of(type.getShape(), [](int64_t dim) { return dim == 0; });
+      rewriter.replaceOpWithNewOp<TF::ConstOp>(
+          op, result_type, DenseElementsAttr::get(result_type, {!any_zero}));
+    }
+    return success();
   }
 };
 }  // namespace
 
 void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
-  results.insert<ToBoolOfZeroDBoolTensor>(context);
+  results.insert<ToBoolOfRankedTensor>(context);
 }
 
 //===----------------------------------------------------------------------===//
