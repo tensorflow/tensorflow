@@ -549,10 +549,7 @@ llvm::SmallSetVector<Value, 8> ResourceAliasAnalysisInfo::GetResourceAliases(
 // ResourceAliasAnalysis
 //===----------------------------------------------------------------------===//
 
-ResourceAliasAnalysis::ResourceAliasAnalysis(Operation* op) {
-  auto module = dyn_cast<ModuleOp>(op);
-  assert(module);
-
+ResourceAliasAnalysis::ResourceAliasAnalysis(ModuleOp module) {
   // Analyze all regions for backtracking info.
   detail::BacktrackAnalysis backtrack_analysis(module);
 
