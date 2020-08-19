@@ -144,6 +144,7 @@ tf_py_test(
     size = "small",
     srcs = ["map_ops_test.py"],
     grpc_enabled = True,
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
