@@ -53190,10 +53190,6 @@ op {
     name: "output_handle"
     type: DT_VARIANT
   }
-  output_arg {
-    name: "value"
-    type_attr: "value_dtype"
-  }
   attr {
     name: "key_dtype"
     type: "type"
