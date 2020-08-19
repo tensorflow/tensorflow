@@ -229,9 +229,6 @@ TF_LITE_MICRO_TEST(FloatMaxOpTestNotKeepDims) {
   const int output_shape[] = {1, 2};
   const float expected_output_data[] = {23, 24};
 
-  float input_scale = 2 / 255.0;
-  int input_zp = 0;
-
   TfLiteReducerParams params = {false};
 
   tflite::testing::TestReduceOpFloat(
@@ -248,9 +245,6 @@ TF_LITE_MICRO_TEST(FloatMaxOpTestKeepDims) {
   const int axis_data[] = {0, 2};
   const int output_shape[] = {1, 3};
   const float expected_output_data[] = {20, 22, 24};
-
-  float input_scale = 2 / 255.0;
-  int input_zp = 0;
 
   TfLiteReducerParams params = {true};
 

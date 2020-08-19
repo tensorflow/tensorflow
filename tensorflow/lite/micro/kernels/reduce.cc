@@ -32,7 +32,7 @@ int NumAxis(const TfLiteTensor* axis) {
   return tflite::ElementCount(*axis->dims);
 }
 
-int NumAxis(TfLiteEvalTensor* axis) {
+int NumAxis(const TfLiteEvalTensor* axis) {
   if (axis->dims == nullptr) {
     return 1;
   }
@@ -55,6 +55,7 @@ struct OpData {
   int resolved_axis_idx;
   float input_scale;
   float output_scale;
+  int num_output_elements;
 };
 
 void* InitMax(TfLiteContext* context, const char* buffer, size_t length) {
@@ -100,6 +101,7 @@ TfLiteStatus PrepareMax(TfLiteContext* context, TfLiteNode* node) {
 
   op_data->input_scale = input->params.scale;
   op_data->output_scale = output->params.scale;
+  op_data->num_output_elements = NumElements(output);
 
   // Interpret an axis tensor with null dimensions as a scalar
   int num_axis = NumAxis(axis);
@@ -185,9 +187,9 @@ TfLiteStatus EvalMean(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  const TfLiteTensor* axis = GetInput(context, node, 1);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  const TfLiteEvalTensor* axis = tflite::micro::GetEvalInput(context, node, 1);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TfLiteReducerParams* params =
       reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
@@ -204,9 +206,10 @@ TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE(
           context,
           reference_ops::ReduceGeneric<float>(
-              GetTensorData<float>(input), input->dims->data, input->dims->size,
-              GetTensorData<float>(output), output->dims->data,
-              output->dims->size, GetTensorData<int>(axis), num_axis,
+              tflite::micro::GetTensorData<float>(input), input->dims->data,
+              input->dims->size, tflite::micro::GetTensorData<float>(output),
+              output->dims->data, output->dims->size,
+              tflite::micro::GetTensorData<int>(axis), num_axis,
               params->keep_dims, temp_buffer, resolved_axis,
               std::numeric_limits<float>::lowest(),
               [](const float current, const float in) -> float {
@@ -217,10 +220,11 @@ TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
       TF_LITE_ENSURE(
           context,
           reference_ops::ReduceGeneric<int8_t>(
-              GetTensorData<int8_t>(input), input->dims->data,
-              input->dims->size, GetTensorData<int8_t>(output),
-              output->dims->data, output->dims->size, GetTensorData<int>(axis),
-              num_axis, params->keep_dims, temp_buffer, resolved_axis,
+              tflite::micro::GetTensorData<int8_t>(input), input->dims->data,
+              input->dims->size, tflite::micro::GetTensorData<int8_t>(output),
+              output->dims->data, output->dims->size,
+              tflite::micro::GetTensorData<int>(axis), num_axis,
+              params->keep_dims, temp_buffer, resolved_axis,
               std::numeric_limits<int8_t>::lowest(),
               [](const int8_t current, const int8_t in) -> int8_t {
                 return (in > current) ? in : current;
@@ -228,8 +232,8 @@ TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
 
       // Convert between different output scales
       if (op_data->input_scale != op_data->output_scale) {
-        int8_t* output_data = GetTensorData<int8_t>(output);
-        for (int i = 0; i < NumElements(output); i++) {
+        int8_t* output_data = tflite::micro::GetTensorData<int8_t>(output);
+        for (int i = 0; i < op_data->num_output_elements; i++) {
           output_data[i] = static_cast<int8_t>(std::max(
               std::min(MultiplyByQuantizedMultiplier(
                            output_data[i], op_data->multiplier, op_data->shift),
