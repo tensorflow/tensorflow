@@ -32,9 +32,9 @@ from tensorflow.python.platform import test
 
 
 @test_util.run_all_without_tensor_float_32(
-    "It's unknown why this test requires TF32 to be disabled")
-# TODO(reedwm): Determine why this test requires TF32 disabled. Debugging is
-# difficult due to this test's flakiness
+    'XLA QR op calls matmul. Also, matmul used for verification. Also with '
+    'TF32, mysterious "Unable to launch cuBLAS gemm" error occasionally occurs')
+# TODO(b/165435566): Fix "Unable to launch cuBLAS gemm" error
 class QrOpTest(xla_test.XLATestCase, parameterized.TestCase):
 
   def AdjustedNorm(self, x):
