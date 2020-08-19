@@ -1,24 +1,24 @@
 # Benchmarks for keras model examples
 
-- [Benchmarks for keras model examples](#benchmarks-for-keras-model-examples)
-  - [Keras benchmarks](#keras-benchmarks)
-    - [Available models](#available-models)
-      - [Computer Vision examples](#computer-vision-examples)
-      - [Text & Sequence examples](#text--sequence-examples)
-      - [Other examples](#other-examples)
-    - [Available benchmark results](#available-benchmark-results)
-      - [Cifar10 CNN benchmark](#cifar10-cnn-benchmark)
-      - [MNIST Conv benchmark](#mnist-conv-benchmark)
-      - [MNIST Hierarchical RNN (HRNN) benchmark](#mnist-hierarchical-rnn-hrnn-benchmark)
-      - [Bidirectional LSTM benchmark](#bidirectional-lstm-benchmark)
-      - [Text classification with transformer benchmark](#text-classification-with-transformer-benchmark)
-      - [MLP benchmark](#mlp-benchmark)
-      - [Antirectifier benchmark](#antirectifier-benchmark)
-      - [IRNN benchmark](#irnn-benchmark)
-  - [Install Bazel](#install-bazel)
-  - [Run benchmarks](#run-benchmarks)
-  - [Add new benchmarks](#add-new-benchmarks)
-  - [Troubleshooting](#troubleshooting)
+-   [Benchmarks for keras model examples](#benchmarks-for-keras-model-examples)
+    -   [Keras benchmarks](#keras-benchmarks)
+    -   [Available models](#available-models)
+        -   [Computer Vision examples](#computer-vision-examples)
+        -   [Text & Sequence examples](#text--sequence-examples)
+        -   [Other examples](#other-examples)
+    -   [Available benchmark results](#available-benchmark-results)
+        -   [Cifar10 CNN benchmark](#cifar10-cnn-benchmark)
+        -   [MNIST Conv benchmark](#mnist-conv-benchmark)
+        -   [MNIST Hierarchical RNN (HRNN) benchmark](#mnist-hierarchical-rnn-hrnn-benchmark)
+        -   [Bidirectional LSTM benchmark](#bidirectional-lstm-benchmark)
+        -   [Text classification with transformer benchmark](#text-classification-with-transformer-benchmark)
+        -   [MLP benchmark](#mlp-benchmark)
+        -   [Antirectifier benchmark](#antirectifier-benchmark)
+        -   [IRNN benchmark](#irnn-benchmark)
+    -   [Install Bazel](#install-bazel)
+    -   [Run benchmarks](#run-benchmarks)
+    -   [Add new benchmarks](#add-new-benchmarks)
+    -   [Troubleshooting](#troubleshooting)
 
 ## Keras benchmarks
 
@@ -84,59 +84,59 @@ Metrics for following benchmarks:</br>
 
 #### Cifar10 CNN benchmark
 
- | ----- | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy |
- | :---: | :--------: | :-------: | :------------: | :---------: | :-------------------: |
- |  CPU  |    256     | 1393.4896 |      3.21      |  15397.69   |         `off`         |
- | GPU:2 |    256     |   76.49   |      2.59      |  18758.01   |      `mirrored`       |
+      | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy
+:---: | :--------: | :-------: | :------------: | :---------: | :-------------------:
+CPU   | 256        | 1393.4896 | 3.21           | 15397.69    | `off`
+GPU:2 | 256        | 76.49     | 2.59           | 18758.01    | `mirrored`
 
 #### MNIST Conv benchmark
 
- | ----- | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy |
- | :---: | :--------: | :-------: | :------------: | :---------: | :-------------------: |
- |  CPU  |    256     |  196.52   |     12.19      |   4915.26   |         `off`         |
- | GPU:2 |    256     |  24.5794  |      1.21      |  47899.32   |      `mirrored`       |
+      | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy
+:---: | :--------: | :-------: | :------------: | :---------: | :-------------------:
+CPU   | 256        | 196.52    | 12.19          | 4915.26     | `off`
+GPU:2 | 256        | 24.5794   | 1.21           | 47899.32    | `mirrored`
 
 #### MNIST Hierarchical RNN (HRNN) benchmark
 
- | ----- | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy |
- | :---: | :--------: | :-------: | :------------: | :---------: | :-------------------: |
- |  CPU  |    256     |  654.05   |     218.68     |   274.24    |         `off`         |
- | GPU:2 |    256     |   20.77   |      3.73      |  15088.06   |      `mirrored`       |
+      | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy
+:---: | :--------: | :-------: | :------------: | :---------: | :-------------------:
+CPU   | 256        | 654.05    | 218.68         | 274.24      | `off`
+GPU:2 | 256        | 20.77     | 3.73           | 15088.06    | `mirrored`
 
 #### Bidirectional LSTM benchmark
 
- | ----- | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy |
- | :---: | :--------: | :-------: | :------------: | :---------: | :-------------------: |
- |  CPU  |    512     |  225.57   |     72.55      |   344.70    |         `off`         |
- | GPU:2 |    512     |   23.54   |      3.23      |   7532.53   |      `mirrored`       |
+      | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy
+:---: | :--------: | :-------: | :------------: | :---------: | :-------------------:
+CPU   | 512        | 225.57    | 72.55          | 344.70      | `off`
+GPU:2 | 512        | 23.54     | 3.23           | 7532.53     | `mirrored`
 
 #### Text classification with transformer benchmark
 
-  | ----- | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy |
-  | :---: | :--------: | :-------: | :------------: | :---------: | :-------------------: |
-  |  CPU  |    512     |  109.22   |     35.93      |   698.10    |         `off`         |
-  | GPU:2 |    512     |   9.28    |      0.83      |  26567.54   |      `mirrored`       |
+      | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy
+:---: | :--------: | :-------: | :------------: | :---------: | :-------------------:
+CPU   | 512        | 109.22    | 35.93          | 698.10      | `off`
+GPU:2 | 512        | 9.28      | 0.83           | 26567.54    | `mirrored`
 
 #### MLP benchmark
 
-  | ----- | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy |
-  | :---: | :--------: | :-------: | :------------: | :---------: | :-------------------: |
-  |  CPU  |    128     |   3.76    |      0.54      |  17678.54   |         `off`         |
-  | GPU:2 |    128     |   5.91    |      0.30      |  25435.14   |      `mirrored`       |
+      | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy
+:---: | :--------: | :-------: | :------------: | :---------: | :-------------------:
+CPU   | 128        | 3.76      | 0.54           | 17678.54    | `off`
+GPU:2 | 128        | 5.91      | 0.30           | 25435.14    | `mirrored`
 
 #### Antirectifier benchmark
 
- | ----- | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy |
- | :---: | :--------: | :-------: | :------------: | :---------: | :-------------------: |
- |  CPU  |    512     |   6.77    |      1.79      |  30916.39   |         `off`         |
- | GPU:2 |    512     |   6.81    |      0.66      |  66563.17   |      `mirrored`       |
+      | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy
+:---: | :--------: | :-------: | :------------: | :---------: | :-------------------:
+CPU   | 512        | 6.77      | 1.79           | 30916.39    | `off`
+GPU:2 | 512        | 6.81      | 0.66           | 66563.17    | `mirrored`
 
 #### IRNN benchmark
 
-| ----- | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy |
-| :---: | :--------: | :-------: | :------------: | :---------: | :-------------------: |
-|  CPU  |    1024    |  213.00   |     69.01      |   868.08    |         `off`         |
-| GPU:2 |    1024    |   92.71   |     29.12      |   2042.94   |      `mirrored`       |
+      | Batch_size | Wall_time | Avg_epoch_time | Exp_per_sec | Distribution_Strategy
+:---: | :--------: | :-------: | :------------: | :---------: | :-------------------:
+CPU   | 1024       | 213.00    | 69.01          | 868.08      | `off`
+GPU:2 | 1024       | 92.71     | 29.12          | 2042.94     | `mirrored`
 
 **Note**: For the small models, running on GPU might be even slower than CPU.
 The potential reason is, training small models is not computation dominant, and
