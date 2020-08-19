@@ -20,11 +20,6 @@ limitations under the License.
 void init_types(py::module& m) {
   // Type
   py::class_<mlir::Type> Type(m, "Type");
-  Type.def("getKind", &mlir::Type::getKind);
-
-  // Type Enums
-  py::enum_<mlir::StandardTypes::Kind>(Type, "StandardTypes_Kind")
-      .value("BF16", mlir::StandardTypes::BF16);
 
   // Type Sub-classes
   py::class_<mlir::FunctionType, mlir::Type>(m, "FunctionType")

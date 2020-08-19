@@ -706,10 +706,8 @@ struct ConvertTFBroadcastTo : public RewritePattern {
            shape_type.getDimSize(0) <= 5)))
       return failure();
 
-    if (!((element_type.getKind() == mlir::StandardTypes::F32) ||
-          (element_type.getKind() == mlir::StandardTypes::BF16) ||
-          (element_type.getKind() == mlir::StandardTypes::Integer &&
-           element_type.cast<mlir::IntegerType>().getWidth() == 32)))
+    if (!(element_type.isa<BFloat16Type, Float32Type>() ||
+          element_type.isInteger(32)))
       return failure();
 
     auto status_or_const_op =
