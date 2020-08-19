@@ -253,32 +253,26 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     tensor_b = constant_op.constant([[24, 24], [24, 24]])
     self._benchmark_add(tensor_a, tensor_b)
 
-  @test_util.disable_tfrt("convert_to_tensor not handled")
   def benchmark_create_float_tensor_from_list_CPU(self):
     self._benchmark_create_tensor([[3.0]], dtypes.float32.as_datatype_enum, CPU)
 
-  @test_util.disable_tfrt("convert_to_tensor not handled")
   def benchmark_create_float_tensor_from_np_array_CPU(self):
     self._benchmark_create_tensor(
         np.array([[3.0]], dtype=np.float32), dtypes.float32.as_datatype_enum,
         CPU)
 
-  @test_util.disable_tfrt("convert_to_tensor not handled")
   def benchmark_create_int32_tensor_from_list_CPU(self):
     self._benchmark_create_tensor([[3]], dtypes.int32.as_datatype_enum, CPU)
 
-  @test_util.disable_tfrt("convert_to_tensor not handled")
   def benchmark_create_int32_tensor_from_np_array_CPU(self):
     self._benchmark_create_tensor(
         np.array([[3]], dtype=np.int32), dtypes.int32.as_datatype_enum, CPU)
 
-  @test_util.disable_tfrt("no gpu support")
   def benchmark_create_float_tensor_from_list_GPU(self):
     if not context.num_gpus():
       return
     self._benchmark_create_tensor([[3.0]], dtypes.float32.as_datatype_enum, GPU)
 
-  @test_util.disable_tfrt("no gpu support")
   def benchmark_create_float_tensor_from_np_array_GPU(self):
     if not context.num_gpus():
       return
@@ -286,14 +280,12 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
         np.array([[3.0]], dtype=np.float32), dtypes.float32.as_datatype_enum,
         GPU)
 
-  @test_util.disable_tfrt("no gpu support")
   def benchmark_create_int32_tensor_from_list_GPU(self):
     # int32's are kept on host memory even when executing on GPU.
     if not context.num_gpus():
       return
     self._benchmark_create_tensor([[3]], dtypes.int32.as_datatype_enum, GPU)
 
-  @test_util.disable_tfrt("no gpu support")
   def benchmark_create_int32_tensor_from_np_array_GPU(self):
     # int32's are kept on host memory even when executing on GPU.
     if not context.num_gpus():
@@ -301,17 +293,14 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
     self._benchmark_create_tensor(
         np.array([[3]], dtype=np.int32), dtypes.int32.as_datatype_enum, GPU)
 
-  @test_util.disable_tfrt("strided slice not supported")
   def benchmark_index_tensor_with_literal(self):
     func = lambda: constant_op.constant([3.0])[0]
     self._run(func, 30000)
 
-  @test_util.disable_tfrt("strided slice not supported")
   def benchmark_index_tensor_with_tensor(self):
     func = lambda idx=constant_op.constant(0): constant_op.constant([3.0])[idx]
     self._run(func, 30000)
 
-  @test_util.disable_tfrt("strided slice not supported")
   def benchmark_index_tensor_with_np_array(self):
     func = lambda idx=np.array(0): constant_op.constant([3.0])[idx]
     self._run(func, 30000)

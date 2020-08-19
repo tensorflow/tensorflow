@@ -431,7 +431,6 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertFalse(switch.is_building_function)
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Resolve not implemented yet.')
   def testInt32GPU(self):
     with ops.device('gpu:0'):
       xent = nn_ops.sparse_softmax_cross_entropy_with_logits(
@@ -485,7 +484,6 @@ class TFETest(test_util.TensorFlowTestCase):
       self.assertAllEqual(t.numpy(), 10.0)
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Resolve not implemented yet.')
   def testDevicePlacementEnforcesConsistency(self):
     cpu = context.device('cpu:0')
     gpu = context.device('gpu:0')
@@ -528,7 +526,6 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertEqual(3, result)
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Resolve not implemented yet.')
   def testResourceTensorPlacement(self):
     with context.device('gpu:0'):
       v = resource_variable_ops.ResourceVariable(1.0)
@@ -568,7 +565,7 @@ class TFETest(test_util.TensorFlowTestCase):
     context.context().executor.clear_error()
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('TensorHandleInterface::Resolve() not implemented.')
+  @test_util.disable_tfrt('Device placement not implemented.')
   def testCopyScope(self):
     constant = constant_op.constant(1.0)
     with ops.device('gpu:0'):
@@ -609,7 +606,6 @@ class TFETest(test_util.TensorFlowTestCase):
     async_executor.wait()
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Resolve not implemented yet.')
   def testNumpyForceCPU(self):
     cpu = constant_op.constant([[1., 2.], [3., 4.]])
     c2g = cpu.gpu()
@@ -692,7 +688,7 @@ class TFETest(test_util.TensorFlowTestCase):
           attrs=('T', dtypes.int32.as_datatype_enum))[0]
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Resolve not implemented yet.')
+  @test_util.disable_tfrt('Device placement not implemented yet.')
   def testMatMulGPU(self):
     three = constant_op.constant([[3.]]).gpu()
     five = constant_op.constant([[5.]]).gpu()
