@@ -39,17 +39,14 @@ namespace tensorflow {
 Permuter::Permuter()
     : col_ctx_(nullptr), col_params_(nullptr), done_(nullptr), counter_(0) {}
 
-bool Permuter::CheckCounter() {
-  mutex_lock lock(mu_counter_);
-  ++counter_;
-  if (counter_ == 2) return true;
-  return false;
-}
-
-StatusCallback Permuter::HalfDone() {
+StatusCallback Permuter::CheckCounterAndCallDone() {
   return [this](const Status& s) {
+    mu_.lock();
     status_.Update(s);
-    if (CheckCounter()) done_(status_);
+    int counter = ++counter_;
+    Status status = status_;
+    mu_.unlock();
+    if (counter == 2) done_(status);
   };
 }
 
@@ -71,11 +68,11 @@ void Permuter::Run(StatusCallback done) {
   done_ = std::move(done);
   DispatchSend(col_params_->default_rank,
                col_params_->instance.permutation[col_params_->default_rank],
-               col_ctx_->input, HalfDone());
+               col_ctx_->input, CheckCounterAndCallDone());
   for (int i = 0; i < col_params_->instance.permutation.size(); ++i) {
     if (col_params_->default_rank == col_params_->instance.permutation[i]) {
       DispatchRecv(i, col_params_->instance.permutation[i], col_ctx_->output,
-                   HalfDone());
+                   CheckCounterAndCallDone());
     }
   }
 }
