@@ -264,6 +264,11 @@ class InstantiatedCapturedFunction {
 };
 
 }  // namespace data
+
+// TODO(b/114112161): Remove these aliases when all users have moved over to the
+// `tensorflow::data` namespace.
+using data::CapturedFunction;
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_CAPTURED_FUNCTION_H_
