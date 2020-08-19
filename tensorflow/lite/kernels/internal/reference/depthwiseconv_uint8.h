@@ -126,44 +126,73 @@ struct DepthwiseConvBasicKernel {
     TFLITE_DCHECK_EQ(output_depth, input_depth * depth_multiplier);
     TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_depth);
 
-    for (int b = 0; b < batches; ++b) {
+    const int channel_step = 32;
+
+    for (int batch = 0; batch < batches; ++batch) {
       for (int out_y = 0; out_y < output_height; ++out_y) {
         for (int out_x = 0; out_x < output_width; ++out_x) {
-          for (int ic = 0; ic < input_depth; ++ic) {
-            for (int m = 0; m < depth_multiplier; m++) {
-              const int oc = m + ic * depth_multiplier;
-              const int in_x_origin = (out_x * stride_width) - pad_width;
-              const int in_y_origin = (out_y * stride_height) - pad_height;
-              int32_t acc = 0;
+          for (int m = 0; m < depth_multiplier; m++) {
+            const int in_x_origin = (out_x * stride_width) - pad_width;
+            const int in_y_origin = (out_y * stride_height) - pad_height;
+            // Divide channels to chunks of size channel_step
+            for (int begin_ch = 0; begin_ch < input_depth;
+                 begin_ch += channel_step) {
+              // Allocate a partial result accumulator for each channel
+              // in current chunks
+              int32_t acc[channel_step] = {0};
+              // Calculate the last channel for current chunk
+              const int steps =
+                  std::min(input_depth, begin_ch + channel_step) - begin_ch;
+
+              // Accumulate partial results to acc for a small chunk of channels
               for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
+                const int in_y =
+                    in_y_origin + dilation_height_factor * filter_y;
                 for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
                   const int in_x =
                       in_x_origin + dilation_width_factor * filter_x;
-                  const int in_y =
-                      in_y_origin + dilation_height_factor * filter_y;
-                  // If the location is outside the bounds of the input image,
-                  // use zero as a default value.
-                  if ((in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
-                      (in_y < input_height)) {
-                    int32_t input_val =
-                        input_data[Offset(input_shape, b, in_y, in_x, ic)];
+                  // Zero padding by omitting the areas outside the image.
+                  const bool is_point_inside_image =
+                      (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
+                      (in_y < input_height);
+
+                  if (!is_point_inside_image) {
+                    continue;
+                  }
+
+                  for (int offset_ch = 0; offset_ch < steps; ++offset_ch) {
+                    const int in_channel = begin_ch + offset_ch;
+                    const int output_channel =
+                        m + in_channel * depth_multiplier;
+
+                    int32_t input_val = input_data[Offset(
+                        input_shape, batch, in_y, in_x, in_channel)];
                     int32_t filter_val = filter_data[Offset(
-                        filter_shape, 0, filter_y, filter_x, oc)];
-                    acc += (filter_val + filter_offset) *
-                           (input_val + input_offset);
+                        filter_shape, 0, filter_y, filter_x, output_channel)];
+                    acc[offset_ch] += (filter_val + filter_offset) *
+                                      (input_val + input_offset);
                   }
                 }
               }
-              if (bias_data) {
-                acc += bias_data[oc];
+
+              // Add bias / activations for current chunk of channels
+              for (int offset_ch = 0; offset_ch < steps; ++offset_ch) {
+                const int in_channel = begin_ch + offset_ch;
+                const int output_channel = m + in_channel * depth_multiplier;
+
+                int32_t value = acc[offset_ch];
+                if (bias_data) {
+                  value += bias_data[output_channel];
+                }
+
+                value = DepthwiseConvRound<output_rounding>(
+                    value, output_multiplier, output_shift);
+                value += output_offset;
+                value = std::max(value, output_activation_min);
+                value = std::min(value, output_activation_max);
+                output_data[Offset(output_shape, batch, out_y, out_x,
+                                   output_channel)] = static_cast<uint8>(value);
               }
-              acc = DepthwiseConvRound<output_rounding>(acc, output_multiplier,
-                                                        output_shift);
-              acc += output_offset;
-              acc = std::max(acc, output_activation_min);
-              acc = std::min(acc, output_activation_max);
-              output_data[Offset(output_shape, b, out_y, out_x, oc)] =
-                  static_cast<uint8_t>(acc);
             }
           }
         }
