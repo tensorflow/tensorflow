@@ -475,6 +475,26 @@ Status MatMulModel(AbstractContext* ctx,
   return Status::OK();
 }
 
+Status MulModel(AbstractContext* ctx,
+                            absl::Span<AbstractTensorHandle* const> inputs,
+                            absl::Span<AbstractTensorHandle*> outputs,
+                            const GradientRegistry& registry) {
+  
+  AbstractTensorHandle* x = inputs[0];
+  AbstractTensorHandle* y = inputs[1];
+
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  std::vector<AbstractTensorHandle*> temp_outputs(1);
+  TF_RETURN_IF_ERROR(Mul(ctx, tape, {x, y}, absl::MakeSpan(temp_outputs),
+                            "mul0", registry));  // Compute x*y
+
+  outputs[0] = temp_outputs[0];
+
+  delete tape;
+  return Status::OK();
+}
+
 // ============================= End Models ================================
 
 Status UpdateWeights(AbstractContext* ctx, vector<AbstractTensorHandle*>& grads,

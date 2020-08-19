@@ -121,9 +121,18 @@ AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
   return A;
 }
 
+
+void printArr(auto data [], int n){
+    std::cout << "[";
+    for (int i = 0; i < n-1; i++) {
+        std::cout << data[i] << ", ";
+    }
+    std::cout << data[n-1] << "]" <<std::endl;
+}
+
 // =========================== Start Tests ================================
 
-TEST_P(GradientCheckerTest, TestGradCheck) {
+TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   AbstractContextPtr ctx;
@@ -163,6 +172,48 @@ TEST_P(GradientCheckerTest, TestGradCheck) {
   for (int j = 0; j < 4; j++) {
     ASSERT_NEAR(dapprox[j], expected_dA[j], tolerance);
   }
+}
+
+TEST_P(GradientCheckerTest, TestGradCheckMul) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+
+  AbstractTensorHandlePtr x;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    x.reset(x_raw);
+  }
+
+  AbstractTensorHandlePtr y;
+  {
+    AbstractTensorHandle* y_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx.get(), 7.0f, &y_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    y.reset(y_raw);
+  }
+
+  std::vector<AbstractTensorHandle*> inputs;
+  inputs.push_back(x.get());
+  inputs.push_back(y.get());
+  float dapprox[1] = {0};
+  Status s =
+      GradientCheck(ctx.get(), MulModel, inputs, dapprox, /*gradIndex=*/0,
+                    /*use_function=*/!std::get<2>(GetParam()), 
+                    /*is_scalar_out=*/true);
+
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_NEAR(dapprox[0], 7.0f, /*tolerance=*/1e-3);  
 }
 
 // TODO(b/160888630): Enable this test with mlir after AddInputList is
