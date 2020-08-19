@@ -1383,7 +1383,7 @@ Status XlaCompiler::GetDeviceToHostShapes(
 Status XlaCompiler::SetHostToDeviceMetadata(
     const string& key, absl::Span<const DataType> types,
     absl::Span<const TensorShape> shapes) {
-  if (host_compute_recvs_.find(key) != host_compute_sends_.end()) {
+  if (host_compute_recvs_.find(key) != host_compute_recvs_.end()) {
     return errors::InvalidArgument(
         "Duplicate calls to SetHostToDeviceMetadata with key ", key);
   }
