@@ -166,6 +166,20 @@ static LogicalResult Verify(DotGeneralOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// GetDimensionSizeOp
+//===----------------------------------------------------------------------===//
+
+/// Fold get_dimension_size when the said shape dimension is a constant.
+OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
+  RankedTensorType type = operand().getType().cast<RankedTensorType>();
+  int32_t dim = dimension().getSExtValue();
+  if (type.isDynamic(dim)) return {};
+  // The result type is always is a 0-d i32 tensor.
+  return DenseIntElementsAttr::get<int32_t>(
+      getResult().getType().cast<RankedTensorType>(), type.getDimSize(dim));
+}
+
+//===----------------------------------------------------------------------===//
 // IotaOp
 //===----------------------------------------------------------------------===//
 
