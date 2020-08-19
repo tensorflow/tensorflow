@@ -3518,8 +3518,9 @@ func @cross_replica_sum(%input: tensor<10xf32>) -> tensor<10xf32> {
 func @size_scalar_i32(%input: tensor<f32>) -> (tensor<i32>) {
   // CHECK: %[[CONST:.*]] = mhlo.constant dense<1>
   // CHECK-SAME: tensor<i32>
+  // CHECK: %[[CAST:.*]] = tensor_cast %[[CONST]] : tensor<i32> to tensor<i32>
   %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT32"} : (tensor<f32>) -> tensor<i32>
-  // CHECK: return %[[CONST]]
+  // CHECK: return %[[CAST]]
   return %size : tensor<i32>
 }
 
@@ -3527,8 +3528,9 @@ func @size_scalar_i32(%input: tensor<f32>) -> (tensor<i32>) {
 func @size_scalar_i64(%input: tensor<f32>) -> (tensor<i64>) {
   // CHECK: %[[CONST:.*]] = mhlo.constant dense<1>
   // CHECK-SAME: tensor<i64>
+  // CHECK: %[[CAST:.*]] = tensor_cast %[[CONST]] : tensor<i64> to tensor<i64>
   %size = "tf.Size"(%input) {T = "tfdtype$DT_FLOAT", out_type = "tfdtype$DT_INT64"} : (tensor<f32>) -> tensor<i64>
-  // CHECK: return %[[CONST]]
+  // CHECK: return %[[CAST]]
   return %size : tensor<i64>
 }
 

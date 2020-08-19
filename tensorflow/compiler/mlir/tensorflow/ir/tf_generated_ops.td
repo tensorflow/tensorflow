@@ -9381,6 +9381,8 @@ size(t) ==> 12
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasFolder = 1;
 }
 
 def TF_SliceOp : TF_Op<"Slice", [NoSideEffect]> {

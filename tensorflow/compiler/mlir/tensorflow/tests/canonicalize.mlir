@@ -628,6 +628,15 @@ func @testLogicalNotOfLessEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>
 // CHECK: return %0
 }
 
+// CHECK-LABEL: testSizeFolding
+func @testSizeFolding(%arg0: tensor<3x5x7xf32>) -> tensor<i32> {
+  %0 = "tf.Size"(%arg0) : (tensor<3x5x7xf32>) -> tensor<i32>
+  return %0: tensor<i32>
+
+// CHECK: %0 = "tf.Const"() {value = dense<105> : tensor<i32>} : () -> tensor<i32>
+// CHECK: return %0 : tensor<i32>
+}
+
 // CHECK-LABEL: testDivWithSqrtDivisor
 func @testDivWithSqrtDivisor(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Sqrt"(%arg1) : (tensor<8x16xf32>) -> tensor<8x16xf32>

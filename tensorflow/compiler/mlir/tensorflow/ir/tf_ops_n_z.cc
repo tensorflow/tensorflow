@@ -1014,7 +1014,23 @@ static LogicalResult Verify(SizeOp op) {
     return op.emitOpError(
         "requires ranked input tensor to be of rank INT32_MAX or less");
 
+  // Output type needs to be scalar.
+  ShapedType output_type = op.getType().cast<ShapedType>();
+  if (output_type.hasStaticShape() && output_type.getRank() != 0) {
+    return op.emitOpError("requires scalar output");
+  }
+
   return success();
+}
+
+OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
+  ShapedType output_type = getType().cast<ShapedType>();
+  ShapedType input_type = getOperand().getType().cast<ShapedType>();
+  if (!input_type.hasStaticShape()) return {};
+  int size = input_type.getNumElements();
+  return DenseElementsAttr::get(
+      output_type,
+      IntegerAttr::get(output_type.getElementType(), /*value=*/size));
 }
 
 //===----------------------------------------------------------------------===//
