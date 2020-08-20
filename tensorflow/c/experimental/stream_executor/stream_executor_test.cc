@@ -146,25 +146,24 @@ void PopulateDefaultTimerFns(SP_TimerFns* timer_fns) {
 }
 
 /*** Create SP_Platform ***/
-void create_timer_fns(SP_TimerFns* const timer_fns, TF_Status* const status) {
+void create_timer_fns(SP_TimerFns* timer_fns, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   PopulateDefaultTimerFns(timer_fns);
 }
-void destroy_timer_fns(SP_TimerFns* const timer_fns) {}
+void destroy_timer_fns(SP_TimerFns* timer_fns) {}
 
-void create_stream_executor(const SE_CreateStreamExecutorParams* const params,
-                            TF_Status* const status) {
+void create_stream_executor(SE_CreateStreamExecutorParams* params,
+                            TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   PopulateDefaultStreamExecutor(params->stream_executor);
 }
-void destroy_stream_executor(SP_StreamExecutor* const se) {}
+void destroy_stream_executor(SP_StreamExecutor* se) {}
 
-void create_device(const SE_CreateDeviceParams* const params,
-                   TF_Status* const status) {
+void create_device(SE_CreateDeviceParams* params, TF_Status* status) {
   TF_SetStatus(status, TF_OK, "");
   params->device->struct_size = SP_DEVICE_STRUCT_SIZE;
 }
-void destroy_device(SP_Device* const device) {}
+void destroy_device(SP_Device* device) {}
 
 void PopulateDefaultPlatform(SP_Platform* platform) {
   platform->struct_size = SP_PLATFORM_STRUCT_SIZE;
