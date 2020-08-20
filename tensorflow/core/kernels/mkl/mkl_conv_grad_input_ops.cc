@@ -683,7 +683,7 @@ class MklConvCustomBackpropInputOp
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),   \
       MklConvCustomBackpropInputOp<CPUDevice, T, false, false>); \
   REGISTER_KERNEL_BUILDER(                                       \
-      Name("_MklEagerConv2DBackpropInput")                       \
+      Name("_MklNativeConv2DBackpropInput")                      \
           .Device(DEVICE_CPU)                                    \
           .TypeConstraint<T>("T")                                \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),        \
