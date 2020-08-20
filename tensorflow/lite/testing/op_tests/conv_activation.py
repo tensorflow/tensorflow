@@ -65,7 +65,7 @@ def make_conv_activation_tests(activation_op):
             "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
             "dilations": [[1, 1, 1, 1], [1, 3, 2, 1]],
             "padding": ["SAME", "VALID"],
-            "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
+            "data_format": ["NHWC"],
             "constant_filter": [True],
             "channel_multiplier": [1, 2],
             "fully_quantize": [True],
