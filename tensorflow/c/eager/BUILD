@@ -257,10 +257,10 @@ tf_cuda_cc_test(
 )
 
 cc_library(
-    name = "mnist_gradients_util",
+    name = "mnist_gradients_testutil",
     srcs = [
-        "mnist_gradients_util.cc",
-        "mnist_gradients_util.h",
+        "mnist_gradients_testutil.cc",
+        "mnist_gradients_testutil.h",
     ],
     hdrs = [
         "gradients.h",
@@ -301,7 +301,7 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         ":c_api_unified_internal",
         ":gradients_internal",
-        ":mnist_gradients_util",
+        ":mnist_gradients_testutil",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",

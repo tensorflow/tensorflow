@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/gradients_internal.h"
-#include "tensorflow/c/eager/mnist_gradients_util.h"
+#include "tensorflow/c/eager/mnist_gradients_testutil.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
