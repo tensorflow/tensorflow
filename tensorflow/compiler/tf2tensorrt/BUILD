@@ -11,7 +11,6 @@ load(
     "tf_custom_op_library_additional_deps",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
-    "tf_gpu_kernel_library",
 )
 
 # buildifier: disable=same-origin-load
@@ -537,20 +536,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-)
-
-tf_gpu_kernel_library(
-    name = "plugin_cast",
-    srcs = ["plugin/plugin_cast.cu.cc"],
-    deps = [
-        ":trt_plugins",
-        "@com_google_absl//absl/strings",
-        "//tensorflow/core/platform:logging",
-        "//tensorflow/core:framework_lite",
-    ] + if_tensorrt([
-        "@local_config_cuda//cuda:cuda_headers",
-        "@local_config_tensorrt//:tensorrt",
-    ]),
 )
 
 tf_cuda_library(
