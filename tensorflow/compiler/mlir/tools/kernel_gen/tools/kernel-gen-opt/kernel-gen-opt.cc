@@ -90,8 +90,9 @@ int main(int argc, char **argv) {
 
   if (showDialects) {
     mlir::MLIRContext context;
+    context.loadAllGloballyRegisteredDialects();
     llvm::outs() << "Registered Dialects:\n";
-    for (mlir::Dialect *dialect : context.getRegisteredDialects()) {
+    for (mlir::Dialect *dialect : context.getLoadedDialects()) {
       llvm::outs() << dialect->getNamespace() << "\n";
     }
     return 0;
@@ -111,9 +112,12 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
-  if (failed(MlirOptMain(output->os(), std::move(file), passPipeline,
+  mlir::DialectRegistry registry;
+  registerAllDialects(registry);
+  if (failed(MlirOptMain(output->os(), std::move(file), passPipeline, registry,
                          splitInputFile, verifyDiagnostics, verifyPasses,
-                         allowUnregisteredDialects))) {
+                         allowUnregisteredDialects,
+                         /*preloadDialectsInContext=*/true))) {
     return 1;
   }
   // Keep the output file if the invocation of MlirOptMain was successful.

@@ -43,7 +43,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
         "@llvm-project//mlir:Pass",

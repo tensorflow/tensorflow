@@ -249,7 +249,7 @@ Status mlir::CustomOptionsToAttributes(
       {static_cast<int64_t>(custom_options.size())}, builder.getIntegerType(8));
   attributes->emplace_back(builder.getNamedAttr(
       "custom_option",
-      OpaqueElementsAttr::get(builder.getContext()->getRegisteredDialect("tfl"),
+      OpaqueElementsAttr::get(builder.getContext()->getLoadedDialect("tfl"),
                               type, content)));
 
   return Status::OK();

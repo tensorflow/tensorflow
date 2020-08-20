@@ -673,6 +673,7 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":tensorflow_lite",
         ":tensorflow_lite_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
         "//tensorflow/compiler/xla:statusor",
