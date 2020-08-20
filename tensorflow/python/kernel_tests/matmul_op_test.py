@@ -26,6 +26,7 @@ from tensorflow.python import tf2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker_v2
 from tensorflow.python.ops import math_ops
@@ -65,7 +66,40 @@ def _GetTransposedMatrices(x, x_name, kwargs):
 
 
 class MatMulTest(test_lib.TestCase):
-  pass  # Filled in below
+  
+  def test_bfloat16(self):
+    dtype = np.float32 # will be cast bfloat16 later
+    sizes = [1, 3, 5]
+    for use_gpu in [True, False]:
+      for m in sizes:
+        for n in sizes:
+          for k in sizes:
+            a_np = np.random.normal(-5.0, 5.0, m * k).astype(dtype).reshape([m, k])
+            b_np = np.random.normal(-5.0, 5.0, k * n).astype(dtype).reshape([k, n])
+
+            a_np_bfloat16 = math_ops.cast(a_np,dtypes.bfloat16) 
+            b_np_bfloat16 = math_ops.cast(b_np,dtypes.bfloat16)
+
+            # converting it back to float32 to avoid precision error
+            a_np = math_ops.cast(a_np_bfloat16, dtypes.float32)
+            b_np = math_ops.cast(b_np_bfloat16, dtypes.float32)
+            
+            np_val_temp = np.matrix(a_np) * np.matrix(b_np)
+            np_val = math_ops.cast(np_val_temp,dtypes.bfloat16)
+
+            with self.cached_session() as sess, test_util.device(use_gpu):
+              a = constant_op.constant(a_np_bfloat16)
+              b = constant_op.constant(b_np_bfloat16)
+              res = math_ops.matmul(a, b)
+              tf_val = self.evaluate(res)
+
+            self.assertAllCloseAccordingToType(
+                tf_val,
+                np_val,
+                float_rtol=3e-5,
+                float_atol=3e-5,
+                half_rtol=0.2,
+                half_atol=0.2)
 
 
 def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
@@ -110,7 +144,45 @@ def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
 
 class MatMulGradientTest(test_lib.TestCase):
-  pass  # Will be filled in below.
+  
+  def test_Gradient_bfloat16(self):
+    dtype = np.float32 # will be cast bfloat16 later
+    sizes = [1, 3, 5]
+    for use_gpu in [True, False]:
+      for m in sizes:
+        for n in sizes:
+          for k in sizes:
+            a_np = np.random.normal(-5.0, 5.0, m * k).astype(dtype).reshape([m, k])
+            b_np = np.random.normal(-5.0, 5.0, k * n).astype(dtype).reshape([k, n])
+            
+            #convert to bfloat16 to use in matmul op
+            a_np_bfloat16 = math_ops.cast(a_np,dtypes.bfloat16) 
+            b_np_bfloat16 = math_ops.cast(b_np,dtypes.bfloat16)
+            
+            #convering back to float32 to calculate numerical values
+            a_np_fp32 = math_ops.cast(a_np_bfloat16,dtypes.float32) 
+            b_np_fp32 = math_ops.cast(b_np_bfloat16,dtypes.float32)
+
+            effective_a_np = a_np
+            effective_b_np = b_np
+
+            # epsilon and delta need to be float32
+            epsilon = np.finfo(dtype).eps
+            delta = epsilon**(1.0 / 3.0)
+            tol = 20 * delta
+            with self.session():
+              theoretical, numerical = gradient_checker_v2.compute_gradient(
+                  lambda x: math_ops.matmul(x, b_np_bfloat16),
+                  [a_np_fp32],
+                  delta=delta)
+              self.assertAllClose(theoretical, numerical, rtol=tol, atol=tol)
+
+              theoretical, numerical = gradient_checker_v2.compute_gradient(
+                  lambda x: math_ops.matmul(a_np_bfloat16, x),
+                  [b_np_fp32],
+                  delta=delta)
+              self.assertAllClose(theoretical, numerical, rtol=tol, atol=tol)
+
 
 
 def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
