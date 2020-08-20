@@ -33,11 +33,15 @@ std::tuple<int, int, int> GetLoadedTensorRTVersion();
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #include "tensorflow/core/platform/logging.h"
+#include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
 namespace tensorrt {
 
 #define LOG_WARNING_WITH_PREFIX LOG(WARNING) << "TF-TRT Warning: "
+
+// Initializes the TensorRT plugin registry if this hasn't been done yet.
+void MaybeInitializeTrtPlugins(nvinfer1::ILogger* trt_logger);
 
 }  // namespace tensorrt
 }  // namespace tensorflow
