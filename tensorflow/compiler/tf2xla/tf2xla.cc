@@ -137,7 +137,6 @@ Status ConvertVarHandlesToAotVarHandles(GraphDef* graph_def) {
       const auto& it = node.attr().find("allowed_devices");
       if (it != node.attr().end()) {
         if (!it->second.list().s().empty()) {
-          // TODO(b/149512838): Support non-empty allowed devices.
           return errors::InvalidArgument(
               "VarHandleOp with non-empty allowed devices is not supported.");
         }
