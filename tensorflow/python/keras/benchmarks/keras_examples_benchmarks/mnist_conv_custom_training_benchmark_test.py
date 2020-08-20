@@ -65,7 +65,7 @@ class CustomMnistBenchmark(tf.test.Benchmark):
     return tf.nn.compute_average_loss(
         per_example_loss, global_batch_size=batch_size)
 
-  @tf.function
+  @tf.function(experimental_relax_shapes=True)
   def train_step(self,
                  inputs,
                  model,
@@ -92,7 +92,7 @@ class CustomMnistBenchmark(tf.test.Benchmark):
     optimizer.apply_gradients(zip(grads, model.trainable_weights))
     return loss
 
-  @tf.function
+  @tf.function(experimental_relax_shapes=True)
   def distributed_train_step(self,
                              batch_dataset,
                              model,
@@ -269,9 +269,82 @@ class CustomMnistBenchmark(tf.test.Benchmark):
 
     return metrics, wall_time
 
-  def benchmark_custom_training_mnist_bs_256_gpu_2(self):
-    """Measure performance with batch_size=256 and run_iters=10"""
+  def benchmark_custom_training_mnist_bs_128(self):
+    """Measure performance with batch_size=128 and run_iters=5."""
+    batch_size = 128
+    run_iters = 5
+    train_dataset = self.train_dataset.shuffle(
+        buffer_size=1024).batch(batch_size)
+
+    # Instantiate a loss function.
+    loss_fn = tf.keras.losses.CategoricalCrossentropy(
+        reduction=tf.keras.losses.Reduction.NONE)
+    # Instantiate an optimizer to train the model.
+    optimizer = tf.keras.optimizers.Adam()
+    model = self._build_model()
+
+    metrics, wall_time = self.measure_performance(model,
+                                                  train_dataset,
+                                                  loss_fn,
+                                                  optimizer,
+                                                  batch_size,
+                                                  run_iters,
+                                                  self.epochs)
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics)
+
+  def benchmark_custom_training_mnist_bs_256(self):
+    """Measure performance with batch_size=256 and run_iters=5."""
     batch_size = 256
+    run_iters = 5
+    train_dataset = self.train_dataset.shuffle(
+        buffer_size=1024).batch(batch_size)
+
+    # Instantiate a loss function.
+    loss_fn = tf.keras.losses.CategoricalCrossentropy(
+        reduction=tf.keras.losses.Reduction.NONE)
+    # Instantiate an optimizer to train the model.
+    optimizer = tf.keras.optimizers.Adam()
+    model = self._build_model()
+
+    metrics, wall_time = self.measure_performance(model,
+                                                  train_dataset,
+                                                  loss_fn,
+                                                  optimizer,
+                                                  batch_size,
+                                                  run_iters,
+                                                  self.epochs)
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics)
+
+  def benchmark_custom_training_mnist_bs_512(self):
+    """Measure performance with batch_size=512 and run_iters=10."""
+    batch_size = 512
+    run_iters = 5
+    train_dataset = self.train_dataset.shuffle(
+        buffer_size=1024).batch(batch_size)
+
+    # Instantiate a loss function.
+    loss_fn = tf.keras.losses.CategoricalCrossentropy(
+        reduction=tf.keras.losses.Reduction.NONE)
+    # Instantiate an optimizer to train the model.
+    optimizer = tf.keras.optimizers.Adam()
+    model = self._build_model()
+
+    metrics, wall_time = self.measure_performance(model,
+                                                  train_dataset,
+                                                  loss_fn,
+                                                  optimizer,
+                                                  batch_size,
+                                                  run_iters,
+                                                  self.epochs)
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics)
+
+  def benchmark_custom_training_mnist_bs_512_gpu_2(self):
+    """Measure performance with batch_size=512, run_iters=10, gpu=2 and
+    distribution_strategy='mirrored'."""
+    batch_size = 512
     run_iters = 10
     train_dataset = self.train_dataset.shuffle(
         buffer_size=1024).batch(batch_size)
