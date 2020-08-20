@@ -19,10 +19,10 @@ limitations under the License.
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"     // from @llvm-project
+#include "mlir/IR/Diagnostics.h"    // from @llvm-project
+#include "mlir/IR/MLIRContext.h"    // from @llvm-project
+#include "mlir/IR/PatternMatch.h"   // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -56,18 +56,27 @@ static DenseIntElementsAttr GetI64ElementsAttrForSeq(int start, int end,
   return DenseIntElementsAttr::get(ty, vals);
 }
 
-// Returns int or float DenseElementsAttr with scalar shape with the given
+// Returns int, float, or complex DenseElementsAttr with scalar shape with the given
 // element type and the integer value.
 static DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value) {
   RankedTensorType scalar_ty = RankedTensorType::get({}, ty);
   if (auto float_ty = ty.dyn_cast_or_null<FloatType>()) {
     FloatAttr attr = FloatAttr::get(float_ty, raw_value);
     return DenseElementsAttr::get(scalar_ty, attr);
+  } else if (auto int_ty = ty.dyn_cast_or_null<IntegerType>()) {
+    IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
+    return DenseElementsAttr::get(scalar_ty, attr);
+  } else if (auto complex_ty = ty.dyn_cast_or_null<ComplexType>()) {
+    Type complex_element_ty = complex_ty.getElementType();
+    if (complex_element_ty.isF32()) {
+      return DenseElementsAttr::get(
+          scalar_ty, static_cast<std::complex<float>>(raw_value));
+    } else if (complex_element_ty.isF64()) {
+      return DenseElementsAttr::get(
+          scalar_ty, static_cast<std::complex<double>>(raw_value));
+    }
   }
-
-  auto int_ty = ty.cast<IntegerType>();
-  IntegerAttr attr = IntegerAttr::get(int_ty, raw_value);
-  return DenseElementsAttr::get(scalar_ty, attr);
+  llvm_unreachable("unsupported type");
 }
 
 // Returns float DenseElementsAttr with scalar shape with the specified value.
