@@ -24,7 +24,6 @@ source tensorflow/tools/ci_build/release/common.sh
 mkdir /tmp/horovod_test
 cd /tmp/horovod_test
 
-
 # Update the latest Python dependency packages via pip3.7
 install_ubuntu_16_pip_deps pip3.7
 
@@ -45,29 +44,30 @@ wget https://download.open-mpi.org/release/open-mpi/v4.0/openmpi-4.0.4.tar.gz
 tar xvf openmpi-4.0.4.tar.gz
 
 # Install gcc.
-sudo apt install --assume-yes build-essential
+sudo apt install --assume-yes build-essential git
 
 gcc --version
 
 cd openmpi-4.0.4
-./configure
+./configure --enable-orterun-prefix-by-default
 
 # Install open-mpi.
-sudo make all install
+make -j $(nproc) all
+make install
 export LD_LIBRARY_PATH=/usr/local/lib/openmpi
 sudo ldconfig
-
-sudo update-alternatives --install /usr/bin/gcc gcc /dt7/usr/bin/gcc 60 --slave /usr/bin/g++ g++ /dt7/usr/bin/g++
 
 g++ --version
 
 # Install Horovod.
 cd ..
-HOROVOD_GPU_OPERATIONS=NCCL
-HOROVOD_WITH_TENSORFLOW=1
-HOROVOD_WITHOUT_PYTORCH=1
-HOROVOD_WITHOUT_MXNET=1
-pip3.7 install horovod[tensorflow] --user
+export HOROVOD_GPU_OPERATIONS=NCCL
+export HOROVOD_WITH_TENSORFLOW=1
+export HOROVOD_WITHOUT_PYTORCH=1
+export HOROVOD_WITHOUT_MXNET=1
+pip3.7 install --user git+https://github.com/horovod/horovod.git
+
+export PATH=${PATH}:/root/.local/bin
 
 # Install tests.
 git clone https://github.com/DEKHTIARJonathan/TF_HVD_Stability_Test.git
