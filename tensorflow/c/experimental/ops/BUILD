@@ -38,9 +38,9 @@ cc_library(
         "//tensorflow/c/eager:abstract_operation",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:c_api_unified_internal",
+        "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/core/platform:errors",
-        "//tensorflow/c/experimental/ops:array_ops",
     ],
 )
 
