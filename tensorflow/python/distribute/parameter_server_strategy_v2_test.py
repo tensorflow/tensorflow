@@ -18,6 +18,10 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import platform
+import sys
+
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -42,6 +46,11 @@ class ParameterServerStrategyV2Test(test.TestCase):
         protocol=cls.cluster_resolver.rpc_layer)
 
   def testVariablePlacement(self):
+
+    if sys.version_info >= (3, 8) and platform.system() == "Windows":
+      # TODO(b/165013260): Fix this
+      self.skipTest("Test is currently broken on Windows with Python 3.8")
+
     strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
         self.cluster_resolver)
     v1 = variables.Variable(initial_value=0.0)
