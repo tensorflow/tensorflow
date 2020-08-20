@@ -78,14 +78,14 @@ INSTANTIATE_TEST_SUITE_P(
     uKernels, MeanStddevNormalizationTest,
     testing::Values(
         std::make_tuple(0.0f, 0.0f, 0.0f),         // zero mean, zero variance
-        std::make_tuple(0.0f, 0.01f, 2.53e-5f),    // zero mean, small variance
-        std::make_tuple(0.0f, 100.0f, 1.20e-7f),   // zero mean, large variance
+        std::make_tuple(0.0f, 0.01f, 2.63e-4f),    // zero mean, small variance
+        std::make_tuple(0.0f, 100.0f, 2.63e-4f),   // zero mean, large variance
         std::make_tuple(0.01f, 0.0f, 0.0f),        // small mean, zero variance
-        std::make_tuple(0.01f, 0.01f, 2.53e-5f),   // small mean, small variance
-        std::make_tuple(1.0f, 100.0f, 1.20e-7f),   // small mean, large variance
+        std::make_tuple(0.01f, 0.01f, 3.57e-4f),   // small mean, small variance
+        std::make_tuple(1.0f, 100.0f, 2.63e-4f),   // small mean, large variance
         std::make_tuple(100.0f, 0.0f, 0.0f),       // large mean, zero variance
-        std::make_tuple(100.0f, 1.0f, 1.81e-4f),   // large mean, small variance
-        std::make_tuple(100.0f, 100.0f, 1.20e-7f)  // large mean, large variance
+        std::make_tuple(100.0f, 1.0f, 2.63e-4f),   // large mean, small variance
+        std::make_tuple(100.0f, 100.0f, 2.63e-4f)  // large mean, large variance
         ));
 
 GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(MeanStddevNormalizationTest);
@@ -131,7 +131,7 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
           -ksqrt16, -ksqrt04, ksqrt04, ksqrt16,  // large mean, large variance
       };
       EXPECT_THAT(dst_tensor.data,
-                  Pointwise(FloatNear(1.81e-4f), expected_output));
+                  Pointwise(FloatNear(3.57e-4f), expected_output));
     }
   }
 }
