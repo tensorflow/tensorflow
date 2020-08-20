@@ -647,7 +647,6 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
           num_iters=self._num_iters_2_by_2,
           execution_mode=context.ASYNC)
 
-  @test_util.disable_tfrt("copy to GPU not supported")
   def benchmark_tf_matmul_2_by_2_GPU(self):
     if not context.num_gpus():
       return
@@ -1484,6 +1483,19 @@ class MicroBenchmarks(benchmarks_test_base.MicroBenchmarksBase):
       nest.pack_sequence_as(nested, flat)
 
     self._run(fn, 10000)
+
+  def benchmark_tf_nest_flatten_none(self):
+    def fn():
+      nest.flatten(None)
+
+    self._run(fn, 100000)
+
+  def benchmark_tf_nest_flatten(self):
+    nested = {"a": [1, 2, 3], "b": (4, 5, 6)}
+    def fn():
+      nest.flatten(nested)
+
+    self._run(fn, 100000)
 
   def benchmark_tf_nn_convolution_overhead(self):
     inputs = array_ops.ones((1, 1, 1, 1))

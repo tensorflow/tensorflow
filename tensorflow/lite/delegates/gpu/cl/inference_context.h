@@ -40,12 +40,9 @@ namespace gpu {
 namespace cl {
 
 struct CLNode {
-  std::vector<std::unique_ptr<GPUOperation>> operations;
+  std::unique_ptr<GPUOperation> operation;
   std::vector<ValueId> inputs;
   std::vector<ValueId> outputs;
-  // So as CLNode can have few operations, ranges keep range of ids from inputs,
-  // for every operation.
-  std::vector<int2> ranges;
 
   // Mostly for debug purposes.
   std::string name;
@@ -98,7 +95,7 @@ class InferenceContext {
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
                            const CreationContext& creation_context,
                            const GraphFloat32& graph);
-  void Merge();
+  absl::Status Merge();
   absl::Status AllocateMemory(const CLDevice& device, CLContext* context);
 
   absl::Status AllocateMemoryForBuffers(const CLDevice& device,

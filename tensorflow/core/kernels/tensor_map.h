@@ -69,24 +69,16 @@ class TensorMap {
   TensorMap() : tensors_(new Tensors) {}
   ~TensorMap();
 
-  TensorMap(const TensorMap& other)
-      : element_shape(other.element_shape),
-        element_dtype(other.element_dtype),
-        tensors_(other.tensors_) {
+  TensorMap(const TensorMap& other) : tensors_(other.tensors_) {
     tensors_->Ref();
   }
 
-  TensorMap(TensorMap&& rhs)
-      : element_shape(std::move(rhs.element_shape)),
-        element_dtype(rhs.element_dtype),
-        tensors_(rhs.tensors_) {
+  TensorMap(TensorMap&& rhs) : tensors_(rhs.tensors_) {
     rhs.tensors_ = nullptr;
   }
 
   TensorMap& operator=(const TensorMap& rhs) {
     if (this == &rhs) return *this;
-    element_shape = rhs.element_shape;
-    element_dtype = rhs.element_dtype;
     tensors_->Unref();
     tensors_ = rhs.tensors_;
     tensors_->Ref();
@@ -95,8 +87,6 @@ class TensorMap {
 
   TensorMap& operator=(TensorMap&& rhs) {
     if (this == &rhs) return *this;
-    element_shape = rhs.element_shape;
-    element_dtype = rhs.element_dtype;
     std::swap(tensors_, rhs.tensors_);
     return *this;
   }
@@ -112,27 +102,18 @@ class TensorMap {
   // TODO(apassos) fill this out
   string DebugString() const { return "TensorMap"; }
 
-  PartialTensorShape element_shape;
-
-  DataType element_dtype;
-
   // Access to the underlying tensor container.
   absl::flat_hash_map<TensorKey, Tensor>& tensors() {
     return tensors_->values_;
   }
+
   const absl::flat_hash_map<TensorKey, Tensor>& tensors() const {
     return tensors_->values_;
   }
 
-  // Access to shape and element dtype
-  PartialTensorShape& shape() { return element_shape; }
-  DataType dtype() { return element_dtype; }
-
   // Get a new TensorMap containing a copy of the underlying tensor container.
   TensorMap Copy() const {
     TensorMap out;
-    out.element_shape = element_shape;
-    out.element_dtype = element_dtype;
     // This performs a copy of the absl::hashmap.
     out.tensors_->values_ = tensors_->values_;
     return out;
@@ -179,7 +160,8 @@ class TensorMap {
 
 #if defined(PLATFORM_GOOGLE)
 // TODO(ebrevdo): Identify why Variant inline size is smaller on mobile devices.
-static_assert(Variant::CanInlineType<TensorMap>(),
+// For 32-bit devices, it's acceptable not to inline.
+static_assert(Variant::CanInlineType<TensorMap>() || sizeof(void*) < 8,
               "Must be able to inline TensorMap into a Variant");
 #endif
 }  // namespace tensorflow

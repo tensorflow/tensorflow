@@ -237,7 +237,7 @@ class ReverseV2Op : public OpKernel {
     const Tensor& input = context->input(0);
     const Tensor& sparse_dims = context->input(1);
 
-    if (TensorShapeUtils::IsScalar(input.shape())) {
+    if (TensorShapeUtils::IsScalar(input.shape()) || input.NumElements() == 0) {
       context->set_output(0, input);
     } else {
       const int input_dims = input.dims();

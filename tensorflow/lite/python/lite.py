@@ -1752,24 +1752,26 @@ class TFLiteConverter(TFLiteFrozenGraphConverter):
 
     ```python
     # Converting a GraphDef from session.
-    converter = tf.compat.v1.TFLiteConverter.from_session(
+    converter = tf.compat.v1.lite.TFLiteConverter.from_session(
       sess, in_tensors, out_tensors)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a GraphDef from file.
-    converter = tf.compat.v1.TFLiteConverter.from_frozen_graph(
+    converter = tf.compat.v1.lite.TFLiteConverter.from_frozen_graph(
       graph_def_file, input_arrays, output_arrays)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a SavedModel.
-    converter = tf.compat.v1.TFLiteConverter.from_saved_model(saved_model_dir)
+    converter = tf.compat.v1.lite.TFLiteConverter.from_saved_model(
+        saved_model_dir)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a tf.keras model.
-    converter = tf.compat.v1.TFLiteConverter.from_keras_model_file(keras_model)
+    converter = tf.compat.v1.lite.TFLiteConverter.from_keras_model_file(
+        keras_model)
     tflite_model = converter.convert()
     open("converted_model.tflite", "wb").write(tflite_model)
     ```

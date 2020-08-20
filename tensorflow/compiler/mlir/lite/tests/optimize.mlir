@@ -1115,3 +1115,15 @@ func @ConvertIdentityScatterNd(%arg0: tensor<4x3xf32>) -> tensor<4x3xf32> {
 // CHECK-SAME: (%[[ARG:.*]]: tensor<4x3xf32>) -> tensor<4x3xf32>
 // CHECK-NEXT: return %[[ARG]] : tensor<4x3xf32>
 }
+
+func @ReshapeAddUnknownShape(%arg0: tensor<*xf32>) -> tensor<3x4xf32> {
+  %cst = constant dense<[3, 4]> : tensor<2xi32>
+  %cst_0 = constant dense<1.000000e+00> : tensor<3x4xf32>
+  %0 = "tfl.reshape"(%arg0, %cst) : (tensor<*xf32>, tensor<2xi32>) -> tensor<3x4xf32>
+  %1 = "tfl.add"(%0, %cst_0) {fused_activation_function = "NONE"} : (tensor<3x4xf32>, tensor<3x4xf32>) -> tensor<3x4xf32>
+  return %1 : tensor<3x4xf32>
+// CHECK-LABEL: ReshapeAddUnknownShape
+// CHECK: %[[rs1:.*]] = "tfl.reshape"(%arg0
+// CHECK: %[[rs2:.*]] = tfl.add %[[rs1]]
+// CHECK: return %[[rs2]]
+}

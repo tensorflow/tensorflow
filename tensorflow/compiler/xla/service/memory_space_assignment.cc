@@ -80,7 +80,7 @@ float MemorySpaceAssignmentCostAnalysis::GetAlternateMemoryBenefit(
 }
 
 float MemorySpaceAssignmentCostAnalysis::GetMemoryBoundedness(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+    const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
     MemorySpaceAssignmentCostAnalysis::Cache* cache) const {
   const HloInstruction& defining_instruction =
       *interval.buffer->defining_instruction();
@@ -570,7 +570,8 @@ std::string CostAnalysisPrefetchIntervalPicker::ToNoCopyDebugString(
 
 absl::optional<float>
 CostAnalysisPrefetchIntervalPicker::BufferIntervalAlternateMemoryBenefit(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
+    const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
+    const {
   return cost_analysis_.GetMemoryBoundedness(interval);
 }
 
@@ -733,9 +734,9 @@ void AlternateMemoryBestFitHeap::FindAliases(
   }
 }
 
-std::vector<const GlobalDecreasingSizeBestFitHeap::BufferInterval*>
+std::vector<const AlternateMemoryBestFitHeap::BufferInterval*>
 AlternateMemoryBestFitHeap::GetSortedColocatedIntervals(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
+    const AlternateMemoryBestFitHeap::BufferInterval& interval) const {
   std::vector<const BufferInterval*> colocated_intervals;
   std::vector<const BufferInterval*> worklist = {&interval};
   while (!worklist.empty()) {
@@ -864,7 +865,7 @@ bool AlternateMemoryBestFitHeap::IsUseAllowedInAlternateMemory(
 }
 
 void AlternateMemoryBestFitHeap::AppendBufferInfoDebugString(
-    const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+    const AlternateMemoryBestFitHeap::BufferInterval& interval,
     std::string* debug_str) const {
   // Columns in buffer information:
   // buffer_id: int. This value can be used to match the allocation in
@@ -954,7 +955,7 @@ void AlternateMemoryBestFitHeap::DumpDebugStringsIfEnabled() const {
   options_.dump_fn("allocinfo", allocation_info_str_);
 }
 
-HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
+HeapSimulator::Result<HloValue> AlternateMemoryBestFitHeap::Finish() {
   std::vector<BufferInterval> sorted_buffer_intervals =
       GetSortedBufferIntervals();
 
@@ -1051,16 +1052,37 @@ HeapSimulator::Result AlternateMemoryBestFitHeap::Finish() {
                                                  allocation_values);
 
     // Retry allocating this value with larger limits if allocation fails.
+    bool repacked = false;
     for (int retry_number = 0; retry_number < options_.max_retries;
          retry_number++) {
       bool final_retry = (retry_number == options_.max_retries - 1);
       options_.prefetch_interval_picker->SetRetryNumber(retry_number);
       Result result =
           AllocateAllocationValues(absl::MakeSpan(allocation_values));
+      VLOG(2) << "Allocation result = "
+              << absl::StrFormat("%x", static_cast<int>(result));
       if (result_requires_uncommit(result) ||
           (!final_retry && result_failed_because_of_async_copy(result))) {
         UncommitPendingChunks(absl::MakeSpan(allocation_values));
         VLOG(2) << "Couldn't allocate. Retry number " << retry_number;
+      } else if (result_is(result, Result::kFailOutOfMemory) &&
+                 num_repacks_ < options_.max_repacks && !repacked) {
+        UncommitPendingChunks(absl::MakeSpan(allocation_values));
+        ++num_repacks_;
+        repacked = true;
+        CHECK_NE(options_.repacker, nullptr);
+        std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>
+            repack_allocation_blocks;
+        ExportAllocationsForRepacking(repack_allocation_blocks);
+        VLOG(2) << "Repacking.";
+        auto repack_status =
+            options_.repacker->Repack(absl::MakeSpan(repack_allocation_blocks));
+        CHECK_EQ(repack_status.status(), Status::OK());
+        VLOG(2) << "Repack complete. Modified = " << *repack_status;
+        if (*repack_status) {
+          ImportRepackedAllocations();
+          --retry_number;
+        }
       } else {
         FinalizeAllocations(absl::MakeSpan(allocation_values));
         break;
@@ -1363,6 +1385,18 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   for (auto& allocation : allocations) {
     allocations_->push_back(std::move(allocation));
   }
+  // Add a repack allocation block for the Allocation object in alternate
+  // memory.
+  CHECK_EQ(allocations_->size(), 2);
+  MemorySpaceAssignment::Allocation* last_allocation =
+      allocations_->at(1).get();
+  CHECK(last_allocation->memory_space() == MemorySpace::kAlternate);
+  repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
+      last_allocation->start_time(), last_allocation->end_time(),
+      last_allocation->chunk().size, last_allocation->chunk().offset,
+      static_cast<int64>(repack_allocation_blocks_.size()), last_allocation));
+  repack_allocation_blocks_.back().colocations.push_back(
+      &repack_allocation_blocks_.back());
 
   ClearPendingChunks();
 }
@@ -1541,6 +1575,31 @@ bool AlternateMemoryBestFitHeap::AreIntervalsReservedInAlternateMemory(
   return false;
 }
 
+void AlternateMemoryBestFitHeap::ExportAllocationsForRepacking(
+    std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>& allocations) {
+  for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
+    allocations.push_back(&allocation_block);
+  }
+}
+
+void AlternateMemoryBestFitHeap::ImportRepackedAllocations() {
+  interval_tree_ = {};
+  for (RepackAllocationBlock& allocation_block : repack_allocation_blocks_) {
+    MemorySpaceAssignment::Allocation* allocation = allocation_block.allocation;
+    VLOG(3) << "Moved " << allocation->ToString() << ", size "
+            << allocation->chunk().size << ", (" << allocation_block.start_time
+            << ", " << allocation_block.end_time << ") from "
+            << allocation_block.initial_offset << " to "
+            << allocation_block.offset;
+    allocation_block.allocation->mutable_chunk()->offset =
+        allocation_block.offset;
+    interval_tree_.Add(allocation_block.start_time, allocation_block.end_time,
+                       {allocation_block.offset, allocation_block.size});
+    allocation_block.initial_offset = allocation_block.offset;
+    allocation_block.offset = -1;
+  }
+}
+
 void AlternateMemoryBestFitHeap::UncommitPendingChunks(
     absl::Span<AllocationValue> allocation_values) {
   // Clear the allocation sequence of the allocation values so that in case we
@@ -1591,11 +1650,39 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks(
 
 void AlternateMemoryBestFitHeap::FinalizeAllocations(
     absl::Span<AllocationValue> allocation_values) {
+  absl::flat_hash_map<int64, std::vector<MemorySpaceAssignment::Allocation*>>
+      colocation_map;
   for (AllocationValue& allocation_value : allocation_values) {
     for (auto& allocation : *allocation_value.allocation_sequence()) {
       AppendAllocationInfoDebugString(allocation_value, *allocation,
                                       allocation_info_str_);
       allocations_->push_back(std::move(allocation));
+      MemorySpaceAssignment::Allocation* inserted_allocation =
+          allocations_->back().get();
+      if (inserted_allocation->memory_space() == MemorySpace::kAlternate) {
+        colocation_map[inserted_allocation->chunk().offset].push_back(
+            inserted_allocation);
+      }
+    }
+  }
+  // Assume allocations that received the same offset need to be colocated.
+  // Export these to repack_allocation_blocks_ so that we can repack them to
+  // reduce fragmentation.
+  for (auto& colocation : colocation_map) {
+    std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*> colocations;
+    for (MemorySpaceAssignment::Allocation* colocated_allocation :
+         colocation.second) {
+      repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
+          colocated_allocation->start_time(), colocated_allocation->end_time(),
+          colocated_allocation->chunk().size,
+          colocated_allocation->chunk().offset,
+          static_cast<int64>(repack_allocation_blocks_.size()),
+          colocated_allocation));
+      colocations.push_back(&repack_allocation_blocks_.back());
+    }
+    for (MemorySpaceAssignmentRepacker::AllocationBlock* repack_block :
+         colocations) {
+      repack_block->colocations = colocations;
     }
   }
   ClearPendingChunks();
@@ -2285,8 +2372,8 @@ MemorySpaceAssignment::GetMemoryBoundednessBufferIntervalCompare(
       return x_memory_boundedness > y_memory_boundedness;
     }
     // Tie-break if the memory boundedness is the same.
-    return GlobalDecreasingSizeBestFitHeap::GetSpatialBufferIntervalCompare()(
-        x, y);
+    return GlobalDecreasingSizeBestFitHeap<
+        HloValue>::GetSpatialBufferIntervalCompare()(x, y);
   };
 }
 

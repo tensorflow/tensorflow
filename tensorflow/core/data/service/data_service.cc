@@ -54,6 +54,56 @@ std::string ProcessingModeToString(ProcessingMode mode) {
   }
 }
 
+Status DataServiceDispatcherClient::RegisterWorker(
+    const std::string& worker_address, std::vector<TaskDef>& tasks) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  RegisterWorkerRequest req;
+  req.set_worker_address(worker_address);
+  RegisterWorkerResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->RegisterWorker(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to register worker", status);
+  }
+  for (const auto& task : resp.tasks()) {
+    tasks.push_back(task);
+  }
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::WorkerUpdate(
+    const std::string& worker_address,
+    std::vector<TaskProgress>& task_progress) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  WorkerUpdateRequest req;
+  req.set_worker_address(worker_address);
+  for (const auto& update : task_progress) {
+    *(req.add_updates()) = update;
+  }
+  WorkerUpdateResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->WorkerUpdate(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to send worker update", status);
+  }
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::GetDatasetDef(int64 dataset_id,
+                                                  DatasetDef& dataset_def) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  GetDatasetDefRequest req;
+  req.set_dataset_id(dataset_id);
+  GetDatasetDefResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->GetDatasetDef(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError("Failed to get dataset def", status);
+  }
+  dataset_def = resp.dataset_def();
+  return Status::OK();
+}
+
 Status DataServiceDispatcherClient::RegisterDataset(GraphDef dataset,
                                                     int64* dataset_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
@@ -71,7 +121,7 @@ Status DataServiceDispatcherClient::RegisterDataset(GraphDef dataset,
 
 Status DataServiceDispatcherClient::CreateJob(int64 dataset_id,
                                               ProcessingMode processing_mode,
-                                              int64* job_id) {
+                                              int64* job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   CreateJobRequest req;
   req.set_dataset_id(dataset_id);
@@ -84,13 +134,13 @@ Status DataServiceDispatcherClient::CreateJob(int64 dataset_id,
         absl::StrCat("Failed to create job for dataset with id ", dataset_id),
         status);
   }
-  *job_id = resp.job_id();
+  *job_client_id = resp.job_client_id();
   return Status::OK();
 }
 
 Status DataServiceDispatcherClient::GetOrCreateJob(
     int64 dataset_id, ProcessingMode processing_mode,
-    const std::string& job_name, int job_name_index, int64* job_id) {
+    const std::string& job_name, int job_name_index, int64* job_client_id) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetOrCreateJobRequest req;
   req.set_dataset_id(dataset_id);
@@ -106,18 +156,33 @@ Status DataServiceDispatcherClient::GetOrCreateJob(
                      dataset_id),
         status);
   }
-  *job_id = resp.job_id();
+  *job_client_id = resp.job_client_id();
   return Status::OK();
 }
 
-Status DataServiceDispatcherClient::GetTasks(int64 job_id,
+Status DataServiceDispatcherClient::ReleaseJobClient(int64 job_client_id) {
+  TF_RETURN_IF_ERROR(EnsureInitialized());
+  ReleaseJobClientRequest req;
+  req.set_job_client_id(job_client_id);
+  ReleaseJobClientResponse resp;
+  grpc::ClientContext client_ctx;
+  grpc::Status status = stub_->ReleaseJobClient(&client_ctx, req, &resp);
+  if (!status.ok()) {
+    return grpc_util::WrapError(
+        absl::StrCat("Failed to release job client with id ", job_client_id),
+        status);
+  }
+  return Status::OK();
+}
+
+Status DataServiceDispatcherClient::GetTasks(int64 job_client_id,
                                              std::vector<TaskInfo>* tasks,
                                              bool* job_finished) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetTasksRequest req;
-  req.set_job_id(job_id);
+  req.set_job_client_id(job_client_id);
   GetTasksResponse resp;
-  grpc_impl::ClientContext ctx;
+  grpc::ClientContext ctx;
   grpc::Status s = stub_->GetTasks(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get tasks", s);
@@ -135,7 +200,7 @@ Status DataServiceDispatcherClient::GetWorkers(
   TF_RETURN_IF_ERROR(EnsureInitialized());
   GetWorkersRequest req;
   GetWorkersResponse resp;
-  grpc_impl::ClientContext ctx;
+  grpc::ClientContext ctx;
   grpc::Status s = stub_->GetWorkers(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get workers", s);
@@ -148,6 +213,10 @@ Status DataServiceDispatcherClient::GetWorkers(
 }
 
 Status DataServiceDispatcherClient::EnsureInitialized() {
+  mutex_lock l(mu_);
+  if (stub_) {
+    return Status::OK();
+  }
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
@@ -163,7 +232,7 @@ Status DataServiceWorkerClient::GetElement(int64 task_id,
   GetElementRequest req;
   req.set_task_id(task_id);
   GetElementResponse resp;
-  grpc_impl::ClientContext ctx;
+  grpc::ClientContext ctx;
   grpc::Status s = stub_->GetElement(&ctx, req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get element", s);
@@ -176,6 +245,10 @@ Status DataServiceWorkerClient::GetElement(int64 task_id,
 }
 
 Status DataServiceWorkerClient::EnsureInitialized() {
+  mutex_lock l(mu_);
+  if (stub_) {
+    return Status::OK();
+  }
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
       CredentialsFactory::CreateClientCredentials(protocol_, &credentials));

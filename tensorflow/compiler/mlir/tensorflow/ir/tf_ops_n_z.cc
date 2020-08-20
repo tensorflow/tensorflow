@@ -707,7 +707,6 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
   // Fold reshape if operand and result types are the same and all dimensions
   // are statically known (no-op reshape).
-  // TODO(ezhulenev): Add the same folding for BroadcastToOp.
   auto result_ty = getType().dyn_cast<ShapedType>();
   if (result_ty && result_ty.hasStaticShape() &&
       result_ty == tensor.getType()) {
@@ -932,24 +931,75 @@ static LogicalResult Verify(ShapeNOp op) {
   return success();
 }
 
-LogicalResult ShapeNOp::fold(ArrayRef<Attribute> operands,
-                             SmallVectorImpl<OpFoldResult> &results) {
-  if (getNumOperands() == 0) return success();
-  int width =
-      getType(0).cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
-
-  for (Type input_ty : getOperandTypes()) {
-    OpFoldResult result = ConvertShapeToAttr(input_ty, width);
-    if (!result) return failure();
-
-    results.push_back(result);
-  }
-  return success();
-}
-
-// TODO(hinsu): Add canonicalization pattern for ShapeN ops that don't have all
+namespace {
+// Canonicalization pattern for ShapeNOp that don't have all
 // static input shapes. Replacing output values corresponding to static input
 // types may enable optimizations in users of the values.
+class ShapeNPartialStaticInputShape : public OpRewritePattern<ShapeNOp> {
+  using OpRewritePattern<ShapeNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ShapeNOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() == 0) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+
+    int width = getElementTypeOrSelf(op.getType(0)).getIntOrFloatBitWidth();
+
+    SmallVector<Value, 4> results(op.getNumOperands());
+    SmallVector<int64_t, 4> dynamic_indices;
+    SmallVector<Value, 4> dynamic_inputs;
+    SmallVector<Type, 4> result_types;
+    for (auto e : llvm::enumerate(op.getOperands())) {
+      if (Attribute result = ConvertShapeToAttr(e.value().getType(), width)) {
+        results[e.index()] = rewriter.create<TF::ConstOp>(op.getLoc(), result);
+      } else {
+        dynamic_indices.push_back(e.index());
+        dynamic_inputs.push_back(e.value());
+        result_types.push_back(op.getType(e.index()));
+      }
+    }
+
+    if (dynamic_inputs.size() == op.getNumOperands()) {
+      // Cannot canonicalize ShapeN if all inputs are dynamic.
+      return failure();
+    }
+
+    // Create a ShapeNOp for all dynamic inputs.
+    if (!dynamic_inputs.empty()) {
+      auto dynamic_shape_n = rewriter.create<TF::ShapeNOp>(
+          op.getLoc(), result_types, dynamic_inputs);
+      for (auto index_result :
+           llvm::zip(dynamic_indices, dynamic_shape_n.getResults())) {
+        results[std::get<0>(index_result)] = std::get<1>(index_result);
+      }
+    }
+
+    rewriter.replaceOp(op, results);
+    return success();
+  }
+};
+
+// Canonicalize ShapeNOp to ShapeOp if there is only one operand.
+class ShapeNToShape : public OpRewritePattern<ShapeNOp> {
+  using OpRewritePattern<ShapeNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ShapeNOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 1) {
+      return failure();
+    }
+    auto shape = rewriter.create<TF::ShapeOp>(op.getLoc(), op.getType(0),
+                                              op.getOperand(0));
+    rewriter.replaceOp(op, {shape});
+    return success();
+  }
+};
+}  // namespace
+
+void ShapeNOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<ShapeNToShape, ShapeNPartialStaticInputShape>(context);
+}
 
 //===----------------------------------------------------------------------===//
 // SizeOp
@@ -964,7 +1014,23 @@ static LogicalResult Verify(SizeOp op) {
     return op.emitOpError(
         "requires ranked input tensor to be of rank INT32_MAX or less");
 
+  // Output type needs to be scalar.
+  ShapedType output_type = op.getType().cast<ShapedType>();
+  if (output_type.hasStaticShape() && output_type.getRank() != 0) {
+    return op.emitOpError("requires scalar output");
+  }
+
   return success();
+}
+
+OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
+  ShapedType output_type = getType().cast<ShapedType>();
+  ShapedType input_type = getOperand().getType().cast<ShapedType>();
+  if (!input_type.hasStaticShape()) return {};
+  int size = input_type.getNumElements();
+  return DenseElementsAttr::get(
+      output_type,
+      IntegerAttr::get(output_type.getElementType(), /*value=*/size));
 }
 
 //===----------------------------------------------------------------------===//

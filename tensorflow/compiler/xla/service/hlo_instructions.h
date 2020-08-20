@@ -679,6 +679,21 @@ class HloBroadcastInstruction : public HloInstruction {
   std::vector<int64> dimensions_;
 };
 
+class HloDynamicReshapeInstruction : public HloInstruction {
+ public:
+  explicit HloDynamicReshapeInstruction(
+      const Shape& shape, HloInstruction* data_operand,
+      absl::Span<HloInstruction* const> dim_sizes);
+
+  // Returns the input dim sizes dimensions, which is operands[1:]
+  absl::Span<HloInstruction* const> dim_sizes() const {
+    return absl::MakeSpan(operands()).subspan(1, operand_count());
+  }
+
+  // Returns the input dim size dimension, which is operands[1+i]
+  HloInstruction* dim_sizes(int64 i) const { return operands()[i + 1]; }
+};
+
 class HloReshapeInstruction : public HloInstruction {
  public:
   explicit HloReshapeInstruction(const Shape& shape, HloInstruction* operand,

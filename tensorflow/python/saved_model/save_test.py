@@ -247,7 +247,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegex(ValueError, "non-flat outputs"):
+    with self.assertRaisesRegex(ValueError, "non-Tensor value"):
       save.save(root, save_dir, to_save)
 
   def test_nested_dict_outputs(self):
@@ -259,8 +259,7 @@ class SaveTest(test.TestCase, parameterized.TestCase):
     root.f(constant_op.constant(1.))
     to_save = root.f.get_concrete_function(constant_op.constant(1.))
     save_dir = os.path.join(self.get_temp_dir(), "saved_model")
-    with self.assertRaisesRegex(ValueError,
-                                "dictionary containing non-Tensor value"):
+    with self.assertRaisesRegex(ValueError, "non-Tensor value"):
       save.save(root, save_dir, to_save)
 
   def test_variable(self):

@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
@@ -53,8 +54,8 @@ struct FunctionalControlFlowToRegions
 // the input arguments are used as is (for IfOp) or block arguments of the same
 // type as the input arguments are created and then used as call arguments (for
 // While).
-void CreateCall(Operation* op, FuncOp func, Region& caller_region,
-                ValueRange args, bool use_region_args) {
+YieldOp CreateCall(Operation* op, FuncOp func, Region& caller_region,
+                   ValueRange args, bool use_region_args) {
   assert(caller_region.empty() &&
          "Expected empty region for newly created ops");
   OpBuilder builder(caller_region);
@@ -76,14 +77,25 @@ void CreateCall(Operation* op, FuncOp func, Region& caller_region,
     casted_args.push_back(arg);
   }
   auto call = builder.create<CallOp>(op->getLoc(), func, casted_args);
-  builder.create<YieldOp>(op->getLoc(), call.getResults());
+  return builder.create<YieldOp>(op->getLoc(), call.getResults());
+}
+
+// Converts the condition for an IfOp/WhileOp to a boolean value.
+Value ConvertConditionToBoolean(Operation* op, Value cond) {
+  if (auto ranked_type = cond.getType().dyn_cast<RankedTensorType>())
+    if (ranked_type.getRank() == 0 &&
+        ranked_type.getElementType().isSignlessInteger(1))
+      return cond;
+
+  OpBuilder builder(op);
+  return builder.create<TF::ToBoolOp>(op->getLoc(), cond);
 }
 
 // Transform a functional IfOp to a region based IfRegionOp.
 LogicalResult ConvertIfOp(IfOp if_op) {
+  Value cond = ConvertConditionToBoolean(if_op, if_op.cond());
   auto if_region = OpBuilder(if_op).create<TF::IfRegionOp>(
-      if_op.getLoc(), if_op.getResultTypes(), if_op.cond(),
-      if_op.is_stateless());
+      if_op.getLoc(), if_op.getResultTypes(), cond, if_op.is_stateless());
   CopyUnderscoredAttributes(if_op, if_region);
 
   CreateCall(if_op, if_op.then_func(),
@@ -103,9 +115,14 @@ LogicalResult ConvertWhileOp(WhileOp while_op) {
       while_op.is_stateless(), while_op.parallel_iterations());
   CopyUnderscoredAttributes(while_op, while_region);
 
-  CreateCall(while_op, while_op.cond_func(),
-             /*caller_region=*/while_region.cond(), while_op.input(),
-             /*use_region_args=*/true);
+  YieldOp cond_yield =
+      CreateCall(while_op, while_op.cond_func(),
+                 /*caller_region=*/while_region.cond(), while_op.input(),
+                 /*use_region_args=*/true);
+  Value i1_cond =
+      ConvertConditionToBoolean(cond_yield, cond_yield.getOperand(0));
+  cond_yield.setOperand(0, i1_cond);
+
   CreateCall(while_op, while_op.body_func(),
              /*caller_region=*/while_region.body(), while_op.input(),
              /*use_region_args=*/true);

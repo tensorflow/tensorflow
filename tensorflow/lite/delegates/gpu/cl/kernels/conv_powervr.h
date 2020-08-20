@@ -41,7 +41,10 @@ namespace cl {
 class ConvPowerVR : public GPUOperation {
  public:
   ConvPowerVR() = default;
-  absl::Status Tune(const TuningParameters& params) override;
+  void GetPossibleKernelWorkGroups(
+      TuningType tuning_type, const DeviceInfo& device_info,
+      const KernelInfo& kernel_info,
+      std::vector<int3>* work_groups) const override;
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
@@ -242,30 +245,25 @@ absl::Status ConvPowerVR::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias,
                              ConvPowerVR::WeightsUploadType::CONSTANT_MEM
                          ? MemoryType::CONSTANT
                          : MemoryType::GLOBAL;
-
-  Buffer bias_buffer;
+  const int float_size = conv_params_.weights_data_type == DataType::FLOAT32
+                             ? sizeof(float)
+                             : sizeof(half);
   int aligned_channels = AlignByN(bias.shape.v, 4 * conv_params_.block_size.z);
+  desc.size = float_size * aligned_channels;
+  desc.data.resize(desc.size);
   if (conv_params_.weights_data_type == DataType::FLOAT32) {
-    std::vector<float> gpu_data(aligned_channels);
-    for (int i = 0; i < gpu_data.size(); ++i) {
+    float* gpu_data = reinterpret_cast<float*>(desc.data.data());
+    for (int i = 0; i < aligned_channels; ++i) {
       gpu_data[i] = i < bias.shape.v ? bias.data[i] : 0.0f;
     }
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(float) * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &bias_buffer));
   } else {
-    std::vector<half> gpu_data(aligned_channels);
-    for (int i = 0; i < gpu_data.size(); ++i) {
+    half* gpu_data = reinterpret_cast<half*>(desc.data.data());
+    for (int i = 0; i < aligned_channels; ++i) {
       gpu_data[i] = i < bias.shape.v ? bias.data[i] : 0.0f;
     }
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(half) * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &bias_buffer));
   }
-
-  args_.AddObject("biases", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(bias_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
+  args_.AddObject("biases",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
   return absl::OkStatus();
 }
 
@@ -282,23 +280,6 @@ absl::Status ConvPowerVR::UploadWeights(
   const int elements_count =
       weights.shape.h * weights.shape.w * src_depth * dst_depth_aligned * 4;
 
-  Buffer weights_buffer;
-  if (f32_weights) {
-    std::vector<float4> gpu_data(elements_count);
-    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
-                                     absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
-  } else {
-    std::vector<half4> gpu_data(elements_count);
-    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
-                                     absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float4_size * elements_count,
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
-  }
-
   BufferDescriptor desc;
   desc.element_type = conv_params_.weights_data_type;
   desc.element_size = 4;
@@ -306,10 +287,20 @@ absl::Status ConvPowerVR::UploadWeights(
                              ConvPowerVR::WeightsUploadType::CONSTANT_MEM
                          ? MemoryType::CONSTANT
                          : MemoryType::GLOBAL;
+  desc.size = float4_size * elements_count;
+  desc.data.resize(desc.size);
 
-  args_.AddObject("weights", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
+  if (f32_weights) {
+    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
+                                     absl::MakeSpan(ptr, elements_count));
+  } else {
+    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
+                                     absl::MakeSpan(ptr, elements_count));
+  }
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
   return absl::OkStatus();
 }
 

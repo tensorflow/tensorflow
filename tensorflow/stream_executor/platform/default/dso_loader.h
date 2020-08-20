@@ -50,6 +50,7 @@ port::StatusOr<void*> GetRocblasDsoHandle();
 port::StatusOr<void*> GetMiopenDsoHandle();
 port::StatusOr<void*> GetRocfftDsoHandle();
 port::StatusOr<void*> GetRocrandDsoHandle();
+port::StatusOr<void*> GetHipsparseDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();
 
 // The following method tries to dlopen all necessary GPU libraries for the GPU
@@ -82,6 +83,7 @@ port::StatusOr<void*> GetRocblasDsoHandle();
 port::StatusOr<void*> GetMiopenDsoHandle();
 port::StatusOr<void*> GetRocfftDsoHandle();
 port::StatusOr<void*> GetRocrandDsoHandle();
+port::StatusOr<void*> GetHipsparseDsoHandle();
 port::StatusOr<void*> GetHipDsoHandle();
 }  // namespace CachedDsoLoader
 

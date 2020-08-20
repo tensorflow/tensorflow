@@ -47,10 +47,10 @@ upper_tabs:
 
       - heading: "Microcontrollers"
       - title: "Gesture recognition"
-        path: https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0
+        path: https://blog.tensorflow.org/2019/11/how-to-get-started-with-machine.html
         status: external
       - title: "Hotword detection"
-        path: https://blog.tensorflow.org/2019/11/how-to-get-started-with-machine.html
+        path: https://codelabs.developers.google.com/codelabs/sparkfun-tensorflow/#0
         status: external
       - title: "Person detection"
         path: https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/micro/examples/person_detection
@@ -153,12 +153,17 @@ upper_tabs:
         path: /lite/performance/quantization_spec
 
       - heading: "Build TensorFlow Lite"
+      - title: "Build for Android"
+        path: /lite/guide/build_android
       - title: "Build for iOS"
         path: /lite/guide/build_ios
       - title: "Build for ARM64"
         path: /lite/guide/build_arm64
       - title: "Build for Raspberry Pi"
         path: /lite/guide/build_rpi
+      - title: "Reduce binary size"
+        path: /lite/guide/reduce_binary_size
+        status: experimental
 
       - heading: "Microcontrollers"
       - title: "Overview"

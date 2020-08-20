@@ -1690,7 +1690,7 @@ bool NNAPIDelegateKernel::Validate(
       }
     } break;
     case kTfLiteBuiltinFullyConnected: {
-      ExpectMaxOpVersion(version, 4, &val_ctx);
+      ExpectMaxOpVersion(version, 5, &val_ctx);
       // TODO(b/132950584): Add support for FullyConnected with no bias.
       Expect(node->inputs->size == 3 &&
                  node->inputs->data[2] != kTfLiteOptionalTensor,
@@ -1797,6 +1797,15 @@ bool NNAPIDelegateKernel::Validate(
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI12,
                                  &val_ctx);
       ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
+      Expect(node->inputs->size >= 2,
+             NNAPIValidationFailureType::kUnsupportedOperatorVariant,
+             "Expected at least 2 inputs", &val_ctx);
+      if (node->inputs->size >= 2) {
+        Expect(context->tensors[node->inputs->data[1]].allocation_type ==
+                   kTfLiteMmapRo,
+               NNAPIValidationFailureType::kInputTensorShouldHaveConstantShape,
+               "The size input tensor must be constant.", &val_ctx);
+      }
       auto builtin = reinterpret_cast<TfLiteResizeNearestNeighborParams*>(
           node->builtin_data);
       if (android_sdk_version <= kMinSdkVersionForNNAPI12) {

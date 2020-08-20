@@ -159,7 +159,7 @@ void AllocateAndParseFlags() {
 
   device_flags = new XlaDeviceFlags;
   device_flags->tf_xla_compile_on_demand = false;
-  device_flags->tf_xla_enable_xla_devices = true;
+  device_flags->tf_xla_enable_xla_devices = false;
 
   ops_flags = new XlaOpsCommonFlags;
   ops_flags->tf_xla_always_defer_compilation = false;

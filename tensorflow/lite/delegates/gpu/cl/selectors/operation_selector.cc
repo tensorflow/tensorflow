@@ -262,7 +262,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       return SelectMean(attr, op_def, creation_context.device->info_, gpu_op);
     }
     case OperationType::MEAN_STDDEV_NORMALIZATION: {
-      MeanStdDevNormalization operation = CreateMeanStdDevNormalization(op_def);
+      MeanStdDevNormalization operation =
+          CreateMeanStdDevNormalization(op_def, creation_context.device->info_);
       *gpu_op =
           absl::make_unique<MeanStdDevNormalization>(std::move(operation));
       return absl::OkStatus();
@@ -366,8 +367,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
           "No support of ", node.operation.type, " with this parameters"));
     }
     default:
-      return SelectDefault(creation_context, op_def, hints, inputs, outputs,
-                           node, gpu_subgraph);
+      return SelectDefault(creation_context.device->info_, op_def, hints,
+                           inputs, outputs, node, gpu_subgraph);
   }
 }
 

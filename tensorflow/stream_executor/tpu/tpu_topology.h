@@ -74,10 +74,13 @@ class TpuTopologyExternal {
                                int index) const;
   std::vector<TpuCoreLocationExternal> cores(TpuCoreTypeEnum core_type) const;
   int IdForHost(TpuDimensionsExternal host) const;
+  TpuVersionEnum version() const;
 
  private:
   SE_TpuTopology* topology_;
 };
+
+std::string TpuVersionEnumToString(TpuVersionEnum version);
 
 }  // namespace tpu
 }  // namespace tensorflow

@@ -138,7 +138,6 @@ class Model(training_lib.Model):
 
   def __init__(self, *args, **kwargs):
     super(Model, self).__init__(*args, **kwargs)
-    base_layer.keras_api_gauge.get_cell('model v1').set(True)
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
@@ -409,7 +408,7 @@ class Model(training_lib.Model):
       # time the model gets called on training data.
       return
     self._is_compiled = True
-    base_layer.keras_api_gauge.get_cell('compile_v1').set(True)
+    base_layer.keras_api_gauge.get_cell('compile').set(True)
 
     # Prepare list of loss functions, same size of model outputs.
     self.loss_functions = training_utils.prepare_loss_functions(
@@ -770,7 +769,7 @@ class Model(training_lib.Model):
             and what the model expects.
     """
     self._assert_built_as_v1()
-    base_layer.keras_api_gauge.get_cell('fit_v1').set(True)
+    base_layer.keras_api_gauge.get_cell('fit').set(True)
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
@@ -891,7 +890,7 @@ class Model(training_lib.Model):
         ValueError: in case of invalid arguments.
     """
     self._assert_built_as_v1()
-    base_layer.keras_api_gauge.get_cell('evaluate_v1').set(True)
+    base_layer.keras_api_gauge.get_cell('evaluate').set(True)
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
 
@@ -971,7 +970,7 @@ class Model(training_lib.Model):
             that is not a multiple of the batch size.
     """
     self._assert_built_as_v1()
-    base_layer.keras_api_gauge.get_cell('predict_v1').set(True)
+    base_layer.keras_api_gauge.get_cell('predict').set(True)
     self._check_call_args('predict')
 
     func = self._select_training_loop(x)

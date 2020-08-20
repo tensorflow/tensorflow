@@ -83,7 +83,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
-#include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -197,13 +196,12 @@ Status GpuCompiler::OptimizeHloModule(
           /*layout_sensitive=*/false,
           /*allow_mixed_precision=*/false);
 
-      pass.AddPass<HloGetDimensionSizeRewriter>();
-
       // BatchNormExpander can create zero-sized ops, so zero-sized HLO
       // elimination has to come after that pass.
       pass.AddPass<ZeroSizedHloElimination>();
 
       pass.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+      pass.AddPass<ScatterExpander>(ScatterExpander::kEliminateSimpleScatters);
 
       AlgebraicSimplifierOptions options;
       // When transposes appear in a fusion node, we can easily adjust the

@@ -556,6 +556,43 @@ ENTRY %replicated {
               op::Sharding("{devices=[1,2,2,1]0,1,2,3}"));
 }
 
+TEST_F(ShardingPropagationTest, PartialReplicateReshapeForwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[1430,1]{1,0} parameter(0),
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %reshape = f32[10,11,13]{2,1,0} reshape(%param0)
+  ROOT %copy = f32[10,11,13]{2,1,0} copy(%reshape)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "reshape"),
+      op::Sharding("{devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, PartialReplicateReshapeBackwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %reshape {
+  %param0 = f32[2002,1]{1,0} parameter(0)
+  %copy = f32[2002,1]{1,0} copy(f32[2002,1]{1,0} %param0)
+  ROOT %reshape = f32[14,11,13]{2,1,0} reshape(%copy),
+    sharding={devices=[2,1,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "copy"),
+              op::Sharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}"));
+}
+
 TEST_F(ShardingPropagationTest, DontShardTuplesIfAllInputIsMaximal) {
   const char* const hlo_string = R"(
 HloModule module
@@ -675,13 +712,15 @@ ENTRY conv {
   %rhs = f32[2,2,1]{2,1,0} parameter(1)
   %conv = f32[3,2,3]{2,1,0} convolution(%lhs, %rhs),
     window={size=1}, dim_labels=bf0_oi0->bf0
-  ROOT %tuple = f32[3,2,3]{2,1,0} tuple(%conv)
+  ROOT %tuple = (f32[3,2,3]{2,1,0}) tuple(%conv)
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           ParseAndReturnVerifiedModule(hlo_string));
   TF_ASSERT_OK_AND_ASSIGN(bool changed,
                           ShardingPropagation().Run(module.get()));
-  EXPECT_FALSE(changed);
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "conv"),
+              op::Sharding("{replicated}"));
 }
 
 TEST_F(ShardingPropagationTest, ConvolutionDifferentDimensionNumbers) {
@@ -1047,7 +1086,7 @@ ENTRY %conv {
   %p0_copy_0 = f32[8,256,128] copy(%param.0),
     sharding={devices=[1,4,1]0,1,2,3}
   %p1_copy_0 = f32[8,128,512] copy(%param.1),
-    sharding={devices=[1,2,2]0,1,2,3}
+    sharding={devices=[1,1,4]0,1,2,3}
   %p2_copy = f32[8,128] copy(%param.2)
   %dot_prop_rhs = f32[8,256,512] dot(%p0_copy_0, %p1_copy_0),
     lhs_batch_dims={0}, rhs_batch_dims={0},
@@ -1076,16 +1115,18 @@ ENTRY %conv {
                           ShardingPropagation().Run(module.get()));
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module.get(), "dot_prop_rhs"),
-              op::Sharding("{devices=[1,2,2]0,1,2,3}"));
+              op::Sharding("{devices=[1,1,4]0,1,2,3}"));
   EXPECT_THAT(FindInstruction(module.get(), "dot_prop_lhs"),
-              op::Sharding("{devices=[1,2,2]0,1,2,3}"));
+              op::Sharding("{devices=[1,4,1]0,1,2,3}"));
   EXPECT_THAT(FindInstruction(module.get(), "dot_mat_vec"),
               op::Sharding("{devices=[1,4]0,1,2,3}"));
 
-  EXPECT_THAT(FindInstruction(module.get(), "p0_copy_1"),
-              op::Sharding("{replicated}"));
-  EXPECT_THAT(FindInstruction(module.get(), "p1_copy_1"),
-              op::Sharding("{devices=[1,2,2]0,1,2,3}"));
+  EXPECT_THAT(
+      FindInstruction(module.get(), "p0_copy_1"),
+      op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"));
+  EXPECT_THAT(
+      FindInstruction(module.get(), "p1_copy_1"),
+      op::Sharding("{devices=[1,1,2,2]0,2,1,3  last_tile_dim_replicate}"));
   EXPECT_THAT(FindInstruction(module.get(), "dot_back_prop_rhs"),
               op::Sharding("{devices=[1,2,2]0,1,2,3}"));
 }
@@ -1112,6 +1153,114 @@ ENTRY %conv {
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module.get(), "add"),
               op::Sharding("{devices=[2,2,1]0,1,2,3}"));
+}
+
+TEST_F(ShardingPropagationTest, DotMergeOperands) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %p0 = f32[8,256,512] parameter(0),
+    sharding={devices=[2,2,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  %p1 = f32[8,128,512] parameter(1),
+    sharding={devices=[2,2,1,2]0,2,1,3,4,6,5,7 last_tile_dim_replicate}
+  %dot = f32[8,256,128] dot(%p0, %p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2}
+  ROOT %copy = f32[8,256,128] copy(%dot)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "dot"),
+              op::Sharding("{devices=[2,2,2]0,1,2,3,4,5,6,7}"));
+}
+
+TEST_F(ShardingPropagationTest, DotMergeOperands2) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %p0 = f32[8,256,512] parameter(0), sharding={devices=[2,2,2]0,1,2,3,4,5,6,7}
+  %p1 = f32[8,128,512] parameter(1), sharding={devices=[2,2,2]0,1,2,3,4,5,6,7}
+  %dot = f32[8,256,128] dot(%p0, %p1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2}
+  ROOT %copy = f32[8,256,128] copy(%dot)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "dot"),
+      op::Sharding(
+          "{devices=[2,2,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, BackwardDotFromContracting) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %p0 = f32[8,256,512] parameter(0), sharding={devices=[2,2,2]0,1,2,3,4,5,6,7}
+  %p1 = f32[8,128,512] parameter(1)
+  %copy1 = f32[8,128,512] copy(%p1)
+  %dot = f32[8,256,128] dot(%p0, %copy1),
+    lhs_batch_dims={0}, rhs_batch_dims={0},
+    lhs_contracting_dims={2}, rhs_contracting_dims={2},
+    sharding={devices=[2,1,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %copy = f32[8,256,128] copy(%dot)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "copy1"),
+              op::Sharding("{devices=[2,2,2]0,1,2,3,4,5,6,7}"));
+}
+
+TEST_F(ShardingPropagationTest, ConvAsDotOnTrivialDims) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %lhs = f32[128,1,1,1001] parameter(0), sharding={devices=[1,2,1,1]0,1}
+  %rhs = f32[1,1,1024,1001] parameter(1), sharding={devices=[1,2,1,1]0,1}
+  %convolution = f32[128,1,1,1024] convolution(%lhs, %rhs),
+    window={size=1x1 rhs_reversal=1x1}, dim_labels=b01f_01oi->b01f
+  ROOT %copy = f32[128,1,1,1024] copy(%convolution)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "convolution"),
+              op::Sharding("{devices=[1,1,2,1]0,1}"));
+}
+
+TEST_F(ShardingPropagationTest, ConvAsDotOnTrivialDimsBackward) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %conv {
+  %p0 = f32[128,5,5,128] parameter(0)
+  %lhs = f32[128,5,5,128] copy(%p0)
+  %p1 = f32[5,5,128,768] parameter(1)
+  %rhs = f32[5,5,128,768] copy(%p1)
+  %convolution = f32[128,1,1,768] convolution(%lhs, %rhs), window={size=5x5},
+    dim_labels=b01f_01io->b01f, sharding={devices=[1,2,1,1]0,1}
+  ROOT %copy = f32[128,1,1,768] copy(%convolution)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "lhs"),
+              op::Sharding("{replicated}"));
+  EXPECT_THAT(FindInstruction(module.get(), "rhs"),
+              op::Sharding("{replicated}"));
 }
 
 TEST_F(ShardingPropagationTest, ConcatFromUserUnshardedDim) {
@@ -1667,6 +1816,52 @@ ENTRY entry {
               op::Sharding("{devices=[2]0,1}"));
 }
 
+TEST_F(ShardingPropagationTest, GatherToIndex2) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = bf16[2,4819,4] parameter(0), sharding={replicated}
+  %p1 = s32[2,1000,2] parameter(1)
+  %indices = s32[2,1000,2] copy(%p1)
+  ROOT %gather = bf16[2,1000,4]
+    gather(bf16[2,4819,4] %input, s32[2,1000,2] %indices),
+    offset_dims={2}, collapsed_slice_dims={0,1},
+    start_index_map={0,1}, index_vector_dim=2, slice_sizes={1,1,4},
+    sharding={devices=[1,2,1]0,1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          ShardingPropagation().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "indices"),
+              op::Sharding("{devices=[1,2,1]0,1}"));
+}
+
+TEST_F(ShardingPropagationTest, GatherToIndex3) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = bf16[2,4819,4] parameter(0), sharding={replicated}
+  %p1 = s32[2,2,1000] parameter(1)
+  %indices = s32[2,2,1000] copy(%p1)
+  ROOT %gather = bf16[2,1000,4]
+    gather(bf16[2,4819,4] %input, s32[2,2,1000] %indices),
+    offset_dims={2}, collapsed_slice_dims={0,1},
+    start_index_map={0,1}, index_vector_dim=1, slice_sizes={1,1,4},
+    sharding={devices=[1,2,1]0,1}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          ShardingPropagation().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "indices"),
+              op::Sharding("{devices=[1,1,2]0,1}"));
+}
+
 TEST_F(ShardingPropagationTest, GatherToDataOperand) {
   const char* hlo_string = R"(
 HloModule module
@@ -1925,6 +2120,46 @@ ENTRY entry {
   EXPECT_THAT(
       FindInstruction(module.get(), "add"),
       op::Sharding("{devices=[2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, PartialShardingTransposeForwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %transpose {
+  %param = f32[7,11,13]{2,1,0} parameter(0),
+    sharding={devices=[2,1,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  %transpose = f32[11,13,7]{2,1,0} transpose(%param), dimensions={1,2,0}
+  ROOT %copy = f32[11,13,7]{2,1,0} copy(%transpose)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "transpose"),
+      op::Sharding(
+          "{devices=[1,2,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
+}
+
+TEST_F(ShardingPropagationTest, PartialShardingTransposeBackwardPass) {
+  const char* const hlo_string = R"(
+HloModule module
+ENTRY %transpose {
+  %param = f32[7,11,13]{2,1,0} parameter(0)
+  %copy = f32[7,11,13]{2,1,0} copy(%param)
+  ROOT %transpose = f32[11,13,7]{2,1,0} transpose(%copy), dimensions={1,2,0},
+    sharding={devices=[1,2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "copy"),
+      op::Sharding(
+          "{devices=[2,1,2,2]0,1,4,5,2,3,6,7 last_tile_dim_replicate}"));
 }
 
 }  // namespace

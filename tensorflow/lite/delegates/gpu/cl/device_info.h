@@ -138,6 +138,8 @@ struct DeviceInfo {
   // To track bug on some Adreno. b/131099086
   bool SupportsOneLayerTextureArray() const;
 
+  bool SupportsExtension(const std::string& extension) const;
+
   std::vector<std::string> extensions;
   bool supports_fp16;
   bool supports_image3d_writes;

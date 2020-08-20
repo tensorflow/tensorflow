@@ -466,18 +466,6 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
                   << " src_device: " << *src_device
                   << " colo group: " << colocation_group;
         }
-        // If colocation_group is not set and output producing node is assigned
-        // to a remote device, colocate the retval node with its input node.
-        // TODO(yujingzhang): Remove this when we support outputting tensors on
-        // remote devices.
-        const bool remote_src_device =
-            !src_device->empty() && GetFLR(*src_device) == nullptr;
-        if (colocation_group.empty() && remote_src_device) {
-          colocation_group =
-              absl::StrCat(kColocationGroupPrefix, it->src()->name());
-          VLOG(3) << "Considering src: " << src_node->name()
-                  << " colo group: " << colocation_group;
-        }
 
         // If resource is produced by a function call node, we can't trust
         // source node device assignment, because multi-device functions can
@@ -510,6 +498,10 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
                   "Unable to find any devices for spec ", *src_device);
             }
           } else if (matching_devices.size() != 1) {
+            // py_func is assigned to a same host address space.
+            if (parsed.has_job && parsed.has_replica && parsed.has_task) {
+              continue;
+            }
             // Convert a vector of devices to a string.
             // Using absl::StrJoin did not work in Android builds.
             string devices = "[";
@@ -968,6 +960,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
         Status s = flr->Instantiate(unique_name, attrs, opts, component_handle);
         done(s);
       } else {
+        opts.ret_indices = comp_data->ret_indices;
         // Initialize remote function asynchronously.
         InstantiateRemote(unique_name, attrs, opts, component_handle, done);
       }
@@ -988,9 +981,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 }
 
 Status ProcessFunctionLibraryRuntime::GetOutputDevices(
-    FunctionLibraryRuntime::Handle handle,
-    std::vector<Device*>* output_devices) const {
-  const MultiDeviceFunctionData* data = IsMultiDevice(handle);
+    FunctionLibraryRuntime::Handle handle, std::vector<Device*>* output_devices,
+    const bool eager_lazy_copy) const {
+  MultiDeviceFunctionData* data = IsMultiDevice(handle);
   if (data == nullptr) {
     return errors::InvalidArgument(
         "Failed for find multi-device function handle ", handle);
@@ -1006,16 +999,26 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
     const string& target = pair.first;
     FunctionLibraryRuntime* target_flr = GetFLR(target);
     Device* target_device = nullptr;
+    Device* host = nullptr;
     if (target_flr == nullptr) {
-      // TODO(b/162618595): Remove this error once we support a remote
-      // multi-device function with remote outputs.
-      return errors::Unimplemented(
-          "Currently, outputting tensors on remote devices is not supported."
-          "The ",
-          comp_data.ret_indices[0],
-          "-th return value of the function outputs to target_device: ", target,
-          " Please copy the tensor to local device explicitly using "
-          "tf.identity and return the new Tensor instead.");
+      if (!eager_lazy_copy) {
+        return errors::Unimplemented(
+            "Currently, outputting tensors on remote devices is not supported."
+            "The ",
+            comp_data.ret_indices[0],
+            "-th return value of the function outputs to target_device: ",
+            target,
+            " Please copy the tensor to local device explicitly using "
+            "tf.identity and return the new Tensor instead.");
+      }
+      if (!data->has_remote_outputs) {
+        data->has_remote_outputs = true;
+      }
+      target_device = device_set()->FindDeviceByName(target);
+      string remote_host;
+      TF_RETURN_IF_ERROR(
+          DeviceNameUtils::DeviceNameToCpuDeviceName(target, &remote_host));
+      host = device_set()->FindDeviceByName(remote_host);
     } else {
       target_device = target_flr->device();
     }
@@ -1026,7 +1029,7 @@ Status ProcessFunctionLibraryRuntime::GetOutputDevices(
         (*output_devices)[ret_index] = target_device;
       } else {
         (*output_devices)[ret_index] =
-            comp_data.ret_alloc_attrs[j].on_host() ? nullptr : target_device;
+            comp_data.ret_alloc_attrs[j].on_host() ? host : target_device;
       }
     }
   }
@@ -1610,7 +1613,12 @@ void ProcessFunctionLibraryRuntime::Run(
     FunctionLibraryRuntime::Handle handle, const FunctionArgsInterface& args,
     std::vector<FunctionRet>* rets,
     FunctionLibraryRuntime::DoneCallback done) const {
-  if (!args.HasRemoteOrPackedInputs()) {
+  bool has_remote_outputs = false;
+  const MultiDeviceFunctionData* data = IsMultiDevice(handle);
+  if (data != nullptr) {
+    has_remote_outputs = data->has_remote_outputs;
+  }
+  if (!args.HasRemoteOrPackedInputs() && !has_remote_outputs) {
     const std::vector<Tensor> local_inputs = args.GetLocalTensors();
     std::vector<Tensor>* tensor_rets = new std::vector<Tensor>;
     return Run(

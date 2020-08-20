@@ -29,6 +29,7 @@ filegroup(
         "ir/tfl_ops.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "@llvm-project//mlir:OpBaseTdFiles",
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/SideEffectInterfaces.td",
     ],
@@ -227,6 +228,7 @@ cc_library(
         "@llvm-project//mlir:DerivedAttributeOpInterface",
         "@llvm-project//mlir:Dialect",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:LoopLikeInterface",
         "@llvm-project//mlir:QuantOps",
         "@llvm-project//mlir:SideEffects",
@@ -235,6 +237,28 @@ cc_library(
         "@llvm-project//mlir:TransformUtils",
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "constant_utils",
+    srcs = [
+        "utils/constant_utils.cc",
+    ],
+    hdrs = [
+        "utils/constant_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:mangling_util",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:status",
+        "//tensorflow/stream_executor/lib",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
 )
 
 cc_library(
@@ -347,6 +371,7 @@ cc_library(
         "transforms/passes.h",
     ],
     deps = [
+        ":constant_utils",
         ":lstm_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
@@ -477,6 +502,7 @@ gentbl(
     tblgen = "//tensorflow/compiler/mlir/lite/quantization:op_quant_spec_getters_gen",
     td_file = "ir/tfl_ops.td",
     td_srcs = [
+        "@llvm-project//mlir:include/mlir/Interfaces/InferTypeOpInterface.td",
         "@llvm-project//mlir:include/mlir/Interfaces/LoopLikeInterface.td",
         "//tensorflow/compiler/mlir/lite/quantization:quantization_td_files",
         "ir/tfl_op_interfaces.td",

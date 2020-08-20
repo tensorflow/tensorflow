@@ -20,6 +20,7 @@ py_library(
         ":parallel_device_ops",
         ":saving",
         "//tensorflow/python:_pywrap_parallel_device",
+        "//tensorflow/python/distribute:device_util",
     ],
 )
 

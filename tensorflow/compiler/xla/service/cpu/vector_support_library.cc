@@ -33,7 +33,7 @@ VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
   scalar_type_ = llvm_ir::PrimitiveTypeToIrType(
       primitive_type, b_->GetInsertBlock()->getModule());
   scalar_pointer_type_ = llvm::PointerType::getUnqual(scalar_type_);
-  vector_type_ = llvm::VectorType::get(scalar_type_, vector_size);
+  vector_type_ = llvm::VectorType::get(scalar_type_, vector_size, false);
   vector_pointer_type_ = llvm::PointerType::getUnqual(vector_type_);
 }
 
@@ -155,7 +155,7 @@ llvm::Type* VectorSupportLibrary::IntegerTypeForFloatSize(bool vector) {
   int64 float_size_bits = data_layout.getTypeSizeInBits(scalar_type());
   llvm::Type* scalar_int_type = b()->getIntNTy(float_size_bits);
   if (vector) {
-    return llvm::VectorType::get(scalar_int_type, vector_size());
+    return llvm::VectorType::get(scalar_int_type, vector_size(), false);
   } else {
     return scalar_int_type;
   }

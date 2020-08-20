@@ -446,6 +446,12 @@ def _py_for_stmt(iter_, extra_test, body, get_state, set_state):
       body(target)
 
 
+def _add_max_iterations_hint(opts, n):
+  # TODO(b/159186914): Remove the safeguard, and always set maximum_iterations.
+  if control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
+    opts['maximum_iterations'] = n
+
+
 def _known_len_tf_for_stmt(
     iter_, extra_test, body, get_state, set_state, symbol_names, opts):
   """Overload of for_stmt that iterates over TF entities that admit a length."""
@@ -479,9 +485,7 @@ def _known_len_tf_for_stmt(
       return control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
 
-  # TODO(b/159186914): Remove.
-  if not control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
-    opts['maximum_iterations'] = n
+  _add_max_iterations_hint(opts, n)
 
   _tf_while_stmt(
       aug_test,
@@ -527,9 +531,7 @@ def _tf_ragged_for_stmt(
       return control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
 
-  # TODO(b/159186914): Remove.
-  if not control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
-    opts['maximum_iterations'] = n
+  _add_max_iterations_hint(opts, n)
 
   _tf_while_stmt(
       aug_test,
@@ -587,10 +589,9 @@ def _tf_range_for_stmt(
       main_test = control_flow_ops.cond(main_test, extra_test, lambda: False)
     return main_test
 
-  # TODO(b/134181679): Remove.
-  if not control_flow_util.GraphOrParentsInXlaContext(ops.get_default_graph()):
-    opts['maximum_iterations'] = math_ops.cast(
-        misc.get_range_len(start, limit, delta), dtypes.int32)
+  _add_max_iterations_hint(
+      opts,
+      math_ops.cast(misc.get_range_len(start, limit, delta), dtypes.int32))
 
   _tf_while_stmt(
       aug_test,
@@ -934,7 +935,7 @@ def _shape_invariants_mapping_to_positional_list(mapping, keys):
 LEGAL_LOOP_TYPES = 'Tensor, int, float, bool or a list, tuple or dict thereof'
 
 
-def _placeholder_value(like, original):
+def _placeholder_value(like, original=None):
   if isinstance(like, (variables.Undefined, variables.UndefinedReturnValue)):
     return original
   if isinstance(like, (int, float, bool)):
@@ -1079,8 +1080,10 @@ def _tf_while_stmt(test, body, get_state, set_state, symbol_names, opts):
             _runtime_zero_iterations_errmsg(symbol_names, nulls, orig_init_vars)
         ])
     ]):
-      final_loop_vars = tuple(
-          array_ops.identity(v) for v in final_loop_vars[1:])
+      final_loop_vars = nest.map_structure(
+          lambda v: (array_ops.identity(v) if tensor_util.is_tensor(v) else v),
+          final_loop_vars[1:],
+      )
 
   set_state(final_loop_vars)
 

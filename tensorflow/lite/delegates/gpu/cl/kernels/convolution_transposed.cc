@@ -168,7 +168,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
        "args.dst_tensor.Height() || dst_z >= "
        "args.dst_tensor.Slices()) return;\n";
   if (weights_are_buffer) {
-    c += "  int f_base = dst_z * args.src_tensor.Slice() * args.kernel_size_x "
+    c += "  int f_base = dst_z * args.src_tensor.Slices() * args.kernel_size_x "
          "* args.kernel_size_y;\n";
   }
   for (int i = 0; i < block_size.x * block_size.y * block_size.z; ++i) {
@@ -351,9 +351,11 @@ int3 ConvolutionTransposed::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvolutionTransposed::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
+void ConvolutionTransposed::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
 absl::Status CreateConvolutionTransposed(
@@ -369,13 +371,9 @@ absl::Status CreateConvolutionTransposed(
   desc.storage_type =
       DeduceLinearStorageType(definition.GetPrimaryStorageType());
   desc.element_type = definition.GetDataType();
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
+  desc.UploadLinearData(attr.bias);
+  result->args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return absl::OkStatus();
 }
 

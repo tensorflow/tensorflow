@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "pybind11/functional.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
 #include "pybind11/stl.h"
@@ -42,11 +43,38 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
           }
           return wrapper;
         });
+  m.def("CreateWrapperFromFile",
+        [](const std::string& model_path,
+           const std::vector<std::string>& registerers_by_name,
+           const std::vector<std::function<void(uintptr_t)>>&
+               registerers_by_func) {
+          std::string error;
+          auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromFile(
+              model_path.c_str(), registerers_by_name, registerers_by_func,
+              &error);
+          if (!wrapper) {
+            throw std::invalid_argument(error);
+          }
+          return wrapper;
+        });
   m.def("CreateWrapperFromBuffer",
         [](const py::bytes& data, const std::vector<std::string>& registerers) {
           std::string error;
           auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
               data.ptr(), registerers, &error);
+          if (!wrapper) {
+            throw std::invalid_argument(error);
+          }
+          return wrapper;
+        });
+  m.def("CreateWrapperFromBuffer",
+        [](const py::bytes& data,
+           const std::vector<std::string>& registerers_by_name,
+           const std::vector<std::function<void(uintptr_t)>>&
+               registerers_by_func) {
+          std::string error;
+          auto* wrapper = ::InterpreterWrapper::CreateWrapperCPPFromBuffer(
+              data.ptr(), registerers_by_name, registerers_by_func, &error);
           if (!wrapper) {
             throw std::invalid_argument(error);
           }

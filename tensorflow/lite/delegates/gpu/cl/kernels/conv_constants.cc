@@ -291,13 +291,9 @@ absl::Status CreateConvConstants(const CreationContext& creation_context,
   desc.storage_type = LinearStorageType::BUFFER;
   desc.element_type = definition.GetDataType();
   desc.memory_type = MemoryType::CONSTANT;
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
+  desc.UploadLinearData(attr.bias);
+  result->args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
   return absl::OkStatus();
 }
 

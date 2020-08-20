@@ -384,7 +384,11 @@ Status EraseOutputShapeAttrs(TransposeContext* context) {
   utils::Mutation* mutation = graph_view->GetMutationBuilder();
   const int num_nodes = graph_view->NumNodes();
   for (int i = 0; i < num_nodes; ++i) {
-    mutation->RemoveNodeAttr(graph_view->GetNode(i), kAttrOutputShape);
+    auto* node = graph_view->GetNode(i);
+    if (IsArg(*node->node())) {
+      continue;
+    }
+    mutation->RemoveNodeAttr(node, kAttrOutputShape);
     TF_RETURN_IF_ERROR(mutation->Apply());
   }
   return Status::OK();

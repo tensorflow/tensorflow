@@ -41,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/unbounded_work_queue.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 
@@ -83,6 +84,8 @@ class NcclTestBase : public ::testing::Test {
   NcclTestBase(CollectiveType collective_type, const string& collective_name)
       : collective_type_(collective_type),
         collective_name_(collective_name),
+        work_queue_(std::make_shared<UnboundedWorkQueue>(
+            Env::Default(), "collective_executor")),
         col_exec_(nullptr) {}
 
   ~NcclTestBase() override {
@@ -118,7 +121,7 @@ class NcclTestBase : public ::testing::Test {
       dev_mgr_ = absl::make_unique<StaticDeviceMgr>(std::move(local_devices));
     col_exec_ = new BaseCollectiveExecutor(
         &col_exec_mgr_, /*remote_access=*/nullptr, kStepId, dev_mgr_.get(),
-        /*gpu_ring_order=*/nullptr);
+        /*gpu_ring_order=*/nullptr, work_queue_);
 
     // Initialize collective params.
     col_params_.name = "test_nccl_collective_op";
@@ -413,6 +416,7 @@ class NcclTestBase : public ::testing::Test {
   const string collective_name_;
   std::vector<std::unique_ptr<tensorflow::Device>> gpus_;
   TestCollectiveExecutorMgr col_exec_mgr_;
+  std::shared_ptr<UnboundedWorkQueue> work_queue_;
   CollectiveExecutor* col_exec_;
   std::unique_ptr<DeviceMgr> dev_mgr_;
   std::vector<std::unique_ptr<DeviceInstance>> instances_;

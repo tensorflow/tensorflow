@@ -249,36 +249,36 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
-  @test_util.run_deprecated_v1
   def testShapeInference(self):
-    # Shape inference works and produces expected output where possible
-    rgb_shape = [7, None, 19, 3]
-    gray_shape = rgb_shape[:-1] + [1]
-    with self.cached_session(use_gpu=True):
-      rgb_tf = array_ops.placeholder(dtypes.uint8, shape=rgb_shape)
-      gray = image_ops.rgb_to_grayscale(rgb_tf)
-      self.assertEqual(gray_shape, gray.get_shape().as_list())
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      # Shape inference works and produces expected output where possible
+      rgb_shape = [7, None, 19, 3]
+      gray_shape = rgb_shape[:-1] + [1]
+      with self.cached_session(use_gpu=True):
+        rgb_tf = array_ops.placeholder(dtypes.uint8, shape=rgb_shape)
+        gray = image_ops.rgb_to_grayscale(rgb_tf)
+        self.assertEqual(gray_shape, gray.get_shape().as_list())
 
-    with self.cached_session(use_gpu=True):
-      gray_tf = array_ops.placeholder(dtypes.uint8, shape=gray_shape)
-      rgb = image_ops.grayscale_to_rgb(gray_tf)
-      self.assertEqual(rgb_shape, rgb.get_shape().as_list())
+      with self.cached_session(use_gpu=True):
+        gray_tf = array_ops.placeholder(dtypes.uint8, shape=gray_shape)
+        rgb = image_ops.grayscale_to_rgb(gray_tf)
+        self.assertEqual(rgb_shape, rgb.get_shape().as_list())
 
-    # Shape inference does not break for unknown shapes
-    with self.cached_session(use_gpu=True):
-      rgb_tf_unknown = array_ops.placeholder(dtypes.uint8)
-      gray_unknown = image_ops.rgb_to_grayscale(rgb_tf_unknown)
-      self.assertFalse(gray_unknown.get_shape())
+      # Shape inference does not break for unknown shapes
+      with self.cached_session(use_gpu=True):
+        rgb_tf_unknown = array_ops.placeholder(dtypes.uint8)
+        gray_unknown = image_ops.rgb_to_grayscale(rgb_tf_unknown)
+        self.assertFalse(gray_unknown.get_shape())
 
-    with self.cached_session(use_gpu=True):
-      gray_tf_unknown = array_ops.placeholder(dtypes.uint8)
-      rgb_unknown = image_ops.grayscale_to_rgb(gray_tf_unknown)
-      self.assertFalse(rgb_unknown.get_shape())
+      with self.cached_session(use_gpu=True):
+        gray_tf_unknown = array_ops.placeholder(dtypes.uint8)
+        rgb_unknown = image_ops.grayscale_to_rgb(gray_tf_unknown)
+        self.assertFalse(rgb_unknown.get_shape())
 
 
 class AdjustGamma(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_float32(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
@@ -288,10 +288,10 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegex(ValueError, err_msg):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_uint8(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
@@ -301,10 +301,10 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegex(ValueError, err_msg):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_tensor(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
@@ -314,10 +314,10 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = constant_op.constant(-1.0, dtype=dtypes.float32)
 
-      image = image_ops.adjust_gamma(x, gamma=y)
-
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegex(errors.InvalidArgumentError, err_msg):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
+        image = image_ops.adjust_gamma(x, gamma=y)
         self.evaluate(image)
 
   def _test_adjust_gamma_uint8(self, gamma):
@@ -329,7 +329,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x_np = np.random.uniform(0, 255, (8, 8)).astype(np.uint8)
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_gamma(x, gamma=gamma)
-      y_tf = np.trunc(y.eval())
+      y_tf = np.trunc(self.evaluate(y))
 
       # calculate gamma correction using numpy
       # firstly, transform uint8 to float representation
@@ -349,22 +349,19 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x_np = np.random.uniform(0, 1.0, (8, 8))
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_gamma(x, gamma=gamma)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
 
       y_np = np.clip(np.power(x_np, gamma), 0, 1.0)
 
       self.assertAllClose(y_tf, y_np, 1e-6)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_one_float32(self):
     """Same image should be returned for gamma equal to one"""
     self._test_adjust_gamma_float32(1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_one_uint8(self):
     self._test_adjust_gamma_uint8(1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_zero_uint8(self):
     """White image should be returned for gamma equal
 
@@ -372,7 +369,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_uint8(gamma=0.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_one_uint8(self):
     """Verifying the output with expected results for gamma
 
@@ -380,7 +376,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_uint8(gamma=0.5)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_greater_one_uint8(self):
     """Verifying the output with expected results for gamma
 
@@ -388,7 +383,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_uint8(gamma=1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_one_float32(self):
     """Verifying the output with expected results for gamma
 
@@ -396,7 +390,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_float32(0.5)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_greater_one_float32(self):
     """Verifying the output with expected results for gamma
 
@@ -404,7 +397,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_float32(1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_zero_float32(self):
     """White image should be returned for gamma equal
 
@@ -2417,6 +2409,149 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       begin = self.evaluate(begin)
       end = self.evaluate(end)
       bbox_for_drawing = self.evaluate(bbox_for_drawing)
+
+  def _testStatelessSampleDistortedBoundingBox(self, image, bounding_box,
+                                               min_object_covered,
+                                               aspect_ratio_range, area_range):
+    with test_util.use_gpu():
+      original_area = float(np.prod(image.shape))
+      bounding_box_area = float((bounding_box[3] - bounding_box[1]) *
+                                (bounding_box[2] - bounding_box[0]))
+
+      image_size_np = np.array(image.shape, dtype=np.int32)
+      bounding_box_np = (
+          np.array(bounding_box, dtype=np.float32).reshape([1, 1, 4]))
+
+      iterations = 2
+      test_seeds = [(1, 2), (3, 4), (5, 6)]
+
+      for seed in test_seeds:
+        aspect_ratios = []
+        area_ratios = []
+        fraction_object_covered = []
+        for _ in range(iterations):
+          image_tf = constant_op.constant(image, shape=image.shape)
+          image_size_tf = constant_op.constant(
+              image_size_np, shape=image_size_np.shape)
+          bounding_box_tf = constant_op.constant(bounding_box_np,
+                                                 dtype=dtypes.float32,
+                                                 shape=bounding_box_np.shape)
+          begin, size, _ = image_ops.stateless_sample_distorted_bounding_box(
+              image_size=image_size_tf,
+              bounding_boxes=bounding_box_tf,
+              seed=seed,
+              min_object_covered=min_object_covered,
+              aspect_ratio_range=aspect_ratio_range,
+              area_range=area_range)
+          y = array_ops.strided_slice(image_tf, begin, begin + size)
+          y_tf = self.evaluate(y)
+          crop_height = y_tf.shape[0]
+          crop_width = y_tf.shape[1]
+          aspect_ratio = float(crop_width) / float(crop_height)
+          area = float(crop_width * crop_height)
+          aspect_ratios.append(aspect_ratio)
+          area_ratio = area / original_area
+          area_ratios.append(area_ratio)
+          fraction_object_covered.append(
+              float(np.sum(y_tf)) / bounding_box_area)
+
+        # Check that `area_ratio` is within valid range.
+        self.assertLessEqual(area_ratio, area_range[1])
+        self.assertGreaterEqual(area_ratio, area_range[0])
+
+        # Each array should consist of one value just repeated `iteration` times
+        # because the same seed is used.
+        self.assertEqual(len(set(aspect_ratios)), 1)
+        self.assertEqual(len(set(area_ratios)), 1)
+        self.assertEqual(len(set(fraction_object_covered)), 1)
+
+  # TODO(b/162345082): stateless random op generates different random number
+  # with xla_gpu. Update tests such that there is a single ground truth result
+  # to test against.
+  def testWholeImageBoundingBoxStateless(self):
+    height = 40
+    width = 50
+    image_size = [height, width, 1]
+    bounding_box = [0.0, 0.0, 1.0, 1.0]
+    image = np.arange(
+        0, np.prod(image_size), dtype=np.int32).reshape(image_size)
+    for min_obj_covered in [0.1, constant_op.constant(0.1)]:
+      self._testStatelessSampleDistortedBoundingBox(
+          image,
+          bounding_box,
+          min_object_covered=min_obj_covered,
+          aspect_ratio_range=(0.75, 1.33),
+          area_range=(0.05, 1.0))
+
+  # TODO(b/162345082): stateless random op generates different random number
+  # with xla_gpu. Update tests such that there is a single ground truth result
+  # to test against.
+  def testWithBoundingBoxStateless(self):
+    height = 40
+    width = 50
+    x_shape = [height, width, 1]
+    image = np.zeros(x_shape, dtype=np.int32)
+
+    xmin = 2
+    ymin = 3
+    xmax = 12
+    ymax = 13
+    for x in np.arange(xmin, xmax + 1, 1):
+      for y in np.arange(ymin, ymax + 1, 1):
+        image[x, y] = 1
+
+    # Bounding box is specified as (ymin, xmin, ymax, xmax) in
+    # relative coordinates.
+    bounding_box = (float(ymin) / height, float(xmin) / width,
+                    float(ymax) / height, float(xmax) / width)
+
+    # Test both scalar and tensor input for `min_object_covered`.
+    for min_obj_covered in [0.1, constant_op.constant(0.1)]:
+      self._testStatelessSampleDistortedBoundingBox(
+          image,
+          bounding_box=bounding_box,
+          min_object_covered=min_obj_covered,
+          aspect_ratio_range=(0.75, 1.33),
+          area_range=(0.05, 1.0))
+
+  def testSampleDistortedBoundingBoxShapeStateless(self):
+    with test_util.use_gpu():
+      image_size = constant_op.constant(
+          [40, 50, 1], shape=[3], dtype=dtypes.int32)
+      bounding_box = constant_op.constant(
+          [[[0.0, 0.0, 1.0, 1.0]]],
+          shape=[1, 1, 4],
+          dtype=dtypes.float32,
+      )
+
+      bbox_func = functools.partial(
+          image_ops.stateless_sample_distorted_bounding_box,
+          image_size=image_size,
+          bounding_boxes=bounding_box,
+          min_object_covered=0.1,
+          aspect_ratio_range=(0.75, 1.33),
+          area_range=(0.05, 1.0))
+
+      # Check error is raised with wrong seed shapes.
+      for seed in [1, (1, 2, 3)]:
+        with self.assertRaises((ValueError, errors.InvalidArgumentError)):
+          begin, end, bbox_for_drawing = bbox_func(seed=seed)
+
+      test_seed = (1, 2)
+      begin, end, bbox_for_drawing = bbox_func(seed=test_seed)
+
+      # Test that the shapes are correct.
+      self.assertAllEqual([3], begin.get_shape().as_list())
+      self.assertAllEqual([3], end.get_shape().as_list())
+      self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+
+      # Actual run to make sure shape is correct inside Compute().
+      begin = self.evaluate(begin)
+      end = self.evaluate(end)
+      bbox_for_drawing = self.evaluate(bbox_for_drawing)
+      self.assertAllEqual([3], begin.shape)
+      self.assertAllEqual([3], end.shape)
+      self.assertAllEqual([1, 1, 4], bbox_for_drawing.shape)
 
 
 class ResizeImagesV2Test(test_util.TensorFlowTestCase):

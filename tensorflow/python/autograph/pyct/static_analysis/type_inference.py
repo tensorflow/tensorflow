@@ -75,17 +75,29 @@ class Resolver(object):
     """Resolves the type a literal or static value."""
     raise NotImplementedError('subclasses must implement')
 
-  def res_arg(self, ns, types_ns, f_name, name, type_anno):
-    """Resolves the type of a (possibly annotated) function argument."""
+  def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+    """Resolves the type of a (possibly annotated) function argument.
+
+    Args:
+      ns: namespace
+      types_ns: types namespace
+      f_name: str, the function name
+      name: str, the argument name
+      type_anno: the type annotating the argument, if any
+      f_is_local: bool, whether the function is a local function
+    Returns:
+      Set of the argument types.
+    """
     raise NotImplementedError('subclasses must implement')
 
-  def res_call(self, ns, types_ns, node, args, keywords):
+  def res_call(self, ns, types_ns, node, f_type, args, keywords):
     """Resolves the return type an external function or method call.
 
     Args:
       ns: namespace
       types_ns: types namespace
       node: str, the function name
+      f_type: types of the actual function being called, if known
       args: types of each respective argument in node.args
       keywords: types of each respective argument in node.keywords
 
@@ -97,8 +109,9 @@ class Resolver(object):
     """
     raise NotImplementedError('subclasses must implement')
 
-  def res_subscript(self, ns, types_ns, node, value, slice_):
-    """Resolves the return type of a unary operation."""
+  # TODO(mdan): Clean this up.
+  def res_slice(self, ns, types_ns, node_or_slice, value, slice_):
+    """Resolves the return type of slice operation."""
     raise NotImplementedError('subclasses must implement')
 
   def res_compare(self, ns, types_ns, node, left, right):
@@ -152,6 +165,9 @@ class _SymbolTable(object):
 
   def __repr__(self):
     return 'SymbolTable {}'.format(self.types)
+
+
+NO_VALUE = object()
 
 
 class StmtInferrer(gast.NodeVisitor):
@@ -213,7 +229,18 @@ class StmtInferrer(gast.NodeVisitor):
       return {Tuple}
 
     assert isinstance(node.ctx, gast.Store)
-    # TODO(mdan): Implement tuple unpacking.
+
+    if self.rtype is not None:
+      original_stype = self.rtype
+      # TODO(mdan): Find a better way to express unpacking.
+      i_type = self.resolver.res_value(self.namespace, 0)
+      for i, elt in enumerate(node.elts):
+        self.rtype = self.resolver.res_subscript(
+            self.namespace, self.types_in.types, i, original_stype, i_type)
+        self.visit(elt)
+      self.rtype = original_stype
+      return original_stype
+
     return None
 
   def visit_List(self, node):
@@ -245,9 +272,13 @@ class StmtInferrer(gast.NodeVisitor):
               anno.setanno(node, anno.Static.VALUE, value)
 
     elif isinstance(node.ctx, gast.Param):
+      # The direct parent it the whole function scope. See activity.py.
+      f_is_local = self.scope.parent.parent is not None
+
       type_name = anno.getanno(node.annotation, anno.Basic.QN, None)
       types = self.resolver.res_arg(self.namespace, self.types_in.types,
-                                    self.scope.function_name, name, type_name)
+                                    self.scope.function_name, name, type_name,
+                                    f_is_local)
       if types is not None:
         self.new_symbols[name] = types
 
@@ -270,7 +301,17 @@ class StmtInferrer(gast.NodeVisitor):
     # Attempt to use the static value if known.
     parent_value = anno.Static.VALUE.of(node.value, None)
     if parent_value is not None:
-      static_value = getattr(parent_value, node.attr, None)
+      static_value = getattr(parent_value, node.attr, NO_VALUE)
+
+      if static_value is NO_VALUE:
+        # Unexpected failure to resolve attribute. Ask the resolver about the
+        # full name instead.
+        types, static_value = self.resolver.res_name(
+            self.namespace, self.types_in, anno.Basic.QN.of(node))
+        anno.setanno(node, anno.Static.VALUE, static_value)
+        if __debug__:
+          self._check_set(types)
+        return types
 
     else:
       # Fall back to the type if that is known.
@@ -303,8 +344,6 @@ class StmtInferrer(gast.NodeVisitor):
     if node.decorator_list:
       raise NotImplementedError('decorators: {}'.format(node.decorator_list))
 
-    # TODO(mdan): Use args.
-
     ret_types = None
     if node.returns:
       ret_types, _ = self.resolver.res_name(
@@ -315,17 +354,17 @@ class StmtInferrer(gast.NodeVisitor):
     if ret_types is None:
       ret_types = {Any}
 
-    fn_types = set()
+    f_types = set()
     for rt in ret_types:
-      fn_types.add(Callable[[Any], rt])
+      f_types.add(Callable[[Any], rt])
 
-    self.new_symbols[f_name] = fn_types
+    self.new_symbols[f_name] = f_types
     # The definition of a function is an expression, hence has no return value.
     return None
 
-  def _resolve_typed_callable(self, fn_types, arg_types, keyword_types):
+  def _resolve_typed_callable(self, f_types, arg_types, keyword_types):
     ret_types = set()
-    for t in fn_types:
+    for t in f_types:
 
       if isinstance(t, Callable):
         # Note: these are undocummented - may be version-specific!
@@ -351,19 +390,22 @@ class StmtInferrer(gast.NodeVisitor):
 
     if f_name in self.scope.bound:
       # Local function, use local type definitions, if available.
-      fn_type = self.types_in.types.get(f_name, None)
-      if fn_type is None:
+      f_type = self.types_in.types.get(f_name, None)
+      if f_type is None:
         # No static type info available, nothing more to do.
         ret_type, side_effects = None, None
       else:
         ret_type, side_effects = self._resolve_typed_callable(
-            self.types_in.types.get(f_name), arg_types, keyword_types)
+            f_type, arg_types, keyword_types)
 
     else:
       # Nonlocal function, resolve externally.
+      f_type = anno.Static.TYPES.of(node.func, None)
       ret_type, side_effects = self.resolver.res_call(self.namespace,
                                                       self.types_in.types, node,
-                                                      arg_types, keyword_types)
+                                                      f_type, arg_types,
+                                                      keyword_types)
+
     if __debug__:
       self._check_set(ret_type)
       if side_effects:

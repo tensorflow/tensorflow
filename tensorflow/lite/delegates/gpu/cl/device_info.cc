@@ -253,6 +253,15 @@ bool DeviceInfo::SupportsOneLayerTextureArray() const {
   return !IsAdreno() || adreno_info.support_one_layer_texture_array;
 }
 
+bool DeviceInfo::SupportsExtension(const std::string& extension) const {
+  for (const auto& ext : extensions) {
+    if (ext == extension) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool DeviceInfo::IsAdreno() const { return vendor == Vendor::kQualcomm; }
 
 bool DeviceInfo::IsAdreno3xx() const {

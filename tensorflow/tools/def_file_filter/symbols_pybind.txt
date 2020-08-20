@@ -379,6 +379,7 @@ tensorflow::grappler::CostAnalyzer::GenerateReport
 [flags] # tfe
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
+tensorflow::GetXlaDeviceFlags
 
 [tf32_utils] # tf32
 tensorflow::allow_tf32_execution

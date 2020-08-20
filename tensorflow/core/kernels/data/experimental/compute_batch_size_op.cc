@@ -65,7 +65,7 @@ template <std::size_t SIZE>
 bool IsDatasetNodeOfType(const NodeDef& node,
                          const std::array<const char*, SIZE>& arr) {
   for (const auto& dataset_op : arr) {
-    if (MatchesAnyVersionRE(dataset_op, node.op())) return true;
+    if (MatchesAnyVersion(dataset_op, node.op())) return true;
   }
   return false;
 }
