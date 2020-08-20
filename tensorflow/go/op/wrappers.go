@@ -15011,9 +15011,9 @@ func MatrixInverse(scope *Scope, input tf.Output, optional ...MatrixInverseAttr)
 // The input is a tensor of shape `[N, M, M]` whose inner-most 2 dimensions
 // form square matrices. The outputs are two tensors containing the signs and
 // absolute values of the log determinants for all N input submatrices
-// `[..., :, :]` such that the determinant = sign*exp(log_abs_determinant).
-// The log_abs_determinant is computed as det(P)*sum(log(diag(LU))) where LU
-// is the LU decomposition of the input and P is the corresponding
+// `[..., :, :]` such that `determinant = sign*exp(log_abs_determinant)`.
+// The `log_abs_determinant` is computed as `det(P)*sum(log(diag(LU)))` where `LU`
+// is the `LU` decomposition of the input and `P` is the corresponding
 // permutation matrix.
 //
 // Arguments:
