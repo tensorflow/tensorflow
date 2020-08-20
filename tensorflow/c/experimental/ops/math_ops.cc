@@ -160,5 +160,24 @@ Status Sub(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
  return Status::OK();
 }
 
+Status DivNoNan(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+          absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+ AbstractOperationPtr div_op(ctx->CreateOperation());
+ TF_RETURN_IF_ERROR(div_op->Reset("DivNoNan", /*raw_device_name=*/nullptr));
+ 
+ if (isa<tracing::TracingOperation>(div_op.get())) {
+   TF_RETURN_IF_ERROR(
+       dyn_cast<tracing::TracingOperation>(div_op.get())->SetOpName(name));
+ }
+ 
+ TF_RETURN_IF_ERROR(div_op->AddInput(inputs[0])); // x
+ TF_RETURN_IF_ERROR(div_op->AddInput(inputs[1])); // y
+ 
+ int num_retvals = 1;
+ TF_RETURN_IF_ERROR(div_op->Execute(outputs, &num_retvals)); // z = x / y, (z_i = 0 if y_i = 0)
+ return Status::OK();
+}
+
+
 }  // namespace ops
 }  // namespace tensorflow

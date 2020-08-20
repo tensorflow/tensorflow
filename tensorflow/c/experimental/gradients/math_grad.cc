@@ -26,7 +26,10 @@ using tensorflow::ops::Identity;
 using tensorflow::ops::MatMul;
 using tensorflow::ops::Mul;
 using tensorflow::ops::ZerosLike;
+using tensorflow::ops::OnesLike;
 using tensorflow::ops::Neg;
+using tensorflow::ops::Add;
+using tensorflow::ops::DivNoNan;
 
 namespace tensorflow {
 namespace gradients {
@@ -255,6 +258,93 @@ public:
  ~NegGradientFunction() override {}
 };
 
+class MulGradientFunction : public GradientFunction {
+public:
+ explicit MulGradientFunction(vector<AbstractTensorHandle*> f_inputs)
+     : forward_inputs(f_inputs) {}
+ 
+ Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                vector<AbstractTensorHandle*>* grad_outputs) override {
+   /* Given upstream grad U and a mul op A*B, the gradients are:
+    *
+    *    dA = U * B
+    *    dB = A * U
+    *
+    */
+ 
+   AbstractTensorHandle* upstream_grad = grad_inputs[0];
+   grad_outputs->resize(2);
+   std::vector<AbstractTensorHandle*> mul_outputs(1);
+ 
+   // Gradient for A
+   std::string name = "mul_A";
+   TF_RETURN_IF_ERROR(Mul(ctx->ctx, {upstream_grad, forward_inputs[1]},
+                             absl::MakeSpan(mul_outputs), name.c_str()));
+ 
+   (*grad_outputs)[0] = mul_outputs[0];
+ 
+   // Gradient for B
+   name = "mul_B";
+   TF_RETURN_IF_ERROR(Mul(ctx->ctx, {forward_inputs[0], upstream_grad},
+                             absl::MakeSpan(mul_outputs), name.c_str()));
+ 
+   (*grad_outputs)[1] = mul_outputs[0];
+   return Status::OK();
+ }
+ ~MulGradientFunction() override {}
+ 
+private:
+ vector<AbstractTensorHandle*> forward_inputs;
+};
+
+class Log1pGradientFunction : public GradientFunction {
+ public:
+  explicit Log1pGradientFunction(vector<AbstractTensorHandle*> f_inputs)
+      : forward_inputs(f_inputs) {}
+
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    
+    /* Given upstream grad U and a Log1p op: Y = log(1 + X), the gradients are:
+    *
+    *    dX = U / (1 + X)
+    *
+    */
+    
+    
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    AbstractTensorHandle* X = forward_inputs[0];
+    
+    grad_outputs->resize(1);
+    vector<AbstractTensorHandle*> temp_outputs(1);
+
+    // Creates Ones
+    std::string name = "OnesLike_X";
+    TF_RETURN_IF_ERROR(OnesLike(ctx->ctx, {X},
+                       absl::MakeSpan(temp_outputs), name.c_str()));
+
+    AbstractTensorHandle* Ones_X = temp_outputs[0];
+
+    // Calculate 1 + X
+    TF_RETURN_IF_ERROR(Add(ctx->ctx, {Ones_X, X},
+                       absl::MakeSpan(temp_outputs), name.c_str()));
+
+    AbstractTensorHandle* XP1 = temp_outputs[0];
+
+    // Calculate U / (1 + X)
+    TF_RETURN_IF_ERROR(DivNoNan(ctx->ctx, {upstream_grad, XP1},
+                       absl::MakeSpan(temp_outputs), name.c_str()));
+
+    (*grad_outputs)[0] = temp_outputs[0];
+
+    return Status::OK();
+  }
+  ~Log1pGradientFunction() override {}
+
+ private:
+  vector<AbstractTensorHandle*> forward_inputs;
+};
+
 
 }  // namespace
 
@@ -293,6 +383,18 @@ BackwardFunction* SubRegisterer(const ForwardOperation& op) {
 
 BackwardFunction* NegRegisterer(const ForwardOperation& op) {
   auto gradient_function = new NegGradientFunction;
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* MulRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new MulGradientFunction(op.inputs);
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* Log1pRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new Log1pGradientFunction(op.inputs);
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }

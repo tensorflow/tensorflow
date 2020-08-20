@@ -45,6 +45,7 @@ class CppGradients
 
 Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("Add", AddRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("AddV2", AddRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Exp", ExpRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("MatMul", MatMulRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Relu", ReluRegisterer));
@@ -56,6 +57,8 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("Sub", SubRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Neg", NegRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("FusedBatchNormV3", FusedBatchNormV3Registerer));
+  TF_RETURN_IF_ERROR(registry->Register("Mul", MulRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Log1p", Log1pRegisterer));
   return Status::OK();
 }
 
