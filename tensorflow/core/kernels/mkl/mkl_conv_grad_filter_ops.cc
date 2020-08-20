@@ -59,6 +59,8 @@ struct MklConvBwdFilterParams {
   memory::dims diff_bias_dims;
   memory::dims diff_dst_dims;
   memory::dims strides;
+  MKL_TENSOR_FORMAT tf_fmt;
+  bool native_format;
   memory::dims dilations;
   memory::dims padding_left;
   memory::dims padding_right;
@@ -69,6 +71,7 @@ struct MklConvBwdFilterParams {
   MklConvBwdFilterParams(memory::dims src_dims, memory::dims diff_filter_dims,
                          memory::dims diff_bias_dims,
                          memory::dims diff_dst_dims, memory::dims strides,
+                         MKL_TENSOR_FORMAT tf_fmt, bool native_format,
                          memory::dims dilations, memory::dims padding_left,
 #ifndef ENABLE_MKLDNN_V1
                          memory::dims padding_right, padding_kind padding)
@@ -80,6 +83,8 @@ struct MklConvBwdFilterParams {
         diff_bias_dims(diff_bias_dims),
         diff_dst_dims(diff_dst_dims),
         strides(strides),
+        tf_fmt(tf_fmt),
+        native_format(native_format),
         dilations(dilations),
         padding_left(padding_left),
 #ifndef ENABLE_MKLDNN_V1
@@ -243,15 +248,21 @@ class MklConvBwdFilterPrimitive : public MklPrimitive {
   };
 
   void Setup(const MklConvBwdFilterParams& convBwdFilterDims) {
-    // Create memory descriptors for convolution backward filter without any
-    // specific format so that MKL-DNN can pick an appropriate one depending
-    // on the input parameters.
-    context_.src_md.reset(new memory::desc(
-        {convBwdFilterDims.src_dims}, MklDnnType<T>(), MEMORY_FORMAT::any));
+    MEMORY_FORMAT user_data_fmt;
+    if (convBwdFilterDims.native_format) {
+      user_data_fmt =
+          MklTensorFormatToMklDnnDataFormat(convBwdFilterDims.tf_fmt);
+    } else {
+      // Create memory descriptors for convolution backward filter without any
+      // specific format so that MKL-DNN can pick an appropriate one depending
+      // on the input parameters.
+      user_data_fmt = MEMORY_FORMAT::any;
+    }
+    context_.src_md.reset(new memory::desc({convBwdFilterDims.src_dims},
+                                           MklDnnType<T>(), user_data_fmt));
 
-    context_.diff_dst_md.reset(
-        new memory::desc({convBwdFilterDims.diff_dst_dims}, MklDnnType<T>(),
-                         MEMORY_FORMAT::any));
+    context_.diff_dst_md.reset(new memory::desc(
+        {convBwdFilterDims.diff_dst_dims}, MklDnnType<T>(), user_data_fmt));
 
     context_.diff_filter_md.reset(
         new memory::desc({convBwdFilterDims.diff_filter_dims}, MklDnnType<T>(),
@@ -407,6 +418,9 @@ class MklConvBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(convBwdFilterDims.dilations);
     key_creator.AddAsKey(convBwdFilterDims.padding_left);
     key_creator.AddAsKey(convBwdFilterDims.padding_right);
+    if (convBwdFilterDims.native_format) {
+      key_creator.AddAsKey(convBwdFilterDims.tf_fmt);
+    }
     return key_creator.GetKey();
   }
 
@@ -424,7 +438,7 @@ class MklConvBwdFilterPrimitiveFactory : public MklPrimitiveFactory<T> {
 };
 
 template <typename Device, class T, bool bias_enabled, bool is_depthwise,
-          bool eager_mode>
+          bool native_format>
 class MklConvCustomBackpropFilterOp
     : public MklConvBackpropCommonOp<Device, T, is_depthwise> {
  public:
@@ -441,9 +455,9 @@ class MklConvCustomBackpropFilterOp
       const Tensor& diff_dst_tensor = MklGetInput(context, kDiffDstIdx);
 
       MklDnnShape src_mkl_shape, filter_mkl_shape, diff_dst_mkl_shape;
-      GetMklShape(context, kInputIdx, &src_mkl_shape, eager_mode);
-      GetMklShape(context, kFilterIdx, &filter_mkl_shape, eager_mode);
-      GetMklShape(context, kDiffDstIdx, &diff_dst_mkl_shape, eager_mode);
+      GetMklShape(context, kInputIdx, &src_mkl_shape, native_format);
+      GetMklShape(context, kFilterIdx, &filter_mkl_shape, native_format);
+      GetMklShape(context, kDiffDstIdx, &diff_dst_mkl_shape, native_format);
       // Allow operator-specific sanity checking of shapes.
       ValidateMklShapes(src_mkl_shape, filter_mkl_shape, diff_dst_mkl_shape);
 
@@ -455,7 +469,7 @@ class MklConvCustomBackpropFilterOp
       TensorShape src_tf_shape = MakeInputTfShape(context, src_tensor);
       TensorShape filter_tf_shape = MakeFilterTfShape(context, filter_tensor);
       TensorShape diff_dst_tf_shape =
-          GetTfShape(context, kDiffDstIdx, eager_mode);
+          GetTfShape(context, kDiffDstIdx, native_format);
 
       // Corner cases: output with 0 elements and 0 batch size.
       Tensor* diff_filter_tensor = nullptr;
@@ -469,7 +483,7 @@ class MklConvCustomBackpropFilterOp
         const int kOutputIdx = 0;
         AllocateOutputSetMklShape(context, kOutputIdx, &diff_filter_tensor,
                                   diff_filter_tf_shape, diff_filter_mkl_shape,
-                                  eager_mode);
+                                  native_format);
         DCHECK(diff_filter_tensor != nullptr);
 
         // If output tensor has more than 0 elements, we need to 0 them out.
@@ -534,6 +548,7 @@ class MklConvCustomBackpropFilterOp
       for (int i = 0; i < dilations.size(); ++i) --dilations[i];
       MklConvBwdFilterParams convBwdFilterDims(
           fwd_src_dims, fwd_filter_dims, diff_bias_dims, diff_dst_dims, strides,
+          tf_fmt, native_format,
 #ifndef ENABLE_MKLDNN_V1
           dilations, padding_left, padding_right,
           TFPaddingToMklDnnPadding(this->padding_));
@@ -566,7 +581,7 @@ class MklConvCustomBackpropFilterOp
                diff_filter_dims[MklDnnDims::Dim_O]});
           AllocateOutputSetMklShape(context, 0, &diff_filter_tensor,
                                     diff_filter_tf_shape, diff_filter_mkl_shape,
-                                    eager_mode);
+                                    native_format);
         } else {
           // Depthwise Conv2d: diff_filter_dims is GOIHW format.
           //                  | TensorFlow       | MKLDNN
@@ -710,7 +725,7 @@ class MklConvCustomBackpropFilterOp
   TensorShape MakeInputTfShape(OpKernelContext* context,
                                const Tensor& input_tensor) {
     size_t input_idx = 0;
-    return GetTfShape(context, input_idx, eager_mode);
+    return GetTfShape(context, input_idx, native_format);
   }
 
   // Get TensorFlow shape of filter tensor.
