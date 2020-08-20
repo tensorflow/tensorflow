@@ -2917,7 +2917,7 @@ class Function(object):
     """Calls a graph function specialized to the inputs."""
     with self._lock:
       (graph_function,
-          filtered_flat_args) = self._maybe_define_function(args, kwargs)
+       filtered_flat_args) = self._maybe_define_function(args, kwargs)
     return graph_function._call_flat(
         filtered_flat_args,
         captured_inputs=graph_function.captured_inputs)  # pylint: disable=protected-access
