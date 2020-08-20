@@ -67,7 +67,7 @@ export HOROVOD_WITHOUT_PYTORCH=1
 export HOROVOD_WITHOUT_MXNET=1
 pip3.7 install --user git+https://github.com/horovod/horovod.git
 
-export PATH=${PATH}:/root/.local/bin
+export PATH=${PATH}:${HOME}/.local/bin
 
 # Install tests.
 git clone https://github.com/DEKHTIARJonathan/TF_HVD_Stability_Test.git
