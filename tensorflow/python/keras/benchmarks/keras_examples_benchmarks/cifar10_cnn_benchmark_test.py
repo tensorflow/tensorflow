@@ -31,7 +31,7 @@ class Cifar10CNNBenchmark(tf.test.Benchmark):
     (self.x_train, self.y_train), _ = tf.keras.datasets.cifar10.load_data()
     self.x_train = self.x_train.astype('float32') / 255
     self.y_train = tf.keras.utils.to_categorical(self.y_train, self.num_classes)
-    self.epochs = 25
+    self.epochs = 5
 
   def _build_model(self):
     """Model from https://github.com/keras-team/keras/blob/master/examples/cifar10_cnn.py."""

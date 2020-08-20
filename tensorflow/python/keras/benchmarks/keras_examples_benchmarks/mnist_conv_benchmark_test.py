@@ -96,29 +96,6 @@ class ConvMnistBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_conv_mnist_bs_256_gpu_2(self):
-    """Measure performance with batch_size=256, run_iters=3, gpu=2 and
-
-    distribution_strategy='mirrored'
-    """
-    batch_size = 256
-    run_iters = 3
-    metrics, wall_time, extras = benchmark_util.measure_performance(
-        self._build_model,
-        x=self.x_train,
-        y=self.y_train,
-        batch_size=batch_size,
-        run_iters=run_iters,
-        num_gpus=2,
-        distribution_strategy='mirrored',
-        epochs=self.epochs,
-        optimizer='adam',
-        loss='categorical_crossentropy',
-        metrics=['accuracy'])
-
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
-
   def benchmark_conv_mnist_bs_512(self):
     """Measure performance with batch_size=512 and run_iters=3."""
     batch_size = 512
@@ -129,6 +106,29 @@ class ConvMnistBenchmark(tf.test.Benchmark):
         y=self.y_train,
         batch_size=batch_size,
         run_iters=run_iters,
+        epochs=self.epochs,
+        optimizer='adam',
+        loss='categorical_crossentropy',
+        metrics=['accuracy'])
+
+    self.report_benchmark(
+        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+
+  def benchmark_conv_mnist_bs_512_gpu_2(self):
+    """Measure performance with batch_size=512, run_iters=3, gpu=2 and
+
+    distribution_strategy='mirrored'
+    """
+    batch_size = 512
+    run_iters = 3
+    metrics, wall_time, extras = benchmark_util.measure_performance(
+        self._build_model,
+        x=self.x_train,
+        y=self.y_train,
+        batch_size=batch_size,
+        run_iters=run_iters,
+        num_gpus=2,
+        distribution_strategy='mirrored',
         epochs=self.epochs,
         optimizer='adam',
         loss='categorical_crossentropy',

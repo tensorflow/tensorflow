@@ -15,7 +15,7 @@
 """Benchmarks on IRNN on MNIST digits."""
 from __future__ import absolute_import
 from __future__ import division
-from __future__ import print_function
+from __future__ import print_function 
 
 import tensorflow as tf
 
@@ -112,8 +112,8 @@ class IRNNMnistBenchmark(tf.test.Benchmark):
     self.report_benchmark(
         iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
 
-  def benchmark_irnn_mnist_bs_1024_gpu_3(self):
-    """Measure performance with batch_size=1024, run_iters=3, gpu=3 and
+  def benchmark_irnn_mnist_bs_1024_gpu_2(self):
+    """Measure performance with batch_size=1024, run_iters=3, gpu=2 and
 
     distribution_strategy='mirrored'
     """
@@ -125,7 +125,7 @@ class IRNNMnistBenchmark(tf.test.Benchmark):
         y=self.y_train,
         batch_size=batch_size,
         run_iters=run_iters,
-        num_gpus=3,
+        num_gpus=2,
         distribution_strategy='mirrored',
         optimizer=tf.keras.optimizers.RMSprop(learning_rate=self.learning_rate),
         loss='categorical_crossentropy',
