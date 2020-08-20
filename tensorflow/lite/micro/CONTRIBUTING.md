@@ -7,8 +7,8 @@ should be the primary method of getting in touch with the TensorFlow Lite Micro
 
 The following resources may also be useful:
 
-1.  SIG Micro
-    [email group](https://groups.google.com/a/tensorflow.org/g/micro) and
+1.  SIG Micro [email group](https://groups.google.com/a/tensorflow.org/g/micro)
+    and
     [monthly meetings](http://doc/1YHq9rmhrOUdcZnrEnVCWvd87s2wQbq4z17HbeRl-DBc).
 
 1.  SIG Micro [gitter chat room](https://gitter.im/tensorflow/sig-micro).
@@ -19,8 +19,8 @@ We look forward to your contributions to the TensorFlow Lite Micro codebase and
 provide guidelines with the goal of enabling community contributions while still
 maintaining code health, maintainability, and consistency in style.
 
-Please note that while these guidelines may seem onerous to some developers, they
-are derived from Google's software engineering best practices.
+Please note that while these guidelines may seem onerous to some developers,
+they are derived from Google's software engineering best practices.
 
 Before we describe project-specific guidelines, we recommend that external
 contributors read these tips from the Google Testing Blog:
@@ -49,7 +49,7 @@ We strongly recommend that contributors:
         pull request and provide context on both what you want to contribute and
         why.
 
-1.  Once step 1. Is complete and it is determined that a PR from an external
+1.  Once step 1. is complete and it is determined that a PR from an external
     contributor is the way to go, please follow these guidelines from
     [Google's Engineering Practices documentation](https://google.github.io/eng-practices/):
 
@@ -117,8 +117,8 @@ implementations, we would like to make some improvements to the current
 infrastructure to enable adding and maintaining optimized kernel implementations
 in a scalable way.
 
-Until that work is complete, we are requesting a pause on contributions that add
-new optimized kernel implementations. We plan to make these improvements by
+Until that work is complete, we are requesting a ***pause*** on contributions that
+add new optimized kernel implementations. We plan to make these improvements by
 October 2020 and will provide additional guidelines at that time.
 
 *   If you would like to have an exception to this pause, with the understanding
@@ -134,7 +134,7 @@ October 2020 and will provide additional guidelines at that time.
 
 As discussed in the
 [SIG-micro Aug 12, 2020 meeting](http://doc/1YHq9rmhrOUdcZnrEnVCWvd87s2wQbq4z17HbeRl-DBc),
-we are currently pausing accepting pull requests that add new targets,
+we are currently ***pausing*** accepting pull requests that add new targets,
 platforms, IDE integration or examples while we revisit some of the
 infrastructure to enable us to make this process easier and more scalable.
 
@@ -149,9 +149,9 @@ on this topic as we would like to enable such integration in the future.
 
 As discussed in the
 [SIG-micro Aug 12, 2020 meeting](http://doc/1YHq9rmhrOUdcZnrEnVCWvd87s2wQbq4z17HbeRl-DBc),
-we are currently pausing accepting pull requests that add new features while we
-revisit some of the infrastructure to enable us to make this process easier and
-more scalable.
+we are currently ***pausing*** accepting pull requests that add new features while
+we revisit some of the infrastructure to enable us to make this process easier
+and more scalable.
 
 Having said that, we still invite feature requests via
 [TF Lite Micro Github issues](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
