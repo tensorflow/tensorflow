@@ -137,7 +137,7 @@ class DatasetTestBase(test.TestCase):
     for i in range(len(result_values)):
       nest.assert_same_structure(result_values[i], expected_values[i])
       for result_value, expected_value in zip(
-              nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
+          nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
         self.assertValuesEqual(expected_value, result_value)
 
   def getDatasetOutput(self, dataset, requires_initialization=False):

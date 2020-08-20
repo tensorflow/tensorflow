@@ -60,7 +60,7 @@ def _test_objects():
   ]
 
 
-def _test_eager_only_objects():
+def _test_v2_eager_only_objects():
   return [
       combinations.NamedObject(
           "ragged",
@@ -84,7 +84,7 @@ class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(element=_test_objects())) +
       combinations.times(
           test_base.v2_eager_only_combinations(),
-          combinations.combine(element=_test_eager_only_objects())))
+          combinations.combine(element=_test_v2_eager_only_objects())))
   def testCompression(self, element):
     element = element._obj
 
@@ -99,7 +99,7 @@ class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
           combinations.combine(element=_test_objects())) +
       combinations.times(
           test_base.v2_eager_only_combinations(),
-          combinations.combine(element=_test_eager_only_objects())))
+          combinations.combine(element=_test_v2_eager_only_objects())))
   def testDatasetCompression(self, element):
     element = element._obj
 
