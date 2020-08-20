@@ -147,6 +147,48 @@ bool IsQuantized(TfLiteType type) {
   }
 }
 
+bool IsInt32(TfLiteType type) {
+  switch (type) {
+    case kTfLiteInt32:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool IsFloatOrQuantized(TfLiteType type) {
+  switch (type) {
+    case kTfLiteFloat32:
+    case kTfLiteUInt8:
+    case kTfLiteInt8:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool IsFloatOrInt32(TfLiteType type) {
+  switch (type) {
+    case kTfLiteFloat32:
+    case kTfLiteInt32:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool IsFloatQuantizedOrInt32(TfLiteType type) {
+  switch (type) {
+    case kTfLiteFloat32:
+    case kTfLiteUInt8:
+    case kTfLiteInt8:
+    case kTfLiteInt32:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool IsScalarInputSupported(int builtin_code) {
   switch (builtin_code) {
     case kTfLiteBuiltinAdd:
@@ -1512,11 +1554,31 @@ bool ExpectIsFloatOrQuant8Operator(const TfLiteContext* context,
                                    const TfLiteNode* node,
                                    OpValidationContext* val_ctx) {
   const auto input_type = context->tensors[node->inputs->data[0]].type;
-  return Expect(IsFloat(input_type) || IsQuantized(input_type),
+  return Expect(IsFloatOrQuantized(input_type),
                 NNAPIValidationFailureType::kUnsupportedInputType,
                 "Input should be Float or Quant8", val_ctx);
 }
 
+bool ExpectIsFloatOrInt32Operator(const TfLiteContext* context,
+                                  const TfLiteNode* node,
+                                  OpValidationContext* val_ctx) {
+  const auto input_type = context->tensors[node->inputs->data[0]].type;
+  return Expect(IsFloatOrInt32(input_type),
+                NNAPIValidationFailureType::kUnsupportedInputType,
+                "Input should be Float or Int32", val_ctx);
+}
+
+bool ExpectIsFloatQuant8OrInt32Operator(const TfLiteContext* context,
+                                        const TfLiteNode* node,
+                                        OpValidationContext* val_ctx) {
+  const auto input_type = context->tensors[node->inputs->data[0]].type;
+  return Expect(
+      IsFloatQuantizedOrInt32(input_type),
+      NNAPIValidationFailureType::kUnsupportedInputType,
+      "Input should be Float, Quant8, or Int32", val_ctx);
+}
+
+// When using NN API version 1.0 or 1.1, the condition below must be true for
 // When using NN API version 1.0 or 1.1, the condition below must be true for
 // quantized versions of the following ops:
 // * CONV_2D
@@ -1553,7 +1615,11 @@ bool NNAPIDelegateKernel::Validate(
   switch (builtin_code) {
     case kTfLiteBuiltinAdd: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
+        ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
+      } else {
+        ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinArgMax:
     case kTfLiteBuiltinArgMin: {
@@ -1598,7 +1664,11 @@ bool NNAPIDelegateKernel::Validate(
     } break;
     case kTfLiteBuiltinMul: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
-      ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
+        ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
+      } else {
+        ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinAveragePool2d: {
       ExpectMaxOpVersion(version, 2, &val_ctx);
@@ -1953,7 +2023,9 @@ bool NNAPIDelegateKernel::Validate(
       Expect((android_sdk_version >= kMinSdkVersionForNNAPI11 &&
               IsFloat(input_type)) ||
                  (android_sdk_version >= kMinSdkVersionForNNAPI12 &&
-                  IsQuantized(input_type)),
+                  IsQuantized(input_type)) ||
+                 (android_sdk_version >= kMinSdkVersionForNNAPI13 &&
+                  IsInt32(input_type)),
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float sub.", &val_ctx);
       const int input0_rank =
@@ -1968,9 +2040,16 @@ bool NNAPIDelegateKernel::Validate(
       ExpectOpVersion(version, 1, &val_ctx);
       ExpectMinAndroidSdkVersion(android_sdk_version, kMinSdkVersionForNNAPI11,
                                  &val_ctx);
-      Expect(context->tensors[node->inputs->data[0]].type == kTfLiteFloat32,
-             NNAPIValidationFailureType::kUnsupportedInputType,
-             "NNAPI only support float div.", &val_ctx);
+      const TfLiteType input_type =
+          context->tensors[node->inputs->data[0]].type;
+
+      if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
+        ExpectIsFloatOrInt32Operator(context, node, &val_ctx);
+      } else {
+        Expect(IsFloat(input_type),
+               NNAPIValidationFailureType::kUnsupportedInputType,
+               "NNAPI only support float div.", &val_ctx);
+      }
     } break;
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinPadv2: {
