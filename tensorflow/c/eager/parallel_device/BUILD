@@ -76,6 +76,7 @@ cc_library(
         "//tensorflow/c/eager:c_api_experimental",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
         "@com_google_absl//absl/types:variant",
     ],
 )
