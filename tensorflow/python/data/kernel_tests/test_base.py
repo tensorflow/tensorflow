@@ -52,8 +52,13 @@ def graph_only_combinations():
 
 
 def v2_only_combinations():
-  """Returns the default test combinations for v1 only tf.data tests."""
+  """Returns the default test combinations for v2 only tf.data tests."""
   return combinations.combine(tf_api_version=2, mode=["eager", "graph"])
+
+
+def v2_eager_only_combinations():
+  """Returns the default test combinations for v2 eager only tf.data tests."""
+  return combinations.combine(tf_api_version=2, mode="eager")
 
 
 class DatasetTestBase(test.TestCase):
@@ -132,7 +137,7 @@ class DatasetTestBase(test.TestCase):
     for i in range(len(result_values)):
       nest.assert_same_structure(result_values[i], expected_values[i])
       for result_value, expected_value in zip(
-          nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
+              nest.flatten(result_values[i]), nest.flatten(expected_values[i])):
         self.assertValuesEqual(expected_value, result_value)
 
   def getDatasetOutput(self, dataset, requires_initialization=False):

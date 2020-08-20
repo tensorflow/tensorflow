@@ -83,7 +83,7 @@ class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
           test_base.default_test_combinations(),
           combinations.combine(element=_test_objects())) +
       combinations.times(
-          test_base.eager_only_combinations(),
+          test_base.v2_eager_only_combinations(),
           combinations.combine(element=_test_eager_only_objects())))
   def testCompression(self, element):
     element = element._obj
@@ -98,7 +98,7 @@ class CompressionOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
           test_base.default_test_combinations(),
           combinations.combine(element=_test_objects())) +
       combinations.times(
-          test_base.eager_only_combinations(),
+          test_base.v2_eager_only_combinations(),
           combinations.combine(element=_test_eager_only_objects())))
   def testDatasetCompression(self, element):
     element = element._obj
