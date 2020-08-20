@@ -141,8 +141,8 @@ upper_tabs:
       - heading: "Performance"
       - title: "Best practices"
         path: /lite/performance/best_practices
-      - title: "Benchmarks"
-        path: /lite/performance/benchmarks
+      - title: "Measurement"
+        path: /lite/performance/measurement
       - title: "Delegates"
         path: /lite/performance/delegates
         status: experimental
