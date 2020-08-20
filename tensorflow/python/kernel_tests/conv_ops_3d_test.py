@@ -189,9 +189,9 @@ class Conv3DTest(test.TestCase):
                 e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-6)
 
   def _CreateNumpyTensor(self, sizes):
-    return np.asarray([f * 1.0
-                       for f in range(1,
-                                      np.prod(sizes) + 1)]).reshape(sizes)
+    return np.asarray([f * 1.0 for f in range(1,
+                                              np.prod(sizes) + 1)],
+                      dtype=np.float32).reshape(sizes)
 
   @test_util.run_in_graph_and_eager_modes
   def testConv3DExpandedBatch(self):

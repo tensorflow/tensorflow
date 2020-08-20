@@ -152,7 +152,7 @@ void UnmarkChildren(Block* block) {
 
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
-  const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
+  const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     getOperation().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();

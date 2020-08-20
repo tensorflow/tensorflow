@@ -15011,9 +15011,9 @@ func MatrixInverse(scope *Scope, input tf.Output, optional ...MatrixInverseAttr)
 // The input is a tensor of shape `[N, M, M]` whose inner-most 2 dimensions
 // form square matrices. The outputs are two tensors containing the signs and
 // absolute values of the log determinants for all N input submatrices
-// `[..., :, :]` such that the determinant = sign*exp(log_abs_determinant).
-// The log_abs_determinant is computed as det(P)*sum(log(diag(LU))) where LU
-// is the LU decomposition of the input and P is the corresponding
+// `[..., :, :]` such that `determinant = sign*exp(log_abs_determinant)`.
+// The `log_abs_determinant` is computed as `det(P)*sum(log(diag(LU)))` where `LU`
+// is the `LU` decomposition of the input and `P` is the corresponding
 // permutation matrix.
 //
 // Arguments:
@@ -15326,27 +15326,6 @@ func TensorMapHasKey(scope *Scope, input_handle tf.Output, key tf.Output) (has_k
 	return op.Output(0)
 }
 
-// Returns the value from a given key in a tensor map.
-//
-// input_handle: the input map
-// key: the key to be looked up
-// value: the value found from the given key
-func TensorMapLookup(scope *Scope, input_handle tf.Output, key tf.Output, value_dtype tf.DataType) (value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"value_dtype": value_dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorMapLookup",
-		Input: []tf.Input{
-			input_handle, key,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Inverse 3D fast Fourier transform.
 //
 // Computes the inverse 3-dimensional discrete Fourier transform over the
@@ -15390,6 +15369,27 @@ func TensorMapInsert(scope *Scope, input_handle tf.Output, key tf.Output, value 
 		Input: []tf.Input{
 			input_handle, key, value,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the value from a given key in a tensor map.
+//
+// input_handle: the input map
+// key: the key to be looked up
+// value: the value found from the given key
+func TensorMapLookup(scope *Scope, input_handle tf.Output, key tf.Output, value_dtype tf.DataType) (value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"value_dtype": value_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorMapLookup",
+		Input: []tf.Input{
+			input_handle, key,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -20366,8 +20366,7 @@ func Polygamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 // input_handle: the original map
 // output_handle: the map with value from given key removed
 // key: the key of the value to be erased
-// value: the value that was erased
-func TensorMapErase(scope *Scope, input_handle tf.Output, key tf.Output, value_dtype tf.DataType) (output_handle tf.Output, value tf.Output) {
+func TensorMapErase(scope *Scope, input_handle tf.Output, key tf.Output, value_dtype tf.DataType) (output_handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -20380,7 +20379,7 @@ func TensorMapErase(scope *Scope, input_handle tf.Output, key tf.Output, value_d
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
+	return op.Output(0)
 }
 
 // Shuffle dimensions of x according to a permutation.

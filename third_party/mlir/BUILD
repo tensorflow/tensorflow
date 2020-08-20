@@ -121,11 +121,13 @@ cc_library(
     srcs = [
         "lib/CAPI/IR/AffineMap.cpp",
         "lib/CAPI/IR/IR.cpp",
+        "lib/CAPI/IR/StandardAttributes.cpp",
         "lib/CAPI/IR/StandardTypes.cpp",
     ],
     hdrs = [
         "include/mlir-c/AffineMap.h",
         "include/mlir-c/IR.h",
+        "include/mlir-c/StandardAttributes.h",
         "include/mlir-c/StandardTypes.h",
         "include/mlir/CAPI/AffineMap.h",
         "include/mlir/CAPI/IR.h",
@@ -1124,6 +1126,7 @@ cc_library(
         ":ControlFlowInterfaces",
         ":IR",
         ":LLVMOpsIncGen",
+        ":OpenMPDialect",
         ":SideEffectInterfaces",
         ":Support",
         "@llvm-project//llvm:AsmParser",
@@ -1759,6 +1762,61 @@ gentbl(
     td_file = "include/mlir/Dialect/LLVMIR/ROCDLOps.td",
     td_srcs = [
         ":ROCDLOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "PDLDialect",
+    srcs = glob([
+        "lib/Dialect/PDL/IR/*.cpp",
+        "lib/Dialect/PDL/IR/*.h",
+    ]),
+    hdrs = glob([
+        "include/mlir/Dialect/PDL/IR/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":InferTypeOpInterface",
+        ":PDLOpsIncGen",
+        ":SideEffects",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+filegroup(
+    name = "PDLOpsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/PDL/IR/PDLBase.td",
+        "include/mlir/Dialect/PDL/IR/PDLOps.td",
+        "include/mlir/IR/SymbolInterfaces.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "PDLOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/PDL/IR/PDLOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/PDL/IR/PDLOps.cpp.inc",
+        ),
+        (
+            "-gen-dialect-decls",
+            "include/mlir/Dialect/PDL/IR/PDLOpsDialect.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/PDL/IR/PDLOps.td",
+    td_srcs = [
+        ":PDLOpsTdFiles",
     ],
 )
 
@@ -2876,6 +2934,7 @@ cc_library(
         ":NVVMDialect",
         ":OpenACCDialect",
         ":OpenMPDialect",
+        ":PDLDialect",
         ":QuantOps",
         ":QuantPassIncGen",
         ":ROCDLDialect",
@@ -3542,6 +3601,7 @@ cc_library(
         ":LinalgOps",
         ":LinalgTransforms",
         ":Pass",
+        ":SCFDialect",
         ":SCFToStandard",
         ":StandardOps",
         ":StandardToLLVM",
@@ -3779,6 +3839,7 @@ cc_library(
         ":EDSC",
         ":IR",
         ":LLVMDialect",
+        ":LinalgTransforms",
         ":Pass",
         ":SCFDialect",
         ":StandardOps",

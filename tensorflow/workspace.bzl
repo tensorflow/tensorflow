@@ -515,6 +515,18 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "typing_extensions_archive",
+        build_file = clean_dep("//third_party:typing_extensions.BUILD"),
+        sha256 = "79ee589a3caca649a9bfd2a8de4709837400dfa00b6cc81962a1e6a1815969ae",
+        strip_prefix = "typing_extensions-3.7.4.2",
+        system_build_file = clean_dep("//third_party/systemlibs:six.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/6a/28/d32852f2af6b5ead85d396249d5bdf450833f3a69896d76eb480d9c5e406/typing_extensions-3.7.4.2.tar.gz",
+            "https://files.pythonhosted.org/packages/6a/28/d32852f2af6b5ead85d396249d5bdf450833f3a69896d76eb480d9c5e406/typing_extensions-3.7.4.2.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
         name = "opt_einsum_archive",
         build_file = clean_dep("//third_party:opt_einsum.BUILD"),
         sha256 = "d3d464b4da7ef09e444c30e4003a27def37f85ff10ff2671e5f7d7813adac35b",
@@ -699,8 +711,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "e75bc5c791e0e8dbe79f7453e55af9e8d03c9cc0"
-    LLVM_SHA256 = "9c22f59d50853329cd0105ecb95256ad345313372ddda593030cd81b7c72e657"
+    LLVM_COMMIT = "87bf0b0ee986078a2c9e9bca02cf7a4c42012925"
+    LLVM_SHA256 = "927e42eca13e54719b6fd4c32a85eecdf2a09d41d79c12d6a8b1ed8fd6dab3f7"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

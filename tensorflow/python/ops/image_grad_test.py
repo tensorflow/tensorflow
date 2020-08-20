@@ -184,20 +184,21 @@ class ResizeBilinearOpTest(test.TestCase):
     out_shape = [1, 2, 3, 1]
     x = np.arange(0, 24).reshape(in_shape)
 
-    with self.cached_session() as sess:
-      for dtype in [np.float16, np.float32, np.float64]:
-        input_tensor = constant_op.constant(x.astype(dtype), shape=in_shape)
-        resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
-        grad = sess.run(gradients_impl.gradients(resize_out, input_tensor))[0]
-        self.assertAllEqual(in_shape, grad.shape)
-        # Not using gradient_checker.compute_gradient as I didn't work out
-        # the changes required to compensate for the lower precision of
-        # float16 when computing the numeric jacobian.
-        # Instead, we just test the theoretical jacobian.
-        self.assertAllEqual([[[[1.], [0.], [1.], [0.], [1.], [0.]], [[0.], [
-            0.
-        ], [0.], [0.], [0.], [0.]], [[1.], [0.], [1.], [0.], [1.], [0.]],
-                              [[0.], [0.], [0.], [0.], [0.], [0.]]]], grad)
+    for use_gpu in [False, True]:
+      with self.cached_session(use_gpu=use_gpu) as sess:
+        for dtype in [np.float16, np.float32, np.float64]:
+          input_tensor = constant_op.constant(x.astype(dtype), shape=in_shape)
+          resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
+          grad = sess.run(gradients_impl.gradients(resize_out, input_tensor))[0]
+          self.assertAllEqual(in_shape, grad.shape)
+          # Not using gradient_checker.compute_gradient as I didn't work out
+          # the changes required to compensate for the lower precision of
+          # float16 when computing the numeric jacobian.
+          # Instead, we just test the theoretical jacobian.
+          self.assertAllEqual([[[[1.], [0.], [1.], [0.], [1.], [0.]],
+                                [[0.], [0.], [0.], [0.], [0.], [0.]],
+                                [[1.], [0.], [1.], [0.], [1.], [0.]],
+                                [[0.], [0.], [0.], [0.], [0.], [0.]]]], grad)
 
 
 class ResizeBicubicOpTest(test.TestCase):

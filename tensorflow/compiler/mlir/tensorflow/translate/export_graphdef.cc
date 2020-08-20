@@ -726,7 +726,7 @@ Status Exporter::Convert(mlir::ModuleOp module,
       mlir::Identifier::get("main", module.getContext());
   absl::optional<mlir::FuncOp> entry_func;
   FunctionDefLibrary flib;
-  auto tf_dialect = module.getContext()->getRegisteredDialect("tf");
+  auto tf_dialect = module.getContext()->getLoadedDialect("tf");
   for (auto function : module.getOps<mlir::FuncOp>()) {
     if (function.isExternal())
       return errors::FailedPrecondition("External functions not supported");
@@ -799,7 +799,7 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
 stream_executor::port::Status ConvertMlirFunctionToFunctionLibraryDef(
     mlir::FuncOp func, const GraphExportConfig& configs,
     FunctionDef* function_def) {
-  Dialect* tf_dialect = func.getContext()->getRegisteredDialect("tf");
+  Dialect* tf_dialect = func.getContext()->getLoadedDialect("tf");
   FunctionDefLibrary flib;
   TF_RETURN_IF_ERROR(
       Exporter::ConvertLibFunction(configs, tf_dialect, func, &flib));

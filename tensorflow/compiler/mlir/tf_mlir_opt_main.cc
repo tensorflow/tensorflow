@@ -18,6 +18,8 @@ limitations under the License.
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/AsmState.h"  // from @llvm-project
+#include "mlir/InitAllDialects.h"  // from @llvm-project
+#include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Support/FileUtilities.h"  // from @llvm-project
@@ -63,6 +65,8 @@ static llvm::cl::opt<bool> allowUnregisteredDialects(
     llvm::cl::init(false));
 
 int main(int argc, char **argv) {
+  mlir::registerAllPasses();
+
   tensorflow::InitMlir y(&argc, &argv);
 
   // Register various MLIR command line options.
@@ -84,9 +88,12 @@ int main(int argc, char **argv) {
   auto output = mlir::openOutputFile(output_filename, &error_message);
   QCHECK(output) << error_message;
 
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
   if (failed(mlir::MlirOptMain(output->os(), std::move(file), pass_pipeline,
-                               split_input_file, verify_diagnostics,
-                               verify_passes, allowUnregisteredDialects)))
+                               registry, split_input_file, verify_diagnostics,
+                               verify_passes, allowUnregisteredDialects,
+                               /*preloadDialectsInContext=*/true)))
     return 1;
   output->keep();
   return 0;

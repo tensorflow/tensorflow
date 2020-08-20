@@ -417,7 +417,7 @@ distribute_py_test(
     srcs = ["keras_embedding_model_correctness_test.py"],
     full_precision = True,
     main = "keras_embedding_model_correctness_test.py",
-    shard_count = 4,
+    shard_count = 8,
     tags = [
         "multi_and_single_gpu",
         "no_windows_gpu",
@@ -821,7 +821,10 @@ py_test(
     srcs = ["parameter_server_training_test.py"],
     python_version = "PY3",
     shard_count = 1,
-    tags = ["no_oss"],  # TODO(b/162119374): enable it in OSS.
+    tags = [
+        "no_oss",  # TODO(b/162119374): enable it in OSS.
+        "notap",  # TODO(b/165836402): enable after testing it isn't flaky.
+    ],
     deps = [
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",

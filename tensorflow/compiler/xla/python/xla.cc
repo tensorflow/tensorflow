@@ -740,7 +740,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(py::init([](const py::bytes& serialized_hlo_module_proto)
                         -> std::unique_ptr<XlaComputation> {
         HloModuleProto proto;
-        proto.ParseFromString(serialized_hlo_module_proto);
+        proto.ParseFromString(std::string(serialized_hlo_module_proto));
         return absl::make_unique<XlaComputation>(proto);
       }))
       .def("get_hlo_module", &GetHloModule)

@@ -41,8 +41,8 @@ template <typename T>
 TfLiteStatus GetSize(TfLiteContext* context, T start, T limit, T delta,
                      int* size) {
   TF_LITE_ENSURE(context, !std::equal_to<T>()(delta, 0));
-  TF_LITE_ENSURE(context,
-                 (start > limit && delta < 0) || (start < limit && delta > 0));
+  TF_LITE_ENSURE(
+      context, (start >= limit && delta < 0) || (start <= limit && delta > 0));
   *size =
       (std::is_integral<T>::value
            ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))

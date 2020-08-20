@@ -622,6 +622,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   mlir::MLIRContext mlir_context;
+  mlir_context.loadAllGloballyRegisteredDialects();
   llvm::LLVMContext llvm_context;
   auto llvm_module =
       absl::make_unique<llvm::Module>("__compute_module", llvm_context);
@@ -833,6 +834,7 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
 
   // Compile must be thread-safe so create a new LLVM context for the module.
   mlir::MLIRContext mlir_context;
+  mlir_context.loadAllGloballyRegisteredDialects();
   llvm::LLVMContext llvm_context;
   llvm::Module llvm_module("__compute_module", llvm_context);
   llvm_module.setDataLayout(target_machine->createDataLayout());

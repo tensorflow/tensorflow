@@ -82,13 +82,9 @@ void DeviceOpMetricsDbBuilder::EnterOp(
   op_metrics->set_occurrences(op_metrics->occurrences() + occurrences);
   op_metrics->set_time_ps(op_metrics->time_ps() + time_ps);
   op_metrics->set_self_time_ps(op_metrics->self_time_ps() + self_time_ps);
-  op_metrics->set_flops(op_metrics->flops() +
-                        GetCappedPerf(flops * occurrences, self_time_ps,
-                                      peak_tera_flops_per_second_));
-  op_metrics->set_bytes_accessed(
-      op_metrics->bytes_accessed() +
-      GetCappedPerf(bytes_accessed * occurrences, self_time_ps,
-                    peak_hbm_bw_giga_bytes_per_second_ / 1000));
+  op_metrics->set_flops(op_metrics->flops() + flops * occurrences);
+  op_metrics->set_bytes_accessed(op_metrics->bytes_accessed() +
+                                 bytes_accessed * occurrences);
   CombineMemoryAccessedBreakdown(
       memory_accessed_breakdown,
       op_metrics->mutable_memory_accessed_breakdown());

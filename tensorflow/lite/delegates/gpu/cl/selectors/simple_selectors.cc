@@ -56,14 +56,11 @@ std::unique_ptr<GPUOperation> SelectReLU(const ReLUAttributes& attr,
   return absl::make_unique<GPUOperation>(CreateReLU(op_def, attr));
 }
 
-absl::Status SelectPReLU(const PReLUAttributes& attr,
-                         const CreationContext& creation_context,
-                         const OperationDef& op_def,
-                         std::unique_ptr<GPUOperation>* ptr) {
-  GPUOperation operation;
-  RETURN_IF_ERROR(CreatePReLU(creation_context, op_def, attr, &operation));
-  *ptr = absl::make_unique<GPUOperation>(std::move(operation));
-  return absl::OkStatus();
+std::unique_ptr<GPUOperation> SelectPReLU(const PReLUAttributes& attr,
+                                          const DeviceInfo& device_info,
+                                          const OperationDef& op_def) {
+  return absl::make_unique<GPUOperation>(
+      CreatePReLU(device_info, op_def, attr));
 }
 
 void SelectPooling(const Pooling2DAttributes& attr, const OperationDef& op_def,

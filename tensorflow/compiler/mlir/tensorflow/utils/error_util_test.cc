@@ -29,6 +29,7 @@ using testing::HasSubstr;
 
 TEST(ErrorUtilTest, StatusScopedDiagnosticHandler) {
   MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   auto id = Identifier::get("test.cc", &context);
   auto loc = FileLineColLoc::get(id, 0, 0, &context);
 

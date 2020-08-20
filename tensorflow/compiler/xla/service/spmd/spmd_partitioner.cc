@@ -221,15 +221,23 @@ HloInstruction* SpmdBuilder::AddInstruction(
 
 PartitionedHlo PartitionedHlo::Reshard(const HloSharding& target) {
   auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
-  for (auto& entry : cache) {
-    if (entry.first == target) {
-      return entry.second;
+  const bool is_to_replicate =
+      hlo_->shape().IsArray() && target.NumTiles() < sharding().NumTiles();
+  if (!is_to_replicate || state_.partitioner->options().cache_all_gather) {
+    for (auto& entry : cache) {
+      if (entry.first == target) {
+        return entry.second;
+      }
     }
   }
-  cache.emplace_back(target, ReshardNoCache(target));
-  state_.reshard_cache->per_hlo_cache[cache.back().second.hlo()]
+  auto resharded = ReshardNoCache(target);
+  state_.reshard_cache->per_hlo_cache[resharded.hlo()]
       .reshard_cache.emplace_back(sharding(), *this);
-  return cache.back().second;
+  if (!is_to_replicate || state_.partitioner->options().cache_all_gather) {
+    cache.emplace_back(target, std::move(resharded));
+    return cache.back().second;
+  }
+  return resharded;
 }
 
 PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
@@ -794,6 +802,14 @@ PartitionedHlo::ReshardAsWindowedInput(const Window& window,
 }
 
 PartitionedHlo PartitionedHlo::Replicate() {
+  auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
+  if (state_.partitioner->options().cache_all_gather) {
+    for (auto& entry : cache) {
+      if (entry.first.IsReplicated()) {
+        return entry.second;
+      }
+    }
+  }
   const HloSharding& sharding = hlo_->sharding();
   const Shape& shape = hlo_->shape();
   CHECK(!shape.IsTuple() && shape.element_type() != TOKEN);
@@ -801,7 +817,6 @@ PartitionedHlo PartitionedHlo::Replicate() {
   if (sharding.IsReplicated()) {
     return *this;
   }
-  auto& cache = state_.reshard_cache->per_hlo_cache[hlo()].reshard_cache;
   for (auto& entry : cache) {
     if (entry.first.IsReplicated()) {
       return entry.second;
@@ -810,8 +825,11 @@ PartitionedHlo PartitionedHlo::Replicate() {
   auto update_cache = [&](PartitionedHlo resharded) {
     state_.reshard_cache->per_hlo_cache[resharded.hlo()]
         .reshard_cache.emplace_back(sharding, *this);
-    cache.emplace_back(HloSharding::Replicate(), std::move(resharded));
-    return cache.back().second;
+    if (state_.partitioner->options().cache_all_gather) {
+      cache.emplace_back(HloSharding::Replicate(), std::move(resharded));
+      return cache.back().second;
+    }
+    return resharded;
   };
   // 'Single Device' to 'Repliated'.
   if (sharding.IsTileMaximal()) {
@@ -3370,7 +3388,7 @@ StatusOr<bool> SpmdPartitioner::Run(HloModule* module) {
     HloPassPipeline pass("spmd-cleanup");
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<HloDCE>();
-    pass.AddPass<HloCSE>(/*is_layout_sensitive=*/true);
+    pass.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pass.AddPass<FlattenCallGraph>();
     TF_RETURN_IF_ERROR(pass.Run(module).status());
   }
