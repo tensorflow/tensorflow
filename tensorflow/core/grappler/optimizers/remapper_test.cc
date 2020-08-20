@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 
-#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -542,7 +541,7 @@ TEST_F(RemapperTest, DISABLED_FuseConv2DWithBiasAndActivationOnGPU) {
 TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
   using ::tensorflow::ops::Placeholder;
 
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
     auto input_shape = Placeholder::Shape({8, 32, 32, 3});
@@ -568,9 +567,6 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
         return ops::Identity(fetch, ops::Relu6(activate, bias_add));
       } else if (activation == "Elu") {
         return ops::Identity(fetch, ops::Elu(activate, bias_add));
-      } else if (activation == "LeakyRelu") {
-        return ops::Identity(fetch,
-                             ops::internal::LeakyRelu(activate, bias_add));
       }
 
       return ops::Identity(fetch, bias);
@@ -799,7 +795,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
 TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
   using ops::Placeholder;
 
-  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
     auto input_shape = ops::Placeholder::Shape({8, 32, 32, 3});
@@ -832,9 +828,6 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
         return ops::Identity(fetch, ops::Relu6(activate, batch_norm.y));
       } else if (activation == "Elu") {
         return ops::Identity(fetch, ops::Elu(activate, batch_norm.y));
-      } else if (activation == "LeakyRelu") {
-        return ops::Identity(fetch,
-                             ops::internal::LeakyRelu(activate, batch_norm.y));
       }
 
       return ops::Identity(fetch, batch_norm.y);

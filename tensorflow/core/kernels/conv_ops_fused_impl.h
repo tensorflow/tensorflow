@@ -185,26 +185,14 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 
     BiasAddArgs<T> bias_add_args;
     if (BiasAddArgs<T>::IsSupported(fusion)) {
-      if (fusion == FusedComputationType::kBiasAddWithLeakyRelu) {
-        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args,
-                                                &fusion_args.leakyrelu_alpha));
-      } else {
-        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args));
-      }
+      OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args));
     }
 
     FusedBatchNormArgs<T> fused_batch_norm_args;
     if (FusedBatchNormArgs<T>::IsSupported(fusion)) {
-      if (fusion == FusedComputationType::kFusedBatchNormWithLeakyRelu) {
-        OP_REQUIRES_OK(context,
-                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
-                                              &fused_batch_norm_args,
-                                              &fusion_args.leakyrelu_alpha));
-      } else {
-        OP_REQUIRES_OK(context,
-                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
-                                              &fused_batch_norm_args));
-      }
+      OP_REQUIRES_OK(context,
+                     InitFusedBatchNormArgs(context, fusion_args.epsilon,
+                                            &fused_batch_norm_args));
     }
 
     LaunchFusedConv2DWithOutputKernel<T> conv2d(
@@ -227,10 +215,6 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
         conv2d(WithBiasAddAndRelu6<T>(bias_add_args), context, input, filter,
                output);
         break;
-      case FusedComputationType::kBiasAddWithLeakyRelu:
-        conv2d(WithBiasAddAndLeakyRelu<T>(bias_add_args), context, input,
-               filter, output);
-        break;
       case FusedComputationType::kBiasAddWithElu:
         conv2d(WithBiasAddAndElu<T>(bias_add_args), context, input, filter,
                output);
@@ -248,11 +232,6 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
       case FusedComputationType::kFusedBatchNormWithRelu6:
         conv2d(WithFusedBatchNormAndRelu6<T>(fusion_args.epsilon,
                                              fused_batch_norm_args),
-               context, input, filter, output);
-        break;
-      case FusedComputationType::kFusedBatchNormWithLeakyRelu:
-        conv2d(WithFusedBatchNormAndLeakyRelu<T>(fusion_args.epsilon,
-                                                 fused_batch_norm_args),
                context, input, filter, output);
         break;
       case FusedComputationType::kFusedBatchNormWithElu:
@@ -702,12 +681,10 @@ class FusedConv2DOp : public OpKernel {
           {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
           {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
           {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
-          {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
           {FCT::kFusedBatchNorm, {"FusedBatchNorm"}},
           {FCT::kFusedBatchNormWithRelu, {"FusedBatchNorm", "Relu"}},
           {FCT::kFusedBatchNormWithRelu6, {"FusedBatchNorm", "Relu6"}},
           {FCT::kFusedBatchNormWithElu, {"FusedBatchNorm", "Elu"}},
-          {FCT::kFusedBatchNormWithLeakyRelu, {"FusedBatchNorm", "LeakyRelu"}},
       };
     }
 
