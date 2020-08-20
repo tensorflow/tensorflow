@@ -127,6 +127,7 @@ Status FusedBatchNormGradV3(AbstractContext* ctx,
  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[3])); // reserve_space_1
  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[4])); // reserve_space_2
  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[5])); // reserve_space_3
+ 
  // Returns [x_grad, scale_grad, offset_grad, reserve_space_4, reserve_space_5]
  // Last 2 outputs not used.
  

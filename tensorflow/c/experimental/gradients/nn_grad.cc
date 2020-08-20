@@ -25,6 +25,7 @@ using tensorflow::ops::Mul;
 using tensorflow::ops::ReluGrad;
 using tensorflow::ops::SparseSoftmaxCrossEntropyLoss;
 using tensorflow::ops::ZerosLike;
+using tensorflow::ops::BiasAddGrad;
 
 namespace tensorflow {
 namespace gradients {
@@ -88,6 +89,46 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
   vector<AbstractTensorHandle*> forward_outputs;
 };
 
+class BiasAddGradientFunction : public GradientFunction {
+  public:
+    Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    /* Given upstream grad U and a BiasAdd: A + bias, the gradients are:
+      *
+      *    dA = U
+      *    dbias = reduceSum(U, dims = last_dim)
+      *    |
+      *     -----> Assumes 'N...C' data format, so reduce along the
+      *            channel dimensions
+      */
+    
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    grad_outputs->resize(2);
+    
+    // Calculate Grads
+    // Grad for A
+    std::vector<AbstractTensorHandle*> identity_outputs(1);
+    std::string name = "Identity_bias_add"; 
+    TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {upstream_grad},
+                                      absl::MakeSpan(identity_outputs),
+                                      name.c_str()));
+    
+    (*grad_outputs)[0] = identity_outputs[0];
+  
+    // Grad for bias
+    std::vector<AbstractTensorHandle*> bias_add_grad_outputs(1);
+    name = "bias_add_grad";
+    TF_RETURN_IF_ERROR(BiasAddGrad(ctx->ctx, {upstream_grad},
+                                absl::MakeSpan(bias_add_grad_outputs),
+                                name.c_str()));
+    
+    (*grad_outputs)[1] = bias_add_grad_outputs[0];
+    return Status::OK();
+  }
+  ~BiasAddGradientFunction() override {}
+};
+
+
 }  // namespace
 
 BackwardFunction* ReluRegisterer(const ForwardOperation& op) {
@@ -106,6 +147,13 @@ BackwardFunction* SparseSoftmaxCrossEntropyLossRegisterer(
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }
+
+BackwardFunction* BiasAddRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new BiasAddGradientFunction;
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
 
 }  // namespace gradients
 }  // namespace tensorflow
