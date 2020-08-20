@@ -5,17 +5,9 @@ op {
 *NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 	
-Given two input tensors, the `tf.add` operation computes the sum for every element in the tensor. Both input and output have a range `(-inf, inf)`.
+Given two input tensors, the `tf.add` operation computes the sum for every element in the tensor. 
 
-For example:
+Both input and output have a range `(-inf, inf)`.
 
-```python
-# `x` and `y` are tensors of shape (1)
-x = tf.constant([1.0, -1.0, 5.0, -2.0, 0.0])
-
-y = tf.constant([5.0, 1.0, 3.7, -19.9, float("inf")])
-
-tf.add(x,y) ==> [6.0, 0.0, 8.7, -21.9, inf] dtype = float.32
-```
 END
 }

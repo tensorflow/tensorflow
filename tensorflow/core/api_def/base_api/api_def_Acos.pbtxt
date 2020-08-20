@@ -3,15 +3,9 @@ op {
   summary: "Computes acos of x element-wise."
   description: <<END
 
-  Provided an input tensor, the `tf.math.acos` operation returns the inverse cosine of each element of the tensor. Therefore, we can state that if `y = tf.math.cos(x)` then, `x = tf.math.acos(y)`. 
+  Provided an input tensor, the `tf.math.acos` operation returns the inverse cosine of each element of the tensor. If `y = tf.math.cos(x)` then, `x = tf.math.acos(y)`. 
+  
   Input range is `[-1, 1]` and the output has a range of `[0, pi]`.
 
-  For example:
-
-  ```python
-  # `x` is a tensor of the shape(1)
-  x = tf.constant([1.0, -0.5, 3.4, 0.2, 0.0, -2], dtype = tf.float32)
-  tf.math.acos(x) ==> [0,  2.0943952,  nan,  1.3694384,  1.5707964,  nan] dtype=float32)
-  ```
 END
 }
