@@ -284,7 +284,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::PRELU: {
       auto attr = absl::any_cast<PReLUAttributes>(node.operation.attributes);
-      return SelectPReLU(attr, creation_context, op_def, gpu_op);
+      *gpu_op = SelectPReLU(attr, creation_context.GetDeviceInfo(), op_def);
+      return absl::OkStatus();
     }
     case OperationType::QUANTIZE_AND_DEQUANTIZE: {
       auto attr = absl::any_cast<QuantizeAndDequantizeAttributes>(
