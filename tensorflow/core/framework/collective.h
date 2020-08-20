@@ -161,17 +161,20 @@ class DeviceResolverInterface {
       std::vector<DeviceAttributes>* attributes,
       const StatusCallback& done) = 0;
 
-  // Populate *attributes with the DeviceAttributes of the specified
-  // device.
+  // Populates *attributes with the DeviceAttributes of the specified device.
   virtual void GetDeviceAttributesAsync(const string& device,
                                         const string& task,
                                         DeviceAttributes* attributes,
                                         const StatusCallback& done) = 0;
 
-  // Clear the cache of device data belonging to the specified task.
+  // Returns the cached device attributes of a task.
+  virtual Status GetTaskCached(const string& task,
+                               std::vector<DeviceAttributes>* attributes) = 0;
+
+  // Clears the cache of device data belonging to the specified task.
   virtual void ClearTask(const string& task) = 0;
 
-  // Clear the cache of all device data.
+  // Clears the cache of all device data.
   virtual void ClearCache() = 0;
 };
 
@@ -278,6 +281,12 @@ class CollectiveRemoteAccess {
                           const Tensor* from_tensor,
                           const DeviceLocality& client_locality,
                           const StatusCallback& done) = 0;
+
+  // Checks the health of a collective peer. It probes the peer to see if it is
+  // alive. Note that if a peer has restarted, it's considered a different one,
+  // so CheckPeerHealth fails.
+  virtual void CheckPeerHealth(const string& peer_task,
+                               const StatusCallback& done) = 0;
 
   virtual BufRendezvous* buf_rendezvous() = 0;
 
