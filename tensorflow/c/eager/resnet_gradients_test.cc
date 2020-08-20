@@ -52,6 +52,7 @@ Status RegisterGradients(GradientRegistry* registry) {
       registry->Register("SparseSoftmaxCrossEntropyWithLogits",
                          SparseSoftmaxCrossEntropyLossRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("BiasAdd", BiasAddRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Conv2D", Conv2DRegisterer));
   return Status::OK();
 }
 
@@ -167,7 +168,7 @@ void printTensorInt(AbstractTensorHandle* t, int size) {
 
 // =========================== Start Tests ================================
 
-TEST_P(CppGradients, TestMatMulGradYEET) {
+TEST_P(CppGradients, TestMatMulGrad) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   AbstractContextPtr ctx;
@@ -305,6 +306,64 @@ TEST_P(CppGradients, TestBiasAddGrad) {
  outputs[1]->Unref();
  TF_DeleteTensor(out_tensor);
 }
+
+TEST_P(CppGradients, TestConv2DGrad) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+  
+  float A_vals[] = {2.0f, 1.0f, 2.0f, 0.0f, 1.0f,
+                    1.0f, 3.0f, 2.0f, 2.0f, 3.0f,
+                    1.0f, 1.0f, 3.0f, 3.0f, 0.0f,
+                    2.0f, 2.0f, 0.0f, 1.0f, 1.0f,
+                    0.0f, 0.0f, 3.0f, 1.0f, 2.0f};
+  int64_t A_dims[] = {1, 5, 5, 1}; // {N, height, width, in_channels}
+  int num_dims = 4;
+  
+  AbstractTensorHandlePtr A =
+      GetTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
+  
+  float filter_vals[] = {/*f1 =*/2.0f, 0.1f,
+                                 3.0f, 0.2f,
+                         /*f2 =*/0.0f, 0.3f,
+                                 1.0f, 0.4f};
+  
+  int64_t filter_dims[] = {2, 2, 1, 2}; // {fil_h, fil_w, in_channels, out_channels}
+  num_dims = 4;
+  
+  AbstractTensorHandlePtr filter =
+      GetTensorHandleUtilFloat(ctx.get(), filter_vals, filter_dims, num_dims);
+   
+  GradientRegistry registry;
+  Status s = RegisterGradients(&registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  
+  std::vector<AbstractTensorHandle*> outputs(3); // [conv_out, dx, dfilter]
+  s = RunModel(Conv2DGradModel, ctx.get(), {A.get(), filter.get()},
+                absl::MakeSpan(outputs),
+                /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  
+  // check conv_out
+  std::cout << "conv_out: ";
+  printTensor(outputs[0], 50);
+  
+  // dA
+  std::cout << "dInput: ";
+  printTensor(outputs[1], 25);
+  
+  // dfilter
+  std::cout << "dFilter: ";
+  printTensor(outputs[2], 8);
+ }
+
 
 
 

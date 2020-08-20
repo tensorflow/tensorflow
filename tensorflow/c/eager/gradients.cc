@@ -264,6 +264,7 @@ Status AddInputList(AbstractOperation* op_,
 Status SetAttrString(AbstractOperation* op_, const char* attr_name,
                      const char* data, size_t length,
                      ForwardOperation* forward_op_) {
+  std::cout << "attr = " << attr_name << std::endl;                     
   forward_op_->attrs.Set(attr_name, StringPiece(data, length));
   return op_->SetAttrString(attr_name, data, length);
 }

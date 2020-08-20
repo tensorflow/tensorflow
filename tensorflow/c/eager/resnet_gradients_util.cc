@@ -51,7 +51,7 @@ Status BiasAdd(AbstractContext* ctx, Tape* tape,
  forward_op.ctx = ctx;
  TF_RETURN_IF_ERROR(Reset(biasAdd_op.get(), "BiasAdd",
                           /*raw_device_name=*/nullptr, &forward_op));
- if (isa<tracing::TracingOperation>(biasAdd_op.get())) {
+ if (isa<TracingOperation>(biasAdd_op.get())) {
    TF_RETURN_IF_ERROR(
        dyn_cast<tracing::TracingOperation>(biasAdd_op.get())->SetOpName(name));
  }
@@ -64,40 +64,47 @@ Status BiasAdd(AbstractContext* ctx, Tape* tape,
                 registry);
 }
 
+Status Conv2D(AbstractContext* ctx, Tape* tape,
+   absl::Span<AbstractTensorHandle* const> inputs,
+   absl::Span<AbstractTensorHandle*> outputs,
+   int64_t* strides, int num_dims, const char* padding,
+   const char* name, const GradientRegistry& registry) {
+ 
+ AbstractTensorHandle* x = inputs[0];
+ AbstractTensorHandle* filter = inputs[1];
+ 
+ AbstractOperationPtr conv_op(ctx->CreateOperation());
+ ForwardOperation forward_op;
+ forward_op.ctx = ctx;
+ TF_RETURN_IF_ERROR(Reset(conv_op.get(), "Conv2D",
+                          /*raw_device_name=*/nullptr, &forward_op));
+ if (isa<TracingOperation>(conv_op.get())) {
+   TF_RETURN_IF_ERROR(
+       dyn_cast<tracing::TracingOperation>(conv_op.get())->SetOpName(name));
+ }
+ 
+// Status SetAttrString(AbstractOperation* op_, const char* attr_name,
+//                      const char* data, size_t length,
+//                      ForwardOperation* forward_op_)
+
+ TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrIntList(
+      conv_op.get(), "strides", strides, num_dims, &forward_op));
+ TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrString(
+      conv_op.get(), "padding", padding, strlen(padding), &forward_op));
+ TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(
+      conv_op.get(), "use_cudnn_on_gpu", false, &forward_op));
+
+ TF_RETURN_IF_ERROR(AddInput(conv_op.get(), x, &forward_op));
+ TF_RETURN_IF_ERROR(AddInput(conv_op.get(), filter, &forward_op));
+ 
+ int num_retvals = 1;
+ return Execute(conv_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                registry);
+}
+
+
 
 //===================== Test Models to run =========================
-
-// Status MatMulGradModel(AbstractContext* ctx,
-//                        absl::Span<AbstractTensorHandle* const> inputs,
-//                        absl::Span<AbstractTensorHandle*> outputs,
-//                        const GradientRegistry& registry) {
-//   TapeVSpace vspace(ctx);
-//   auto tape = new Tape(/*persistent=*/false);
-//   tape->Watch(ToId(inputs[0]));  // Watch x.
-//   tape->Watch(ToId(inputs[1]));  // Watch y.
-//   vector<AbstractTensorHandle*> mm_outputs(1);
-//   TF_RETURN_IF_ERROR(MatMul(ctx, tape, inputs, absl::MakeSpan(mm_outputs),
-//                             "matmul0", /*transpose_a=*/false,
-//                             /*transpose_b=*/false, registry));  // Compute x*y.
-
-//   std::unordered_map<tensorflow::int64, TapeTensor>
-//       source_tensors_that_are_targets;
-
-//   vector<AbstractTensorHandle*> out_grads;
-//   TF_RETURN_IF_ERROR(tape->ComputeGradient(
-//       vspace, /*target_tensor_ids=*/{ToId(mm_outputs[0])},
-//       /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
-//       source_tensors_that_are_targets,
-//       /*output_gradients=*/{}, &out_grads,
-//       /*build_default_zeros_grads=*/false));
-//   for (auto mm_output : mm_outputs) {
-//     mm_output->Unref();
-//   }
-//   outputs[0] = out_grads[0];
-//   outputs[1] = out_grads[1];
-//   delete tape;
-//   return Status::OK();
-// }
 
 Status BiasAddGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
@@ -132,8 +139,36 @@ Status BiasAddGradModel(AbstractContext* ctx,
  return Status::OK();
 }
 
-
-
+ Status Conv2DGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));  // Watch input.
+  tape->Watch(ToId(inputs[1]));  // Watch filter.
+  std::vector<AbstractTensorHandle*> conv_outputs(1);
+  int64_t strides[] = {1,1,1,1};
+  TF_RETURN_IF_ERROR(Conv2D(ctx, tape, inputs, absl::MakeSpan(conv_outputs),
+                      strides, /*num_dims=*/4, /*padding=*/"SAME", "conv_2d_test", registry));
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+  
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(conv_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+  
+  outputs[0] = conv_outputs[0];
+  outputs[1] = out_grads[0];
+  outputs[2] = out_grads[1];
+  
+  delete tape;
+  return Status::OK();
+}
 // ====================== End Models ================================
 
 

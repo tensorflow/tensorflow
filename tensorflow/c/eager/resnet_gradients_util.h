@@ -34,12 +34,27 @@ using namespace tensorflow;
 using namespace tensorflow::gradients;
 using namespace tensorflow::gradients::internal;
 
+//======================== Tape Ops ===========================
 Status BiasAdd(AbstractContext* ctx, Tape* tape,
    absl::Span<AbstractTensorHandle* const> inputs,
    absl::Span<AbstractTensorHandle*> outputs, const char* name,
    const GradientRegistry& registry);
+
+Status Conv2D(AbstractContext* ctx, Tape* tape,
+   absl::Span<AbstractTensorHandle* const> inputs,
+   absl::Span<AbstractTensorHandle*> outputs,
+   int64_t* strides, int num_dims, const char* padding,
+   const char* name, const GradientRegistry& registry);
+
+
+// ====================== Models ==============================
    
 Status BiasAddGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
                     const GradientRegistry& registry);
+
+ Status Conv2DGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry);

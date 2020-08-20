@@ -26,6 +26,9 @@ using tensorflow::ops::ReluGrad;
 using tensorflow::ops::SparseSoftmaxCrossEntropyLoss;
 using tensorflow::ops::ZerosLike;
 using tensorflow::ops::BiasAddGrad;
+using tensorflow::ops::Shape;
+using tensorflow::ops::Conv2DBackpropFilter;
+using tensorflow::ops::Conv2DBackpropInput;
 
 namespace tensorflow {
 namespace gradients {
@@ -128,6 +131,66 @@ class BiasAddGradientFunction : public GradientFunction {
   ~BiasAddGradientFunction() override {}
 };
 
+class Conv2DGradientFunction : public GradientFunction {
+  public:
+    explicit Conv2DGradientFunction(vector<AbstractTensorHandle*> f_inputs,
+                                    AttrBuilder f_attrs)
+      : forward_inputs(f_inputs), forward_attrs(f_attrs) {}
+    
+    Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                    vector<AbstractTensorHandle*>* grad_outputs) override {
+      
+      grad_outputs->resize(2);   
+      AbstractTensorHandle* upstream_grad = grad_inputs[0];
+      AbstractTensorHandle* input = forward_inputs[0];
+      AbstractTensorHandle* filter = forward_inputs[1];
+        
+      // std::string pad;
+      // TF_RETURN_IF_ERROR(forward_attrs.Get("padding", &pad));
+
+      bool test_attr;
+      TF_RETURN_IF_ERROR(forward_attrs.Get("use_cudnn_on_gpu", &test_attr));
+      std::cout << "test = " << test_attr <<std::endl;
+    
+      int64_t strides[] = {1,1,1,1};
+      std::string padding = "SAME";
+     
+      // Get shapes for input and filter
+      vector<AbstractTensorHandle*> shape_outputs(1);
+      std::string name = "conv_shape_input";
+      TF_RETURN_IF_ERROR(Shape(ctx->ctx, {input}, absl::MakeSpan(shape_outputs), name.c_str()));
+      AbstractTensorHandle* input_dims = shape_outputs[0];
+    
+      name = "conv_shape_filter";
+      TF_RETURN_IF_ERROR(Shape(ctx->ctx, {filter}, absl::MakeSpan(shape_outputs), name.c_str()));
+      AbstractTensorHandle* filter_dims = shape_outputs[0]; 
+    
+      // Gradient for input
+      vector<AbstractTensorHandle*> conv_backprop_input_outputs(1);
+      name = "conv_bp_input";
+      TF_RETURN_IF_ERROR(Conv2DBackpropInput(ctx->ctx, {input_dims, filter, upstream_grad},
+                                absl::MakeSpan(conv_backprop_input_outputs), strides,
+                                /*num_dims=*/4, padding.c_str(), name.c_str()));
+    
+      (*grad_outputs)[0] = conv_backprop_input_outputs[0];
+    
+      // Gradient for filter
+      vector<AbstractTensorHandle*> conv_backprop_filter_outputs(1);
+      name = "conv_bp_filter";
+      TF_RETURN_IF_ERROR(Conv2DBackpropFilter(ctx->ctx, {input, filter_dims, upstream_grad},
+                                absl::MakeSpan(conv_backprop_filter_outputs), strides,
+                                /*num_dims=*/4, padding.c_str(), name.c_str()));
+      (*grad_outputs)[1] = conv_backprop_filter_outputs[0];
+    
+      return Status::OK();
+  }
+  ~Conv2DGradientFunction() override {}
+  
+  private:
+    vector<AbstractTensorHandle*> forward_inputs;
+    AttrBuilder forward_attrs;
+};
+
 
 }  // namespace
 
@@ -150,6 +213,12 @@ BackwardFunction* SparseSoftmaxCrossEntropyLossRegisterer(
 
 BackwardFunction* BiasAddRegisterer(const ForwardOperation& op) {
   auto gradient_function = new BiasAddGradientFunction;
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* Conv2DRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new Conv2DGradientFunction(op.inputs, op.attrs);
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }
