@@ -26,6 +26,7 @@ using tensorflow::ops::Identity;
 using tensorflow::ops::MatMul;
 using tensorflow::ops::Mul;
 using tensorflow::ops::ZerosLike;
+using tensorflow::ops::Neg;
 
 namespace tensorflow {
 namespace gradients {
@@ -190,6 +191,71 @@ class MatMulGradientFunction : public GradientFunction {
   AttrBuilder forward_attrs;
 };
 
+class SubGradientFunction : public GradientFunction {
+public:
+   Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                  vector<AbstractTensorHandle*>* grad_outputs) override {
+  
+   /* Given upstream grad U and a Sub op A-B, the gradients are:
+    *
+    *    dA =  U
+    *    dB = -U
+    *
+    */
+  
+   grad_outputs->resize(2);
+   std::vector<AbstractTensorHandle*> identity_outputs(1);
+  
+   // Grad for A
+   std::string name = "Identity_Sub_A";
+   TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {grad_inputs[0]},
+                                    absl::MakeSpan(identity_outputs),
+                                    name.c_str()));
+   (*grad_outputs)[0] = identity_outputs[0];
+ 
+   // Grad for B 
+   // negate the upstream grad
+   std::vector<AbstractTensorHandle*> neg_outputs(1);
+   name = "Neg_Sub_B";
+   TF_RETURN_IF_ERROR(ops::Neg(ctx->ctx, {grad_inputs[0]},
+                                    absl::MakeSpan(neg_outputs),
+                                    name.c_str()));
+                                
+   (*grad_outputs)[1] = neg_outputs[0];
+ 
+   return Status::OK();
+ }
+ ~SubGradientFunction() override {}
+};
+
+class NegGradientFunction : public GradientFunction {
+public:
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                  vector<AbstractTensorHandle*>* grad_outputs) override {
+  
+   /* Given upstream grad U and a Neg op Y = -X, the gradients are:
+    *
+    *    dX =  -U
+    *
+    */
+  
+   grad_outputs->resize(1);
+
+    // Grad for X
+   std::vector<AbstractTensorHandle*> neg_outputs(1);
+   std::string name = "Neg_Grad";
+   TF_RETURN_IF_ERROR(ops::Neg(ctx->ctx, {grad_inputs[0]},
+                                    absl::MakeSpan(neg_outputs),
+                                    name.c_str()));
+   
+ 
+   (*grad_outputs)[0] = neg_outputs[0];
+   return Status::OK();
+ }
+ ~NegGradientFunction() override {}
+};
+
+
 }  // namespace
 
 BackwardFunction* AddRegisterer(const ForwardOperation& op) {
@@ -215,6 +281,18 @@ BackwardFunction* MatMulRegisterer(const ForwardOperation& op) {
   // For ops with a single output, the gradient function is not called if there
   // is no incoming gradient. So we do not need to worry about creating zeros
   // grads in this case.
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* SubRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new SubGradientFunction;
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* NegRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new NegGradientFunction;
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }

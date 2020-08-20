@@ -53,6 +53,9 @@ Status RegisterGradients(GradientRegistry* registry) {
                          SparseSoftmaxCrossEntropyLossRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("BiasAdd", BiasAddRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Conv2D", Conv2DRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Sub", SubRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Neg", NegRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("FusedBatchNormV3", FusedBatchNormV3Registerer));
   return Status::OK();
 }
 
@@ -364,9 +367,11 @@ TEST_P(CppGradients, TestConv2DGrad) {
   printTensor(outputs[2], 8);
  }
 
-
-
-
+//  Add tests for
+//   - NegGrad
+//   - SubGrad
+//   - BatchnormGrad
+//   - fix Conv2D attrs
 
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(

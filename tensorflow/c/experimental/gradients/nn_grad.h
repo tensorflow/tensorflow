@@ -23,6 +23,7 @@ BackwardFunction* ReluRegisterer(const ForwardOperation& op);
 BackwardFunction* SparseSoftmaxCrossEntropyLossRegisterer(const ForwardOperation& op);
 BackwardFunction* BiasAddRegisterer(const ForwardOperation& op);
 BackwardFunction* Conv2DRegisterer(const ForwardOperation& op);
+BackwardFunction* FusedBatchNormV3Registerer(const ForwardOperation& op);
 }  // namespace gradients
 }  // namespace tensorflow
 

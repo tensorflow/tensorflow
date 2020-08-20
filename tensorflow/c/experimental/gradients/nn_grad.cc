@@ -29,6 +29,7 @@ using tensorflow::ops::BiasAddGrad;
 using tensorflow::ops::Shape;
 using tensorflow::ops::Conv2DBackpropFilter;
 using tensorflow::ops::Conv2DBackpropInput;
+using tensorflow::ops::FusedBatchNormGradV3;
 
 namespace tensorflow {
 namespace gradients {
@@ -110,7 +111,7 @@ class BiasAddGradientFunction : public GradientFunction {
     
     // Calculate Grads
     // Grad for A
-    std::vector<AbstractTensorHandle*> identity_outputs(1);
+    vector<AbstractTensorHandle*> identity_outputs(1);
     std::string name = "Identity_bias_add"; 
     TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {upstream_grad},
                                       absl::MakeSpan(identity_outputs),
@@ -119,7 +120,7 @@ class BiasAddGradientFunction : public GradientFunction {
     (*grad_outputs)[0] = identity_outputs[0];
   
     // Grad for bias
-    std::vector<AbstractTensorHandle*> bias_add_grad_outputs(1);
+    vector<AbstractTensorHandle*> bias_add_grad_outputs(1);
     name = "bias_add_grad";
     TF_RETURN_IF_ERROR(BiasAddGrad(ctx->ctx, {upstream_grad},
                                 absl::MakeSpan(bias_add_grad_outputs),
@@ -144,14 +145,18 @@ class Conv2DGradientFunction : public GradientFunction {
       AbstractTensorHandle* upstream_grad = grad_inputs[0];
       AbstractTensorHandle* input = forward_inputs[0];
       AbstractTensorHandle* filter = forward_inputs[1];
-        
+
+      // TODO(amturati): figure out why attrs like bools are getting registered 
+      // but not strings or lists
+
       // std::string pad;
-      // TF_RETURN_IF_ERROR(forward_attrs.Get("padding", &pad));
+      // TF_RETURN_IF_ERROR(forward_attrs.Get("padding", &pad));  <--- Throws an error that "padding" is not an attr
 
       bool test_attr;
-      TF_RETURN_IF_ERROR(forward_attrs.Get("use_cudnn_on_gpu", &test_attr));
+      TF_RETURN_IF_ERROR(forward_attrs.Get("use_cudnn_on_gpu", &test_attr)); // <-- Runs without failure
       std::cout << "test = " << test_attr <<std::endl;
     
+      // temporarily set default strides and padding
       int64_t strides[] = {1,1,1,1};
       std::string padding = "SAME";
      
@@ -191,7 +196,51 @@ class Conv2DGradientFunction : public GradientFunction {
     AttrBuilder forward_attrs;
 };
 
+class FusedBatchNormV3GradientFunction : public GradientFunction {
+  public:
+    explicit FusedBatchNormV3GradientFunction(
+        vector<AbstractTensorHandle*> f_inputs,
+        vector<AbstractTensorHandle*> f_outputs)
+        : forward_inputs(f_inputs), forward_outputs(f_outputs){}
+  
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                      vector<AbstractTensorHandle*>* grad_outputs) override  {
+    
+    grad_outputs->resize(5);
+  
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    AbstractTensorHandle* x_input = forward_inputs[0];
+    AbstractTensorHandle* scale = forward_inputs[1];
+      
+    // Cached values from forward pass
+    AbstractTensorHandle* rs_1 = forward_outputs[3];
+    AbstractTensorHandle* rs_2 = forward_outputs[4];
+    AbstractTensorHandle* rs_3 = forward_outputs[5];
+      
+    // Calculate Grad
+    std::string name = "FBN_V3_grad";
+    vector<AbstractTensorHandle*> fbn_grad_outputs(5);
+    TF_RETURN_IF_ERROR(FusedBatchNormGradV3(ctx->ctx,
+                        {upstream_grad, x_input,
+                        scale, rs_1, rs_2, rs_3},
+                        absl::MakeSpan(fbn_grad_outputs),
+                        name.c_str()));
+    
+    (*grad_outputs)[0] = fbn_grad_outputs[0]; // dx
+    (*grad_outputs)[1] = fbn_grad_outputs[1]; // dscale
+    (*grad_outputs)[2] = fbn_grad_outputs[2]; // doffset
 
+    // Possibly need to return nullptr for the other 2 grads?
+    
+    return Status::OK();
+  }
+  ~FusedBatchNormV3GradientFunction() override {}
+  
+private:
+  vector<AbstractTensorHandle*> forward_inputs;
+  vector<AbstractTensorHandle*> forward_outputs;
+};
+ 
 }  // namespace
 
 BackwardFunction* ReluRegisterer(const ForwardOperation& op) {
@@ -223,6 +272,11 @@ BackwardFunction* Conv2DRegisterer(const ForwardOperation& op) {
   return new BackwardFunction(gradient_function, default_gradients);
 }
 
+BackwardFunction* FusedBatchNormV3Registerer(const ForwardOperation& op) {
+  auto gradient_function = new FusedBatchNormV3GradientFunction(op.inputs, op.outputs);
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
 
 }  // namespace gradients
 }  // namespace tensorflow
