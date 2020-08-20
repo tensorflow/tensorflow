@@ -16,6 +16,10 @@ limitations under the License.
 // See docs in ../ops/image_ops.cc
 #define EIGEN_USE_THREADS
 
+#if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+#define EIGEN_USE_GPU
+#endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
+
 #include "tensorflow/core/kernels/image/resize_bilinear_op.h"
 
 #ifdef __SSE4_1__
@@ -30,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/cast_op.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/image_resizer_state.h"
@@ -355,11 +360,38 @@ class ResizeBilinearOpGrad : public OpKernel {
     if (!context->status().ok()) return;
 
     TTypes<float, 4>::ConstTensor input_grad = input.tensor<float, 4>();
-    typename TTypes<T, 4>::Tensor output_grad(st.output->tensor<T, 4>());
 
-    functor::ResizeBilinearGrad<Device, T>()(
-        context->eigen_device<Device>(), input_grad, st.height_scale,
-        st.width_scale, half_pixel_centers_, output_grad);
+    if (!std::is_same<T, Eigen::half>::value) {
+      typename TTypes<T, 4>::Tensor output_grad(st.output->tensor<T, 4>());
+      functor::ResizeBilinearGrad<Device, T>()(
+          context->eigen_device<Device>(), input_grad, st.height_scale,
+          st.width_scale, half_pixel_centers_, output_grad);
+    } else {
+      // Accumulate output to float instead of half tensor, since float
+      // accumulation is more numerically stable and GPU half implementation is
+      // slow.
+      // TODO(b/165759037): Create optimized and numerically stable half
+      // implementation
+      Tensor output_grad;
+      OP_REQUIRES_OK(context, context->allocate_temp(
+                                  DT_FLOAT, st.output->shape(), &output_grad));
+      functor::ResizeBilinearGrad<Device, float>()(
+          context->eigen_device<Device>(), input_grad, st.height_scale,
+          st.width_scale, half_pixel_centers_, output_grad.tensor<float, 4>());
+      if (std::is_same<Device, CPUDevice>::value) {
+        const Device& d = context->template eigen_device<Device>();
+        st.output->template flat<Eigen::half>().device(d) =
+            output_grad.template flat<float>().template cast<Eigen::half>();
+      } else {
+        // Use cast functor instead of directly casting Eigen tensor, as
+        // otherwise we need to instantiate the cast function in a .cu.cc file
+        const Tensor& output_grad_const = output_grad;
+        functor::CastFunctor<Device, Eigen::half, float> cast;
+        const Device& device = context->template eigen_device<Device>();
+        cast(device, st.output->template flat<Eigen::half>(),
+             output_grad_const.template flat<float>());
+      }
+    }
   }
 
  private:
@@ -479,7 +511,7 @@ TF_CALL_double(REGISTER_GRAD_KERNEL);
                               .HostMemory("size"),    \
                           ResizeBilinearOp<GPUDevice, T>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_KERNEL);
 
 #undef REGISTER_KERNEL
 
@@ -488,7 +520,7 @@ TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_KERNEL);
       Name("ResizeBilinearGrad").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       ResizeBilinearOpGrad<GPUDevice, T>);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_GRAD_KERNEL);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GRAD_KERNEL);
 
 #undef REGISTER_GRAD_KERNEL
 
