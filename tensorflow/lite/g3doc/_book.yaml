@@ -127,6 +127,14 @@ upper_tabs:
           path: /lite/inference_with_metadata/task_library/object_detector
         - title: "ImageSegmenter"
           path: /lite/inference_with_metadata/task_library/image_segmenter
+        - title: "NLClassifier"
+          path: /lite/inference_with_metadata/task_library/nl_classifier
+        - title: "BertNLClassifier"
+          path: /lite/inference_with_metadata/task_library/bert_nl_classifier
+        - title: "BertQuestionAnswerer"
+          path: /lite/inference_with_metadata/task_library/bert_question_answerer
+        - title: "Customized API"
+          path: /lite/inference_with_metadata/task_library/customized_task_api
       - title: "Customize input and output data processing"
         path: /lite/inference_with_metadata/lite_support
 

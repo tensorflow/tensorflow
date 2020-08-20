@@ -6,7 +6,7 @@ It provides optimized out-of-box model interfaces for popular machine learning
 tasks, such as image classification, question and answer, etc. The model
 interfaces are specifically designed for each task to achieve the best
 performance and usability. Task Library works cross-platform and is supported on
-Java, C++, and Swift.
+Java, C++, and Swift(coming soon).
 
 ## What to expect from the Task Library
 
@@ -41,6 +41,11 @@ we continue enabling more and more use cases.
 
 *   **Natural Language (NL) APIs**
 
-    *   NLClassifier
-    *   BertNLCLassifier
-    *   BertQuestionAnswerer
+    *   [NLClassifier](nl_classifier.md)
+    *   [BertNLCLassifier](bert_nl_classifier.md)
+    *   [BertQuestionAnswerer](bert_question_answerer.md)
+
+*   **Custom APIs**
+
+    *   Extend Task API infrastructure and build
+        [customized API](customized_task_api.md).
