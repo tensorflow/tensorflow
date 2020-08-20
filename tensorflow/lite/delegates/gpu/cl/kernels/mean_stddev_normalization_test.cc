@@ -54,7 +54,8 @@ TEST_P(MeanStddevNormalizationTest, SeparateBatches) {
       op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor;
-      auto operation = CreateMeanStdDevNormalization(op_def);
+      auto operation =
+          CreateMeanStdDevNormalization(op_def, env_.GetDevicePtr()->info_);
       ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
                                     BHWC(1, 1, 1, 4), &dst_tensor));
 
@@ -72,6 +73,7 @@ TEST_P(MeanStddevNormalizationTest, SeparateBatches) {
   }
 }
 
+// note: 100.01 is not representable in FP16 (is in FP32), so use 101.0 instead.
 INSTANTIATE_TEST_SUITE_P(
     uKernels, MeanStddevNormalizationTest,
     testing::Values(
@@ -80,9 +82,9 @@ INSTANTIATE_TEST_SUITE_P(
         std::make_tuple(0.0f, 100.0f, 1.20e-7f),   // zero mean, large variance
         std::make_tuple(0.01f, 0.0f, 0.0f),        // small mean, zero variance
         std::make_tuple(0.01f, 0.01f, 2.53e-5f),   // small mean, small variance
-        std::make_tuple(0.01f, 100.0f, 1.20e-7f),  // small mean, large variance
+        std::make_tuple(1.0f, 100.0f, 1.20e-7f),   // small mean, large variance
         std::make_tuple(100.0f, 0.0f, 0.0f),       // large mean, zero variance
-        std::make_tuple(100.0f, 0.01f, 1.81e-4f),  // large mean, small variance
+        std::make_tuple(100.0f, 1.0f, 1.81e-4f),   // large mean, small variance
         std::make_tuple(100.0f, 100.0f, 1.20e-7f)  // large mean, large variance
         ));
 
@@ -92,15 +94,15 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
   TensorFloat32 src_tensor;
   src_tensor.shape = BHWC(9, 1, 1, 4);
   src_tensor.data = {
-      0.0f,     0.0f,    0.0f,    0.0f,     // zero mean, zero variance
-      -0.02f,   -0.01f,  0.01f,   0.02f,    // zero mean, small variance
-      -200.0f,  -100.0f, 100.0f,  200.0f,   // zero mean, large variance
-      0.01f,    0.01f,   0.01f,   0.01f,    // small mean, zero variance
-      -0.01f,   0.0f,    0.02f,   0.03f,    // small mean, small variance
-      -199.99f, -99.99f, 100.01f, 200.01f,  // small mean, large variance
-      100.0f,   100.0f,  100.0f,  100.0f,   // large mean, zero variance
-      99.98f,   99.99f,  100.01f, 100.02f,  // large mean, small variance
-      -100.0f,  0.0f,    200.0f,  300.0f,   // large mean, large variance
+      0.0f,    0.0f,    0.0f,   0.0f,    // zero mean, zero variance
+      -0.02f,  -0.01f,  0.01f,  0.02f,   // zero mean, small variance
+      -200.0f, -100.0f, 100.0f, 200.0f,  // zero mean, large variance
+      0.01f,   0.01f,   0.01f,  0.01f,   // small mean, zero variance
+      -0.01f,  0.0f,    0.02f,  0.03f,   // small mean, small variance
+      -199.0f, -99.0f,  101.0f, 201.0f,  // small mean, large variance
+      100.0f,  100.0f,  100.0f, 100.0f,  // large mean, zero variance
+      98.0f,   99.0f,   101.0f, 102.0f,  // large mean, small variance
+      -100.0f, 0.0f,    200.0f, 300.0f,  // large mean, large variance
   };
   for (auto storage : env_.GetSupportedStorages()) {
     for (auto precision : env_.GetSupportedPrecisions()) {
@@ -110,7 +112,8 @@ TEST_F(OpenCLOperationTest, MeanStddevNormalizationAllBatches) {
       op_def.src_tensors.push_back({data_type, storage, Layout::BHWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::BHWC});
       TensorFloat32 dst_tensor;
-      auto operation = CreateMeanStdDevNormalization(op_def);
+      auto operation =
+          CreateMeanStdDevNormalization(op_def, env_.GetDevicePtr()->info_);
       ASSERT_OK(ExecuteGPUOperation({src_tensor}, creation_context_, &operation,
                                     BHWC(9, 1, 1, 4), &dst_tensor));
 
