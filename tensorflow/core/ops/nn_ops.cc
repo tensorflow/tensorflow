@@ -252,7 +252,9 @@ REGISTER_OP("_FusedBatchNormEx")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormExShape)
     .Doc(R"doc(
-*NOTE*: Do not invoke this operator directly in Python. Grappler is
+Internal FusedBatchNorm operation: reserved for internal use.
+
+Do not invoke this operator directly in Python. A fusion optimization is
 expected to create these operators.
 )doc");
 

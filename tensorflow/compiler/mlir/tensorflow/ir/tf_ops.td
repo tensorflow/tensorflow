@@ -217,30 +217,6 @@ source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-
-def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Permute input tensor from `src_format` to `dst_format`";
-
-  let description = [{
-Input tensor must be a vector of size 4, or a 4x2 tensor.
-  }];
-
-  let arguments = (ins
-    TF_I32OrI64Tensor:$x,
-
-    DefaultValuedAttr<StrAttr, "NHWC">:$src_format,
-    DefaultValuedAttr<StrAttr, "NCHW">:$dst_format
-  );
-
-  let results = (outs
-    TF_I32OrI64Tensor:$y
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let verifier = [{ return Verify(*this); }];
-}
-
 def TF_EmptyTensorListOp : TF_TensorListInitOp<"EmptyTensorList"> {
   let summary = "Creates and returns an empty tensor list.";
 
@@ -391,38 +367,6 @@ else_branch: A region that computes the outputs of the op if cond = false.
 
   let verifier = [{
     return Verify(*this);
-  }];
-}
-
-def TF_MeanOp : TF_Op<"Mean", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
-  let summary = "Computes the mean of elements across dimensions of a tensor.";
-
-  let description = [{
-Reduces `input` along the dimensions given in `axis`. Unless
-`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-`axis`. If `keep_dims` is true, the reduced dimensions are
-retained with length 1.
-  }];
-
-  let arguments = (ins
-    TF_NumberTensor:$input,
-    TF_I32OrI64Tensor:$reduction_indices,
-
-    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
-  );
-
-  let results = (outs
-    TF_NumberTensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
-
-  let extraClassDeclaration = [{
-    // TF_FoldOperandsTransposeInterface:
-    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
-    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {}; }
-    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
   }];
 }
 
@@ -884,45 +828,6 @@ Example:
     TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
 }
 
-// Not generated because it begins with an underscore, which isn't allowed by
-// the C++ standard.
-def TF_FusedBatchNormExOp : TF_Op<"_FusedBatchNormEx", [NoSideEffect]> {
-  let summary = "Internal FusedBatchNorm operation: reserved for internal use";
-
-  let description = [{
- Do not invoke this operator directly in Python. A fusion optimization is
- expected to create these operators.
-  }];
-
-  let arguments = (ins
-    TensorOf<[F16, F32]>:$x,
-    F32Tensor:$scale,
-    F32Tensor:$offset,
-    F32Tensor:$mean,
-    F32Tensor:$variance,
-    Variadic<TensorOf<[F16, F32]>>:$side_input,
-
-    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
-    DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
-    DefaultValuedAttr<StrAttr, "Identity">:$activation_mode,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
-    DefaultValuedAttr<BoolAttr, "true">:$is_training
-  );
-
-  let results = (outs
-    TensorOf<[F16, F32]>:$y,
-    F32Tensor:$batch_mean,
-    F32Tensor:$batch_variance,
-    F32Tensor:$reserve_space_1,
-    F32Tensor:$reserve_space_2,
-    F32Tensor:$reserve_space_3
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
-  TF_DerivedOperandSizeAttr num_side_inputs = TF_DerivedOperandSizeAttr<5>;
-}
-
 // Multiple variadic operands with different sizes are not supported by the
 // dialect generator, so we manually added the op.
 def TF_SendTPUEmbeddingGradientsOp : TF_Op<"SendTPUEmbeddingGradients", [AttrSizedOperandSegments]> {
@@ -1270,36 +1175,6 @@ This function is faster and numerically stabler than `bessel_i1(x)`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_StringToHashBucketFastOp : TF_Op<"StringToHashBucketFast", [NoSideEffect]> {
-  let summary = [{
-Converts each string in the input Tensor to its hash mod by a number of buckets.
-  }];
-
-  let description = [{
-The hash function is deterministic on the content of the string within the
-process and will never change. However, it is not suitable for cryptography.
-This function may be used when CPU time is scarce and inputs are trusted or
-unimportant. There is a risk of adversaries constructing inputs that all hash
-to the same bucket. To prevent this problem, use a strong hash function with
-`tf.string_to_hash_bucket_strong`.
-
-Examples:
-
->>> tf.strings.to_hash_bucket_fast(["Hello", "TensorFlow", "2.x"], 3).numpy()
-array([0, 2, 2])
-  }];
-
-  let arguments = (ins
-    TF_StrTensor:$input,
-
-    Confined<I64Attr, [IntMinValue<1>]>:$num_buckets
-  );
-
-  let results = (outs
-    I64Tensor:$output
-  );
 }
 
 def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {
