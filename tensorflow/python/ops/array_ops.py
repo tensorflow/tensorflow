@@ -2610,7 +2610,8 @@ def matrix_diag_part(
       input=input, k=k, padding_value=padding_value, align=align, name=name)
 
 
-@tf_export("linalg.tensor_diag_part", v1=["linalg.tensor_diag_part", "diag_part"])
+@tf_export("linalg.tensor_diag_part",
+           v1=["linalg.tensor_diag_part", "diag_part"])
 @dispatch.add_dispatch_support
 @deprecation.deprecated_endpoints("diag_part")
 @dispatch.add_dispatch_support
