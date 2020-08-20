@@ -72,7 +72,7 @@ tImage = imageProcessor.process(tImage);
 ```
 
 `DataType` of a tensor can be read through the
-[metadata exractor library](../guide/codegen.md#read-the-metadata-from-models)
+[metadata exractor library](../convert/metadata.md#read-the-metadata-from-models)
 as well as other model information.
 
 ### Create output objects and run the model
@@ -235,4 +235,4 @@ TensorBuffer dequantizedBuffer = probabilityProcessor.process(probabilityBuffer)
 ```
 
 The quantization parameters of a tensor can be read through the
-[metadata exractor library](../guide/codegen.md#read-the-metadata-from-models).
+[metadata exractor library](../convert/metadata.md#read-the-metadata-from-models).

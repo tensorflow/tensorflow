@@ -101,8 +101,6 @@ upper_tabs:
       - heading: "Inference"
       - title: "Overview"
         path: /lite/guide/inference
-      - title: "Integrate models with metadata"
-        path: /lite/guide/codegen
       - title: "Custom operators"
         path: /lite/guide/ops_custom
       - title: "Operator versions"
@@ -112,10 +110,25 @@ upper_tabs:
       - title: "Select operators from TensorFlow"
         path: /lite/guide/ops_select
         status: experimental
-      - title: "Process input and output data"
-        path: /lite/guide/lite_support
       - title: "List of hosted models"
         path: /lite/guide/hosted_models
+
+      - heading: "Inference with metadata"
+      - title: "Overview"
+        path: /lite/inference_with_metadata/overview
+      - title: "Generate model interfaces with codegen"
+        path: /lite/inference_with_metadata/codegen
+      - title: "Integrate models with Task Library"
+        path: /lite/inference_with_metadata/task_library/overview
+        section:
+        - title: "ImageClassifier"
+          path: /lite/inference_with_metadata/task_library/image_classifier
+        - title: "ObjectDetector"
+          path: /lite/inference_with_metadata/task_library/object_detector
+        - title: "ImageSegmenter"
+          path: /lite/inference_with_metadata/task_library/image_segmenter
+      - title: "Customize input and output data processing"
+        path: /lite/inference_with_metadata/lite_support
 
       - heading: "Performance"
       - title: "Best practices"
