@@ -16,6 +16,20 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2TENSORRT_COMMON_UTILS_H_
 #define TENSORFLOW_COMPILER_TF2TENSORRT_COMMON_UTILS_H_
 
+#include <tuple>
+
+namespace tensorflow {
+namespace tensorrt {
+// Returns the compile time TensorRT library version information
+// {Maj, Min, Patch}.
+std::tuple<int, int, int> GetLinkedTensorRTVersion();
+
+// Returns the runtime time TensorRT library version information
+// {Maj, Min, Patch}.
+std::tuple<int, int, int> GetLoadedTensorRTVersion();
+}  // namespace tensorrt
+}  // namespace tensorflow
+
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #include "tensorflow/core/platform/logging.h"

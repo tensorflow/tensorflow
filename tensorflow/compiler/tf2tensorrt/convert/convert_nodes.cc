@@ -1203,8 +1203,10 @@ static void InitializeTrtPlugins(nvinfer1::ILogger* trt_logger) {
   mutex_lock lock(plugin_mutex);
   if (plugin_initialized) return;
 
-  LOG(INFO) << "Linked TensorRT version: " << GetLinkedTensorRTVersion();
-  LOG(INFO) << "Loaded TensorRT version: " << GetLoadedTensorRTVersion();
+  LOG(INFO) << "Linked TensorRT version: "
+            << absl::StrJoin(GetLinkedTensorRTVersion(), ".");
+  LOG(INFO) << "Loaded TensorRT version: "
+            << absl::StrJoin(GetLoadedTensorRTVersion(), ".");
 
   plugin_initialized = initLibNvInferPlugins(trt_logger, "");
   if (!plugin_initialized) {
@@ -1434,7 +1436,8 @@ Status Converter::BuildCudaEngine(
   TF_RETURN_IF_ERROR(
       TrtPrecisionModeToName(precision_mode_, &precision_mode_str));
   string trt_network_name = StrCat(
-      "TF:", TF_VERSION_STRING, ", ", "TRT:", GetLoadedTensorRTVersion(), "-",
+      "TF:", TF_VERSION_STRING, ", ",
+      "TRT:", absl::StrJoin(GetLoadedTensorRTVersion(), "."), "-",
       "Precision:", precision_mode_str, ", ", "Calibration:", use_calibration_,
       ", ", "Max-Batch-Size:", max_batch_size, ", ",
       "Max-Workspace-Size:", max_workspace_size_bytes);

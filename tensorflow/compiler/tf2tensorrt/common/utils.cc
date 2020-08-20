@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,31 +13,34 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2tensorrt/utils/py_utils.h"
+#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
 
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-#include "tensorflow/compiler/tf2tensorrt/common/utils.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "third_party/tensorrt/NvInfer.h"
-#endif
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 namespace tensorflow {
 namespace tensorrt {
 
-bool IsGoogleTensorRTEnabled() {
+std::tuple<int, int, int> GetLinkedTensorRTVersion() {
 #if GOOGLE_CUDA && GOOGLE_TENSORRT
-  auto handle_or = se::internal::DsoLoader::TryDlopenTensorRTLibraries();
-  if (!handle_or.ok()) {
-    LOG_WARNING_WITH_PREFIX
-        << "Cannot dlopen some TensorRT libraries. If you would like "
-           "to use Nvidia GPU with TensorRT, please make sure the "
-           "missing libraries mentioned above are installed properly.";
-    return false;
-  } else {
-    return true;
-  }
+  return std::tuple<int, int, int>{NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR,
+                                   NV_TENSORRT_PATCH};
 #else
-  return false;
+  return std::tuple<int, int, int>{0, 0, 0};
+#endif
+}
+
+std::tuple<int, int, int> GetLoadedTensorRTVersion() {
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+  int ver = getInferLibVersion();
+  int major = ver / 1000;
+  ver = ver - major * 1000;
+  int minor = ver / 100;
+  int patch = ver - minor * 100;
+  return std::tuple<int, int, int>{major, minor, patch};
+#else
+  return std::tuple<int, int, int>{0, 0, 0};
 #endif
 }
 

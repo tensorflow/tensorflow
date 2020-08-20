@@ -80,6 +80,7 @@ tf_cuda_cc_test(
 
 cc_library(
     name = "common_utils",
+    srcs = ["common/utils.cc"],
     hdrs = ["common/utils.h"],
     copts = tf_copts(),
     deps = [
@@ -587,6 +588,7 @@ pybind_extension(
     link_in_framework = True,
     module_name = "_pywrap_py_utils",
     deps = [
+        ":common_utils",
         ":py_utils",
         "//tensorflow/core/platform:env",
         "//tensorflow/core/platform:logging",
