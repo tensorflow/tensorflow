@@ -542,25 +542,26 @@ class Interpreter(object):
     return self._interpreter.ResetVariableTensors()
 
   # Experimental and subject to change.
-  def _native_interpreter(self):
-    """Returns the underlying InterpreterWrapper object.
+  def _native_handle(self):
+    """Returns a pointer to the underlying tflite::Interpreter instance.
 
-    This allows users to extend tflite.Interpreter's functionality in custom cpp
-    function. For example,
-    at cpp level:
-      void SomeNewFeature(InterpreterWrapper* wrapper) {
-        // Get access to tflite::Interpreter
-        auto* interpreter = wrapper->interpreter();
-        // ...
-      }
-    at python level:
-      def some_new_feature(interpreter):
-        _cpp_to_py_wrapper.SomeNewFeature(interpreter._native_interpreter())
+    This allows extending tflite.Interpreter's functionality in a custom C++
+    function. Consider how that may work in a custom pybind wrapper:
+
+      m.def("SomeNewFeature", ([](py::object handle) {
+        auto* interpreter =
+          reinterpret_cast<tflite::Interpreter*>(handle.cast<intptr_t>());
+        ...
+      }))
+
+    and corresponding Python call:
+
+      SomeNewFeature(interpreter.native_handle())
 
     Note: This approach is fragile. Users must guarantee the C++ extension build
     is consistent with the tflite.Interpreter's underlying C++ build.
     """
-    return self._interpreter
+    return self._interpreter.interpreter()
 
 
 class InterpreterWithCustomOps(Interpreter):
