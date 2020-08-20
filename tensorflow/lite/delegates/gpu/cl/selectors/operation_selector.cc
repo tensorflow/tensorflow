@@ -127,7 +127,7 @@ absl::Status WinogradFromNode(const DeviceInfo& device_info,
 
 }  // namespace
 
-absl::Status GPUOperationFromNode(const CreationContext& creation_context,
+absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
                                   const OperationDef& op_def, ModelHints hints,
                                   const std::vector<Value*>& inputs,
                                   const std::vector<Value*>& outputs,
@@ -156,8 +156,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
         auto attr =
             absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-        GPUOperation operation = CreateElementwise(
-            creation_context.GetDeviceInfo(), op_def, op_type, attr);
+        GPUOperation operation =
+            CreateElementwise(device_info, op_def, op_type, attr);
         *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       }
@@ -170,8 +170,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       for (int i = 0; i < inputs.size(); ++i) {
         channels[i] = inputs[i]->tensor.shape.c;
       }
-      return SelectConcat(attr, channels, op_def,
-                          creation_context.device->info_, gpu_op);
+      return SelectConcat(attr, channels, op_def, device_info, gpu_op);
     }
     case OperationType::CONVOLUTION_2D: {
       auto attr =
@@ -179,16 +178,14 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       auto input_shape = inputs[0]->tensor.shape;
       auto output_shape = outputs[0]->tensor.shape;
       if (inputs.size() == 1) {
-        if (WinogradFromNode(creation_context.GetDeviceInfo(), inputs, outputs,
-                             op_def, hints, input_shape, output_shape, attr,
-                             gpu_subgraph)
+        if (WinogradFromNode(device_info, inputs, outputs, op_def, hints,
+                             input_shape, output_shape, attr, gpu_subgraph)
                 .ok()) {
           return absl::OkStatus();
         } else {
           gpu_op = InitSingleOpSubgraph(inputs, outputs, gpu_subgraph);
-          *gpu_op = SelectConvolution(attr, output_shape,
-                                      creation_context.GetDeviceInfo(), op_def,
-                                      hints);
+          *gpu_op =
+              SelectConvolution(attr, output_shape, device_info, op_def, hints);
           return absl::OkStatus();
         }
       } else {
@@ -206,8 +203,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
         conv_def.src_tensors[1] = weights_desc;
         ConvWeightsDescription conv_weights_desc;
         conv_op.operation = SelectConvolutionWithDynamicWeights(
-            attr, weights_shape, output_shape, creation_context.GetDeviceInfo(),
-            conv_def, hints, &conv_weights_desc);
+            attr, weights_shape, output_shape, device_info, conv_def, hints,
+            &conv_weights_desc);
 
         int aligned_output =
             AlignByN(weights_shape.b, conv_weights_desc.output_group_size * 4);
@@ -232,26 +229,24 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     case OperationType::CONVOLUTION_TRANSPOSED: {
       auto attr = absl::any_cast<ConvolutionTransposedAttributes>(
           node.operation.attributes);
-      *gpu_op = SelectConvolutionTransposed(
-          attr, creation_context.GetDeviceInfo(), op_def);
+      *gpu_op = SelectConvolutionTransposed(attr, device_info, op_def);
       return absl::OkStatus();
     }
     case OperationType::DEPTHWISE_CONVOLUTION: {
       auto attr = absl::any_cast<DepthwiseConvolution2DAttributes>(
           node.operation.attributes);
-      *gpu_op =
-          SelectDWConvolution(attr, creation_context.GetDeviceInfo(), op_def);
+      *gpu_op = SelectDWConvolution(attr, device_info, op_def);
       return absl::OkStatus();
     }
     case OperationType::FULLY_CONNECTED: {
       auto attr =
           absl::any_cast<FullyConnectedAttributes>(node.operation.attributes);
-      *gpu_op = SelectFullyConnected(attr, creation_context.GetDeviceInfo(),
-                                     op_def, inputs[0]->tensor.shape.b);
+      *gpu_op = SelectFullyConnected(attr, device_info, op_def,
+                                     inputs[0]->tensor.shape.b);
       return absl::OkStatus();
     }
     case OperationType::LSTM: {
-      SelectLSTM(op_def, creation_context.device->info_, gpu_op);
+      SelectLSTM(op_def, device_info, gpu_op);
       return absl::OkStatus();
     }
     case OperationType::MAX_UNPOOLING_2D: {
@@ -262,11 +257,11 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::MEAN: {
       auto attr = absl::any_cast<MeanAttributes>(node.operation.attributes);
-      return SelectMean(attr, op_def, creation_context.device->info_, gpu_op);
+      return SelectMean(attr, op_def, device_info, gpu_op);
     }
     case OperationType::MEAN_STDDEV_NORMALIZATION: {
       MeanStdDevNormalization operation =
-          CreateMeanStdDevNormalization(op_def, creation_context.device->info_);
+          CreateMeanStdDevNormalization(op_def, device_info);
       *gpu_op =
           absl::make_unique<MeanStdDevNormalization>(std::move(operation));
       return absl::OkStatus();
@@ -284,7 +279,7 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
     }
     case OperationType::PRELU: {
       auto attr = absl::any_cast<PReLUAttributes>(node.operation.attributes);
-      *gpu_op = SelectPReLU(attr, creation_context.GetDeviceInfo(), op_def);
+      *gpu_op = SelectPReLU(attr, device_info, op_def);
       return absl::OkStatus();
     }
     case OperationType::QUANTIZE_AND_DEQUANTIZE: {
@@ -361,8 +356,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
       } else if (inputs.size() == 1 && node.operation.attributes.has_value()) {
         auto attr =
             absl::any_cast<ElementwiseAttributes>(node.operation.attributes);
-        GPUOperation operation = CreateElementwise(
-            creation_context.GetDeviceInfo(), op_def, op_type, attr);
+        GPUOperation operation =
+            CreateElementwise(device_info, op_def, op_type, attr);
         *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
         return absl::OkStatus();
       }
@@ -370,8 +365,8 @@ absl::Status GPUOperationFromNode(const CreationContext& creation_context,
           "No support of ", node.operation.type, " with this parameters"));
     }
     default:
-      return SelectDefault(creation_context.device->info_, op_def, hints,
-                           inputs, outputs, node, gpu_subgraph);
+      return SelectDefault(device_info, op_def, hints, inputs, outputs, node,
+                           gpu_subgraph);
   }
 }
 
