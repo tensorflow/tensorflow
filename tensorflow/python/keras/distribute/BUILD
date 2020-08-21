@@ -469,6 +469,21 @@ distribute_py_test(
 )
 
 distribute_py_test(
+    name = "keras_models_test",
+    srcs = ["keras_models_test.py"],
+    main = "keras_models_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "keras_rnn_model_correctness_test",
     size = "medium",
     srcs = ["keras_rnn_model_correctness_test.py"],
