@@ -560,6 +560,18 @@ def _reduce(tf_fn,
       tf_fn(input_tensor=a.data, axis=axis, keepdims=keepdims))
 
 
+@utils.np_doc('size')
+def size(x):
+  x = x.numpy() if isinstance(x, tf.Tensor) else x
+  if isinstance(x, (int, float, onp.int32, onp.int64, onp.float32, onp.float64)):
+    return 1
+  elif isinstance(x, (np.ndarray, onp.ndarray)):
+    return np.prod(x.shape)
+  else:
+    raise TypeError("The inputs must be one of types {int, float, numpy array"
+                    ", TensorFlow Tensor, TensorFlow ndarray} object.")
+
+
 @np_utils.np_doc('sum')
 def sum(a, axis=None, dtype=None, keepdims=None):  # pylint: disable=redefined-builtin
   return _reduce(
