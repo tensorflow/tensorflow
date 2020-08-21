@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <Python.h>
 
-#include <deque>
+#include <queue>
 
 #include "pybind11/pybind11.h"
 #include "pybind11/stl_bind.h"
@@ -37,7 +37,7 @@ struct CallCounter {
 
  private:
   int max_call_history;
-  std::deque<int> calls_per_tracings;
+  std::queue<int> calls_per_tracings;
 };
 
 CallCounter::CallCounter(int max_call_history)
@@ -45,12 +45,12 @@ CallCounter::CallCounter(int max_call_history)
 
 void CallCounter::called_with_tracing() {
   ++call_count;
-  calls_per_tracings.push_back(1);
+  calls_per_tracings.push(1);
 
-  while (calls_per_tracings.size()) {
-    if (call_count - calls_per_tracings[0] > max_call_history) {
-      call_count -= calls_per_tracings[0];
-      calls_per_tracings.pop_front();
+  while (!calls_per_tracings.empty()) {
+    if (call_count - calls_per_tracings.front() > max_call_history) {
+      call_count -= calls_per_tracings.front();
+      calls_per_tracings.pop();
     } else {
       break;
     }
@@ -60,8 +60,8 @@ void CallCounter::called_with_tracing() {
 void CallCounter::called_without_tracing() {
   // We don't count tracing when users load a concrete function directly or
   // call get_concrete_function, so the first call can be not a tracing call.
-  if (!calls_per_tracings.size()) {
-    calls_per_tracings.push_back(0);
+  if (calls_per_tracings.empty()) {
+    calls_per_tracings.push(0);
   }
   ++calls_per_tracings.back();
   ++call_count;
