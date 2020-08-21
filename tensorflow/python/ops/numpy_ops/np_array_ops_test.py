@@ -808,7 +808,6 @@ class ArrayMethodsTest(test.TestCase):
 
     def run_test(arr):
       onp_arr = arr.numpy() if isinstance(arr, tf.Tensor) else arr
-      print(onp_arr)
       self.assertEqual(np_size(arr), onp.size(onp_arr))
 
     run_test(np.array([1]))
