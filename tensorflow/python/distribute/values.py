@@ -435,7 +435,7 @@ class DistributedVarOp(object):
             self.traceback == o.traceback and self.type == o.type)
 
   def __hash__(self):
-    return hash((self.name, self.graph, self.traceback, self.type))
+    return hash((self.name, self.graph, tuple(self.traceback), self.type))
 
 
 class DistributedVariable(DistributedDelegate, variables_lib.Variable,
