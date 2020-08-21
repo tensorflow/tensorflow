@@ -6,9 +6,8 @@
 # $ make -f tensorflow/lite/micro/tools/make/Makefile TARGET="xcore" test
 
 ifeq ($(TARGET), xcore)
-  XTIME_URL := "https://www.xmos.com/download/Tools-15---Linux-64%2815.0.0_rc1%29.tgz?key=132D-9DC9-E913-0229-ECE6-D5AB-F511-2B19"
-  XTIME_MD5 := "8f6543c8ac4af7583edf75e62df322a2"
   $(eval $(call add_third_party_download,$(XTIME_URL),$(XTIME_MD5),xtimecomposer))
+  # TODO download lib_mic_array, lib_xassert, lib_dsp (for microspeech)
   PLATFORM_FLAGS = -target=XU316-1024-FB265-C32 -mcmodel=large -Os -DXCORE -Wno-xcore-fptrgroup -report
   CXX_TOOL := xcc
   CC_TOOL := xcc
