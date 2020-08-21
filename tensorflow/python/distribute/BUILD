@@ -1797,6 +1797,7 @@ tf_py_test(
     name = "parameter_server_strategy_v2_test",
     srcs = ["parameter_server_strategy_v2_test.py"],
     python_version = "PY3",
+    tags = ["no_rocm"],
     deps = [
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
