@@ -558,7 +558,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
               tensorflow::InputTFE_Context(ctx), policy);
         });
   m.def("TFE_ContextSetServerDef", [](py::handle& ctx, int keep_alive_secs,
-                                      py::str proto) {
+                                      py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
@@ -568,7 +568,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TFE_ContextUpdateServerDef", [](py::handle& ctx, int keep_alive_secs,
-                                         py::str proto) {
+                                         py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
@@ -848,7 +848,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_NewContextOptions", &TFE_NewContextOptions,
         py::return_value_policy::reference);
   m.def("TFE_ContextOptionsSetConfig", [](TFE_ContextOptions* options,
-                                          py::str proto) {
+                                          py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
@@ -899,7 +899,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           return tensorflow::PyoOrThrow(
               TFE_Py_EncodeArg(o.ptr(), include_tensor_ranks_only));
         });
-  m.def("TFE_EnableCollectiveOps", [](const py::handle& ctx, py::str proto) {
+  m.def("TFE_EnableCollectiveOps", [](const py::handle& ctx, py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
