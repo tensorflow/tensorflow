@@ -87,22 +87,120 @@ Status Conv2D(AbstractContext* ctx, Tape* tape,
 //                      const char* data, size_t length,
 //                      ForwardOperation* forward_op_)
 
+ bool g = true;
+ std::cout << "padding = " << padding << ", use_gpu = "<< g << std::endl;
  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrIntList(
       conv_op.get(), "strides", strides, num_dims, &forward_op));
  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrString(
       conv_op.get(), "padding", padding, strlen(padding), &forward_op));
  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(
-      conv_op.get(), "use_cudnn_on_gpu", false, &forward_op));
+      conv_op.get(), "use_cudnn_on_gpu", g, &forward_op));
+
 
  TF_RETURN_IF_ERROR(AddInput(conv_op.get(), x, &forward_op));
  TF_RETURN_IF_ERROR(AddInput(conv_op.get(), filter, &forward_op));
  
  int num_retvals = 1;
- return Execute(conv_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
-                registry);
+ Status s = Execute(conv_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                    registry);
+//  bool use_gpu;
+//  forward_op.attrs.Get("use_cudnn_on_gpu", &use_gpu); // <----- This works!
+//  std::cout << "attrs.use_gpu = " << use_gpu <<std::endl;
+
+//  // std::string p;
+//  char *p;
+//  tensorflow::Padding pa;
+//  forward_op.attrs.Get("padding", &pa); // <--- This doesn't return anything 
+//  std::cout << "attrs.padding = " << pa <<std::endl;
+
+ return s;
 }
 
+Status Log1p(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry) {
+  AbstractOperationPtr log_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(log_op.get(), "Log1p", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<TracingOperation>(log_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<TracingOperation>(log_op.get())->SetOpName(name));
+  }
 
+  TF_RETURN_IF_ERROR(AddInput(log_op.get(), inputs[0], &forward_op));
+
+  int num_retvals = 1;
+  return Execute(log_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
+
+Status Sub(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry) {
+  AbstractOperationPtr sub_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(sub_op.get(), "Sub", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<TracingOperation>(sub_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<TracingOperation>(sub_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(AddInput(sub_op.get(), inputs[0], &forward_op));
+  TF_RETURN_IF_ERROR(AddInput(sub_op.get(), inputs[1], &forward_op));
+
+  int num_retvals = 1;
+  return Execute(sub_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
+
+Status Neg(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry) {
+  AbstractOperationPtr neg_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(neg_op.get(), "Neg", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<TracingOperation>(neg_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<TracingOperation>(neg_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(AddInput(neg_op.get(), inputs[0], &forward_op));
+
+  int num_retvals = 1;
+  return Execute(neg_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
+
+Status DivNoNan(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry) {
+  AbstractOperationPtr div_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(div_op.get(), "DivNoNan", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<TracingOperation>(div_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<TracingOperation>(div_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(AddInput(div_op.get(), inputs[0], &forward_op)); // x
+  TF_RETURN_IF_ERROR(AddInput(div_op.get(), inputs[1], &forward_op)); // y
+
+  int num_retvals = 1; // z = x / y
+  return Execute(div_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
 
 //===================== Test Models to run =========================
 
@@ -139,7 +237,7 @@ Status BiasAddGradModel(AbstractContext* ctx,
  return Status::OK();
 }
 
- Status Conv2DGradModel(AbstractContext* ctx,
+Status Conv2DGradModel(AbstractContext* ctx,
                    absl::Span<AbstractTensorHandle* const> inputs,
                    absl::Span<AbstractTensorHandle*> outputs,
                    const GradientRegistry& registry) {
@@ -169,6 +267,152 @@ Status BiasAddGradModel(AbstractContext* ctx,
   delete tape;
   return Status::OK();
 }
+
+Status SubGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));  // Watch A
+  tape->Watch(ToId(inputs[1]));  // Watch B
+  std::vector<AbstractTensorHandle*> sub_outputs(1);
+  
+  TF_RETURN_IF_ERROR(Sub(ctx, tape, inputs, absl::MakeSpan(sub_outputs),
+                           "sub_test", registry));
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+  
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(sub_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+  
+  outputs[0] = out_grads[0];
+  outputs[1] = out_grads[1];
+  
+  delete tape;
+  return Status::OK();
+}
+
+Status MulGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));  // Watch A
+  tape->Watch(ToId(inputs[1]));  // Watch B
+  std::vector<AbstractTensorHandle*> mul_outputs(1);
+  
+  TF_RETURN_IF_ERROR(Mul(ctx, tape, inputs, absl::MakeSpan(mul_outputs),
+                           "mul_test", registry));
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+  
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(mul_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+  
+  outputs[0] = out_grads[0];
+  outputs[1] = out_grads[1];
+  
+  delete tape;
+  return Status::OK();
+}
+
+Status NegGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));  // Watch A
+  std::vector<AbstractTensorHandle*> neg_outputs(1);
+  
+  TF_RETURN_IF_ERROR(Neg(ctx, tape, inputs, absl::MakeSpan(neg_outputs),
+                           "neg_test", registry));
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+  
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(neg_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0])},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+  
+  outputs[0] = out_grads[0];
+  
+  delete tape;
+  return Status::OK();
+}
+
+Status DivGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));  // Watch X
+  tape->Watch(ToId(inputs[1]));  // Watch Y
+  std::vector<AbstractTensorHandle*> div_outputs(1);
+  
+  TF_RETURN_IF_ERROR(DivNoNan(ctx, tape, inputs, absl::MakeSpan(div_outputs),
+                           "div_test", registry));
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+  
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(div_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+  
+  outputs[0] = out_grads[0];
+  outputs[1] = out_grads[1];
+  
+  delete tape;
+  return Status::OK();
+}
+
+Status Log1pGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));  // Watch A
+  std::vector<AbstractTensorHandle*> log_outputs(1);
+  
+  TF_RETURN_IF_ERROR(Log1p(ctx, tape, inputs, absl::MakeSpan(log_outputs),
+                           "log1p_test", registry));
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+  
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(log_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0])},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+  
+  outputs[0] = out_grads[0];
+  delete tape;
+  return Status::OK();
+}
+
 // ====================== End Models ================================
 
 

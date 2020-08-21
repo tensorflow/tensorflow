@@ -59,6 +59,7 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("FusedBatchNormV3", FusedBatchNormV3Registerer));
   TF_RETURN_IF_ERROR(registry->Register("Mul", MulRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Log1p", Log1pRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("DivNoNan", DivNoNanRegisterer));
   return Status::OK();
 }
 
@@ -137,6 +138,25 @@ AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
   Status s = TestTensorHandleWithDimsInt(ctx, vals, dims, num_dims, &a_raw);
   A.reset(a_raw);
   return A;
+}
+
+// Verifies that given tensor matches expected values
+void VerifyResult(AbstractTensorHandle* to_check, float* expected_vals, int num_elems) {
+
+  TF_Tensor* tensor;
+  Status s = GetValue(to_check, &tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  float result_data[num_elems] = {0};
+  memcpy(&result_data[0], TF_TensorData(tensor),
+         TF_TensorByteSize(tensor));
+
+  float tolerance = 1e-3;
+  for (int j = 0; j < num_elems; j++) {
+    ASSERT_NEAR(result_data[j], expected_vals[j], tolerance);
+  }
+
+  TF_DeleteTensor(tensor);
 }
 
 void printArr(auto data[], int n) {
@@ -370,9 +390,104 @@ TEST_P(CppGradients, TestConv2DGrad) {
   printTensor(outputs[2], 8);
  }
 
+ TEST_P(CppGradients, TestMathGrads) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+
+  float A_vals[] = {1.0f, 2.0f, 3.0f, 4.0f};
+  int64_t A_dims[] = {2, 2};
+  float B_vals[] = {.5f, -1.0f, 2.0f, 6.0f};
+  int64_t B_dims[] = {2, 2};
+  int num_dims = 2;
+
+  AbstractTensorHandlePtr A =
+      GetTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
+  AbstractTensorHandlePtr B =
+      GetTensorHandleUtilFloat(ctx.get(), B_vals, B_dims, num_dims);
+
+  GradientRegistry registry;
+  Status s = RegisterGradients(&registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  
+  // ======== Check grads for Mul: out = A*B ===========
+  std::vector<AbstractTensorHandle*> outputs(2);
+  s = RunModel(MulGradModel, ctx.get(), {A.get(), B.get()},
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  // dA = B_vals
+  VerifyResult(outputs[0], B_vals, 4);
+
+  // dB = A_vals
+  VerifyResult(outputs[1], A_vals, 4);
+
+
+  // ======= Check grads for Sub: out = A - B ===========
+  s = RunModel(SubGradModel, ctx.get(), {A.get(), B.get()},
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  // dA
+  float expected_dA_Sub[] = {1.0f, 1.0f, 1.0f, 1.0f};
+  VerifyResult(outputs[0], expected_dA_Sub, 4);
+
+  // dB
+  float expected_dB_Sub[] = {-1.0f, -1.0f, -1.0f, -1.0f};
+  VerifyResult(outputs[1], expected_dB_Sub, 4);
+  
+  // Check grads for Div: out = A / B
+  s = RunModel(DivGradModel, ctx.get(), {A.get(), B.get()},
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  //dA
+  float expected_dA_Div[] = {2.0f, -1.0f, 0.5f, 0.16667f};
+  VerifyResult(outputs[0], expected_dA_Div, 4);
+
+  // dB
+  float expected_dB_Div[] = {-4.0f, -2.0f, -0.75f, -0.11111f};
+  VerifyResult(outputs[1], expected_dB_Div, 4);
+
+  // Free 2nd output as no longer needed.
+  outputs[1]->Unref();
+
+  // ======= Check Grads for Neg: out = -A =======
+  outputs.resize(1);
+  s = RunModel(NegGradModel, ctx.get(), {A.get()},
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  // dA
+  float expected_dA_Neg[] = {-1.0f, -1.0f, -1.0f, -1.0f};
+  VerifyResult(outputs[0], expected_dA_Neg, 4);
+
+  // ======= Check Grads for Log1p: out = tf.math.log1p(A) =======
+  s = RunModel(Log1pGradModel, ctx.get(), {A.get()},
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  // dA
+  float expected_dA_Log1p[] = {0.5f, 0.3333f, 0.25f, 0.2f};
+  VerifyResult(outputs[0], expected_dA_Log1p, 4);
+
+  outputs[0]->Unref();
+}
+
 //  Add tests for
-//   - NegGrad
-//   - SubGrad
 //   - BatchnormGrad
 //   - fix Conv2D attrs
 

@@ -150,11 +150,11 @@ class Conv2DGradientFunction : public GradientFunction {
       // but not strings or lists
 
       // std::string pad;
-      // TF_RETURN_IF_ERROR(forward_attrs.Get("padding", &pad));  <--- Throws an error that "padding" is not an attr
+      // TF_RETURN_IF_ERROR(forward_attrs.Get("padding", &pad));  // <--- Throws an error that "padding" is not an attr
 
-      bool test_attr;
-      TF_RETURN_IF_ERROR(forward_attrs.Get("use_cudnn_on_gpu", &test_attr)); // <-- Runs without failure
-      std::cout << "test = " << test_attr <<std::endl;
+      // bool test_attr;
+      // TF_RETURN_IF_ERROR(forward_attrs.Get("use_cudnn_on_gpu", &test_attr)); // <-- Runs without failure
+      // std::cout << "test = " << test_attr <<std::endl;
     
       // temporarily set default strides and padding
       int64_t strides[] = {1,1,1,1};

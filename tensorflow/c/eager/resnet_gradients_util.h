@@ -46,6 +46,27 @@ Status Conv2D(AbstractContext* ctx, Tape* tape,
    int64_t* strides, int num_dims, const char* padding,
    const char* name, const GradientRegistry& registry);
 
+Status Log1p(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry);
+
+Status Sub(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry);
+
+Status Neg(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry);
+
+
+Status DivNoNan(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry);           
+
 
 // ====================== Models ==============================
    
@@ -55,6 +76,31 @@ Status BiasAddGradModel(AbstractContext* ctx,
                     const GradientRegistry& registry);
 
  Status Conv2DGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry);
+
+Status SubGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry);
+
+Status MulGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry);
+
+Status NegGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry);
+
+Status DivGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry);
+
+Status Log1pGradModel(AbstractContext* ctx,
                    absl::Span<AbstractTensorHandle* const> inputs,
                    absl::Span<AbstractTensorHandle*> outputs,
                    const GradientRegistry& registry);
