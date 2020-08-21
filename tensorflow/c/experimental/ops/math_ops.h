@@ -41,6 +41,8 @@ Status Sub(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
           absl::Span<AbstractTensorHandle*> outputs, const char* name);
 Status DivNoNan(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
           absl::Span<AbstractTensorHandle*> outputs, const char* name);
+Status Square(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name);
 }  // namespace ops
 }  // namespace tensorflow
 
