@@ -57,6 +57,8 @@ make install
 export LD_LIBRARY_PATH=/usr/local/lib/openmpi
 sudo ldconfig
 
+sudo update-alternatives --install /usr/bin/gcc gcc /dt7/usr/bin/gcc 60 --slave /usr/bin/g++ g++ /dt7/usr/bin/g++
+
 g++ --version
 
 # Install Horovod.
