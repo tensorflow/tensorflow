@@ -119,6 +119,7 @@ py_library(
     deps = [
         ":backend",
         "//tensorflow/python/keras/utils:engine_utils",
+        "//tensorflow/python/keras/layers:advanced_activations",
     ],
 )
 
