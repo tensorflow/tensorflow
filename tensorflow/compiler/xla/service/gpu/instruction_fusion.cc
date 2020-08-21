@@ -87,7 +87,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
   auto producer = consumer->operand(operand_index);
 
   // The following checks are potentially expensive.
-  if (FusionWouldBeTooLarge(*consumer, *producer)) {
+  if (FusionWouldBeTooLarge(*consumer, *producer, true)) {
     VLOG(5) << "Fusion of (" << producer->ToString() << ") into ("
             << consumer->ToString() << ") would be too large";
     return false;
