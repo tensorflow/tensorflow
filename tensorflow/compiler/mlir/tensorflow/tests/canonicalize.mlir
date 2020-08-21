@@ -902,6 +902,51 @@ func @foldIf(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tens
   return %4 : tensor<f32>
 }
 
+// CHECK-LABEL: foldIfRegion
+func @foldIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tensor<f32>, tensor<f32>) {
+  %false = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %true = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+
+  // CHECK: [[Val0:%.*]] = "tf.Mul"(%arg0, %arg1)
+  %0 = "tf.IfRegion"(%true) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%true_value) : (tensor<f32>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%false_value) : (tensor<f32>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
+
+  // CHECK: [[Val1:%.*]] = "tf.Sub"(%arg0, %arg1)
+  %1 = "tf.IfRegion"(%false) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%true_value) : (tensor<f32>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%false_value) : (tensor<f32>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
+
+  // CHECK: return [[Val0]], [[Val1]]
+  return %0, %1 : tensor<f32>, tensor<f32>
+}
+
+// CHECK-LABEL: foldIfRegionMismatchedTypes
+func @foldIfRegionMismatchedTypes(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>, %arg2: tensor<i1>) -> tensor<1xf32> {
+  %false = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %true = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+
+  // CHECK: [[Val0:%.*]] = "tf.Mul"(%arg0, %arg1)
+  // CHECK-NEXT: [[Cast:%.*]] = "tf.Cast"([[Val0]])
+  // CHECK-NEXT: return [[Cast]]
+  %0 = "tf.IfRegion"(%true) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+      "tf.Yield"(%true_value) : (tensor<?xf32>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+      "tf.Yield"(%false_value) : (tensor<?xf32>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> tensor<1xf32>
+  return %0 : tensor<1xf32>
+}
+
 // CHECK-LABEL: foldCase
 func @foldCase(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<f32>) {
   %2 = constant dense<1> : tensor<i32>
