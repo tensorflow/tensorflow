@@ -3073,7 +3073,8 @@ class Function(object):
     # Return the cached `Function` for the instance
     return self._descriptor_cache[instance]
 
-  def _cache_key(self, args, kwargs, include_tensor_ranks_only=False):
+  def _cache_key(self, args, kwargs, include_tensor_ranks_only=False,
+                 cache_key_context=None):
     """Computes the cache key given inputs and execution context."""
     if self.input_signature is None:
       inputs = (args, kwargs) if kwargs else args
@@ -3085,6 +3086,18 @@ class Function(object):
       assert not include_tensor_ranks_only
       hashable_input_signature = self._hashable_input_signature
 
+    if cache_key_context is None:
+      cache_key_context = self._cache_key_context()
+
+    (parent_graph, device_functions, colocation_stack, in_cross_replica_context,
+     variable_policy, xla_context_id) = cache_key_context
+
+    return CacheKey(hashable_input_signature, parent_graph, device_functions,
+                    colocation_stack, in_cross_replica_context, variable_policy,
+                    xla_context_id)
+
+  def _cache_key_context(self):
+    """Returns execution context."""
     ctx = context.context()
 
     # Don't need to open an init_scope if the _cache_key call is in eager mode
@@ -3153,9 +3166,8 @@ class Function(object):
     else:
       variable_policy = save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES
 
-    return CacheKey(hashable_input_signature, parent_graph, device_functions,
-                    colocation_stack, in_cross_replica_context, variable_policy,
-                    xla_context_id)
+    return (parent_graph, device_functions, colocation_stack,
+            in_cross_replica_context, variable_policy, xla_context_id)
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
@@ -3205,16 +3217,19 @@ class Function(object):
 
     # Build a cache key where TensorShapes include only rank information (and
     # not information about the size of each dimension).
+    rank_only_cache_key_context = self._cache_key_context()
     if not any_composite_args:
       rank_only_cache_key = self._cache_key(
-          args, kwargs, include_tensor_ranks_only=True)
+          args, kwargs, include_tensor_ranks_only=True,
+          cache_key_context=rank_only_cache_key_context)
     else:
       # For the rank-only cache key, replace any composite tensors with
       # shape-relaxed TypeSpecs.
       (cache_key_args, cache_key_kwargs) = nest.map_structure(
           _shape_relaxed_type_for_composite_tensor, (args, kwargs))
       rank_only_cache_key = self._cache_key(
-          cache_key_args, cache_key_kwargs, include_tensor_ranks_only=True)
+          cache_key_args, cache_key_kwargs, include_tensor_ranks_only=True,
+          cache_key_context=rank_only_cache_key_context)
 
     arg_specs = [_type_spec_for(x) for x in flat_args_all]
     relaxed_arg_specs = self._function_cache.arg_relaxed_specs.get(
