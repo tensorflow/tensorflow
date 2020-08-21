@@ -515,7 +515,7 @@ func LoadLibrary(path string) (*LibraryHandler, error) {
 		cptr: cptr,
 	}
 
-	runtime.SetFinalizer(h, (*LibraryHandler).free)
+	runtime.SetFinalizer(lh, (*LibraryHandler).free)
 	return lh, nil
 }
 
