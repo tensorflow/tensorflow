@@ -48,8 +48,8 @@ void CallCounter::called_with_tracing() {
 
   while (calls_per_tracings.size()) {
     if (call_count - calls_per_tracings[0] > max_call_history) {
-      call_count -= calls_per_tracing[0];
-      calls_per_tracing.pop_front();
+      call_count -= calls_per_tracings[0];
+      calls_per_tracings.pop_front();
     } else {
       break;
     }
@@ -70,10 +70,11 @@ int CallCounter::get_tracing_count() {
 
 PYBIND11_MODULE(_call_counter, m) {
   py::class_<CallCounter>(m, "CallCounter")
-      .def(py::init<>())
-      .def("called_with_tracing", &CallCounter::called_with_tracing);
-      .def("called_without_tracing", &CallCounter::called_without_tracing);
-      .def("get_tracing_count", &CallCounter::get_tracing_count);
+      .def(py::init<int>())
+      .def("called_with_tracing", &CallCounter::called_with_tracing)
+      .def("called_without_tracing", &CallCounter::called_without_tracing)
+      .def("get_tracing_count", &CallCounter::get_tracing_count)
+      .def_readonly("call_count", &CallCounter::call_count);
 }
 
 } // namespace tensorflow
