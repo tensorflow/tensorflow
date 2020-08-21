@@ -1757,7 +1757,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if not call_context.frozen:
       for update in nest.flatten(updates):
         if callable(update):
-          update()
+          update()  # pylint: disable=not-callable
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
