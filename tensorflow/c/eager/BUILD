@@ -260,10 +260,9 @@ cc_library(
     name = "mnist_gradients_testutil",
     srcs = [
         "mnist_gradients_testutil.cc",
-        "mnist_gradients_testutil.h",
     ],
     hdrs = [
-        "gradients.h",
+        "mnist_gradients_testutil.h",
     ],
     visibility = [
         "//tensorflow:internal",
