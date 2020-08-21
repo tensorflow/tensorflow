@@ -743,6 +743,7 @@ py_test(
     tags = [
         "noasan",  # TODO(b/156029134)
         "nomsan",  # TODO(b/156029134)
+        "notap",  # TODO(b/165865820): restore when not flaky
         "notsan",  # TODO(b/156029134)
     ],
     deps = [
