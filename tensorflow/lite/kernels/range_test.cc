@@ -119,6 +119,7 @@ TEST(RangeOpModel, EmptyOutput) {
   model.PopulateTensor<int32_t>(model.delta(), {1});
   model.Invoke();
   EXPECT_THAT(model.GetOutputShape(), ElementsAre(0));
+  EXPECT_THAT(model.GetOutput(), ElementsAre());
 }
 
 }  // namespace
