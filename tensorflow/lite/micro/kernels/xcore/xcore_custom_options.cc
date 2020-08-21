@@ -22,7 +22,7 @@ uint32_t named_uint32_custom_option(TfLiteContext *context, const char *buffer,
        return values[i].AsUInt32();
     }
   }
-  assert(0);
+  TF_LITE_FATAL("Custom option not found");
   return 0;
 }
 
