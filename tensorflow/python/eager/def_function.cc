@@ -26,6 +26,7 @@ namespace tensorflow {
 
 namespace py = pybind11;
 
+// Class keeping track of how many recent calls triggered tracing.
 struct CallCounter {
   int call_count;
 
@@ -57,6 +58,8 @@ void CallCounter::called_with_tracing() {
 }
 
 void CallCounter::called_without_tracing() {
+  // We don't count tracing when users load a concrete function directly or
+  // call get_concrete_function, so the first call can be not a tracing call.
   if (!calls_per_tracings.size()) {
     calls_per_tracings.push_back(0);
   }

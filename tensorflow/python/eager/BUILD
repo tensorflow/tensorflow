@@ -784,6 +784,7 @@ py_library(
         ":context",
         ":function",
         ":lift_to_graph",
+        ":_call_counter",
         "//tensorflow/python:cond_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:control_flow_util",

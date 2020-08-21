@@ -46,40 +46,13 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
 
+from tensorflow.python.eager import _call_counter
+
 FREQUENT_TRACING_WARNING_MAX_CALL_HISTORY = 10
 FREQUENT_TRACING_WARNING_THRESHOLD = 5
 
 
-class _CallCounter(object):
-  """Class keeping track of how many recent calls triggered tracing."""
-
-  __slots__ = ["_max_call_history", "_calls_per_tracings", "call_count"]
-
-  def __init__(self, max_call_history):
-    self._max_call_history = max_call_history
-    self._calls_per_tracings = []
-    self.call_count = 0
-
-  def called_with_tracing(self):
-    self.call_count += 1
-    self._calls_per_tracings.append(1)
-
-    while self._calls_per_tracings:
-      if self.call_count - self._calls_per_tracings[0] > self._max_call_history:
-        self.call_count -= self._calls_per_tracings.pop(0)
-      else:
-        break
-
-  def called_without_tracing(self):
-    # We don't count tracing when users load a concrete function directly or
-    # call get_concrete_function, so the first call can be not a tracing call.
-    if not self._calls_per_tracings:
-      self._calls_per_tracings = [0]
-    self._calls_per_tracings[-1] += 1
-    self.call_count += 1
-
-  def get_tracing_count(self):
-    return len(self._calls_per_tracings)
+_CallCounter = _call_counter.CallCounter
 
 
 class _FrequentTracingDetector(object):
