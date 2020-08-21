@@ -1484,7 +1484,7 @@ class AutoPolicy(VariablePolicy):
   def _get_cross_replica(self, var):
     # Return identity, to avoid directly exposing the variable to the user and
     # allowing it to be modified by mistake.
-    return array_ops.identity(Mirrored._get_cross_replica(var))  # pylint: disable=protected-access
+    return array_ops.identity(var._get_on_device_or_primary())  # pylint: disable=protected-access
 
   def _update_replica(self, var, update_fn, value, **kwargs):
     return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
