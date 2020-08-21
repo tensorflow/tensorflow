@@ -229,13 +229,13 @@ tf_cc_test(
         "//tensorflow/c/experimental/saved_model/core/revived_types:constant",
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/common_runtime:core_cpu_lib",
         "//tensorflow/core/common_runtime/eager:context",
         "//tensorflow/core/common_runtime/eager:core",
+        "//tensorflow/core/common_runtime/eager:tensor_handle",
     ],
 )
 
