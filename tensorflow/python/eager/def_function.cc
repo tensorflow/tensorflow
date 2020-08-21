@@ -27,57 +27,58 @@ namespace tensorflow {
 namespace py = pybind11;
 
 // Class keeping track of how many recent calls triggered tracing.
-struct CallCounter {
-  int call_count;
+class CallCounter {
+ public:
+  int call_count_;
 
   CallCounter(int max_call_history);
-  void called_with_tracing();
-  void called_without_tracing();
-  int get_tracing_count();
+  void CalledWithTracing();
+  void CalledWithoutTracing();
+  int GetTracingCount();
 
  private:
-  int max_call_history;
-  std::queue<int> calls_per_tracings;
+  int max_call_history_;
+  std::queue<int> calls_per_tracings_;
 };
 
 CallCounter::CallCounter(int max_call_history)
-    : max_call_history(max_call_history), call_count(0) {}
+    : max_call_history_(max_call_history), call_count_(0) {}
 
-void CallCounter::called_with_tracing() {
-  ++call_count;
-  calls_per_tracings.push(1);
+void CallCounter::CalledWithTracing() {
+  ++call_count_;
+  calls_per_tracings_.push(1);
 
-  while (!calls_per_tracings.empty()) {
-    if (call_count - calls_per_tracings.front() > max_call_history) {
-      call_count -= calls_per_tracings.front();
-      calls_per_tracings.pop();
+  while (!calls_per_tracings_.empty()) {
+    if (call_count_ - calls_per_tracings_.front() > max_call_history_) {
+      call_count_ -= calls_per_tracings_.front();
+      calls_per_tracings_.pop();
     } else {
       break;
     }
   }
 }
 
-void CallCounter::called_without_tracing() {
+void CallCounter::CalledWithoutTracing() {
   // We don't count tracing when users load a concrete function directly or
   // call get_concrete_function, so the first call can be not a tracing call.
-  if (calls_per_tracings.empty()) {
-    calls_per_tracings.push(0);
+  if (calls_per_tracings_.empty()) {
+    calls_per_tracings_.push(0);
   }
-  ++calls_per_tracings.back();
-  ++call_count;
+  ++calls_per_tracings_.back();
+  ++call_count_;
 }
 
-int CallCounter::get_tracing_count() {
-  return calls_per_tracings.size();
+int CallCounter::GetTracingCount() {
+  return calls_per_tracings_.size();
 }
 
 PYBIND11_MODULE(_call_counter, m) {
   py::class_<CallCounter>(m, "CallCounter")
       .def(py::init<int>())
-      .def("called_with_tracing", &CallCounter::called_with_tracing)
-      .def("called_without_tracing", &CallCounter::called_without_tracing)
-      .def("get_tracing_count", &CallCounter::get_tracing_count)
-      .def_readonly("call_count", &CallCounter::call_count);
+      .def("called_with_tracing", &CallCounter::CalledWithTracing)
+      .def("called_without_tracing", &CallCounter::CalledWithoutTracing)
+      .def("get_tracing_count", &CallCounter::GetTracingCount)
+      .def_readonly("call_count", &CallCounter::call_count_);
 }
 
 } // namespace tensorflow
