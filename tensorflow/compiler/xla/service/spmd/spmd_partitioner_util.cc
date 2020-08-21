@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -202,13 +203,17 @@ std::vector<HloInstruction*> MakePartitionOffsets(
     absl::Span<const int64> dims) {
   CHECK(!shape.IsTuple());
 
-  Array2D<int32> offset_array(
-      {sharding.tile_assignment().num_elements(), shape.rank()});
-  offset_array.Each([&](int64 i, int64 j, int32* value) {
-    *value = sharding.TileOffsetForDevice(shape, i)[j];
-  });
-  auto offset_table = b->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2FromArray2D(offset_array)));
+  std::vector<std::vector<int32>> offset_arrays(shape.rank());
+  for (int64 i = 0; i < shape.rank(); ++i) {
+    offset_arrays[i].resize(sharding.tile_assignment().num_elements());
+  }
+  auto shard_shape = MakePartitionedShape(shape, sharding);
+  sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        for (int64 i = 0; i < shape.rank(); ++i) {
+          offset_arrays[i][device] = indices[i] * shard_shape.dimensions(i);
+        }
+      });
   std::vector<HloInstruction*> offsets;
   for (int64 i = 0; i < shape.rank(); ++i) {
     if (sharding.tile_assignment().dim(i) == 1 ||
@@ -216,11 +221,10 @@ std::vector<HloInstruction*> MakePartitionOffsets(
       offsets.push_back(b->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
     } else {
+      auto offset_table = b->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<int32>(offset_arrays[i])));
       auto index = b->AddInstruction(HloInstruction::CreateDynamicSlice(
-          ShapeUtil::MakeShape(S32, {1, 1}), offset_table,
-          {partition_id, b->AddInstruction(HloInstruction::CreateConstant(
-                             LiteralUtil::CreateR0<uint32>(i)))},
-          {1, 1}));
+          ShapeUtil::MakeShape(S32, {1}), offset_table, {partition_id}, {1}));
       offsets.push_back(b->AddInstruction(
           HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), index)));
     }

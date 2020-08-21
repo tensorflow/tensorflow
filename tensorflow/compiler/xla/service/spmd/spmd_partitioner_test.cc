@@ -138,8 +138,7 @@ ENTRY entry {
               op::AllReduce(op::Select(
                   op::Broadcast(op::Compare(op::PartitionId(), op::Constant())),
                   op::Constant(), op::Broadcast())),
-              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId(),
-                                           op::Constant())),
+              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
               op::Constant())),
           op::Shape("s32[1,3]")));
 }
@@ -161,8 +160,7 @@ ENTRY entry {
       op::Copy(op::AllReduce(AllOf(
           op::DynamicUpdateSlice(
               op::Broadcast(), AllOf(op::Constant(), op::Shape("s32[1,3]")),
-              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId(),
-                                           op::Constant())),
+              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
               op::Constant()),
           op::Shape("s32[2,3]")))));
 }
@@ -184,8 +182,7 @@ ENTRY entry {
       op::Copy(op::Copy(op::AllReduce(AllOf(
           op::DynamicUpdateSlice(
               op::Broadcast(), AllOf(op::Constant(), op::Shape("s32[1,3]")),
-              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId(),
-                                           op::Constant())),
+              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
               op::Constant()),
           op::Shape("s32[2,3]"))))));
 }
@@ -279,8 +276,8 @@ ENTRY entry {
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_THAT(root, op::Tuple());
 
-  auto offset = op::Reshape(
-      op::DynamicSlice(op::Constant(), op::PartitionId(), op::Constant()));
+  auto offset =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
 
   EXPECT_THAT(root->operand(0),
               op::DynamicSlice(op::GetTupleElement(op::Parameter()), offset,
@@ -305,13 +302,13 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
-      root, op::Copy(op::AllReduce(op::DynamicUpdateSlice(
-                op::Broadcast(),
-                op::GetTupleElement(
-                    AllOf(op::Infeed(), op::Shape("(f32[4,2]{1,0}, token[])"))),
-                op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId(),
-                                             op::Constant())),
-                op::Constant()))));
+      root,
+      op::Copy(op::AllReduce(op::DynamicUpdateSlice(
+          op::Broadcast(),
+          op::GetTupleElement(
+              AllOf(op::Infeed(), op::Shape("(f32[4,2]{1,0}, token[])"))),
+          op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
+          op::Constant()))));
 }
 
 TEST_F(SpmdPartitioningTest, UnevenTiledInfeed) {
@@ -3956,8 +3953,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto offset = op::Reshape(
-      op::DynamicSlice(op::Constant(), op::PartitionId(), op::Constant()));
+  auto offset =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
   auto min = AllOf(op::Broadcast(offset), op::Shape("s32[2,3]"));
   auto max = AllOf(op::Broadcast(op::Add(offset, op::Constant())),
                    op::Shape("s32[2,3]"));
@@ -4093,8 +4090,8 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto offset = op::Reshape(
-      op::DynamicSlice(op::Constant(), op::PartitionId(), op::Constant()));
+  auto offset =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
   auto indices = op::Subtract(
       op::Parameter(1), AllOf(op::Broadcast(offset), op::Shape("s32[2,3]")));
   HloInstruction* root = module->entry_computation()->root_instruction();
