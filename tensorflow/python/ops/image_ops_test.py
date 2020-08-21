@@ -1871,7 +1871,6 @@ class CentralCropTest(test_util.TensorFlowTestCase):
     else:
       self.assertEqual(y.get_shape().as_list(), post_shape)
 
-  @test_util.run_deprecated_v1
   def testNoOp(self):
     x_shapes = [[13, 9, 3], [5, 13, 9, 3]]
     for x_shape in x_shapes:
@@ -1882,7 +1881,6 @@ class CentralCropTest(test_util.TensorFlowTestCase):
           y = image_ops.central_crop(x, 1.0)
           y_tf = self.evaluate(y)
           self.assertAllEqual(y_tf, x_np)
-          self.assertEqual(y.op.name, x.op.name)
 
   def testCropping(self):
     x_shape = [4, 8, 1]
@@ -1915,7 +1913,6 @@ class CentralCropTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(y_tf, y_np)
       self.assertAllEqual(y_tf.shape, y_np.shape)
 
-  @test_util.run_deprecated_v1
   def testCropping2(self):
     # Test case for 10315
     x_shapes = [[240, 320, 3], [5, 240, 320, 3]]
@@ -1926,51 +1923,50 @@ class CentralCropTest(test_util.TensorFlowTestCase):
       y_np = np.zeros(y_shape, dtype=np.int32)
       for use_gpu in [True, False]:
         with self.cached_session(use_gpu=use_gpu):
-          x = array_ops.placeholder(shape=x_shape, dtype=dtypes.int32)
-          y = image_ops.central_crop(x, 0.33)
-          y_tf = y.eval(feed_dict={x: x_np})
+          y_tf = self.evaluate(image_ops.central_crop(x_np, 0.33))
           self.assertAllEqual(y_tf, y_np)
           self.assertAllEqual(y_tf.shape, y_np.shape)
 
-  @test_util.run_deprecated_v1
   def testShapeInference(self):
-    # Test no-op fraction=1.0, with 3-D tensors.
-    self._assertShapeInference([50, 60, 3], 1.0, [50, 60, 3])
-    self._assertShapeInference([None, 60, 3], 1.0, [None, 60, 3])
-    self._assertShapeInference([50, None, 3], 1.0, [50, None, 3])
-    self._assertShapeInference([None, None, 3], 1.0, [None, None, 3])
-    self._assertShapeInference([50, 60, None], 1.0, [50, 60, None])
-    self._assertShapeInference([None, None, None], 1.0, [None, None, None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      # Test no-op fraction=1.0, with 3-D tensors.
+      self._assertShapeInference([50, 60, 3], 1.0, [50, 60, 3])
+      self._assertShapeInference([None, 60, 3], 1.0, [None, 60, 3])
+      self._assertShapeInference([50, None, 3], 1.0, [50, None, 3])
+      self._assertShapeInference([None, None, 3], 1.0, [None, None, 3])
+      self._assertShapeInference([50, 60, None], 1.0, [50, 60, None])
+      self._assertShapeInference([None, None, None], 1.0, [None, None, None])
 
-    # Test no-op fraction=0.5, with 3-D tensors.
-    self._assertShapeInference([50, 60, 3], 0.5, [26, 30, 3])
-    self._assertShapeInference([None, 60, 3], 0.5, [None, 30, 3])
-    self._assertShapeInference([50, None, 3], 0.5, [26, None, 3])
-    self._assertShapeInference([None, None, 3], 0.5, [None, None, 3])
-    self._assertShapeInference([50, 60, None], 0.5, [26, 30, None])
-    self._assertShapeInference([None, None, None], 0.5, [None, None, None])
+      # Test no-op fraction=0.5, with 3-D tensors.
+      self._assertShapeInference([50, 60, 3], 0.5, [26, 30, 3])
+      self._assertShapeInference([None, 60, 3], 0.5, [None, 30, 3])
+      self._assertShapeInference([50, None, 3], 0.5, [26, None, 3])
+      self._assertShapeInference([None, None, 3], 0.5, [None, None, 3])
+      self._assertShapeInference([50, 60, None], 0.5, [26, 30, None])
+      self._assertShapeInference([None, None, None], 0.5, [None, None, None])
 
-    # Test no-op fraction=1.0, with 4-D tensors.
-    self._assertShapeInference([5, 50, 60, 3], 1.0, [5, 50, 60, 3])
-    self._assertShapeInference([5, None, 60, 3], 1.0, [5, None, 60, 3])
-    self._assertShapeInference([5, 50, None, 3], 1.0, [5, 50, None, 3])
-    self._assertShapeInference([5, None, None, 3], 1.0, [5, None, None, 3])
-    self._assertShapeInference([5, 50, 60, None], 1.0, [5, 50, 60, None])
-    self._assertShapeInference([5, None, None, None], 1.0,
-                               [5, None, None, None])
-    self._assertShapeInference([None, None, None, None], 1.0,
-                               [None, None, None, None])
+      # Test no-op fraction=1.0, with 4-D tensors.
+      self._assertShapeInference([5, 50, 60, 3], 1.0, [5, 50, 60, 3])
+      self._assertShapeInference([5, None, 60, 3], 1.0, [5, None, 60, 3])
+      self._assertShapeInference([5, 50, None, 3], 1.0, [5, 50, None, 3])
+      self._assertShapeInference([5, None, None, 3], 1.0, [5, None, None, 3])
+      self._assertShapeInference([5, 50, 60, None], 1.0, [5, 50, 60, None])
+      self._assertShapeInference([5, None, None, None], 1.0,
+                                 [5, None, None, None])
+      self._assertShapeInference([None, None, None, None], 1.0,
+                                 [None, None, None, None])
 
-    # Test no-op fraction=0.5, with 4-D tensors.
-    self._assertShapeInference([5, 50, 60, 3], 0.5, [5, 26, 30, 3])
-    self._assertShapeInference([5, None, 60, 3], 0.5, [5, None, 30, 3])
-    self._assertShapeInference([5, 50, None, 3], 0.5, [5, 26, None, 3])
-    self._assertShapeInference([5, None, None, 3], 0.5, [5, None, None, 3])
-    self._assertShapeInference([5, 50, 60, None], 0.5, [5, 26, 30, None])
-    self._assertShapeInference([5, None, None, None], 0.5,
-                               [5, None, None, None])
-    self._assertShapeInference([None, None, None, None], 0.5,
-                               [None, None, None, None])
+      # Test no-op fraction=0.5, with 4-D tensors.
+      self._assertShapeInference([5, 50, 60, 3], 0.5, [5, 26, 30, 3])
+      self._assertShapeInference([5, None, 60, 3], 0.5, [5, None, 30, 3])
+      self._assertShapeInference([5, 50, None, 3], 0.5, [5, 26, None, 3])
+      self._assertShapeInference([5, None, None, 3], 0.5, [5, None, None, 3])
+      self._assertShapeInference([5, 50, 60, None], 0.5, [5, 26, 30, None])
+      self._assertShapeInference([5, None, None, None], 0.5,
+                                 [5, None, None, None])
+      self._assertShapeInference([None, None, None, None], 0.5,
+                                 [None, None, None, None])
 
   def testErrorOnInvalidCentralCropFractionValues(self):
     x_shape = [13, 9, 3]
@@ -1993,14 +1989,15 @@ class CentralCropTest(test_util.TensorFlowTestCase):
           with self.assertRaises(ValueError):
             _ = image_ops.central_crop(x, 0.5)
 
-  @test_util.run_deprecated_v1
   def testNameScope(self):
-    x_shape = [13, 9, 3]
-    x_np = np.ones(x_shape, dtype=np.float32)
-    for use_gpu in [True, False]:
-      with self.cached_session(use_gpu=use_gpu):
-        y = image_ops.central_crop(x_np, 1.0)
-        self.assertTrue(y.op.name.startswith("central_crop"))
+    # Testing name scope requires a graph.
+    with ops.Graph().as_default():
+      x_shape = [13, 9, 3]
+      x_np = np.ones(x_shape, dtype=np.float32)
+      for use_gpu in [True, False]:
+        with self.cached_session(use_gpu=use_gpu):
+          y = image_ops.central_crop(x_np, 1.0)
+          self.assertTrue(y.op.name.startswith("central_crop"))
 
 
 class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
