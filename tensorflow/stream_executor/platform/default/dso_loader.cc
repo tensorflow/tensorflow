@@ -214,14 +214,11 @@ port::StatusOr<void*> GetRocrandDsoHandle() {
   return *result;
 }
 
-<<<<<<< HEAD
 port::StatusOr<void*> GetRoctracerDsoHandle() {
   static auto result = new auto(DsoLoader::GetRoctracerDsoHandle());
   return *result;
 }
 
-=======
->>>>>>> 8a002f2269310f513d326eaeff5c73f679c73f77
 port::StatusOr<void*> GetHipsparseDsoHandle() {
   static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());
   return *result;
