@@ -864,9 +864,7 @@ class Client(object):
   """An object to schedule and orchestrate remote function execution.
 
   A `Client` object represents a program used to create dataset, schedule
-  functions to be executed, and fetch the results of the functions. Operations
-  that will involve other tasks in the cluster, such as variable creation,
-  reading variables etc., should be performed within `client.context()`.
+  functions to be executed, and fetch the results of the functions.
 
   Currently, `Client` is not supported to be used in a standalone manner.
   It should be used in conjunction with `ParameterServerStrategyV2`. The
@@ -897,27 +895,9 @@ class Client(object):
     self._strategy = strategy
     self.cluster = Cluster(strategy._cluster_resolver)
 
-  @contextlib.contextmanager
-  def context(self):
-    """Context manager under which client distribution is in effect.
-
-    All distribution related methods using this `Client`, including those that
-    create and update variables, should be used within this context. This
-    context manager handles cluster fault tolerance in remote function
-    execution.
-
-    The context manager calls `join` automatically when exiting successfully.
-
-    Entering `Client.context` also enters the underlying strategy's scope, and
-    this means that `tf.distribute.get_strategy()` will return the strategy
-    object being used.
-
-    Yields:
-      Nothing.
-    """
-    with self._strategy.scope(), self._handle_parameter_server_failure():
-      yield
-    self.join()
+  @property
+  def strategy(self):
+    return self._strategy
 
   @contextlib.contextmanager
   def experimental_variable_partitioning_scope(self):
@@ -981,7 +961,9 @@ class Client(object):
         scheduled function since the last time an error was thrown or since
         the beginning of the program.
     """
-    with self._translate_parameter_server_failure():
+    # Slot variables are usually created during function tracing time; thus
+    # `schedule` needs to be called within the `strategy.scope()`.
+    with self.strategy.scope(), _translate_parameter_server_failure():
       return self.cluster.schedule(fn, args=args, kwargs=kwargs)
 
   def join(self):
@@ -1005,7 +987,7 @@ class Client(object):
     """
     # TODO(b/159486639): Update the docs once we can cancel the functions being
     # executed on workers, that when `join` returns, the system is stabilized.
-    with self._translate_parameter_server_failure():
+    with _translate_parameter_server_failure():
       self.cluster.join()
 
   def done(self):
@@ -1104,31 +1086,32 @@ class Client(object):
       return (result,)
     return result
 
-  # pylint: disable=missing-function-docstring
-  @contextlib.contextmanager
-  def _translate_parameter_server_failure(self):
-    try:
-      yield
-    except Exception as e:  # pylint: disable=broad-except
-      if _is_ps_failure(e):
-        logging.exception("Encountered parameter server failures!")
-        raise ParameterServerFailureError(e)
-      else:
-        raise
 
-  # pylint: disable=missing-function-docstring
-  @contextlib.contextmanager
-  def _handle_parameter_server_failure(self):
-    try:
-      with self._translate_parameter_server_failure():
-        yield
-    except ParameterServerFailureError as e:  # pylint: disable=broad-except
-      restart_exit_code = os.environ.get(
-          "TF_CLIENT_NON_FATAL_RESTART_EXIT_CODE", None)
-      if restart_exit_code is not None:
-        sys.exit(int(restart_exit_code))
-      else:
-        raise
+# pylint: disable=missing-function-docstring
+@contextlib.contextmanager
+def _translate_parameter_server_failure():
+  try:
+    yield
+  except Exception as e:  # pylint: disable=broad-except
+    if _is_ps_failure(e):
+      raise ParameterServerFailureError(e)
+    else:
+      raise
+
+
+# pylint: disable=missing-function-docstring
+@contextlib.contextmanager
+def handle_parameter_server_failure():
+  try:
+    with _translate_parameter_server_failure():
+      yield
+  except ParameterServerFailureError as e:  # pylint: disable=broad-except
+    restart_exit_code = os.environ.get("TF_CLIENT_NON_FATAL_RESTART_EXIT_CODE",
+                                       None)
+    if restart_exit_code is not None:
+      sys.exit(int(restart_exit_code))
+    else:
+      raise
 
 
 class _PerWorkerDistributedDataset(object):

@@ -69,7 +69,7 @@ class KPLTest(test.TestCase):
     ]
     label_vocab = ["yes", "no"]
 
-    with self.client.context():
+    with self.client.strategy.scope():
 
       # Define KPLs under client's context. Right now, if they have look up
       # tables, they will be created on the client. Their variables will be
