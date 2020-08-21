@@ -13,18 +13,25 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir-hlo/Dialect/mhlo/IR/register.h"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/register_passes.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllPasses.h"
 #include "mlir/Support/MlirOptMain.h"
 
 int main(int argc, char **argv) {
-  mlir::DialectRegistry registry;
-  mlir::registerAllDialects(registry);
   mlir::registerAllPasses();
   mlir::mhlo::registerAllMhloPasses();
   mlir::lmhlo::registerAllLmhloPasses();
+
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  registry.insert<mlir::mhlo::MhloDialect>();
+  registry.insert<mlir::chlo::HloClientDialect>();
+  registry.insert<mlir::lmhlo::LmhloDialect>();
+
   return failed(
       mlir::MlirOptMain(argc, argv, "MLIR HLO pass driver\n", registry));
 }
