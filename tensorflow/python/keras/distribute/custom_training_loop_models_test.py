@@ -278,12 +278,13 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
       result = model.predict(input_data)
       self.assertEqual(result.shape, (1, 2))
 
+  # TODO(b/165912857): Re-enable.
   @combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
-  def test_lstm(self, distribution):
+  def DISABLED_test_lstm(self, distribution):
 
     batch_size = 32
 
