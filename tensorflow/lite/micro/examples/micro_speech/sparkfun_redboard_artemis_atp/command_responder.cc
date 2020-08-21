@@ -14,13 +14,6 @@ limitations under the License.
 
 #include "am_bsp.h"  // NOLINT
 
-//*****************************************************************************
-//
-//  LED_BLUE pin: The BLUE LED labeled STAT.
-//
-//*****************************************************************************
-#define ADK_AM_BSP_GPIO_LED_BLUE            	23
-
 // This implementation will light up the LEDs on the board in response to
 // different commands.
 void RespondToCommand(tflite::ErrorReporter* error_reporter,
@@ -30,7 +23,7 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   if (!is_initialized) {
     // Setup LED's as outputs
     //am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_RED, g_AM_HAL_GPIO_OUTPUT_12);
-    am_hal_gpio_pinconfig(ADK_AM_BSP_GPIO_LED_BLUE, g_AM_HAL_GPIO_OUTPUT_12);
+    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_BLUE, g_AM_HAL_GPIO_OUTPUT_12);
     //am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_GREEN, g_AM_HAL_GPIO_OUTPUT_12);
     //am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_YELLOW, g_AM_HAL_GPIO_OUTPUT_12);
     is_initialized = true;
@@ -40,9 +33,9 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   // Toggle the blue LED every time an inference is performed.
   ++count;
   if (count & 1) {
-    am_hal_gpio_output_set(ADK_AM_BSP_GPIO_LED_BLUE);
+    am_hal_gpio_output_set(AM_BSP_GPIO_LED_BLUE);
   } else {
-    am_hal_gpio_output_clear(ADK_AM_BSP_GPIO_LED_BLUE);
+    am_hal_gpio_output_clear(AM_BSP_GPIO_LED_BLUE);
   }
 
   // Turn on the yellow LED if 'yes' was heard.
