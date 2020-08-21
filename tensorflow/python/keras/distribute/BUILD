@@ -839,7 +839,6 @@ py_test(
     shard_count = 1,
     tags = [
         "no_oss",  # TODO(b/162119374): enable it in OSS.
-        "notap",  # TODO(b/165836402): enable after testing it isn't flaky.
     ],
     deps = [
         "//tensorflow/python:constant_op",
