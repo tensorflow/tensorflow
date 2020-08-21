@@ -38,19 +38,19 @@ limitations under the License.
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Debug.h"
-#include "mlir/Analysis/LoopAnalysis.h"           // from @llvm-project
+#include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
-#include "mlir/Dialect/Quant/UniformSupport.h"    // from @llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"      // from @llvm-project
-#include "mlir/IR/Attributes.h"                   // from @llvm-project
-#include "mlir/IR/Function.h"                     // from @llvm-project
-#include "mlir/IR/MLIRContext.h"                  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"                 // from @llvm-project
-#include "mlir/IR/StandardTypes.h"                // from @llvm-project
-#include "mlir/Pass/Pass.h"                       // from @llvm-project
-#include "mlir/Support/LLVM.h"                    // from @llvm-project
-#include "mlir/Support/LogicalResult.h"           // from @llvm-project
-#include "mlir/Transforms/DialectConversion.h"    // from @llvm-project
+#include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
@@ -727,29 +727,28 @@ struct ConvertTFBroadcastTo : public RewritePattern {
   }
 };
 
-struct ConvertFusedBatchNorm : public RewritePattern {
+struct ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
   explicit ConvertFusedBatchNorm(MLIRContext *context)
-      : RewritePattern(TF::FusedBatchNormOp::getOperationName(), 1, context) {}
+      : OpRewritePattern<TF::FusedBatchNormOp>(context) {}
 
-  LogicalResult matchAndRewrite(Operation *op,
+  LogicalResult matchAndRewrite(TF::FusedBatchNormOp tf_fused_batch_norm_op,
                                 PatternRewriter &rewriter) const override {
-    auto tf_fused_batch_norm_op = cast<TF::FusedBatchNormOp>(op);
+    const auto &old_result_types = tf_fused_batch_norm_op.getResultTypes();
+    llvm::SmallVector<Type, 6> new_result_types(old_result_types.begin(),
+                                                old_result_types.end());
+    // reserve_space_3
+    new_result_types.push_back(
+        UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
 
-    // FusedBatchNormV3 expects a 5th output reserve_space_3,
-    // but the output is unused; it doesn't matter what we pass there.
-    rewriter.replaceOpWithNewOp<TF::FusedBatchNormV3Op>(
-        op, tf_fused_batch_norm_op.y().getType(),
-        tf_fused_batch_norm_op.batch_mean().getType(),
-        tf_fused_batch_norm_op.batch_variance().getType(),
-        tf_fused_batch_norm_op.reserve_space_1().getType(),
-        tf_fused_batch_norm_op.reserve_space_2().getType(),
-        /*reserve_space_3=*/tf_fused_batch_norm_op.reserve_space_2().getType(),
-        tf_fused_batch_norm_op.x(), tf_fused_batch_norm_op.scale(),
-        tf_fused_batch_norm_op.offset(), tf_fused_batch_norm_op.mean(),
-        tf_fused_batch_norm_op.variance(), tf_fused_batch_norm_op.epsilon(),
-        tf_fused_batch_norm_op.exponential_avg_factor(),
-        tf_fused_batch_norm_op.data_format(),
-        tf_fused_batch_norm_op.is_training());
+    OperationState new_state(tf_fused_batch_norm_op.getLoc(),
+                             TF::FusedBatchNormV3Op::getOperationName(),
+                             tf_fused_batch_norm_op.getOperands(),
+                             new_result_types,
+                             tf_fused_batch_norm_op.getAttrs());
+    Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
+
+    rewriter.replaceOp(tf_fused_batch_norm_op,
+                       tf_fused_batch_norm_op_v3->getResults());
     return success();
   }
 };
