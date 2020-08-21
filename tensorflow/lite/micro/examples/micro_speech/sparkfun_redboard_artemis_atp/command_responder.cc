@@ -23,7 +23,7 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   if (!is_initialized) {
     // Setup LED's as outputs
     //am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_RED, g_AM_HAL_GPIO_OUTPUT_12);
-    am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_BLUE, g_AM_HAL_GPIO_OUTPUT_12);
+    am_hal_gpio_pinconfig(23, g_AM_HAL_GPIO_OUTPUT_12);
     //am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_GREEN, g_AM_HAL_GPIO_OUTPUT_12);
     //am_hal_gpio_pinconfig(AM_BSP_GPIO_LED_YELLOW, g_AM_HAL_GPIO_OUTPUT_12);
     is_initialized = true;
@@ -33,9 +33,9 @@ void RespondToCommand(tflite::ErrorReporter* error_reporter,
   // Toggle the blue LED every time an inference is performed.
   ++count;
   if (count & 1) {
-    am_hal_gpio_output_set(AM_BSP_GPIO_LED_BLUE);
+    am_hal_gpio_output_set(23);
   } else {
-    am_hal_gpio_output_clear(AM_BSP_GPIO_LED_BLUE);
+    am_hal_gpio_output_clear(23);
   }
 
   // Turn on the yellow LED if 'yes' was heard.
