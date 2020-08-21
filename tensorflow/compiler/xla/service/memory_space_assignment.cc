@@ -1409,7 +1409,8 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
 
   AddAsyncCopy(*allocations.back(), MemorySpace::kAlternate,
                chunk_candidate.chunk, prefetch_candidate->start,
-               prefetch_candidate->end, latest_prefetch_time, &allocations);
+               prefetch_candidate->end, latest_prefetch_time, &allocations,
+               /*is_cross_program_prefetch=*/true);
   absl::c_for_each(uses, [&](auto& use) { allocations.back()->AddUse(use); });
   for (auto& allocation : allocations) {
     allocations_->push_back(std::move(allocation));
@@ -1887,7 +1888,8 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
     const MemorySpaceAssignment::Allocation& prev_allocation,
     MemorySpace memory_space, absl::optional<Chunk> chunk, int64 start_time,
     int64 end_time, int64 copy_done_schedule_before_time,
-    MemorySpaceAssignment::AllocationSequence* allocations) {
+    MemorySpaceAssignment::AllocationSequence* allocations,
+    bool is_cross_program_prefetch) {
   VLOG(3) << "Copy to "
           << (memory_space == MemorySpaceAssignment::MemorySpace::kDefault
                   ? "default"
@@ -1899,7 +1901,7 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
   allocations->push_back(
       absl::make_unique<MemorySpaceAssignment::CopyAllocation>(
           prev_allocation, memory_space, chunk, start_time, end_time,
-          copy_done_schedule_before_time));
+          copy_done_schedule_before_time, is_cross_program_prefetch));
 
   // Register the additional async copy with the interval tree to keep track of
   // the limit at any given time.
@@ -2713,9 +2715,9 @@ Status MemorySpaceAssignment::CopyAllocation::Process(
   Shape shape = defining_position().shape();
   HloInstruction* producing_instruction = AddGetTupleElements();
   HloComputation* computation = producing_instruction->parent();
-  copy_start_ = computation->AddInstruction(HloInstruction::CreateUnary(
+  copy_start_ = computation->AddInstruction(HloInstruction::CreateCopyStart(
       ShapeUtil::MakeTupleShape({shape, shape, ShapeUtil::MakeShape(U32, {})}),
-      HloOpcode::kCopyStart, producing_instruction));
+      producing_instruction, is_cross_program_prefetch_));
   copy_done_ = computation->AddInstruction(
       HloInstruction::CreateUnary(shape, HloOpcode::kCopyDone, copy_start_));
   VLOG(4) << "Created " << copy_start_->name()
