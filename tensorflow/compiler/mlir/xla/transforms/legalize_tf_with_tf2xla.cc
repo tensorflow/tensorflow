@@ -195,7 +195,6 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::RGBToHSVOp>(),
     TypeID::get<TF::RandomUniformIntOp>(),
     TypeID::get<TF::RealDivOp>(),
-    TypeID::get<TF::ReciprocalOp>(),
     TypeID::get<TF::ReciprocalGradOp>(),
     TypeID::get<TF::Relu6GradOp>(),
     TypeID::get<TF::ResizeBilinearOp>(),

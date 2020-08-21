@@ -195,7 +195,7 @@ def : Pat<(TF_PadOp TensorOf<[AnySignlessInteger, AnyFloat]>:$input, $paddings),
 // Reciprocal op patterns.
 //===----------------------------------------------------------------------===//
 
-def LowerReciprocal : Pat<(TF_ReciprocalOp TensorOf<[TF_SInt, AnyFloat, TF_AnyComplex]>:$x),
+def LowerReciprocal : Pat<(TF_ReciprocalOp $x),
                           (TF_DivOp (TF_ConstOp (GetScalarOfType<1> $x)), $x)>;
 
 //===----------------------------------------------------------------------===//
