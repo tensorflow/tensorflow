@@ -680,21 +680,6 @@ class DistributedIteratorBase(DistributedIteratorInterface):
 
     return distribute_utils.regroup(replicas)
 
-class DistributedIteratorForReplicas(DistributedIterator):
-  """Input Iterator for a distributed dataset on replicas."""
-  def __init__(self, input_workers, iterators, strategy):
-    super(DistributedIteratorForReplicas, self).__init__(input_workers, iterators, strategy)
-
-  def get_next(self, name=None):
-    """Returns the next input from the iterator for all replicas."""
-    if not self._enable_get_next_as_optional:
-      replicas = []
-      for iterator in self._iterators:
-        with ops.device(iterator._worker):
-          next_out = iterator.get_next_as_list_static_shapes(iterator._worker)
-          replicas.append(next_out)
-      return values.regroup(replicas)
-
 
 class DistributedIteratorV1(DistributedIteratorBase):
   """Input Iterator for a distributed dataset."""
@@ -900,6 +885,23 @@ class DistributedIterator(DistributedIteratorBase,
     return DistributedIteratorSpec(self._input_workers, self.element_spec,
                                    self._strategy,
                                    self._enable_get_next_as_optional)
+
+
+
+class DistributedIteratorForReplicas(DistributedIterator):
+  """Input Iterator for a distributed dataset on replicas."""
+  def __init__(self, input_workers, iterators, strategy):
+    super(DistributedIteratorForReplicas, self).__init__(input_workers, iterators, strategy)
+
+  def get_next(self, name=None):
+    """Returns the next input from the iterator for all replicas."""
+    if not self._enable_get_next_as_optional:
+      replicas = []
+      for iterator in self._iterators:
+        with ops.device(iterator._worker):
+          next_out = iterator.get_next_as_list_static_shapes(iterator._worker)
+          replicas.append(next_out)
+      return values.regroup(replicas)
 
 
 class _IterableInput(DistributedDatasetInterface):
@@ -1803,7 +1805,7 @@ class _SingleWorkerCallableIterator(object):
 def _create_iterators_per_replica_with_input_context(input_contexts,
                                                     input_workers,
                                                     dataset_fn):
- """Create a multidevice iterator per workers given a dataset function."""
+  """Create a multidevice iterator per workers given a dataset function."""
   iterators = []
   for i, ctx in enumerate(input_contexts):
     devices = input_workers.compute_devices_for_worker(i)
