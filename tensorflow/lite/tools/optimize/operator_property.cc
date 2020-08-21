@@ -70,6 +70,11 @@ OperatorProperty GetOperatorProperty(const ModelT* model, int subgraph_index,
   BuiltinOperator op_code = op_variant.op_code;
   OperatorProperty property;
   switch (op_code) {
+    case BuiltinOperator_ABS:
+      property.inputs = {{0, {}}};
+      property.outputs = {{0, {}}};
+      property.version = 2;
+      break;
     case BuiltinOperator_ADD:
       property.inputs = {{0, {}}, {1, {}}};
       property.outputs = {{0, {}}};

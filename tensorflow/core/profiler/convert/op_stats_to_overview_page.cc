@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/kernel_stats_utils.h"
 #include "tensorflow/core/profiler/utils/math_utils.h"
 #include "tensorflow/core/profiler/utils/op_metrics_db_utils.h"
+#include "tensorflow/core/profiler/utils/tf_op_utils.h"
 #include "tensorflow/core/profiler/utils/time_utils.h"
 
 namespace tensorflow {
@@ -128,18 +129,20 @@ std::string GeneratePrecisionStatement(const PrecisionStats& precision_stats) {
 
 }  // namespace
 
-void SetCommonRecommendation(absl::string_view input_classification,
-                             absl::string_view input_statement,
-                             absl::string_view output_statement,
-                             HardwareType hardware_type,
-                             absl::string_view tf_function_statement_html,
-                             absl::string_view eager_statement_html,
-                             OverviewPageRecommendation* re) {
+void SetCommonRecommendation(
+    absl::string_view input_classification, absl::string_view input_statement,
+    absl::string_view output_statement, HardwareType hardware_type,
+    absl::string_view tf_function_statement_html,
+    absl::string_view eager_statement_html,
+    absl::string_view outside_compilation_statement_html,
+    OverviewPageRecommendation* re) {
   re->set_bottleneck(std::string(input_classification));
   re->set_statement(std::string(input_statement));
   re->set_output_statement(std::string(output_statement));
   re->set_tf_function_statement_html(std::string(tf_function_statement_html));
   re->set_eager_statement_html(std::string(eager_statement_html));
+  re->set_outside_compilation_statement_html(
+      std::string(outside_compilation_statement_html));
   ComputeHostTips(re);
   ComputeDeviceTips(hardware_type, re);
   ComputeDocumentationTips(re);
@@ -222,6 +225,18 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
       if (metrics.is_eager()) eager_device_op_time_ps += metrics.self_time_ps();
     }
   }
+  // Figures out outside_compilation time from
+  // op_stats.device_op_metrics_db().metrics_db(). We don't use the
+  // {metrics.provenance(), metrics.name()} from
+  // device_tf_op_metrics_db.metrics_db(), because metrics.provenance() there is
+  // not set and metrics.name() can be either HLO-Op name or TF-Op name, which
+  // will confuse IsOutsideCompilationOp().
+  uint64 outside_compilation_device_op_time_ps = 0;
+  for (const OpMetrics& metrics :
+       op_stats.device_op_metrics_db().metrics_db()) {
+    if (!IsOutsideCompilationOp(metrics.provenance(), metrics.name())) continue;
+    outside_compilation_device_op_time_ps += metrics.self_time_ps();
+  }
   uint64 num_total_tf_ops = num_host_tf_ops + num_device_tf_ops;
   analysis.set_host_tf_op_percent(
       100.0 * SafeDivide(num_host_tf_ops, num_total_tf_ops));
@@ -233,6 +248,9 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
       SafeDivide(eager_host_op_time_ps, total_host_op_time_ps_exclude_idle));
   analysis.set_device_op_time_eager_percent(
       100.0 * SafeDivide(eager_device_op_time_ps,
+                         total_device_op_time_ps_exclude_idle));
+  analysis.set_device_op_time_outside_compilation_percent(
+      100.0 * SafeDivide(outside_compilation_device_op_time_ps,
                          total_device_op_time_ps_exclude_idle));
   return analysis;
 }
@@ -315,16 +333,29 @@ std::string EagerRecommendationHtml(double host_op_time_eager_percent,
                                     double device_op_time_eager_percent) {
   std::string recommendation = "";
   if (host_op_time_eager_percent > kEagerReportThresholdInPercent)
-    absl::StrAppend(&recommendation, host_op_time_eager_percent,
+    absl::StrAppend(&recommendation,
+                    absl::StrFormat("%.1f", host_op_time_eager_percent),
                     "% of Op time on the host used eager execution. ");
   if (device_op_time_eager_percent > kEagerReportThresholdInPercent)
-    absl::StrAppend(&recommendation, device_op_time_eager_percent,
+    absl::StrAppend(&recommendation,
+                    absl::StrFormat("%.1f", device_op_time_eager_percent),
                     "% of Op time on the device used eager execution. ");
   if (!recommendation.empty())
     absl::StrAppend(&recommendation, "Performance could be improved with ",
                     AnchorElement("https://www.tensorflow.org/guide/function",
                                   "tf.function."));
   return recommendation;
+}
+
+std::string OutsideCompilationRecommendationHtml(
+    double device_op_time_outside_compilation_percent) {
+  if (device_op_time_outside_compilation_percent <=
+      kOutsideCompilationThresholdInPercent)
+    return "";
+  return absl::StrCat(
+      absl::StrFormat("%.1lf", device_op_time_outside_compilation_percent),
+      " % of Op time on the device are for outside compilation. Performance "
+      "could be improved by avoiding outside compilation.");
 }
 
 OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats) {
@@ -346,6 +377,9 @@ OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats) {
       EagerRecommendationHtml(
           overview_page.analysis().host_op_time_eager_percent(),
           overview_page.analysis().device_op_time_eager_percent()),
+      OutsideCompilationRecommendationHtml(
+          overview_page.analysis()
+              .device_op_time_outside_compilation_percent()),
       overview_page.mutable_recommendation());
   PopulateOverviewDiagnostics(op_stats, overview_page.mutable_diagnostics());
   return overview_page;

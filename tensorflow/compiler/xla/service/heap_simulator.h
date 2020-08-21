@@ -40,7 +40,9 @@ limitations under the License.
 namespace xla {
 
 // Forward declare classes defined below.
+template <typename BufferType>
 class HeapAlgorithm;
+template <typename BufferType>
 class NoFragmentationStatsHeap;
 
 // HeapSimulator assigns buffer offsets by running a simulation of a regular
@@ -66,9 +68,10 @@ class HeapSimulator {
   };
 
   // Result represents the result of the heap simulation.
+  template <typename BufferType>
   struct Result {
     // The assignment of buffers to chunks.
-    absl::flat_hash_map<const HloValue*, Chunk> chunk_map;
+    absl::flat_hash_map<const BufferType*, Chunk> chunk_map;
 
     // The total size in bytes of the heap, containing all assigned chunks.
     int64 heap_size = 0;
@@ -128,19 +131,19 @@ class HeapSimulator {
   // to running on a per-computation basis, since we can re-use buffer space for
   // called sub-computations.
   //
-  static StatusOr<Result> Run(std::unique_ptr<HeapAlgorithm> algorithm,
-                              const HloModule& module,
-                              const HloSchedule& schedule,
-                              const HloAliasAnalysis& alias_analysis,
-                              const BufferValue::SizeFunction& size_fn,
-                              const Options& options = Options());
+  static StatusOr<Result<HloValue>> Run(
+      std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
+      const HloModule& module, const HloSchedule& schedule,
+      const HloAliasAnalysis& alias_analysis,
+      const BufferValue::SizeFunction& size_fn,
+      const Options& options = Options());
 
   // Same as above, but runs on a single computation. The 'instruction_sequence'
   // must contain a topologically-consistent total ordering of all instructions
   // in the computation. The result is invalid if instructions are not run in
   // exactly this sequence.
-  static StatusOr<Result> Run(
-      std::unique_ptr<HeapAlgorithm> algorithm,
+  static StatusOr<Result<HloValue>> Run(
+      std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
       const HloAliasAnalysis& alias_analysis,
@@ -151,8 +154,8 @@ class HeapSimulator {
 
   // Same as above, but runs on with a schedule that covers all nested
   // computations.
-  static StatusOr<Result> Run(
-      std::unique_ptr<HeapAlgorithm> algorithm,
+  static StatusOr<Result<HloValue>> Run(
+      std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
       const HloComputation& computation,
       const HloInstructionSequence& instruction_sequence,
       const HloAliasAnalysis& alias_analysis,
@@ -163,7 +166,7 @@ class HeapSimulator {
   // If 'schedule' is non-null, it is used to find kCall and kWhile
   // sub-computations, and the heap simulation for those sub-computations will
   // be run recursively. I.e. the simulation is run over the whole module.
-  HeapSimulator(std::unique_ptr<HeapAlgorithm> algorithm,
+  HeapSimulator(std::unique_ptr<HeapAlgorithm<HloValue>> algorithm,
                 const BufferValue::SizeFunction& size_fn,
                 const Options& options, const HloSchedule* schedule = nullptr,
                 const absl::flat_hash_map<const HloComputation*, int64>*
@@ -187,7 +190,7 @@ class HeapSimulator {
   //  Two buffers belong to the same shared group.
   //  Eight of the buffer has no shared group assigned.
   bool InSameSharedGroup(const HloValue* left, const HloValue* right);
-  Result Finish();
+  Result<HloValue> Finish();
 
   void FillDebugTrace(HeapSimulatorTrace::Event::Kind kind,
                       const HloValue* buffer, const HloInstruction* instruction,
@@ -196,8 +199,9 @@ class HeapSimulator {
   // Counterintuitive: the algorithm_ itself can be a NoFragmentationStatsHeap,
   // in which case we are calculating the same allocs/frees twice in the
   // simulation.
-  const std::unique_ptr<NoFragmentationStatsHeap> no_fragmentation_stats_;
-  const std::unique_ptr<HeapAlgorithm> algorithm_;
+  const std::unique_ptr<NoFragmentationStatsHeap<HloValue>>
+      no_fragmentation_stats_;
+  const std::unique_ptr<HeapAlgorithm<HloValue>> algorithm_;
   const BufferValue::SizeFunction size_fn_;
   const Options options_;
   // schedule_ is set by buffer assignment, and memory_by_computation_ is
@@ -220,15 +224,16 @@ class HeapSimulator {
 // offsets to buffers.  A sequence of Alloc / Free calls will be made, with the
 // same semantics as a regular memory heap.  Finish will be called at the end to
 // collect the simulation results.
+template <typename BufferType>
 class HeapAlgorithm {
  public:
   using Chunk = HeapSimulator::Chunk;
-  using Result = HeapSimulator::Result;
+  using Result = HeapSimulator::Result<BufferType>;
 
   virtual ~HeapAlgorithm() = default;
 
   // Alloc allocates a buffer of 'size' bytes.
-  virtual void Alloc(const HloValue* buffer, int64 size) = 0;
+  virtual void Alloc(const BufferType* buffer, int64 size) = 0;
 
   // Takes memory usage of subcomputations into account when calculating the
   // memory usage of a computation. Currently, we don't handle buffer aliasing
@@ -247,7 +252,7 @@ class HeapAlgorithm {
           memory_by_computation) {}
 
   // Free de-allocates a previously allocated buffer.
-  virtual void Free(const HloValue* buffer, int64 size) = 0;
+  virtual void Free(const BufferType* buffer, int64 size) = 0;
 
   // Indicates that a buffer has to be collocated with another buffer. In
   // addition to Alloc and Free, the heap simulator exposes a concept of buffer
@@ -255,7 +260,7 @@ class HeapAlgorithm {
   // the buffer, it associates the buffer with a previously allocated (or
   // shared) buffer.  Each group of mutually-shared buffers points to a single
   // SharedGroup instance, which is a shared control block.
-  virtual void ShareWith(const HloValue* buffer, const HloValue* share_with,
+  virtual void ShareWith(const BufferType* buffer, const BufferType* share_with,
                          int64 size) {
     Alloc(buffer, size);
   }
@@ -269,19 +274,22 @@ class HeapAlgorithm {
 // this is the absolute minimum size for a given instruction sequence.  The
 // result.chunk_map returned in Finish is always empty, since we only collect
 // stats, and don't actually compute chunk assignments.
-class NoFragmentationStatsHeap : public HeapAlgorithm {
+template <typename BufferType>
+class NoFragmentationStatsHeap : public HeapAlgorithm<BufferType> {
  public:
+  using Result = HeapSimulator::Result<BufferType>;
+
   NoFragmentationStatsHeap() = default;
   ~NoFragmentationStatsHeap() override = default;
 
-  void Alloc(const HloValue* buffer, int64 size) override;
+  void Alloc(const BufferType* buffer, int64 size) override;
 
   void AccountForSubcomputationMemory(
       const HloInstruction* instruction, int64 alloc_size_by_instruction,
       const absl::flat_hash_map<const HloComputation*, int64>&
           memory_by_computation) override;
 
-  void Free(const HloValue* buffer, int64 size) override;
+  void Free(const BufferType* buffer, int64 size) override;
 
   Result Finish() override;
 
@@ -336,8 +344,12 @@ class BufferIntervalTree {
 // alloc/free time. It internally tracks the allocated buffers and their live
 // intervals; when allocating a buffer, it finds the best-fit free chunk during
 // its live interval.
-class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
+template <typename BufferType>
+class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm<BufferType> {
  public:
+  using Result = HeapSimulator::Result<BufferType>;
+  using Chunk = HeapSimulator::Chunk;
+
   enum Type {
     kSpatial = 0,
     kTemporal,
@@ -345,7 +357,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
 
   // BufferInterval stores a buffer's size and time interval.
   struct BufferInterval {
-    const HloValue* buffer;
+    const BufferType* buffer;
     int64 size;
     // Alloc time of the buffer.
     int64 start;
@@ -353,7 +365,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
     int64 end;
 
     // Colocation buffers that need to be collocated with this one.
-    std::vector<const HloValue*> colocations;
+    std::vector<const BufferType*> colocations;
 
     // True if this buffer needs an allocation. False if it is collocated with
     // other buffer.
@@ -368,10 +380,10 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
                                            Type type = kSpatial);
   ~GlobalDecreasingSizeBestFitHeap() override {}
 
-  void Alloc(const HloValue* buffer, int64 size) override;
-  void Free(const HloValue* buffer, int64 size) override;
+  void Alloc(const BufferType* buffer, int64 size) override;
+  void Free(const BufferType* buffer, int64 size) override;
 
-  void ShareWith(const HloValue* buffer, const HloValue* share_with,
+  void ShareWith(const BufferType* buffer, const BufferType* share_with,
                  int64 size) override;
 
   Result Finish() override;
@@ -404,7 +416,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
   void CommitChunk(const BufferInterval& buffer_interval,
                    ChunkCandidate chunk_candidate);
   // Adds the buffer and the chunk to the result chunk map.
-  virtual void AddToChunkMap(const HloValue* buffer, Chunk chunk);
+  virtual void AddToChunkMap(const BufferType* buffer, Chunk chunk);
 
   // Return a BufferIntervalCompare function that sorts by live ranges.  A live
   // range is defined by the range between the start of the first buffer and the
@@ -413,7 +425,7 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
   // contiguous.
   BufferIntervalCompare GetTemporalBufferIntervalCompare() const;
 
-  absl::flat_hash_map<const HloValue*, BufferInterval> buffer_intervals_;
+  absl::flat_hash_map<const BufferType*, BufferInterval> buffer_intervals_;
   Result result_;
   BufferIntervalCompare buffer_interval_compare_;
   BufferIntervalTree interval_tree_;
@@ -428,33 +440,37 @@ class GlobalDecreasingSizeBestFitHeap : public HeapAlgorithm {
   // Returns all transitive colocated buffers of this buffer interval. I.e., If
   // a buffer A is colocated with B and B is colocated with C, this function
   // returns all three of them.
-  absl::flat_hash_set<const HloValue*> GetTransitiveColocations(
+  absl::flat_hash_set<const BufferType*> GetTransitiveColocations(
       const BufferInterval& interval) const;
 };
 
 // A heap algorithm that chooses the best results from other algorithms added to
 // it.
-class ChooseBestHeapAlgorithm : public HeapAlgorithm {
+template <typename BufferType>
+class ChooseBestHeapAlgorithm : public HeapAlgorithm<BufferType> {
  public:
+  using Result = HeapSimulator::Result<BufferType>;
+
   ChooseBestHeapAlgorithm(
-      std::unique_ptr<std::vector<std::unique_ptr<HeapAlgorithm>>> algorithms)
+      std::unique_ptr<std::vector<std::unique_ptr<HeapAlgorithm<BufferType>>>>
+          algorithms)
       : algorithms_(std::move(*algorithms)) {}
   ~ChooseBestHeapAlgorithm() override {}
 
-  void Alloc(const HloValue* buffer, int64 size) override {
+  void Alloc(const BufferType* buffer, int64 size) override {
     for (auto& algorithm : algorithms_) {
       algorithm->Alloc(buffer, size);
     }
   }
 
-  void ShareWith(const HloValue* buffer, const HloValue* share_with,
+  void ShareWith(const BufferType* buffer, const BufferType* share_with,
                  int64 size) override {
     for (auto& algorithm : algorithms_) {
       algorithm->ShareWith(buffer, share_with, size);
     }
   }
 
-  void Free(const HloValue* buffer, int64 size) override {
+  void Free(const BufferType* buffer, int64 size) override {
     for (auto& algorithm : algorithms_) {
       algorithm->Free(buffer, size);
     }
@@ -463,7 +479,7 @@ class ChooseBestHeapAlgorithm : public HeapAlgorithm {
   Result Finish() override;
 
  private:
-  std::vector<std::unique_ptr<HeapAlgorithm>> algorithms_;
+  std::vector<std::unique_ptr<HeapAlgorithm<BufferType>>> algorithms_;
 };
 
 }  // namespace xla

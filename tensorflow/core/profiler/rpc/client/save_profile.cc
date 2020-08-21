@@ -130,6 +130,8 @@ Status MaybeCreateEmptyEventFile(const string& logdir) {
   // Suffix for an empty event file.  it should be kept in sync with
   // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
   constexpr char kProfileEmptySuffix[] = ".profile-empty";
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(logdir));
+
   std::vector<string> children;
   TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
   for (const string& child : children) {

@@ -1083,6 +1083,36 @@ XlaOp XlaBuilder::Reshape(const Shape& shape, XlaOp operand,
   });
 }
 
+XlaOp XlaBuilder::DynamicReshape(XlaOp operand,
+                                 absl::Span<const XlaOp> dim_sizes,
+                                 absl::Span<const int64> new_size_bounds,
+                                 const std::vector<bool>& dims_are_dynamic) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape* operand_shape, GetShapePtr(operand));
+    std::vector<const Shape*> dim_size_shape_ptrs;
+    TF_ASSIGN_OR_RETURN(const auto& dim_size_shapes,
+                        GetOperandShapes(dim_sizes));
+
+    absl::c_transform(dim_size_shapes, std::back_inserter(dim_size_shape_ptrs),
+                      [](const Shape& shape) { return &shape; });
+    TF_ASSIGN_OR_RETURN(const Shape shape,
+                        ShapeInference::InferDynamicReshapeShape(
+                            *operand_shape, dim_size_shape_ptrs,
+                            new_size_bounds, dims_are_dynamic));
+    TF_RETURN_IF_ERROR(first_error_);
+    std::vector<XlaOp> operands;
+    operands.reserve(1 + dim_sizes.size());
+    operands.push_back(operand);
+    for (const XlaOp& dim_size : dim_sizes) {
+      operands.push_back(dim_size);
+    }
+    HloInstructionProto instr;
+    *instr.mutable_shape() = shape.ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kDynamicReshape,
+                          operands);
+  });
+}
+
 XlaOp XlaBuilder::Collapse(XlaOp operand, absl::Span<const int64> dimensions) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     if (dimensions.size() <= 1) {
@@ -1423,6 +1453,25 @@ StatusOr<XlaOp> XlaBuilder::FftInternal(
   }
 
   return AddInstruction(std::move(instr), HloOpcode::kFft, {operand});
+}
+
+StatusOr<XlaOp> XlaBuilder::TriangularSolveInternal(
+    const Shape& shape, XlaOp a, XlaOp b, TriangularSolveOptions options) {
+  HloInstructionProto instr;
+  *instr.mutable_triangular_solve_options() = std::move(options);
+  *instr.mutable_shape() = shape.ToProto();
+
+  return AddInstruction(std::move(instr), HloOpcode::kTriangularSolve, {a, b});
+}
+
+StatusOr<XlaOp> XlaBuilder::CholeskyInternal(const Shape& shape, XlaOp a,
+                                             bool lower) {
+  HloInstructionProto instr;
+  xla::CholeskyOptions& options = *instr.mutable_cholesky_options();
+  options.set_lower(lower);
+  *instr.mutable_shape() = shape.ToProto();
+
+  return AddInstruction(std::move(instr), HloOpcode::kCholesky, {a});
 }
 
 XlaOp XlaBuilder::Infeed(const Shape& shape, const string& config) {
@@ -1935,7 +1984,6 @@ XlaOp XlaBuilder::RngUniform(XlaOp a, XlaOp b, const Shape& shape) {
 XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
                                   XlaOp initial_state, const Shape& shape) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
     TF_ASSIGN_OR_RETURN(Shape state_shape, GetShape(initial_state));
     Shape output_shape = shape;
@@ -1954,12 +2002,20 @@ XlaOp XlaBuilder::RngBitGenerator(RandomAlgorithm algorithm,
         return InvalidArgument("Unsupported shape for RngBitGenerator: %s",
                                PrimitiveType_Name(output_shape.element_type()));
     }
-    *instr.mutable_shape() =
-        ShapeUtil::MakeTupleShape({state_shape, output_shape}).ToProto();
-    instr.set_rng_algorithm(algorithm);
-    return AddInstruction(std::move(instr), HloOpcode::kRngBitGenerator,
-                          {initial_state});
+    return RngBitGeneratorInternal(
+        ShapeUtil::MakeTupleShape({state_shape, output_shape}), algorithm,
+        initial_state);
   });
+}
+
+StatusOr<XlaOp> XlaBuilder::RngBitGeneratorInternal(
+    const Shape& full_result_shape, RandomAlgorithm algorithm,
+    XlaOp initial_state) {
+  HloInstructionProto instr;
+  *instr.mutable_shape() = full_result_shape.ToProto();
+  instr.set_rng_algorithm(algorithm);
+  return AddInstruction(std::move(instr), HloOpcode::kRngBitGenerator,
+                        {initial_state});
 }
 
 XlaOp XlaBuilder::While(const XlaComputation& condition,
@@ -2527,6 +2583,7 @@ XlaOp XlaBuilder::AllToAll(XlaOp operand, int64 split_dimension,
         }
         *(shape.mutable_tuple_shapes(i)->mutable_layout()) = *layout;
       }
+      instr.set_constrain_layout(true);
     }
     *instr.mutable_shape() = shape.ToProto();
 
@@ -3466,6 +3523,13 @@ XlaOp Reshape(const Shape& shape, XlaOp operand) {
   return operand.builder()->Reshape(shape, operand);
 }
 
+XlaOp DynamicReshape(XlaOp operand, absl::Span<const XlaOp> dim_sizes,
+                     absl::Span<const int64> new_size_bounds,
+                     const std::vector<bool>& dims_are_dynamic) {
+  return operand.builder()->DynamicReshape(operand, dim_sizes, new_size_bounds,
+                                           dims_are_dynamic);
+}
+
 XlaOp ReshapeWithInferredDimension(XlaOp operand,
                                    absl::Span<const int64> new_sizes,
                                    int64 inferred_dimension) {
@@ -3684,36 +3748,26 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
                       TriangularSolveOptions::Transpose transpose_a) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* a_shape, builder->GetShapePtr(a));
     TF_ASSIGN_OR_RETURN(const Shape* b_shape, builder->GetShapePtr(b));
-    xla::TriangularSolveOptions& options =
-        *instr.mutable_triangular_solve_options();
+    xla::TriangularSolveOptions options;
     options.set_left_side(left_side);
     options.set_lower(lower);
     options.set_unit_diagonal(unit_diagonal);
     options.set_transpose_a(transpose_a);
     TF_ASSIGN_OR_RETURN(Shape shape, ShapeInference::InferTriangularSolveShape(
                                          *a_shape, *b_shape, options));
-    *instr.mutable_shape() = shape.ToProto();
-
-    return builder->AddInstruction(std::move(instr),
-                                   HloOpcode::kTriangularSolve, {a, b});
+    return builder->TriangularSolveInternal(shape, a, b, std::move(options));
   });
 }
 
 XlaOp Cholesky(XlaOp a, bool lower) {
   XlaBuilder* builder = a.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape* a_shape, builder->GetShapePtr(a));
-    xla::CholeskyOptions& options = *instr.mutable_cholesky_options();
-    options.set_lower(lower);
     TF_ASSIGN_OR_RETURN(Shape shape,
                         ShapeInference::InferCholeskyShape(*a_shape));
-    *instr.mutable_shape() = shape.ToProto();
-
-    return builder->AddInstruction(std::move(instr), HloOpcode::kCholesky, {a});
+    return builder->CholeskyInternal(shape, a, lower);
   });
 }
 

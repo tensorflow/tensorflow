@@ -59,7 +59,7 @@ absl::Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
   Tensor tensor;
   const BHWC shape(1, 4, 4, 4);
   RETURN_IF_ERROR(CreateTensor(
-      env->context(), env->device(), shape,
+      env->context(), shape,
       {DataType::FLOAT32, TensorStorageType::TEXTURE_ARRAY, Layout::HWC},
       &tensor));
   RETURN_IF_ERROR(kernel.SetMemory(0, tensor.GetMemoryPtr()));

@@ -22,10 +22,10 @@ limitations under the License.
 namespace xla {
 
 // An interface to define allocation repacking algorithms.
-template <typename O>
 class MemorySpaceAssignmentRepacker {
  public:
-  MemorySpaceAssignmentRepacker() = default;
+  MemorySpaceAssignmentRepacker(int64 max_size, int64 alignment)
+      : max_size_(max_size), alignment_(alignment) {}
   virtual ~MemorySpaceAssignmentRepacker() = default;
 
   // A contiguous block of allocation consisting of start and end (logical)
@@ -33,23 +33,36 @@ class MemorySpaceAssignmentRepacker {
   // successful and the allocations were modified, the offset field holds the
   // new offset. To support aliased allocations, AllocationBlock also includes a
   // vector of AllocationBlock pointers, called colocations. All AllocationBlock
-  // objects within the colocations must get the same offset. The opaque field
-  // is used by the MemorySpaceAssignment pass and should not be accessed by the
-  // repacking algorithm.
+  // objects within the colocations must get the same offset. The id should be
+  // unique and is used to ensure determinism for comparison tie-breaker.
   struct AllocationBlock {
     int64 start_time;
     int64 end_time;
     int64 size;
     int64 offset;
     int64 initial_offset;
+    int64 id;
     std::vector<AllocationBlock*> colocations;
-    O opaque;
+
+    std::string ToString() const {
+      return absl::StrCat("[", start_time, ", ", end_time, "] : size = ", size,
+                          ", offset = ", offset,
+                          " initial offset = ", initial_offset);
+    }
+
+    // This is required by BufferIntervalCompare as a tie breaker. Use a unique
+    // and deterministic id.
+    bool operator<(const AllocationBlock& other) const { return id < other.id; }
   };
 
   // Repack the AllocationBlocks provided in the parameter. Returns true if
   // allocations have been modified and false if not. Returns a non-ok status if
   // there was an error.
   virtual StatusOr<bool> Repack(absl::Span<AllocationBlock*> allocations) = 0;
+
+ protected:
+  int64 max_size_;
+  int64 alignment_;
 };
 
 }  // namespace xla

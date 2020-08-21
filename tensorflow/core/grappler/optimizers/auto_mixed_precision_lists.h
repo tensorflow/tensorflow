@@ -129,11 +129,6 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
         "GRUBlockCellGrad",
         "LSTMBlockCell",
         "LSTMBlockCellGrad",
-        // TODO(benbarsdell): Enable these when fast and safe fp16 kernels are
-        // available for depthwise convolutions.
-        // "DepthwiseConv2dNative",
-        // "DepthwiseConv2dNativeBackpropFilter",
-        // "DepthwiseConv2dNativeBackpropInput",
         "MatMul",
     };
 #if TENSORFLOW_USE_ROCM
@@ -156,6 +151,11 @@ class AutoMixedPrecisionListsCuda : public AutoMixedPrecisionLists {
 #if TENSORFLOW_USE_ROCM
       list.insert("_ROCmFusedConvolutionBiasActivation");
 #endif
+    if (cudnn_version_ >= 8000) {
+      list.insert("DepthwiseConv2dNative");
+      list.insert("DepthwiseConv2dNativeBackpropFilter");
+      list.insert("DepthwiseConv2dNativeBackpropInput");
+    }
     UpdateList("ALLOWLIST", &list);
     // For backwards compatibility, keeping the original env variable here.
     // TODO(reedwm): This should be removed if we don't have active users.

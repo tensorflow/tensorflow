@@ -82,9 +82,11 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     string job_name = port::JobName();
     // The map that stores the experiment names and for how much percentage
     // of the jobs, the experiments will be randomly turned on.
-    //
-    // This is currently empty; we have no live experiments yet.
-    absl::flat_hash_map<string, uint64> live_experiments;
+    // clang-format off
+    absl::flat_hash_map<string, uint64> live_experiments = {
+        {"disable_intra_op_parallelism", 1}
+    };
+    // clang-format on
     auto hash_func = [](const string& str) { return Hash64(str); };
     optimizations = SelectOptimizations(
         job_name, live_experiments, optimizations_enabled,
@@ -104,6 +106,13 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
         }
       }
     }
+  }
+
+  // If there are no optimizations to be applied, directly return the input.
+  if (optimizations.empty()) {
+    *output = input;
+    input->Ref();
+    return;
   }
 
   auto config_factory = [this, &optimizations]() {

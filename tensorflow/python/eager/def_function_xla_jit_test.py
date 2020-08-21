@@ -218,8 +218,13 @@ class DefFunctionTest(xla_test.XLATestCase):
           y = f(x)
         return y, tape.gradient(y, x)
 
+      # Test that XLA context gets correctly propagated.
+      g._get_concrete_function_garbage_collected(2.0)(2.0)
+
       self.assertAllClose(40.0, f(2.0))
       self.assertAllClose([40.0, 28.0], g(2.0))
+      self.assertAllClose(40.0, f.get_concrete_function(2.0)(2.0))
+      self.assertAllClose([40.0, 28.0], g.get_concrete_function(2.0)(2.0))
 
   def testMethodCompilation(self):
 

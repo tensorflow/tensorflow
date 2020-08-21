@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/kernels/tensor_map.h"
+#include "tensorflow/core/util/tensor_ops_util.h"
 
 namespace tensorflow {
 
@@ -105,23 +106,6 @@ class TensorMapSize : public OpKernel {
   }
 };
 
-class TensorMapInsert : public OpKernel {
- public:
-  explicit TensorMapInsert(OpKernelConstruction* c) : OpKernel(c) {}
-  ~TensorMapInsert() override {}
-
-  void Compute(OpKernelContext* c) override {
-    const TensorKey& key = c->input(1);
-    const Tensor& value = c->input(2);
-    const TensorMap* m = nullptr;
-    OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
-
-    TensorMap* output_map = nullptr;
-    OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
-    output_map->replace(key, value);
-  }
-};
-
 class TensorMapLookup : public OpKernel {
  public:
   explicit TensorMapLookup(OpKernelConstruction* c) : OpKernel(c) {}
@@ -139,20 +123,34 @@ class TensorMapLookup : public OpKernel {
   }
 };
 
+class TensorMapInsert : public OpKernel {
+ public:
+  explicit TensorMapInsert(OpKernelConstruction* c) : OpKernel(c) {}
+  ~TensorMapInsert() override {}
+
+  void Compute(OpKernelContext* c) override {
+    const TensorKey& key = c->input(1);
+    const Tensor& value = c->input(2);
+    const TensorMap* m = nullptr;
+    OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
+
+    TensorMap* output_map = nullptr;
+    OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
+    output_map->replace(key, value);
+  }
+};
+
 class TensorMapErase : public OpKernel {
  public:
   explicit TensorMapErase(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
+    const TensorKey& key = c->input(1);
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
-    const TensorKey& key = c->input(1);
 
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
                 errors::InvalidArgument("Trying to erase non-existent item."));
-
-    const Tensor& t = m->tensors().find(key)->second;
-    c->set_output(1, t);
 
     TensorMap* output_map = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
@@ -174,6 +172,34 @@ class TensorMapHasKey : public OpKernel {
     result->scalar<bool>()() = m->tensors().find(key) != m->tensors().end();
   }
 };
+
+template <typename Device>
+Status TensorMapBinaryAdd(OpKernelContext* c, const TensorMap& a,
+                          const TensorMap& b, TensorMap* out) {
+  // Binary add returns a map containing the union of keys.
+  // Values with keys in the intersection are added.
+  out->tensors() = a.tensors();
+  for (const std::pair<TensorKey, Tensor>& p : b.tensors()) {
+    absl::flat_hash_map<TensorKey, Tensor>::iterator it =
+        out->tensors().find(p.first);
+    if (it != out->tensors().end()) {
+      Tensor out_tensor;
+      TF_RETURN_IF_ERROR(
+          BinaryAddTensors<Device>(c, p.second, it->second, &out_tensor));
+      it->second = out_tensor;
+    } else {
+      out->tensors().emplace(p.first, p.second);
+    }
+  }
+  return Status::OK();
+}
+
+template <typename Device>
+Status TensorMapZerosLike(OpKernelContext* c, const TensorMap& x,
+                          TensorMap* y) {
+  // Zeros like returns an empty map.
+  return Status::OK();
+}
 
 }  // namespace tensorflow
 

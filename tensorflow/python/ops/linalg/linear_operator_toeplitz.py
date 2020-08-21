@@ -138,6 +138,15 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
     """
+    parameters = dict(
+        col=col,
+        row=row,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
 
     with ops.name_scope(name, values=[row, col]):
       self._row = linear_operator_util.convert_nonref_to_tensor(row, name="row")
@@ -155,7 +164,9 @@ class LinearOperatorToeplitz(linear_operator.LinearOperator):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
+
       self._set_graph_parents([self._row, self._col])
 
   def _check_row_col(self, row, col):

@@ -39,7 +39,7 @@ pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-
 <table>
 <tr><th>Platform</th><th>Python</th><th>URL</th></tr>
 <tr>
-  <td style="white-space:nowrap" rowspan="3">Linux (ARM 32)</td>
+  <td style="white-space:nowrap" rowspan="4">Linux (ARM 32)</td>
   <td style="white-space:nowrap">3.5</td>
   <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_armv7l.whl</td>
 </tr>
@@ -54,7 +54,13 @@ pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-
   <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_armv7l.whl</td>
 </tr>
 <tr>
-  <td style="white-space:nowrap" rowspan="3">Linux (ARM 64)</td>
+  <!-- ARM 32 -->
+  <td style="white-space:nowrap">3.8</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp38-cp38-linux_armv7l.whl</td>
+</tr>
+
+<tr>
+  <td style="white-space:nowrap" rowspan="4">Linux (ARM 64)</td>
   <td style="white-space:nowrap">3.5</td>
   <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_aarch64.whl</td>
 </tr>
@@ -69,7 +75,13 @@ pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-
   <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_aarch64.whl</td>
 </tr>
 <tr>
-  <td style="white-space:nowrap" rowspan="3">Linux (x86-64)</td>
+  <!-- ARM 64 -->
+  <td style="white-space:nowrap">3.8</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp38-cp38-linux_aarch64.whl</td>
+</tr>
+
+<tr>
+  <td style="white-space:nowrap" rowspan="4">Linux (x86-64)</td>
   <td style="white-space:nowrap">3.5</td>
   <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp35-cp35m-linux_x86_64.whl</td>
 </tr>
@@ -82,6 +94,11 @@ pip3 install https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-
   <!-- x86-64 -->
   <td style="white-space:nowrap">3.7</td>
   <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp37-cp37m-linux_x86_64.whl</td>
+</tr>
+<tr>
+  <!-- x86-64 -->
+  <td style="white-space:nowrap">3.8</td>
+  <td>https://dl.google.com/coral/python/tflite_runtime-2.1.0.post1-cp38-cp38-linux_x86_64.whl</td>
 </tr>
 
 <tr>

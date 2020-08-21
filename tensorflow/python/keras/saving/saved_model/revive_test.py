@@ -27,6 +27,7 @@ from __future__ import print_function
 import os
 import shutil
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
@@ -113,6 +114,36 @@ class CustomLayerWithConfig(CustomLayerNoConfig):
     return {'a': backend.get_value(self.a),
             'b': self.b,
             'name': self.name}
+
+
+class CustomNetworkDefaultConfig(keras.Model):
+
+  def __init__(self, num_classes, name=None):
+    inputs = keras.Input((2, 3), name='inputs')
+    x = keras.layers.Flatten(name='flatten')(inputs)
+    y = keras.layers.Dense(num_classes, name='outputs')(x)
+    super(CustomNetworkDefaultConfig, self).__init__(inputs, y, name=name)
+
+
+class CustomNetworkWithConfig(CustomNetworkDefaultConfig):
+
+  def __init__(self, num_classes, name=None):
+    super(CustomNetworkWithConfig, self).__init__(num_classes, name=name)
+    self._config_dict = dict(num_classes=num_classes)
+
+  def get_config(self):
+    return self._config_dict
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(config['num_classes'], name=config.get('name'))
+
+
+class CustomNetworkWithConfigName(CustomNetworkWithConfig):
+
+  def __init__(self, num_classes, name=None):
+    super(CustomNetworkWithConfigName, self).__init__(num_classes, name=name)
+    self._config_dict['name'] = self.name
 
 
 class TestModelRevive(keras_parameterized.TestCase):
@@ -244,17 +275,31 @@ class TestModelRevive(keras_parameterized.TestCase):
     self._assert_revived_correctness(model, revived)
 
   def test_revive_sequential_inputs(self):
-    model = keras.models.Sequential(
-        [keras.Input((None,), dtype=dtypes.string),
-         keras.layers.Lambda(string_ops.string_lower)])
+    model = keras.models.Sequential([
+        keras.Input((None,), dtype=dtypes.string),
+        keras.layers.Lambda(string_ops.string_lower)
+    ])
     model.save(self.path, save_format='tf')
     revived = keras_load.load(self.path)
     self.assertEqual(dtypes.string, revived._layers[0].dtype)
+
+  @parameterized.named_parameters(
+      ('default_config', CustomNetworkDefaultConfig),
+      ('with_config', CustomNetworkWithConfig),
+      ('with_config_name', CustomNetworkWithConfigName))
+  def test_revive_network(self, model_cls):
+    model = model_cls(8)
+    model.save(self.path, include_optimizer=False, save_format='tf')
+    revived = keras_load.load(self.path, compile=False)
+    self._assert_revived_correctness(model, revived)
 
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
   with generic_utils.CustomObjectScope({
       'CustomLayerWithConfig': CustomLayerWithConfig,
-      'SubclassedModelWithConfig': SubclassedModelWithConfig}):
+      'CustomNetworkWithConfig': CustomNetworkWithConfig,
+      'CustomNetworkWithConfigName': CustomNetworkWithConfigName,
+      'SubclassedModelWithConfig': SubclassedModelWithConfig
+  }):
     test.main()

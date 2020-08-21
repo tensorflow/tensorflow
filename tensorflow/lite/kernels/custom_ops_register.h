@@ -26,6 +26,8 @@ TfLiteRegistration* Register_HASHTABLE();
 TfLiteRegistration* Register_HASHTABLE_FIND();
 TfLiteRegistration* Register_HASHTABLE_IMPORT();
 TfLiteRegistration* Register_HASHTABLE_SIZE();
+TfLiteRegistration* Register_REAL();
+TfLiteRegistration* Register_IMAG();
 }
 }  // namespace ops
 }  // namespace tflite

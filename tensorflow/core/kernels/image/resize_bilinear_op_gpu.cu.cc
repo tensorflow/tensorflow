@@ -442,13 +442,17 @@ struct ResizeBilinearGrad<GPUDevice, T> {
   }
 };
 
-#define DEFINE_GPU_SPECS(T)                     \
-  template struct ResizeBilinear<GPUDevice, T>; \
+#define DEFINE_GPU_SPEC(T) template struct ResizeBilinear<GPUDevice, T>;
+
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPEC);
+
+#define DEFINE_GRAD_GPU_SPEC(T) \
   template struct ResizeBilinearGrad<GPUDevice, T>;
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DEFINE_GPU_SPECS);
+TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DEFINE_GRAD_GPU_SPEC);
 
-#undef DEFINE_GPU_SPECS
+#undef DEFINE_GPU_SPEC
+#undef DEFINE_GRAD_GPU_SPEC
 
 }  // namespace functor
 }  // namespace tensorflow

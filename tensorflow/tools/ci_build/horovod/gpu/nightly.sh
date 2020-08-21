@@ -63,7 +63,10 @@ g++ --version
 
 # Install Horovod.
 cd ..
+HOROVOD_GPU_OPERATIONS=NCCL
 HOROVOD_WITH_TENSORFLOW=1
+HOROVOD_WITHOUT_PYTORCH=1
+HOROVOD_WITHOUT_MXNET=1
 pip3.7 install horovod[tensorflow] --user
 
 # Install tests.

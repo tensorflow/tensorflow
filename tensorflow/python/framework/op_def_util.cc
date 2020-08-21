@@ -17,19 +17,28 @@ limitations under the License.
 #include <map>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
 #include "tensorflow/python/util/util.h"
 
 using ::tensorflow::swig::GetRegisteredPyObject;
 
 #if PY_MAJOR_VERSION < 3
+// Python 2.x:
 #define PY_STRING_CHECK(x) (PyString_Check(x) || PyUnicode_Check(x))
+#define PY_STRING_FROMSTRING(x) (PyString_FromString(x))
 #define PY_INT_CHECK(x) (PyInt_Check(x))
 #define PY_INT_TYPE PyInt_Type
+#define PY_INT_FROM_LONG(x) (PyInt_FromLong(x))
 #else
+// Python 3.x:
 #define PY_STRING_CHECK(x) (PyBytes_Check(x) || PyUnicode_Check(x))
+#define PY_STRING_FROMSTRING(x) (PyUnicode_FromString(x))
 #define PY_INT_CHECK(x) (PyLong_Check(x))
 #define PY_INT_TYPE PyLong_Type
+#define PY_INT_FROM_LONG(x) (PyLong_FromLong(x))
 #endif
 
 namespace tensorflow {
@@ -239,6 +248,64 @@ Safe_PyObjectPtr ConvertAttrOrNull(PyObject* value, AttributeType attr_type) {
   }
 }
 
+// Returns a new reference to Py_True or Py_False depending on b.
+PyObject* PyBool_FromBool(bool b) {
+  PyObject* result = b ? Py_True : Py_False;
+  Py_INCREF(result);
+  return result;
+}
+
+Safe_PyObjectPtr AttrValueListToPyObject(AttrValue::ListValue list) {
+  if (list.s_size()) {
+    Safe_PyObjectPtr result(PyList_New(list.s_size()));
+    for (int i = 0; i < list.s_size(); ++i) {
+      PyList_SET_ITEM(result.get(), i, PY_STRING_FROMSTRING(list.s(i).c_str()));
+    }
+    return result;
+  } else if (list.i_size()) {
+    Safe_PyObjectPtr result(PyList_New(list.i_size()));
+    for (int i = 0; i < list.i_size(); ++i) {
+      PyList_SET_ITEM(result.get(), i, PY_INT_FROM_LONG(list.i(i)));
+    }
+    return result;
+  } else if (list.f_size()) {
+    Safe_PyObjectPtr result(PyList_New(list.f_size()));
+    for (int i = 0; i < list.f_size(); ++i) {
+      PyList_SET_ITEM(result.get(), i, PyFloat_FromDouble(list.f(i)));
+    }
+    return result;
+  } else if (list.b_size()) {
+    Safe_PyObjectPtr result(PyList_New(list.b_size()));
+    for (int i = 0; i < list.b_size(); ++i) {
+      PyList_SET_ITEM(result.get(), i, PyBool_FromBool(list.b(i)));
+    }
+    return result;
+  } else if (list.type_size()) {
+    Safe_PyObjectPtr result(PyList_New(list.type_size()));
+    for (int i = 0; i < list.type_size(); ++i) {
+      Safe_PyObjectPtr item(DataTypeToPyObject(list.type(i)));
+      Py_INCREF(item.get());
+      PyList_SET_ITEM(result.get(), i, item.get());
+    }
+    return result;
+  } else if (list.shape_size()) {
+    Safe_PyObjectPtr result(PyList_New(list.shape_size()));
+    for (int i = 0; i < list.shape_size(); ++i) {
+      Safe_PyObjectPtr item(TensorShapeProtoToPyObject(list.shape(i)));
+      Py_INCREF(item.get());
+      PyList_SET_ITEM(result.get(), i, item.get());
+    }
+    return result;
+  } else if (list.tensor_size() || list.func_size()) {
+    // TODO(edloper): Add support for tensorflow::AttrValue::kTensor.
+    PyErr_SetString(PyExc_TypeError, "Unsupported AttrValue type");
+    return nullptr;
+  } else {
+    // Empty list
+    return Safe_PyObjectPtr(PyList_New(0));
+  }
+}
+
 }  // namespace
 
 AttributeType AttributeTypeFromName(const std::string& type_name) {
@@ -267,6 +334,48 @@ Safe_PyObjectPtr ConvertPyObjectToAttributeType(PyObject* value,
   }
 
   return result;
+}
+
+Safe_PyObjectPtr AttrValueToPyObject(const AttrValue& attr_value) {
+  switch (attr_value.value_case()) {
+    case tensorflow::AttrValue::kS:
+      return Safe_PyObjectPtr(PY_STRING_FROMSTRING(attr_value.s().c_str()));
+    case tensorflow::AttrValue::kI:
+      return Safe_PyObjectPtr(PY_INT_FROM_LONG(attr_value.i()));
+    case tensorflow::AttrValue::kF:
+      return Safe_PyObjectPtr(PyFloat_FromDouble(attr_value.f()));
+    case tensorflow::AttrValue::kB:
+      return Safe_PyObjectPtr(PyBool_FromBool(attr_value.b()));
+    case tensorflow::AttrValue::kType:
+      return DataTypeToPyObject(attr_value.type());
+    case tensorflow::AttrValue::kShape:
+      return TensorShapeProtoToPyObject(attr_value.shape());
+    case tensorflow::AttrValue::kList:
+      return AttrValueListToPyObject(attr_value.list());
+    default:
+      // TODO(edloper): Add support for tensorflow::AttrValue::kTensor.
+      PyErr_SetString(PyExc_ValueError, "Unsupported AttrValue type");
+      return nullptr;
+  }
+}
+
+Safe_PyObjectPtr DataTypeToPyObject(const DataType& data_type) {
+  Safe_PyObjectPtr enum_value(PY_INT_FROM_LONG(data_type));
+  return ConvertDTypeFunctor()(enum_value.get());
+}
+
+Safe_PyObjectPtr TensorShapeProtoToPyObject(
+    const TensorShapeProto& tensor_shape) {
+  if (tensor_shape.unknown_rank()) {
+    return ConvertTensorShapeFunctor()(Py_None);
+  } else {
+    Safe_PyObjectPtr dims(PyTuple_New(tensor_shape.dim_size()));
+    for (int i = 0; i < tensor_shape.dim_size(); ++i) {
+      PyTuple_SET_ITEM(dims.get(), i,
+                       PY_INT_FROM_LONG(tensor_shape.dim(i).size()));
+    }
+    return ConvertTensorShapeFunctor()(dims.get());
+  }
 }
 
 }  // namespace tensorflow

@@ -35,9 +35,12 @@ exports_files([
     name = "zip_test_%s" % test_name,
     size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
-    additional_test_args = {
-        # TODO(b/162696268): uncomment once the bug is fixed.
-        # "xnnpack": ["--use_xnnpack=true"],
+    additional_test_tags_args = {
+        "xnnpack": (
+            # TODO(b/162696268): remove 'notap' once the bug is fixed.
+            ["notap"],
+            ["--use_xnnpack=true"],
+        ),
     },
     conversion_mode = conversion_mode,
     data = [

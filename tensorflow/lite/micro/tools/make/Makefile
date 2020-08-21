@@ -80,8 +80,8 @@ CC_WARNINGS := -Werror -Wsign-compare -Wdouble-promotion \
 # TODO(b/150240249): Add in -fno-rtti once that works for the Xtensa toolchain.
 # TODO(b/159155203): Consider TF_LITE_STATIC_MEMORY to align more with the fact
 # this flag is for an optimized micro runtime.
-CXXFLAGS := -std=c++11 -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
-CCFLAGS  := -std=c11   -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
+CXXFLAGS := -std=c++11 -Wstrict-aliasing -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
+CCFLAGS  := -DTF_LITE_STATIC_MEMORY $(CC_WARNINGS)
 ARFLAGS := -r
 
 # override these in the makefile.inc for specific compiler targets
@@ -200,17 +200,15 @@ tensorflow/lite/kernels/internal/reference/tanh.h \
 tensorflow/lite/kernels/internal/cppmath.h \
 tensorflow/lite/kernels/internal/max.h \
 tensorflow/lite/kernels/internal/min.h \
+tensorflow/lite/kernels/internal/portable_tensor.h \
 tensorflow/lite/kernels/internal/strided_slice_logic.h \
-tensorflow/lite/kernels/internal/tensor.h \
 tensorflow/lite/kernels/internal/tensor_ctypes.h \
 tensorflow/lite/kernels/internal/types.h \
 tensorflow/lite/kernels/kernel_util.h \
 tensorflow/lite/kernels/op_macros.h \
 tensorflow/lite/kernels/padding.h \
+tensorflow/lite/portable_type_to_tflitetype.h \
 tensorflow/lite/schema/schema_generated.h \
-tensorflow/lite/string_type.h \
-tensorflow/lite/string_util.h \
-tensorflow/lite/type_to_tflitetype.h \
 tensorflow/lite/version.h
 
 THIRD_PARTY_CC_HDRS := \

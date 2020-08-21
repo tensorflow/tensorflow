@@ -438,7 +438,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
 
 void ReplicateToIslandPass::runOnOperation() {
   auto module = getOperation();
-  const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
+  const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     module.emitError() << "'tf' dialect is not registered";
     return signalPassFailure();

@@ -47,7 +47,7 @@ class PyExecutable {
     return executable_->local_logical_device_ids();
   }
 
-  std::vector<ClientAndPtr<Device>> LocalDevices() const;
+  std::vector<ClientAndPtr<PjRtDevice>> LocalDevices() const;
 
   int64 SizeOfGeneratedCodeInBytes() const {
     return executable_->SizeOfGeneratedCodeInBytes();

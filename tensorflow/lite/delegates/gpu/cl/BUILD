@@ -353,6 +353,7 @@ cc_library(
     srcs = ["gpu_object.cc"],
     hdrs = ["gpu_object.h"],
     deps = [
+        ":cl_context",
         ":opencl_wrapper",
         "//tensorflow/lite/delegates/gpu/common:access_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
@@ -399,11 +400,9 @@ cc_library(
     srcs = ["linear_storage.cc"],
     hdrs = ["linear_storage.h"],
     deps = [
-        ":buffer",
         ":gpu_object",
         ":opencl_wrapper",
         ":tensor_type",
-        ":texture2d",
         ":util",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:status",

@@ -150,44 +150,32 @@ def canonicalize_signatures(signatures):
   return concrete_signatures, wrapped_functions
 
 
-def _is_flat(sequence):
-  sequence_flat = nest.flatten(sequence)
-  try:
-    nest.assert_same_structure(sequence_flat, sequence, check_types=False)
-    return True
-  except ValueError:
-    return False
-  except TypeError:
-    return False
-
-
 def _normalize_outputs(outputs, function_name, signature_key):
   """Construct an output dictionary from unnormalized function outputs."""
-  if isinstance(outputs, collections_abc.Mapping):
-    for key, value in outputs.items():
-      if not isinstance(value, ops.Tensor):
-        raise ValueError(
-            ("Got a dictionary containing non-Tensor value {} for key {} "
-             "in the output of the function {} used to generate a SavedModel "
-             "signature. Dictionaries outputs for functions used as signatures "
-             "should have one Tensor output per string key.")
-            .format(value, key, compat.as_str_any(function_name)))
-    return outputs
-  else:
-    original_outputs = outputs
+  # Convert `outputs` to a dictionary (if it's not one already).
+  if not isinstance(outputs, collections_abc.Mapping):
     if not isinstance(outputs, collections_abc.Sequence):
       outputs = [outputs]
-    if not _is_flat(outputs):
+    outputs = {("output_{}".format(output_index)): output
+               for output_index, output
+               in enumerate(outputs)}
+
+  # Check that the keys of `outputs` are strings and the values are Tensors.
+  for key, value in outputs.items():
+    if not isinstance(key, compat.bytes_or_text_types):
       raise ValueError(
-          ("Got non-flat outputs '{}' from '{}' for SavedModel "
-           "signature '{}'. Signatures have one Tensor per output, so "
-           "to have predictable names Python functions used to generate "
-           "these signatures should avoid outputting Tensors in nested "
-           "structures.")
-          .format(original_outputs, function_name, signature_key))
-    return {("output_{}".format(output_index)): output
-            for output_index, output
-            in enumerate(outputs)}
+          ("Got a dictionary with a non-string key {!r} in the output of the "
+           "function {} used to generate the SavedModel signature {!r}.")
+          .format(key, compat.as_str_any(function_name), signature_key))
+    if not isinstance(value, ops.Tensor):
+      raise ValueError(
+          ("Got a non-Tensor value {!r} for key {!r} in the output of the "
+           "function {} used to generate the SavedModel signature {!r}. "
+           "Outputs for functions used as signatures must be a single Tensor, "
+           "a sequence of Tensors, or a dictionary from string to Tensor.")
+          .format(value, key, compat.as_str_any(function_name), signature_key))
+
+  return outputs
 
 
 # _SignatureMap is immutable to ensure that users do not expect changes to be

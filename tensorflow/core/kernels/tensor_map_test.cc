@@ -114,7 +114,6 @@ TEST(TensorMapTest, Copy) {
   Tensor v = Tensor(22);
   tm.insert(k, v);
   TensorMap tmc = tm.Copy();
-  EXPECT_EQ(tm.dtype(), tmc.dtype());
   EXPECT_EQ(tm.size(), tmc.size());
   EXPECT_NE(tm.find(k), tm.tensors().end());
   EXPECT_NE(tmc.find(k), tmc.tensors().end());
@@ -131,8 +130,6 @@ TEST(TensorMapTest, EncodeDecode) {
   tm.Encode(&data);
   TensorMap tmc;
   tmc.Decode(data);
-
-  EXPECT_EQ(tm.dtype(), tmc.dtype());
   EXPECT_EQ(tm.size(), tmc.size());
   EXPECT_NE(tm.find(k), tm.tensors().end());
   EXPECT_NE(tmc.find(k), tmc.tensors().end());

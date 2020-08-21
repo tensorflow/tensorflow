@@ -63,6 +63,8 @@ struct MklConvBwdInputParams {
   memory::dims filter_dims;
   memory::dims diff_dst_dims;
   memory::dims strides;
+  MKL_TENSOR_FORMAT tf_fmt;
+  bool native_format;
   memory::dims dilations;
   memory::dims padding_left;
   memory::dims padding_right;
@@ -72,6 +74,7 @@ struct MklConvBwdInputParams {
 
   MklConvBwdInputParams(memory::dims diff_src_dims, memory::dims filter_dims,
                         memory::dims diff_dst_dims, memory::dims strides,
+                        MKL_TENSOR_FORMAT tf_fmt, bool native_format,
                         memory::dims dilations, memory::dims padding_left,
 #ifndef ENABLE_MKLDNN_V1
                         memory::dims padding_right, padding_kind padding)
@@ -82,6 +85,8 @@ struct MklConvBwdInputParams {
         filter_dims(filter_dims),
         diff_dst_dims(diff_dst_dims),
         strides(strides),
+        tf_fmt(tf_fmt),
+        native_format(native_format),
         dilations(dilations),
         padding_left(padding_left),
 #ifndef ENABLE_MKLDNN_V1
@@ -215,15 +220,22 @@ class MklConvBwdInputPrimitive : public MklPrimitive {
   };
 
   void Setup(const MklConvBwdInputParams& convBwdInputDims) {
-    // Create memory descriptors for conv bwd input without any specified
-    // format so that MKL-DNN can pick an appropriate one depending on the
-    // input parameters.
+    MEMORY_FORMAT user_data_fmt;
+    if (convBwdInputDims.native_format) {
+      user_data_fmt =
+          MklTensorFormatToMklDnnDataFormat(convBwdInputDims.tf_fmt);
+    } else {
+      // Create memory descriptors for conv bwd input without any specified
+      // format so that MKL-DNN can pick an appropriate one depending on the
+      // input parameters.
+      user_data_fmt = MEMORY_FORMAT::any;
+    }
+    context_.diff_dst_md.reset(new memory::desc(
+        {convBwdInputDims.diff_dst_dims}, MklDnnType<T>(), user_data_fmt));
     context_.diff_src_md.reset(new memory::desc(
-        {convBwdInputDims.diff_src_dims}, MklDnnType<T>(), MEMORY_FORMAT::any));
+        {convBwdInputDims.diff_src_dims}, MklDnnType<T>(), user_data_fmt));
     context_.filter_md.reset(new memory::desc(
         {convBwdInputDims.filter_dims}, MklDnnType<T>(), MEMORY_FORMAT::any));
-    context_.diff_dst_md.reset(new memory::desc(
-        {convBwdInputDims.diff_dst_dims}, MklDnnType<T>(), MEMORY_FORMAT::any));
 
     // Create descriptors for both conv fwd and conv bwd input.
     context_.bwd_input_desc.reset(new ConvBwdDataDesc(
@@ -343,6 +355,9 @@ class MklConvBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
     key_creator.AddAsKey(convBwdInputDims.dilations);
     key_creator.AddAsKey(convBwdInputDims.padding_left);
     key_creator.AddAsKey(convBwdInputDims.padding_right);
+    if (convBwdInputDims.native_format) {
+      key_creator.AddAsKey(convBwdInputDims.tf_fmt);
+    }
     return key_creator.GetKey();
   }
 
@@ -358,7 +373,7 @@ class MklConvBwdInputPrimitiveFactory : public MklPrimitiveFactory<T> {
   }
 };
 
-template <typename Device, class T, bool is_depthwise, bool eager_mode>
+template <typename Device, class T, bool is_depthwise, bool native_format>
 class MklConvCustomBackpropInputOp
     : public MklConvBackpropCommonOp<Device, T, is_depthwise> {
  public:
@@ -375,9 +390,9 @@ class MklConvCustomBackpropInputOp
       const Tensor& diff_dst_tensor = MklGetInput(context, kOutbpropIdx);
 
       MklDnnShape src_mkl_shape, filter_mkl_shape, diff_dst_mkl_shape;
-      GetMklShape(context, kInputIdx, &src_mkl_shape, eager_mode);
-      GetMklShape(context, kFilterIdx, &filter_mkl_shape, eager_mode);
-      GetMklShape(context, kOutbpropIdx, &diff_dst_mkl_shape, eager_mode);
+      GetMklShape(context, kInputIdx, &src_mkl_shape, native_format);
+      GetMklShape(context, kFilterIdx, &filter_mkl_shape, native_format);
+      GetMklShape(context, kOutbpropIdx, &diff_dst_mkl_shape, native_format);
       // Allow operator-specific sanity checking of shapes.
       ValidateMklShapes(src_mkl_shape, filter_mkl_shape, diff_dst_mkl_shape);
 
@@ -397,7 +412,7 @@ class MklConvCustomBackpropInputOp
 
       TensorShape filter_tf_shape = MakeFilterTfShape(context, filter_tensor);
       TensorShape diff_dst_tf_shape =
-          GetTfShape(context, kOutbpropIdx, eager_mode);
+          GetTfShape(context, kOutbpropIdx, native_format);
 
       // Corner cases: output with 0 elements and 0 batch size.
       Tensor* diff_src_tensor = nullptr;
@@ -411,7 +426,7 @@ class MklConvCustomBackpropInputOp
         const int kOutputIdx = 0;
         AllocateOutputSetMklShape(context, kOutputIdx, &diff_src_tensor,
                                   diff_src_tf_shape, diff_src_mkl_shape,
-                                  eager_mode);
+                                  native_format);
         DCHECK(diff_src_tensor != nullptr);
 
         // If output tensor has more than 0 elements, we need to 0 them out.
@@ -475,7 +490,8 @@ class MklConvCustomBackpropInputOp
       // 0 in MKL-DNN.
       for (int i = 0; i < dilations.size(); ++i) --dilations[i];
       MklConvBwdInputParams convBwdInputDims(
-          fwd_src_dims, fwd_filter_dims, diff_dst_dims, strides, dilations,
+          fwd_src_dims, fwd_filter_dims, diff_dst_dims, strides, tf_fmt,
+          native_format, dilations,
 #ifndef ENABLE_MKLDNN_V1
           padding_left, padding_right,
           TFPaddingToMklDnnPadding(this->padding_));
@@ -511,13 +527,11 @@ class MklConvCustomBackpropInputOp
                                      bwd_diff_src_dims, bwd_diff_src_format);
       TensorShape diff_src_tf_shape;
       diff_src_tf_shape.AddDim(diff_src_pd.get_size() / sizeof(T));
-      Tensor tmp_tensor;
-      if (eager_mode) {
-        AllocTmpBuffer<T>(context, &tmp_tensor, diff_src_tf_shape);
+      if (native_format) {
         diff_src_tf_shape = diff_src_mkl_shape.GetTfShape();
       }
       AllocateOutputSetMklShape(context, 0, &diff_src_tensor, diff_src_tf_shape,
-                                diff_src_mkl_shape, eager_mode);
+                                diff_src_mkl_shape, native_format);
       T* diff_src_data =
           static_cast<T*>(const_cast<T*>(diff_src_tensor->flat<T>().data()));
 
@@ -555,29 +569,8 @@ class MklConvCustomBackpropInputOp
       std::shared_ptr<stream> bwd_cpu_stream;
       bwd_cpu_stream.reset(CreateStream(context, conv_bwd_input->GetEngine()));
       // Execute conv bwd input primitive.
-      if (!eager_mode) {
-        conv_bwd_input->Execute(diff_src_data, filter_data, diff_dst_data,
-                                bwd_cpu_stream);
-      } else {
-        // In eager mode we first write the output to temporary
-        // buffer in MKL format. Then we convert the data to TF format.
-        T* tmp_data =
-            static_cast<T*>(const_cast<T*>(tmp_tensor.flat<T>().data()));
-        conv_bwd_input->Execute(tmp_data, filter_data, diff_dst_data,
-                                bwd_cpu_stream);
-        auto output_tf_md = diff_src_mkl_shape.GetTfLayout();
-#ifndef ENABLE_MKLDNN_V1
-        auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine_);
-#endif
-        ReorderPd reorder_pd =
-            REORDER_PD_CONSTRUCTOR(diff_src_pd, OUTPUT_TF_MD, cpu_engine_);
-        memory* tmp_data_mem =
-            new MEMORY_CONSTRUCTOR(diff_src_pd, cpu_engine_, tmp_data);
-        memory* dst_data_mem =
-            new MEMORY_CONSTRUCTOR(OUTPUT_TF_MD, cpu_engine_, diff_src_data);
-        CreateAndExecuteReorder(reorder_pd, *tmp_data_mem, *dst_data_mem,
-                                cpu_engine_, context);
-      }
+      conv_bwd_input->Execute(diff_src_data, filter_data, diff_dst_data,
+                              bwd_cpu_stream);
 
       // Delete primitive since it is not cached.
       if (do_not_cache) {
@@ -625,7 +618,7 @@ class MklConvCustomBackpropInputOp
   // Get TensorFlow shape of filter tensor.
   TensorShape MakeFilterTfShape(OpKernelContext* context,
                                 const Tensor& filter_tensor) {
-    return GetTfShape(context, kFilterIdx, eager_mode);
+    return GetTfShape(context, kFilterIdx, native_format);
   }
 
   // Get the Tensorflow shape of Output (diff_src),
@@ -683,7 +676,7 @@ class MklConvCustomBackpropInputOp
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),   \
       MklConvCustomBackpropInputOp<CPUDevice, T, false, false>); \
   REGISTER_KERNEL_BUILDER(                                       \
-      Name("_MklEagerConv2DBackpropInput")                       \
+      Name("_MklNativeConv2DBackpropInput")                      \
           .Device(DEVICE_CPU)                                    \
           .TypeConstraint<T>("T")                                \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),        \

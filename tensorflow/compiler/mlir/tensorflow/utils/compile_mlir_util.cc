@@ -318,6 +318,7 @@ Status ConvertMLIRToXlaComputation(
   for (auto& target_pass : custom_legalization_passes) {
     tf2xla.addNestedPass<mlir::FuncOp>(std::move(target_pass));
   }
+  tf2xla.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
   // Run shape inference pass to propagate shapes through tensor_cast operations
   // from static to dynamic shapes. This could be generated if the shape
@@ -419,6 +420,7 @@ Status CompileSerializedMlirToXlaHlo(
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
   RegisterDialects();
   mlir::MLIRContext mlir_context;
+  mlir_context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef mlir_module;
 
   TF_RETURN_IF_ERROR(
@@ -508,6 +510,7 @@ Status CompileGraphToXlaHlo(
   RegisterDialects();
 
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   GraphImportConfig config;
   config.graph_as_function = true;
   // Disable shape inference during import as some TensorFlow op fails during

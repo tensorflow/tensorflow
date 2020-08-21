@@ -599,8 +599,11 @@ Status GetStepMarkerLocation(const Node& replicate_node,
 // sharding attribute.
 Status GetDimensionIndicesAndNumSplitsFromSharding(
     const xla::OpSharding& sharding, std::map<int, int>* split_dimension_map) {
-  for (int dim_index = 0;
-       dim_index < sharding.tile_assignment_dimensions_size(); dim_index++) {
+  int64 tensor_tile_rank = sharding.tile_assignment_dimensions_size();
+  if (sharding.replicate_on_last_tile_dim()) {
+    tensor_tile_rank--;
+  }
+  for (int dim_index = 0; dim_index < tensor_tile_rank; dim_index++) {
     if (sharding.tile_assignment_dimensions(dim_index) > 1) {
       split_dimension_map->emplace(
           dim_index, sharding.tile_assignment_dimensions(dim_index));
@@ -777,8 +780,9 @@ xla::StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
   // `split_nodes_for_dimension` now includes final split nodes
   // from which sharded data will be fed into TPUExcute nodes -- sorted by
   // row major order.
-  std::vector<NodeOut> sharded_inputs_list;
-  sharded_inputs_list.reserve(split_nodes_for_dimension.size());
+  std::vector<NodeOut> sharded_inputs_list(
+      sharding.tile_assignment_devices_size());
+  int64 next_core_tile_index = 0;
   while (!split_nodes_for_dimension.empty()) {
     Node* split_node = split_nodes_for_dimension.front();
     split_nodes_for_dimension.pop();
@@ -786,7 +790,14 @@ xla::StatusOr<ShardedInputInfo> CreateOrGetSplitNodesForInputSharding(
     TF_RETURN_IF_ERROR(
         GetNodeAttr(split_node->def(), "num_split", &num_splits));
     for (int out_index = 0; out_index < num_splits; ++out_index) {
-      sharded_inputs_list.emplace_back(NodeOut{split_node, out_index});
+      int64 repeat_count = sharding.replicate_on_last_tile_dim()
+                               ? *sharding.tile_assignment_dimensions().rbegin()
+                               : 1;
+      for (int64 i = 0; i < repeat_count; ++i) {
+        int64 next_core =
+            sharding.tile_assignment_devices(next_core_tile_index++);
+        sharded_inputs_list[next_core] = NodeOut{split_node, out_index};
+      }
     }
   }
 
@@ -889,19 +900,6 @@ xla::StatusOr<Node*> CreateConcatNodesForRetval(
   return inputs_to_sharded_retval.at(0).node;
 }
 
-absl::optional<int> GetCoreIndexInSharding(const xla::OpSharding& sharding,
-                                           int64 core) {
-  absl::optional<int> output_index;
-  for (int i = 0; i < sharding.tile_assignment_devices_size(); i++) {
-    int64 assigned_core = sharding.tile_assignment_devices(i);
-    if (assigned_core == core) {
-      output_index = i;
-      break;
-    }
-  }
-  return output_index;
-}
-
 // Set the padding ops the same devices as the original inputs. If the original
 // inputs are on TPUs, the padding ops will be placed on TPUs and XLA on demand
 // mode will be triggered, so we don't need to copy the data back to the host
@@ -963,7 +961,7 @@ bool IsTpuDevice(const string& device_string) {
 const absl::flat_hash_set<std::string>& PlaceOnTPUOpList() {
   static const auto place_on_tpu_ops = new absl::flat_hash_set<std::string>(
       {"Identity", "IdentityN", "Enter", "Exit", "Switch", "Merge",
-       "NextIteration", "Shape"});
+       "NextIteration", "Shape", "_Retval"});
   return *place_on_tpu_ops;
 }
 
@@ -2763,14 +2761,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
                       sharding, orig_arg_num, dtype, replica,
                       edge->src_output(), edge->src(), control_predecessor,
                       graph, &input_index_to_sharded_inputs));
-
-              // Calculate which output we should receive from the Split node.
-              absl::optional<int> output_index =
-                  GetCoreIndexInSharding(sharding, core);
-              TF_RET_CHECK(output_index);
-
               NodeOut split_node_and_index =
-                  sharded_input_info.sharded_inputs.at(output_index.value());
+                  sharded_input_info.sharded_inputs.at(core);
               // Connect with Split node output.
               graph->AddEdge(split_node_and_index.node,
                              split_node_and_index.index, node, i);
@@ -2850,13 +2842,8 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
                       arg_shapes[orig_arg_num].handle_type, replica,
                       var_data.index, var_data.node, control_predecessor, graph,
                       &input_index_to_sharded_inputs));
-
-              // Calculate which output we should receive from the Split node.
-              absl::optional<int> output_index =
-                  GetCoreIndexInSharding(sharding, core);
-              TF_RET_CHECK(output_index);
               NodeOut split_node_and_index =
-                  sharded_input_info.sharded_inputs[output_index.value()];
+                  sharded_input_info.sharded_inputs[core];
               // Connect with Split node output.
               graph->AddEdge(split_node_and_index.node,
                              split_node_and_index.index, node, i);
@@ -2919,7 +2906,16 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
 
           // Add a Concat node.
           std::vector<NodeOut> orig_inputs;
-          for (int64 core_id : sharding.tile_assignment_devices()) {
+          for (int64 tile_index = 0;
+               tile_index < sharding.tile_assignment_devices_size();
+               ++tile_index) {
+            int64 last_tile_dim_size =
+                *sharding.tile_assignment_dimensions().rbegin();
+            if (sharding.replicate_on_last_tile_dim() &&
+                tile_index % last_tile_dim_size != 0) {
+              continue;
+            }
+            int64 core_id = sharding.tile_assignment_devices(tile_index);
             int core_retval_index =
                 retval_index_to_output_index_mapping[retval_index][core_id];
             orig_inputs.push_back(
@@ -2987,7 +2983,16 @@ Status DistributedTPURewritePass::BuildExecuteNodes(
 
             // Add a Concat node.
             std::vector<NodeOut> orig_inputs;
-            for (int64 core_id : sharding.tile_assignment_devices()) {
+            for (int64 tile_index = 0;
+                 tile_index < sharding.tile_assignment_devices_size();
+                 ++tile_index) {
+              int64 last_tile_dim_size =
+                  *sharding.tile_assignment_dimensions().rbegin();
+              if (sharding.replicate_on_last_tile_dim() &&
+                  tile_index % last_tile_dim_size != 0) {
+                continue;
+              }
+              int64 core_id = sharding.tile_assignment_devices(tile_index);
               int core_retval_num =
                   orig_arg_num_to_output_index_mapping[orig_arg_num][core_id];
               orig_inputs.push_back(

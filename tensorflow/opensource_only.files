@@ -163,7 +163,6 @@ tensorflow/third_party/repo.bzl
 tensorflow/third_party/six.BUILD
 tensorflow/third_party/snappy.BUILD
 tensorflow/third_party/sqlite.BUILD
-tensorflow/third_party/swig.BUILD
 tensorflow/third_party/sycl/crosstool/BUILD
 tensorflow/third_party/systemlibs/BUILD
 tensorflow/third_party/systemlibs/BUILD.tpl
@@ -194,7 +193,6 @@ tensorflow/third_party/systemlibs/re2.BUILD
 tensorflow/third_party/systemlibs/six.BUILD
 tensorflow/third_party/systemlibs/snappy.BUILD
 tensorflow/third_party/systemlibs/sqlite.BUILD
-tensorflow/third_party/systemlibs/swig.BUILD
 tensorflow/third_party/systemlibs/syslibs_configure.bzl
 tensorflow/third_party/systemlibs/termcolor.BUILD
 tensorflow/third_party/systemlibs/zlib.BUILD
@@ -267,6 +265,7 @@ tensorflow/third_party/toolchains/remote_config/BUILD
 tensorflow/third_party/toolchains/remote_config/configs.bzl
 tensorflow/third_party/toolchains/remote_config/containers.bzl
 tensorflow/third_party/toolchains/remote_config/rbe_config.bzl
+tensorflow/third_party/typing_extensions.BUILD
 tensorflow/third_party/wrapt.BUILD
 tensorflow/third_party/zlib.BUILD
 tensorflow/tools/build_info/BUILD

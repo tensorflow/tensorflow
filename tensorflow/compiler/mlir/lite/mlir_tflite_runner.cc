@@ -98,6 +98,7 @@ int main(int argc, char** argv) {
 
   // Load the MLIR module.
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(*file_or_err), llvm::SMLoc());
   mlir::OwningModuleRef module(mlir::parseSourceFile(source_mgr, &context));

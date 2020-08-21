@@ -711,6 +711,24 @@ ENTRY main {
   RunTest(hlo_text, &operand, &start_indices);
 }
 
+XLA_TEST_F(GatherOperationTest, GatherFromScalarNonZeroIndices) {
+  const string hlo_text = R"(
+HloModule GatherFromScalar
+
+ENTRY main {
+  operand = f32[1,1,1] parameter(0)
+  indices = s32[2,3,50] parameter(1)
+  ROOT gather = f32[1,2,50] gather(operand, indices),
+      offset_dims={0},
+      collapsed_slice_dims={0,1},
+      start_index_map={1,0,2},
+      index_vector_dim=1,
+      slice_sizes={1,1,1}
+}
+)";
+  EXPECT_TRUE(RunAndCompare(hlo_text, ErrorSpec{0, 0}));
+}
+
 class GatherClientLibraryTest : public ClientLibraryTestBase {};
 
 // Disabled on interpreter since ExecuteAsyncOnStream is not supported.

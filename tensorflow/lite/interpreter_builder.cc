@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/shared_library.h"
-#include "tensorflow/lite/tflite_with_xnnpack_optional.h"
 #include "tensorflow/lite/util.h"
 #include "tensorflow/lite/version.h"
 
@@ -675,8 +674,8 @@ TfLiteStatus InterpreterBuilder::operator()(
   }
 
   if (num_fp32_tensors_ > 0) {
-    (*interpreter)->lazy_delegate_provider_ =
-        MaybeCreateXNNPACKDelegate(num_threads);
+    (*interpreter)->lazy_delegate_providers_ =
+        op_resolver_.GetDelegates(num_threads);
   }
 
   if (ApplyDelegates(interpreter->get(), num_threads) != kTfLiteOk)

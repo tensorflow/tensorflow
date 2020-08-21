@@ -169,6 +169,13 @@ class HloTestBase : public ManifestCheckingTest {
       int64 num_replicas, DeviceAssignment* device_assignment,
       bool run_hlo_passes, bool use_threads);
 
+  // Same as above, but allows passing different programs for replicas.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::function<Executable*(int64)> executable_provider,
+      std::function<int64(int64)> argument_count_provider,
+      std::function<const Literal*(int64, int64)> argument_provider,
+      int64 num_replicas, bool run_hlo_passes);
+
   // Executes the given hlo module on two backends and compares results.
   //
   // 'arguments': the input of the hlo module.

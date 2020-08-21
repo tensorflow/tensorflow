@@ -273,10 +273,9 @@ TfLiteStatus GetNodeOpInfoMapAndContext(
   // node_to_opinfo, do the same here.
   TF_LITE_ENSURE_EQ(*context, interpreter->execution_plan().size(),
                     node_to_opinfo.size());
-  for (const auto op_index : interpreter->execution_plan()) {
-    const auto* node_and_reg = interpreter->node_and_registration(op_index);
-
-    auto op_info = node_to_opinfo.at(op_index);
+  for (const auto& entry : node_to_opinfo) {
+    auto op_info = entry.second;
+    const auto* node_and_reg = interpreter->node_and_registration(entry.first);
     op_info.registration = &node_and_reg->second;
     node_ptr_opinfo_map->insert({&node_and_reg->first, op_info});
   }
