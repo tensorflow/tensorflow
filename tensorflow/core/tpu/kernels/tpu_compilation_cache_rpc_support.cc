@@ -12,27 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-syntax = "proto3";
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_support.h"
 
-package tensorflow.tpu;
-
-// Target type for compilation cache fetch operation.
-enum CompilationCacheFetchTarget {
-  INVALID = 0;
-  MAIN = 1;
-  SHARDING = 2;
-  UNSHARDING = 3;
+namespace tensorflow {
+namespace tpu {
+std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials() {
+  return ::grpc::InsecureChannelCredentials();
 }
 
-message TpuCompilationUidAndIndex {
-  int64 uid = 1;
-  int32 proto_index = 2;
+Status FillCacheEntryFromGetTpuProgramResponse(
+    absl::string_view local_proto_key, GetTpuProgramResponse* response,
+    std::shared_ptr<CacheEntry>* cache_entry) {
+  // TODO(b/162904194): implement this method.
+  LOG(FATAL) << "Not implemented yet.";
 }
-
-message GetTpuProgramRequest {
-  oneof key_oneof {
-    string key = 1;
-    TpuCompilationUidAndIndex uid_and_index = 2;
-  }
-  CompilationCacheFetchTarget fetch_target = 3;
-}
+}  // namespace tpu
+}  // namespace tensorflow
