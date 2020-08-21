@@ -3208,7 +3208,7 @@ class Function(object):
     return graph_function
 
   def _define_function_with_shape_relaxation(self, args, kwargs, flat_args,
-                                             flat_kwargs):
+                                             flat_kwargs, cache_key_context):
     """Define a function, relaxing arg shapes to avoid unnecessary retracing."""
     flat_args_all = nest.flatten((args, kwargs), expand_composites=False)
 
@@ -3217,11 +3217,10 @@ class Function(object):
 
     # Build a cache key where TensorShapes include only rank information (and
     # not information about the size of each dimension).
-    rank_only_cache_key_context = self._cache_key_context()
     if not any_composite_args:
       rank_only_cache_key = self._cache_key(
           args, kwargs, include_tensor_ranks_only=True,
-          cache_key_context=rank_only_cache_key_context)
+          cache_key_context=cache_key_context)
     else:
       # For the rank-only cache key, replace any composite tensors with
       # shape-relaxed TypeSpecs.
@@ -3229,7 +3228,7 @@ class Function(object):
           _shape_relaxed_type_for_composite_tensor, (args, kwargs))
       rank_only_cache_key = self._cache_key(
           cache_key_args, cache_key_kwargs, include_tensor_ranks_only=True,
-          cache_key_context=rank_only_cache_key_context)
+          cache_key_context=cache_key_context)
 
     arg_specs = [_type_spec_for(x) for x in flat_args_all]
     relaxed_arg_specs = self._function_cache.arg_relaxed_specs.get(
@@ -3304,7 +3303,9 @@ class Function(object):
     else:
       flat_args, flat_kwargs = [None], [None]
 
-    cache_key = self._cache_key(args, kwargs)
+    cache_key_context = self._cache_key_context()
+    cache_key = self._cache_key(
+        args, kwargs, cache_key_context=cache_key_context)
 
     try:
       hash(cache_key)
@@ -3342,7 +3343,7 @@ class Function(object):
           and self.input_signature is None
           and call_context_key in self._function_cache.missed):
         return self._define_function_with_shape_relaxation(
-            args, kwargs, flat_args, flat_kwargs)
+            args, kwargs, flat_args, flat_kwargs, cache_key_context)
 
       self._function_cache.missed.add(call_context_key)
       graph_function = self._create_graph_function(args, kwargs)
