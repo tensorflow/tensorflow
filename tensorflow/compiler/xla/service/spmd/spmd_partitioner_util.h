@@ -366,9 +366,10 @@ absl::optional<HloInstruction*> PadFromPartialReplicateShape(
 // sharding={devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}.
 // If patial replicate sharding is not partial replicate or can't reshard to
 // target_tile_dims by dynamic slice, return absl::nullopt.
-absl::optional<HloSharding> PartialReplicateToTileCompatibleSharding(
+absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
     const HloSharding& partial_sharding,
-    const std::vector<int64>& target_tile_dims);
+    const std::vector<int64>& target_tile_dims,
+    bool target_is_partial_replicate);
 
 // Do left halo exchange if all-reduce directly from tile sharding to partial
 // replicate sharding will remove useful data from the source.

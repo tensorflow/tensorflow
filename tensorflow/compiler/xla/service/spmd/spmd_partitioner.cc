@@ -290,133 +290,17 @@ PartitionedHlo PartitionedHlo::ReshardNoCache(const HloSharding& target) {
     return ReshardWithAllToAll(target, *src_tgt_dims);
   }
 
-  // Partial replicated to tiled.
-  if (sharding().ReplicateOnLastTileDim() && !target.ReplicateOnLastTileDim() &&
-      !target.IsTileMaximal()) {
-    // Get the temp sharding target from partial replicate to target tile dims.
-    // target_compatible_sharding has the same tile_assignment dimensions
-    // as the target and can reshard to target by collective permute.
-    // target_compatible_sharding could have different device assignment as
-    // targe. sharding() can reshard to target_compatible_sharding by
-    // dynamic slice.
-    auto target_compatible_sharding = PartialReplicateToTileCompatibleSharding(
-        sharding(), target.tile_assignment().dimensions());
-    // Reshard to target_compatible_sharding by dynamic slice.
-    if (target_compatible_sharding.has_value()) {
-      std::vector<int64> expand_tile_dims;
-      std::vector<int64> tiling_dim_factors;
-      int64 rank = shape.rank();
-      tiling_dim_factors.reserve(rank);
-      auto temp_target_sharding = target_compatible_sharding.value();
-      for (int64 dim = 0; dim < rank; dim++) {
-        if (temp_target_sharding.tile_assignment().dim(dim) >
-            sharding().tile_assignment().dim(dim)) {
-          expand_tile_dims.push_back(dim);
-        }
-        tiling_dim_factors.emplace_back(
-            temp_target_sharding.tile_assignment().dim(dim) /
-            sharding().tile_assignment().dim(dim));
-      }
-
-      // Get per_group partitioner state.
-      std::vector<int64> group_dims(
-          sharding().tile_assignment().num_dimensions() - 1);
-      std::iota(group_dims.begin(), group_dims.end(), 0);
-      auto sharding_grouped = GroupShardingOnDims(sharding(), group_dims);
-      auto per_group_partitioner_state = CreatePerGroupPartitioningState(
-          state_, sharding_grouped.device_groups, state_.b);
-      // 2. Get the padded_hlo, do right halo exchange if needed.
-      auto padded_hlo = PadFromPartialReplicateShape(
-          hlo_, base_shape_, sharding(), temp_target_sharding, expand_tile_dims,
-          state_.collective_ops_creator, state_.next_channel_id,
-          state_.partition_id, state_.b);
-      if (padded_hlo.has_value()) {
-        // 3. Slice out the tile from replicate ones.
-        auto shard_shape =
-            MakePartitionedShape(base_shape_, temp_target_sharding);
-        // device assignment within each group is sorted in
-        // HloSharding::PartialTile, thus partiton_id within each group can be
-        // matched with the order in tile_assignment.
-        Array<int64> tiling_assignment(tiling_dim_factors);
-        tiling_assignment.FillIota(0);
-        auto slice =
-            state_.b->AddInstruction(HloInstruction::CreateDynamicSlice(
-                shard_shape, padded_hlo.value(),
-                MakePartitionOffsets(padded_hlo.value()->shape(),
-                                     HloSharding::Tile(tiling_assignment),
-                                     per_group_partitioner_state.partition_id,
-                                     per_group_partitioner_state.b),
-                shard_shape.dimensions()));
-        slice->set_sharding(temp_target_sharding);
-        auto result = PartitionedHlo(slice, base_shape_, state_);
-        // If temp_target_sharding's device assignment is different from target,
-        // use collective permute to reshard.
-        if (CanReshardWithCollectivePermute(temp_target_sharding, target)) {
-          return result.ReshardWithCollectivePermute(target);
-        }
-        // If device assignment in temp_target_sharding and target are the same,
-        // return result directly.
-        return result;
-      }
+  if (!target.IsTileMaximal() && sharding().ReplicateOnLastTileDim()) {
+    auto try_reshard = ReshardFromPartialReplicateWithDynamicSlice(target);
+    if (try_reshard.has_value()) {
+      return try_reshard.value();
     }
   }
 
-  // Tiled to partial replicate
-  if (!sharding().ReplicateOnLastTileDim() && !sharding().IsTileMaximal() &&
-      target.ReplicateOnLastTileDim()) {
-    // Get the comptible sharding to target with resharding by all reduce.
-    auto compatible_sharding = PartialReplicateToTileCompatibleSharding(
-        target, sharding().tile_assignment().dimensions());
-    if (compatible_sharding.has_value()) {
-      auto temp_sharding = compatible_sharding.value();
-      auto partitioned_hlo = *this;
-      // Use collective permute to adjust device assignment if needed.
-      if (CanReshardWithCollectivePermute(sharding(), temp_sharding)) {
-        partitioned_hlo =
-            partitioned_hlo.ReshardWithCollectivePermute(temp_sharding);
-      }
-
-      // Get replicate dims and replicate factor of each dimensions.
-      int64 rank = hlo_->shape().rank();
-      std::vector<int64> replicate_dims;
-      std::vector<int64> replicate_factors;
-      for (int64 dim = 0; dim < rank; dim++) {
-        int64 replicate_factor = temp_sharding.tile_assignment().dim(dim) /
-                                 target.tile_assignment().dim(dim);
-        if (replicate_factor > 1) {
-          replicate_dims.emplace_back(dim);
-          replicate_factors.emplace_back(replicate_factor);
-        }
-      }
-
-      // Do left halo exchange if all-reduce directly will remove useful data
-      // from the source.
-      auto halo_exchange = TileToPartialReplicateHaloExchange(
-          partitioned_hlo.hlo_, base_shape_, temp_sharding, target,
-          replicate_dims, partitioned_hlo.state().collective_ops_creator,
-          partitioned_hlo.state().next_channel_id,
-          partitioned_hlo.state().partition_id, partitioned_hlo.state().b);
-      if (halo_exchange.has_value()) {
-        auto halo_exchange_hlo = halo_exchange.value();
-        // Grouped on replicate dimensions.
-        auto sharding_grouped = GroupShardingOnDims(
-            temp_sharding, replicate_dims, replicate_factors);
-        auto per_group_partitioner_state = CreatePerGroupPartitioningState(
-            partitioned_hlo.state(), sharding_grouped.device_groups,
-            partitioned_hlo.state().b);
-        auto base_shape = MakePartitionedShape(base_shape_, target);
-        // It's possible that halo_exchange_hlo == hlo.hlo().
-        // Record the sharding of hlo here, and reset it before return.
-        auto original_sharding = partitioned_hlo.sharding();
-        halo_exchange_hlo->set_sharding(sharding_grouped.sharding);
-        auto partial_replicate_hlo = PartitionedHlo(
-            halo_exchange_hlo, base_shape, per_group_partitioner_state);
-        HloInstruction* result =
-            partial_replicate_hlo.ReplicatePartial(replicate_dims);
-        partitioned_hlo.hlo()->set_sharding(original_sharding);
-        result->set_sharding(target);
-        return PartitionedHlo(result, base_shape_, partitioned_hlo.state());
-      }
+  if (!sharding().IsTileMaximal() && target.ReplicateOnLastTileDim()) {
+    auto try_reshard = ReshardToPartialReplicateWithAllGather(target);
+    if (try_reshard.has_value()) {
+      return try_reshard.value();
     }
   }
 
@@ -887,6 +771,158 @@ HloInstruction* PartitionedHlo::ReplicatePartial(absl::Span<const int64> dims) {
         HloInstruction::CreateSlice(target_shape, result, start_indices,
                                     target_shape.dimensions(), strides));
   }
+  return result;
+}
+
+absl::optional<PartitionedHlo>
+PartitionedHlo::ReshardToPartialReplicateWithAllGather(
+    const HloSharding& target) {
+  if (!target.ReplicateOnLastTileDim()) {
+    return absl::nullopt;
+  }
+  // Tiled/partial replicate to partial replicate
+  // Get the comptible sharding to target with resharding by all reduce.
+  auto compatible_sharding = PartialReplicateReshardCompatibleSharding(
+      target, sharding().tile_assignment().dimensions(),
+      sharding().ReplicateOnLastTileDim());
+  if (!compatible_sharding.has_value()) {
+    return absl::nullopt;
+  }
+
+  auto temp_sharding = compatible_sharding.value();
+  auto partitioned_hlo = *this;
+  // Use collective permute to adjust device assignment if needed.
+  if (CanReshardWithCollectivePermute(sharding(), temp_sharding)) {
+    partitioned_hlo =
+        partitioned_hlo.ReshardWithCollectivePermute(temp_sharding);
+  }
+
+  // Get replicate dims and replicate factor of each dimensions.
+  int64 rank = hlo_->shape().rank();
+  std::vector<int64> replicate_dims;
+  std::vector<int64> replicate_factors;
+  for (int64 dim = 0; dim < rank; dim++) {
+    int64 replicate_factor = temp_sharding.tile_assignment().dim(dim) /
+                             target.tile_assignment().dim(dim);
+    if (replicate_factor > 1) {
+      replicate_dims.emplace_back(dim);
+      replicate_factors.emplace_back(replicate_factor);
+    }
+  }
+
+  // Do left halo exchange if all-reduce directly will remove useful data
+  // from the source.
+  auto halo_exchange = TileToPartialReplicateHaloExchange(
+      partitioned_hlo.hlo_, base_shape_, temp_sharding, target, replicate_dims,
+      partitioned_hlo.state().collective_ops_creator,
+      partitioned_hlo.state().next_channel_id,
+      partitioned_hlo.state().partition_id, partitioned_hlo.state().b);
+  if (!halo_exchange.has_value()) {
+    return absl::nullopt;
+  }
+  auto halo_exchange_hlo = halo_exchange.value();
+  // Grouped on replicate dimensions.
+  auto sharding_grouped =
+      GroupShardingOnDims(temp_sharding, replicate_dims, replicate_factors);
+  auto per_group_partitioner_state = CreatePerGroupPartitioningState(
+      partitioned_hlo.state(), sharding_grouped.device_groups,
+      partitioned_hlo.state().b);
+  auto base_shape = MakePartitionedShape(base_shape_, target);
+  // It's possible that halo_exchange_hlo == hlo.hlo().
+  // Record the sharding of hlo here, and reset it before return.
+  auto original_sharding = partitioned_hlo.sharding();
+  halo_exchange_hlo->set_sharding(sharding_grouped.sharding);
+  auto partial_replicate_hlo = PartitionedHlo(halo_exchange_hlo, base_shape,
+                                              per_group_partitioner_state);
+  HloInstruction* result =
+      partial_replicate_hlo.ReplicatePartial(replicate_dims);
+  partitioned_hlo.hlo()->set_sharding(original_sharding);
+  result->set_sharding(target);
+  return PartitionedHlo(result, base_shape_, partitioned_hlo.state());
+}
+
+absl::optional<PartitionedHlo>
+PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
+    const HloSharding& target) {
+  if (!sharding().ReplicateOnLastTileDim()) {
+    return absl::nullopt;
+  }
+
+  // Get the temp sharding target from partial replicate to target tile dims.
+  // target_compatible_sharding has the same tile_assignment dimensions
+  // as the target and can reshard to target by collective permute.
+  // target_compatible_sharding could have different device assignment as
+  // targe. sharding() can reshard to target_compatible_sharding by
+  // dynamic slice.
+  auto target_compatible_sharding = PartialReplicateReshardCompatibleSharding(
+      sharding(), target.tile_assignment().dimensions(),
+      target.ReplicateOnLastTileDim());
+  // Reshard to target_compatible_sharding by dynamic slice.
+  if (!target_compatible_sharding.has_value()) {
+    return absl::nullopt;
+  }
+  std::vector<int64> expand_tile_dims;
+  std::vector<int64> tiling_dim_factors;
+  int64 rank = hlo_->shape().rank();
+  tiling_dim_factors.reserve(target.tile_assignment().num_dimensions());
+  auto temp_target_sharding = target_compatible_sharding.value();
+  for (int64 dim = 0; dim < rank; dim++) {
+    if (temp_target_sharding.tile_assignment().dim(dim) >
+        sharding().tile_assignment().dim(dim)) {
+      expand_tile_dims.push_back(dim);
+    }
+    tiling_dim_factors.emplace_back(
+        temp_target_sharding.tile_assignment().dim(dim) /
+        sharding().tile_assignment().dim(dim));
+  }
+
+  // Add another dimension in tiling_dim_factors if target is partial replicate.
+  if (target.ReplicateOnLastTileDim()) {
+    tiling_dim_factors.emplace_back(
+        sharding().tile_assignment().dimensions().back() /
+        target.tile_assignment().dimensions().back());
+  }
+
+  // Get per_group partitioner state.
+  std::vector<int64> group_dims(sharding().tile_assignment().num_dimensions() -
+                                1);
+  std::iota(group_dims.begin(), group_dims.end(), 0);
+  auto sharding_grouped = GroupShardingOnDims(sharding(), group_dims);
+  auto per_group_partitioner_state = CreatePerGroupPartitioningState(
+      state_, sharding_grouped.device_groups, state_.b);
+  // 2. Get the padded_hlo, do right halo exchange if needed.
+  auto padded_hlo = PadFromPartialReplicateShape(
+      hlo_, base_shape_, sharding(), temp_target_sharding, expand_tile_dims,
+      state_.collective_ops_creator, state_.next_channel_id,
+      state_.partition_id, state_.b);
+  if (!padded_hlo.has_value()) {
+    return absl::nullopt;
+  }
+  // 3. Slice out the tile from replicate ones.
+  auto shard_shape = MakePartitionedShape(base_shape_, temp_target_sharding);
+  // device assignment within each group is sorted in
+  // HloSharding::PartialTile, thus partiton_id within each group can be
+  // matched with the order in tile_assignment.
+  Array<int64> tiling_assignment(tiling_dim_factors);
+  tiling_assignment.FillIota(0);
+  auto slice = state_.b->AddInstruction(HloInstruction::CreateDynamicSlice(
+      shard_shape, padded_hlo.value(),
+      MakePartitionOffsets(padded_hlo.value()->shape(),
+                           target.ReplicateOnLastTileDim()
+                               ? HloSharding::PartialTile(tiling_assignment)
+                               : HloSharding::Tile(tiling_assignment),
+                           per_group_partitioner_state.partition_id,
+                           per_group_partitioner_state.b),
+      shard_shape.dimensions()));
+  slice->set_sharding(temp_target_sharding);
+  auto result = PartitionedHlo(slice, base_shape_, state_);
+  // If temp_target_sharding's device assignment is different from target,
+  // use collective permute to reshard.
+  if (CanReshardWithCollectivePermute(temp_target_sharding, target)) {
+    return result.ReshardWithCollectivePermute(target);
+  }
+  // If device assignment in temp_target_sharding and target are the same,
+  // return result directly.
   return result;
 }
 
