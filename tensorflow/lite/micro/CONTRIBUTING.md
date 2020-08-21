@@ -71,7 +71,9 @@ We strongly recommend that contributors:
 
         *   We will be adding internal checks that automate this requirement by
             matching the PR description to the regexp: `(Fixes|Issue) #`
-
+            
+1.  Unit tests are critical to a healthy codebase. PRs without tests should be the exception rather than the norm. And contributions to improve, simplify, or make the unit tests more exhaustive are welcome! Please refer to [this guideline](https://google.github.io/eng-practices/review/developer/small-cls.html#test_code) on how test code and writing small PRs should be reconciled.
+     
 ## Guidlines for Specific Contribution Categories
 
 We provide some additional guidelines for different categories of contributions.
@@ -86,6 +88,7 @@ fixing a bug needs a bigger architectural change.
     [TF Lite Micro Github issue](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
     to determine the scope of the bug fix.
 1.  Send a PR (if that is determined to be the best path forward).
+1.  Bugfix PRs should be accompanied by a test case that fails prior to the fix and passes with the fix to both validate that the fix works as expected and prevent future regressions.
 
 ### Reference Kernel Implementations
 
@@ -156,3 +159,4 @@ and more scalable.
 Having said that, we still invite feature requests via
 [TF Lite Micro Github issues](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
 to determine if the requested feature aligns with the TFLM roadmap.
+
