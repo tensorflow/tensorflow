@@ -563,7 +563,8 @@ def _reduce(tf_fn,
 @utils.np_doc('size')
 def size(x):
   x = x.numpy() if isinstance(x, tf.Tensor) else x
-  if isinstance(x, (int, float, onp.int32, onp.int64, onp.float32, onp.float64)):
+  if isinstance(x, (int, float, onp.int32, onp.int64,
+                    onp.float32, onp.float64)):
     return 1
   elif isinstance(x, (np.ndarray, onp.ndarray)):
     return np.prod(x.shape)
