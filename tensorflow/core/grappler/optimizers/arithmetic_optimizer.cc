@@ -102,7 +102,7 @@ bool ValuesFromConstNode(const NodeDef& node, std::vector<T>* values) {
 
   const auto tensor_content_size = tensor.tensor_content().size();
   if (tensor_content_size > 0) {
-    CHECK_EQ(0, tensor_content_size % sizeof(T))
+    DCHECK_EQ(0, tensor_content_size % sizeof(T))
         << "tensor_content_size (" << tensor_content_size
         << ") is not a multiple of " << sizeof(T);
     values->resize(tensor_content_size / sizeof(T));
@@ -667,7 +667,7 @@ class AddOpsRewriteStage : public ArithmeticNodesGroupOptimizerStage {
   InputAndShape AddInputsOfSymbolicallyEqualShape(
       const NodeDef& root_node, const string& node_name,
       const std::vector<InputAndShape>& inputs) {
-    CHECK(!inputs.empty()) << "Inputs must be non-empty";
+    DCHECK(!inputs.empty()) << "Inputs must be non-empty";
 
     // Do not create redundant AddN nodes
     if (inputs.size() == 1 || root_node.attr().count("T") == 0) {
@@ -832,7 +832,7 @@ class HoistCommonFactorOutOfAggregation : public ArithmeticOptimizerStage {
   Status GetCommonFactors(const NodeDef* node, std::set<string>* common_factors,
                           bool* common_factor_is_denominator,
                           std::vector<string>* ctrl_deps) const {
-    CHECK(common_factors->empty());
+    DCHECK(common_factors->empty());
     CHECK_NOTNULL(common_factor_is_denominator);
     *common_factor_is_denominator = false;
 
@@ -1041,7 +1041,7 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
 
     auto num_nodes = /*root*/ 1 + group.optimized_nodes.size();
     auto num_inputs = group.inputs.size();
-    CHECK_EQ(num_nodes, num_inputs - 1)
+    DCHECK_EQ(num_nodes, num_inputs - 1)
         << "Can't build a tree with " << num_inputs << " inputs, using "
         << num_nodes << "binary op nodes.";
 
@@ -1106,7 +1106,7 @@ class MinimizeBroadcasts : public ArithmeticNodesGroupOptimizerStage {
         add_ops.push_back(updated_node);
       }
     } while (add_ops.size() > 1);
-    CHECK_EQ(1, add_ops.size());
+    DCHECK_EQ(1, add_ops.size());
 
     // attach the largest tensor to the root op
     if (!add_ops_leftover.empty()) {
@@ -1766,8 +1766,8 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
     for (const auto& link : tails) {
       NodeDef* tail = CHECK_NOTNULL(link.node);
       const int concat_port = link.port_origin;
-      CHECK_GE(concat_port, 0);
-      CHECK_LT(concat_port, concat_node->input_size());
+      DCHECK_GE(concat_port, 0);
+      DCHECK_LT(concat_port, concat_node->input_size());
       const string concat_input = concat_node->input(concat_port);
       // Hook the node following tail directly into the concat node.
       const string tail_input = tail->input(0);
@@ -1874,7 +1874,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   Status UnwrapReshapeInput(const NodeDef* wrapped_node, const int port,
       PortNodeMap* reshapes, std::set<string>* ctrl_inputs,
       NodeDef** return_node) const {
-    CHECK(IsReshape(*wrapped_node));
+    DCHECK(IsReshape(*wrapped_node));
 
     NodeDef* unwrapped_node = const_cast<NodeDef*>(wrapped_node);
     // Record the last reshape node.
@@ -1894,7 +1894,7 @@ class HoistCWiseUnaryChainsStage : public ArithmeticOptimizerStage {
   Status UnwrapReshapeOutput(const NodeDef* wrapped_node, const int port,
       PortNodeMap* reshapes, std::set<string>* ctrl_inputs,
       NodeDef** return_node) const {
-    CHECK(IsReshape(*wrapped_node));
+    DCHECK(IsReshape(*wrapped_node));
 
     NodeDef* unwrapped_node = const_cast<NodeDef*>(wrapped_node);
     NodeDef* wrap = nullptr;
