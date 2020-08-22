@@ -50,3 +50,12 @@ TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 
 
 * TinyML: Tensorflow lite for microcontroller   컨트리뷰션은 아래의 `Github 가이드라인`을 따릅니다.
     - Github 공식 오픈소스 컨트리뷰션 가이드라인 <https://opensource.guide/ko/how-to-contribute/>
+
+@book{TinyML-Machine-Learning-with-TensorFlow-Lite,
+  title={초소형 머신러닝 TinyML: 모델 최적화부터 에지 컴퓨팅까지 작고 빠른 딥러닝을 위한 텐서플로 라이트},
+  author={피트 워든, 대니얼 시투나야케， 맹윤호(역), 임지순(역)},
+  isbn={9791162243411},
+  url={https://www.hanbit.co.kr/media/books/book_view.html?p_code=B3963656224},
+  year={2020},
+  publisher={한빛미디어}
+}
