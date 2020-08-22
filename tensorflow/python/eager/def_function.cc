@@ -40,7 +40,7 @@ class CallCounter {
 };
 
 CallCounter::CallCounter(int max_call_history)
-    : max_call_history_(max_call_history), call_count_(0) {}
+    : call_count_(0), max_call_history_(max_call_history) {}
 
 void CallCounter::CalledWithTracing() {
   ++call_count_;
