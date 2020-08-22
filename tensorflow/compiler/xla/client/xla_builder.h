@@ -366,6 +366,7 @@ class XlaBuilder {
   //
   // TODO(b/119520625): Remove this API once we have more dynamic shape infra
   // ready.
+  ABSL_DEPRECATED("Use SetDimensionSize to set a dynamic dimension.")
   Status SetDynamicBinding(int64 dynamic_size_param_num,
                            ShapeIndex dynamic_size_param_index,
                            int64 target_param_num,
@@ -557,6 +558,12 @@ class XlaBuilder {
                                       FftType fft_type,
                                       absl::Span<const int64> fft_length);
 
+  virtual StatusOr<XlaOp> TriangularSolveInternal(
+      const Shape& shape, XlaOp a, XlaOp b, TriangularSolveOptions options);
+
+  virtual StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
+                                           bool lower);
+
   XlaOp Infeed(const Shape& shape, const string& config = "");
   XlaOp InfeedWithToken(XlaOp token, const Shape& shape, const string& config);
   virtual StatusOr<XlaOp> InfeedWithTokenInternal(
@@ -705,6 +712,11 @@ class XlaBuilder {
 
   XlaOp RngBitGenerator(RandomAlgorithm algorithm, XlaOp initial_state,
                         const Shape& shape);
+  // Internal variant for the op with the full result shape containing both data
+  // and state shape as a tuple.
+  virtual StatusOr<XlaOp> RngBitGeneratorInternal(
+      const Shape& full_result_shape, RandomAlgorithm algorithm,
+      XlaOp initial_state);
 
   XlaOp While(const XlaComputation& condition, const XlaComputation& body,
               XlaOp init);
@@ -777,8 +789,13 @@ class XlaBuilder {
 
   XlaOp RemoveDynamicDimension(XlaOp operand, int64 dimension);
 
-  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
-                                 absl::Span<const XlaOp> operands = {});
+  virtual StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr,
+                                         HloOpcode opcode,
+                                         absl::Span<const XlaOp> operands);
+  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr,
+                                 HloOpcode opcode) {
+    return AddInstruction(std::move(instr), opcode, /*operands=*/{});
+  }
 
   void AddCalledComputation(const XlaComputation& computation,
                             HloInstructionProto* instr);

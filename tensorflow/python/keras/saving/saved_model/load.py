@@ -380,8 +380,11 @@ class KerasObjectLoader(tf_load.Loader):
         metadata['class_name'] == 'Sequential' or
         metadata['class_name'] == 'Functional')
     if not (generic_utils.validate_config(config) and
-            model_is_functional_or_sequential):
-      return None  # Revive as custom model.
+            model_is_functional_or_sequential
+           ) or generic_utils.get_registered_object(class_name) is not None:
+      # Model should not be revived as a graph network. Try reviving directly
+      # from config or as a custom model.
+      return None
 
     # Revive functional and sequential models as blank model objects for now (
     # must be initialized to enable setattr tracking and attribute caching).

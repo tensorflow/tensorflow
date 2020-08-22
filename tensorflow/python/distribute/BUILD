@@ -870,6 +870,7 @@ py_library(
     srcs = ["multi_worker_test_base.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":multi_process_runner",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
@@ -879,9 +880,19 @@ py_library(
         "//tensorflow/python:session",
         "//tensorflow/python:training_lib",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:remote",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "multi_worker_test_base_test",
+    srcs = ["multi_worker_test_base_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":multi_worker_test_base",
     ],
 )
 
@@ -1136,6 +1147,7 @@ distribute_py_test(
         ":distribute_utils",
         ":packed_distributed_variable",
         ":parameter_server_strategy",
+        ":ps_values",
         ":strategy_combinations",
         ":test_util",
         ":tpu_strategy",
@@ -1790,5 +1802,19 @@ py_library(
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:sharded_variable",
         "//tensorflow/python/distribute:values",
+    ],
+)
+
+tf_py_test(
+    name = "parameter_server_strategy_v2_test",
+    srcs = ["parameter_server_strategy_v2_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":multi_worker_test_base",
+        ":parameter_server_strategy_v2",
+        "//tensorflow/python:training_server_lib",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:test",
     ],
 )

@@ -113,6 +113,22 @@ void DeviceResolverDistributed::RefreshRemoteAttributes(
       });
 }
 
+Status DeviceResolverDistributed::GetTaskCached(
+    const string& task, std::vector<DeviceAttributes>* attributes) {
+  mutex_lock l(mu_);
+  attributes->clear();
+  for (const auto& it : attr_table_) {
+    const string& device_name = it.first;
+    if (DeviceNameUtils::IsSameAddressSpace(task, device_name)) {
+      attributes->push_back(it.second);
+    }
+  }
+  if (attributes->empty()) {
+    return errors::NotFound(task, " not found in the cache");
+  }
+  return Status::OK();
+}
+
 void DeviceResolverDistributed::ClearTask(const string& task) {
   mutex_lock l(mu_);
   // First find all the keys belonging to the task.

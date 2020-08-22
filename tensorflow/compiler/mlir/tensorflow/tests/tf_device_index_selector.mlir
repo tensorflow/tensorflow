@@ -14,12 +14,12 @@ func @select(%arg0: tensor<f32>, %arg1: tensor<f32>) -> (tensor<i32>, tensor<f32
   return %0, %4 : tensor<i32>, tensor<f32>
 }
 
-func @add(%i: tensor<i32>, %arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+func @add(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.Add"(%arg0, %arg1): (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }
 
-func @sub(%i: tensor<i32>, %arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+func @sub(%arg0: tensor<*xf32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
   %0 = "tf.Sub"(%arg0, %arg1) : (tensor<*xf32>, tensor<*xf32>) -> tensor<*xf32>
   return %0 : tensor<*xf32>
 }

@@ -142,6 +142,10 @@ tf_py_test(
     size = "small",
     srcs = ["map_ops_test.py"],
     grpc_enabled = True,
+    tags = [
+        "noasan",  # TODO(b/164696004)
+        "notsan",  # TODO(b/164696004)
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

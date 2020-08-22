@@ -52,6 +52,7 @@ TfLiteStatus QuantizeModel(
   }
 
   MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   StatusScopedDiagnosticHandler statusHandler(&context,
                                               /*propagate=*/true);
 

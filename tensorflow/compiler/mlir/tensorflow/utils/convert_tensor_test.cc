@@ -43,6 +43,7 @@ static void RegisterDialects() {
 
 TEST(ConvertTypeToTensorTypeTest, UnrankedTensorType) {
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   mlir::Builder b(&context);
 
   PartialTensorShape output_shape =
@@ -52,6 +53,7 @@ TEST(ConvertTypeToTensorTypeTest, UnrankedTensorType) {
 
 TEST(ConvertTypeToTensorTypeTest, NonFullyDefinedRankedTensorType) {
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   mlir::Builder b(&context);
 
   PartialTensorShape output_shape = ConvertTypeToTensorShape(
@@ -61,6 +63,7 @@ TEST(ConvertTypeToTensorTypeTest, NonFullyDefinedRankedTensorType) {
 
 TEST(ConvertTypeToTensorTypeTest, FullyDefinedRankedTensorType) {
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   mlir::Builder b(&context);
 
   PartialTensorShape output_shape = ConvertTypeToTensorShape(

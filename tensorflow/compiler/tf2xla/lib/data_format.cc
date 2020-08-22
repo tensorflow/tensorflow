@@ -62,7 +62,7 @@ xla::StatusOr<xla::XlaOp> Expand(xla::XlaOp input, int64 dim) {
   std::vector<int64> expanded_shape =
       xla::SpanToVector(input_shape.dimensions());
   expanded_shape[dim] /= 4;
-  expanded_shape.insert(expanded_shape.begin() + dim, 4);
+  expanded_shape.insert(expanded_shape.begin() + dim + 1, 4);
 
   // Move the newly created dimension to the end with a transpose.
   std::vector<int64> permutation;

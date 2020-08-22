@@ -30,13 +30,12 @@ TEST(CAPI, RemoteExecuteSilentCopiesAsyncFunc) {
   TestRemoteExecuteSilentCopiesFunc(/*async=*/true, /*remote=*/true,
                                     /*heavy_load_on_streaming_rpc=*/false);
 }
-// TODO(b/164506563): Re-enable after the fix.
-TEST(CAPI, DISABLED_RemoteExecuteSilentCopiesFuncRemoteOutputs) {
+TEST(CAPI, RemoteExecuteSilentCopiesFuncRemoteOutputs) {
   TestRemoteExecuteSilentCopiesFunc(/*async=*/false, /*remote=*/true,
                                     /*heavy_load_on_streaming_rpc=*/false,
                                     /*remote_func_outputs=*/true);
 }
-TEST(CAPI, DISABLED_RemoteExecuteSilentCopiesAsyncFuncRemoteOutputs) {
+TEST(CAPI, RemoteExecuteSilentCopiesAsyncFuncRemoteOutputs) {
   TestRemoteExecuteSilentCopiesFunc(/*async=*/true, /*remote=*/true,
                                     /*heavy_load_on_streaming_rpc=*/false,
                                     /*remote_func_outputs=*/true);

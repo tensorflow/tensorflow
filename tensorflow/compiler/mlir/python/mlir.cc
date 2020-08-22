@@ -41,6 +41,7 @@ std::string ImportGraphDef(const std::string &proto,
   GraphDebugInfo debug_info;
   GraphImportConfig specs;
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   auto module = ConvertGraphdefToMlir(graphdef, debug_info, specs, &context);
   if (!module.ok()) {
     Set_TF_Status_from_Status(status, module.status());
@@ -85,6 +86,7 @@ std::string ExperimentalConvertSavedModelToMlir(
   std::vector<string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   auto module_or = ConvertSavedModelToMlir(
       &bundle, &context, absl::Span<std::string>(exported_names));
   if (!module_or.status().ok()) {
@@ -115,6 +117,7 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   // Convert the SavedModelBundle to an MLIR module.
 
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   auto module_or =
       ConvertSavedModelV1ToMlir(bundle, {}, &context, upgrade_legacy);
   if (!module_or.status().ok()) {

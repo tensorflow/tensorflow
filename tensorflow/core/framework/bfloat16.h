@@ -48,9 +48,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Conversion routines between an array of float and bfloat16 of
-// "size".
+// Convert from float to bfloat16 with rounding-to-nearest-even.
+void RoundFloatToBFloat16(const float* src, bfloat16* dst, int64 size);
+// Convert from float to bfloat16 with truncation. Notice this conversion is
+// lossy since it truncates the float to 7 mantissa bits without rounding.
 void FloatToBFloat16(const float* src, bfloat16* dst, int64 size);
+// Convert from bfloat16 to float. This conversion is lossless.
 void BFloat16ToFloat(const bfloat16* src, float* dst, int64 size);
 
 }  // namespace tensorflow

@@ -483,7 +483,7 @@ class AutoCastVariableTest(test.TestCase, parameterized.TestCase):
     with strategy.scope():
       x = get_var(1., dtypes.float32)
       x = autocast_variable.create_autocast_variable(x)
-      use_policy = getattr(strategy.extended, '_use_policy', False)
+      use_policy = getattr(strategy.extended, '_use_var_policy', False)
       if use_policy:
         self.assertRegex(
             repr(x).replace('\n', ' '),

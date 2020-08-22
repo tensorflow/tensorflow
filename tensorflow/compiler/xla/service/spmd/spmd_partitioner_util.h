@@ -366,9 +366,10 @@ absl::optional<HloInstruction*> PadFromPartialReplicateShape(
 // sharding={devices=[1,2,2]0,2,1,3 last_tile_dim_replicate}.
 // If patial replicate sharding is not partial replicate or can't reshard to
 // target_tile_dims by dynamic slice, return absl::nullopt.
-absl::optional<HloSharding> PartialReplicateToTileCompatibleSharding(
+absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
     const HloSharding& partial_sharding,
-    const std::vector<int64>& target_tile_dims);
+    const std::vector<int64>& target_tile_dims,
+    bool target_is_partial_replicate);
 
 // Do left halo exchange if all-reduce directly from tile sharding to partial
 // replicate sharding will remove useful data from the source.
@@ -378,6 +379,12 @@ absl::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
     const std::vector<int64>& replicate_dims,
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
+
+// Finds a list of dimensions that can be grouped on such that it will have the
+// specified device groups. Group order and dimension order are ignored.
+absl::optional<std::vector<int64>> FindMatchingPartitionedDimsForGrouping(
+    const HloSharding& sharding,
+    const std::vector<std::vector<int64>>& device_groups);
 
 }  // namespace spmd
 }  // namespace xla

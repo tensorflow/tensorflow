@@ -72,9 +72,8 @@ struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   }
 };
 
-struct TensorFlowExecutorOpFolderDialectInterface
-    : public OpFolderDialectInterface {
-  using OpFolderDialectInterface::OpFolderDialectInterface;
+struct TensorFlowExecutorDialectFoldInterface : public DialectFoldInterface {
+  using DialectFoldInterface::DialectFoldInterface;
 
   // Registered hook to check if the given region, which is attached to an
   // operation that is *not* isolated from above (i.e. no internal regions
@@ -97,7 +96,7 @@ TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
       >();
 
   addInterfaces<TensorFlowExecutorInlinerInterface,
-                TensorFlowExecutorOpFolderDialectInterface>();
+                TensorFlowExecutorDialectFoldInterface>();
 
   addTypes<ControlType, TokenType>();
 }

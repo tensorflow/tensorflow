@@ -127,6 +127,11 @@ PYBIND11_MODULE(_tf_stack, m) {
       // For compatibility with the traceback module.
       .def("__eq__", &FrameSummary::operator==)
       .def("__ne__", &FrameSummary::operator!=)
+      .def("__hash__",
+           [](const FrameSummary& self) {
+             return py::hash(
+                 py::make_tuple(self.filename, self.lineno, self.name));
+           })
       .def("__getitem__",
            [](const FrameSummary& self, const py::object& index) -> py::object {
              return py::make_tuple(self.filename, self.lineno, self.name,

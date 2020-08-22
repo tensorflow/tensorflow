@@ -30,7 +30,7 @@ TEST(FloatModel, WithXnnpackDelegate) {
 
   std::unique_ptr<Interpreter> interpreter;
   ASSERT_EQ(InterpreterBuilder(*model,
-                               ops::builtin::BuiltinOpResolver{})(&interpreter),
+                               ops::builtin::BuiltinOpResolver())(&interpreter),
             kTfLiteOk);
   ASSERT_TRUE(interpreter);
 
@@ -45,6 +45,34 @@ TEST(FloatModel, WithXnnpackDelegate) {
       interpreter->node_and_registration(first_node_id)->second;
   const std::string op_name = GetOpNameByRegistration(first_node_reg);
   EXPECT_EQ("DELEGATE TfLiteXNNPackDelegate", op_name);
+#endif
+}
+
+TEST(FloatModel, DefaultXnnpackDelegateNotAllowed) {
+  // Note: this graph will be fully delegated by the XNNPACK delegate.
+  auto model = FlatBufferModel::BuildFromFile(
+      "tensorflow/lite/testdata/multi_add.bin");
+  ASSERT_TRUE(model);
+
+  std::unique_ptr<Interpreter> interpreter;
+  ASSERT_EQ(
+      InterpreterBuilder(
+          *model, ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
+          &interpreter),
+      kTfLiteOk);
+  ASSERT_TRUE(interpreter);
+
+  ASSERT_EQ(interpreter->AllocateTensors(), kTfLiteOk);
+
+#if TFLITE_HAS_ATTRIBUTE_WEAK || defined(TFLITE_BUILD_WITH_XNNPACK_DELEGATE)
+  // As we don't allow applying xnnpack delegate by default, we will expect the
+  // following:
+  EXPECT_LT(1, interpreter->execution_plan().size());
+  int first_node_id = interpreter->execution_plan()[0];
+  const auto& first_node_reg =
+      interpreter->node_and_registration(first_node_id)->second;
+  const std::string op_name = GetOpNameByRegistration(first_node_reg);
+  EXPECT_EQ("ADD", op_name);
 #endif
 }
 

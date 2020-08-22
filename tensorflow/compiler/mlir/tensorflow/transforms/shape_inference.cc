@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -596,7 +597,7 @@ ShapeInference::ShapeInference(int64_t graph_version, MLIRContext* context,
                                bool propagate_caller_callee_constants)
     : graph_version_(graph_version),
       propagate_caller_callee_constants_(propagate_caller_callee_constants) {
-  tf_dialect_ = context->getRegisteredDialect<TensorFlowDialect>();
+  tf_dialect_ = context->getLoadedDialect<TensorFlowDialect>();
 }
 
 ShapeHandle ShapeInference::ComputeOutputAsShape(OpResult result,
@@ -1171,10 +1172,11 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
     if (!dialect) return failure();
     // Only attempt TF dialect fallback if there are no unknown operands.
     if (some_unknown && dialect == tf_dialect_) return failure();
-    SmallVector<Attribute, 8> constants;
-    if (failed(dialect->constantFoldHook(op, constant_operands, constants)))
+    auto* interface = dialect->getRegisteredInterface<DialectFoldInterface>();
+    if (!interface) return failure();
+
+    if (failed(interface->fold(op, constant_operands, fold_results)))
       return failure();
-    fold_results.assign(constants.begin(), constants.end());
   }
 
   for (auto result : zip(op->getResults(), fold_results)) {

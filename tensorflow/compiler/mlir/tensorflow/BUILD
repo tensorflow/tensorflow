@@ -355,6 +355,7 @@ cc_library(
             "ir/tf_remaining_ops.h.inc",
         ] + ["ir/tf_" + target["name"] + ".h.inc" for target in tf_ops_category_list],
         deps = [
+            ":attribute_utils",
             ":tensorflow_attributes",
             ":tensorflow_canonicalize_inc_gen",
             ":tensorflow_op_interfaces",
@@ -776,6 +777,7 @@ cc_library(
         "transforms/sink_constant.cc",
         "transforms/stack_ops_decomposition.cc",
         "transforms/tensor_array_ops_decomposition.cc",
+        "transforms/tensor_device_copy_conversion.cc",
         "transforms/tensor_list_ops_decomposition.cc",
         "transforms/test_resource_alias_analysis.cc",
         "transforms/test_side_effect_analysis.cc",
@@ -801,7 +803,6 @@ cc_library(
         "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
-        "transforms/attribute_utils.h",
         "transforms/batchmatmul_to_einsum.h",
         "transforms/bridge.h",
         "transforms/collection_ops_util.h",
@@ -811,6 +812,7 @@ cc_library(
     ],
     includes = ["include"],
     deps = [
+        ":attribute_utils",
         ":bridge_logger",
         ":convert_tensor",
         ":convert_type",
@@ -1271,7 +1273,7 @@ cc_library(
     name = "tf_dialect_passes",
     srcs = [
         "transforms/constant_fold.cc",
-        "transforms/dialect_hooks.cc",
+        "transforms/decode_attributes_hook.cc",
     ],
     hdrs = [
         "transforms/constant_fold.h",
@@ -1820,5 +1822,13 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
+    name = "attribute_utils",
+    hdrs = ["utils/attribute_utils.h"],
+    deps = [
+        "@llvm-project//mlir:IR",
     ],
 )

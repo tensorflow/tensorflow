@@ -49,13 +49,6 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
   }
   VLOG(3) << "Issuing: " << rpc_description;
 
-  for (auto handle : inputs_) {
-    handle->Ref();
-  }
-  for (auto handle : retvals) {
-    handle->Ref();
-  }
-
   CancellationManager* cm = cancellation_manager_;
   CancellationToken token = 0;
   auto call_opts = std::make_shared<CallOptions>();
@@ -64,9 +57,20 @@ void RemoteExecuteNode::RunAsync(StatusCallback done) {
     const bool already_cancelled = !cm->RegisterCallback(
         token, [call_opts, response, done]() { call_opts->StartCancel(); });
     if (already_cancelled) {
-      done(errors::Cancelled("RemoteExecuteNode::RunAsync"));
+      Status s = errors::Cancelled("RemoteExecuteNode::RunAsync");
+      for (size_t i = 0; i < retvals.size(); ++i) {
+        retvals[i]->PoisonRemote(s, device, context_view_id_);
+      }
+      done(s);
       return;
     }
+  }
+
+  for (auto handle : inputs_) {
+    handle->Ref();
+  }
+  for (auto handle : retvals) {
+    handle->Ref();
   }
 
   eager_client_->StreamingEnqueueAsync(

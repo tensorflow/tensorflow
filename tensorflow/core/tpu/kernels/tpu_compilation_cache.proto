@@ -23,3 +23,16 @@ enum CompilationCacheFetchTarget {
   SHARDING = 2;
   UNSHARDING = 3;
 }
+
+message TpuCompilationUidAndIndex {
+  int64 uid = 1;
+  int32 proto_index = 2;
+}
+
+message GetTpuProgramRequest {
+  oneof key_oneof {
+    string key = 1;
+    TpuCompilationUidAndIndex uid_and_index = 2;
+  }
+  CompilationCacheFetchTarget fetch_target = 3;
+}

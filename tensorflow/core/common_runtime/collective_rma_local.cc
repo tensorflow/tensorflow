@@ -108,6 +108,13 @@ void CollectiveRemoteAccessLocal::PostToPeer(
                              from_alloc_attr, done);
 }
 
+void CollectiveRemoteAccessLocal::CheckPeerHealth(const string& peer_task,
+                                                  const StatusCallback& done) {
+  // Assume local devices are always healthy.
+  done(errors::Internal(
+      "CheckPeerHealth is not supposed to be called for local collectives"));
+}
+
 /*static*/
 void CollectiveRemoteAccessLocal::MemCpyAsync(
     DeviceContext* src_dev_ctx, DeviceContext* dst_dev_ctx, Device* src_dev,

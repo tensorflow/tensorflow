@@ -2412,6 +2412,27 @@ cc_library(
 )
 
 cc_library(
+    name = "InterfaceStub",
+    srcs = glob([
+        "lib/InterfaceStub/*.c",
+        "lib/InterfaceStub/*.cpp",
+        "lib/InterfaceStub/*.inc",
+        "lib/InterfaceStub/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/InterfaceStub/*.h",
+        "include/llvm/InterfaceStub/*.def",
+        "include/llvm/InterfaceStub/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":Object",
+        ":Support",
+        ":config",
+    ],
+)
+
+cc_library(
     name = "Interpreter",
     srcs = glob([
         "lib/ExecutionEngine/Interpreter/*.c",
@@ -4094,8 +4115,6 @@ cc_library(
         "include/llvm/TextAPI/*.def",
         "include/llvm/TextAPI/*.inc",
     ]) + [
-        "include/llvm/TextAPI/ELF/TBEHandler.h",
-        "include/llvm/TextAPI/ELF/ELFStub.h",
         "include/llvm/TextAPI/MachO/Architecture.def",
         "include/llvm/TextAPI/MachO/PackedVersion.h",
         "include/llvm/TextAPI/MachO/InterfaceFile.h",

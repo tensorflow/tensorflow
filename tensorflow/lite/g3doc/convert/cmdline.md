@@ -13,10 +13,15 @@ GitHub
 ## High-level overview
 
 The TensorFlow Lite Converter has a command line tool named `tflite_convert`,
-which supports basic models. Use the [Python API](python_api.md) for any
-conversions involving optimizations, or any additional parameters (e.g.
-signatures in [SavedModels](https://www.tensorflow.org/guide/saved_model) or
-custom objects in
+which supports models saved in the supported file formats:
+
+*   [SavedModel directory](https://www.tensorflow.org/guide/saved_model)
+    generated in 1.X or 2.X.
+*   [`tf.keras` model](https://www.tensorflow.org/guide/keras/overview)
+    formatted in the HDF5 file.
+
+Use the [Python API](python_api.md) for any conversions involving optimizations,
+or any additional parameters (e.g. custom objects in
 [Keras models](https://www.tensorflow.org/guide/keras/overview)).
 
 ## Usage

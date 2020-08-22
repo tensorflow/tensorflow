@@ -251,39 +251,13 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     train_step(input_iterator)
 
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]))
-  def test_model_predict_with_dynamic_batch(self, distribution):
-    input_data = np.random.random([1, 32, 64, 64, 3])
-    input_shape = tuple(input_data.shape[1:])
-
-    def build_model():
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.ConvLSTM2D(
-              4,
-              kernel_size=(4, 4),
-              activation="sigmoid",
-              padding="same",
-              input_shape=input_shape))
-      model.add(keras.layers.GlobalMaxPooling2D())
-      model.add(keras.layers.Dense(2, activation="sigmoid"))
-      return model
-
-    with distribution.scope():
-      model = build_model()
-      model.compile(loss="binary_crossentropy", optimizer="adam")
-      result = model.predict(input_data)
-      self.assertEqual(result.shape, (1, 2))
-
+  # TODO(b/165912857): Re-enable.
   @combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
-  def test_lstm(self, distribution):
+  def DISABLED_test_lstm(self, distribution):
 
     batch_size = 32
 
@@ -304,7 +278,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     x, y = create_lstm_data()
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
-    dataset = dataset.batch(batch_size, drop_remainder=True)
+    dataset = dataset.batch(batch_size)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():

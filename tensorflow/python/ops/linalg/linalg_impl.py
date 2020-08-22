@@ -234,7 +234,7 @@ def _matrix_exp_pade13(matrix):
 def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the matrix exponential of one or more square matrices.
 
-  exp(A) = \sum_{n=0}^\infty A^n/n!
+  $$exp(A) = \sum_{n=0}^\infty A^n/n!$$
 
   The exponential is computed using a combination of the scaling and squaring
   method and the Pade approximation. Details can be found in:

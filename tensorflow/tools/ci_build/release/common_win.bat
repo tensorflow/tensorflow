@@ -60,10 +60,10 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (
-  SET TF_CUDA_VERSION=10.1
+  SET TF_CUDA_VERSION=11.0
 )
 IF NOT DEFINED TF_CUDNN_VERSION (
-  SET TF_CUDNN_VERSION=7
+  SET TF_CUDNN_VERSION=8
 )
 SET TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_37,sm_52,sm_60,sm_61,compute_70
 SET CUDA_TOOLKIT_PATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v%TF_CUDA_VERSION%

@@ -653,10 +653,10 @@ class Interpreter {
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
 
-  // Indicating a delegate that the TFLite interpreter will apply by default.
-  // A nullptr value means there's no delegate to be applied by default or the
-  // delegate has been applied and doesn't need to be applied again.
-  TfLiteDelegatePtr lazy_delegate_provider_;
+  // Indicating delegates that the TFLite interpreter will apply by default.
+  // An empty one means there's no delegate to be applied by default or
+  // delegates have been applied and doesn't need to be applied again.
+  std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
 };
 
 }  // namespace impl

@@ -106,23 +106,6 @@ class TensorMapSize : public OpKernel {
   }
 };
 
-class TensorMapInsert : public OpKernel {
- public:
-  explicit TensorMapInsert(OpKernelConstruction* c) : OpKernel(c) {}
-  ~TensorMapInsert() override {}
-
-  void Compute(OpKernelContext* c) override {
-    const TensorKey& key = c->input(1);
-    const Tensor& value = c->input(2);
-    const TensorMap* m = nullptr;
-    OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
-
-    TensorMap* output_map = nullptr;
-    OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
-    output_map->replace(key, value);
-  }
-};
-
 class TensorMapLookup : public OpKernel {
  public:
   explicit TensorMapLookup(OpKernelConstruction* c) : OpKernel(c) {}
@@ -140,20 +123,34 @@ class TensorMapLookup : public OpKernel {
   }
 };
 
+class TensorMapInsert : public OpKernel {
+ public:
+  explicit TensorMapInsert(OpKernelConstruction* c) : OpKernel(c) {}
+  ~TensorMapInsert() override {}
+
+  void Compute(OpKernelContext* c) override {
+    const TensorKey& key = c->input(1);
+    const Tensor& value = c->input(2);
+    const TensorMap* m = nullptr;
+    OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
+
+    TensorMap* output_map = nullptr;
+    OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));
+    output_map->replace(key, value);
+  }
+};
+
 class TensorMapErase : public OpKernel {
  public:
   explicit TensorMapErase(OpKernelConstruction* c) : OpKernel(c) {}
 
   void Compute(OpKernelContext* c) override {
+    const TensorKey& key = c->input(1);
     const TensorMap* m = nullptr;
     OP_REQUIRES_OK(c, GetInputMap(c, 0, &m));
-    const TensorKey& key = c->input(1);
 
     OP_REQUIRES(c, m->tensors().find(key) != m->tensors().end(),
                 errors::InvalidArgument("Trying to erase non-existent item."));
-
-    const Tensor& t = m->tensors().find(key)->second;
-    c->set_output(1, t);
 
     TensorMap* output_map = nullptr;
     OP_REQUIRES_OK(c, ForwardInputOrCreateNewMap(c, 0, 0, *m, &output_map));

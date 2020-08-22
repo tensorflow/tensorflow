@@ -89,20 +89,18 @@ class InferenceContext {
 
  private:
   void CopyInAndOutIds(const GraphFloat32& graph);
-  absl::Status ConvertOperations(const CreationContext& creation_context,
+  absl::Status ConvertOperations(const DeviceInfo& device_info,
                                  const GraphFloat32& graph, ModelHints hints);
   void CreateLinks();
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const CreationContext& creation_context,
+                           const DeviceInfo& device_info,
                            const GraphFloat32& graph);
   absl::Status Merge();
-  absl::Status AllocateMemory(const CLDevice& device, CLContext* context);
+  absl::Status AllocateMemory(CLContext* context);
 
-  absl::Status AllocateMemoryForBuffers(const CLDevice& device,
-                                        CLContext* context);
+  absl::Status AllocateMemoryForBuffers(CLContext* context);
 
-  absl::Status AllocateMemoryForStrongShapes(const CLDevice& device,
-                                             CLContext* context);
+  absl::Status AllocateMemoryForStrongShapes(CLContext* context);
 
   // utility function
   void GetUsages(const std::function<bool(const TensorDescriptor&)>& functor,

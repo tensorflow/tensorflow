@@ -813,7 +813,8 @@ cc_binary(
     ],
     deps = [
         ":all_passes",
-        ":hlo_dialect_registration",
+        ":hlo",
+        ":lhlo",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",

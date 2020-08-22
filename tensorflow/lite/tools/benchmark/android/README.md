@@ -1,12 +1,12 @@
-# TFLite Android Model Benchmark Tool
+# TFLite Model Benchmark Tool with Android Apk
 
 ## Description
 
 This Android benchmark app is a simple wrapper around the TensorFlow Lite
 [command-line benchmark utility](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark).
 
-Pushing and executing binaries directly on Android is a valid approach to
-benchmarking, but it can result in subtle (but observable) differences in
+Pushing and executing binaries directly on an Android device is a valid approach
+to benchmarking, but it can result in subtle (but observable) differences in
 performance relative to execution within an actual Android app. In particular,
 Android's scheduler tailors behavior based on thread and process priorities,
 which differ between a foreground Activity/Application and a regular background

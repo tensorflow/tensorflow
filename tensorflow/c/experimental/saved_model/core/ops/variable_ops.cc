@@ -37,10 +37,11 @@ static const char kNoSharingResourceID[] =
 
 Status CreateUninitializedResourceVariable(ImmediateExecutionContext* ctx,
                                            DataType dtype, TensorShape shape,
+                                           const char* raw_device_name,
                                            ImmediateTensorHandlePtr* handle) {
   ImmediateOpPtr varhandle_op(ctx->CreateOperation());
 
-  TF_RETURN_IF_ERROR(varhandle_op->Reset("VarHandleOp", nullptr));
+  TF_RETURN_IF_ERROR(varhandle_op->Reset("VarHandleOp", raw_device_name));
   TF_RETURN_IF_ERROR(varhandle_op->SetAttrType("dtype", dtype));
 
   // Note that if shape is unknown rank, shape.dim_sizes() will be empty, and

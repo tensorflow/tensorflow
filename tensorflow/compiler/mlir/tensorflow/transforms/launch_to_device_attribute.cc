@@ -104,7 +104,7 @@ LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
 }
 
 void LaunchToDeviceAttributePass::runOnFunction() {
-  const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
+  const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     getFunction().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();

@@ -813,7 +813,10 @@ cuda_py_test(
     srcs = ["lstm_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
-    tags = ["no_cuda11"],
+    tags = [
+        "no_cuda11",
+        "no_oss",
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
@@ -829,7 +832,10 @@ cuda_py_test(
     srcs = ["gru_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
-    tags = ["no_cuda11"],
+    tags = [
+        "no_cuda11",
+        "no_oss",
+    ],
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
