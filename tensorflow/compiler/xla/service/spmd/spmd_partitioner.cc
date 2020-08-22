@@ -879,7 +879,6 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
   // Add another dimension in tiling_dim_factors if target is partial replicate.
   if (target.ReplicateOnLastTileDim()) {
     tiling_dim_factors.emplace_back(
-        sharding().tile_assignment().dimensions().back() /
         target.tile_assignment().dimensions().back());
   }
 

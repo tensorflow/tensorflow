@@ -342,14 +342,14 @@ absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
     return absl::nullopt;
   }
 
-  if (target_is_partial_replicate) {
-    reshape_dimensions.back() = num_replication / num_target_replication;
-  } else {
-    reshape_dimensions.pop_back();
-  }
-
+  reshape_dimensions.pop_back();
   reshape_dimensions.insert(reshape_dimensions.end(), expand_tile_sizes.begin(),
                             expand_tile_sizes.end());
+
+  if (target_is_partial_replicate) {
+    reshape_dimensions.push_back(num_target_replication);
+  }
+
   auto reshape_tile_assignment = partial_sharding.tile_assignment();
   reshape_tile_assignment.Reshape(reshape_dimensions);
 
