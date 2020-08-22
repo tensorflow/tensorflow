@@ -1563,7 +1563,7 @@ TfLiteStatus ParseSplit(const Operator* op, ErrorReporter* error_reporter,
   return kTfLiteOk;
 }
 
-TfLiteStatus ParseSplit_V(const Operator* op, ErrorReporter* error_reporter,
+TfLiteStatus ParseSplitV(const Operator* op, ErrorReporter* error_reporter,
                           BuiltinDataAllocator* allocator,
                           void** builtin_data) {
   CheckParsePointerParams(op, error_reporter, allocator, builtin_data);
@@ -1573,9 +1573,18 @@ TfLiteStatus ParseSplit_V(const Operator* op, ErrorReporter* error_reporter,
                   SafeBuiltinDataAllocator::BuiltinDataDeleter>
       params = safe_allocator.Allocate<TfLiteSplitVParams>();
   TF_LITE_ENSURE(error_reporter, params != nullptr);
-  if (const auto* schema_params = op->builtin_options_as_SplitVOptions()) {
+
+  const SplitVOptions* schema_params = op->builtin_options_as_SplitVOptions();
+
+  
+  if (schema_params != nullptr) {
     params->num_splits = schema_params->num_splits();
+  } else {
+    // TODO(b/157480169): We should either return kTfLiteError or fill in some
+    // reasonable defaults in the params struct. We are not doing so until we
+    // better undertand the ramifications of changing the legacy behavior.
   }
+
   *builtin_data = params.release();
   return kTfLiteOk;
 }
