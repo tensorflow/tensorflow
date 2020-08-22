@@ -1400,33 +1400,79 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   // Find the earliest use.
   const auto& instruction_schedule = hlo_live_range_.instruction_schedule();
   auto uses = buffer->uses();
-  auto first_use =
-      absl::c_min_element(uses, [&](const HloUse& lhs, const HloUse& rhs) {
-        return instruction_schedule.at(lhs.instruction) <
-               instruction_schedule.at(rhs.instruction);
-      });
+  auto use_schedule_compare = [&](const HloUse& lhs, const HloUse& rhs) {
+    return instruction_schedule.at(lhs.instruction) <
+           instruction_schedule.at(rhs.instruction);
+  };
+  auto first_use = absl::c_min_element(uses, use_schedule_compare);
   int64 latest_prefetch_time = instruction_schedule.at(first_use->instruction);
+
+  // Find the latest use time.
+  int64 last_use_time = instruction_schedule.at(
+      absl::c_max_element(uses, use_schedule_compare)->instruction);
+  for (const HloValue* colocation : prefetch_candidate->colocations) {
+    last_use_time = std::max(
+        last_use_time,
+        instruction_schedule.at(
+            absl::c_max_element(colocation->uses(), use_schedule_compare)
+                ->instruction));
+  }
+
+  int64 end_of_program_prefetch_end_time = instruction_schedule.size() - 1;
+  int64 end_of_program_prefetch_start_time =
+      options_.prefetch_interval_picker->PreferredPrefetchStartTime(
+          buffer->defining_position().shape(), last_use_time,
+          end_of_program_prefetch_end_time, end_of_program_prefetch_end_time);
+  VLOG(2) << "last use time = " << last_use_time
+          << ", end-of-program prefetch start time = "
+          << end_of_program_prefetch_start_time;
+  bool free_buffer =
+      (end_of_program_prefetch_start_time > last_use_time &&
+       end_of_program_prefetch_start_time < end_of_program_prefetch_end_time);
+  int64 cross_program_prefetch_end_time =
+      free_buffer ? last_use_time : prefetch_candidate->end;
 
   AddAsyncCopy(*allocations.back(), MemorySpace::kAlternate,
                chunk_candidate.chunk, prefetch_candidate->start,
-               prefetch_candidate->end, latest_prefetch_time, &allocations,
+               cross_program_prefetch_end_time, latest_prefetch_time,
+               &allocations,
                /*is_cross_program_prefetch=*/true);
   absl::c_for_each(uses, [&](auto& use) { allocations.back()->AddUse(use); });
+  int64 cross_program_prefetch_offset = allocations.back()->chunk().offset;
+
+  if (free_buffer) {
+    VLOG(2) << "Adding an end-of-program prefetch for freed "
+               "cross-program-prefetched buffer.";
+    AddAsyncCopy(*allocations.front(), MemorySpace::kAlternate,
+                 chunk_candidate.chunk, end_of_program_prefetch_start_time,
+                 end_of_program_prefetch_end_time,
+                 end_of_program_prefetch_end_time, &allocations);
+    CHECK_EQ(cross_program_prefetch_offset, allocations.back()->chunk().offset);
+  }
+
   for (auto& allocation : allocations) {
     allocations_->push_back(std::move(allocation));
   }
-  // Add a repack allocation block for the Allocation object in alternate
+
+  // Add a repack allocation block for the Allocation objects in alternate
   // memory.
-  CHECK_EQ(allocations_->size(), 2);
-  MemorySpaceAssignment::Allocation* last_allocation =
-      allocations_->at(1).get();
-  CHECK(last_allocation->memory_space() == MemorySpace::kAlternate);
-  repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
-      last_allocation->start_time(), last_allocation->end_time(),
-      last_allocation->chunk().size, last_allocation->chunk().offset,
-      static_cast<int64>(repack_allocation_blocks_.size()), last_allocation));
-  repack_allocation_blocks_.back().colocations.push_back(
-      &repack_allocation_blocks_.back());
+  CHECK_EQ(repack_allocation_blocks_.size(), 0);
+  for (const auto& allocation : *allocations_) {
+    if (allocation->memory_space() == MemorySpace::kAlternate) {
+      repack_allocation_blocks_.push_back(MakeRepackAllocationBlock(
+          allocation->start_time(), allocation->end_time(),
+          allocation->chunk().size, allocation->chunk().offset,
+          static_cast<int64>(repack_allocation_blocks_.size()),
+          allocation.get()));
+      RepackAllocationBlock* inserted = &repack_allocation_blocks_.back();
+      for (RepackAllocationBlock& colocation : repack_allocation_blocks_) {
+        colocation.colocations.push_back(inserted);
+        if (&colocation != inserted) {
+          inserted->colocations.push_back(&colocation);
+        }
+      }
+    }
+  }
 
   ClearPendingChunks();
 }
@@ -2478,7 +2524,9 @@ FindCrossProgramPrefetchCandidate(
     const HloAliasAnalysis& alias_analysis, const HloLiveRange& hlo_live_range,
     const MemorySpaceAssignment::Options& options) {
   std::vector<MemorySpaceAssignment::BufferInterval> candidates;
-  for (HloValue* value : alias_analysis.dataflow_analysis().values()) {
+  for (const HloBuffer& buffer : alias_analysis.buffers()) {
+    CHECK_GE(buffer.values().size(), 1);
+    const HloValue* value = buffer.values().at(0);
     if (IsCrossProgramPrefetchCandidate(*value, options)) {
       MemorySpaceAssignment::BufferInterval interval;
       interval.buffer = value;
@@ -2486,6 +2534,7 @@ FindCrossProgramPrefetchCandidate(
       interval.start = 0;
       interval.end = hlo_live_range.schedule_end_time();
       interval.need_allocation = true;
+      interval.colocations = {++buffer.values().begin(), buffer.values().end()};
       candidates.emplace_back(interval);
     }
   }
