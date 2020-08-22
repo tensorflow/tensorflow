@@ -1,6 +1,9 @@
 # TinyML: Tensorflow lite for microcontroller
 
-![https://learning.oreilly.com/library/view/tinyml/9781492052036/](./images/tinyML_bookcover_eng.jpg)
+![http://www.yes24.com/Product/Goods/91879171](./images/tinyML_bookcover_kor.jpg)
+<!--
+![https://learning.oreilly.com/library/view/tinyml/9781492052036/](./images/tinyML_bookcover_eng.jpg) 
+-->
 
 TinyML 번역서의 한국 독자들을 위한 한글 소스코드 저장소를 개설하게 되었습니다. 책에서도 명시하고 있지만, 텐서플로우 프로젝트는 업데이트가 활발히 진행되고 있는 프로젝트입니다. 가장 최신 코드는 아래의 영어 원문 코드를 참조하시기 바랍니다.
 
