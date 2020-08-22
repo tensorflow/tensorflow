@@ -639,13 +639,16 @@ struct ConvertTFStridedSlice : public RewritePattern {
     ++index;
 
     // After the ellipsis.
-    for (; index < begin_shape[0]; ++index) {
+    for (; index < begin_shape[0];) {
       padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
       padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
       padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
 
       if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
       if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
+
+      ++index;
+      ++new_index;
     }
 
     auto attribute_type = rewriter.getIntegerType(64);
