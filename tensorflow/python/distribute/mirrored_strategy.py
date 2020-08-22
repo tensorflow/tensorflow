@@ -488,7 +488,7 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
   def _distribute_datasets_from_function(self, dataset_fn, options):
     input_contexts = []
     input_workers = self._input_workers_with_options(
-        options, input_workers_devices)
+        options, self._input_workers_devices)
     num_workers = input_workers.num_workers
     for i in range(num_workers):
       input_contexts.append(distribute_lib.InputContext(

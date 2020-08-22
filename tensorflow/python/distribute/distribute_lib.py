@@ -656,7 +656,8 @@ class InputOptions(
   def __new__(cls, experimental_prefetch_to_device=True,
               replication_mode=InputReplicationMode.PER_WORKER):
     return super(InputOptions, cls).__new__(cls,
-                                            experimental_prefetch_to_device)
+                                            experimental_prefetch_to_device,
+                                            replication_mode)
 
 # ------------------------------------------------------------------------------
 # Base classes for all distribution strategies.
