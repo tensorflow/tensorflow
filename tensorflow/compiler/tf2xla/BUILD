@@ -716,6 +716,7 @@ tf_cc_test(
         "xla_compiler_test.cc",
         "xla_expression_test.cc",
     ],
+    tags = ["no_oss"],
     deps = [
         ":common",
         ":side_effect_util",
