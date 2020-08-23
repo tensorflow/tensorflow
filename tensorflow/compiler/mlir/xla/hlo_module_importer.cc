@@ -32,6 +32,7 @@ namespace xla {
 
 HloModuleImporter::HloModuleImporter(mlir::ModuleOp module)
     : module_(module), builder_(module.getContext()) {
+  module.getContext()->loadDialect<mlir::StandardOpsDialect>();
   module.getContext()->loadDialect<mlir::mhlo::MhloDialect>();
 }
 
