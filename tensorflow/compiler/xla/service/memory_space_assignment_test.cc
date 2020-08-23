@@ -4609,19 +4609,19 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
           module->entry_computation()->parameter_instruction(0), {1});
   // Expect that there are two prefetches that use this value, one is the
   // cross-program prefetch, the other is the end-of-program prefetch.
-  EXPECT_EQ(absl::c_count_if(
-                cross_program_prefetched_value.uses(),
-                [](const HloUse& use) {
-                  return use.instruction->opcode() == HloOpcode::kCopyStart &&
-                         use.instruction->is_cross_program_prefetch();
-                }),
+  auto is_cross_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           use.instruction->is_cross_program_prefetch();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+                             is_cross_program_prefetch),
             1);
-  EXPECT_EQ(absl::c_count_if(
-                cross_program_prefetched_value.uses(),
-                [](const HloUse& use) {
-                  return use.instruction->opcode() == HloOpcode::kCopyStart &&
-                         !use.instruction->is_cross_program_prefetch();
-                }),
+  auto is_end_of_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           !use.instruction->is_cross_program_prefetch();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+                             is_end_of_program_prefetch),
             1);
 }
 
@@ -4669,19 +4669,19 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
           module->entry_computation()->parameter_instruction(0), {1});
   // Expect that there is one prefetch that use this value, the cross-program
   // prefetch. There shouldn't be an end-of-program prefetch.
-  EXPECT_EQ(absl::c_count_if(
-                cross_program_prefetched_value.uses(),
-                [](const HloUse& use) {
-                  return use.instruction->opcode() == HloOpcode::kCopyStart &&
-                         use.instruction->is_cross_program_prefetch();
-                }),
+  auto is_cross_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           use.instruction->is_cross_program_prefetch();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+                             is_cross_program_prefetch),
             1);
-  EXPECT_EQ(absl::c_count_if(
-                cross_program_prefetched_value.uses(),
-                [](const HloUse& use) {
-                  return use.instruction->opcode() == HloOpcode::kCopyStart &&
-                         !use.instruction->is_cross_program_prefetch();
-                }),
+  auto is_end_of_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           !use.instruction->is_cross_program_prefetch();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+                             is_end_of_program_prefetch),
             0);
 }
 
