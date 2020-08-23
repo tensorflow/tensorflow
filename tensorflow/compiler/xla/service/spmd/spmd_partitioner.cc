@@ -782,14 +782,13 @@ PartitionedHlo::ReshardToPartialReplicateWithAllGather(
   }
   // Tiled/partial replicate to partial replicate
   // Get the comptible sharding to target with resharding by all reduce.
-  auto compatible_sharding = PartialReplicateReshardCompatibleSharding(
-      target, sharding().tile_assignment().dimensions(),
-      sharding().ReplicateOnLastTileDim());
+  auto compatible_sharding =
+      PartialReplicateReshardCompatibleSharding(target, sharding());
   if (!compatible_sharding.has_value()) {
     return absl::nullopt;
   }
 
-  auto temp_sharding = compatible_sharding.value();
+  const auto& temp_sharding = compatible_sharding.value();
   auto partitioned_hlo = *this;
   // Use collective permute to adjust device assignment if needed.
   if (CanReshardWithCollectivePermute(sharding(), temp_sharding)) {
@@ -854,9 +853,8 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
   // target_compatible_sharding could have different device assignment as
   // targe. sharding() can reshard to target_compatible_sharding by
   // dynamic slice.
-  auto target_compatible_sharding = PartialReplicateReshardCompatibleSharding(
-      sharding(), target.tile_assignment().dimensions(),
-      target.ReplicateOnLastTileDim());
+  auto target_compatible_sharding =
+      PartialReplicateReshardCompatibleSharding(sharding(), target);
   // Reshard to target_compatible_sharding by dynamic slice.
   if (!target_compatible_sharding.has_value()) {
     return absl::nullopt;
@@ -865,7 +863,7 @@ PartitionedHlo::ReshardFromPartialReplicateWithDynamicSlice(
   std::vector<int64> tiling_dim_factors;
   int64 rank = hlo_->shape().rank();
   tiling_dim_factors.reserve(target.tile_assignment().num_dimensions());
-  auto temp_target_sharding = target_compatible_sharding.value();
+  const auto& temp_target_sharding = target_compatible_sharding.value();
   for (int64 dim = 0; dim < rank; dim++) {
     if (temp_target_sharding.tile_assignment().dim(dim) >
         sharding().tile_assignment().dim(dim)) {
@@ -1101,6 +1099,25 @@ PartitionedHlo PartitionedHlo::ReshardWithCollectivePermute(
     const HloSharding& target) const {
   CHECK(CanReshardWithCollectivePermute(sharding(), target))
       << sharding().ToString() << " to " << target.ToString();
+  if (hlo()->opcode() == HloOpcode::kBroadcast) {
+    // If hlo() is a broadcast, check if data is already the same between
+    // source/destination pairs.
+    std::vector<int64> new_dims;
+    for (int64 i = 0; i < hlo()->shape().rank(); ++i) {
+      if (!absl::c_linear_search(hlo()->dimensions(), i)) {
+        new_dims.push_back(i);
+      }
+    }
+    if (hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(sharding(),
+                                                                 new_dims) ==
+        hlo_sharding_util::PartiallyReplicateTiledShardingOnDims(target,
+                                                                 new_dims)) {
+      auto copy = state_.b->AddInstruction(
+          HloInstruction::CreateUnary(hlo()->shape(), HloOpcode::kCopy, hlo()));
+      copy->set_sharding(target);
+      return PartitionedHlo(copy, base_shape_, state_);
+    }
+  }
   std::vector<std::pair<int64, int64>> src_dst_pairs;
   sharding().tile_assignment().Each(
       [&](absl::Span<const int64> indices, int64 src_device) {

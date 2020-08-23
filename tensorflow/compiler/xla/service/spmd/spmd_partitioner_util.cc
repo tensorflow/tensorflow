@@ -297,17 +297,27 @@ HloInstruction* PadBaseShapeBeforeUnevenTiledSharding(
 }
 
 absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
-    const HloSharding& partial_sharding,
-    const std::vector<int64>& target_tile_dims,
-    bool target_is_partial_replicate) {
+    const HloSharding& partial_sharding, const HloSharding& target_sharding) {
   if (!partial_sharding.ReplicateOnLastTileDim()) {
     return absl::nullopt;
   }
   int64 rank = partial_sharding.tile_assignment().num_dimensions() - 1;
-  if (target_tile_dims.size() < rank ||
-      (target_is_partial_replicate && target_tile_dims.size() != (rank + 1))) {
+  int64 target_rank = target_sharding.tile_assignment().num_dimensions() -
+                      (target_sharding.ReplicateOnLastTileDim() ? 1 : 0);
+  if (target_rank != rank) {
     return absl::nullopt;
   }
+
+  absl::flat_hash_map<int64, int64> device_to_replication_group;
+  partial_sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        int64 gid = 0;
+        for (int64 i = 0; i < rank; ++i) {
+          gid *= partial_sharding.tile_assignment().dim(i);
+          gid += indices[i];
+        }
+        device_to_replication_group[device] = gid;
+      });
 
   // A dimension is expanded when target_tile_size > partial_tile_size and
   // target_tile_size % partial_tile_size == 0.
@@ -318,7 +328,7 @@ absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
   int num_expand_dims = 0;
   for (int64 dim = 0; dim < rank; dim++) {
     int64 partial_tile_size = partial_sharding.tile_assignment().dim(dim);
-    int64 target_tile_size = target_tile_dims[dim];
+    int64 target_tile_size = target_sharding.tile_assignment().dim(dim);
     if (target_tile_size % partial_tile_size != 0 ||
         target_tile_size < partial_tile_size) {
       return absl::nullopt;
@@ -332,8 +342,9 @@ absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
 
   // Reshape the partial replicate tile_dimensions.
   int64 num_target_replication = 1;
-  if (target_is_partial_replicate) {
-    num_target_replication = target_tile_dims.back();
+  if (target_sharding.ReplicateOnLastTileDim()) {
+    num_target_replication =
+        target_sharding.tile_assignment().dimensions().back();
   }
   auto reshape_dimensions = partial_sharding.tile_assignment().dimensions();
   int64 num_replication = reshape_dimensions.back();
@@ -346,7 +357,7 @@ absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
   reshape_dimensions.insert(reshape_dimensions.end(), expand_tile_sizes.begin(),
                             expand_tile_sizes.end());
 
-  if (target_is_partial_replicate) {
+  if (target_sharding.ReplicateOnLastTileDim()) {
     reshape_dimensions.push_back(num_target_replication);
   }
 
@@ -363,16 +374,29 @@ absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
     }
   }
   auto transpose_sharding = hlo_sharding_util::TransposeSharding(
-      target_is_partial_replicate
+      target_sharding.ReplicateOnLastTileDim()
           ? HloSharding::PartialTile(reshape_tile_assignment)
           : HloSharding::Tile(reshape_tile_assignment),
       perm);
 
   // Reshape to target shape
   auto transpose_tile_assignment = transpose_sharding.tile_assignment();
-  transpose_tile_assignment.Reshape(target_tile_dims);
+  transpose_tile_assignment.Reshape(
+      target_sharding.tile_assignment().dimensions());
 
-  return target_is_partial_replicate
+  bool groups_matching = true;
+  target_sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        if (device_to_replication_group[device] !=
+            device_to_replication_group[transpose_tile_assignment(indices)]) {
+          groups_matching = false;
+        }
+      });
+
+  if (groups_matching) {
+    return target_sharding;
+  }
+  return target_sharding.ReplicateOnLastTileDim()
              ? HloSharding::PartialTile(transpose_tile_assignment)
              : HloSharding::Tile(transpose_tile_assignment);
 }
