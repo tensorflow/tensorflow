@@ -54,59 +54,60 @@ class ResizeNearestNeighborOpTest(test.TestCase):
         resize_out = self.evaluate(resize_out)
       self.assertEqual(out_shape, list(resize_out.shape))
 
-  @test_util.run_deprecated_v1
   def testGradFromResizeToLargerInBothDims(self):
     in_shape = [1, 2, 3, 1]
-    out_shape = [1, 4, 6, 1]
+    out_shape = (1, 4, 6, 1)
 
     for nptype in self.TYPES:
       x = np.arange(0, 6).reshape(in_shape).astype(nptype)
 
+      def resize_nn(t, shape=out_shape):
+        return image_ops.resize_nearest_neighbor(t, shape[1:3])
+
       with self.cached_session(use_gpu=True):
         input_tensor = constant_op.constant(x, shape=in_shape)
-        resize_out = image_ops.resize_nearest_neighbor(input_tensor,
-                                                       out_shape[1:3])
-        err = gradient_checker.compute_gradient_error(
-            input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
-      self.assertLess(err, 1e-3)
+        err = gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(resize_nn, [input_tensor]))
+        self.assertLess(err, 1e-3)
 
-  @test_util.run_deprecated_v1
   def testGradFromResizeToSmallerInBothDims(self):
     in_shape = [1, 4, 6, 1]
-    out_shape = [1, 2, 3, 1]
+    out_shape = (1, 2, 3, 1)
 
     for nptype in self.TYPES:
       x = np.arange(0, 24).reshape(in_shape).astype(nptype)
 
+      def resize_nn(t, shape=out_shape):
+        return image_ops.resize_nearest_neighbor(t, shape[1:3])
+
       with self.cached_session(use_gpu=True):
         input_tensor = constant_op.constant(x, shape=in_shape)
-        resize_out = image_ops.resize_nearest_neighbor(input_tensor,
-                                                       out_shape[1:3])
-        err = gradient_checker.compute_gradient_error(
-            input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
-      self.assertLess(err, 1e-3)
+        err = gradient_checker_v2.max_error(
+            *gradient_checker_v2.compute_gradient(resize_nn, [input_tensor]))
+        self.assertLess(err, 1e-3)
 
-  @test_util.run_deprecated_v1
   def testCompareGpuVsCpu(self):
     in_shape = [1, 4, 6, 3]
-    out_shape = [1, 8, 16, 3]
+    out_shape = (1, 8, 16, 3)
 
     for nptype in self.TYPES:
       x = np.arange(0, np.prod(in_shape)).reshape(in_shape).astype(nptype)
       for align_corners in [True, False]:
+
+        def resize_nn(t, shape=out_shape, align_corners=align_corners):
+          return image_ops.resize_nearest_neighbor(
+              t, shape[1:3], align_corners=align_corners)
+
         with self.cached_session(use_gpu=False):
           input_tensor = constant_op.constant(x, shape=in_shape)
-          resize_out = image_ops.resize_nearest_neighbor(
-              input_tensor, out_shape[1:3], align_corners=align_corners)
-          grad_cpu = gradient_checker.compute_gradient(
-              input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
+          grad_cpu = gradient_checker_v2.compute_gradient(resize_nn,
+                                                          [input_tensor])
 
         with self.cached_session(use_gpu=True):
           input_tensor = constant_op.constant(x, shape=in_shape)
-          resize_out = image_ops.resize_nearest_neighbor(
-              input_tensor, out_shape[1:3], align_corners=align_corners)
-          grad_gpu = gradient_checker.compute_gradient(
-              input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
+          grad_gpu = gradient_checker_v2.compute_gradient(resize_nn,
+                                                          [input_tensor])
+
         self.assertAllClose(grad_cpu, grad_gpu, rtol=1e-5, atol=1e-5)
 
 
@@ -183,20 +184,21 @@ class ResizeBilinearOpTest(test.TestCase):
     out_shape = [1, 2, 3, 1]
     x = np.arange(0, 24).reshape(in_shape)
 
-    with self.cached_session() as sess:
-      for dtype in [np.float16, np.float32, np.float64]:
-        input_tensor = constant_op.constant(x.astype(dtype), shape=in_shape)
-        resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
-        grad = sess.run(gradients_impl.gradients(resize_out, input_tensor))[0]
-        self.assertAllEqual(in_shape, grad.shape)
-        # Not using gradient_checker.compute_gradient as I didn't work out
-        # the changes required to compensate for the lower precision of
-        # float16 when computing the numeric jacobian.
-        # Instead, we just test the theoretical jacobian.
-        self.assertAllEqual([[[[1.], [0.], [1.], [0.], [1.], [0.]], [[0.], [
-            0.
-        ], [0.], [0.], [0.], [0.]], [[1.], [0.], [1.], [0.], [1.], [0.]],
-                              [[0.], [0.], [0.], [0.], [0.], [0.]]]], grad)
+    for use_gpu in [False, True]:
+      with self.cached_session(use_gpu=use_gpu) as sess:
+        for dtype in [np.float16, np.float32, np.float64]:
+          input_tensor = constant_op.constant(x.astype(dtype), shape=in_shape)
+          resize_out = image_ops.resize_bilinear(input_tensor, out_shape[1:3])
+          grad = sess.run(gradients_impl.gradients(resize_out, input_tensor))[0]
+          self.assertAllEqual(in_shape, grad.shape)
+          # Not using gradient_checker.compute_gradient as I didn't work out
+          # the changes required to compensate for the lower precision of
+          # float16 when computing the numeric jacobian.
+          # Instead, we just test the theoretical jacobian.
+          self.assertAllEqual([[[[1.], [0.], [1.], [0.], [1.], [0.]],
+                                [[0.], [0.], [0.], [0.], [0.], [0.]],
+                                [[1.], [0.], [1.], [0.], [1.], [0.]],
+                                [[0.], [0.], [0.], [0.], [0.], [0.]]]], grad)
 
 
 class ResizeBicubicOpTest(test.TestCase):

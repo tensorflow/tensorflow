@@ -25,6 +25,7 @@ namespace mlir_gpu {
 
 EmissionContext::EmissionContext(std::unique_ptr<HloModule> module)
     : module_(std::move(module)), context_() {
+  context_.loadAllGloballyRegisteredDialects();
   error_handler_ = [](const ErrorMap& instructions_with_error,
                       HloModule* module) {
     std::set<const HloComputation*> computations_with_error;

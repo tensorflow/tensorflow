@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import re
 import types
 import unittest
@@ -108,7 +107,6 @@ class AutoGraphTestCase(test.TestCase):
 
   def setUp(self):
     super().setUp()
-    os.environ['AUTOGRAPH_CREATE_SYMBOLS_IN_LOOPS'] = '1'
     self.variables = {}
     self.trace_log = []
     op_callbacks.add_op_callback(self._op_callback)
@@ -144,3 +142,6 @@ class AutoGraphTestCase(test.TestCase):
 
   def assertEqual(self, *args):
     self.assertions.append((super().assertEqual, list(args)))
+
+  def assertDictEqual(self, *args):
+    self.assertions.append((super().assertDictEqual, list(args)))

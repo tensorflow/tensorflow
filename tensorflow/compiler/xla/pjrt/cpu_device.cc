@@ -25,8 +25,8 @@ static const char kCpuPlatformName[] = "cpu";
 
 CpuDevice::CpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state)
-    : Device(id, std::move(local_device_state), kCpuPlatformName,
-             /*device_kind=*/kCpuPlatformName) {}
+    : PjRtDevice(id, std::move(local_device_state), kCpuPlatformName,
+                 /*device_kind=*/kCpuPlatformName) {}
 
 StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(se::Platform * platform,
@@ -39,7 +39,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetCpuClient(bool asynchronous) {
   TF_ASSIGN_OR_RETURN(LocalClient * client,
                       ClientLibrary::GetOrCreateLocalClient(options));
 
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<std::unique_ptr<PjRtDevice>> devices;
   for (int i = 0; i < client->device_count(); ++i) {
     se::StreamExecutorConfig config;
     config.ordinal = i;

@@ -24,8 +24,11 @@ from __future__ import print_function
 
 from absl import logging
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import sharded_variable
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import tf_contextlib
@@ -198,5 +201,8 @@ class ParameterServerStrategyV2Extended(
     return sharded_variable_creator
 
   def _call_for_each_replica(self, fn, args, kwargs):
-    # TODO(rchao): Consider implementing sync PS training.
-    raise NotImplementedError("Sync PS training is not implemented yet.")
+    with distribute_lib.ReplicaContext(
+        self._container_strategy(),
+        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
+      # TODO(rchao): Support multi-replica per worker or sync-group.
+      return distribute_utils.regroup((fn(*args, **kwargs),))

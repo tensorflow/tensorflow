@@ -75,6 +75,16 @@ inline bool IsInfeedEnqueueOp(absl::string_view tf_op_type) {
   return tf_op_type == "InfeedEnqueue" || tf_op_type == "InfeedEnqueueTuple";
 }
 
+// Returns true if the given op is for outside compilation.
+inline bool IsOutsideCompilationOp(absl::string_view tf_op_fullname,
+                                   absl::string_view hlo_expression) {
+  if (absl::EndsWith(tf_op_fullname, ":XlaSendToHost")) return true;
+  if (absl::StrContains(hlo_expression, "send-done") &&
+      absl::StrContains(hlo_expression, "is_host_transfer=true"))
+    return true;
+  return false;
+}
+
 // Returns true if the given name is a TensorFlow embedding op.
 inline bool IsEmbeddingOp(absl::string_view tf_op_fullname) {
   return absl::StrContains(tf_op_fullname, "Embedding");
@@ -103,6 +113,9 @@ bool IsTfOpType(absl::string_view op_type);
 
 // Returns true if the given string matches JAX pattern.
 bool IsJaxOpType(absl::string_view op_type);
+
+// Returns true if the given strings match JAX pattern.
+bool IsJaxOpNameAndType(absl::string_view op_name, absl::string_view op_type);
 
 }  // namespace profiler
 }  // namespace tensorflow

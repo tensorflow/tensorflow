@@ -251,12 +251,13 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     train_step(input_iterator)
 
+  # TODO(b/165912857): Re-enable.
   @combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.all_strategies,
           mode=["eager"]
       ))
-  def test_lstm(self, distribution):
+  def DISABLED_test_lstm(self, distribution):
 
     batch_size = 32
 
@@ -277,7 +278,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     x, y = create_lstm_data()
     dataset = dataset_ops.Dataset.from_tensor_slices((x, y))
-    dataset = dataset.batch(batch_size, drop_remainder=True)
+    dataset = dataset.batch(batch_size)
     input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
 
     with distribution.scope():

@@ -15,6 +15,8 @@ limitations under the License.
 
 // This file implements logic for lowering HLO/LHLO dialect to Linalg dialect.
 
+#include <numeric>
+
 #include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
@@ -598,6 +600,7 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
     unsigned currSrcDim = 0, currDstDim = 0;
     SmallVector<linalg::ReassociationExprs, 4> reassociationMap(
         dstShape.size());
+    bool isExpandingOrCollapsing = true;
     while (currSrcDim < srcShape.size() && currDstDim < dstShape.size()) {
       int64_t dstSize = dstShape[currDstDim];
       int64_t srcSize = srcShape[currSrcDim];
@@ -619,11 +622,47 @@ class ReshapeOpConverter : public OpConversionPattern<OpTy> {
           }
         }
       } else {
-        return failure();
+        isExpandingOrCollapsing = false;
+        break;
       }
       currDstDim++;
     }
-    if (currSrcDim != srcShape.size()) return failure();
+    if (currSrcDim != srcShape.size()) isExpandingOrCollapsing = false;
+
+    if (!isExpandingOrCollapsing) {
+      auto getIdentityExprs = [&rewriter](int n) {
+        SmallVector<AffineExpr, 4> exprs;
+        for (int i = 0; i < n; ++i)
+          exprs.push_back(rewriter.getAffineDimExpr(i));
+        return exprs;
+      };
+      Location loc = reshapeOp.getLoc();
+      int64_t totalElems = std::accumulate(srcShape.begin(), srcShape.end(), 1,
+                                           std::multiplies<int64_t>());
+      auto elemType = operandType.getElementType();
+      SmallVector<linalg::ReassociationExprs, 4> collapsingMap = {
+          getIdentityExprs(dstShape.size())};
+      SmallVector<linalg::ReassociationExprs, 4> expandingMap = {
+          getIdentityExprs(srcShape.size())};
+
+      if (isLHLO) {
+        auto collapsedType = MemRefType::get({totalElems}, elemType);
+        Value collapsedOp = rewriter.create<linalg::ReshapeOp>(
+            loc, collapsedType, args[0], collapsingMap);
+        Value reshapeBuffer = rewriter.create<linalg::ReshapeOp>(
+            loc, resultType, collapsedOp, expandingMap);
+        rewriter.replaceOpWithNewOp<linalg::CopyOp>(
+            reshapeOp, reshapeBuffer, args[1], /*inputPermutation =*/nullptr,
+            /*outputPermutation =*/nullptr);
+      } else {
+        auto collapsedType = RankedTensorType::get({totalElems}, elemType);
+        Value collapsedOp = rewriter.create<linalg::TensorReshapeOp>(
+            loc, collapsedType, args[0], collapsingMap);
+        rewriter.replaceOpWithNewOp<linalg::TensorReshapeOp>(
+            reshapeOp, resultType, collapsedOp, expandingMap);
+      }
+      return success();
+    }
 
     if (isLHLO) {
       Value reshapeBuffer = rewriter.create<linalg::ReshapeOp>(

@@ -302,6 +302,19 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "layer_utils_test",
+    size = "small",
+    srcs = ["layer_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":layer_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/training/tracking",
+        "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
     name = "np_utils_test",
     size = "small",
     srcs = ["np_utils_test.py"],

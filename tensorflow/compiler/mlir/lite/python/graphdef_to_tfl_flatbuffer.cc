@@ -49,6 +49,7 @@ Status ConvertGraphDefToTFLiteFlatBuffer(const toco::ModelFlags& model_flags,
                                          const GraphDef& input,
                                          string* result) {
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   GraphImportConfig specs;
   mlir::TFL::QuantizationSpecs quant_specs;
 

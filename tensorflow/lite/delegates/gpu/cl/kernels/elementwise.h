@@ -33,11 +33,10 @@ GPUOperation CreateElementwiseOneInput(const OperationDef& definition,
 
 // Creates simple two input(first input is runtime tensor and second input is
 // constant or linear/hwc tensor) operation, for example sub, div and etc.
-absl::Status CreateElementwise(const CreationContext& creation_context,
+GPUOperation CreateElementwise(const DeviceInfo& device_info,
                                const OperationDef& definition,
                                const OperationType& op_type,
-                               const ElementwiseAttributes& attr,
-                               GPUOperation* result);
+                               const ElementwiseAttributes& attr);
 
 // Creates simple two input(2 runtime tensors) operation, for example
 // sub, div and etc.

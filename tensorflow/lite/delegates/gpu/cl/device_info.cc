@@ -231,6 +231,52 @@ bool DeviceInfo::SupportsImage3D() const {
   return supports_image3d_writes;
 }
 
+bool DeviceInfo::SupportsFloatImage2D(DataType data_type, int channels) const {
+  if (channels == 1) {
+    return data_type == DataType::FLOAT32 ? supports_r_f32_tex2d
+                                          : supports_r_f16_tex2d;
+  } else if (channels == 2) {
+    return data_type == DataType::FLOAT32 ? supports_rg_f32_tex2d
+                                          : supports_rg_f16_tex2d;
+  } else if (channels == 3) {
+    return data_type == DataType::FLOAT32 ? supports_rgb_f32_tex2d
+                                          : supports_rgb_f16_tex2d;
+  } else if (channels == 4) {
+    return data_type == DataType::FLOAT32 ? supports_rgba_f32_tex2d
+                                          : supports_rgba_f16_tex2d;
+  } else {
+    return false;
+  }
+}
+
+bool DeviceInfo::SupportsOneLayerTextureArray() const {
+  return !IsAdreno() || adreno_info.support_one_layer_texture_array;
+}
+
+bool DeviceInfo::SupportsExtension(const std::string& extension) const {
+  for (const auto& ext : extensions) {
+    if (ext == extension) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool DeviceInfo::IsCL20OrHigher() const {
+  return cl_version != OpenCLVersion::CL_1_0 &&
+         cl_version != OpenCLVersion::CL_1_1 &&
+         cl_version != OpenCLVersion::CL_1_2;
+}
+
+bool DeviceInfo::SupportsSubGroupWithSize(int sub_group_size) const {
+  for (auto subgroup_size : supported_subgroup_sizes) {
+    if (sub_group_size == subgroup_size) {
+      return true;
+    }
+  }
+  return false;
+}
+
 bool DeviceInfo::IsAdreno() const { return vendor == Vendor::kQualcomm; }
 
 bool DeviceInfo::IsAdreno3xx() const {

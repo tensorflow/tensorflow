@@ -170,7 +170,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
   def testAssignDifferentShapesEagerNotAllowed(self):
     with context.eager_mode():
       var = variables.Variable(np.zeros(shape=[1, 1]))
-      with self.assertRaisesRegex(ValueError, "Shapes.*and.*are incompatible"):
+      with self.assertRaisesRegex(ValueError, "shape.*and.*are incompatible"):
         var.assign(np.zeros(shape=[2, 2]))
 
   @test_util.disable_tfrt("Graph is not supported yet. b/156187905")

@@ -518,11 +518,6 @@ cc_library(
         "kernel_util.cc",
     ],
     hdrs = ["kernel_util.h"],
-    visibility = [
-        # Needed for micro:test_helpers but visibility can not be finer-grained
-        # than a package.
-        ":micro_top_level",
-    ],
     deps = [
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",

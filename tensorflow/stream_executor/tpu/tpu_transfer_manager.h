@@ -51,27 +51,19 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
       const TransferMetadata* transfer_metadata) override;
 
   Status TransferLiteralToInfeed(stream_executor::StreamExecutor* executor,
-                                 const xla::LiteralSlice& literal) override {
-    LOG(FATAL) << "Not yet implemented";
-  }
+                                 const xla::LiteralSlice& literal) override;
 
   Status TransferLiteralFromOutfeed(
       stream_executor::StreamExecutor* executor,
       const xla::Shape& literal_shape,
-      xla::MutableBorrowingLiteral literal) override {
-    LOG(FATAL) << "Not yet implemented";
-  }
+      xla::MutableBorrowingLiteral literal) override;
 
   Status TransferBuffersToInfeed(
       se::StreamExecutor* executor,
-      const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) override {
-    LOG(FATAL) << "Not yet implemented.";
-  }
+      const std::deque<tensorflow::tpu::NoncopyableBuffer>& buffers) override;
 
   Status ResetDevices(
-      absl::Span<stream_executor::StreamExecutor* const> executor) override {
-    LOG(FATAL) << "Not yet implemented";
-  }
+      absl::Span<stream_executor::StreamExecutor* const> executor) override;
 
   int64 GetByteSizeRequirement(const xla::Shape& shape) const override;
 
@@ -80,6 +72,10 @@ class TpuTransferManager : public xla::TpuTransferManagerInterface {
       absl::Span<const stream_executor::DeviceMemoryBase> elements,
       const xla::Shape& shape,
       stream_executor::DeviceMemoryBase* region) override;
+
+  Status LinearizeToBuffers(
+      const xla::LiteralSlice& literal,
+      std::deque<tensorflow::tpu::NoncopyableBuffer>* buffers) override;
 
  private:
   XLA_TransferManager* manager_;

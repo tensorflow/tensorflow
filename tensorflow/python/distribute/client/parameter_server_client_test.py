@@ -24,6 +24,7 @@ import threading
 from absl import logging
 
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.client import client
@@ -106,7 +107,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
 
   def testBasic(self):
     self.client._strategy.extended._variable_count = 0
-    with self.client.context():
+    with self.client.strategy.scope():
       v1 = variables.Variable(initial_value=0.0)
       v2 = variables.Variable(initial_value=1.0)
     self.assertEqual(self.client._strategy.extended._variable_count, 2)
@@ -140,7 +141,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
     def input_fn():
       return dataset_ops.DatasetV2.range(1, 2)
 
-    with self.client.context():
+    with self.client.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int64)
 
     @def_function.function
@@ -164,7 +165,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
     def input_fn():
       return dataset_ops.DatasetV2.from_tensor_slices([2] * 10)
 
-    with self.client.context():
+    with self.client.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int32)
 
     # TODO(yuefengz): the following tf.function has a return value which is None
@@ -258,7 +259,7 @@ class VariablePartitioningScopeTest(test.TestCase):
     cls.client = make_client(num_workers=3, num_ps=2)
 
   def testBasic(self):
-    with self.client.context():
+    with self.client.strategy.scope():
       with self.client.experimental_variable_partitioning_scope():
         init1 = init_ops_v2.Constant([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
         v1 = variables.Variable(
@@ -288,7 +289,7 @@ class VariablePartitioningScopeTest(test.TestCase):
     self.assertAllEqual(v2.variables[1].read_value().numpy(), [[3], [4], [5]])
 
   def testSurplusPS(self):
-    with self.client.context():
+    with self.client.strategy.scope():
       with self.client.experimental_variable_partitioning_scope():
         initializer = init_ops_v2.Constant([0])
 
@@ -356,7 +357,7 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
     super(ErrorReportingTest, cls).setUpClass()
     cls.client = make_client(num_workers=3, num_ps=2)
 
-    with cls.client.context():
+    with cls.client.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
 
   @def_function.function
@@ -373,6 +374,15 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
     check_ops.assert_non_positive_v2(math_ops.reduce_sum(math_ops.matmul(x, y)))
     self.iteration.assign_add(1.0)
     return self.iteration
+
+  @def_function.function
+  def _long_function(self):
+    x = random_ops.random_uniform((1000, 1000))
+    for _ in math_ops.range(10000):
+      a = random_ops.random_uniform((1000, 1000))
+      b = random_ops.random_uniform((1000, 1000))
+      x += math_ops.matmul(a, b)
+    return x
 
   def testJoinRaiseError(self):
     for _ in range(3):
@@ -436,6 +446,22 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
     with self.assertRaises(client.InputError):
       self.client.join()
 
+  def testCancellation(self):
+    for _ in range(3):
+      self.client.schedule(self._normal_function)
+    long_function = self.client.schedule(self._long_function)
+    self.client.schedule(self._error_function)
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.client.join()
+
+    with self.assertRaises(client.FunctionRetryableError):
+      long_function.fetch()
+
+    for _ in range(3):
+      self.client.schedule(self._normal_function)
+    self.client.join()
+
 
 class LimitedClosureQueueErrorTest(ErrorReportingTest):
   """Test error reporting works with explicit maximum closure queue size.
@@ -450,8 +476,42 @@ class LimitedClosureQueueErrorTest(ErrorReportingTest):
     client._CLOSURE_QUEUE_MAX_SIZE = 2
     cls.client = make_client(num_workers=3, num_ps=2)
 
-    with cls.client.context():
+    with cls.client.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
+
+
+class StrategyRunTest(test.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super(StrategyRunTest, cls).setUpClass()
+    cls.client = make_client(num_workers=1, num_ps=1)
+
+  def testStrategyRun(self):
+    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    with self.client._strategy.scope():
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      v = variables.Variable(initial_value=1)
+
+      @def_function.function
+      def worker_fn(input_tensor):
+
+        def replica_fn(input_tensor):
+          # Within `replica_fn`, it has to be in a replica context.
+          self.assertFalse(
+              distribution_strategy_context.in_cross_replica_context())
+          return input_tensor + v
+
+        return self.client._strategy.run(replica_fn, args=(input_tensor,))
+
+      # Asserting scheduling in scope has the expected behavior.
+      result = self.client.schedule(worker_fn, args=(constant_op.constant(3),))
+      self.assertIsInstance(result, client.RemoteValue)
+      self.assertEqual(result.fetch(), 4)
+
+    # Asserting scheduling out of scope has the expected behavior.
+    result = self.client.schedule(worker_fn, args=(constant_op.constant(3),))
+    self.assertEqual(result.fetch(), 4)
 
 
 if __name__ == "__main__":

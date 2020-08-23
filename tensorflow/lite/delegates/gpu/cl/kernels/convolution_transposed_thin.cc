@@ -159,26 +159,19 @@ int3 ConvolutionTransposedThin::GetGridSize() const {
 }
 
 bool IsConvolutionTransposedThinSupported(
-    const CLDevice& device, const ConvolutionTransposedAttributes& attr) {
+    const ConvolutionTransposedAttributes& attr) {
   return attr.weights.shape.o <= 4 && attr.weights.shape.w == attr.stride.w &&
          attr.weights.shape.h == attr.stride.h &&
          attr.padding.prepended.w == 0 && attr.padding.prepended.h == 0 &&
          attr.padding.appended.w == 0 && attr.padding.appended.h == 0;
 }
 
-absl::Status CreateConvolutionTransposedThin(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr,
-    ConvolutionTransposedThin* result) {
-  if (!IsConvolutionTransposedThinSupported(*creation_context.device, attr)) {
-    return absl::InvalidArgumentError(
-        "ConvolutionTransposedThin doesn't support this attributes");
-  }
-  *result = ConvolutionTransposedThin(definition, attr,
-                                      creation_context.device->GetInfo());
-  RETURN_IF_ERROR(
-      result->UploadData(attr.weights, attr.bias, creation_context.context));
-  return absl::OkStatus();
+ConvolutionTransposedThin CreateConvolutionTransposedThin(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  ConvolutionTransposedThin result(definition, attr, device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
 }  // namespace cl

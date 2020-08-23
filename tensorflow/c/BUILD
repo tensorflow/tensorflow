@@ -23,6 +23,7 @@ filegroup(
     srcs = [
         "c_api.h",
         "c_api_experimental.h",
+        "c_api_macros.h",
         "tensor_interface.h",
         "tf_attrtype.h",
         "tf_datatype.h",
@@ -57,10 +58,11 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-filegroup(
+cc_library(
     name = "pywrap_required_hdrs",
-    srcs = [
+    textual_hdrs = [
         "c_api_internal.h",
+        "c_api_macros.h",
         "conversion_macros.h",
         "python_api.h",
         "tensor_interface.h",
@@ -79,6 +81,7 @@ tf_cuda_library(
     hdrs = [
         "c_api.h",
         "c_api_internal.h",
+        "c_api_macros.h",
         "tf_datatype.h",
         "tf_tensor.h",
         "tf_tstring.h",
@@ -217,6 +220,7 @@ cc_library(
     name = "logging",
     srcs = ["logging.cc"],
     hdrs = ["logging.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":c_api_macros",
         "//tensorflow/core/platform:logging",
@@ -310,6 +314,7 @@ cc_library(
     hdrs = ["tf_tensor.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_macros",
         ":tensor_interface",
         ":tf_datatype",
         ":tf_status",
@@ -336,6 +341,7 @@ tf_cuda_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":c_api_macros",
         ":tensor_interface",
         ":tf_datatype",
         ":tf_status",

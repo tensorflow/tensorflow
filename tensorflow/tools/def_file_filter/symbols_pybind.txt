@@ -20,6 +20,7 @@ tensorflow::swig::AssertSameStructureForData
 tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
+tensorflow::swig::GetRegisteredPyObject
 
 [util_port] # util_port
 tensorflow::IsGoogleCudaEnabled
@@ -378,6 +379,7 @@ tensorflow::grappler::CostAnalyzer::GenerateReport
 [flags] # tfe
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
+tensorflow::GetXlaDeviceFlags
 
 [tf32_utils] # tf32
 tensorflow::allow_tf32_execution

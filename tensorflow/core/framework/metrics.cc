@@ -80,6 +80,11 @@ auto* tf_data_bytes_fetched_counter = monitoring::Counter<0>::New(
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
 
+auto* tf_data_experiment_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/experiment",
+    "The number of times tf.data experiment is applied to input pipelines.",
+    "name");
+
 auto* tf_data_fingerprint_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/fingerprint", "tf.data fingerprint", "name");
 
@@ -177,6 +182,10 @@ monitoring::CounterCell* GetTFDataElementsCounter(const string& name) {
 
 void RecordTFDataBytesFetched(int64 num_bytes) {
   tf_data_bytes_fetched_counter->GetCell()->IncrementBy(num_bytes);
+}
+
+void RecordTFDataExperiment(const string& name) {
+  tf_data_experiment_counter->GetCell(name)->IncrementBy(1);
 }
 
 void RecordTFDataFingerprint(const string& name) {

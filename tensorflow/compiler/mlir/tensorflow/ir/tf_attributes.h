@@ -24,19 +24,6 @@ limitations under the License.
 namespace mlir {
 namespace TF {
 
-namespace AttrKind {
-
-// List of supported custom TensorFlow Attribute kinds, necessary for
-// isa/dyn_cast.
-enum Kind {
-  FIRST_USED_TENSORFLOW_ATTR = Attribute::FIRST_TENSORFLOW_ATTR,
-  SHAPE = FIRST_USED_TENSORFLOW_ATTR,
-  FUNC,
-  LAST_USED_TENSORFLOW_ATTR,
-};
-
-}  // namespace AttrKind
-
 namespace detail {
 
 struct ShapeAttrStorage;
@@ -70,8 +57,6 @@ class ShapeAttr : public Attribute::AttrBase<ShapeAttr, Attribute,
   // have static shape. If all dimensions have known size (>= 0), it has static
   // shape.
   bool hasStaticShape() const;
-
-  static bool kindof(unsigned kind) { return kind == AttrKind::SHAPE; }
 };
 
 // Custom attribute to model AttrValue.value.func (NameAttrList type attribute).
@@ -97,8 +82,6 @@ class FuncAttr
   SymbolRefAttr GetName() const;
 
   DictionaryAttr GetAttrs() const;
-
-  static bool kindof(unsigned kind) { return kind == AttrKind::FUNC; }
 };
 
 }  // namespace TF

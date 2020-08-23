@@ -262,6 +262,18 @@ def get_or_create_debug_dir(export_dir):
   return debug_dir
 
 
+def get_saved_model_pbtxt_path(export_dir):
+  return os.path.join(
+      compat.as_bytes(compat.path_to_str(export_dir)),
+      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PBTXT))
+
+
+def get_saved_model_pb_path(export_dir):
+  return os.path.join(
+      compat.as_bytes(compat.path_to_str(export_dir)),
+      compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
+
+
 def get_debug_dir(export_dir):
   """Returns path to the debug sub-directory in the SavedModel."""
   return os.path.join(

@@ -26,26 +26,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Softmax : public GPUOperation {
- public:
-  Softmax() = default;
-  explicit Softmax(const OperationDef& definition);
-
-  int3 GetGridSize() const override;
-
-  // Move only
-  Softmax(Softmax&& kernel);
-  Softmax& operator=(Softmax&& kernel);
-  Softmax(const Softmax&) = delete;
-  Softmax& operator=(const Softmax&) = delete;
-
-  friend Softmax CreateSoftmax();
-
- private:
-  std::string GetSoftmaxKernelCode(const OperationDef& op_def);
-};
-
-Softmax CreateSoftmax(const OperationDef& definition);
+GPUOperation CreateSoftmax(const OperationDef& definition);
 
 }  // namespace cl
 }  // namespace gpu

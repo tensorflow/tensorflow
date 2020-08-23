@@ -19,6 +19,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+
 // for use only in device_info.cc, but keep here to make tests
 int GetAdrenoGPUVersion(const std::string& gpu_version);
 
@@ -131,6 +133,15 @@ struct DeviceInfo {
   bool SupportsImageBuffer() const;
   bool SupportsImage3D() const;
 
+  bool SupportsFloatImage2D(DataType data_type, int channels) const;
+
+  // To track bug on some Adreno. b/131099086
+  bool SupportsOneLayerTextureArray() const;
+
+  bool SupportsExtension(const std::string& extension) const;
+  bool IsCL20OrHigher() const;
+  bool SupportsSubGroupWithSize(int sub_group_size) const;
+
   std::vector<std::string> extensions;
   bool supports_fp16;
   bool supports_image3d_writes;
@@ -148,6 +159,7 @@ struct DeviceInfo {
   int max_work_group_size_x;
   int max_work_group_size_y;
   int max_work_group_size_z;
+  std::vector<int> supported_subgroup_sizes;
 
   // rtn is ROUND_TO_NEAREST
   // with rtn precision is much better then with rtz (ROUND_TO_ZERO)
@@ -156,6 +168,16 @@ struct DeviceInfo {
   // PowerVR supports only rtz
   bool supports_fp32_rtn;
   bool supports_fp16_rtn;
+
+  bool supports_r_f16_tex2d = false;
+  bool supports_rg_f16_tex2d = false;
+  bool supports_rgb_f16_tex2d = false;
+  bool supports_rgba_f16_tex2d = false;
+
+  bool supports_r_f32_tex2d = false;
+  bool supports_rg_f32_tex2d = false;
+  bool supports_rgb_f32_tex2d = false;
+  bool supports_rgba_f32_tex2d = false;
 
   AdrenoInfo adreno_info;
   MaliInfo mali_info;

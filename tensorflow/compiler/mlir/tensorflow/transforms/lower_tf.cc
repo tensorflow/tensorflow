@@ -26,6 +26,7 @@ limitations under the License.
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_remaining_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -113,12 +114,42 @@ Type InferExpandDimsType(Type ty, int64_t axis, Builder *builder) {
 
 // Lowers AddN op to a sequence of AddV2 ops to accumulate operands.
 //
+// Note that to improve the parallelism, AddN op uses tree-based reduction.
+// For example, tf.AddN([0, 1, 2, 3, 4]) behaves as follows:
+//
+//                 0     1     2     3     4
+//                 |     |     |     |     |
+//                 -------     -------     |
+//                    |           |        |
+//                    5           6        |
+//                    |           |        |
+//                    -------------        |
+//                          |              |
+//                          7              |
+//                          |              |
+//                          ----------------
+//                                 |
+//                                 8
+//
+// Example:
+//
 //   %result = "tf.AddN"(%0, %1, %2)
 //
 // is lowered to:
 //
-//   %sum_0 = "tf.AddV2"(%0, %1)
-//   %result = "tf.AddV2"(%sum_0, %2)
+//   %sum0 = "tf.AddV2"(%0, %1)
+//   %result = "tf.AddV2"(%sum0, %2)
+//
+// While
+//
+//   %result = "tf.AddN"(%0, %1, %2, %3, %4)
+//
+// is lowered to:
+//
+//   %sum0 = "tf.AddV2"(%0, %1)
+//   %sum1 = "tf.AddV2"(%2, %3)
+//   %sum2 = "tf.AddV2"(%sum0, %sum1)
+//   %result = "tf.AddV2"(%sum2, %4)
 //
 class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
  public:
@@ -131,14 +162,23 @@ class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
     // support variant type so variant types require special handling.
     if (getElementTypeOrSelf(op.getType()).isa<VariantType>()) return failure();
 
-    // TODO(hinsu): Improve parallelism by splitting operands in two halves and
-    // accumulating them first.
-    Value result = *op.inputs().begin();
-    for (Value operand : llvm::drop_begin(op.inputs(), 1)) {
-      result = rewriter.create<TF::AddV2Op>(op.getLoc(), result, operand);
+    llvm::SmallVector<Value, 4> operands(op.inputs().begin(),
+                                         op.inputs().end());
+
+    int64_t n = operands.size();
+    // Keep doing tree-based reduction when there are more than one operand.
+    while (n > 1) {
+      for (int64_t i = 0; i < n; i += 2) {
+        // Add two adjacent operands if applicable.
+        operands[i / 2] = (i + 1 < n)
+                              ? rewriter.create<TF::AddV2Op>(
+                                    op.getLoc(), operands[i], operands[i + 1])
+                              : operands[i];
+      }
+      n = (n + 1) / 2;
     }
 
-    rewriter.replaceOp(op, result);
+    rewriter.replaceOp(op, operands[0]);
     return success();
   }
 };
@@ -388,12 +428,38 @@ class LowerSparseMatMulOp : public OpRewritePattern<TF::SparseMatMulOp> {
   }
 };
 
+// Lowers _UnaryOpsComposition op as a series of original TensorFlow ops that
+// were fused together.
+class Lower_UnaryOpsComposition
+    : public OpRewritePattern<TF::_UnaryOpsCompositionOp> {
+ public:
+  using OpRewritePattern<TF::_UnaryOpsCompositionOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(TF::_UnaryOpsCompositionOp op,
+                                PatternRewriter &rewriter) const override {
+    Value result = op.x();
+    for (StringRef op_name :
+         op.op_names().getAsRange<StringAttr, StringRef>()) {
+      std::string full_name = "tf." + op_name.str();
+      // All ops in the sequences have the same result type as the original
+      // result type.
+      OperationState state(op.getLoc(), full_name, /*operands=*/{result},
+                           /*types=*/{op.getType()}, /*attributes=*/{});
+      Operation *op = rewriter.createOperation(state);
+      result = op->getResult(0);
+    }
+    rewriter.replaceOp(op, {result});
+    return success();
+  }
+};
+
 }  // namespace
 
 void PopulateLoweringTFPatterns(MLIRContext *context,
                                 OwningRewritePatternList *patterns) {
   patterns->insert<LowerAddNOp, LowerDynamicStitchOp, LowerInvertPermutationOp,
-                   LowerPackOp, LowerSparseMatMulOp>(context);
+                   LowerPackOp, LowerSparseMatMulOp, Lower_UnaryOpsComposition>(
+      context);
   populateWithGenerated(context, patterns);
 }
 

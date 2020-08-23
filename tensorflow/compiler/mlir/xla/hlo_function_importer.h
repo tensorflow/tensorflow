@@ -62,7 +62,9 @@ class HloFunctionImporter {
       : context_(module.getContext()),
         module_(module),
         builder_(builder),
-        function_map_(function_map) {}
+        function_map_(function_map) {
+    context_->loadDialect<mlir::mhlo::MhloDialect>();
+  }
 
   // Imports the given computation as a new function, if it hasn't been already
   // imported.

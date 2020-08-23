@@ -41,8 +41,7 @@ Status ParseProcessingMode(const std::string& s, ProcessingMode* mode);
 std::string ProcessingModeToString(ProcessingMode mode);
 
 // Base class for data service clients. Data service clients are
-// thread-compatible, requiring external synchronization when used from multiple
-// threads.
+// threadsafe.
 class DataServiceClientBase {
  public:
   DataServiceClientBase(const std::string& address, const std::string& protocol)
@@ -74,26 +73,43 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
                               const std::string& protocol)
       : DataServiceClientBase(address, protocol) {}
 
+  // Registers a worker with the dispatcher. The dispatcher returns a list of
+  // initial tasks for the worker to run, storing them in `tasks`.
+  Status RegisterWorker(const std::string& worker_address,
+                        std::vector<TaskDef>& tasks);
+
+  // Updates the dispatcher with information about the worker's state.
+  Status WorkerUpdate(const std::string& worker_address,
+                      std::vector<TaskProgress>& task_progress);
+
+  // Gets a dataset definition for the given dataset id, and stores the
+  // definition in `dataset_def`.
+  Status GetDatasetDef(int64 dataset_id, DatasetDef& dataset_def);
+
   // Registers a dataset with the tf.data service, and stores the generated
   // dataset id in `*dataset_id`.
   Status RegisterDataset(GraphDef dataset, int64* dataset_id);
 
   // Creates a new tf.data service job for the specified dataset. The id for the
-  // created job will be stored in `*job_id`.
+  // created job will be stored in `*job_client_id`.
   Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
-                   int64* job_id);
+                   int64* job_client_id);
 
   // Gets the job id for the job represented by the tuple
-  // (job_name, job_name_index), and stores the id in *job_id. If the
+  // (job_name, job_name_index), and stores the id in *job_client_id. If the
   // job doesn't exist yet, it will be created.
   Status GetOrCreateJob(int64 dataset_id, ProcessingMode processing_mode,
                         const std::string& job_name, int job_name_index,
-                        int64* job_id);
+                        int64* job_client_id);
+
+  // Releases a job client id, indicating that the id will no longer be used to
+  // read from the job.
+  Status ReleaseJobClient(int64 job_client_id);
 
   // Queries the dispatcher for the tasks associated with the specified job.
   // The tasks will be stored in *tasks, and whether the job is finished will
   // be stored in `*job_finished`.
-  Status GetTasks(int64 job_id, std::vector<TaskInfo>* tasks,
+  Status GetTasks(int64 job_client_id, std::vector<TaskInfo>* tasks,
                   bool* job_finished);
 
   // Queries the dispatcher for its registered workers. The worker info will be
@@ -104,6 +120,9 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   Status EnsureInitialized() override;
 
  private:
+  mutex mu_;
+  // Initialization is guarded by `mu_`, but using the stub does not require
+  // holding `mu_`
   std::unique_ptr<DispatcherService::Stub> stub_;
 };
 
@@ -124,6 +143,9 @@ class DataServiceWorkerClient : public DataServiceClientBase {
   Status EnsureInitialized() override;
 
  private:
+  mutex mu_;
+  // Initialization is guarded by `mu_`, but using the stub does not require
+  // holding `mu_`
   std::unique_ptr<WorkerService::Stub> stub_;
 };
 
