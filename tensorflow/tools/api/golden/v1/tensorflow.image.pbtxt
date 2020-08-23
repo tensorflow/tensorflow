@@ -74,7 +74,7 @@ tf_module {
   }
   member_method {
     name: "draw_bounding_boxes"
-    argspec: "args=[\'images\', \'boxes\', \'name\', \'colors\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'images\', \'boxes\', \'name\', \'colors\', \'thickness\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'1\'], "
   }
   member_method {
     name: "encode_jpeg"

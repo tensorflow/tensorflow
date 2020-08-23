@@ -1,5 +1,5 @@
 op {
-  name: "DrawBoundingBoxesV2"
+  name: "DrawBoundingBoxesV3"
   input_arg {
     name: "images"
     type_attr: "T"
@@ -11,10 +11,6 @@ op {
   input_arg {
     name: "colors"
     type: DT_FLOAT
-  }
-  input_arg {
-    name: "thickness"
-    type: DT_INT
   }
   output_arg {
     name: "output"

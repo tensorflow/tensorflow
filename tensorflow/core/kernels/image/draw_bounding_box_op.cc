@@ -70,14 +70,14 @@ class DrawBoundingBoxesOp : public OpKernel {
 
     OP_REQUIRES(
         context, depth == 4 || depth == 1 || depth == 3,
-        errors::InvalidArgument("Channel depth should be either 1 (GRY), "
+        errors::InvalidArgument("Channel depth should be either 1 (GREY), "
                                 "3 (RGB), or 4 (RGBA)"));
 
     const int64 batch_size = images.dim_size(0);
     const int64 height = images.dim_size(1);
     const int64 width = images.dim_size(2);
     std::vector<std::vector<float>> color_table;
-    if (context->num_inputs() > 2) {
+    if (context->num_inputs() > 2) {  // If called from TF 2.x, not 1.x
       const Tensor& colors_tensor = context->input(2);
       OP_REQUIRES(context, colors_tensor.shape().dims() == 2,
                   errors::InvalidArgument("colors must be a 2-D matrix",
@@ -86,6 +86,10 @@ class DrawBoundingBoxesOp : public OpKernel {
                   errors::InvalidArgument("colors must have equal or more ",
                                           "channels than the image provided: ",
                                           colors_tensor.shape().DebugString()));
+      // If there's a third argument to the function with more than one element,
+      // (it has to be a 2D tensor with as many channels as the image though),
+      // update `color_table` with the colors passed instead of the default
+      // values it will take.
       if (colors_tensor.NumElements() != 0) {
         color_table.clear();
 
@@ -99,6 +103,7 @@ class DrawBoundingBoxesOp : public OpKernel {
         }
       }
 
+      // Get the thickness parameter
       const int64 thickness = context->input(3);
       OP_REQUIRES(context, thickness > 0,
                   errors::InvalidArgument("Thickness should be greater than 1"));

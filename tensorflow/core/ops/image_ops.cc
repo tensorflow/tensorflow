@@ -683,6 +683,17 @@ REGISTER_OP("DrawBoundingBoxesV2")
     .Input("images: T")
     .Input("boxes: float")
     .Input("colors: float")
+    .Output("output: T")
+    .Attr("T: {float, half} = DT_FLOAT")
+    .SetShapeFn([](InferenceContext* c) {
+      return shape_inference::UnchangedShapeWithRankAtLeast(c, 3);
+    });
+
+// --------------------------------------------------------------------------
+REGISTER_OP("DrawBoundingBoxesV3")
+    .Input("images: T")
+    .Input("boxes: float")
+    .Input("colors: float")
     .Input("thickness: int")
     .Output("output: T")
     .Attr("T: {float, half} = DT_FLOAT")
