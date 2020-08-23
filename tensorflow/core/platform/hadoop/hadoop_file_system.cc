@@ -227,7 +227,6 @@ class HDFSRandomAccessFile : public RandomAccessFile {
               char* scratch) const override {
     Status s;
     char* dst = scratch;
-    bool eof_retried = false;
     while (n > 0 && s.ok()) {
       // We lock inside the loop rather than outside so we don't block other
       // concurrent readers.
@@ -242,23 +241,7 @@ class HDFSRandomAccessFile : public RandomAccessFile {
         dst += r;
         n -= r;
         offset += r;
-      } else if (!eof_retried && r == 0) {
-        // Always reopen the file upon reaching EOF to see if there's more data.
-        // If writers are streaming contents while others are concurrently
-        // reading, HDFS requires that we reopen the file to see updated
-        // contents.
-        //
-        // Fixes #5438
-        if (file_ != nullptr && libhdfs()->hdfsCloseFile(fs_, file_) != 0) {
-          return IOError(filename_, errno);
-        }
-        file_ = libhdfs()->hdfsOpenFile(fs_, hdfs_filename_.c_str(), O_RDONLY,
-                                        0, 0, 0);
-        if (file_ == nullptr) {
-          return IOError(filename_, errno);
-        }
-        eof_retried = true;
-      } else if (eof_retried && r == 0) {
+      } else if (r == 0) {
         s = Status(error::OUT_OF_RANGE, "Read less bytes than requested");
       } else if (errno == EINTR || errno == EAGAIN) {
         // hdfsPread may return EINTR too. Just retry.
