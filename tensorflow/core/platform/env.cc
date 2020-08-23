@@ -465,6 +465,11 @@ Status WriteStringToFile(Env* env, const string& fname,
 
 Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
                           FileSystem* target_fs, const string& target) {
+  uint64 file_size;
+  Status s = src_fs->GetFileSize(src, &file_size);
+  if (!s.ok()) {
+    return s;
+  }
   std::unique_ptr<RandomAccessFile> src_file;
   TF_RETURN_IF_ERROR(src_fs->NewRandomAccessFile(src, &src_file));
 
@@ -481,15 +486,26 @@ Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
 
   uint64 offset = 0;
   std::unique_ptr<char[]> scratch(new char[kCopyFileBufferSize]);
-  Status s = Status::OK();
-  while (s.ok()) {
+  while (file_size > 0) {
     StringPiece result;
-    s = src_file->Read(offset, kCopyFileBufferSize, &result, scratch.get());
-    if (!(s.ok() || s.code() == error::OUT_OF_RANGE)) {
+    size_t buffer_size = kCopyFileBufferSize;
+    if (file_size < kCopyFileBufferSize) {
+      buffer_size = file_size;
+    }
+    s = src_file->Read(offset, buffer_size, &result, scratch.get());
+    if (!s.ok()) {
+      return s;
+    }
+    if (buffer_size != result.size()) {
+      s = Status(error::OUT_OF_RANGE, "read less bytes than requested");
       return s;
     }
     TF_RETURN_IF_ERROR(target_file->Append(result));
     offset += result.size();
+    file_size -= result.size();
+    if (file_size < 0) {
+      s = Status(error::OUT_OF_RANGE, "read more bytes than requested");
+    }
   }
   return target_file->Close();
 }
