@@ -1,5 +1,5 @@
 op {
-  name: "DrawBoundingBoxesV3"
+  name: "DrawBoundingBoxesV2"
   input_arg {
     name: "images"
     type_attr: "T"
