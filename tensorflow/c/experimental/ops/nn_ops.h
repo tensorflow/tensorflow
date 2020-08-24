@@ -12,26 +12,26 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
-#define TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
+#ifndef TENSORFLOW_C_EXPERIMENTAL_OPS_NN_OPS_H_
+#define TENSORFLOW_C_EXPERIMENTAL_OPS_NN_OPS_H_
 
-#include "tensorflow/c/eager/abstract_context.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
 namespace tensorflow {
 namespace ops {
 
-Status Identity(AbstractContext* ctx,
+Status SparseSoftmaxCrossEntropyLoss(
+    AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+    absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status ReluGrad(AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
-
-Status ZerosLike(AbstractContext* ctx,
-                 absl::Span<AbstractTensorHandle* const> inputs,
-                 absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
 }  // namespace ops
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_C_EXPERIMENTAL_OPS_ARRAY_OPS_H_
+#endif  // TENSORFLOW_C_EXPERIMENTAL_OPS_NN_OPS_H_
