@@ -111,7 +111,7 @@ sudo apt-get update && sudo apt-get install -y \
 Link to the upstream Tensorflow CSB doc:
 <https://github.com/tensorflow/tensorflow#community-supported-builds>
 
-We provide nightly tensorflow-rocm whl packages for Python 3.6, 3.7 and 3.8 based systems.
+We provide nightly tensorflow-rocm whl packages for Python 2.7, 3.5, 3.6 and 3.7 based systems.
 After downloading the compatible whl package, you can use pip/pip3 to install.
 
 For example, the following commands can be used to download and install the tensorflow-rocm nightly CSB package on an Ubuntu 18.04 system previously configured with ROCm3.7 and Python3.6:
