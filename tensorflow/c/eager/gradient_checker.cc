@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/gradients_internal.h"
-#include "tensorflow/c/eager/mnist_gradients_util.h"
+#include "tensorflow/c/eager/mnist_gradients_testutil.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
@@ -137,6 +137,7 @@ void GetDims(const TF_Tensor* t, int64_t* out_dims) {
   }
 }
 
+// Runs Model and reduce_sum the output.
 Status RunModelAndSum(AbstractContext* ctx, Model forward,
                       absl::Span<AbstractTensorHandle*> inputs,
                       absl::Span<AbstractTensorHandle*> outputs, int num_dims,
@@ -164,7 +165,7 @@ Status RunModelAndSum(AbstractContext* ctx, Model forward,
 }
 
 // Runs model as is if output is a scalar,
-// else sums the output tensor before returning
+// else sums the output tensor before returning.
 Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
                       absl::Span<AbstractTensorHandle*> inputs,
                       absl::Span<AbstractTensorHandle*> outputs, int num_dims,
@@ -187,7 +188,6 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
                      float* dtheta_approx, int gradIndex, 
                      bool use_function, bool is_scalar_out) {
   Status s;
-  GradientRegistry registry;
   AbstractTensorHandle* theta =
       inputs[gradIndex];  // parameter we are grad checking
 
