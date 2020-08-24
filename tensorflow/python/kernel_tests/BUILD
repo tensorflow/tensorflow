@@ -2049,6 +2049,9 @@ cuda_py_test(
     size = "medium",
     srcs = ["dynamic_partition_op_test.py"],
     tfrt_enabled = True,
+    tags = [
+        "multi_and_single_gpu",
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
