@@ -618,3 +618,11 @@ func @erase_dead_lhlo_constant_negative(%M : memref<4xf32>) -> memref<256x1024xf
   "lmhlo.constant"(%N) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
   return %N : memref<256x1024xf32>
 }
+
+// CHECK-LABEL: func @fold_get_dimension_size
+func @fold_get_dimension_size(%I : tensor<1x128x512xf32>) -> tensor<i32> {
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 2 : i32} : (tensor<1x128x512xf32>) -> tensor<i32>
+  return %size : tensor<i32>
+  // CHECK-NEXT: %[[C:.*]] = mhlo.constant dense<512> : tensor<i32>
+  // CHECK-NEXT: return %[[C]]
+}
