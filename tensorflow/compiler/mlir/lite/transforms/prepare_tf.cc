@@ -733,9 +733,8 @@ struct ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
 
   LogicalResult matchAndRewrite(TF::FusedBatchNormOp tf_fused_batch_norm_op,
                                 PatternRewriter &rewriter) const override {
-    const auto &old_result_types = tf_fused_batch_norm_op.getResultTypes();
-    llvm::SmallVector<Type, 6> new_result_types(old_result_types.begin(),
-                                                old_result_types.end());
+    auto new_result_types =
+        llvm::to_vector<6>(tf_fused_batch_norm_op.getResultTypes());
     // reserve_space_3
     new_result_types.push_back(
         UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
