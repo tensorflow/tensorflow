@@ -283,9 +283,7 @@ tf_cc_tests_gpu(
         "pool_allocator_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + [
-        "no_rocm",  # gpu_device_test  FAILS on ROCm 3.5
-    ],
+    tags = tf_cuda_tests_tags(),
     deps = [
         ":gpu_id",
         ":gpu_runtime",
@@ -335,7 +333,6 @@ tf_cuda_cc_test(
     tags = tf_cuda_tests_tags() + [
         "guitar",
         "multi_gpu",
-        "no_rocm",  # FAILS on ROCm 3.5
     ],
     deps = [
         ":gpu_id",

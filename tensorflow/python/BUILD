@@ -4482,9 +4482,6 @@ cuda_py_test(
     tfrt_enabled = True,
     xla_enable_strict_auto_jit = False,
     xla_enabled = True,
-    tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
-    ],
     deps = [
         ":client_testlib",
         ":config",
@@ -5260,8 +5257,7 @@ cuda_py_test(
     srcs = ["ops/math_ops_test.py"],
     python_version = "PY3",
     tags = [
-        "no_rocm",  # FAILS on ROCm 3.5
-	    "no_windows_gpu",
+        "no_windows_gpu",
     ],
     deps = [
         ":array_ops",

@@ -3,10 +3,10 @@
 FROM ubuntu:bionic
 MAINTAINER Jeff Poznanovic <jeffrey.poznanovic@amd.com>
 
-ARG ROCM_DEB_REPO=http://repo.radeon.com/rocm/apt/3.5/
+ARG ROCM_DEB_REPO=http://repo.radeon.com/rocm/apt/3.7/
 ARG ROCM_BUILD_NAME=xenial
 ARG ROCM_BUILD_NUM=main
-ARG ROCM_PATH=/opt/rocm-3.5.0
+ARG ROCM_PATH=/opt/rocm-3.7.0
 
 ENV DEBIAN_FRONTEND noninteractive
 ENV TF_NEED_ROCM 1
@@ -117,10 +117,3 @@ ENV TF_NEED_ROCM 1
 # By default, HIP runtime "hides" 256MB from the TF Runtime, but with recent changes (update to ROCm2.3, dynamic loading of roc* libs, et al)
 # it seems that we need to up the threshold slightly to 320MB
 ENV HIP_HIDDEN_FREE_MEM=320
-
-# Super hacky workaround to JIRA ticket - 241253
-COPY math_functions.h $ROCM_PATH/hip/include/hip/hcc_detail/math_functions.h
-
-# Another super hacky workaround, this one for roctracer related build failure
-COPY hip_ostream_ops.h $ROCM_PATH/roctracer/include/hip_ostream_ops.h
-COPY hip_ostream_ops.h $ROCM_PATH/include/roctracer/hip_ostream_ops.h
