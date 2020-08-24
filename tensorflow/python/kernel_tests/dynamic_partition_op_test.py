@@ -358,7 +358,8 @@ class DynamicPartitionTest(test.TestCase):
         partitions = constant_op.constant(np.arange(1000, dtype=np.int32) % 10)
         result = data_flow_ops.dynamic_partition(data, partitions, 10)
         results.append(self.evaluate(result))
-    self.assertAllEqual(results, np.zeros((len(device_list), 10, 100)))
+    if device_list:
+      self.assertAllEqual(results, np.zeros((len(device_list), 10, 100)))
 
 
 if __name__ == "__main__":
