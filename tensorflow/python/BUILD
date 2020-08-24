@@ -2994,6 +2994,7 @@ tf_gen_op_wrapper_private_py(
     ],
     deps = [
         "//tensorflow/c/kernels:histogram_summary_op_lib",
+        "//tensorflow/c/kernels:merge_summary_op_lib",
         "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/core:logging_ops_op_lib",
     ],

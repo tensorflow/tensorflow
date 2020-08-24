@@ -116,12 +116,6 @@ REGISTER_OP("AudioSummary")
     .SetShapeFn(shape_inference::ScalarShape)
     .Deprecated(15, "Use AudioSummaryV2.");
 
-REGISTER_OP("MergeSummary")
-    .Input("inputs: N * string")
-    .Output("summary: string")
-    .Attr("N : int >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("Timestamp")
     .Output("ts: float64")
     .SetIsStateful()
