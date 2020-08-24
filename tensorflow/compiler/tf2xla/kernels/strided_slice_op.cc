@@ -53,7 +53,6 @@ class StridedSliceOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     const TensorShape input_shape = ctx->InputShape(0);
     const TensorShape begin_shape = ctx->InputShape("begin");
-    VLOG(0) << "strided slice";
     OP_REQUIRES(
         ctx, begin_shape.dims() == 1,
         errors::InvalidArgument("'begin' input has to be a rank 1 vector"));
