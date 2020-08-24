@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
@@ -177,6 +178,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   }
   OwningRewritePatternList patterns;
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
+  TF::PopulateLoweringTFPatterns(module.getContext(), &patterns);
 
   // `supported_ops` contains the name of all of the ops that can potentially be
   // lowered into HLO on the device. This doesn't always mean that the op can

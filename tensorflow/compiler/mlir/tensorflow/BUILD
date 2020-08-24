@@ -822,6 +822,7 @@ cc_library(
         ":device_util",
         ":error_util",
         ":export_tf_dialect_op",
+        ":lower_tf_lib",
         ":mangling_util",
         ":tensorflow",
         ":tensorflow_analysis",
