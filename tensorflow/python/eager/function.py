@@ -3073,8 +3073,8 @@ class Function(object):
     # Return the cached `Function` for the instance
     return self._descriptor_cache[instance]
 
-  def _cache_key(self, args, kwargs, include_tensor_ranks_only=False,
-                 cache_key_context=None):
+  def _cache_key(self, args, kwargs, cache_key_context,
+                 include_tensor_ranks_only=False):
     """Computes the cache key given inputs and execution context."""
     if self.input_signature is None:
       inputs = (args, kwargs) if kwargs else args
@@ -3219,16 +3219,15 @@ class Function(object):
     # not information about the size of each dimension).
     if not any_composite_args:
       rank_only_cache_key = self._cache_key(
-          args, kwargs, include_tensor_ranks_only=True,
-          cache_key_context=cache_key_context)
+          args, kwargs, cache_key_context, include_tensor_ranks_only=True)
     else:
       # For the rank-only cache key, replace any composite tensors with
       # shape-relaxed TypeSpecs.
       (cache_key_args, cache_key_kwargs) = nest.map_structure(
           _shape_relaxed_type_for_composite_tensor, (args, kwargs))
       rank_only_cache_key = self._cache_key(
-          cache_key_args, cache_key_kwargs, include_tensor_ranks_only=True,
-          cache_key_context=cache_key_context)
+          cache_key_args, cache_key_kwargs, cache_key_context,
+          include_tensor_ranks_only=True)
 
     arg_specs = [_type_spec_for(x) for x in flat_args_all]
     relaxed_arg_specs = self._function_cache.arg_relaxed_specs.get(
@@ -3304,8 +3303,7 @@ class Function(object):
       flat_args, flat_kwargs = [None], [None]
 
     cache_key_context = self._cache_key_context()
-    cache_key = self._cache_key(
-        args, kwargs, cache_key_context=cache_key_context)
+    cache_key = self._cache_key(args, kwargs, cache_key_context)
 
     try:
       hash(cache_key)
