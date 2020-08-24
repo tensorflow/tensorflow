@@ -274,7 +274,7 @@ absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
     case OperationType::POOLING_2D: {
       auto attr =
           absl::any_cast<Pooling2DAttributes>(node.operation.attributes);
-      SelectPooling(attr, op_def, gpu_op);
+      *gpu_op = SelectPooling(attr, op_def);
       return absl::OkStatus();
     }
     case OperationType::PRELU: {
