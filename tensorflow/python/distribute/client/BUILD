@@ -131,10 +131,6 @@ py_library(
     name = "utils",
     srcs = ["utils.py"],
     srcs_version = "PY2AND3",
-    visibility = [
-        "//learning/tfx/users/apps_itemsuggest:__subpackages__",
-        "//tensorflow:internal",
-    ],
     deps = [
         "//tensorflow/python:training_server_lib",
     ],
