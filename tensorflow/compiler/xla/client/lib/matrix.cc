@@ -30,6 +30,7 @@ limitations under the License.
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
@@ -235,84 +236,92 @@ XlaOp UpperTriangle(XlaOp x) { return Triangle(x, false); }
 XlaOp LowerTriangle(XlaOp x) { return Triangle(x, true); }
 
 namespace {
-std::vector<int64> EinsumDiagonalLabels(absl::Span<const int64> config) {
+absl::optional<std::array<std::vector<int64>, 3>> EinsumDiagonalLabels(
+    absl::Span<const int64> config) {
   std::vector<int64> unique_labels;
+  std::vector<int64> reduce_dims;
+  std::vector<int64> broadcast_dims;
   for (auto label = config.begin(); label != config.end(); ++label) {
     auto first_label = absl::c_find(config, *label);
+    auto dim = label - config.begin();
     if (first_label == label) {
       unique_labels.push_back(*label);
+      broadcast_dims.push_back(dim);
+    } else {
+      reduce_dims.push_back(dim);
     }
   }
   if (unique_labels.size() == config.size()) {
-    unique_labels.clear();
+    return absl::nullopt;
   }
-  return unique_labels;
+  return {{unique_labels, reduce_dims, broadcast_dims}};
 }
-}  // namespace
 
-xla::XlaOp EinsumDiagonal(XlaOp x, absl::Span<const int64> config) {
+// Masks a tensor such that only the diagonal of repeated indices are non-zero.
+// The result of this can be used to create a diagonal matrix with an identity
+// reduction.
+xla::XlaOp EinsumDiagonalMask(XlaOp x, absl::Span<const int64> config) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    if (EinsumDiagonalLabels(config).empty()) {
-      return x;
-    }
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
     Shape iota_shape = x_shape;
     iota_shape.set_element_type(S32);
     XlaOp mask = ConstantR0(builder, true);
 
-    absl::InlinedVector<int64, 8> reduce_dims;
     for (auto label = config.begin(); label != config.end(); ++label) {
       const int64 dim = label - config.begin();
       auto first_label = absl::c_find(config, *label);
-      if (first_label == label) {
-        continue;
+      if (first_label != label) {
+        const int64 first_dim = first_label - config.begin();
+        mask = And(mask, Eq(Iota(builder, iota_shape, first_dim),
+                            Iota(builder, iota_shape, dim)));
       }
-      reduce_dims.push_back(dim);
-      const int64 first_dim = first_label - config.begin();
-      mask = And(mask, Eq(Iota(builder, iota_shape, first_dim),
-                          Iota(builder, iota_shape, dim)));
     }
-    auto zero = ScalarLike(x, 0);
-    return Reduce(Select(mask, x, zero), zero,
-                  CreateScalarIdentityWithZeroComputation(
-                      x_shape.element_type(), builder),
-                  reduce_dims);
+    return Select(mask, x, ZerosLike(x));
   });
 }
 
-Status ValidateEinsumNumericDimensions(absl::Span<const int64> x_config,
-                                       absl::Span<const int64> y_config,
-                                       absl::Span<const int64> output_config) {
-  for (auto dim : output_config) {
-    if (absl::c_linear_search(x_config, dim) ||
-        absl::c_linear_search(y_config, dim)) {
-      if (absl::c_count(output_config, dim) > 1) {
-        return InvalidArgument("Einsum has repeated output dimension.");
-      }
-      continue;
+xla::XlaOp EinsumDiagonal(XlaOp x, absl::Span<const int64> config) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    auto labels = EinsumDiagonalLabels(config);
+    if (!labels) {
+      return x;
     }
-    return InvalidArgument(
-        "Einsum has output dimension without corresponding input dimension.");
-  }
-  for (auto dim : x_config) {
-    if (absl::c_linear_search(y_config, dim) ||
-        absl::c_linear_search(output_config, dim)) {
-      if (absl::c_count(x_config, dim) > 1) {
-        return InvalidArgument("Einsum has repeated lhs dimension.");
-      }
-    }
-  }
-  for (auto dim : y_config) {
-    if (absl::c_linear_search(x_config, dim) ||
-        absl::c_linear_search(output_config, dim)) {
-      if (absl::c_count(y_config, dim) > 1) {
-        return InvalidArgument("Einsum has repeated rhs dimension.");
-      }
-    }
-  }
-  return Status::OK();
+    auto zero = ScalarLike(x, 0);
+    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    return Reduce(EinsumDiagonalMask(x, config), zero,
+                  CreateScalarIdentityWithZeroComputation(
+                      x_shape.element_type(), builder),
+                  labels->at(1));
+  });
 }
+
+xla::XlaOp EinsumInverseDiagonal(XlaOp x, absl::Span<const int64> config) {
+  XlaBuilder* builder = x.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    auto labels = EinsumDiagonalLabels(config);
+    if (!labels) {
+      return x;
+    }
+    TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
+    std::vector<int64> broadcast_sizes;
+    int64 x_dim = 0;
+    for (auto label = config.begin(); label != config.end(); ++label) {
+      auto first_label = absl::c_find(config, *label);
+      if (first_label == label) {
+        broadcast_sizes.push_back(x_shape.dimensions(x_dim));
+        ++x_dim;
+      } else {
+        broadcast_sizes.push_back(
+            broadcast_sizes[first_label - config.begin()]);
+      }
+    }
+    x = BroadcastInDim(x, broadcast_sizes, labels->at(2));
+    return EinsumDiagonalMask(x, config);
+  });
+}
+}  // namespace
 
 namespace {
 // Helper method to remove dimensions from a shape and dot dimension numbers
@@ -347,21 +356,23 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     auto x_diagonal_labels = EinsumDiagonalLabels(x_config);
+    if (x_diagonal_labels) {
+      return Einsum(EinsumDiagonal(x, x_config), x_diagonal_labels->at(0), y,
+                    y_config, output_config, precision);
+    }
     auto y_diagonal_labels = EinsumDiagonalLabels(y_config);
-    if (!x_diagonal_labels.empty() && !y_diagonal_labels.empty()) {
-      return Einsum(EinsumDiagonal(x, x_config), x_diagonal_labels,
-                    EinsumDiagonal(y, y_config), y_diagonal_labels,
-                    output_config, precision);
-    } else if (!x_diagonal_labels.empty()) {
-      return Einsum(EinsumDiagonal(x, x_config), x_diagonal_labels, y, y_config,
-                    output_config, precision);
-    } else if (!y_diagonal_labels.empty()) {
-      return Einsum(x, x_config, EinsumDiagonal(y, y_config), y_diagonal_labels,
-                    output_config, precision);
+    if (y_diagonal_labels) {
+      return Einsum(x, x_config, EinsumDiagonal(y, y_config),
+                    y_diagonal_labels->at(0), output_config, precision);
+    }
+    auto output_diagonal_labels = EinsumDiagonalLabels(output_config);
+    if (output_diagonal_labels) {
+      return EinsumInverseDiagonal(
+          Einsum(x, x_config, y, y_config, output_diagonal_labels->at(0),
+                 precision),
+          output_config);
     }
 
-    TF_RETURN_IF_ERROR(
-        ValidateEinsumNumericDimensions(x_config, y_config, output_config));
     TF_ASSIGN_OR_RETURN(Shape x_shape, builder->GetShape(x));
     TF_ASSIGN_OR_RETURN(Shape y_shape, builder->GetShape(y));
     const int64 x_rank = x_config.size();
@@ -372,21 +383,15 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     absl::flat_hash_set<int64> output_map;
 
     for (auto d : x_config) {
-      if (!x_map.insert(d).second) {
-        return InvalidArgument("XLA Einsum does not support rhs tracing");
-      }
+      x_map.insert(d);
     }
 
     for (auto d : y_config) {
-      if (!y_map.insert(d).second) {
-        return InvalidArgument("XLA Einsum does not support lhs tracing");
-      }
+      y_map.insert(d);
     }
 
     for (auto d : output_config) {
-      if (!output_map.insert(d).second) {
-        return InvalidArgument("XLA Einsum does not support output tracing");
-      }
+      output_map.insert(d);
     }
 
     DotDimensionNumbers dnums;
@@ -397,6 +402,7 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     auto is_contracting = [&](int64 d) {
       return x_map.contains(d) && y_map.contains(d);
     };
+
     auto rhs_dimension_number = [&](int64 d) {
       return absl::c_find(y_config, d) - y_config.begin();
     };
@@ -468,8 +474,9 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
       output_dimension_number(y_config[d]);
     }
 
+    const int64 transpose_rank = output_transpose_dims.size();
     std::vector<int64> transpose_dims(output_rank);
-    for (int64 i = 0; i < output_rank; ++i) {
+    for (int64 i = 0; i < transpose_rank; ++i) {
       transpose_dims[output_transpose_dims[i]] = i;
     }
 
@@ -498,7 +505,27 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
                    CreateScalarAddComputation(x_shape.element_type(), builder),
                    output_reduce_dims);
     }
-    return Transpose(dot, transpose_dims);
+    dot = Transpose(dot, transpose_dims);
+    if (transpose_rank == output_rank) {
+      return dot;
+    }
+
+    auto is_output_only = [&](int64 d) {
+      return output_map.contains(d) && !x_map.contains(d) && !y_map.contains(d);
+    };
+
+    int64 dot_dim = 0;
+    std::vector<int64> new_dims;
+    new_dims.reserve(output_rank);
+    TF_ASSIGN_OR_RETURN(Shape dot_shape, builder->GetShape(dot));
+    for (auto d : output_config) {
+      if (is_output_only(d)) {
+        new_dims.push_back(1);
+      } else {
+        new_dims.push_back(dot_shape.dimensions(dot_dim));
+      }
+    }
+    return Reshape(dot, new_dims);
   });
 }
 
