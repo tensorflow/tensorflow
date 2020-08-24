@@ -33,11 +33,9 @@ ConvolutionTransposed::ConvolutionTransposed(
     const OperationDef& definition, const ConvolutionTransposedAttributes& attr,
     const DeviceInfo& device_info)
     : GPUOperation(definition),
-      weights_are_buffer_(device_info.IsMali()),
-      kernel_size_(attr.weights.shape.w, attr.weights.shape.h),
       stride_(attr.stride.w, attr.stride.h),
-      padding_(attr.padding.prepended.w, attr.padding.prepended.h),
       block_size_(2, 2, 2) {
+  const bool weights_are_buffer = device_info.IsMali();
   const bool is_f16 = definition.precision == CalculationsPrecision::F16;
   if (device_info.IsMali()) {
     if (device_info.mali_info.IsMidgard()) {
@@ -54,25 +52,26 @@ ConvolutionTransposed::ConvolutionTransposed(
     block_size_.z = 1;
   }
 
+  args_.AddInt("stride_x", stride_.x);
+  args_.AddInt("stride_y", stride_.y);
+  args_.AddInt("padding_x", attr.padding.prepended.w);
+  args_.AddInt("padding_y", attr.padding.prepended.h);
+  args_.AddInt("kernel_size_x", attr.weights.shape.w);
+  args_.AddInt("kernel_size_y", attr.weights.shape.h);
   code_ = GenerateConvolutionTransposedCode(definition_, device_info,
-                                            weights_are_buffer_, block_size_);
+                                            weights_are_buffer, block_size_);
+  UploadWeights(attr.weights, weights_are_buffer);
 }
 
 ConvolutionTransposed::ConvolutionTransposed(ConvolutionTransposed&& operation)
     : GPUOperation(std::move(operation)),
-      weights_are_buffer_(operation.weights_are_buffer_),
-      kernel_size_(operation.kernel_size_),
       stride_(operation.stride_),
-      padding_(operation.padding_),
       block_size_(operation.block_size_) {}
 
 ConvolutionTransposed& ConvolutionTransposed::operator=(
     ConvolutionTransposed&& operation) {
   if (this != &operation) {
-    std::swap(weights_are_buffer_, operation.weights_are_buffer_);
-    std::swap(kernel_size_, operation.kernel_size_);
     std::swap(stride_, operation.stride_);
-    std::swap(padding_, operation.padding_);
     std::swap(block_size_, operation.block_size_);
     GPUOperation::operator=(std::move(operation));
   }
@@ -87,13 +86,6 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   AddSrcTensor("src_tensor", src_desc);
 
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-
-  args_.AddInt("stride_x");
-  args_.AddInt("stride_y");
-  args_.AddInt("padding_x");
-  args_.AddInt("padding_y");
-  args_.AddInt("kernel_size_x");
-  args_.AddInt("kernel_size_y");
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   bool image_buffer = src_tensor_type == TensorStorageType::IMAGE_BUFFER;
@@ -333,15 +325,6 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   return c;
 }
 
-absl::Status ConvolutionTransposed::BindArguments() {
-  RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
-  RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
-  RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x));
-  RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
-  RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
-  return args_.SetInt("kernel_size_y", kernel_size_.y);
-}
-
 int3 ConvolutionTransposed::GetGridSize() const {
   const int aligned_w = AlignByN(dst_[0]->Width(), stride_.x * block_size_.x);
   const int aligned_h = AlignByN(dst_[0]->Height(), stride_.y * block_size_.y);
@@ -362,7 +345,6 @@ ConvolutionTransposed CreateConvolutionTransposed(
     const DeviceInfo& device_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
   ConvolutionTransposed result(definition, attr, device_info);
-  result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;
   desc.storage_type =
