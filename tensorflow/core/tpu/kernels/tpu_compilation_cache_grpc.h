@@ -35,8 +35,12 @@ limitations under the License.
 
 #include <functional>
 
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_response.pb.h"
+#if defined(LIBTFTPU)
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
+#else
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"  // copybara"
+#endif
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -44,14 +48,22 @@ namespace grpc {
 class TpuCompilationCacheService final {
  public:
   using RequestType = ::tensorflow::tpu::GetTpuProgramRequest;
+#if defined(LIBTFTPU)
+  using ResponseType = ::tensorflow::tpu::GetTpuProgramResponseExternal;
+#else
   using ResponseType = ::tensorflow::tpu::GetTpuProgramResponse;
+#endif
 
   // N.B. This must be synchronized with the method order in
   // tpu_compilation_cache.proto.
   enum class MethodId { kGetTpuProgram = 0 };
 
   static constexpr char const* service_full_name() {
+#if defined(LIBTFTPU)
+    return "tensorflow.tpu.TpuCompilationCacheServiceExternal";
+#else
     return "tensorflow.tpu.TpuCompilationCacheService";
+#endif
   }
   class StubInterface {
    public:

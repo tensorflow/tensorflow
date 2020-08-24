@@ -237,8 +237,8 @@ cc_library(
         "tpu_compilation_cache_lookup.h",
     ],
     deps = [
+        ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_interface",
-        ":tpu_compilation_cache_proto_cc",
         "//tensorflow/core/lib/core:refcount",
         "//tensorflow/core/platform:status",
         "//tensorflow/core/profiler/lib:traceme",
@@ -250,11 +250,11 @@ cc_library(
     srcs = ["tpu_compilation_cache_local_lookup.cc"],
     hdrs = ["tpu_compilation_cache_local_lookup.h"],
     deps = [
+        ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_external",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_lookup",
-        ":tpu_compilation_cache_proto_cc",
         "//tensorflow/core/platform:status",
     ],
 )
@@ -342,9 +342,9 @@ cc_library(
         DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_metrics"],
     }) + [
         ":compiled_subgraph",
+        ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_key",
-        ":tpu_compilation_cache_proto_cc",
         ":tpu_compilation_metrics_hdrs",
         ":tpu_util",
         ":tpu_util_hdrs",
@@ -373,10 +373,10 @@ cc_library(
     ],
     deps = [
         ":compiled_subgraph",
+        ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_key",
-        ":tpu_compilation_cache_proto_cc",
         ":tpu_compilation_metrics",  # buildcleaner: keep
         ":tpu_compilation_metrics_hdrs",
         ":tpu_compile_c_api_hdrs",
@@ -515,8 +515,8 @@ cc_library(
         DEFAULT: [],
     }),
     deps = select({
-        WITH_TPU_SUPPORT: [":tpu_compilation_cache_response_proto_cc"],
-        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_response_proto_cc"],
+        WITH_TPU_SUPPORT: [":tpu_compilation_cache_proto_cc"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_proto_cc"],
     }) + [
         ":tpu_compilation_cache_entry",
         ":tpu_compilation_cache_interface",
@@ -531,7 +531,12 @@ cc_library(
 cc_library(
     name = "tpu_compilation_cache_rpc_support",
     srcs = ["tpu_compilation_cache_rpc_support.cc"],
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
     deps = [
+        ":tpu_compilation_cache_proto_cc",
         ":tpu_compilation_cache_rpc_support_hdrs",
     ],
 )
@@ -551,7 +556,7 @@ cc_library(
         ":tpu_compilation_cache_grpc",
         ":tpu_compilation_cache_interface",
         ":tpu_compilation_cache_lookup",
-        ":tpu_compilation_cache_proto_cc",
+        ":tpu_compilation_cache_common_proto_cc",
         ":tpu_compilation_cache_rpc_support_hdrs",
         ":tpu_program_group_interface",
         "@com_google_absl//absl/strings",
@@ -562,27 +567,23 @@ cc_library(
     ],
 )
 
-# TODO(henrytan): rename the proto file.
 tf_proto_library_cc(
-    name = "tpu_compilation_cache_response_proto",
-    srcs = ["tpu_compilation_cache_response.proto"],
-    has_services = 1,
+    name = "tpu_compilation_cache_proto",
+    srcs = ["tpu_compilation_cache.proto"],
+    has_services = True,
     cc_api_version = 2,
     create_java_proto = False,
     protodeps = [
-        ":tpu_compilation_cache_proto",
+        ":tpu_compilation_cache_common_proto",
         "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
     ],
 )
 
 tf_proto_library_cc(
-    name = "tpu_compilation_cache_proto",
-    srcs = ["tpu_compilation_cache.proto"],
+    name = "tpu_compilation_cache_common_proto",
+    srcs = ["tpu_compilation_cache_common.proto"],
     cc_api_version = 2,
     create_java_proto = False,
-    protodeps = [
-        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
-    ],
 )
 
 cc_library(
@@ -594,10 +595,10 @@ cc_library(
         DEFAULT: [],
     }),
     deps = select({
-        WITH_TPU_SUPPORT: [":tpu_compilation_cache_response_proto_cc"],
-        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_response_proto_cc"],
+        WITH_TPU_SUPPORT: [":tpu_compilation_cache_proto_cc"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_proto_cc"],
     }) + [
-        ":tpu_compilation_cache_proto_cc",
+        ":tpu_compilation_cache_common_proto_cc",
         tf_grpc_cc_dependency(),
     ],
 )

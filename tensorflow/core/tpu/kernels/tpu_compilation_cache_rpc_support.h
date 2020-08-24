@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <grpcpp/security/credentials.h>
 
+#include <functional>
 #include <memory>
 #include <string>
 
@@ -75,17 +76,20 @@ class CacheWrapper : public CompilationCacheEntryRef {
   std::shared_ptr<CacheEntry> cache_entry_;
 };
 
-// Forward declaration.
-class GetTpuProgramResponse;
-
 // Creates gRPC channel credentials for the current runtime env.
 std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials();
 
 // Fills an uinitialized `CacheEntry` from `GetTpuProgramResponse` proto. The
 // `cache_entry` will be instantiated by the function.
+template <typename ResponseType>
 Status FillCacheEntryFromGetTpuProgramResponse(
-    const absl::string_view local_proto_key, GetTpuProgramResponse* response,
+    const absl::string_view local_proto_key, ResponseType* response,
     std::shared_ptr<CacheEntry>* cache_entry);
+
+// A helper to send `TpuCompilationCacheEntry` payload through gRPC channel.
+void SendGetTpuProgramResponseHelper(
+    const TpuCompilationCacheEntry& cache_entry,
+    std::function<void(::grpc::ByteBuffer*, ::grpc::Status)> call_fn);
 }  // namespace tpu
 }  // namespace tensorflow
 
