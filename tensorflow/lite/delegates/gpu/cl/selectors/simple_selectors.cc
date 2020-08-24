@@ -45,10 +45,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-void SelectLSTM(const OperationDef& op_def, const DeviceInfo& device_info,
-                std::unique_ptr<GPUOperation>* ptr) {
-  LSTM operation = CreateLSTM(op_def, device_info);
-  *ptr = absl::make_unique<LSTM>(std::move(operation));
+std::unique_ptr<GPUOperation> SelectLSTM(const OperationDef& op_def,
+                                         const DeviceInfo& device_info) {
+  return absl::make_unique<GPUOperation>(CreateLSTM(op_def, device_info));
 }
 
 std::unique_ptr<GPUOperation> SelectReLU(const ReLUAttributes& attr,

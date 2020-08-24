@@ -246,7 +246,7 @@ absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
       return absl::OkStatus();
     }
     case OperationType::LSTM: {
-      SelectLSTM(op_def, device_info, gpu_op);
+      *gpu_op = SelectLSTM(op_def, device_info);
       return absl::OkStatus();
     }
     case OperationType::MAX_UNPOOLING_2D: {

@@ -28,8 +28,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-void SelectLSTM(const OperationDef& op_def, const DeviceInfo& device_info,
-                std::unique_ptr<GPUOperation>* ptr);
+std::unique_ptr<GPUOperation> SelectLSTM(const OperationDef& op_def,
+                                         const DeviceInfo& device_info);
 
 std::unique_ptr<GPUOperation> SelectReLU(const ReLUAttributes& attr,
                                          const OperationDef& op_def);
