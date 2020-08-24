@@ -45,16 +45,12 @@ void ReduceTester::Test(tflite::BuiltinOperator reduce_op,
 
   std::unique_ptr<Interpreter> delegate_interpreter;
   ASSERT_EQ(
-      InterpreterBuilder(
-          model,
-          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
+      InterpreterBuilder(model, ::tflite::ops::builtin::BuiltinOpResolver())(
           &delegate_interpreter),
       kTfLiteOk);
   std::unique_ptr<Interpreter> default_interpreter;
   ASSERT_EQ(
-      InterpreterBuilder(
-          model,
-          ::tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
+      InterpreterBuilder(model, ::tflite::ops::builtin::BuiltinOpResolver())(
           &default_interpreter),
       kTfLiteOk);
 
