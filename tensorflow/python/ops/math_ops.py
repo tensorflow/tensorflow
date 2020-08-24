@@ -5023,7 +5023,7 @@ def acos(x,name=None):
 def floor(x,name=None):
   """Returns element-wise largest integer not greater than x.
   
-  Both input range is `(-inf,inf)` and the ouput range is all integer values.
+  Both input range is `(-inf,inf)` and the ouput range consists of all integer values.
   
   For example:
 
