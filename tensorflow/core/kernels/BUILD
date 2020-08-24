@@ -2514,7 +2514,6 @@ tf_kernel_library(
         ":gather_functor",
         ":gpu_prim_hdrs",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:gpu_runtime",
     ],
 )
 
