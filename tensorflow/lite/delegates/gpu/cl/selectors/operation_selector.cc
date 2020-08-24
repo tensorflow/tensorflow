@@ -252,7 +252,7 @@ absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
     case OperationType::MAX_UNPOOLING_2D: {
       auto attr =
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
-      SelectMaxUnpooling(attr, op_def, gpu_op);
+      *gpu_op = SelectMaxUnpooling(attr, op_def);
       return absl::OkStatus();
     }
     case OperationType::MEAN: {
