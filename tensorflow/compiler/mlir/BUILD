@@ -132,7 +132,6 @@ tf_cc_binary(
         ":tf_mlir_opt_main",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_pass_registration",
         "//tensorflow/compiler/mlir/tensorflow:tf_graph_optimization_pass",
-        "//tensorflow/compiler/mlir/tfjs:tensorflow_js_dialect_registration",
         "//tensorflow/compiler/mlir/xla:all_xla_passes_for_testing",
     ],
 )
@@ -169,3 +168,5 @@ filegroup(
     name = "litfiles",
     srcs = glob(["runlit*py"]),
 )
+
+exports_files(["run_lit.sh"])
