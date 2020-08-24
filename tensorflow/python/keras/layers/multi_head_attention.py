@@ -61,7 +61,7 @@ def _build_attention_equation(rank, attn_axes):
 
   Args:
     rank: the rank of query, key, value tensors.
-    attn_axes: a list/tuple of axes, [1, rank), that will do attention.
+    attn_axes: a list/tuple of axes, [-1, rank), that will do attention.
 
   Returns:
     Einsum equations.
@@ -381,8 +381,20 @@ class MultiHeadAttention(Layer):
         _build_attention_equation(rank, attn_axes=self._attention_axes))
     norm_axes = tuple(
         range(attn_scores_rank - len(self._attention_axes), attn_scores_rank))
-    self._masked_softmax = advanced_activations.Softmax(axis=norm_axes)
+    self._softmax = advanced_activations.Softmax(axis=norm_axes)
     self._dropout_layer = core.Dropout(rate=self._dropout)
+
+  def _masked_softmax(self, attention_scores, attention_mask=None):
+    # Normalize the attention scores to probabilities.
+    # `attention_scores` = [B, N, T, S]
+    if attention_mask is not None:
+      # The expand dim happens starting from the `num_heads` dimension,
+      # (<batch_dims>, num_heads, <query_attention_dims, key_attention_dims>)
+      mask_expansion_axes = [-len(self._attention_axes) * 2 - 1]
+      for _ in range(len(attention_scores.shape) - len(attention_mask.shape)):
+        attention_mask = array_ops.expand_dims(
+            attention_mask, axis=mask_expansion_axes)
+    return self._softmax(attention_scores, attention_mask)
 
   def _compute_attention(self, query, key, value, attention_mask=None):
     """Applies Dot-product attention with query, key, value tensors.
@@ -412,15 +424,6 @@ class MultiHeadAttention(Layer):
     attention_scores = special_math_ops.einsum(self._dot_product_equation, key,
                                                query)
 
-    # Normalize the attention scores to probabilities.
-    # `attention_scores` = [B, N, T, S]
-    if attention_mask is not None:
-      # The expand dim happens starting from the `num_heads` dimension,
-      # (<batch_dims>, num_heads, <query_attention_dims, key_attention_dims>)
-      mask_expansion_axes = [-len(self._attention_axes) * 2 - 1]
-      for _ in range(len(attention_scores.shape) - len(attention_mask.shape)):
-        attention_mask = array_ops.expand_dims(
-            attention_mask, axis=mask_expansion_axes)
     attention_scores = self._masked_softmax(attention_scores, attention_mask)
 
     # This is actually dropping out entire tokens to attend to, which might

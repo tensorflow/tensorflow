@@ -25,29 +25,8 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-SpaceToDepth::SpaceToDepth(const OperationDef& op_def,
-                           const SpaceToDepthAttributes& attr)
-    : GPUOperation(op_def), attr_(attr) {
-  code_ = GetSpaceToDepthCode(definition_);
-}
-
-SpaceToDepth::SpaceToDepth(SpaceToDepth&& operation)
-    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
-
-SpaceToDepth& SpaceToDepth::operator=(SpaceToDepth&& operation) {
-  if (this != &operation) {
-    attr_ = operation.attr_;
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-std::string SpaceToDepth::GetSpaceToDepthCode(const OperationDef& op_def) {
-  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
-  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-  args_.AddInt("block_size");
-
+namespace {
+std::string GetSpaceToDepthCode(const OperationDef& op_def) {
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
@@ -87,22 +66,17 @@ std::string SpaceToDepth::GetSpaceToDepthCode(const OperationDef& op_def) {
   c += "}\n";
   return c;
 }
+}  // namespace
 
-absl::Status SpaceToDepth::BindArguments() {
-  RETURN_IF_ERROR(args_.SetInt("block_size", attr_.block_size));
-  return absl::OkStatus();
-}
-
-int3 SpaceToDepth::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Slices();
-  return int3(grid_x, grid_y, grid_z);
-}
-
-SpaceToDepth CreateSpaceToDepth(const OperationDef& op_def,
+GPUOperation CreateSpaceToDepth(const OperationDef& op_def,
                                 const SpaceToDepthAttributes& attr) {
-  return SpaceToDepth(op_def, attr);
+  GPUOperation op(op_def);
+  op.AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  op.AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+  op.args_.AddInt("block_size", attr.block_size);
+  op.code_ = GetSpaceToDepthCode(op_def);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  return op;
 }
 
 }  // namespace cl

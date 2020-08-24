@@ -175,7 +175,7 @@ class InitializeTableFromDatasetOp : public AsyncOpKernel {
     OP_REQUIRES_OK_ASYNC(
         ctx, GetInitializableLookupTable("table_handle", ctx, &table), done);
     core::ScopedUnref unref_me(table);
-    DatasetBase* dataset;
+    data::DatasetBase* dataset;
     OP_REQUIRES_OK_ASYNC(
         ctx, GetDatasetFromVariantTensor(ctx->input(1), &dataset), done);
     background_worker_.Schedule([ctx, dataset, table, done]() {

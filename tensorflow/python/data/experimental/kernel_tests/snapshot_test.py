@@ -314,6 +314,25 @@ class SnapshotDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
         num_runs_per_fingerprint=1,
         num_snapshot_shards_per_run=multiprocessing.cpu_count())
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testWriteSnapshotShuffleSameFingerprint(self):
+
+    def make_dataset():
+      dataset = dataset_ops.Dataset.range(1000)
+      dataset = dataset.shuffle(1000)
+      dataset = dataset.apply(snapshot.snapshot(self._snapshot_dir))
+      return dataset
+
+    dataset1 = make_dataset()
+    self.assertDatasetProducesSet(dataset1, list(range(1000)))
+    dataset2 = make_dataset()
+    self.assertDatasetProducesSet(dataset2, list(range(1000)))
+    self.assertSnapshotDirectoryContains(
+        self._snapshot_dir,
+        num_fingerprints=1,
+        num_runs_per_fingerprint=1,
+        num_snapshot_shards_per_run=multiprocessing.cpu_count())
+
 
 class LegacySnapshotDatasetTest(
     reader_dataset_ops_test_base.TFRecordDatasetTestBase,

@@ -19,34 +19,25 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import platform
+import sys
 import threading
 import time
 from absl import logging
 
 from tensorflow.python.distribute.client import client
+from tensorflow.python.eager import cancellation
 from tensorflow.python.eager import def_function
 from tensorflow.python.platform import test
 from tensorflow.python.training import coordinator
 from tensorflow.python.util import nest
 
 
-class MockCancellationManager(object):
-
-  def __init__(self):
-    self.cancelled = False
-
-  def start_cancel(self):
-    self.cancelled = True
-
-  def get_cancelable_function(self, func):
-    return func
-
-
 class CoordinatedClosureQueueTest(test.TestCase):
 
   def testBasic(self):
-    queue = client._CoordinatedClosureQueue(MockCancellationManager())
-    closure1 = self._create_closure()
+    queue = client._CoordinatedClosureQueue()
+    closure1 = self._create_closure(queue._cancellation_mgr)
     queue.put(closure1)
     self.assertIs(closure1, queue.get())
     self.assertFalse(queue.done())
@@ -57,7 +48,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     queue.wait()
 
   def testProcessAtLeaseOnce(self):
-    closure_queue = client._CoordinatedClosureQueue(MockCancellationManager())
+    closure_queue = client._CoordinatedClosureQueue()
     labels = ['A', 'B', 'C', 'D', 'E']
     processed_count = collections.defaultdict(int)
 
@@ -85,9 +76,9 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
       return func
 
+    cm = cancellation.CancellationManager()
     for label in labels:
-      closure_queue.put(
-          client.Closure(get_func(label), MockCancellationManager()))
+      closure_queue.put(client.Closure(get_func(label), cm))
     t1 = threading.Thread(target=process_queue, daemon=True)
     t1.start()
     t2 = threading.Thread(target=process_queue, daemon=True)
@@ -104,7 +95,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     coord.join([t1, t2])
 
   def testNotifyBeforeWait(self):
-    closure_queue = client._CoordinatedClosureQueue(MockCancellationManager())
+    closure_queue = client._CoordinatedClosureQueue()
 
     def func():
       logging.info('func running')
@@ -116,7 +107,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
         closure_queue.get()
         closure_queue.mark_finished()
 
-    closure_queue.put(client.Closure(func, MockCancellationManager()))
+    closure_queue.put(client.Closure(func, closure_queue._cancellation_mgr))
     t = threading.Thread(target=process_queue)
     t.start()
     coord.join([t])
@@ -148,8 +139,12 @@ class CoordinatedClosureQueueTest(test.TestCase):
     coord.join([t])
 
   def testWaitRaiseErrorAfterMarkFailure(self):
-    closure_queue = client._CoordinatedClosureQueue(MockCancellationManager())
-    closure_queue.put(self._create_closure())
+    if sys.version_info >= (3, 8) and platform.system() == 'Windows':
+      # TODO(b/165013260): Fix this
+      self.skipTest('Test is currently broken on Windows with Python 3.8')
+
+    closure_queue = client._CoordinatedClosureQueue()
+    closure_queue.put(self._create_closure(closure_queue._cancellation_mgr))
     closure = closure_queue.get()
 
     wait_finish_event = threading.Event()
@@ -172,20 +167,20 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     self.assertTrue(closure_queue.done())
 
-  def _create_closure(self):
+  def _create_closure(self, cancellation_mgr):
 
     @def_function.function()
     def some_function():
       return 1.0
 
-    return client.Closure(some_function, MockCancellationManager())
+    return client.Closure(some_function, cancellation_mgr)
 
   def _put_two_closures_and_get_one(self):
-    closure_queue = client._CoordinatedClosureQueue(MockCancellationManager())
-    closure1 = self._create_closure()
+    closure_queue = client._CoordinatedClosureQueue()
+    closure1 = self._create_closure(closure_queue._cancellation_mgr)
     closure_queue.put(closure1)
 
-    closure2 = self._create_closure()
+    closure2 = self._create_closure(closure_queue._cancellation_mgr)
     closure_queue.put(closure2)
 
     closure_got = closure_queue.get()  # returns closure1
@@ -194,12 +189,16 @@ class CoordinatedClosureQueueTest(test.TestCase):
     return closure_queue, closure1, closure2
 
   def testPutRaiseError(self):
+    if sys.version_info >= (3, 8) and platform.system() == 'Windows':
+      # TODO(b/165013260): Fix this
+      self.skipTest('Test is currently broken on Windows with Python 3.8')
+
     closure_queue, _, closure2 = self._put_two_closures_and_get_one()
 
     closure_queue.mark_failed(ValueError())
 
     with self.assertRaises(ValueError):
-      closure_queue.put(self._create_closure())
+      closure_queue.put(self._create_closure(closure_queue._cancellation_mgr))
 
     self.assertTrue(closure_queue.done())
 
@@ -210,9 +209,13 @@ class CoordinatedClosureQueueTest(test.TestCase):
       closure2._fetch_output_remote_values()
 
     # The error is cleared.
-    closure_queue.put(self._create_closure())
+    closure_queue.put(self._create_closure(closure_queue._cancellation_mgr))
 
   def testWaitRaiseError(self):
+    if sys.version_info >= (3, 8) and platform.system() == 'Windows':
+      # TODO(b/165013260): Fix this
+      self.skipTest('Test is currently broken on Windows with Python 3.8')
+
     closure_queue, _, closure2 = self._put_two_closures_and_get_one()
 
     closure_queue.mark_failed(ValueError())
@@ -231,6 +234,10 @@ class CoordinatedClosureQueueTest(test.TestCase):
     closure_queue.wait()
 
   def testDoneRaiseError(self):
+    if sys.version_info >= (3, 8) and platform.system() == 'Windows':
+      # TODO(b/165013260): Fix this
+      self.skipTest('Test is currently broken on Windows with Python 3.8')
+
     closure_queue, _, _ = self._put_two_closures_and_get_one()
 
     self.assertFalse(closure_queue.done())
@@ -247,11 +254,18 @@ class CoordinatedClosureQueueTest(test.TestCase):
       closure_queue.mark_failed(e)
 
   def _test_cancel_closure_when_error(self, call_wait):
+    if sys.version_info >= (3, 8) and platform.system() == 'Windows':
+      # TODO(b/165013260): Fix this
+      self.skipTest('Test is currently broken on Windows with Python 3.8')
+
     closure_queue, closure1, closure2 = self._put_two_closures_and_get_one()
-    closure_queue.put(self._create_closure())
+    closure_queue.put(self._create_closure(closure_queue._cancellation_mgr))
     closure_queue.get()
     # At this moment, there are two inflight, one in queue.
     self.assertEqual(closure_queue._inflight_closure_count, 2)
+
+    # Hold a copy of the queue's cancellation manager at this point
+    initial_cm = closure_queue._cancellation_mgr
 
     # Simulating closure1 fails.
     self._set_error(closure_queue, closure1, ValueError('Some error.'))
@@ -260,7 +274,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
     self.assertEqual(closure_queue._queue.qsize(), 1)
     self.assertEqual(closure_queue._inflight_closure_count, 1)
 
-    closure3 = self._create_closure()
+    closure3 = self._create_closure(closure_queue._cancellation_mgr)
 
     def fake_cancellation():
       self._set_error(closure_queue, closure2,
@@ -278,8 +292,8 @@ class CoordinatedClosureQueueTest(test.TestCase):
 
     self._assert_one_unblock_the_other(fake_cancellation, report_error)
 
-    # Cancellation manager has been called.
-    self.assertTrue(closure_queue._cancellation_mgr.cancelled)
+    # The original cancellation manager of the queue has been cancelled.
+    self.assertTrue(initial_cm.is_cancelled)
 
     # At this moment, there is zero inflight, nothing in queue.
     self.assertTrue(closure_queue._queue.empty())
@@ -314,20 +328,24 @@ class CoordinatedClosureQueueTest(test.TestCase):
     self._test_cancel_closure_when_error(call_wait=False)
 
   def testStateIsRestoredAfterJoinIsCalled(self):
+    if sys.version_info >= (3, 8) and platform.system() == 'Windows':
+      # TODO(b/165013260): Fix this
+      self.skipTest('Test is currently broken on Windows with Python 3.8')
+
     closure_queue, _, _ = self._put_two_closures_and_get_one()
     self.assertEqual(closure_queue._inflight_closure_count, 1)
     closure_queue.mark_failed(ValueError('test error'))
     with self.assertRaises(ValueError):
-      closure_queue.put(self._create_closure())
+      closure_queue.put(self._create_closure(closure_queue._cancellation_mgr))
 
     # Its error should have been cleared.
     self.assertIsNone(closure_queue._error)
-    closure_queue.put(self._create_closure())
+    closure_queue.put(self._create_closure(closure_queue._cancellation_mgr))
     self.assertIsNone(closure_queue._error)
 
   def testThreadSafey(self):
     thread_count = 10
-    queue = client._CoordinatedClosureQueue(MockCancellationManager())
+    queue = client._CoordinatedClosureQueue()
 
     # Each thread performs 20 queue actions: 10 are `put_back` and 10 are
     # `mark_finished`.
@@ -346,7 +364,7 @@ class CoordinatedClosureQueueTest(test.TestCase):
       t.start()
 
     for _ in range(thread_count * action_count // 2):
-      queue.put(self._create_closure())
+      queue.put(self._create_closure(queue._cancellation_mgr))
     queue.wait()
     self.assertTrue(queue.done())
 

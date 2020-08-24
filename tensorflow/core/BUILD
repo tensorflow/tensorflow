@@ -318,7 +318,6 @@ alias(
 cc_library(
     name = "lib_proto_parsing",
     hdrs = [
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/lib/strings:legacy_lib_proto_parsing_headers",
         "//tensorflow/core/platform:lib_proto_parsing_hdrs",
@@ -328,7 +327,6 @@ cc_library(
         ":platform_base",
         "@com_google_absl//absl/strings",
         "@double_conversion//:double-conversion",
-        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/lib/core:errors",
         "//tensorflow/core/lib/core:stringpiece",
         "//tensorflow/core/lib/core:status",
@@ -353,6 +351,7 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
+        # TODO(rmlarsen): Remove bfloat16.h once dependency in third_party/swift is updated.
         "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_headers",
@@ -582,7 +581,6 @@ cc_library(
         "//tensorflow/core/framework:numeric_types.h",
         "//tensorflow/core/framework:tensor_types.h",
         "//tensorflow/core/framework:type_traits.h",
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:framework_lite_hdrs",
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
@@ -593,7 +591,6 @@ cc_library(
             "@nsync//:nsync_cpp",
         ] + [
             "//third_party/eigen3",
-            "//tensorflow/core/lib/bfloat16",
             "//tensorflow/core/platform:dynamic_annotations",
             "//tensorflow/core/platform:platform_port",
             "//tensorflow/core/platform:thread_annotations",
@@ -1014,6 +1011,7 @@ cc_library(
         "//tensorflow/core/kernels:grappler",
         "//tensorflow/core/kernels:histogram_op",
         "//tensorflow/core/kernels:io",
+        "//tensorflow/core/kernels:isotonic_regression_op",
         "//tensorflow/core/kernels:lookup",
         "//tensorflow/core/kernels:logging",
         "//tensorflow/core/kernels:manip",
@@ -1258,7 +1256,6 @@ filegroup(
         "//tensorflow/core/example:mobile_srcs_no_runtime",
         "//tensorflow/core/framework:attr_value_proto_text_srcs",
         "//tensorflow/core/framework:mobile_srcs_no_runtime",
-        "//tensorflow/core/lib/bfloat16:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/core:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/gtl:mobile_srcs_no_runtime",
         "//tensorflow/core/lib/hash:mobile_srcs_no_runtime",
@@ -1696,7 +1693,6 @@ filegroup(
         "//tensorflow/core/framework:resource_handle.h",
         "//tensorflow/core/platform:legacy_lib_internal_headers",
         "//tensorflow/core/platform:lib_internal_private_hdrs",
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_all_headers",
         "//tensorflow/core/lib/gtl:legacy_lib_gtl_all_headers",
         "//tensorflow/core/lib/histogram:legacy_lib_histogram_all_headers",
@@ -1813,7 +1809,6 @@ cc_library(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "//third_party/eigen3",
-        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/lib/core:arena",
         "//tensorflow/core/lib/core:bitmap",
         "//tensorflow/core/lib/core:blocking_counter",
@@ -1894,6 +1889,7 @@ cc_library(
         "//tensorflow/core/lib/strings:strcat",
         "//tensorflow/core/lib/strings:stringprintf",
         "//tensorflow/core/platform:abi",
+        "//tensorflow/core/platform:bfloat16",
         "//tensorflow/core/platform:base64",
         "//tensorflow/core/platform:blocking_counter",
         "//tensorflow/core/platform:casts",
@@ -2021,7 +2017,6 @@ alias(
 cc_library(
     name = "tflite_portable_logging",
     hdrs = [
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/platform:tflite_portable_logging_hdrs",
         "//tensorflow/core/platform/default:integral_types.h",
         "//tensorflow/core/platform/default:logging.h",
@@ -2051,7 +2046,6 @@ cc_library(
     hdrs = [
         "lib/jpeg/jpeg_handle.h",
         "lib/jpeg/jpeg_mem.h",
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/platform:jpeg_internal_hdrs",
         "//tensorflow/core/platform/default:integral_types.h",
@@ -2078,7 +2072,6 @@ cc_library(
     ]),
     hdrs = [
         "lib/gif/gif_io.h",
-        "//tensorflow/core/lib/bfloat16:bfloat16.h",
         "//tensorflow/core/lib/core:legacy_lib_core_stringpiece_header",
         "//tensorflow/core/lib/gtl:legacy_android_gif_internal_headers",
         "//tensorflow/core/platform:gif_internal_hdrs",
@@ -2969,6 +2962,8 @@ filegroup(
     srcs = [
         # PNG data
         "//tensorflow/core/lib/png:testdata",
+        "//tensorflow/core/lib/ssim:testdata",
+        "//tensorflow/core/lib/psnr:testdata",
         # JPEG data
         "lib/jpeg/testdata/jpeg_merge_test1.jpg",
         "lib/jpeg/testdata/jpeg_merge_test1_cmyk.jpg",
@@ -2998,13 +2993,6 @@ filegroup(
         "lib/bmp/testdata/grayscale_small.bmp",
         "lib/bmp/testdata/grayscale_small_3channels.bmp",
         "lib/bmp/testdata/grayscale_small_4channels.bmp",
-        # SSIM, PSNR data
-        "lib/ssim/testdata/checkerboard1.png",
-        "lib/ssim/testdata/checkerboard2.png",
-        "lib/ssim/testdata/checkerboard3.png",
-        "lib/psnr/testdata/cat_q20.jpg",
-        "lib/psnr/testdata/cat_q72.jpg",
-        "lib/psnr/testdata/cat_q95.jpg",
     ],
     visibility = ["//visibility:public"],
 )

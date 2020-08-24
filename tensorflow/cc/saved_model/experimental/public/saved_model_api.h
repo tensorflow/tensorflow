@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/experimental/base/public/status.h"
 #include "tensorflow/cc/saved_model/experimental/public/concrete_function.h"
 #include "tensorflow/cc/saved_model/experimental/public/concrete_function_list.h"
+#include "tensorflow/cc/saved_model/experimental/public/signature_def_function.h"
 
 namespace tensorflow {
 namespace experimental {
@@ -80,8 +81,8 @@ class SavedModelAPI {
   //  If status is not OK, returns nullptr. Otherwise, returns a
   //  tensorflow::cc::ConcreteFunction pointer. The lifetime of this pointer
   //  is bound to SavedModelAPI it was loaded from.
-  ConcreteFunction* GetSignatureDefFunction(const std::string& function_path,
-                                            Status* status);
+  SignatureDefFunction* GetSignatureDefFunction(
+      const std::string& function_path, Status* status);
 
   // Lists all Conrete Functions available from the SavedModel.
   std::vector<ConcreteFunction*> ListFunctions();
@@ -140,14 +141,14 @@ inline ConcreteFunction* SavedModelAPI::GetConcreteFunction(
   return ConcreteFunction::wrap(function);
 }
 
-inline ConcreteFunction* SavedModelAPI::GetSignatureDefFunction(
+inline SignatureDefFunction* SavedModelAPI::GetSignatureDefFunction(
     const std::string& function_path, Status* status) {
-  TF_ConcreteFunction* function = TF_GetSavedModelSignatureDefFunction(
+  TF_SignatureDefFunction* function = TF_GetSavedModelSignatureDefFunction(
       saved_model_.get(), function_path.c_str(), status->GetTFStatus());
   if (!status->ok()) {
     return nullptr;
   }
-  return ConcreteFunction::wrap(function);
+  return SignatureDefFunction::wrap(function);
 }
 
 inline std::vector<ConcreteFunction*> SavedModelAPI::ListFunctions() {

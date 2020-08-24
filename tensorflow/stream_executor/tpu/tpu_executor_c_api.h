@@ -65,6 +65,8 @@ bool TpuExecutor_CreateStreamDependency(SE_StreamExecutor* executor,
 void TpuExecutor_GetStatus(SE_StreamExecutor* executor, SE_Stream* stream,
                            SE_Status* status);
 
+SE_TpuTopology_Core* TpuExecutor_GetCoreLocation(SE_StreamExecutor* executor);
+
 void TpuExecutor_AllocateEvent(SE_StreamExecutor* executor, SE_Event* event,
                                SE_Status* status);
 void TpuExecutor_DeallocateEvent(SE_StreamExecutor* executor, SE_Event* event,
@@ -210,6 +212,13 @@ void TpuTransferManager_ResetDevices(XLA_TransferManager* manager,
 
 XLA_ComputationPlacer* TpuComputationPlacer_New();
 void TpuComputationPlacer_Free(XLA_ComputationPlacer* placer);
+// `assignment` should be a preallocated array of size `replicate_count` *
+// `computation_count`. The assignment will be constructed as a 2D array where
+// assignment[replica][computation] = device_id.
+void TpuComputationPlacer_AssignDevices(XLA_ComputationPlacer* placer,
+                                        int replica_count,
+                                        int computation_count, int* assignment,
+                                        SE_Status* status);
 
 int TpuTopology_LogicalDevicesPerHost(SE_TpuTopology* tpu_topology,
                                       TpuCoreTypeEnum tpu_core_type);
@@ -304,6 +313,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateStream);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_CreateStreamDependency);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetStatus);
+  TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_GetCoreLocation);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_AllocateEvent);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_DeallocateEvent);
   TFTPU_ADD_FN_IN_STRUCT(TpuExecutor_PollForEventStatus);
@@ -379,6 +389,7 @@ struct TfTpu_ExecutorApiFn {
 
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_Free);
+  TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_AssignDevices);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerChip);

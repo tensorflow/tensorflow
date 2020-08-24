@@ -242,7 +242,8 @@ class CallbackList(object):
 
     # Performance check: Check batch hooks for slowness compared to batch time.
     # Only run check for custom callbacks (i.e. not present in this file).
-    self._check_timing = self.__class__ not in globals()
+    self._check_timing = any([cbk.__class__.__name__ not in globals()
+                              for cbk in self.callbacks])
     self._num_batches_for_timing_check = 5
     self._hook_times = {}
     self._batch_start_time = None
@@ -321,7 +322,7 @@ class CallbackList(object):
       avg_begin_hook_time = sum(self._hook_times[begin_hook_name]) / len(
           self._hook_times[begin_hook_name])
 
-      threshold_time = 1.5 * avg_batch_time
+      threshold_time = 1.0 * avg_batch_time
       warning_msg = ('Callback method `{hook}` is slow compared to '
                      'the batch time (batch time: {batch_time:.4f}s vs '
                      '`{hook}` time: {hook_time:.4f}s). Check your callbacks.')
@@ -1370,6 +1371,8 @@ class ModelCheckpoint(Callback):
           raise IOError('Please specify a non-directory filepath for '
                         'ModelCheckpoint. Filepath used is an existing '
                         'directory: {}'.format(filepath))
+        # Re-throw the error for any other causes.
+        raise e
 
   def _get_file_path(self, epoch, logs):
     """Returns the file path for checkpoint."""

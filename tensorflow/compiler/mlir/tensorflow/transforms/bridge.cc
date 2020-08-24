@@ -95,16 +95,18 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
     func_pm.addPass(CreateTPUHostComputationExpansionPass());
     func_pm.addPass(CreateTPUUpdateEmbeddingEnqueueOpInputsPass());
   }
-  pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
-  pm.addPass(mlir::createInlinerPass());
-  pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
-  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
-
   // Run another shape inference pass because resource decomposition might have
   // created new partial types.
   pm.addPass(TF::CreateTFShapeInferencePass());
-  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
+  pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
+  pm.addPass(mlir::createInlinerPass());
+  pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
+  pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
+  pm.addPass(CreateTPUExtractOutsideCompilationPass());
+  pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
+
+  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPUDynamicPaddingMapperPass());

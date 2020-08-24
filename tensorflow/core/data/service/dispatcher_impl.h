@@ -59,6 +59,8 @@ class DataServiceDispatcherImpl {
                         RegisterWorkerResponse* response);
   Status WorkerUpdate(const WorkerUpdateRequest* request,
                       WorkerUpdateResponse* response);
+  Status GetDatasetDef(const GetDatasetDefRequest* request,
+                       GetDatasetDefResponse* response);
 
   /// Client-facing API.
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
@@ -67,6 +69,8 @@ class DataServiceDispatcherImpl {
                    CreateJobResponse* response);
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
+  Status ReleaseJobClient(const ReleaseJobClientRequest* request,
+                          ReleaseJobClientResponse* response);
   Status GetTasks(const GetTasksRequest* request, GetTasksResponse* response);
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
@@ -87,6 +91,11 @@ class DataServiceDispatcherImpl {
                    absl::optional<DispatcherState::NamedJobKey> named_job_key,
                    std::shared_ptr<const DispatcherState::Job>* job)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Acquires a job client id to read from the given job and sets
+  // `job_client_id`.
+  Status AcquireJobClientId(
+      const std::shared_ptr<const DispatcherState::Job>& job,
+      int64& job_client_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates one task for each worker, for the given job. The created tasks are
   // stored in `*tasks`. This method only updates dispatcher metadata with the
   // new tasks, but doesn't assign the tasks to the workers.

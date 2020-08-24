@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/protobuf_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
@@ -990,20 +991,6 @@ Status XlaCompiler::BuildArguments(
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
 
-    for (int i = 0, end = input_to_args->size(); i < end; ++i) {
-      const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
-      for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
-        int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
-        VLOG(1) << "Setting dynamic binding " << i << " -> "
-                << dynamic_size_param_index;
-
-        TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
-            /*dynamic_size_param_num=*/0, {dynamic_size_param_index},
-            /*target_param_num=*/0, /*target_param_index=*/{i},
-            dim_and_arg_num.first));
-      }
-    }
-
     for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
       auto it = arg_shardings.find(i);
       xla::XlaScopedShardingAssignment assign_sharding(
@@ -1035,16 +1022,17 @@ Status XlaCompiler::BuildArguments(
                                         absl::StrCat("arg", i));
       }
     }
+  }
 
-    for (int i = 0, end = input_to_args->size(); i < end; ++i) {
-      const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
-      for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
-        int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
-        TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
-            /*dynamic_size_param_num=*/dynamic_size_param_index, {},
-            /*target_param_num=*/i, /*target_param_index=*/{},
-            dim_and_arg_num.first));
-      }
+  for (int i = 0, end = input_to_args->size(); i < end; ++i) {
+    const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
+    for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
+      int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
+      VLOG(1) << "Setting dynamic size " << i << " -> "
+              << dynamic_size_param_index;
+      arg_handles[i] = xla::SetDimensionSize(
+          arg_handles[i], arg_handles[dynamic_size_param_index],
+          dim_and_arg_num.first);
     }
   }
 
@@ -1370,8 +1358,15 @@ Status XlaCompiler::SetDeviceToHostMetadata(
     const string& key, absl::Span<const DataType> types,
     absl::Span<const TensorShape> shapes) {
   if (host_compute_sends_.find(key) != host_compute_sends_.end()) {
-    return errors::InvalidArgument(
-        "Duplicate calls to SetDeviceToHostMetadata with key ", key);
+    tf2xla::HostTransferMetadata& existing_transfer = host_compute_sends_[key];
+    tf2xla::HostTransferMetadata new_transfer;
+    SetTransfer(key, types, shapes, &new_transfer);
+    if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument(
+          "Duplicate calls to SetDeviceToHostMetadata with key ", key);
+    }
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_sends_[key];
   SetTransfer(key, types, shapes, &transfer);
@@ -1396,9 +1391,16 @@ Status XlaCompiler::GetDeviceToHostShapes(
 Status XlaCompiler::SetHostToDeviceMetadata(
     const string& key, absl::Span<const DataType> types,
     absl::Span<const TensorShape> shapes) {
-  if (host_compute_recvs_.find(key) != host_compute_sends_.end()) {
-    return errors::InvalidArgument(
-        "Duplicate calls to SetHostToDeviceMetadata with key ", key);
+  if (host_compute_recvs_.find(key) != host_compute_recvs_.end()) {
+    tf2xla::HostTransferMetadata& existing_transfer = host_compute_recvs_[key];
+    tf2xla::HostTransferMetadata new_transfer;
+    SetTransfer(key, types, shapes, &new_transfer);
+    if (xla::protobuf_util::ProtobufEquals(existing_transfer, new_transfer)) {
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument(
+          "Duplicate calls to SetHostToDeviceMetadata with key ", key);
+    }
   }
   tf2xla::HostTransferMetadata& transfer = host_compute_recvs_[key];
   SetTransfer(key, types, shapes, &transfer);

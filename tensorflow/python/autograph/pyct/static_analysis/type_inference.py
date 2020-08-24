@@ -75,8 +75,19 @@ class Resolver(object):
     """Resolves the type a literal or static value."""
     raise NotImplementedError('subclasses must implement')
 
-  def res_arg(self, ns, types_ns, f_name, name, type_anno):
-    """Resolves the type of a (possibly annotated) function argument."""
+  def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+    """Resolves the type of a (possibly annotated) function argument.
+
+    Args:
+      ns: namespace
+      types_ns: types namespace
+      f_name: str, the function name
+      name: str, the argument name
+      type_anno: the type annotating the argument, if any
+      f_is_local: bool, whether the function is a local function
+    Returns:
+      Set of the argument types.
+    """
     raise NotImplementedError('subclasses must implement')
 
   def res_call(self, ns, types_ns, node, f_type, args, keywords):
@@ -98,8 +109,9 @@ class Resolver(object):
     """
     raise NotImplementedError('subclasses must implement')
 
-  def res_subscript(self, ns, types_ns, node, value, slice_):
-    """Resolves the return type of a unary operation."""
+  # TODO(mdan): Clean this up.
+  def res_slice(self, ns, types_ns, node_or_slice, value, slice_):
+    """Resolves the return type of slice operation."""
     raise NotImplementedError('subclasses must implement')
 
   def res_compare(self, ns, types_ns, node, left, right):
@@ -217,7 +229,18 @@ class StmtInferrer(gast.NodeVisitor):
       return {Tuple}
 
     assert isinstance(node.ctx, gast.Store)
-    # TODO(mdan): Implement tuple unpacking.
+
+    if self.rtype is not None:
+      original_stype = self.rtype
+      # TODO(mdan): Find a better way to express unpacking.
+      i_type = self.resolver.res_value(self.namespace, 0)
+      for i, elt in enumerate(node.elts):
+        self.rtype = self.resolver.res_subscript(
+            self.namespace, self.types_in.types, i, original_stype, i_type)
+        self.visit(elt)
+      self.rtype = original_stype
+      return original_stype
+
     return None
 
   def visit_List(self, node):
@@ -249,9 +272,13 @@ class StmtInferrer(gast.NodeVisitor):
               anno.setanno(node, anno.Static.VALUE, value)
 
     elif isinstance(node.ctx, gast.Param):
+      # The direct parent it the whole function scope. See activity.py.
+      f_is_local = self.scope.parent.parent is not None
+
       type_name = anno.getanno(node.annotation, anno.Basic.QN, None)
       types = self.resolver.res_arg(self.namespace, self.types_in.types,
-                                    self.scope.function_name, name, type_name)
+                                    self.scope.function_name, name, type_name,
+                                    f_is_local)
       if types is not None:
         self.new_symbols[name] = types
 
@@ -317,8 +344,6 @@ class StmtInferrer(gast.NodeVisitor):
     if node.decorator_list:
       raise NotImplementedError('decorators: {}'.format(node.decorator_list))
 
-    # TODO(mdan): Use args.
-
     ret_types = None
     if node.returns:
       ret_types, _ = self.resolver.res_name(
@@ -371,7 +396,7 @@ class StmtInferrer(gast.NodeVisitor):
         ret_type, side_effects = None, None
       else:
         ret_type, side_effects = self._resolve_typed_callable(
-            self.types_in.types.get(f_name), arg_types, keyword_types)
+            f_type, arg_types, keyword_types)
 
     else:
       # Nonlocal function, resolve externally.

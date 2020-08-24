@@ -612,6 +612,9 @@ class FunctionLibraryRuntime {
     // infer correct device.
     std::vector<string> output_devices;
 
+    // If set, it indicates the original output indices of a component function.
+    absl::optional<std::vector<int>> ret_indices = absl::nullopt;
+
     // Maps from a CompositeDevice name to a list of underlying physical
     // devices.
     absl::flat_hash_map<string, const std::vector<string>*> composite_devices;

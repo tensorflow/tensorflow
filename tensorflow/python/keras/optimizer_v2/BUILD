@@ -49,6 +49,7 @@ py_library(
         "//tensorflow/python/keras:backend_config",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/engine:base_layer_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )

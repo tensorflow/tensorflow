@@ -230,18 +230,15 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   // This is done to avoid the duplication of expensive instructions, which
   // would occur if 'fusion' were merged into multiple users.
   //
-  // If 'fusion' has just one user, then an earlier fusion pass chose not to
-  // fuse this producer/consumer pair (likely because of expensive instruction
-  // re-use by the consumer), and so we honor that choice here as well.
-  //
-  // Moreover, if we are going to save a "lot" in memory bandwidth then we
+  // However, if we are going to save a "lot" in memory bandwidth then we
   // ignore how expensive the fusion instructions are.  The heuristic used to
   // determine "a lot" is the following: merging must reduce memory traffic by a
   // factor of 0.3, and the amount of memory accessed must not be entirely
   // trivial (above 1K).  This likely has room for improvement in the future.
 
   bool allow_expensive_ops =
-      merged_to_current_bytes_ratio < 0.3 && current_bytes_transferred > 1024;
+      fusion->user_count() == 1 ||
+      (merged_to_current_bytes_ratio < 0.3 && current_bytes_transferred > 1024);
 
   if (!allow_expensive_ops &&
       absl::c_any_of(fusion->fused_instructions(),

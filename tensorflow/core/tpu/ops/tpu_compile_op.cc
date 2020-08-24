@@ -43,7 +43,22 @@ REGISTER_OP("_TPUCompileMlir")
         c->set_output(i + 1, c->Vector(2));
       }
       return Status::OK();
-    });
+    })
+    .Doc(
+        R"(
+Compiles a computations for execution on one or more TPU devices.
+For the internal use of the distributed TPU compiler.
+
+'mlir_module' is a serialized MLIR module with a `main` function that contains
+target computation.
+'dynamic_shapes' contains dynamic shapes of arguments whose shapes were not
+known statically at TPUReplication rewrite time.
+'metadata' is a serialized TPUCompileMetadataProto describing the shapes and
+types of the inputs to the computation, as well as a mapping onto the TPU pod
+topology.
+'program' output is a string key that is passed to the TPUExecute op and used to
+look up the program in the compilation cache.
+)");
 
 REGISTER_OP("_TPUCompileMlirPlaceholderProgramKey")
     .SetIsStateful()

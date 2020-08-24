@@ -30,6 +30,7 @@ from tensorflow.python.platform import test
 class TemplateMirroredStrategyTest(test.TestCase):
 
   @test_util.run_deprecated_v1
+  @test_util.disable_tfrt("Strategy not supported yet.")
   def test_merge_call(self):
     if not test.is_gpu_available():
       self.skipTest("No GPU available")

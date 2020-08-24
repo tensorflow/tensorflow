@@ -490,7 +490,7 @@ cc_library(
     name = "gpu_prim_hdrs",
     hdrs = ["gpu_prim.h"],
     deps = if_cuda([
-        "@cub_archive//:cub",
+        "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -1653,7 +1653,10 @@ tf_cuda_cc_test(
     name = "conv_ops_test",
     size = "medium",
     srcs = ["conv_ops_test.cc"],
-    tags = ["no_cuda11"],  # b/159664089
+    tags = [
+        "no_cuda11",  # b/159664089
+        "no_oss",
+    ],
     deps = [
         ":conv_ops",
         ":ops_testutil",
@@ -3095,8 +3098,6 @@ LOGGING_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
-    # TODO(b/162630222): remove this dependency.
-    "//tensorflow/c/kernels:summary_op",
 ]
 
 tf_kernel_library(
@@ -3121,7 +3122,9 @@ tf_kernel_library(
     name = "summary_op",
     prefix = "summary_op",
     deps = LOGGING_DEPS + [
+        # TODO(b/162630222): remove these dependencies.
         "//tensorflow/c/kernels:histogram_summary_op",
+        "//tensorflow/c/kernels:summary_op",
     ],
 )
 
@@ -3896,7 +3899,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ] + if_cuda([
-        "@cub_archive//:cub",
+        "@local_config_cuda//cuda:cub_headers",
         "@local_config_cuda//cuda:cudnn_header",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
@@ -3986,7 +3989,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
-        "@cub_archive//:cub",
+        "@local_config_cuda//cuda:cub_headers",
         "//tensorflow/core:stream_executor",
         "//tensorflow/stream_executor/cuda:cuda_stream",
     ]) + if_rocm([
@@ -4708,7 +4711,7 @@ tf_kernel_library(
     ] + if_cuda_or_rocm([
         ":reduction_ops",
     ]) + if_cuda([
-        "@cub_archive//:cub",
+        "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rocprim",
     ]),
@@ -7532,4 +7535,33 @@ tf_kernel_library(
 tf_kernel_library(
     name = "einsum_op",
     deps = ["//tensorflow/core/kernels/linalg:einsum_op"],
+)
+
+tf_kernel_library(
+    name = "isotonic_regression_op",
+    srcs = [
+        "isotonic_regression_op.cc",
+    ],
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
+tf_cc_test(
+    name = "isotonic_regression_op_test",
+    size = "small",
+    srcs = ["isotonic_regression_op_test.cc"],
+    deps = [
+        ":isotonic_regression_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )

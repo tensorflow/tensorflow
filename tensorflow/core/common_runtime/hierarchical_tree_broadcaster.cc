@@ -419,12 +419,12 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
           << col_ctx_->device_name << " to_device "
           << col_params_->instance.device_names[dst_idx] << " subdiv=" << subdiv
           << " dst_rank=" << dst_rank << " dst_idx=" << dst_idx;
-  col_ctx_->col_exec->PostToPeer(col_params_->instance.device_names[dst_idx],
-                                 col_params_->instance.task_names[dst_idx],
-                                 send_buf_key, col_ctx_->device,
-                                 col_ctx_->op_ctx->op_device_context(),
-                                 col_ctx_->op_ctx->output_alloc_attr(0),
-                                 src_tensor, col_ctx_->device_locality, done);
+  col_ctx_->col_exec->remote_access()->PostToPeer(
+      col_params_->instance.device_names[dst_idx],
+      col_params_->instance.task_names[dst_idx], send_buf_key, col_ctx_->device,
+      col_ctx_->op_ctx->op_device_context(),
+      col_ctx_->op_ctx->output_alloc_attr(0), src_tensor,
+      col_ctx_->device_locality, done);
 }
 
 void HierarchicalTreeBroadcaster::DispatchRecv(int subdiv, int src_rank,
@@ -438,7 +438,7 @@ void HierarchicalTreeBroadcaster::DispatchRecv(int subdiv, int src_rank,
           << col_params_->instance.device_names[src_idx] << " to_device "
           << col_ctx_->device_name << " subdiv=" << subdiv
           << " src_rank=" << src_rank << " src_idx=" << src_idx;
-  col_ctx_->col_exec->RecvFromPeer(
+  col_ctx_->col_exec->remote_access()->RecvFromPeer(
       col_params_->instance.device_names[src_idx],
       col_params_->instance.task_names[src_idx],
       col_params_->task.is_local[src_idx], recv_buf_key, col_ctx_->device,

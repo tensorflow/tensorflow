@@ -116,10 +116,35 @@ class TensorFlowDialect : public Dialect {
         0, (addOperation(AbstractOperation::get<Args>(*this)), 0)...};
   }
 
+  using ConstantFoldHook = LogicalResult (*)(Operation *, ArrayRef<Attribute>,
+                                             SmallVectorImpl<OpFoldResult> &);
+  static void RegisterConstantFoldHook(ConstantFoldHook fn) {
+    constant_fold_hook_ = std::move(fn);
+  }
+
+  static LogicalResult constantFold(Operation *op, ArrayRef<Attribute> operands,
+                                    SmallVectorImpl<OpFoldResult> &results) {
+    if (constant_fold_hook_) return constant_fold_hook_(op, operands, results);
+    return failure();
+  }
+
+  using DecodeConstantHook = LogicalResult (*)(OpaqueElementsAttr input,
+                                               ElementsAttr &output);
+  static void RegisterDecodeConstantHook(DecodeConstantHook fn) {
+    decode_constant_hook_ = std::move(fn);
+  }
+  static LogicalResult decode(OpaqueElementsAttr input, ElementsAttr &output) {
+    if (decode_constant_hook_) return decode_constant_hook_(input, output);
+    return failure();
+  }
+
  private:
   // Hook functions which may add additional operations to the dialect.
   // These are invoked at construction time.
   static std::vector<AdditionalOpFunction> *additional_operation_hooks_;
+
+  static ConstantFoldHook constant_fold_hook_;
+  static DecodeConstantHook decode_constant_hook_;
 };
 
 }  // namespace TF

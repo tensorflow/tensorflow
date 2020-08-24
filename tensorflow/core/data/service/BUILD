@@ -56,6 +56,7 @@ cc_library(
     deps = [
         ":common_proto_cc",
         ":dispatcher_state",
+        ":utils",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -93,9 +94,6 @@ cc_library(
         ":grpc_util",
         ":journal",
         ":worker_cc_grpc_proto",
-        ":worker_proto_cc",
-        "//tensorflow/c:c_api_internal",
-        "//tensorflow/c:tf_status_helper",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework_internal",
@@ -151,9 +149,11 @@ cc_library(
     deps = [
         ":common_proto_cc",
         ":credentials_factory",
+        ":data_service",
         ":dispatcher_cc_grpc_proto",
         ":dispatcher_proto_cc",
         ":grpc_util",
+        ":utils",
         ":worker_proto_cc",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/c:tf_status_helper",
@@ -366,6 +366,32 @@ cc_library(
         tf_grpc_cc_dependency(),
     ],
     alwayslink = 1,
+)
+
+cc_library(
+    name = "utils",
+    srcs = ["utils.cc"],
+    hdrs = ["utils.h"],
+    deps = [
+        ":common_proto_cc",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
+    name = "utils_test",
+    srcs = ["utils_test.cc"],
+    deps = [
+        ":common_proto_cc",
+        ":utils",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
 )
 
 cc_library(

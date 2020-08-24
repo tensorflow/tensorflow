@@ -112,6 +112,14 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
     Raises:
       ValueError:  If `operator.is_non_singular` is False.
     """
+    parameters = dict(
+        operator=operator,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name,
+    )
 
     self._operator = operator
 
@@ -150,6 +158,7 @@ class LinearOperatorAdjoint(linear_operator.LinearOperator):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
     # TODO(b/143910018) Remove graph_parents in V3.
     self._set_graph_parents(operator.graph_parents)

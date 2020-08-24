@@ -136,6 +136,7 @@ func @if_region_captured_string(%arg0: tensor<i1>, %arg1: tensor<!tf.string>) ->
     // CHECK-NOT: _xla_outside_compilation
     // CHECK: "tf.IfRegion"
     // CHECK: "tf.StringToNumber"
+    // CHECK-NOT: _xla_outside_compilation
     // CHECK: _xla_outside_compilation = "auto", is_stateless = true
     %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %2 = "tf.IfRegion"(%arg0) ( {

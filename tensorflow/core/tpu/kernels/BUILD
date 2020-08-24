@@ -4,6 +4,7 @@ load(
     "//tensorflow/core/platform:build_config.bzl",
     "tf_proto_library_cc",
 )
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")  # buildifier: disable=same-origin-load
 load(
     "//tensorflow:tensorflow.bzl",
     "tf_kernel_library",
@@ -45,6 +46,7 @@ cc_library(
     name = "tpu_compile_op_common",
     srcs = ["tpu_compile_op_common.cc"],
     hdrs = ["tpu_compile_op_common.h"],
+    linkopts = ["-Wl,--warn-backrefs-exclude=*/learning/brain/google/xla/_objs/tpu_compilation_metrics_google/*"],  # TODO(b/163560146) Fix the dependency issue
     deps = [
         ":tpu_compilation_cache_entry_unloader",
         ":tpu_compilation_cache_interface",
@@ -333,6 +335,7 @@ cc_library(
     name = "tpu_compilation_cache_interface",
     srcs = ["tpu_compilation_cache_interface.cc"],
     hdrs = ["tpu_compilation_cache_interface.h"],
+    linkopts = ["-Wl,--warn-backrefs-exclude=*/learning/brain/google/xla/_objs/tpu_compilation_metrics_google/*"],  # TODO(b/163560146) Fix the dependency issue.
     deps = [
         ":compiled_subgraph",
         ":tpu_compilation_cache_entry",
@@ -500,10 +503,87 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "tpu_compilation_cache_rpc_support_hdrs",
+    hdrs = ["tpu_compilation_cache_rpc_support.h"],
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_compilation_cache_response_proto_cc"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_response_proto_cc"],
+    }) + [
+        ":tpu_compilation_cache_entry",
+        ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_lookup",
+        ":tpu_program_group_interface",
+        "@com_google_absl//absl/strings",
+        "//tensorflow/core/platform:status",
+        tf_grpc_cc_dependency(),
+    ],
+)
+
+cc_library(
+    name = "tpu_compilation_cache_rpc_support",
+    srcs = ["tpu_compilation_cache_rpc_support.cc"],
+    deps = [
+        ":tpu_compilation_cache_rpc_support_hdrs",
+    ],
+)
+
+cc_library(
+    name = "tpu_compilation_cache_rpc_lookup",
+    srcs = ["tpu_compilation_cache_rpc_lookup.cc"],
+    hdrs = ["tpu_compilation_cache_rpc_lookup.h"],
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_compilation_cache_rpc_support"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support"],
+    }) + [
+        ":tpu_compilation_cache_grpc",
+        ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_lookup",
+        ":tpu_compilation_cache_proto_cc",
+        ":tpu_compilation_cache_rpc_support_hdrs",
+        ":tpu_program_group_interface",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        tf_grpc_cc_dependency(),
+    ],
+)
+
+# TODO(henrytan): rename the proto file.
+tf_proto_library_cc(
+    name = "tpu_compilation_cache_response_proto",
+    srcs = ["tpu_compilation_cache_response.proto"],
+    has_services = 1,
+    cc_api_version = 2,
+    create_java_proto = False,
+    protodeps = [
+        ":tpu_compilation_cache_proto",
+        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
+    ],
+)
+
 tf_proto_library_cc(
     name = "tpu_compilation_cache_proto",
     srcs = ["tpu_compilation_cache.proto"],
     cc_api_version = 2,
+    create_java_proto = False,
+    protodeps = [
+        "//tensorflow/compiler/tf2xla:host_compute_metadata_proto",
+    ],
+)
+
+cc_library(
+    name = "tpu_compilation_cache_grpc",
+    srcs = ["tpu_compilation_cache_grpc.cc"],
+    hdrs = ["tpu_compilation_cache_grpc.h"],
+    deps = select({
+        WITH_TPU_SUPPORT: [":tpu_compilation_cache_response_proto_cc"],
+        DEFAULT: ["//tensorflow/core/tpu/kernels:tpu_compilation_cache_response_proto_cc"],
+    }) + [
+        ":tpu_compilation_cache_proto_cc",
+        tf_grpc_cc_dependency(),
+    ],
 )
 
 cc_library(

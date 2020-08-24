@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/experimental/gradients/array_grad.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/tf_status_helper.h"
@@ -50,6 +51,7 @@ class CppGradients
 Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("Add", AddRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Exp", ExpRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("IdentityN", IdentityNRegisterer));
   return Status::OK();
 }
 
@@ -94,6 +96,26 @@ Status Exp(AbstractContext* ctx, Tape* tape,
                  registry);
 }
 
+// Computes `IdentityN(inputs)` and records it on the tape.
+Status IdentityN(AbstractContext* ctx, Tape* tape,
+                 absl::Span<AbstractTensorHandle* const> inputs,
+                 absl::Span<AbstractTensorHandle*> outputs,
+                 const GradientRegistry& registry) {
+  AbstractOperationPtr identity_n_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(Reset(identity_n_op.get(), "IdentityN",
+                           /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<TracingOperation>(identity_n_op.get())) {
+    TF_RETURN_IF_ERROR(dyn_cast<TracingOperation>(identity_n_op.get())
+                           ->SetOpName("my_identity_n"));
+  }
+  TF_RETURN_IF_ERROR(AddInputList(identity_n_op.get(), inputs, &forward_op));
+  int num_retvals = outputs.size();
+  return Execute(identity_n_op.get(), ctx, outputs, &num_retvals, &forward_op,
+                 tape, registry);
+}
+
 // Computes
 // y = inputs[0] + inputs[1]
 // return grad(y, {inputs[0], inputs[1]})
@@ -116,7 +138,8 @@ Status AddGradModel(AbstractContext* ctx,
       vspace, /*target_tensor_ids=*/{ToId(add_outputs[0])},
       /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
       source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
   for (auto add_output : add_outputs) {
     add_output->Unref();
   }
@@ -146,11 +169,47 @@ Status ExpGradModel(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(tape->ComputeGradient(
       vspace, /*target_tensor_ids=*/{ToId(exp_outputs[0])},
       /*source_tensor_ids=*/{ToId(inputs[0])}, source_tensors_that_are_targets,
-      /*output_gradients=*/{}, &out_grads));
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
   for (auto exp_output : exp_outputs) {
     exp_output->Unref();
   }
   outputs[0] = out_grads[0];
+  delete tape;
+  return Status::OK();
+}
+
+// Computes
+// ignored, y = IdentityN(inputs[0], inputs[1])
+// return grad(y, {inputs[0], inputs[1]})
+// This should return [nullptr, 1].
+Status IdentityNGradModel(AbstractContext* ctx,
+                          absl::Span<AbstractTensorHandle* const> inputs,
+                          absl::Span<AbstractTensorHandle*> outputs,
+                          const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0]));
+  tape->Watch(ToId(inputs[1]));
+
+  vector<AbstractTensorHandle*> identity_n_outputs(2);
+  TF_RETURN_IF_ERROR(IdentityN(ctx, tape, inputs,
+                               absl::MakeSpan(identity_n_outputs), registry));
+
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+  vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(identity_n_outputs[1])},
+      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+  for (auto identity_n_output : identity_n_outputs) {
+    identity_n_output->Unref();
+  }
+  outputs[0] = out_grads[0];
+  outputs[1] = out_grads[1];
   delete tape;
   return Status::OK();
 }
@@ -389,13 +448,72 @@ TEST_P(CppGradients, TestExpGrad) {
   result_tensor = nullptr;
 }
 
-// TODO(b/160888630): Enable this test with mlir after AddInputList is
-// supported. It is needed for AddN op which is used for gradient aggregation.
+TEST_P(CppGradients, TestIdentityNGrad) {
+  // Pseudo-code:
+  //
+  // tape.watch(x1)
+  // tape.watch(x2)
+  // unused, y = IdentityN([x1, x2])
+  // outputs = tape.gradient(y, [x1, x2])
+  // Expected: [nullptr, 1]
+  //
+  // This test is interesting because the current implementation of GradientTape
+  // would return [0, 1] whereas we use build_default_zeros_grads=false here
+  // so we get back [nullptr, 1].
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+
+  AbstractTensorHandlePtr x1;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx.get(), 1.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    x1.reset(x_raw);
+  }
+  AbstractTensorHandlePtr x2;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx.get(), 1.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    x2.reset(x_raw);
+  }
+
+  GradientRegistry registry;
+  Status s = RegisterGradients(&registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  std::vector<AbstractTensorHandle*> outputs(2);
+  s = RunModel(IdentityNGradModel, ctx.get(), {x1.get(), x2.get()},
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  EXPECT_EQ(outputs[0], nullptr);
+  TF_Tensor* result_tensor;
+  s = getValue(outputs[1], &result_tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  auto result_value = static_cast<float*>(TF_TensorData(result_tensor));
+  EXPECT_EQ(*result_value, 1.0);
+  outputs[1]->Unref();
+  TF_DeleteTensor(result_tensor);
+  result_tensor = nullptr;
+}
+
+// TODO(b/164171226): Enable this test with tfrt after AddInputList is
+// supported. It is needed for IdentityN.
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,
     ::testing::Combine(::testing::Values("graphdef", "mlir"),
-                       /*tfrt*/ ::testing::Values(true, false),
+                       /*tfrt*/ ::testing::Values(false),
                        /*executing_eagerly*/ ::testing::Values(true, false)));
 #else
 INSTANTIATE_TEST_SUITE_P(

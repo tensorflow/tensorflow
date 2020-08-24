@@ -13634,6 +13634,33 @@ func QueueDequeueV2(scope *Scope, handle tf.Output, component_types []tf.DataTyp
 	return components
 }
 
+// Returns the next record (key, value pair) produced by a Reader.
+//
+// Will dequeue from the input queue if necessary (e.g. when the
+// Reader needs to start reading from a new file since it has finished
+// with the previous file).
+//
+// Arguments:
+//	reader_handle: Handle to a Reader.
+//	queue_handle: Handle to a Queue, with string work items.
+//
+// Returns:
+//	key: A scalar.
+//	value: A scalar.
+func ReaderReadV2(scope *Scope, reader_handle tf.Output, queue_handle tf.Output) (key tf.Output, value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ReaderReadV2",
+		Input: []tf.Input{
+			reader_handle, queue_handle,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
 // Return a slice from 'input'.
 //
 // The output tensor is a tensor with dimensions described by 'size'
@@ -14984,9 +15011,9 @@ func MatrixInverse(scope *Scope, input tf.Output, optional ...MatrixInverseAttr)
 // The input is a tensor of shape `[N, M, M]` whose inner-most 2 dimensions
 // form square matrices. The outputs are two tensors containing the signs and
 // absolute values of the log determinants for all N input submatrices
-// `[..., :, :]` such that the determinant = sign*exp(log_abs_determinant).
-// The log_abs_determinant is computed as det(P)*sum(log(diag(LU))) where LU
-// is the LU decomposition of the input and P is the corresponding
+// `[..., :, :]` such that `determinant = sign*exp(log_abs_determinant)`.
+// The `log_abs_determinant` is computed as `det(P)*sum(log(diag(LU)))` where `LU`
+// is the `LU` decomposition of the input and `P` is the corresponding
 // permutation matrix.
 //
 // Arguments:
@@ -15299,27 +15326,6 @@ func TensorMapHasKey(scope *Scope, input_handle tf.Output, key tf.Output) (has_k
 	return op.Output(0)
 }
 
-// Returns the value from a given key in a tensor map.
-//
-// input_handle: the input map
-// key: the key to be looked up
-// value: the value found from the given key
-func TensorMapLookup(scope *Scope, input_handle tf.Output, key tf.Output, value_dtype tf.DataType) (value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"value_dtype": value_dtype}
-	opspec := tf.OpSpec{
-		Type: "TensorMapLookup",
-		Input: []tf.Input{
-			input_handle, key,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Inverse 3D fast Fourier transform.
 //
 // Computes the inverse 3-dimensional discrete Fourier transform over the
@@ -15363,6 +15369,27 @@ func TensorMapInsert(scope *Scope, input_handle tf.Output, key tf.Output, value 
 		Input: []tf.Input{
 			input_handle, key, value,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the value from a given key in a tensor map.
+//
+// input_handle: the input map
+// key: the key to be looked up
+// value: the value found from the given key
+func TensorMapLookup(scope *Scope, input_handle tf.Output, key tf.Output, value_dtype tf.DataType) (value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"value_dtype": value_dtype}
+	opspec := tf.OpSpec{
+		Type: "TensorMapLookup",
+		Input: []tf.Input{
+			input_handle, key,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -15925,6 +15952,46 @@ func Dilation2D(scope *Scope, input tf.Output, filter tf.Output, strides []int64
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// IsotonicRegressionAttr is an optional argument to IsotonicRegression.
+type IsotonicRegressionAttr func(optionalAttr)
+
+// IsotonicRegressionOutputDtype sets the optional output_dtype attribute to value.
+//
+// value: Dtype of output.
+// If not specified, defaults to DT_FLOAT
+func IsotonicRegressionOutputDtype(value tf.DataType) IsotonicRegressionAttr {
+	return func(m optionalAttr) {
+		m["output_dtype"] = value
+	}
+}
+
+// Solves a batch of isotonic regression problems.
+//
+// Arguments:
+//	input: A (batch_size, dim)-tensor holding a batch of inputs.
+//
+// Returns:
+//	output: A (batch_size, dim)-tensor holding the per-batch element solutions.
+//	segments: An int32 (batch_size, dim)-tensor with the segments.
+func IsotonicRegression(scope *Scope, input tf.Output, optional ...IsotonicRegressionAttr) (output tf.Output, segments tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "IsotonicRegression",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
 }
 
 // Computes softplus: `log(exp(features) + 1)`.
@@ -20134,6 +20201,24 @@ func LogicalAnd(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	return op.Output(0)
 }
 
+// Writes a graph summary.
+//
+// Writes TensorFlow graph `tensor` at `step` using summary `writer`.
+//
+// Returns the created operation.
+func WriteGraphSummary(scope *Scope, writer tf.Output, step tf.Output, tensor tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteGraphSummary",
+		Input: []tf.Input{
+			writer, step, tensor,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // ApproximateEqualAttr is an optional argument to ApproximateEqual.
 type ApproximateEqualAttr func(optionalAttr)
 
@@ -20281,8 +20366,7 @@ func Polygamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 // input_handle: the original map
 // output_handle: the map with value from given key removed
 // key: the key of the value to be erased
-// value: the value that was erased
-func TensorMapErase(scope *Scope, input_handle tf.Output, key tf.Output, value_dtype tf.DataType) (output_handle tf.Output, value tf.Output) {
+func TensorMapErase(scope *Scope, input_handle tf.Output, key tf.Output, value_dtype tf.DataType) (output_handle tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
@@ -20295,7 +20379,7 @@ func TensorMapErase(scope *Scope, input_handle tf.Output, key tf.Output, value_d
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
+	return op.Output(0)
 }
 
 // Shuffle dimensions of x according to a permutation.
@@ -20759,6 +20843,24 @@ func TruncateDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Writes a serialized proto summary.
+//
+// Writes `tensor`, a serialized proto at `step` using summary `writer`.
+//
+// Returns the created operation.
+func WriteRawProtoSummary(scope *Scope, writer tf.Output, step tf.Output, tensor tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteRawProtoSummary",
+		Input: []tf.Input{
+			writer, step, tensor,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Returns 0 if the denominator is zero.
@@ -22968,6 +23070,26 @@ func NcclReduce(scope *Scope, input []tf.Output, reduction string) (data tf.Outp
 	return op.Output(0)
 }
 
+// An op to receive a tensor from the host.
+//
+// output: the tensor that will be received from the host.
+// Toutput: element type for output.
+// shape: shape for output.
+// key: A unique identifier for this region used to match up host transfers.
+func XlaRecvFromHost(scope *Scope, Toutput tf.DataType, shape tf.Shape, key string) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"Toutput": Toutput, "shape": shape, "key": key}
+	opspec := tf.OpSpec{
+		Type: "XlaRecvFromHost",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // QuantizedDepthwiseConv2DWithBiasAndReluAttr is an optional argument to QuantizedDepthwiseConv2DWithBiasAndRelu.
 type QuantizedDepthwiseConv2DWithBiasAndReluAttr func(optionalAttr)
 
@@ -24206,9 +24328,28 @@ func DataFormatVecPermuteDstFormat(value string) DataFormatVecPermuteAttr {
 	}
 }
 
-// Returns the permuted vector/tensor in the destination data format given the
+// Permute input tensor from `src_format` to `dst_format`.
 //
-// one in the source data format.
+// Input tensor must be a vector of size 4, or a 4x2 tensor.
+//
+// For example, with `src_format` of `NHWC`, `dst_format` of `NCHW`, and inputs:
+// ```
+// [1, 2, 3, 4]
+// ```
+// and
+// ```
+// [[1, 2, 3, 4],
+//  [5, 6, 7, 8]]
+// ```
+// , the outputs will be (respectively):
+// ```
+// [1, 4, 2, 3]
+// ```
+// and
+// ```
+// [[1, 4, 2, 3],
+//  [5, 8, 6, 7]]
+// ```
 //
 // Arguments:
 //	x: Vector of size 4 or Tensor of shape (4, 2) in source data format.
@@ -28648,6 +28789,43 @@ func IteratorFromStringHandle(scope *Scope, string_handle tf.Output, optional ..
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// WriteAudioSummaryAttr is an optional argument to WriteAudioSummary.
+type WriteAudioSummaryAttr func(optionalAttr)
+
+// WriteAudioSummaryMaxOutputs sets the optional max_outputs attribute to value.
+// If not specified, defaults to 3
+//
+// REQUIRES: value >= 1
+func WriteAudioSummaryMaxOutputs(value int64) WriteAudioSummaryAttr {
+	return func(m optionalAttr) {
+		m["max_outputs"] = value
+	}
+}
+
+// Writes an audio summary.
+//
+// Writes encoded audio summary `tensor` at `step` with `tag` using summary `writer`.
+// `sample_rate` is the audio sample rate is Hz.
+//
+// Returns the created operation.
+func WriteAudioSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Output, tensor tf.Output, sample_rate tf.Output, optional ...WriteAudioSummaryAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteAudioSummary",
+		Input: []tf.Input{
+			writer, step, tag, tensor, sample_rate,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
 }
 
 // Outputs a `Summary` protocol buffer with a histogram.
@@ -33205,6 +33383,24 @@ func AddManySparseToTensorsMap(scope *Scope, sparse_indices tf.Output, sparse_va
 	return op.Output(0)
 }
 
+// Writes a histogram summary.
+//
+// Writes histogram `values` at `step` with `tag` using summary `writer`.
+//
+// Returns the created operation.
+func WriteHistogramSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Output, values tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteHistogramSummary",
+		Input: []tf.Input{
+			writer, step, tag, values,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Computes tan of x element-wise.
 //
 //   Given an input tensor, this function computes tangent of every
@@ -34073,6 +34269,24 @@ func ShardedFilespec(scope *Scope, basename tf.Output, num_shards tf.Output) (fi
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
+}
+
+// Writes a scalar summary.
+//
+// Writes scalar `value` at `step` with `tag` using summary `writer`.
+//
+// Returns the created operation.
+func WriteScalarSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Output, value tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteScalarSummary",
+		Input: []tf.Input{
+			writer, step, tag, value,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // RetrieveTPUEmbeddingProximalAdagradParametersAttr is an optional argument to RetrieveTPUEmbeddingProximalAdagradParameters.
@@ -41188,6 +41402,43 @@ func WriteFile(scope *Scope, filename tf.Output, contents tf.Output) (o *tf.Oper
 	return scope.AddOperation(opspec)
 }
 
+// WriteImageSummaryAttr is an optional argument to WriteImageSummary.
+type WriteImageSummaryAttr func(optionalAttr)
+
+// WriteImageSummaryMaxImages sets the optional max_images attribute to value.
+// If not specified, defaults to 3
+//
+// REQUIRES: value >= 1
+func WriteImageSummaryMaxImages(value int64) WriteImageSummaryAttr {
+	return func(m optionalAttr) {
+		m["max_images"] = value
+	}
+}
+
+// Writes an image summary.
+//
+// Writes image `tensor` at `step` with `tag` using summary `writer`.
+// `tensor` is image with shape [height, width, channels].
+//
+// Returns the created operation.
+func WriteImageSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Output, tensor tf.Output, bad_color tf.Output, optional ...WriteImageSummaryAttr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteImageSummary",
+		Input: []tf.Input{
+			writer, step, tag, tensor, bad_color,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // MatrixSolveAttr is an optional argument to MatrixSolve.
 type MatrixSolveAttr func(optionalAttr)
 
@@ -41717,6 +41968,24 @@ func Batch(scope *Scope, in_tensors []tf.Output, num_batch_threads int64, max_ba
 	batch_index = op.Output(idx)
 	id = op.Output(idx)
 	return batched_tensors, batch_index, id
+}
+
+// Writes a tensor summary.
+//
+// Writes `tensor` at `step` with `tag` using summary `writer`.
+//
+// Returns the created operation.
+func WriteSummary(scope *Scope, writer tf.Output, step tf.Output, tensor tf.Output, tag tf.Output, summary_metadata tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteSummary",
+		Input: []tf.Input{
+			writer, step, tensor, tag, summary_metadata,
+		},
+	}
+	return scope.AddOperation(opspec)
 }
 
 // UnicodeDecodeAttr is an optional argument to UnicodeDecode.
@@ -45861,6 +46130,28 @@ func MaxPoolGradGradV2(scope *Scope, orig_input tf.Output, orig_output tf.Output
 	return op.Output(0)
 }
 
+// An op to send a tensor to the host.
+//
+// input: the tensor that will be sent to the host.
+// Tinput: element type for input.
+// key: A unique identifier for this region used to match up host transfers.
+//
+// Returns the created operation.
+func XlaSendToHost(scope *Scope, input tf.Output, key string) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"key": key}
+	opspec := tf.OpSpec{
+		Type: "XlaSendToHost",
+		Input: []tf.Input{
+			input,
+		},
+		Attrs: attrs,
+	}
+	return scope.AddOperation(opspec)
+}
+
 // ResourceSparseApplyRMSPropAttr is an optional argument to ResourceSparseApplyRMSProp.
 type ResourceSparseApplyRMSPropAttr func(optionalAttr)
 
@@ -49480,33 +49771,6 @@ func LoadTPUEmbeddingMDLAdagradLightParameters(scope *Scope, parameters tf.Outpu
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// Returns the next record (key, value pair) produced by a Reader.
-//
-// Will dequeue from the input queue if necessary (e.g. when the
-// Reader needs to start reading from a new file since it has finished
-// with the previous file).
-//
-// Arguments:
-//	reader_handle: Handle to a Reader.
-//	queue_handle: Handle to a Queue, with string work items.
-//
-// Returns:
-//	key: A scalar.
-//	value: A scalar.
-func ReaderReadV2(scope *Scope, reader_handle tf.Output, queue_handle tf.Output) (key tf.Output, value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ReaderReadV2",
-		Input: []tf.Input{
-			reader_handle, queue_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
 }
 
 // CumprodAttr is an optional argument to Cumprod.

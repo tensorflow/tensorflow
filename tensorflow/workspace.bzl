@@ -164,11 +164,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "XNNPACK",
-        sha256 = "1edb168b8eb1b48e4ed7f8d18640c381ab19745cb21ea4279f27884339b6f17e",
-        strip_prefix = "XNNPACK-2a18f7ea635f3c10a4d920113e07b2e6ce038ac8",
+        sha256 = "742eb377e0d304a0bfcb64fccfee2b3fe27932a2d5a95a22bfbc7a6fb4459e1a",
+        strip_prefix = "XNNPACK-0af63ab36b899559bd1a92bbc327f8137e53c15c",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/2a18f7ea635f3c10a4d920113e07b2e6ce038ac8.zip",
-            "https://github.com/google/XNNPACK/archive/2a18f7ea635f3c10a4d920113e07b2e6ce038ac8.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/google/XNNPACK/archive/0af63ab36b899559bd1a92bbc327f8137e53c15c.zip",
+            "https://github.com/google/XNNPACK/archive/0af63ab36b899559bd1a92bbc327f8137e53c15c.zip",
         ],
     )
 
@@ -211,11 +211,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     tf_http_archive(
         name = "mkl_dnn_v1",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn_v1.BUILD"),
-        sha256 = "54737bcb4dc1961d32ee75da3ecc529fa48198f8b2ca863a079e19a9c4adb70f",
-        strip_prefix = "oneDNN-1.4",
+        sha256 = "aef4d2a726f76f5b98902491a1a4ac69954039aa8e5a1d67ef6ce58ed00e23a6",
+        strip_prefix = "oneDNN-1.5.1",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v1.4.tar.gz",
-            "https://github.com/oneapi-src/oneDNN/archive/v1.4.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/oneapi-src/oneDNN/archive/v1.5.1.tar.gz",
+            "https://github.com/oneapi-src/oneDNN/archive/v1.5.1.tar.gz",
         ],
     )
 
@@ -237,11 +237,11 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         name = "eigen_archive",
         build_file = clean_dep("//third_party:eigen.BUILD"),
         patch_file = clean_dep("//third_party/eigen3:gpu_packet_math.patch"),
-        sha256 = "9d8cbf2bd665cbb7b684bf4c6c5482b98dc6965847108f260c077049da04bee8",  # SHARED_EIGEN_SHA
-        strip_prefix = "eigen-2ce2f5198929caab4b41a6ad1b9c93f67d8b9a69",
+        sha256 = "a3c10a8c14f55e9f09f98b0a0ac6874c21bda91f65b7469d9b1f6925990e867b",  # SHARED_EIGEN_SHA
+        strip_prefix = "eigen-d10b27fe37736d2944630ecd7557cefa95cf87c9",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/2ce2f5198929caab4b41a6ad1b9c93f67d8b9a69/eigen-2ce2f5198929caab4b41a6ad1b9c93f67d8b9a69.tar.gz",
-            "https://gitlab.com/libeigen/eigen/-/archive/2ce2f5198929caab4b41a6ad1b9c93f67d8b9a69/eigen-2ce2f5198929caab4b41a6ad1b9c93f67d8b9a69.tar.gz",
+            "https://storage.googleapis.com/mirror.tensorflow.org/gitlab.com/libeigen/eigen/-/archive/d10b27fe37736d2944630ecd7557cefa95cf87c9/eigen-d10b27fe37736d2944630ecd7557cefa95cf87c9.tar.gz",
+            "https://gitlab.com/libeigen/eigen/-/archive/d10b27fe37736d2944630ecd7557cefa95cf87c9/eigen-d10b27fe37736d2944630ecd7557cefa95cf87c9.tar.gz",
         ],
     )
 
@@ -515,6 +515,18 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "typing_extensions_archive",
+        build_file = clean_dep("//third_party:typing_extensions.BUILD"),
+        sha256 = "79ee589a3caca649a9bfd2a8de4709837400dfa00b6cc81962a1e6a1815969ae",
+        strip_prefix = "typing_extensions-3.7.4.2",
+        system_build_file = clean_dep("//third_party/systemlibs:six.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/6a/28/d32852f2af6b5ead85d396249d5bdf450833f3a69896d76eb480d9c5e406/typing_extensions-3.7.4.2.tar.gz",
+            "https://files.pythonhosted.org/packages/6a/28/d32852f2af6b5ead85d396249d5bdf450833f3a69896d76eb480d9c5e406/typing_extensions-3.7.4.2.tar.gz",
+        ],
+    )
+
+    tf_http_archive(
         name = "opt_einsum_archive",
         build_file = clean_dep("//third_party:opt_einsum.BUILD"),
         sha256 = "d3d464b4da7ef09e444c30e4003a27def37f85ff10ff2671e5f7d7813adac35b",
@@ -658,19 +670,6 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
-        name = "swig",
-        build_file = clean_dep("//third_party:swig.BUILD"),
-        sha256 = "58a475dbbd4a4d7075e5fe86d4e54c9edde39847cdb96a3053d87cb64a23a453",
-        strip_prefix = "swig-3.0.8",
-        system_build_file = clean_dep("//third_party/systemlibs:swig.BUILD"),
-        urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/ufpr.dl.sourceforge.net/project/swig/swig/swig-3.0.8/swig-3.0.8.tar.gz",
-            "https://ufpr.dl.sourceforge.net/project/swig/swig/swig-3.0.8/swig-3.0.8.tar.gz",
-            "https://pilotfiber.dl.sourceforge.net/project/swig/swig/swig-3.0.8/swig-3.0.8.tar.gz",
-        ],
-    )
-
-    tf_http_archive(
         name = "curl",
         build_file = clean_dep("//third_party:curl.BUILD"),
         sha256 = "01ae0c123dee45b01bbaef94c0bc00ed2aec89cb2ee0fd598e0d302a6b5e0a98",
@@ -712,8 +711,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "30c1633386e7cfb01c0a54b31ccf4c3a3873e71b"
-    LLVM_SHA256 = "0cd17329d0981a86558beaafd2ae982af03fcebc71a659d8c134f39cb3988b3b"
+    LLVM_COMMIT = "bad7d6b3735d1d855ffb07f32a272049cff085e6"
+    LLVM_SHA256 = "363948fc7b6ab6e87ba074ad40604f4cfe2cd2f0ce983108f445f6147233b877"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
@@ -892,15 +891,16 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
         ],
     )
 
+    # The CUDA 11 toolkit ships with CUB.  We should be able to delete this rule
+    # once TF drops support for CUDA 10.
     tf_http_archive(
         name = "cub_archive",
         build_file = clean_dep("//third_party:cub.BUILD"),
-        patch_file = clean_dep("//third_party:cub.pr170.patch"),
-        sha256 = "6bfa06ab52a650ae7ee6963143a0bbc667d6504822cbd9670369b598f18c58c3",
-        strip_prefix = "cub-1.8.0",
+        sha256 = "162514b3cc264ac89d91898b58450190b8192e2af1142cf8ccac2d59aa160dda",
+        strip_prefix = "cub-1.9.9",
         urls = [
-            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVlabs/cub/archive/1.8.0.zip",
-            "https://github.com/NVlabs/cub/archive/1.8.0.zip",
+            "https://storage.googleapis.com/mirror.tensorflow.org/github.com/NVlabs/cub/archive/1.9.9.zip",
+            "https://github.com/NVlabs/cub/archive/1.9.9.zip",
         ],
     )
 

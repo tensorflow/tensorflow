@@ -55,6 +55,14 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "tf_lite_static_memory",
+    values = {
+        "copt": "-DTF_LITE_STATIC_MEMORY",
+        "cpu": "k8",
+    },
+)
+
 TFLITE_DEFAULT_COPTS = if_not_windows([
     "-Wall",
     "-Wno-comment",
@@ -246,7 +254,6 @@ cc_library(
         ":shared_library",
         ":simple_memory_arena",
         ":string",
-        ":tflite_with_xnnpack_optional",
         ":type_to_tflitetype",
         ":util",
         ":version",
@@ -616,7 +623,14 @@ cc_library(
 
 cc_library(
     name = "type_to_tflitetype",
-    hdrs = ["type_to_tflitetype.h"],
+    hdrs = [
+        "portable_type_to_tflitetype.h",
+    ] + select({
+        ":tf_lite_static_memory": [],
+        "//conditions:default": [
+            "type_to_tflitetype.h",
+        ],
+    }),
     deps = ["//tensorflow/lite/c:common"],
 )
 

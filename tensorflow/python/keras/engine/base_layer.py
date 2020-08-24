@@ -1757,7 +1757,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if not call_context.frozen:
       for update in nest.flatten(updates):
         if callable(update):
-          update()
+          update()  # pylint: disable=not-callable
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -2926,14 +2926,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                               self._call_accepts_kwargs)
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_full_argspec(self):
     # Argspec inspection is expensive and the call spec is used often, so it
     # makes sense to cache the result.
     return tf_inspect.getfullargspec(self.call)
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_args(self):
     all_args = self._call_full_argspec.args
     # Scrub `self` that appears if a decorator was applied.
@@ -2942,7 +2942,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return all_args
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_arg_defaults(self):
     call_fn_args = self._call_fn_args
     call_fn_defaults = self._call_full_argspec.defaults or []
@@ -2955,7 +2955,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return defaults
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_arg_positions(self):
     call_fn_arg_positions = dict()
     for pos, arg in enumerate(self._call_fn_args):
@@ -2963,7 +2963,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return call_fn_arg_positions
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_accepts_kwargs(self):
     return self._call_full_argspec.varkw is not None
 

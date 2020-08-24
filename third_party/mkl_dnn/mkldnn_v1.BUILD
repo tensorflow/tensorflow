@@ -59,8 +59,8 @@ template_rule(
     out = "include/dnnl_version.h",
     substitutions = {
         "@DNNL_VERSION_MAJOR@": "1",
-        "@DNNL_VERSION_MINOR@": "4",
-        "@DNNL_VERSION_PATCH@": "0",
+        "@DNNL_VERSION_MINOR@": "5",
+        "@DNNL_VERSION_PATCH@": "1",
         "@DNNL_VERSION_HASH@": "N/A",
     },
 )

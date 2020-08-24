@@ -60,10 +60,10 @@ class ControlFlowTransformer(converter.Base):
   def _create_nonlocal_declarations(self, vars_):
     vars_ = set(vars_)
     results = []
-    global_vars = self.state[_Function].scope.globals
+    global_vars = self.state[_Function].scope.globals & vars_
 
     if global_vars:
-      results.append(gast.Global([str(v) for v in vars_]))
+      results.append(gast.Global([str(v) for v in global_vars]))
 
     nonlocal_vars = [
         v for v in vars_ if not v.is_composite() and v not in global_vars]
@@ -180,6 +180,7 @@ class ControlFlowTransformer(converter.Base):
     defined_in = anno.getanno(node, anno.Static.DEFINED_VARS_IN)
     live_in = anno.getanno(node, anno.Static.LIVE_VARS_IN)
     live_out = anno.getanno(node, anno.Static.LIVE_VARS_OUT)
+    fn_scope = self.state[_Function].scope
 
     basic_scope_vars = self._get_block_basic_vars(
         modified,
@@ -191,8 +192,9 @@ class ControlFlowTransformer(converter.Base):
     # Variables that are modified inside the scope, but not defined
     # before entering it. Only simple variables must be defined. The
     # composite ones will be implicitly checked at runtime.
-    # This covers loop variables as well as variables that
-    undefined = tuple(v for v in modified - defined_in if not v.is_composite())
+    possibly_undefined = (
+        modified - defined_in - fn_scope.globals - fn_scope.nonlocals)
+    undefined = tuple(v for v in possibly_undefined if not v.is_composite())
 
     # Variables that are modified inside the scope, and depend on values outside
     # it.

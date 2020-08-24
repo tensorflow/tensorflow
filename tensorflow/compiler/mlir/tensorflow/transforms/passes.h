@@ -79,6 +79,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass();
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
 
+// Create a pass that convert ops that copy tensors between devices, e.g.
+// tf.Identity.
+std::unique_ptr<OperationPass<mlir::FuncOp>>
+CreateTensorDeviceCopyConversionPass();
+
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
   Option<std::string> force_data_format{
@@ -270,6 +275,9 @@ namespace TFTPU {
 // Creates a pass that forms clusters from operations of the same
 // `_tpu_replicate` attribute.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUClusterFormationPass();
+
+// Creates a pass that removes Identity/IdentityN ops from a cluster.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUIdentityPruningPass();
 
 // Creates a pass that allows TPU program inputs to have layouts determined at
 // run time.

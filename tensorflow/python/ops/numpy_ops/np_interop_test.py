@@ -323,6 +323,11 @@ class InteropTest(tf.test.TestCase):
     self.assertIsInstance(c, np.ndarray)
     self.assertEqual(c.shape, (batch_size, 32, 32, 32, 32))
 
+    c = tf.vectorized_map(lambda x: x.T, a)
+
+    self.assertIsInstance(c, np.ndarray)
+    self.assertEqual(c.shape, (batch_size, 32, 32))
+
   def testJacobian(self):
     with tf.GradientTape() as g:
       x = np.asarray([1., 2.])

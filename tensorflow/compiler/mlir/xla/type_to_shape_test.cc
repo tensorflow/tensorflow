@@ -64,6 +64,7 @@ inline ::testing::PolymorphicMatcher<ProtoStringMatcher> EqualsProto(
 
 TEST(TypeToShapeTest, ConvertPrimitiveTypes) {
   MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   Builder b(&context);
 
   EXPECT_EQ(TypeToPrimitiveType(b.getF32Type()), PrimitiveType::F32);
@@ -74,6 +75,7 @@ TEST(TypeToShapeTest, ConvertPrimitiveTypes) {
 
 TEST(TypeToShapeTest, ConvertBasicTypesToTypes) {
   MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   Builder b(&context);
 
   EXPECT_TRUE(
@@ -95,6 +97,7 @@ TEST(TypeToShapeTest, ConvertBasicTypesToTypes) {
 
 TEST(TypeToShapeTest, ConvertMemRefTypeToTypes) {
   MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   Builder b(&context);
 
   // Memref without any affine map. Note: memory space is ignored for shape.

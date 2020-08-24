@@ -169,6 +169,13 @@ void TestRemoteExecuteSilentCopies(bool async, bool remote, bool func,
     ASSERT_TRUE(remote_arg->HasLocalMirror(nullptr));
   }
 
+  if (remote_func_outputs) {
+    const string backing_device =
+        TFE_TensorHandleBackingDeviceName(retvals[0], status);
+    ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
+    EXPECT_EQ(backing_device, task2_name);
+  }
+
   auto* retval_task0 = TFE_TensorHandleCopyToDevice(
       retvals[0], ctx, "/job:localhost/replica:0/task:0/device:CPU:0", status);
   ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
