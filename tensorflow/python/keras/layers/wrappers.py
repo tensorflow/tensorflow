@@ -22,7 +22,6 @@ from __future__ import print_function
 import copy
 
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
@@ -136,10 +135,8 @@ class TimeDistributed(Wrapper):
 
   def _get_shape_tuple(self, init_tuple, tensor, start_idx, int_shape=None):
     """Finds non-specific dimensions in the static shapes.
-
     The static shapes are replaced with the corresponding dynamic shapes of the
     tensor.
-
     Arguments:
       init_tuple: a tuple, the first part of the output shape
       tensor: the tensor from which to get the (static and dynamic) shapes
@@ -148,28 +145,27 @@ class TimeDistributed(Wrapper):
         the static shape of the tensor
       int_shape: an alternative static shape to take as the last part
         of the output shape
-
     Returns:
-      A tensor with the new int_shape with the first part from
-      init_tuple and the last part from either `int_shape`
-      (if provided) or `tensor.shape`, where every `None` is
-      replaced by the corresponding dimension from `tf.shape(tensor)`.
+      The new int_shape with the first part from init_tuple
+      and the last part from either `int_shape` (if provided)
+      or `tensor.shape`, where every `None` is replaced by
+      the corresponding dimension from `tf.shape(tensor)`.
     """
     # replace all None in int_shape by K.shape
     if int_shape is None:
       int_shape = K.int_shape(tensor)[start_idx:]
     if not any(not s for s in int_shape):
-      return ops.convert_to_tensor(init_tuple + tuple(int_shape))
+      return init_tuple + tuple(int_shape)
     shape = K.shape(tensor)
     int_shape = list(int_shape)
     for i, s in enumerate(int_shape):
       if not s:
         int_shape[i] = shape[start_idx + i]
-    return ops.convert_to_tensor(init_tuple + tuple(int_shape))
+    return init_tuple + tuple(int_shape)
 
   def _remove_timesteps(self, dims):
-      dims = dims.as_list()
-      return tensor_shape.TensorShape([dims[0]] + dims[2:])
+    dims = dims.as_list()
+    return tensor_shape.TensorShape([dims[0]] + dims[2:])
 
   def build(self, input_shape):
     input_shape = tf_utils.convert_shapes(input_shape, to_tuples=False)
@@ -259,9 +255,10 @@ class TimeDistributed(Wrapper):
         inner_input_shape = nest.map_structure(lambda x: self._get_shape_tuple((-1,), x, 2), inputs)
         # Shape: (num_samples * timesteps, ...). And track the
         # transformation in self._input_map.
-        inputs = nest.map_structure(array_ops.reshape,
-                                    inputs,
-                                    inner_input_shape)
+        inputs = nest.map_structure_up_to(inputs,
+                                          array_ops.reshape,
+                                          inputs,
+                                          inner_input_shape)
         # (num_samples * timesteps, ...)
         if generic_utils.has_arg(self.layer.call, 'mask') and mask is not None:
           inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
@@ -275,9 +272,10 @@ class TimeDistributed(Wrapper):
             lambda tensor, int_shape: self._get_shape_tuple((-1, input_length), tensor, 1, int_shape[2:]),
             y,
             output_shape)
-        y = nest.map_structure(array_ops.reshape,
-                               y,
-                               output_shape)
+        y = nest.map_structure_up_to(y,
+                                     array_ops.reshape,
+                                     y,
+                                     output_shape)
 
     return y
 
@@ -337,7 +335,7 @@ class TimeDistributed(Wrapper):
       inner_mask = K.reshape(inner_mask, inner_mask_shape)
     inner_input_shape = nest.map_structure(lambda tensor: self._get_shape_tuple((-1,), tensor, 2),
                                            inputs)
-    inner_inputs = nest.map_structure(array_ops.reshape,
+    inner_inputs = nest.map_structure_up_to(inputs, array_ops.reshape,
                                       inputs, inner_input_shape)
     output_mask = self.layer.compute_mask(inner_inputs, inner_mask)
     if output_mask is None:
@@ -353,8 +351,8 @@ class TimeDistributed(Wrapper):
       input_length = tf_utils.convert_shapes(input_shape)
       input_length = nest.flatten(input_length)[1]
       if not input_length:
-        input_length = nest.map_structure(lambda x: K.shape(x)[1], inputs)
-        input_length = nest.flatten(input_length)[0]
+        input_length = nest.map_structure(lambda x: array_ops.shape(x)[1], inputs)
+        input_length = generic_utils.to_list(nest.flatten(input_length))[0]
       output_mask_int_shape = K.int_shape(output_mask)
       if output_mask_int_shape is None:
         # if the output_mask does not have a static shape,
@@ -792,3 +790,25 @@ class Bidirectional(Wrapper):
     layer = cls(**config)
     layer._num_constants = num_constants
     return layer
+
+if __name__ == "__main__":
+  from tensorflow.python import keras
+  import numpy as np
+  from tensorflow.python.data.ops import dataset_ops
+  model = keras.models.Sequential()
+  model.add(
+      TimeDistributed(
+          keras.layers.Masking(mask_value=0.,), input_shape=(None, 4)))
+  model.add(TimeDistributed(keras.layers.Dense(5)))
+  model.compile(optimizer='rmsprop', loss='mse')
+  model_input = np.random.randint(low=1, high=5, size=(10, 3, 4))
+  for i in range(4):
+    model_input[i, i:, :] = 0.
+  model.compile(optimizer='rmsprop', loss='mse')
+  model.fit(model_input, np.random.random((10, 3, 5)), epochs=1, batch_size=6)
+  mask_outputs = [model.layers[0].compute_mask(model.input)]
+  mask_outputs += [
+      model.layers[1].compute_mask(model.layers[1].input, mask_outputs[-1])
+  ]
+  func = keras.backend.function([model.input], mask_outputs)
+  mask_outputs_val = func([model_input])
