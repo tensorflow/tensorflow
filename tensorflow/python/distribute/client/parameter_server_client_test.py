@@ -107,7 +107,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
 
   def testBasic(self):
     self.client._strategy.extended._variable_count = 0
-    with self.client.context():
+    with self.client.strategy.scope():
       v1 = variables.Variable(initial_value=0.0)
       v2 = variables.Variable(initial_value=1.0)
     self.assertEqual(self.client._strategy.extended._variable_count, 2)
@@ -141,7 +141,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
     def input_fn():
       return dataset_ops.DatasetV2.range(1, 2)
 
-    with self.client.context():
+    with self.client.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int64)
 
     @def_function.function
@@ -165,7 +165,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
     def input_fn():
       return dataset_ops.DatasetV2.from_tensor_slices([2] * 10)
 
-    with self.client.context():
+    with self.client.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int32)
 
     # TODO(yuefengz): the following tf.function has a return value which is None
@@ -259,7 +259,7 @@ class VariablePartitioningScopeTest(test.TestCase):
     cls.client = make_client(num_workers=3, num_ps=2)
 
   def testBasic(self):
-    with self.client.context():
+    with self.client.strategy.scope():
       with self.client.experimental_variable_partitioning_scope():
         init1 = init_ops_v2.Constant([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
         v1 = variables.Variable(
@@ -289,7 +289,7 @@ class VariablePartitioningScopeTest(test.TestCase):
     self.assertAllEqual(v2.variables[1].read_value().numpy(), [[3], [4], [5]])
 
   def testSurplusPS(self):
-    with self.client.context():
+    with self.client.strategy.scope():
       with self.client.experimental_variable_partitioning_scope():
         initializer = init_ops_v2.Constant([0])
 
@@ -357,7 +357,7 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
     super(ErrorReportingTest, cls).setUpClass()
     cls.client = make_client(num_workers=3, num_ps=2)
 
-    with cls.client.context():
+    with cls.client.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
 
   @def_function.function
@@ -476,7 +476,7 @@ class LimitedClosureQueueErrorTest(ErrorReportingTest):
     client._CLOSURE_QUEUE_MAX_SIZE = 2
     cls.client = make_client(num_workers=3, num_ps=2)
 
-    with cls.client.context():
+    with cls.client.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
 
 

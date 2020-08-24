@@ -1935,6 +1935,7 @@ static LogicalResult Verify(IfOp op) {
 // IfOp canonicalization.
 //===----------------------------------------------------------------------===//
 
+namespace {
 class FoldConstantIfOp : public OpRewritePattern<TF::IfOp> {
  public:
   explicit FoldConstantIfOp(MLIRContext *context)
@@ -1966,7 +1967,7 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
   auto rewrite = [&](auto op_type) {
     auto empty = rewriter.getStringAttr("");
     auto call_op = rewriter.create<typename decltype(op_type)::CallOp>(
-        op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
+        op.getLoc(), op.getResultTypes(), op.input(), func,
         /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
     CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
     rewriter.replaceOp(op, call_op.getResults());
@@ -1979,6 +1980,7 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
 
   return success();
 }
+}  // anonymous namespace
 
 void IfOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                        MLIRContext *context) {
@@ -1995,6 +1997,61 @@ static LogicalResult Verify(IfRegionOp op) {
   if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
     return failure();
   return success();
+}
+
+namespace {
+class FoldConstantIfRegionOp : public OpRewritePattern<TF::IfRegionOp> {
+ public:
+  explicit FoldConstantIfRegionOp(MLIRContext *context)
+      : OpRewritePattern<TF::IfRegionOp>(context) {}
+  LogicalResult matchAndRewrite(TF::IfRegionOp op,
+                                PatternRewriter &rewriter) const override;
+};
+
+LogicalResult FoldConstantIfRegionOp::matchAndRewrite(
+    TF::IfRegionOp op, PatternRewriter &rewriter) const {
+  // Extract the constant cond value.
+  DenseIntElementsAttr cond_attr;
+  if (!matchPattern(op.cond(), m_Constant(&cond_attr))) return failure();
+
+  // IfRegion condition should always be a scalar. Select the region to fold to.
+  bool cond = cond_attr.getSplatValue<BoolAttr>().getValue();
+  Region &region = cond ? op.then_branch() : op.else_branch();
+
+  // If the IfRegion is stateless but the region being inlined itself is not
+  // stateless, then inlining the region could cause a loss of information.
+  // However, its probably better to fold the IfRegion instead of having the
+  // dead branch stay.
+
+  // Inline the region in place of the IfRegion op, and forward the yield
+  // inputs to the IfRegion op results. This is possible only if the yield
+  // types match the result types.
+  auto yield = cast<YieldOp>(region.front().getTerminator());
+  auto updated_results = llvm::to_vector<4>(yield.getOperands());
+
+  // If the yield types do not match the IfRegion result types, add appropriate
+  // casts.
+  rewriter.setInsertionPoint(yield);
+  for (auto it : llvm::zip(op.getResultTypes(), updated_results)) {
+    auto &updated_result = std::get<1>(it);
+    Type result_type = std::get<0>(it);
+    if (result_type != updated_result.getType()) {
+      updated_result =
+          rewriter.create<TF::CastOp>(op.getLoc(), result_type, updated_result,
+                                      /*Truncate=*/rewriter.getBoolAttr(false));
+    }
+  }
+  // Inline the region into the block containing the IfRegion.
+  rewriter.mergeBlockBefore(&region.front(), op);
+  rewriter.eraseOp(yield);
+  rewriter.replaceOp(op, updated_results);
+  return success();
+}
+}  // anonymous namespace
+
+void IfRegionOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<FoldConstantIfRegionOp>(context);
 }
 
 //===----------------------------------------------------------------------===//

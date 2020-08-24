@@ -28,10 +28,11 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
   CollectiveRemoteAccessDistributed(
       const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
       std::shared_ptr<UnboundedWorkQueue> work_queue,
-      WorkerCacheInterface* worker_cache, int64 step_id)
+      WorkerCacheInterface* worker_cache, int64 step_id, string task_name)
       : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
         worker_cache_(worker_cache),
-        work_queue_(std::move(work_queue)) {}
+        work_queue_(std::move(work_queue)),
+        task_name_(std::move(task_name)) {}
 
   ~CollectiveRemoteAccessDistributed() override {}
 
@@ -43,6 +44,9 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
                     int dev_to_dev_stream_index,
                     const StatusCallback& done) override;
 
+  void CheckPeerHealth(const string& peer_task,
+                       const StatusCallback& done) override;
+
   void StartAbort(const Status& s) override;
 
  protected:
@@ -51,6 +55,7 @@ class CollectiveRemoteAccessDistributed : public CollectiveRemoteAccessLocal {
   // `CollectiveExecutorMgr`.
   std::shared_ptr<UnboundedWorkQueue> work_queue_;
   CancellationManager cancel_mgr_;
+  string task_name_;
 };
 
 }  // namespace tensorflow

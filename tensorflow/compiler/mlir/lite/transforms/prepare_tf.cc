@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -83,6 +84,11 @@ class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
   explicit PrepareTFPass(bool unfold_batch_matmul)
       : unfold_batch_matmul_(unfold_batch_matmul) {}
   void runOnFunction() override;
+
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mhlo::MhloDialect, quant::QuantizationDialect,
+                    TFL::TensorFlowLiteDialect>();
+  }
 
  private:
   bool unfold_batch_matmul_;

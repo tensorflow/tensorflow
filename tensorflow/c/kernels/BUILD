@@ -53,6 +53,19 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "merge_summary_op",
+    prefix = "merge_summary_op",
+    deps = [
+        "//tensorflow/c:kernels",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/c:tf_tensor",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 tf_gen_op_libs(
     op_lib_names = ["bitcast"],
     deps = [
@@ -75,6 +88,15 @@ tf_gen_op_libs(
 
 tf_gen_op_libs(
     op_lib_names = ["histogram_summary"],
+    deps = [
+        "//tensorflow/c:ops",
+        "//tensorflow/c:tf_status",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_gen_op_libs(
+    op_lib_names = ["merge_summary"],
     deps = [
         "//tensorflow/c:ops",
         "//tensorflow/c:tf_status",
@@ -146,6 +168,7 @@ filegroup(
     srcs = [
         "bitcast_op.cc",
         "histogram_summary_op.cc",
+        "merge_summary_op.cc",
         "summary_op.cc",
         "tensor_shape_utils.cc",
         "tensor_shape_utils.h",
@@ -158,6 +181,7 @@ filegroup(
     srcs = [
         "ops/bitcast.cc",
         "ops/histogram_summary.cc",
+        "ops/merge_summary.cc",
         "ops/summary.cc",
     ],
 )

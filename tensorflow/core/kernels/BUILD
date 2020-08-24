@@ -3087,7 +3087,6 @@ cc_library(
         ":logging_ops",
         ":summary_audio_op",
         ":summary_image_op",
-        ":summary_op",
         ":summary_tensor_op",
     ],
 )
@@ -3098,6 +3097,10 @@ LOGGING_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
+    # TODO(b/162630222): remove this dependency.
+    "//tensorflow/c/kernels:histogram_summary_op",
+    "//tensorflow/c/kernels:merge_summary_op",
+    "//tensorflow/c/kernels:summary_op",
 ]
 
 tf_kernel_library(
@@ -3118,12 +3121,12 @@ tf_kernel_library(
     deps = LOGGING_DEPS + ["//tensorflow/core:png_internal"],
 )
 
-tf_kernel_library(
+# TODO(b/162630222): remove this target
+cc_library(
     name = "summary_op",
-    prefix = "summary_op",
-    deps = LOGGING_DEPS + [
-        # TODO(b/162630222): remove these dependencies.
+    deps = [
         "//tensorflow/c/kernels:histogram_summary_op",
+        "//tensorflow/c/kernels:merge_summary_op",
         "//tensorflow/c/kernels:summary_op",
     ],
 )
@@ -6217,7 +6220,6 @@ filegroup(
         "string_split_op.cc",
         "string_to_hash_bucket_op.cc",
         "substr_op.cc",
-        "summary_op.cc",
         "tensor_array.cc",
         "tensor_array_ops.cc",
         "tensor_list.cc",

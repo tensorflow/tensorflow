@@ -43,24 +43,35 @@ limitations under the License.
 //     structs.
 //
 // Example usage:
+//
+//   /* Sample TensorFlow code below, exact implementation might differ. */
+//   // Version checking uses `struct_size`. It is exempt from the `SE/SP` rule
+//   // above and should be set both by core and the plugin."
+//   SP_Device device { SP_DEVICE_STRUCT_SIZE };
+//   SE_CreateDeviceParams params { SE_CREATE_DEVICE_PARAMS_STRUCT_SIZE } ;
+//   params.device = &device;
+//
+//   /* Plugin code below */
 //   constexpr char DEVICE_NAME[] = "MyDevice";
 //   constexpr char DEVICE_TYPE[] = "GPU";
 //
-//   void create_device(const SE_CreateDeviceParams* const params,
-//                      TF_Status* const status) {
-//     params->device->struct_size = SP_DEVICE_STRUCT_SIZE;
+//   void create_device(SE_CreateDeviceParams* params, TF_Status* status) {
+//     // Custom actions based on TensorFlow's view of SP_Device.
+//     OnTFDeviceView(params->device->struct_size);
+//     params->device = { SP_DEVICE_STRUCT_SIZE };
 //     params->device->device_handle = get_my_device_handle(device->ordinal);
 //     params->device->ordinal = params->ordinal;
 //     ...
 //   }
-//   void destroy_device(SP_Device* const device) {
+//
+//   void destroy_device(SP_Device* device) {
 //     delete_my_device_handle(device->device_handle);
 //   }
 //
 //   void SE_InitPlugin(
-//       SE_PlatformRegistrationParams* const params,
-//       TF_Status* const status) {
-//     params->platform->struct_size = SP_PLATFORM_STRUCT_SIZE;
+//       SE_PlatformRegistrationParams* params,
+//       TF_Status* status) {
+//     params->platform = { SP_PLATFORM_STRUCT_SIZE };
 //     // Values such as `name` and `type` must outlive SE_InitPlugin call.
 //     params->platform->name = DEVICE_NAME;
 //     params->platform->type = DEVICE_TYPE;
@@ -155,7 +166,8 @@ typedef struct SE_CreateDeviceParams {
   void* ext;        // reserved for future use
   int32_t ordinal;  // device index
 
-  SP_Device* device;  // output, to be filled by plugin
+  SP_Device* device;  // Input/output, struct_size set by TF for plugin to read.
+                      // Subsequently plugin fills the entire struct.
 } SE_CreateDeviceParams;
 
 #define SE_CREATE_DEVICE_PARAMS_STRUCT_SIZE \
@@ -335,14 +347,14 @@ typedef struct SP_Platform {
   size_t visible_device_count;
 
   // Callbacks for creating/destroying SP_Device.
-  void (*create_device)(const SE_CreateDeviceParams* params, TF_Status* status);
+  void (*create_device)(SE_CreateDeviceParams* params, TF_Status* status);
 
   // Clean up fields inside SP_Device that were allocated
   // by the plugin. `device` itself should not be deleted here.
   void (*destroy_device)(SP_Device* device);
 
   // Callbacks for creating/destroying SP_StreamExecutor.
-  void (*create_stream_executor)(const SE_CreateStreamExecutorParams* params,
+  void (*create_stream_executor)(SE_CreateStreamExecutorParams* params,
                                  TF_Status* status);
   // Clean up fields inside SP_StreamExecutor that were allocated
   // by the plugin. `stream_executor` itself should not be deleted here.

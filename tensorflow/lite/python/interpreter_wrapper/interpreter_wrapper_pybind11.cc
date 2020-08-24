@@ -181,5 +181,8 @@ PYBIND11_MODULE(_pywrap_tensorflow_interpreter_wrapper, m) {
           },
           R"pbdoc(
              ask the interpreter to set the number of threads to use.
-          )pbdoc");
+          )pbdoc")
+      .def("interpreter", [](InterpreterWrapper& self) {
+        return reinterpret_cast<intptr_t>(self.interpreter());
+      });
 }

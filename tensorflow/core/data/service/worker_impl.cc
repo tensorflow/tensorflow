@@ -249,7 +249,6 @@ void DataServiceWorkerImpl::BackgroundThread() LOCKS_EXCLUDED(mu_) {
 }
 
 Status DataServiceWorkerImpl::SendTaskUpdates() LOCKS_EXCLUDED(mu_) {
-  WorkerUpdateRequest req;
   std::vector<TaskProgress> task_progress;
   {
     mutex_lock l(mu_);
@@ -265,10 +264,10 @@ Status DataServiceWorkerImpl::SendTaskUpdates() LOCKS_EXCLUDED(mu_) {
 
   TF_RETURN_IF_ERROR(dispatcher_->WorkerUpdate(worker_address_, task_progress));
   mutex_lock l(mu_);
-  for (const auto& update : req.updates()) {
+  for (const auto& update : task_progress) {
     pending_completed_tasks_.erase(update.task_id());
   }
-  VLOG(3) << "Sent " << req.updates().size() << " task updates ";
+  VLOG(3) << "Sent " << task_progress.size() << " task updates ";
   return Status::OK();
 }
 
