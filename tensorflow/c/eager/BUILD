@@ -268,19 +268,18 @@ cc_library(
         "//tensorflow:internal",
     ],
     deps = [
-        ":abstract_context",
-        ":abstract_operation",
         ":abstract_tensor_handle",
+        ":c_api_experimental",
         ":c_api_unified_internal",
         ":gradients_internal",
-        ":tape",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c:tf_tensor",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/experimental/ops:nn_ops",
-        "//tensorflow/core/common_runtime/eager:attr_builder",
         "//tensorflow/core/lib/llvm_rtti",
-        "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -293,7 +292,11 @@ tf_cuda_cc_test(
     args = ["--heap_check=local"],
     extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = tf_cuda_tests_tags() + ["nomac"],
+    tags = tf_cuda_tests_tags() + [
+        "nomac",
+        "notap",  # TODO(b/166150182): Enable
+        "no_oss",  # TODO(b/166150182): Enable
+    ],
     deps = [
         ":abstract_tensor_handle",
         ":c_api_experimental",
