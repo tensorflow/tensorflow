@@ -1399,9 +1399,10 @@ class ModelCheckpoint(Callback):
   def _checkpoint_exists(self, filepath):
     """Returns whether the checkpoint `filepath` refers to exists."""
     if filepath.endswith('.h5'):
-      return file_io.file_exists(filepath)
-    tf_saved_model_exists = file_io.file_exists(filepath)
-    tf_weights_only_checkpoint_exists = file_io.file_exists(filepath + '.index')
+      return file_io.file_exists_v2(filepath)
+    tf_saved_model_exists = file_io.file_exists_v2(filepath)
+    tf_weights_only_checkpoint_exists = file_io.file_exists_v2(
+        filepath + '.index')
     return tf_saved_model_exists or tf_weights_only_checkpoint_exists
 
   def _get_most_recently_modified_file_matching_pattern(self, pattern):
@@ -1466,7 +1467,7 @@ class ModelCheckpoint(Callback):
     n_file_with_latest_mod_time = 0
     file_path_with_largest_file_name = None
 
-    if file_io.file_exists(dir_name):
+    if file_io.file_exists_v2(dir_name):
       for file_name in os.listdir(dir_name):
         # Only consider if `file_name` matches the pattern.
         if re.match(base_name_regex, file_name):
@@ -2505,7 +2506,7 @@ class CSVLogger(Callback):
 
   def on_train_begin(self, logs=None):
     if self.append:
-      if file_io.file_exists(self.filename):
+      if file_io.file_exists_v2(self.filename):
         with open(self.filename, 'r' + self.file_flags) as f:
           self.append_header = not bool(len(f.readline()))
       mode = 'a'
