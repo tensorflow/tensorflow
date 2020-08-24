@@ -513,6 +513,7 @@ cc_library(
         "ir/tf_saved_model.cc",
     ],
     hdrs = [
+        "dialect_registration.h",
         "ir/tf_device.h",
         "ir/tf_executor.h",
         "ir/tf_ops.h",
@@ -1088,6 +1089,7 @@ cc_library(
     srcs = ["translate/translate_tf_dialect_op.cc"],
     deps = [
         ":export_tf_dialect_op",
+        ":tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Support",
@@ -1408,6 +1410,7 @@ cc_library(
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",
+        ":tensorflow",
         ":translate_cl_options",
         ":translate_lib",
         "//tensorflow/core:protos_all_cc",
