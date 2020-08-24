@@ -238,8 +238,8 @@ Status MNISTForwardModel(AbstractContext* ctx,
    *     hidden_layer = tf.nn.relu(mm_out_1)
    *     scores = tf.matmul(hidden_layer,W2)
    *     softmax =
-   * tf.nn.sparse_softmax_cross_entropy_with_logits(scores,y_labels) return
-   * scores, softmax
+   *      tf.nn.sparse_softmax_cross_entropy_with_logits(scores,y_labels) 
+   *     return scores, softmax
    *
    * Use this convention for inputs:
    *
@@ -271,7 +271,8 @@ Status MNISTForwardModel(AbstractContext* ctx,
                             registry));  // Compute W2*Relu(X*W1)
 
   AbstractTensorHandle* scores = temp_outputs[0];
-
+  
+  temp_outputs.resize(2);
   TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
       ctx, tape, {scores, y_labels}, absl::MakeSpan(temp_outputs),
       "softmax_loss", registry));  // Compute Softmax(Scores,labels)
