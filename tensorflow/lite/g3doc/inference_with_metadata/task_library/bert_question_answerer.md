@@ -94,24 +94,29 @@ for more details.
 Here is an example of the answer results of
 [ALBERT model](https://tfhub.dev/tensorflow/lite-model/albert_lite_base/squadv1/1).
 
-Context: "A bunny is white and it's very fluffy. You don't want to eat a bunny
-because bunny is so cute."
+Context: "The Amazon rainforest, alternatively, the Amazon Jungle, also known in
+English as Amazonia, is a moist broadleaf tropical rainforest in the Amazon
+biome that covers most of the Amazon basin of South America. This basin
+encompasses 7,000,000 km2 (2,700,000 sq mi), of which
+5,500,000 km2 (2,100,000 sq mi) are covered by the rainforest. This region
+includes territory belonging to nine nations."
 
-Question: "what's the color of bunny?"
+Question: "Where is Amazon rainforest?"
 
 Answers:
 
 ```
-answer[0]: 'white'
-    logit: '13.98366, start_index: 13, end_index: 13
-answer[1]: 'bunny is white'
-    logit: '6.84057, start_index: 11, end_index: 13
-answer[2]: 'white and it's very fluffy.'
-    logit: '6.73246, start_index: 13, end_index: 20
-answer[3]: 'white and it's very fluffy.'
-    logit: '6.60175, start_index: 13, end_index: 19
-answer[4]: 'is white'
-    logit: '6.05076, start_index: 12, end_index: 13
+answer[0]:  'South America.'
+logit: 1.84847, start_index: 39, end_index: 40
+answer[1]:  'most of the Amazon basin of South America.'
+logit: 1.2921, start_index: 34, end_index: 40
+answer[2]:  'the Amazon basin of South America.'
+logit: -0.0959535, start_index: 36, end_index: 40
+answer[3]:  'the Amazon biome that covers most of the Amazon basin of South America.'
+logit: -0.498558, start_index: 28, end_index: 40
+answer[4]:  'Amazon basin of South America.'
+logit: -0.774266, start_index: 37, end_index: 40
+
 ```
 
 Try out the simple
