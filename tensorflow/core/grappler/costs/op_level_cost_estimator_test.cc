@@ -793,6 +793,39 @@ TEST_F(OpLevelCostEstimatorTest, Conv2DExecutionTime) {
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 }
 
+TEST_F(OpLevelCostEstimatorTest, InvalidConv2DConfig) {
+  // Convolution ops.
+  const std::vector<const std::string> conv_ops = {
+      "Conv2D",
+      "Conv2DBackpropFilter",
+      "Conv2DBackpropInput",
+      "DepthwiseConv2dNative",
+      "DepthwiseConv2dNativeBackpropFilter",
+      "DepthwiseConv2dNativeBackpropInput",
+  };
+  // A valid Conv2D config.
+  const std::vector<int> valid_conv_config = {16, 19, 19, 48, 48, 5, 5, 256};
+  for (const auto& op : conv_ops) {
+    // Test with setting one value in conv config to zero.
+    // PredictCosts() should return zero costs.
+    for (int i = 0; i < valid_conv_config.size(); ++i) {
+      std::vector<int> conv_config(valid_conv_config);
+      conv_config[i] = 0;
+      auto op_context = DescribeConvolution(
+          conv_config[0], conv_config[1], conv_config[2], conv_config[3],
+          conv_config[4], conv_config[5], conv_config[6], conv_config[7]);
+      op_context.op_info.set_op(op);
+      auto cost = PredictCosts(op_context);
+      EXPECT_EQ(Costs::Duration(0), cost.memory_time);
+      EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+      EXPECT_EQ(Costs::Duration(0), cost.execution_time);
+      EXPECT_EQ(1, cost.num_ops_total);
+      EXPECT_TRUE(cost.inaccurate);
+      EXPECT_EQ(1, cost.num_ops_with_unknown_shapes);
+    }
+  }
+}
+
 TEST_F(OpLevelCostEstimatorTest, DepthwiseConv2dNativeExecutionTime) {
   auto cost =
       PredictCosts(DescribeDepthwiseConv2dNative(16, 19, 19, 48, 48, 5, 5, 3));
