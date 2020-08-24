@@ -52,7 +52,7 @@ Status TestScalarTensorHandle(AbstractContext* ctx, float value,
   return Status::OK();
 }
 
-// Get a Matrix TensorHandle with given float values and dimensions
+// Get a TensorHandle with given float values and dimensions
 Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
                                      int64_t dims[], int num_dims,
                                      AbstractTensorHandle** tensor) {
@@ -68,7 +68,7 @@ Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
   return Status::OK();
 }
 
-// Get a Matrix TensorHandle with given int values and dimensions
+// Get a TensorHandle with given int values and dimensions
 Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int data[],
                                    int64_t dims[], int num_dims,
                                    AbstractTensorHandle** tensor) {
@@ -113,15 +113,15 @@ AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
   return A;
 }
 
-// Fills data with values [start,end) with given step size
+// Fills data with values [start,end) with given step size.
 void Range(int data[], int start, int end, int step = 1) {
   for (int i = start; i < end; i += step) {
     data[i] = i;
   }
 }
 
-// Returns AbstractTensorHandlePtr containing [0, ..., n-1]
-AbstractTensorHandlePtr GetRangeTensorHandleUtil(AbstractContext* ctx, int n) { 
+// Returns AbstractTensorHandlePtr containing [0, ..., n-1].
+AbstractTensorHandlePtr GetRangeTensorHandleUtil(AbstractContext* ctx, int n) {
   int vals[n];
   int64_t vals_shape[] = {n};
   Range(vals, 0, n);
@@ -129,7 +129,7 @@ AbstractTensorHandlePtr GetRangeTensorHandleUtil(AbstractContext* ctx, int n) {
   return r;
 }
 
-// Fills out_dims with the dimensions of the given tensor
+// Fills out_dims with the dimensions of the given tensor.
 void GetDims(const TF_Tensor* t, int64_t* out_dims) {
   int num_dims = TF_NumDims(t);
   for (int i = 0; i < num_dims; i++) {
@@ -137,23 +137,28 @@ void GetDims(const TF_Tensor* t, int64_t* out_dims) {
   }
 }
 
-// Runs Model and reduce_sum the output.
+// Runs Model and reduce_sums the output.
 Status RunModelAndSum(AbstractContext* ctx, Model forward,
                       absl::Span<AbstractTensorHandle*> inputs,
-                      absl::Span<AbstractTensorHandle*> outputs, int num_dims,
+                      absl::Span<AbstractTensorHandle*> outputs,
                       bool use_function) {
   GradientRegistry registry;
   std::vector<AbstractTensorHandle*> model_outputs(1);
 
-  // Will sum all dimensions, so get a Tensor containing [0,...,num_dims-1].
-  AbstractTensorHandlePtr sum_dims = GetRangeTensorHandleUtil(ctx, num_dims);
-
-  // Run the model
-  Status s = RunModel(forward, ctx, inputs,
-                      absl::MakeSpan(model_outputs), use_function, registry);
+  // Run the model.
+  Status s = RunModel(forward, ctx, inputs, absl::MakeSpan(model_outputs),
+                      use_function, registry);
   AbstractTensorHandle* f_toSum = model_outputs[0];
-  
-  // Reduce sum the output on all dimensions
+
+  TF_Tensor* model_out_tensor;
+  s = GetValue(f_toSum, &model_out_tensor);
+  int num_dims_out = TF_NumDims(model_out_tensor);
+
+  // Will sum all dimensions, so get a Tensor containing [0,...,num_dims_out-1].
+  AbstractTensorHandlePtr sum_dims =
+      GetRangeTensorHandleUtil(ctx, num_dims_out);
+
+  // Reduce sum the output on all dimensions.
   std::vector<AbstractTensorHandle*> sum_inputs(2);
   sum_inputs[0] = f_toSum;
   sum_inputs[1] = sum_dims.get();
@@ -168,34 +173,32 @@ Status RunModelAndSum(AbstractContext* ctx, Model forward,
 // else sums the output tensor before returning.
 Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
                       absl::Span<AbstractTensorHandle*> inputs,
-                      absl::Span<AbstractTensorHandle*> outputs, int num_dims,
-                      bool use_function, bool is_scalar_out) { 
-    Status s;
-    if(is_scalar_out){
-      GradientRegistry registry; 
-      s = RunModel(forward, ctx, inputs,
-                   outputs, use_function, registry); 
-    } else {
-      s = RunModelAndSum(ctx, forward, inputs, outputs,
-                         num_dims, use_function);  
-    }
-    return Status::OK();                 
+                      absl::Span<AbstractTensorHandle*> outputs,
+                      bool use_function, bool is_scalar_out) {
+  Status s;
+  if (is_scalar_out) {
+    GradientRegistry registry;
+    s = RunModel(forward, ctx, inputs, outputs, use_function, registry);
+  } else {
+    s = RunModelAndSum(ctx, forward, inputs, outputs, use_function);
   }
+  return Status::OK();
+}
 // ========================= End Util Functions==============================
 
 Status GradientCheck(AbstractContext* ctx, Model forward,
                      std::vector<AbstractTensorHandle*> inputs,
-                     float* dtheta_approx, int gradIndex, 
-                     bool use_function, bool is_scalar_out) {
+                     float* dtheta_approx, int gradIndex, bool use_function,
+                     bool is_scalar_out) {
   Status s;
   AbstractTensorHandle* theta =
       inputs[gradIndex];  // parameter we are grad checking
 
-  // Convert from AbstractTensor to TF_Tensor
+  // Convert from AbstractTensor to TF_Tensor.
   TF_Tensor* theta_tensor;
   s = GetValue(theta, &theta_tensor);
-  
-  // Get number of elements and fill data
+
+  // Get number of elements and fill data.
   int num_elems = TF_TensorElementCount(theta_tensor);
   float theta_data[num_elems] = {0};
   memcpy(&theta_data[0], TF_TensorData(theta_tensor),
@@ -214,16 +217,17 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
   // Numerical Grad Check
   for (int i = 0; i < num_elems; i++) {
     // Get relative epsilon value
-    float epsilon = theta_data[i] * 1e-4;
+    float epsilon =
+        std::abs(theta_data[i] * 1e-4 + 1e-4);  // add 1e-4 to prevent div by 0
 
-    // initialize theta[i] + epsilon
+    // Initialize theta[i] + epsilon.
     memcpy(&thetaPlus_data[0], TF_TensorData(theta_tensor),
            TF_TensorByteSize(theta_tensor));
     thetaPlus_data[i] += epsilon;
     AbstractTensorHandlePtr thetaPlus =
         GetTensorHandleUtilFloat(ctx, thetaPlus_data, theta_dims, num_dims);
 
-    // initialize theta[i] - epsilon
+    // Initialize theta[i] - epsilon.
     memcpy(&thetaMinus_data[0], TF_TensorData(theta_tensor),
            TF_TensorByteSize(theta_tensor));
     thetaMinus_data[i] -= epsilon;
@@ -232,21 +236,21 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
 
     // Get f(theta + eps):
     inputs[gradIndex] = thetaPlus.get();
-    s = RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs), absl::MakeSpan(f_outputs),
-                       num_dims, use_function, is_scalar_out);  
+    s = RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs),
+                       absl::MakeSpan(f_outputs), use_function, is_scalar_out);
     AbstractTensorHandle* fPlus = f_outputs[0];
 
-    // Get f(theta - eps): 
+    // Get f(theta - eps):
     inputs[gradIndex] = thetaMinus.get();
-    s = RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs), absl::MakeSpan(f_outputs),
-                       num_dims, use_function, is_scalar_out);  
+    s = RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs),
+                       absl::MakeSpan(f_outputs), use_function, is_scalar_out);
     AbstractTensorHandle* fMinus = f_outputs[0];
 
-    // Take Difference of both estimates: (f(x + eps) - f(x - eps))
+    // Take Difference of both estimates: (f(x + eps) - f(x - eps)).
     s = ops::Sub(ctx, {fPlus, fMinus}, absl::MakeSpan(f_outputs), "sub_top");
     AbstractTensorHandle* fDiff = f_outputs[0];
 
-    // Get difference value for calculation
+    // Get difference value for calculation.
     TF_Tensor* fDiff_tensor;
     s = GetValue(fDiff, &fDiff_tensor);
     float fDiff_data[1];
@@ -254,7 +258,7 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
            TF_TensorByteSize(fDiff_tensor));
 
     // Calculate using the difference quotient definition:
-    // (f(x + eps) - f(x - eps)) / (2 * eps)
+    // (f(x + eps) - f(x - eps)) / (2 * eps).
     float grad_approx = fDiff_data[0] / (2.0 * epsilon);
     dtheta_approx[i] = grad_approx;
   }

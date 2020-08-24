@@ -44,6 +44,14 @@ class GradientCheckerTest
   }
 };
 
+Status RegisterGradients(GradientRegistry* registry) {
+  TF_RETURN_IF_ERROR(registry->Register("MatMul", MatMulRegisterer));
+  TF_RETURN_IF_ERROR(
+      registry->Register("SparseSoftmaxCrossEntropyWithLogits",
+                         SparseSoftmaxCrossEntropyLossRegisterer));
+  return Status::OK();
+}
+
 // ========================= Test Util Functions ==============================
 
 // Get a scalar TensorHandle with given value
@@ -60,7 +68,7 @@ Status TestScalarTensorHandle(AbstractContext* ctx, float value,
   return Status::OK();
 }
 
-// Get a Matrix TensorHandle with given float values and dimensions
+// Get a TensorHandle with given float values and dimensions
 Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
                                      int64_t dims[], int num_dims,
                                      AbstractTensorHandle** tensor) {
@@ -76,7 +84,7 @@ Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
   return Status::OK();
 }
 
-// Get a Matrix TensorHandle with given int values and dimensions
+// Get a TensorHandle with given int values and dimensions
 Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int data[],
                                    int64_t dims[], int num_dims,
                                    AbstractTensorHandle** tensor) {
@@ -121,15 +129,6 @@ AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
   return A;
 }
 
-
-void printArr(auto data [], int n){
-    std::cout << "[";
-    for (int i = 0; i < n-1; i++) {
-        std::cout << data[i] << ", ";
-    }
-    std::cout << data[n-1] << "]" <<std::endl;
-}
-
 // =========================== Start Tests ================================
 
 TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
@@ -159,8 +158,6 @@ TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   inputs.push_back(A.get());
   inputs.push_back(B.get());
 
-  std::vector<AbstractTensorHandle*> outputs(1);
-  AbstractTensorHandle* out;
   float dapprox[4] = {0};
   Status s =
       GradientCheck(ctx.get(), MatMulModel, inputs, dapprox, /*gradIndex=*/0,
@@ -174,9 +171,21 @@ TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   }
 }
 
-TEST_P(GradientCheckerTest, TestGradCheckMul) {
+TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
+
+  /** Test to show how to use this API with analytical gradients:
+    *
+    *  We have `SoftmaxLossGradModel`, which is a wrapper for the
+    *  Softmax analytical gradient found in c/experimental/nn_grads.
+    *
+    *  We will use the GradientChecker by applying finite differences
+    *  to the forward pass wrapped in `SoftmaxModel` and verify that
+    *  both the analytical and numerical gradients are relatively
+    *  close.
+    *
+    */
 
   AbstractContextPtr ctx;
   {
@@ -187,33 +196,57 @@ TEST_P(GradientCheckerTest, TestGradCheckMul) {
     ctx.reset(ctx_raw);
   }
 
-  AbstractTensorHandlePtr x;
-  {
-    AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    x.reset(x_raw);
-  }
+  // X = scores
+  float X_vals[] = {1.0f, 2.0f, 3.0f, -5.0f, -4.0f, -3.0f, 2.0f, 0.0f, 1.0f};
+  int64_t X_dims[] = {3, 3};
+  int num_dims = 2;
+  AbstractTensorHandlePtr X =
+      GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
 
-  AbstractTensorHandlePtr y;
-  {
-    AbstractTensorHandle* y_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 7.0f, &y_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    y.reset(y_raw);
-  }
+  // y = labels
+  int y_vals[] = {1, 0, 1};
+  int64_t y_dims[] = {3};
+  num_dims = sizeof(y_dims) / sizeof(y_dims[0]);
+  AbstractTensorHandlePtr y =
+      GetTensorHandleUtilInt(ctx.get(), y_vals, y_dims, num_dims);
+
+  GradientRegistry registry;
+  Status s = RegisterGradients(&registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   std::vector<AbstractTensorHandle*> inputs;
-  inputs.push_back(x.get());
+  inputs.push_back(X.get());
   inputs.push_back(y.get());
-  float dapprox[1] = {0};
-  Status s =
-      GradientCheck(ctx.get(), MulModel, inputs, dapprox, /*gradIndex=*/0,
-                    /*use_function=*/!std::get<2>(GetParam()), 
-                    /*is_scalar_out=*/true);
 
+  // Run analytical gradient and get its data.
+  std::vector<AbstractTensorHandle*> outputs(2);
+  s = RunModel(SoftmaxLossGradModel, ctx.get(), absl::MakeSpan(inputs),
+               absl::MakeSpan(outputs),
+               /*use_function=*/!std::get<2>(GetParam()), registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-  ASSERT_NEAR(dapprox[0], 7.0f, /*tolerance=*/1e-3);  
+
+  TF_Tensor* dX_tensor;
+  s = GetValue(outputs[0], &dX_tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  float danalytical[9] = {0};  // Contains data from analytical gradient.
+  memcpy(&danalytical[0], TF_TensorData(dX_tensor),
+         TF_TensorByteSize(dX_tensor));
+
+  // Run numerical gradient approximation using the GradientChecker API.
+  float dapprox[9] = {0};  // Will contain numerical approximation data.
+  s = GradientCheck(ctx.get(), SoftmaxModel, inputs, dapprox, /*gradIndex=*/0,
+                    /*use_function=*/!std::get<2>(GetParam()));
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  // Now compare the two implementations:
+  for (int j = 0; j < 9; j++) {
+    ASSERT_NEAR(dapprox[j], danalytical[j], /*tolerance=*/1e-3);
+  }
+
+  // Only Unref() first output as 2nd is nullptr grad for labels
+  outputs[0]->Unref();
+  TF_DeleteTensor(dX_tensor);
 }
 
 // TODO(b/160888630): Enable this test with mlir after AddInputList is
