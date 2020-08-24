@@ -351,8 +351,8 @@ class TimeDistributed(Wrapper):
       input_length = tf_utils.convert_shapes(input_shape)
       input_length = nest.flatten(input_length)[1]
       if not input_length:
-        input_length = nest.map_structure(lambda x: array_ops.shape(x)[1], inputs)
-        input_length = generic_utils.to_list(nest.flatten(input_length))[0]
+        input_length = nest.map_structure(lambda x: K.shape(x)[1], inputs)
+        input_length = nest.flatten(input_length)[0]
       output_mask_int_shape = K.int_shape(output_mask)
       if output_mask_int_shape is None:
         # if the output_mask does not have a static shape,
@@ -790,25 +790,3 @@ class Bidirectional(Wrapper):
     layer = cls(**config)
     layer._num_constants = num_constants
     return layer
-
-if __name__ == "__main__":
-  from tensorflow.python import keras
-  import numpy as np
-  from tensorflow.python.data.ops import dataset_ops
-  model = keras.models.Sequential()
-  model.add(
-      TimeDistributed(
-          keras.layers.Masking(mask_value=0.,), input_shape=(None, 4)))
-  model.add(TimeDistributed(keras.layers.Dense(5)))
-  model.compile(optimizer='rmsprop', loss='mse')
-  model_input = np.random.randint(low=1, high=5, size=(10, 3, 4))
-  for i in range(4):
-    model_input[i, i:, :] = 0.
-  model.compile(optimizer='rmsprop', loss='mse')
-  model.fit(model_input, np.random.random((10, 3, 5)), epochs=1, batch_size=6)
-  mask_outputs = [model.layers[0].compute_mask(model.input)]
-  mask_outputs += [
-      model.layers[1].compute_mask(model.layers[1].input, mask_outputs[-1])
-  ]
-  func = keras.backend.function([model.input], mask_outputs)
-  mask_outputs_val = func([model_input])
