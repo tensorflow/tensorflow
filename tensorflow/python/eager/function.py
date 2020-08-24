@@ -3081,9 +3081,6 @@ class Function(object):
       assert not include_tensor_ranks_only
       hashable_input_signature = self._hashable_input_signature
 
-    if cache_key_context is None:
-      cache_key_context = self._cache_key_context()
-
     (parent_graph, device_functions, colocation_stack, in_cross_replica_context,
      variable_policy, xla_context_id) = cache_key_context
 
