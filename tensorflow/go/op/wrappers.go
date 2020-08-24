@@ -15395,35 +15395,6 @@ func TensorMapLookup(scope *Scope, input_handle tf.Output, key tf.Output, value_
 	return op.Output(0)
 }
 
-// Merges summaries.
-//
-// This op creates a
-// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
-// protocol buffer that contains the union of all the values in the input
-// summaries.
-//
-// When the Op is run, it reports an `InvalidArgument` error if multiple values
-// in the summaries to merge use the same tag.
-//
-// Arguments:
-//	inputs: Can be of any shape.  Each must contain serialized `Summary` protocol
-// buffers.
-//
-// Returns Scalar. Serialized `Summary` protocol buffer.
-func MergeSummary(scope *Scope, inputs []tf.Output) (summary tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "MergeSummary",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // DecodeImageAttr is an optional argument to DecodeImage.
 type DecodeImageAttr func(optionalAttr)
 
@@ -42784,6 +42755,35 @@ func SparseFillEmptyRowsGrad(scope *Scope, reverse_index_map tf.Output, grad_val
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1)
+}
+
+// Merges summaries.
+//
+// This op creates a
+// [`Summary`](https://www.tensorflow.org/code/tensorflow/core/framework/summary.proto)
+// protocol buffer that contains the union of all the values in the input
+// summaries.
+//
+// When the Op is run, it reports an `InvalidArgument` error if multiple values
+// in the summaries to merge use the same tag.
+//
+// Arguments:
+//	inputs: Can be of any shape.  Each must contain serialized `Summary` protocol
+// buffers.
+//
+// Returns Scalar. Serialized `Summary` protocol buffer.
+func MergeSummary(scope *Scope, inputs []tf.Output) (summary tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "MergeSummary",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // MaxPool3DGradAttr is an optional argument to MaxPool3DGrad.
