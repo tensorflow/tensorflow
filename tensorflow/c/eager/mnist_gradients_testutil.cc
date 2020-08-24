@@ -495,6 +495,26 @@ Status MulModel(AbstractContext* ctx,
   return Status::OK();
 }
 
+Status SoftmaxModel(AbstractContext* ctx,
+                            absl::Span<AbstractTensorHandle* const> inputs,
+                            absl::Span<AbstractTensorHandle*> outputs,
+                            const GradientRegistry& registry) {
+  
+  AbstractTensorHandle* x = inputs[0];
+  AbstractTensorHandle* labels = inputs[1];
+
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  std::vector<AbstractTensorHandle*> temp_outputs(2);
+  TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(ctx, tape, {x, labels}, absl::MakeSpan(temp_outputs),
+                            "sm_loss", registry));  
+
+  outputs[0] = temp_outputs[0]; // loss values
+
+  delete tape;
+  return Status::OK();
+}
+
 // ============================= End Models ================================
 
 Status UpdateWeights(AbstractContext* ctx, vector<AbstractTensorHandle*>& grads,
