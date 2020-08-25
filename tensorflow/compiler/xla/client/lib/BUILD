@@ -576,6 +576,7 @@ cc_library(
         ":loops",
         ":math",
         ":matrix",
+        ":qr",
         ":slicing",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
