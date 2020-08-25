@@ -53,6 +53,8 @@ bazel test \
       //tensorflow/... \
       -//tensorflow/compiler/... \
       -//tensorflow/lite/... \
+      -//tensorflow/python/integration_testing/... \
+      -//tensorflow/core/tpu/... \
 && bazel test \
       --config=rocm \
       -k \
