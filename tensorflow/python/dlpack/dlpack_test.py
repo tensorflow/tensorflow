@@ -39,72 +39,76 @@ testcase_shapes = [(), (1,), (2, 3), (2, 0), (0, 7), (4, 1, 2)]
 
 
 def FormatShapeAndDtype(shape, dtype):
-  return "_{}[{}]".format(str(dtype), ",".join(map(str, shape)))
+    return "_{}[{}]".format(str(dtype), ",".join(map(str, shape)))
 
 
 def GetNamedTestParameters():
-  result = []
-  for dtype in dlpack_dtypes:
-    for shape in testcase_shapes:
-      result.append({
-          "testcase_name": FormatShapeAndDtype(shape, dtype),
-          "dtype": dtype,
-          "shape": shape
-      })
-  return result
+    result = []
+    for dtype in dlpack_dtypes:
+        for shape in testcase_shapes:
+            result.append({
+                "testcase_name": FormatShapeAndDtype(shape, dtype),
+                "dtype": dtype,
+                "shape": shape
+            })
+    return result
 
 
 class DLPackTest(parameterized.TestCase, test.TestCase):
 
-  @parameterized.named_parameters(GetNamedTestParameters())
-  def testRoundTrip(self, dtype, shape):
-    np.random.seed(42)
-    np_array = np.random.randint(0, 10, shape)
-    # copy to gpu if available
-    tf_tensor = array_ops.identity(constant_op.constant(np_array, dtype=dtype))
-    tf_tensor_device = tf_tensor.device
-    tf_tensor_dtype = tf_tensor.dtype
-    dlcapsule = dlpack.to_dlpack(tf_tensor)
-    del tf_tensor  # should still work
-    tf_tensor2 = dlpack.from_dlpack(dlcapsule)
-    self.assertAllClose(np_array, tf_tensor2)
-    if tf_tensor_dtype == dtypes.int32:
-      # int32 tensor is always on cpu for now
-      self.assertEqual(tf_tensor2.device, "/job:localhost/replica:0/task:0/device:CPU:0")
-    else:
-      self.assertEqual(tf_tensor_device, tf_tensor2.device)
+    @parameterized.named_parameters(GetNamedTestParameters())
+    def testRoundTrip(self, dtype, shape):
+        np.random.seed(42)
+        np_array = np.random.randint(0, 10, shape)
+        # copy to gpu if available
+        tf_tensor = array_ops.identity(
+            constant_op.constant(np_array, dtype=dtype))
+        tf_tensor_device = tf_tensor.device
+        tf_tensor_dtype = tf_tensor.dtype
+        dlcapsule = dlpack.to_dlpack(tf_tensor)
+        del tf_tensor  # should still work
+        tf_tensor2 = dlpack.from_dlpack(dlcapsule)
+        self.assertAllClose(np_array, tf_tensor2)
+        if tf_tensor_dtype == dtypes.int32:
+            # int32 tensor is always on cpu for now
+            self.assertEqual(tf_tensor2.device,
+                             "/job:localhost/replica:0/task:0/device:CPU:0")
+        else:
+            self.assertEqual(tf_tensor_device, tf_tensor2.device)
 
-  def testTensorsCanBeConsumedOnceOnly(self):
-    np.random.seed(42)
-    np_array = np.random.randint(0, 10, (2, 3, 4))
-    tf_tensor = constant_op.constant(np_array, dtype=np.float32)
-    dlcapsule = dlpack.to_dlpack(tf_tensor)
-    del tf_tensor  # should still work
-    _ = dlpack.from_dlpack(dlcapsule)
+    def testTensorsCanBeConsumedOnceOnly(self):
+        np.random.seed(42)
+        np_array = np.random.randint(0, 10, (2, 3, 4))
+        tf_tensor = constant_op.constant(np_array, dtype=np.float32)
+        dlcapsule = dlpack.to_dlpack(tf_tensor)
+        del tf_tensor  # should still work
+        _ = dlpack.from_dlpack(dlcapsule)
 
-    def ConsumeDLPackTensor():
-      dlpack.from_dlpack(dlcapsule)  # Should can be consumed only once
+        def ConsumeDLPackTensor():
+            dlpack.from_dlpack(dlcapsule)  # Should can be consumed only once
 
-    self.assertRaisesRegex(Exception,
-                           ".*a DLPack tensor may be consumed at most once.*",
-                           ConsumeDLPackTensor)
+        self.assertRaisesRegex(Exception,
+                               ".*a DLPack tensor may be consumed at most once.*",
+                               ConsumeDLPackTensor)
 
-  def testUnsupportedTypeToDLPack(self):
+    def testUnsupportedTypeToDLPack(self):
 
-    def UnsupportedQint16():
-      tf_tensor = constant_op.constant([[1, 4], [5, 2]], dtype=dtypes.qint16)
-      _ = dlpack.to_dlpack(tf_tensor)
+        def UnsupportedQint16():
+            tf_tensor = constant_op.constant(
+                [[1, 4], [5, 2]], dtype=dtypes.qint16)
+            _ = dlpack.to_dlpack(tf_tensor)
 
-    def UnsupportedComplex64():
-      tf_tensor = constant_op.constant([[1, 4], [5, 2]], dtype=dtypes.complex64)
-      _ = dlpack.to_dlpack(tf_tensor)
+        def UnsupportedComplex64():
+            tf_tensor = constant_op.constant(
+                [[1, 4], [5, 2]], dtype=dtypes.complex64)
+            _ = dlpack.to_dlpack(tf_tensor)
 
-    self.assertRaisesRegex(Exception, ".* is not supported by dlpack",
-                           UnsupportedQint16)
-    self.assertRaisesRegex(Exception, ".* is not supported by dlpack",
-                           UnsupportedComplex64)
+        self.assertRaisesRegex(Exception, ".* is not supported by dlpack",
+                               UnsupportedQint16)
+        self.assertRaisesRegex(Exception, ".* is not supported by dlpack",
+                               UnsupportedComplex64)
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution()
-  test.main()
+    ops.enable_eager_execution()
+    test.main()
