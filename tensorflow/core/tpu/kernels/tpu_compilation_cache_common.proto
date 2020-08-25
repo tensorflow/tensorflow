@@ -12,8 +12,27 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+syntax = "proto3";
 
-#include "tensorflow/compiler/mlir/tfjs/ir/tfjs_ops.h"
+package tensorflow.tpu;
 
-// Static initialization for TensorFlow.js op registration.
-static mlir::DialectRegistration<mlir::tfjs::TFJSDialect> tfjs_ops;
+// Target type for compilation cache fetch operation.
+enum CompilationCacheFetchTarget {
+  INVALID = 0;
+  MAIN = 1;
+  SHARDING = 2;
+  UNSHARDING = 3;
+}
+
+message TpuCompilationUidAndIndex {
+  int64 uid = 1;
+  int32 proto_index = 2;
+}
+
+message GetTpuProgramRequest {
+  oneof key_oneof {
+    string key = 1;
+    TpuCompilationUidAndIndex uid_and_index = 2;
+  }
+  CompilationCacheFetchTarget fetch_target = 3;
+}

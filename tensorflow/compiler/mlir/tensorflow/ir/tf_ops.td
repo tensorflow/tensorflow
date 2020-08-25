@@ -368,6 +368,8 @@ else_branch: A region that computes the outputs of the op if cond = false.
   let verifier = [{
     return Verify(*this);
   }];
+
+  let hasCanonicalizer = 1;
 }
 
 def TF_LegacyCallOp : TF_Op<"LegacyCall",

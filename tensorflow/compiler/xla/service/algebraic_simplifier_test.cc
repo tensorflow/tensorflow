@@ -5647,6 +5647,30 @@ INSTANTIATE_TEST_SUITE_P(
     DotOfGatherSimplificationTestInstantiation, DotOfGatherSimplificationTest,
     ::testing::ValuesIn(DotOfGatherPositiveNegativeTests()));
 
+TEST_F(AlgebraicSimplifierTest, GatherOfScalarToBroadcast) {
+  const char* hlo_string = R"(
+  HloModule repeat
+
+  ENTRY main {
+    o = f32[1,1] parameter(0)
+    i = s32[100,2] parameter(1)
+    ROOT g = f32[100] gather(o, i), collapsed_slice_dims={0,1},
+                                  start_index_map={0,1},
+                                  index_vector_dim=1,
+                                  offset_dims={},
+                                  slice_sizes={1,1}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TupleReduceReshape) {
   const char* hlo_string = R"(
 HloModule module

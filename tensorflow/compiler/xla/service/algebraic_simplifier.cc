@@ -2500,6 +2500,20 @@ Status AlgebraicSimplifierVisitor::HandleGather(HloInstruction* gather) {
   if (ShapeUtil::IsZeroElementArray(operand_shape)) {
     return ReplaceInstruction(gather, MakeScalarLike(gather, 0));
   }
+
+  // Gathering from a scalar operand is simply a broadcast of that scalar
+  if (ShapeUtil::IsEffectiveScalar(operand_shape)) {
+    HloInstruction* new_operand = gather->mutable_operand(0);
+    if (operand_shape.rank()) {
+      TF_ASSIGN_OR_RETURN(new_operand,
+                          MakeReshapeHlo(ShapeUtil::MakeScalarShape(
+                                             operand_shape.element_type()),
+                                         new_operand));
+    }
+    HloInstruction* new_gather =
+        MakeBroadcastHlo(new_operand, {}, gather->shape());
+    return ReplaceInstruction(gather, new_gather);
+  }
   // If the operand of a gather is very small, it is easier to fuse a
   // sequence of selects.
   const Shape& index_shape = gather->operand(1)->shape();

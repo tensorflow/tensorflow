@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "include/json/json.h"
+#include "json/json.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 

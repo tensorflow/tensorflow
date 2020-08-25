@@ -132,6 +132,28 @@ class HloFftInstruction : public HloInstruction {
   std::vector<int64> fft_length_;
 };
 
+class HloCopyStartInstruction : public HloInstruction {
+ public:
+  explicit HloCopyStartInstruction(const Shape& shape, HloInstruction* operand,
+                                   bool is_cross_program_prefetch);
+
+  bool is_cross_program_prefetch() const { return is_cross_program_prefetch_; }
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  bool is_cross_program_prefetch_;
+};
+
 class HloCompareInstruction : public HloInstruction {
  public:
   explicit HloCompareInstruction(const Shape& shape, HloInstruction* lhs,

@@ -592,6 +592,12 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand, FftType fft_type,
       absl::Span<const int64> fft_length);
 
+  // Creates a copy-start op, indicating whether this is a cross-program
+  // prefetch or not.
+  static std::unique_ptr<HloInstruction> CreateCopyStart(
+      const Shape& shape, HloInstruction* operand,
+      bool is_cross_program_prefetch = false);
+
   // Creates a compare op, performing the comparison specified in direction.
   static std::unique_ptr<HloInstruction> CreateCompare(
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
@@ -1864,6 +1870,9 @@ class HloInstruction {
 
   // Delegates to HloDomainInstruction::user_side_metadata().
   const DomainMetadata& user_side_metadata() const;
+
+  // Delegates to HloCopyStartInstruction::is_cross_program_prefetch().
+  bool is_cross_program_prefetch() const;
 
   // Delegates to HloCompareInstruction::direction().
   ComparisonDirection comparison_direction() const;

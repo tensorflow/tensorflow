@@ -67,6 +67,7 @@ cuda_py_test(
         "no_oss_py38",  # TODO(b/162044699)
     ],
     deps = [
+        ":profiler_lib",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -76,6 +77,7 @@ cuda_py_test(
     srcs = ["model_components_benchmarks_test.py"],
     python_version = "PY3",
     deps = [
+        ":profiler_lib",
         "//tensorflow:tensorflow_py",
     ],
 )

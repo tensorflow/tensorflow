@@ -50,13 +50,13 @@ std::string GetReduceCode() {
 static inline float local_reduce(float input, __local float* tmp) {
   const int local_id = get_local_id(0);
   tmp[local_id] = input;
-  mem_fence(CLK_LOCAL_MEM_FENCE);
+  barrier(CLK_LOCAL_MEM_FENCE);
   int reduction_size = get_local_size(0) / 2;
   while (reduction_size > 0) {
     if (local_id < reduction_size) {
       tmp[local_id] += tmp[local_id + reduction_size];
     }
-    mem_fence(CLK_LOCAL_MEM_FENCE);
+    barrier(CLK_LOCAL_MEM_FENCE);
     reduction_size /=  2;
   }
   return tmp[0];

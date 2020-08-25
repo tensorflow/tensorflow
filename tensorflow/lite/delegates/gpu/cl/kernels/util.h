@@ -44,6 +44,14 @@ std::string GetXStrideCorrected(const std::string& src_x,
                                 const std::string& stride_x,
                                 const std::string& padding_x);
 
+// Calculates correct X coordinate when stride != 1 and batch != 1 for layouts
+// with B after W (for example HWBC4) and WB stored in one axis of GPU
+// resources.
+std::string GetXStrideCorrectedV2(const std::string& src_x,
+                                  const std::string& batch_size,
+                                  const std::string& stride_x,
+                                  const std::string& padding_x);
+
 template <DataType S, typename T>
 void RearrangeWeightsToOHWIOGroupI4O4(
     const tflite::gpu::Tensor<OHWI, S>& weights, int out_group_size,

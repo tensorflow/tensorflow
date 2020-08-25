@@ -313,6 +313,14 @@ class PartitionedHlo {
   // Helper function to reshard the tensor using CollectivePermute.
   PartitionedHlo ReshardWithCollectivePermute(const HloSharding& target) const;
 
+  // Helper function to reshard to partial replicate using AllGather.
+  absl::optional<PartitionedHlo> ReshardToPartialReplicateWithAllGather(
+      const HloSharding& target);
+
+  // Helper function to reshard from partial replicate using DynamicSlice.
+  absl::optional<PartitionedHlo> ReshardFromPartialReplicateWithDynamicSlice(
+      const HloSharding& target);
+
   // SPMD instruction.
   HloInstruction* hlo_;
 

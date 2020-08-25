@@ -174,6 +174,17 @@ class InteropTest(tf.test.TestCase):
     self.assertIsInstance(sq, onp.ndarray)
     self.assertEqual(100., sq[0])
 
+  def testArrayModule(self):
+    arr = np.asarray([10])
+
+    module = arr.__array_module__((np.ndarray,))
+    self.assertIs(module, tf.experimental.numpy)
+
+    class Dummy:
+      pass
+    module = arr.__array_module__((np.ndarray, Dummy))
+    self.assertIs(module, NotImplemented)
+
     # TODO(nareshmodi): Fails since the autopacking code doesn't use
     # nest.flatten.
 
@@ -322,6 +333,11 @@ class InteropTest(tf.test.TestCase):
 
     self.assertIsInstance(c, np.ndarray)
     self.assertEqual(c.shape, (batch_size, 32, 32, 32, 32))
+
+    c = tf.vectorized_map(lambda x: x.T, a)
+
+    self.assertIsInstance(c, np.ndarray)
+    self.assertEqual(c.shape, (batch_size, 32, 32))
 
   def testJacobian(self):
     with tf.GradientTape() as g:

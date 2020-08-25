@@ -454,8 +454,7 @@ class TPUStrategyTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(expected_result, run(input_iterator))
     self.assertAllEqual((0.,), w.read_value())
 
-  # TODO(b/140633529): Re-enable the test.
-  def disable_test_experimental_run_output_on_device(self, enable_packed_var):
+  def test_experimental_run_output_on_device(self, enable_packed_var):
     strategy = get_tpu_strategy(enable_packed_var)
 
     def computation(x):

@@ -137,8 +137,8 @@ class TFProgram(object):
   """Python wrap for a Tensorflow Program (essentially an mlir Module)."""
 
   def __init__(self):
-    mlir.registerDialects()
     self.ctx = mlir.MLIRContext()
+    mlir.preloadTensorFlowDialects(self.ctx)
     self.builder = mlir.Builder(self.ctx)
     self.module = mlir.ModuleOp.create(mlir.UnknownLoc.get(self.ctx))
     self.curr_func = None

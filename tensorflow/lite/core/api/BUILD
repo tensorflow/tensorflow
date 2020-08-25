@@ -1,5 +1,6 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -21,6 +22,7 @@ cc_library(
         "profiler.h",
         "tensor_utils.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
     deps = [
         "@flatbuffers//:runtime_cc",

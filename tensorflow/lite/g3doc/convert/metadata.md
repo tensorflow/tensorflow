@@ -408,8 +408,22 @@ Flatbuffers library.
 
 ### Read the metadata in Java
 
-Note: the Java Metadata Extractor library is available as an Android library
-dependency: `org.tensorflow:tensorflow-lite-metadata`.
+To use the Metadata Extractor library in your Android app, we recommend using
+the
+[TensorFlow Lite Metadata AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-metadata).
+It contains the `MetadataExtractor` class, as well as the FlatBuffers Java
+bindings for the
+[metadata schema](https://github.com/tensorflow/tflite-support/blob/master/tensorflow_lite_support/metadata/metadata_schema.fbs)
+and the
+[model schema](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/schema/schema.fbs).
+
+You can specify this in your `build.gradle` dependencies as follows:
+
+```build
+dependencies {
+    implementation 'org.tensorflow:tensorflow-lite-metadata:0.0.0-nightly'
+}
+```
 
 You can initialize a `MetadataExtractor` object with a `ByteBuffer` that points
 to the model:

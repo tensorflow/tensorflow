@@ -59,7 +59,7 @@ std::string GetOneInputCode(const OperationType& op_type,
       result = "$0 = log($0);\n";
       break;
     case OperationType::RSQRT:
-      result = "$0 = (FLT4)(1.0f) / sqrt($0);\n";
+      result = "$0 = rsqrt($0);\n";
       break;
     case OperationType::SIGMOID:
       if (precision != CalculationsPrecision::F32) {

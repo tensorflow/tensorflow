@@ -53,6 +53,9 @@ class CollectiveRemoteAccessLocal : public CollectiveRemoteAccess {
                   const DeviceLocality& client_locality,
                   const StatusCallback& done) override;
 
+  void CheckPeerHealth(const string& peer_task,
+                       const StatusCallback& done) override;
+
   BufRendezvous* buf_rendezvous() override { return &buf_rendezvous_; }
 
   // Copy utility that always copies bytes from src to dst even if

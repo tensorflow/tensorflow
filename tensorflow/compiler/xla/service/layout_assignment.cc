@@ -1891,7 +1891,7 @@ Status LayoutAssignment::RunOnComputation(
             ? ShapeUtil::GetSubshape(instruction->literal().shape(),
                                      buffer.index())
                   .layout()
-            : LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
+            : GetUnconstrainedLayout(buffer);
     TF_RETURN_IF_ERROR(constraints.SetBufferLayout(new_layout, buffer,
                                                    /*mandatory=*/false));
 
