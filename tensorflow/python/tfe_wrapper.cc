@@ -375,23 +375,11 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
           tensorflow::Device* device = devices[device_idx];
 
-          if (absl::StrContains(device->name(), "XLA") &&
-              !absl::StrContains(device_name, "XLA")) {
-            continue;
-          }
-
           if (tensorflow::DeviceNameUtils::AreCompatibleDevNames(
                   input_device_name, device->parsed_name())) {
             if (device->device_type() == tensorflow::DEVICE_CPU) {
               tensorflow::ThrowValueError(
                   "CPU does not support getting allocator information");
-            }
-
-            if (absl::StrContains(device->device_type(), "XLA") &&
-                !absl::StrContains(device_name, "XLA")) {
-              // TODO(b/140134773): Remove this workaround.
-              // Do not accidentally match XLA devices.
-              continue;
             }
 
             if (matched_device != nullptr) {
