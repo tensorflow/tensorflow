@@ -745,7 +745,6 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       opts->session_options.options,
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
-      static_cast<tensorflow::ContextMirroringPolicy>(opts->mirroring_policy),
       opts->async, opts->lazy_remote_inputs_copy, device_mgr.release(),
       /*device_mgr_owned*/ true, r,
       tensorflow::GetDefaultCustomKernelCreator()));

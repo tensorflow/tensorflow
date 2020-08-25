@@ -109,10 +109,6 @@ def initialize_tpu_system(cluster_resolver=None):
     context.context()._clear_caches()  # pylint: disable=protected-access
 
     serialized_topology = output.numpy()
-
-    # TODO(b/134094971): Remove this when lazy tensor copy in multi-device
-    # function has been implemented.
-    context.context().mirroring_policy = context.MIRRORING_ALL
   elif not ops.executing_eagerly_outside_functions():
     master = cluster_resolver.master()
     cluster_spec = cluster_resolver.cluster_spec()

@@ -775,7 +775,6 @@ class Cluster(object):
       device_filters.set_device_filters(
           "ps", i, ["/job:worker", "/job:%s" % client_name])
 
-    context.context().mirroring_policy = context.MIRRORING_ALL
     # Allow at most one outstanding RPC for each worker at a certain time. This
     # is to simplify worker failure handling in the runtime
     os.environ["TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE"] = "False"

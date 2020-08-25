@@ -544,17 +544,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     return TFE_ContextGetDevicePlacementPolicy(
         tensorflow::InputTFE_Context(ctx));
   });
-  m.def("TFE_ContextGetMirroringPolicy", [](py::handle& ctx) {
-    return TFE_ContextGetMirroringPolicy(tensorflow::InputTFE_Context(ctx));
-  });
   m.def("TFE_ContextSetThreadLocalDevicePlacementPolicy",
         [](py::handle& ctx, TFE_ContextDevicePlacementPolicy policy) {
           TFE_ContextSetThreadLocalDevicePlacementPolicy(
-              tensorflow::InputTFE_Context(ctx), policy);
-        });
-  m.def("TFE_ContextSetThreadLocalMirroringPolicy",
-        [](py::handle& ctx, TFE_ContextMirroringPolicy policy) {
-          TFE_ContextSetThreadLocalMirroringPolicy(
               tensorflow::InputTFE_Context(ctx), policy);
         });
   m.def("TFE_ContextSetServerDef", [](py::handle& ctx, int keep_alive_secs,
@@ -862,8 +854,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextOptionsSetLazyRemoteInputsCopy",
         &TFE_ContextOptionsSetLazyRemoteInputsCopy);
   m.def("TFE_ContextOptionsSetTfrt", &TFE_ContextOptionsSetTfrt);
-  m.def("TFE_ContextOptionsSetMirroringPolicy",
-        &TFE_ContextOptionsSetMirroringPolicy);
   m.def("TFE_ContextOptionsSetAsync", &TFE_ContextOptionsSetAsync);
   m.def("TFE_DeleteContextOptions", &TFE_DeleteContextOptions,
         py::return_value_policy::reference);
@@ -1311,10 +1301,5 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       .value("TF_ATTR_TENSOR", TF_ATTR_TENSOR)
       .value("TF_ATTR_PLACEHOLDER", TF_ATTR_PLACEHOLDER)
       .value("TF_ATTR_FUNC", TF_ATTR_FUNC)
-      .export_values();
-
-  py::enum_<TFE_ContextMirroringPolicy>(m, "TFE_ContextMirroringPolicy")
-      .value("TFE_MIRRORING_NONE", TFE_MIRRORING_NONE)
-      .value("TFE_MIRRORING_ALL", TFE_MIRRORING_ALL)
       .export_values();
 };
