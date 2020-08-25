@@ -12,10 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#ifndef TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
+#define TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_
 
-#include "tensorflow/compiler/mlir/tools/kernel_gen/ir/tf_framework_ops.h"
+#include "tensorflow/c/eager/gradients.h"
 
-// Static initialization for TF Framework dialect registration.
-static mlir::DialectRegistration<
-    mlir::kernel_gen::tf_framework::TFFrameworkDialect>
-    tf_framework_ops;
+namespace tensorflow {
+namespace gradients {
+BackwardFunction* ReluRegisterer(const ForwardOperation& op);
+BackwardFunction* SparseSoftmaxCrossEntropyLossRegisterer(
+    const ForwardOperation& op);
+}  // namespace gradients
+}  // namespace tensorflow
+
+#endif  // TENSORFLOW_C_EXPERIMENTAL_GRADIENTS_NN_GRAD_H_

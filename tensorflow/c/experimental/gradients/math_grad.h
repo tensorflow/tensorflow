@@ -21,6 +21,7 @@ namespace tensorflow {
 namespace gradients {
 BackwardFunction* AddRegisterer(const ForwardOperation& op);
 BackwardFunction* ExpRegisterer(const ForwardOperation& op);
+BackwardFunction* MatMulRegisterer(const ForwardOperation& op);
 }  // namespace gradients
 }  // namespace tensorflow
 

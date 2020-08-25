@@ -2577,12 +2577,13 @@ def _local_genrule(**kwargs):
         **kwargs
     )
 
-def tf_version_info_genrule(name, out):
+def tf_version_info_genrule(name, out, compatible_with = None):
     # TODO(gunan): Investigate making this action hermetic so we do not need
     # to run it locally.
     _local_genrule(
         name = name,
         out = out,
+        compatible_with = compatible_with,
         exec_tool = "//tensorflow/tools/git:gen_git_source",
         srcs = [
             "@local_config_git//:gen/spec.json",
@@ -2928,3 +2929,6 @@ def tf_grpc_dependency():
 
 def tf_grpc_cc_dependency():
     return "//tensorflow:grpc++"
+
+def get_compatible_with_portable():
+    return []

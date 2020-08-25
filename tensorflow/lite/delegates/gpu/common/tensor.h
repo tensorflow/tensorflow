@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TENSOR_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TENSOR_H_
 
-#include <string>
+#include <stdint.h>
+
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"

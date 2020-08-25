@@ -246,13 +246,13 @@ absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
       return absl::OkStatus();
     }
     case OperationType::LSTM: {
-      SelectLSTM(op_def, device_info, gpu_op);
+      *gpu_op = SelectLSTM(op_def, device_info);
       return absl::OkStatus();
     }
     case OperationType::MAX_UNPOOLING_2D: {
       auto attr =
           absl::any_cast<MaxUnpooling2DAttributes>(node.operation.attributes);
-      SelectMaxUnpooling(attr, op_def, gpu_op);
+      *gpu_op = SelectMaxUnpooling(attr, op_def);
       return absl::OkStatus();
     }
     case OperationType::MEAN: {
@@ -274,7 +274,7 @@ absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
     case OperationType::POOLING_2D: {
       auto attr =
           absl::any_cast<Pooling2DAttributes>(node.operation.attributes);
-      SelectPooling(attr, op_def, gpu_op);
+      *gpu_op = SelectPooling(attr, op_def);
       return absl::OkStatus();
     }
     case OperationType::PRELU: {

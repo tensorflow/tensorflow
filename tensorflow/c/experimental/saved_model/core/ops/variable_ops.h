@@ -31,6 +31,7 @@ namespace internal {
 // https://github.com/tensorflow/tensorflow/blob/516608035f85cec8b126712b0ff8407220206b22/tensorflow/python/ops/resource_variable_ops.py#L1867-L1872
 Status CreateUninitializedResourceVariable(ImmediateExecutionContext* ctx,
                                            DataType dtype, TensorShape shape,
+                                           const char* raw_device_name,
                                            ImmediateTensorHandlePtr* handle);
 
 // Executes an AssignVariableOp using `ctx`, assigning the variable associated

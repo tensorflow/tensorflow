@@ -337,6 +337,7 @@ def flatten(structure, expand_composites=False):
   """
   if structure is None:
     return [None]
+  expand_composites = bool(expand_composites)
   return _pywrap_utils.Flatten(structure, expand_composites)
 
 

@@ -469,6 +469,21 @@ distribute_py_test(
 )
 
 distribute_py_test(
+    name = "keras_models_test",
+    srcs = ["keras_models_test.py"],
+    main = "keras_models_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
     name = "keras_rnn_model_correctness_test",
     size = "medium",
     srcs = ["keras_rnn_model_correctness_test.py"],
@@ -824,7 +839,6 @@ py_test(
     shard_count = 1,
     tags = [
         "no_oss",  # TODO(b/162119374): enable it in OSS.
-        "notap",  # TODO(b/165836402): enable after testing it isn't flaky.
     ],
     deps = [
         "//tensorflow/python:constant_op",

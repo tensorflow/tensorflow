@@ -104,12 +104,26 @@ TEST_F(DynamismInferenceTest, ScalarInt32Literal) {
   }
 }
 
+TEST_F(DynamismInferenceTest, TupleSimple) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    auto c = ConstantR0<int32>(&b, 42);
+    auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
+
+    auto tuple = Tuple(&b, {c, p});
+    EXPECT_EQ(ComputeDynamismScalar(client, tuple, &b, {0}).ValueOrDie(),
+              false);
+    EXPECT_EQ(ComputeDynamismScalar(client, tuple, &b, {1}).ValueOrDie(), true);
+  }
+}
+
 TEST_F(DynamismInferenceTest, TupleGteKeepsDynamism) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
     auto c = ConstantR0<int32>(&b, 42);
-    auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "0");
+    auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
 
     auto tuple = Tuple(&b, {c, p});
     auto gte0 = GetTupleElement(tuple, 0);
@@ -122,12 +136,25 @@ TEST_F(DynamismInferenceTest, TupleGteKeepsDynamism) {
   }
 }
 
+TEST_F(DynamismInferenceTest, PredValueUsedTwice) {
+  for (ClientType client_type : client_types) {
+    Client* client = ClientOrDie(platform_, client_type);
+    XlaBuilder b(TestName());
+    auto c = ConstantR0<int32>(&b, 42);
+    auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
+    auto pred = Eq(c, p);
+    auto result = Select(pred, p, c);
+    EXPECT_EQ(ComputeDynamismScalar(client, result, &b, {}).ValueOrDie(),
+              false);
+  }
+}
+
 TEST_F(DynamismInferenceTest, ConcatSliceReshapeKeepsDynamism) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
     auto c = ConstantR0<int32>(&b, 42);
-    auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "0");
+    auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
 
     auto concat = ConcatScalars(&b, {c, p});
     auto slice0 = SliceInDim(concat, 0, 1, 1, 0);
@@ -146,7 +173,7 @@ TEST_F(DynamismInferenceTest, ParameterIsDynamic) {
   for (ClientType client_type : client_types) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
-    auto computation = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "0");
+    auto computation = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
 
     auto value = ComputeDynamismScalar(client, computation, &b);
     ASSERT_TRUE(value.ok()) << value.status();
@@ -160,7 +187,7 @@ TEST_F(DynamismInferenceTest, UnaryOpKeepsDynamism) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
     auto c = ConstantR0<int32>(&b, 42);
-    auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "0");
+    auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
 
     auto neg0 = Neg(c);
     auto neg1 = Neg(p);
@@ -177,7 +204,7 @@ TEST_F(DynamismInferenceTest, BinaryOpsOrsDynamism) {
     Client* client = ClientOrDie(platform_, client_type);
     XlaBuilder b(TestName());
     auto c = ConstantR0<int32>(&b, 42);
-    auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "0");
+    auto p = Parameter(&b, 0, ShapeUtil::MakeScalarShape(S32), "p0");
 
     // Static value + static value = static
     auto add1 = Add(c, c);
@@ -198,8 +225,8 @@ TEST_F(DynamismInferenceTest, GetDimensionSize) {
     // param = Param([<=2, 3])
     // get_dimension_size(param, 0) is dynamic
     // get_dimension_size(param, 1) is static
-    auto p =
-        Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}), "0");
+    auto p = Parameter(&b, 0, ShapeUtil::MakeShape(S32, {2, 3}, {true, false}),
+                       "p0");
 
     auto gds0 = GetDimensionSize(p, 0);
     auto gds1 = GetDimensionSize(p, 1);

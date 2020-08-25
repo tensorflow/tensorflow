@@ -36,6 +36,10 @@ tf_class {
     argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "clip"
+    argspec: "args=[\'a\', \'a_min\', \'a_max\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "from_tensor"
     argspec: "args=[\'cls\', \'tensor\'], varargs=None, keywords=None, defaults=None"
   }

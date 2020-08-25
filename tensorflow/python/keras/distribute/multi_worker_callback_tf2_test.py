@@ -37,9 +37,10 @@ from tensorflow.python.platform import test
 def checkpoint_exists(filepath):
   """Returns whether the checkpoint `filepath` refers to exists."""
   if filepath.endswith('.h5'):
-    return file_io.file_exists(filepath)
-  tf_saved_model_exists = file_io.file_exists(filepath)
-  tf_weights_only_checkpoint_exists = file_io.file_exists(filepath + '.index')
+    return file_io.file_exists_v2(filepath)
+  tf_saved_model_exists = file_io.file_exists_v2(filepath)
+  tf_weights_only_checkpoint_exists = file_io.file_exists_v2(
+      filepath + '.index')
   return tf_saved_model_exists or tf_weights_only_checkpoint_exists
 
 
@@ -145,7 +146,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       num_epoch = 2
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
-      test_obj.assertFalse(file_io.file_exists(saving_filepath))
+      test_obj.assertFalse(file_io.file_exists_v2(saving_filepath))
 
       model.fit(
           x=train_ds,
@@ -153,7 +154,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           steps_per_epoch=steps,
           callbacks=[callbacks.ModelCheckpoint(filepath=saving_filepath)])
 
-      test_obj.assertTrue(file_io.file_exists(saving_filepath))
+      test_obj.assertTrue(file_io.file_exists_v2(saving_filepath))
 
     saving_filepath = os.path.join(self.get_temp_dir(), 'checkpoint')
 
@@ -185,7 +186,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       num_epoch = 4
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
-      test_obj.assertFalse(file_io.file_exists(saving_filepath))
+      test_obj.assertFalse(file_io.file_exists_v2(saving_filepath))
       bar_dir = os.path.join(os.path.dirname(saving_filepath), 'backup')
 
       try:
@@ -204,8 +205,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
       multi_process_runner.barrier().wait()
       backup_filepath = os.path.join(bar_dir, 'checkpoint')
-      test_obj.assertTrue(file_io.file_exists(backup_filepath))
-      test_obj.assertTrue(file_io.file_exists(saving_filepath))
+      test_obj.assertTrue(file_io.file_exists_v2(backup_filepath))
+      test_obj.assertTrue(file_io.file_exists_v2(saving_filepath))
 
       model.fit(
           x=train_ds,
@@ -217,8 +218,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
               AssertCallback()
           ])
       multi_process_runner.barrier().wait()
-      test_obj.assertFalse(file_io.file_exists(backup_filepath))
-      test_obj.assertTrue(file_io.file_exists(saving_filepath))
+      test_obj.assertFalse(file_io.file_exists_v2(backup_filepath))
+      test_obj.assertTrue(file_io.file_exists_v2(saving_filepath))
 
     saving_filepath = os.path.join(self.get_temp_dir(), 'checkpoint')
 
@@ -244,7 +245,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
           'logfile_%s_%d' % (task_config['type'], task_config['index']))
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
-      test_obj.assertFalse(file_io.file_exists(saving_filepath))
+      test_obj.assertFalse(file_io.file_exists_v2(saving_filepath))
 
       model.fit(
           x=train_ds,
@@ -257,7 +258,8 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       # `file_io.list_directory()` since the directory may be created at this
       # point.
       test_obj.assertEqual(
-          bool(file_io.list_directory(saving_filepath)), test_base.is_chief())
+          bool(file_io.list_directory_v2(saving_filepath)),
+          test_base.is_chief())
 
     multi_process_runner.run(
         proc_tensorboard_saves_on_chief_but_not_otherwise,
@@ -280,7 +282,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
       # Verifies that even if `saving_filepath_for_temp` exists, tensorboard
       # can still save to temporary directory.
-      test_obj.assertTrue(file_io.file_exists(saving_filepath_for_temp))
+      test_obj.assertTrue(file_io.file_exists_v2(saving_filepath_for_temp))
 
       model.fit(
           x=train_ds,
@@ -301,7 +303,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
       num_epoch = 2
 
       # The saving_filepath shouldn't exist at the beginning (as it's unique).
-      test_obj.assertFalse(file_io.file_exists(saving_filepath))
+      test_obj.assertFalse(file_io.file_exists_v2(saving_filepath))
 
       multi_process_runner.barrier().wait()
 
@@ -313,7 +315,7 @@ class KerasCallbackMultiProcessTest(parameterized.TestCase, test.TestCase):
 
       multi_process_runner.barrier().wait()
 
-      test_obj.assertTrue(file_io.list_directory(saving_filepath))
+      test_obj.assertTrue(file_io.list_directory_v2(saving_filepath))
 
     saving_filepath = os.path.join(self.get_temp_dir(), 'logfile')
 

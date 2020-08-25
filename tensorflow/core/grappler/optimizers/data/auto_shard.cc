@@ -561,7 +561,8 @@ Status ShardByData(const NodeDef& sink_node, int64 num_workers, int64 index,
 Status OptimizeGraph(const GrapplerItem& item, int64 num_workers, int64 index,
                      AutoShardPolicy policy, int64 num_replicas,
                      GraphDef* output) {
-  if (policy == AutoShardPolicy::OFF || (num_workers == 1 && index == 0)) {
+  if (policy == AutoShardPolicy::OFF ||
+      (policy == AutoShardPolicy::FILE && num_workers == 1 && index == 0)) {
     return Status::OK();
   }
 

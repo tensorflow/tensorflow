@@ -2327,9 +2327,12 @@ TEST_P(OpConverterTest1, ConvertShape) {
                 "Shape is only supported for explicit batch mode.")
           : Status::OK();
   std::vector<TestParamBase> test_params = {
-      TestParamBase{{1, 2, 3}, {}, {3}, {}, conversion_status},
-      // Add input as weight (we use non empty param ({1}) to trigger this).
-      TestParamBase{{1, 2, 3}, {}, {3}, {1}, conversion_status},
+// TODO(b/166274212): Enable the test parameter for TensorRT 7.1.3.
+#if !IS_TRT_VERSION_GE(7, 1, 3, 0)
+    TestParamBase{{1, 2, 3}, {}, {3}, {}, conversion_status},
+#endif
+    // Add input as weight (we use non empty param ({1}) to trigger this).
+    TestParamBase{{1, 2, 3}, {}, {3}, {1}, conversion_status},
   };
 
   auto input_is_weight = [](const TestParamBase p) { return !p.param.empty(); };
