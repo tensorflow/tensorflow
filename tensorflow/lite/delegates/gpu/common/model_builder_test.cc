@@ -15,15 +15,21 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model_builder.h"
 
-#include <cstdlib>
+#include <stddef.h>
+#include <stdint.h>
 
-#include <gmock/gmock.h>
+#include <cstdlib>
+#include <utility>
+#include <vector>
+
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "tensorflow/lite/builtin_ops.h"
-#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/core/subgraph.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/stderr_reporter.h"
 
 namespace tflite {
 namespace gpu {
