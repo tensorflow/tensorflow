@@ -2101,6 +2101,41 @@ TEST_F(OpLevelCostEstimatorTest, ResizeBilinearExecutionTime) {
     EXPECT_FALSE(cost.inaccurate);
     EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
   }
+
+  {
+    // Cost with very large tensor.
+    op_context.op_info.clear_outputs();
+    // Number of elements in tensor exceeds 2^32.
+    constexpr int64 kLargeOutputImageDim = 40000;
+    DescribeTensor4D(1, kLargeOutputImageDim, kLargeOutputImageDim,
+                     kChannelSize, op_context.op_info.add_outputs());
+    const int64 kInterpWeightCost = 12;
+    // Using half_pixel_centers.
+    AttrValue half_pixel_centers;
+    half_pixel_centers.set_b(true);
+    (*op_context.op_info.mutable_attr())["half_pixel_centers"] =
+        half_pixel_centers;
+
+    const int64 num_ops =
+        kInterpWeightCost * (kLargeOutputImageDim * 2) +
+        kComputeLerpCost *
+            (kLargeOutputImageDim * kLargeOutputImageDim * kChannelSize);
+    const int64 expected_compute_time = std::ceil(
+        num_ops /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    const int64 expected_memory_time =
+        (kImageDim * kImageDim + kLargeOutputImageDim * kLargeOutputImageDim) *
+        4;
+
+    const auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(expected_memory_time));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(expected_memory_time + expected_compute_time));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
 }
 
 }  // end namespace grappler

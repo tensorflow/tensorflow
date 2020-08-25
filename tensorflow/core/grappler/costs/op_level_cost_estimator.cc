@@ -2359,7 +2359,7 @@ Costs OpLevelCostEstimator::PredictResizeBilinear(
       CalculateTensorSize(op_context.op_info.inputs(0), &found_unknown_shapes);
   const int64 output_size =
       CalculateTensorSize(op_context.op_info.outputs(0), &found_unknown_shapes);
-  const int output_elements = CalculateTensorElementCount(
+  const int64 output_elements = CalculateTensorElementCount(
       op_context.op_info.outputs(0), &found_unknown_shapes);
 
   const auto half_pixel_centers =
@@ -2373,7 +2373,7 @@ Costs OpLevelCostEstimator::PredictResizeBilinear(
   }
 
   // Compose cost of bilinear interpolation.
-  auto ops = 0;
+  int64 ops = 0;
 
 #define EIGEN_COST(X) Eigen::internal::functor_traits<Eigen::internal::X>::Cost
   const auto sub_cost_float = EIGEN_COST(scalar_difference_op<float>);
