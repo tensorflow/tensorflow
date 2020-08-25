@@ -604,6 +604,41 @@ cc_library(
 )
 
 cc_library(
+    name = "tpu_compilation_cache_service",
+    srcs = ["tpu_compilation_cache_service.cc"],
+    hdrs = ["tpu_compilation_cache_service.h"],
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
+    deps = select({
+        WITH_TPU_SUPPORT: [
+            ":tpu_compilation_cache_rpc_support",
+            ":tpu_compilation_cache_proto_cc",
+        ],
+        DEFAULT: [
+            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_rpc_support",
+            "//tensorflow/core/tpu/kernels:tpu_compilation_cache_proto_cc",
+        ],
+    }) + [
+        ":tpu_compilation_cache_common_proto_cc",
+        ":tpu_compilation_cache_entry",
+        ":tpu_compilation_cache_grpc",
+        ":tpu_compilation_cache_interface",
+        ":tpu_compilation_cache_rpc_support_hdrs",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/synchronization",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_call",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_util",
+        "//tensorflow/core/lib/core:refcount",
+        "//tensorflow/core/lib/core:threadpool",
+        "//tensorflow/core/platform:coding",
+        "//tensorflow/core:protos_all_cc",
+        tf_grpc_cc_dependency(),
+    ],
+)
+
+cc_library(
     name = "tpu_compile_op_hdrs",
     hdrs = ["tpu_compile_op.h"],
     deps = [
