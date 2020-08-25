@@ -16,11 +16,13 @@ limitations under the License.
 #include <string>
 
 #include "llvm/Support/raw_ostream.h"
+#include "mlir/InitAllPasses.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/tf_saved_model_passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -41,7 +43,6 @@ std::string ImportGraphDef(const std::string &proto,
   GraphDebugInfo debug_info;
   GraphImportConfig specs;
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   auto module = ConvertGraphdefToMlir(graphdef, debug_info, specs, &context);
   if (!module.ok()) {
     Set_TF_Status_from_Status(status, module.status());
@@ -86,7 +87,6 @@ std::string ExperimentalConvertSavedModelToMlir(
   std::vector<string> exported_names =
       absl::StrSplit(exported_names_str, ',', absl::SkipEmpty());
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   auto module_or = ConvertSavedModelToMlir(
       &bundle, &context, absl::Span<std::string>(exported_names));
   if (!module_or.status().ok()) {
@@ -117,7 +117,6 @@ std::string ExperimentalConvertSavedModelV1ToMlir(
   // Convert the SavedModelBundle to an MLIR module.
 
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   auto module_or =
       ConvertSavedModelV1ToMlir(bundle, {}, &context, upgrade_legacy);
   if (!module_or.status().ok()) {
@@ -153,6 +152,7 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
                                         bool show_debug_info,
                                         TF_Status *status) {
   mlir::MLIRContext context;
+  mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
   mlir::OwningModuleRef module;
   {
     mlir::StatusScopedDiagnosticHandler diagnostic_handler(&context);
@@ -167,6 +167,7 @@ std::string ExperimentalRunPassPipeline(const std::string &mlir_txt,
   mlir::PassManager pm(&context);
   std::string error;
   llvm::raw_string_ostream error_stream(error);
+  mlir::registerAllPasses();
   if (failed(mlir::parsePassPipeline(pass_pipeline, pm, error_stream))) {
     TF_SetStatus(status, TF_INVALID_ARGUMENT,
                  ("Invalid pass_pipeline: " + error_stream.str()).c_str());
