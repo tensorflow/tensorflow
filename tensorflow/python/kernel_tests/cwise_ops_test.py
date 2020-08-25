@@ -1032,12 +1032,10 @@ class RoundingTest(test.TestCase):
     self._compare_values(x, y=y)
 
   def testTypes(self):
-    # TODO(b/131162241): Enable test for GPU
-    with ops.device("/CPU:0"):
-      for dtype in [np.float16, np.float32, np.float64,
-                    dtypes_lib.bfloat16.as_numpy_dtype]:
-        with self.subTest(dtype=dtype):
-          self._testDtype(dtype)
+    for dtype in [np.float16, np.float32, np.float64,
+                  dtypes_lib.bfloat16.as_numpy_dtype]:
+      with self.subTest(dtype=dtype):
+        self._testDtype(dtype)
 
 
 class ComplexMakeRealImagTest(test.TestCase):
