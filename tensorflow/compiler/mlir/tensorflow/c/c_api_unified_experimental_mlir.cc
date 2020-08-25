@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/c/tf_status.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_status_internal.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -74,15 +75,9 @@ using tensorflow::tracing::TracingTensorHandle;
 
 namespace {
 
-static void RegisterDialects() {
-  static bool init_once = []() {
-    mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    return true;
-  }();
-  (void)init_once;
+void RegisterDialects(mlir::MLIRContext& ctx) {
+  mlir::RegisterAllTensorFlowDialects(ctx.getDialectRegistry());
+  ctx.getDialectRegistry().loadAll(&ctx);
 }
 
 Status ConvertDataTypeToTensor(tensorflow::DataType dtype, Builder builder,
@@ -239,6 +234,7 @@ class MlirFunctionContext : public TracingContext {
       : TracingContext(kMlir),
         context_(std::make_unique<MLIRContext>()),
         builder_(context_.get()) {
+    RegisterDialects(*context_);
     // TODO(aminim) figure out the location story here
     module_ = ModuleOp::create(builder_.getUnknownLoc());
     func_ = FuncOp::create(builder_.getUnknownLoc(), name,
@@ -666,7 +662,6 @@ Status MlirFunctionContext::Finalize(OutputList* outputs,
 
 extern "C" {
 TracingContext* MlirTracingFactory(const char* fn_name, TF_Status* s) {
-  RegisterDialects();
   return new MlirFunctionContext(fn_name);
 }
 }
