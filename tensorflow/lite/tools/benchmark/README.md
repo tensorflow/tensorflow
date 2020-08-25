@@ -1,4 +1,4 @@
-# TFLite Model Benchmark Tool
+# TFLite Model Benchmark Tool with C++ Binary
 
 ## Description
 

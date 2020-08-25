@@ -54,6 +54,8 @@ class Arguments {
   void AddObject(const std::string& name, AccessType access_type,
                  GPUObjectPtr&& object,
                  GPUObjectDescriptorPtr&& descriptor_ptr);
+  void AddObject(const std::string& name,
+                 GPUObjectDescriptorPtr&& descriptor_ptr);
 
   absl::Status SetInt(const std::string& name, int value);
   absl::Status SetFloat(const std::string& name, float value);
@@ -73,6 +75,7 @@ class Arguments {
   void RenameArgs(const std::string& postfix, std::string* code) const;
   absl::Status Merge(Arguments&& args, const std::string& postfix);
 
+  absl::Status AllocateObjects(CLContext* context);
   absl::Status TransformToCLCode(
       const DeviceInfo& device_info,
       const std::map<std::string, std::string>& linkables, std::string* code);

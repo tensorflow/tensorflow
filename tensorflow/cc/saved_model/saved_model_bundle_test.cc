@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/cc/saved_model/loader.h"
-
 #include "tensorflow/cc/saved_model/constants.h"
+#include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/cc/saved_model/reader.h"
 #include "tensorflow/cc/saved_model/signature_constants.h"
 #include "tensorflow/cc/saved_model/tag_constants.h"
 #include "tensorflow/core/example/example.pb.h"
@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/protobuf/meta_graph.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -129,6 +130,43 @@ TEST_F(LoaderTest, TagMatch) {
   TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
                               {kSavedModelTagServe}, &bundle));
   CheckSavedModelBundle(export_dir, bundle);
+}
+
+TEST_F(LoaderTest, ReadMetaGraphFromSavedModel) {
+  SavedModelBundle bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
+  MetaGraphDef actual_metagraph;
+  TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(export_dir, {kSavedModelTagServe},
+                                              &actual_metagraph));
+  EXPECT_EQ(actual_metagraph.DebugString(),
+            bundle.meta_graph_def.DebugString());
+}
+
+TEST_F(LoaderTest, RestoreSession) {
+  SavedModelBundle bundle;
+  SessionOptions session_options;
+  RunOptions run_options;
+
+  const string export_dir =
+      io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataSharded);
+  TF_ASSERT_OK(LoadSavedModel(session_options, run_options, export_dir,
+                              {kSavedModelTagServe}, &bundle));
+
+  SavedModelBundle actual_bundle;
+  const std::unordered_set<std::string> tags = {kSavedModelTagServe};
+  TF_ASSERT_OK(ReadMetaGraphDefFromSavedModel(export_dir, tags,
+                                              &actual_bundle.meta_graph_def));
+  TF_ASSERT_OK(LoadMetagraphIntoSession(
+      session_options, actual_bundle.meta_graph_def, &actual_bundle.session));
+  TF_ASSERT_OK(RestoreSession(run_options, actual_bundle.meta_graph_def,
+                              export_dir, &actual_bundle.session));
+  CheckSavedModelBundle(export_dir, actual_bundle);
 }
 
 TEST_F(LoaderTest, NoTagMatch) {

@@ -380,6 +380,8 @@ class TypeSpec(object):
   @staticmethod
   def __is_compatible(a, b):
     """Returns true if the given type serializations compatible."""
+    if isinstance(a, TypeSpec):
+      return a.is_compatible_with(b)
     if type(a) is not type(b):
       return False
     if isinstance(a, (list, tuple)):
@@ -388,7 +390,7 @@ class TypeSpec(object):
     if isinstance(a, dict):
       return (len(a) == len(b) and sorted(a.keys()) == sorted(b.keys()) and all(
           TypeSpec.__is_compatible(a[k], b[k]) for k in a.keys()))
-    if isinstance(a, (TypeSpec, tensor_shape.TensorShape, dtypes.DType)):
+    if isinstance(a, (tensor_shape.TensorShape, dtypes.DType)):
       return a.is_compatible_with(b)
     return a == b
 

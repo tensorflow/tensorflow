@@ -33,27 +33,27 @@ struct TpuDimensionsExternal {
 class TpuCoreLocationExternal {
  public:
   TpuCoreLocationExternal() : core_location_(nullptr) {}
-  explicit TpuCoreLocationExternal(void* core_location)
+  explicit TpuCoreLocationExternal(SE_TpuTopology_Core* core_location)
       : core_location_(core_location) {}
   TpuDimensionsExternal chip_coordinates() const;
   TpuDimensionsExternal host_coordinates() const;
   int32 index() const;
   int32 Id() const;
 
-  void* impl() const { return core_location_; }
+  SE_TpuTopology_Core* impl() const { return core_location_; }
 
  private:
-  void* core_location_;
+  SE_TpuTopology_Core* core_location_;
 };
 
 class TpuHostLocationExternal {
  public:
-  explicit TpuHostLocationExternal(void* host_location)
+  explicit TpuHostLocationExternal(SE_TpuTopology_Host* host_location)
       : host_location_(host_location) {}
   int32 Id() const;
 
  private:
-  void* host_location_;
+  SE_TpuTopology_Host* host_location_;
 };
 
 struct TpuTopologyChipBoundsExternal {
@@ -64,7 +64,8 @@ struct TpuTopologyChipBoundsExternal {
 
 class TpuTopologyExternal {
  public:
-  explicit TpuTopologyExternal(void* topology) : topology_(topology) {}
+  explicit TpuTopologyExternal(SE_TpuTopology* topology)
+      : topology_(topology) {}
   int32 LogicalDevicesPerHost(TpuCoreTypeEnum core_type) const;
   int32 LogicalDevicesPerChip(TpuCoreTypeEnum core_type) const;
   TpuTopologyChipBoundsExternal chip_bounds() const;
@@ -73,10 +74,13 @@ class TpuTopologyExternal {
                                int index) const;
   std::vector<TpuCoreLocationExternal> cores(TpuCoreTypeEnum core_type) const;
   int IdForHost(TpuDimensionsExternal host) const;
+  TpuVersionEnum version() const;
 
  private:
-  void* topology_;
+  SE_TpuTopology* topology_;
 };
+
+std::string TpuVersionEnumToString(TpuVersionEnum version);
 
 }  // namespace tpu
 }  // namespace tensorflow

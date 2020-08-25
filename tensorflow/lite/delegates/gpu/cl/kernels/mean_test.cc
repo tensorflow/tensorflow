@@ -47,7 +47,7 @@ TEST_F(OpenCLOperationTest, Mean) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      Mean operation = CreateMean(op_def, env_.GetDevicePtr()->GetInfo());
+      Mean operation = CreateMean(op_def, env_.GetDevicePtr()->info_);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 1, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data, Pointwise(FloatNear(eps), {2.5f}));

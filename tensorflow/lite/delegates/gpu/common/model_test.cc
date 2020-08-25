@@ -15,11 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 
-#include <initializer_list>
-#include <vector>
-
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 
 namespace tflite {
 namespace gpu {

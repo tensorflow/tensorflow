@@ -357,6 +357,22 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose([0.], self.evaluate(var))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
+  def testGradGlobalClipNorm(self):
+    with testing_utils.use_gpu():
+      # l2 norm is 5.0
+      var1 = variables.Variable([1.0])
+      var2 = variables.Variable([2.0])
+      loss = lambda: 3 * var1 + 4 * var2
+      opt = gradient_descent.SGD(learning_rate=1.0, global_clipnorm=2.0)
+      opt_op = opt.minimize(loss, [var1, var2])
+      self.evaluate(variables.global_variables_initializer())
+      self.evaluate(opt_op)
+      # grad1 = 3.0 * 2.0 / 5.0 = 1.2
+      self.assertAllClose([-.2], self.evaluate(var1))
+      # grad2 = 4.0 * 2.0 / 5.0 = 1.6
+      self.assertAllClose([.4], self.evaluate(var2))
+
+  @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInvalidClipNorm(self):
     with self.assertRaisesRegex(ValueError, '>= 0'):
       gradient_descent.SGD(learning_rate=1.0, clipnorm=-1.0)

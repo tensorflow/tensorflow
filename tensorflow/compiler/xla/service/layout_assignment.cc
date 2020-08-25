@@ -1891,7 +1891,7 @@ Status LayoutAssignment::RunOnComputation(
             ? ShapeUtil::GetSubshape(instruction->literal().shape(),
                                      buffer.index())
                   .layout()
-            : LayoutUtil::GetDefaultLayoutForShape(buffer.shape());
+            : GetUnconstrainedLayout(buffer);
     TF_RETURN_IF_ERROR(constraints.SetBufferLayout(new_layout, buffer,
                                                    /*mandatory=*/false));
 
@@ -2278,6 +2278,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kReduce:
     case HloOpcode::kReplicaId:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kRng:
     case HloOpcode::kRngBitGenerator:
     case HloOpcode::kRngGetAndUpdateState:

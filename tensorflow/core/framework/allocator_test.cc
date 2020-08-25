@@ -133,7 +133,7 @@ TEST(AllocatorAttributesDeathTest, MergeDifferentScopeIds) {
 }
 
 TEST(CPUAllocatorTest, Simple) {
-  EnableCPUAllocatorStats(true);
+  EnableCPUAllocatorStats();
   Allocator* a = cpu_allocator();
   std::vector<void*> ptrs;
   for (int s = 1; s < 1024; s++) {
@@ -162,7 +162,7 @@ TEST(CPUAllocatorTest, Simple) {
              1048576 * sizeof(double));
   a->ClearStats();
   CheckStats(a, 0, 0, 0, 0);
-  EnableCPUAllocatorStats(false);
+  DisableCPUAllocatorStats();
 }
 
 // Define a struct that we will use to observe behavior in the unit tests
@@ -227,13 +227,13 @@ static void BM_Allocation(int iters, int arg) {
   std::vector<int> sizes = {256, 4096, 16384, 524288, 512, 1048576};
   int size_index = 0;
 
-  if (arg) EnableCPUAllocatorStats(true);
+  if (arg) EnableCPUAllocatorStats();
   while (--iters > 0) {
     int bytes = sizes[size_index++ % sizes.size()];
     void* p = a->AllocateRaw(1, bytes);
     a->DeallocateRaw(p);
   }
-  if (arg) EnableCPUAllocatorStats(false);
+  if (arg) DisableCPUAllocatorStats();
 }
 BENCHMARK(BM_Allocation)->Arg(0)->Arg(1);
 

@@ -167,6 +167,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                               absl::Span<const int64>(fft_length));
       break;
     }
+    case HloOpcode::kCopyStart: {
+      instruction = CreateCopyStart(shape, operands(0),
+                                    proto.is_cross_program_prefetch());
+      break;
+    }
     case HloOpcode::kCompare: {
       // Auto-upgraded from deprecated opcode skips the following.
       if (!comparison_direction) {
@@ -700,6 +705,17 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = CreateReshape(shape, operands(0), inferred_dimension);
       break;
     }
+    case HloOpcode::kDynamicReshape: {
+      TF_RET_CHECK(shape.IsArray() && operands(0)->shape().IsArray() &&
+                   ShapeUtil::ElementsIn(shape) ==
+                       ShapeUtil::ElementsIn(operands(0)->shape()))
+          << "shape: " << ShapeUtil::HumanString(shape)
+          << " operand: " << ShapeUtil::HumanString(operands(0)->shape());
+      const auto& operand_vector = all_operands();
+      instruction = CreateDynamicReshape(
+          shape, operands(0), absl::MakeSpan(operand_vector).subspan(1));
+      break;
+    }
     default: {
       instruction = absl::WrapUnique(new HloInstruction(opcode, shape));
       for (const int64 operand_id : proto.operand_ids()) {
@@ -828,7 +844,6 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     case HloOpcode::kCeil:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
-    case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kClz:
@@ -933,6 +948,13 @@ HloInstruction::CreateRngBitGenerator(const Shape& shape, HloInstruction* state,
     absl::Span<const int64> fft_length) {
   return absl::make_unique<HloFftInstruction>(shape, operand, fft_type,
                                               fft_length);
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCopyStart(
+    const Shape& shape, HloInstruction* operand,
+    bool is_cross_program_prefetch) {
+  return absl::make_unique<HloCopyStartInstruction>(shape, operand,
+                                                    is_cross_program_prefetch);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCompare(
@@ -1373,6 +1395,19 @@ HloInstruction::CreateBroadcastSequence(
                                                   inferred_dimension);
 }
 
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateDynamicReshape(
+    const Shape& shape, HloInstruction* data_operand,
+    absl::Span<HloInstruction* const> dim_sizes) {
+  CHECK_EQ(ShapeUtil::ElementsIn(shape),
+           ShapeUtil::ElementsIn(data_operand[0].shape()))
+      << "shape: " << ShapeUtil::HumanString(shape)
+      << " operand: " << ShapeUtil::HumanString(data_operand[0].shape());
+  CHECK_EQ(shape.rank(), dim_sizes.size());
+  return absl::make_unique<HloDynamicReshapeInstruction>(shape, data_operand,
+                                                         dim_sizes);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateTranspose(
     const Shape& shape, HloInstruction* operand,
     absl::Span<const int64> dimensions) {
@@ -1569,6 +1604,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kTranspose:
     case HloOpcode::kBroadcast:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kMap:
     case HloOpcode::kSlice:
     case HloOpcode::kConstant:
@@ -2007,6 +2043,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReal:
     case HloOpcode::kRemainder:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kReplicaId:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kRsqrt:
@@ -2812,7 +2849,8 @@ HloInstructionProto HloInstruction::ToProto() const {
 
 string HloInstruction::ToCategory() const {
   if (opcode() == HloOpcode::kTranspose || opcode() == HloOpcode::kCopy ||
-      opcode() == HloOpcode::kReshape) {
+      opcode() == HloOpcode::kReshape ||
+      opcode() == HloOpcode::kDynamicReshape) {
     return "data formatting";
   }
 
@@ -3033,6 +3071,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandlePad(this);
     case HloOpcode::kReshape:
       return visitor->HandleReshape(this);
+    case HloOpcode::kDynamicReshape:
+      return visitor->HandleDynamicReshape(this);
     case HloOpcode::kTranspose:
       return visitor->HandleTranspose(this);
     case HloOpcode::kReverse:
@@ -4087,6 +4127,10 @@ const DomainMetadata& HloInstruction::operand_side_metadata() const {
 
 const DomainMetadata& HloInstruction::user_side_metadata() const {
   return Cast<HloDomainInstruction>(this)->user_side_metadata();
+}
+
+bool HloInstruction::is_cross_program_prefetch() const {
+  return Cast<HloCopyStartInstruction>(this)->is_cross_program_prefetch();
 }
 
 ComparisonDirection HloInstruction::comparison_direction() const {

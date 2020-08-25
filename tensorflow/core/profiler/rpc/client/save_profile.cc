@@ -82,10 +82,8 @@ string ProfilerJoinPath(const T&... args) {
 constexpr char kProtoTraceFileName[] = "trace";
 constexpr char kTfStatsHelperSuffix[] = "tf_stats_helper_result";
 
-Status DumpToolDataToLogDirectory(absl::string_view run_dir,
-                                  absl::string_view host,
-                                  const ProfileToolData& tool,
-                                  std::ostream* os) {
+Status DumpToolData(absl::string_view run_dir, absl::string_view host,
+                    const ProfileToolData& tool, std::ostream* os) {
   // Don't save the intermediate results for combining the per host tool data.
   if (absl::EndsWith(tool.name(), kTfStatsHelperSuffix)) return Status::OK();
   string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
@@ -97,23 +95,6 @@ Status DumpToolDataToLogDirectory(absl::string_view run_dir,
         << std::endl;
   }
   return Status::OK();
-}
-
-// Creates an empty event file if not already exists, which indicates that we
-// have a plugins/profile/ directory in the current logdir.
-Status MaybeCreateEmptyEventFile(const string& logdir) {
-  // Suffix for an empty event file.  it should be kept in sync with
-  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
-  constexpr char kProfileEmptySuffix[] = ".profile-empty";
-  std::vector<string> children;
-  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
-  for (const string& child : children) {
-    if (absl::EndsWith(child, kProfileEmptySuffix)) {
-      return Status::OK();
-    }
-  }
-  EventsWriter event_writer(ProfilerJoinPath(logdir, "events"));
-  return event_writer.InitWithSuffix(kProfileEmptySuffix);
 }
 
 Status WriteGzippedDataToFile(const string& filepath, const string& data) {
@@ -129,20 +110,14 @@ Status WriteGzippedDataToFile(const string& filepath, const string& data) {
   return Status::OK();
 }
 
-Status GetOrCreateProfileRunDir(const string& logdir, const string& run,
-                                string* profile_run_dir, std::ostream* os) {
-  // Dumps profile data to <logdir>/plugins/profile/<run>/.
-  *profile_run_dir =
-      ProfilerJoinPath(GetTensorBoardProfilePluginDir(logdir), run);
-  *os << "Creating directory: " << *profile_run_dir;
-  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(*profile_run_dir));
-
-  // Creates an empty event file so that TensorBoard plugin logic can find
-  // the logdir.
-  TF_RETURN_IF_ERROR(MaybeCreateEmptyEventFile(logdir));
+Status GetOrCreateRunDir(const string& repository_root, const string& run,
+                         string* run_dir, std::ostream* os) {
+  // Dumps profile data to <repository_root>/<run>/.
+  *run_dir = ProfilerJoinPath(repository_root, run);
+  *os << "Creating directory: " << *run_dir;
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(*run_dir));
   return Status::OK();
 }
-
 }  // namespace
 
 string GetTensorBoardProfilePluginDir(const string& logdir) {
@@ -151,33 +126,44 @@ string GetTensorBoardProfilePluginDir(const string& logdir) {
   return ProfilerJoinPath(logdir, kPluginName, kProfileName);
 }
 
-Status SaveTensorboardProfile(const string& logdir, const string& run,
-                              const string& host,
-                              const ProfileResponse& response,
-                              std::ostream* os) {
-  string profile_run_dir;
-  TF_RETURN_IF_ERROR(
-      GetOrCreateProfileRunDir(logdir, run, &profile_run_dir, os));
+Status MaybeCreateEmptyEventFile(const string& logdir) {
+  // Suffix for an empty event file.  it should be kept in sync with
+  // _EVENT_FILE_SUFFIX in tensorflow/python/eager/profiler.py.
+  constexpr char kProfileEmptySuffix[] = ".profile-empty";
+  TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(logdir));
+
+  std::vector<string> children;
+  TF_RETURN_IF_ERROR(Env::Default()->GetChildren(logdir, &children));
+  for (const string& child : children) {
+    if (absl::EndsWith(child, kProfileEmptySuffix)) {
+      return Status::OK();
+    }
+  }
+  EventsWriter event_writer(ProfilerJoinPath(logdir, "events"));
+  return event_writer.InitWithSuffix(kProfileEmptySuffix);
+}
+
+Status SaveProfile(const string& repository_root, const string& run,
+                   const string& host, const ProfileResponse& response,
+                   std::ostream* os) {
+  string run_dir;
+  TF_RETURN_IF_ERROR(GetOrCreateRunDir(repository_root, run, &run_dir, os));
   for (const auto& tool_data : response.tool_data()) {
-    TF_RETURN_IF_ERROR(
-        DumpToolDataToLogDirectory(profile_run_dir, host, tool_data, os));
+    TF_RETURN_IF_ERROR(DumpToolData(run_dir, host, tool_data, os));
   }
   return Status::OK();
 }
 
-Status SaveGzippedToolDataToTensorboardProfile(const string& logdir,
-                                               const string& run,
-                                               const string& host,
-                                               const string& tool_name,
-                                               const string& data) {
-  string profile_run_dir;
+Status SaveGzippedToolData(const string& repository_root, const string& run,
+                           const string& host, const string& tool_name,
+                           const string& data) {
+  string run_dir;
   std::stringstream ss;
-  Status status = GetOrCreateProfileRunDir(logdir, run, &profile_run_dir, &ss);
+  Status status = GetOrCreateRunDir(repository_root, run, &run_dir, &ss);
   LOG(INFO) << ss.str();
   TF_RETURN_IF_ERROR(status);
   string host_prefix = host.empty() ? "" : absl::StrCat(host, ".");
-  string path =
-      ProfilerJoinPath(profile_run_dir, absl::StrCat(host_prefix, tool_name));
+  string path = ProfilerJoinPath(run_dir, absl::StrCat(host_prefix, tool_name));
   TF_RETURN_IF_ERROR(WriteGzippedDataToFile(path, data));
   LOG(INFO) << "Dumped gzipped tool data for " << tool_name << " to " << path;
   return Status::OK();

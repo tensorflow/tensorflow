@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -57,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/transforms/dilated_conv.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/constant_utils.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/einsum.h"
@@ -78,13 +80,23 @@ namespace {
 // Prepare TF operations in functions for subsequent legalization.
 class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
-  explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
-  explicit PrepareTFPass(bool unfold_batch_matmul)
-      : unfold_batch_matmul_(unfold_batch_matmul) {}
+  PrepareTFPass() = default;
+  PrepareTFPass(const PrepareTFPass &) {}
+  explicit PrepareTFPass(bool unfold_batch_matmul) {
+    unfold_batch_matmul_ = unfold_batch_matmul;
+  }
   void runOnFunction() override;
 
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mhlo::MhloDialect, quant::QuantizationDialect,
+                    TFL::TensorFlowLiteDialect>();
+  }
+
  private:
-  bool unfold_batch_matmul_;
+  Option<bool> unfold_batch_matmul_{
+      *this, "tfl-unfold-batch-matmul",
+      llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
+      llvm::cl::init(true)};
 };
 
 template <class TFFakeQuantOp>
@@ -686,6 +698,46 @@ struct ConvertTFStridedSlice : public RewritePattern {
   }
 };
 
+struct ConvertTFBroadcastTo : public RewritePattern {
+  explicit ConvertTFBroadcastTo(MLIRContext *context)
+      : RewritePattern(TF::BroadcastToOp::getOperationName(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto tf_broadcast_to_op = cast<TF::BroadcastToOp>(op);
+    auto input_type = tf_broadcast_to_op.input().getType().cast<ShapedType>();
+    auto output_type = tf_broadcast_to_op.output().getType().cast<ShapedType>();
+    auto shape_type = tf_broadcast_to_op.shape().getType().cast<ShapedType>();
+    Type element_type = input_type.getElementType();
+
+    // Allow lowering when low dimension inputs are given and its type is F32 or
+    // I32.
+    if (!((output_type.hasRank() && output_type.getRank() <= 5) ||
+          (shape_type.hasStaticShape() && shape_type.getRank() == 1 &&
+           shape_type.getDimSize(0) <= 5)))
+      return failure();
+
+    if (!(element_type.isa<BFloat16Type, Float32Type>() ||
+          element_type.isInteger(32)))
+      return failure();
+
+    auto status_or_const_op =
+        CreateConstOpWithSingleValue(&rewriter, op->getLoc(), input_type, 1);
+    if (!status_or_const_op.ok()) {
+      return failure();
+    }
+
+    auto tf_fill_op = rewriter.create<TF::FillOp>(
+        op->getLoc(), output_type, tf_broadcast_to_op.shape(),
+        status_or_const_op.ValueOrDie());
+
+    auto mul_op = rewriter.create<TF::MulOp>(
+        op->getLoc(), output_type, tf_broadcast_to_op.input(), tf_fill_op);
+    rewriter.replaceOp(op, mul_op.getResult());
+    return success();
+  }
+};
+
 #include "tensorflow/compiler/mlir/lite/transforms/generated_prepare_tf.inc"
 
 // Returns success if all the operations in the `op`'s regions including `op`
@@ -718,6 +770,102 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
 
   return applyPartialConversion(func, target, patterns);
 }
+
+// Convert rfft to rfft2d.
+// The transformation pattern looks like below:
+//
+//    input     fft_len
+//     \      /
+//     rfft
+//
+//     ||
+//     \/
+//
+//   input       fft_len
+//    \            /
+//   expand_dim    concat with [1] at the front
+//      \         /
+//     rfft_2d
+//       |
+//     squeeze
+struct ConvertRfftToRfft2d : public RewritePattern {
+  explicit ConvertRfftToRfft2d(MLIRContext *context)
+      : RewritePattern(TF::RFFTOp::getOperationName(), 1, context) {}
+
+  LogicalResult matchAndRewrite(Operation *op,
+                                PatternRewriter &rewriter) const override {
+    auto rfft_op = dyn_cast<TF::RFFTOp>(op);
+
+    auto input = rfft_op.input();
+    auto input_type = input.getType().dyn_cast_or_null<RankedTensorType>();
+    if (!input_type) return failure();
+    auto fft_len = rfft_op.fft_length();
+    auto fft_len_type = fft_len.getType().dyn_cast_or_null<ShapedType>();
+    if (!fft_len_type) return failure();
+
+    auto output_type =
+        rfft_op.getResult().getType().dyn_cast_or_null<RankedTensorType>();
+    if (!output_type) return failure();
+
+    // Expanded inputs.
+    // Insert at -2 location.
+    auto one_ele_type =
+        mlir::RankedTensorType::get({1}, rewriter.getIntegerType(32));
+    auto minus_two = CreateConstOpWithSingleValue(&rewriter, rfft_op.getLoc(),
+                                                  one_ele_type, -2);
+
+    SmallVector<int64_t, 4> expanded_input_shape;
+    SmallVector<int64_t, 4> expanded_output_shape;
+    int expanded_rank = input_type.getRank() + 1;
+    int r = 0;
+    for (int i = 0; i < expanded_rank; ++i) {
+      if (i == expanded_rank - 2) {
+        expanded_input_shape.push_back(1);
+        expanded_output_shape.push_back(1);
+      } else {
+        expanded_input_shape.push_back(input_type.getDimSize(r));
+        expanded_output_shape.push_back(output_type.getDimSize(r));
+        r++;
+      }
+    }
+
+    auto expaned_input_type = mlir::RankedTensorType::get(
+        expanded_input_shape, input_type.getElementType());
+    TF::ExpandDimsOp expanded_input = rewriter.create<TF::ExpandDimsOp>(
+        rfft_op.getLoc(), expaned_input_type, input, minus_two->getResult());
+
+    // Expanded fft_len.
+    auto one_attr = mlir::DenseIntElementsAttr::get(one_ele_type, {1});
+
+    auto one = rewriter.create<TF::ConstOp>(rfft_op.getLoc(), one_attr);
+
+    auto zero = CreateConstOpWithSingleValue(&rewriter, rfft_op.getLoc(),
+                                             one_ele_type, 0);
+
+    auto expanded_fft_len_type =
+        mlir::RankedTensorType::get({2}, fft_len_type.getElementType());
+
+    TF::ConcatV2Op expanded_fft_len = rewriter.create<TF::ConcatV2Op>(
+        rfft_op.getLoc(), expanded_fft_len_type,
+        SmallVector<Value, 2>({one.getResult(), fft_len}), zero->getResult());
+
+    // Insert the rfft_2d.
+    auto rfft2d_out_type = mlir::RankedTensorType::get(
+        expanded_output_shape, output_type.getElementType());
+    TF::RFFT2DOp rfft2d = rewriter.create<TF::RFFT2DOp>(
+        rfft_op.getLoc(), rfft2d_out_type, expanded_input.getResult(),
+        expanded_fft_len.getResult());
+
+    // Insert the squeeze op.
+    auto squeeze_dim = rewriter.getI64ArrayAttr({-2});
+    TF::SqueezeOp squeeze = rewriter.create<TF::SqueezeOp>(
+        rfft_op.getLoc(), output_type, rfft2d.getResult(), squeeze_dim);
+
+    rewriter.replaceOp(op, squeeze.getResult());
+
+    return success();
+  }
+};
 
 void PrepareTFPass::runOnFunction() {
   OwningRewritePatternList patterns;
@@ -767,8 +915,9 @@ void PrepareTFPass::runOnFunction() {
     patterns.insert<TF::ConvertTFBatchMatMulOp<TF::BatchMatMulOp>,
                     TF::ConvertTFBatchMatMulOp<TF::BatchMatMulV2Op>>(ctx);
   }
-  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFConv2D,
-                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice>(ctx);
+  patterns.insert<TF::ConvertTFEinsumOp, ConvertTFBroadcastTo, ConvertTFConv2D,
+                  ConvertTFDepthwiseConv2dNative, ConvertTFStridedSlice,
+                  ConvertRfftToRfft2d>(ctx);
   applyPatternsAndFoldGreedily(func, patterns);
 }
 

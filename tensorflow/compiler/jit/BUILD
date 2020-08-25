@@ -195,6 +195,7 @@ XLA_DEVICE_DEPS = [
     "//tensorflow/core/kernels/data:optional_ops",
     "//tensorflow/core/kernels/data:prefetch_dataset_op",
     "//tensorflow/core/profiler/lib:traceme",
+    "//tensorflow/stream_executor:tf_allocator_adapter",
     "//tensorflow/stream_executor/platform",
 ]
 
@@ -205,16 +206,19 @@ cc_library(
         "xla_device.cc",
         "xla_device_context.cc",
         "xla_device_ops.cc",
+        "xla_ops_on_regular_devices.cc",
+        "xla_platform_info.cc",
     ],
     hdrs = [
         "xla_compile_on_demand_op.h",
         "xla_device.h",
         "xla_device_context.h",
         "xla_device_ops.h",
+        "xla_platform_info.h",
     ],
     # Public visibility is needed for external TF/XLA backends.
     visibility = ["//visibility:public"],
-    deps = XLA_DEVICE_DEPS,
+    deps = XLA_DEVICE_DEPS + [":xla_compilation_cache"],
 )
 
 cc_library(

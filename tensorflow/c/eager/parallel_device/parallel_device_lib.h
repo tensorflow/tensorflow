@@ -21,6 +21,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
@@ -60,6 +61,11 @@ class ParallelDevice {
   std::unique_ptr<ParallelTensor> CopyToParallelDevice(TFE_Context* context,
                                                        TFE_TensorHandle* tensor,
                                                        TF_Status* status) const;
+
+  // Construct a parallel tensor consisting of the scalar values from `values`.
+  std::unique_ptr<ParallelTensor> Vector(
+      TFE_Context* context, TF_Status* status,
+      absl::Span<const int32_t> values) const;
 
   // A parallel tensor with scalar integers numbering component devices.
   std::unique_ptr<ParallelTensor> DeviceIDs(TFE_Context* context,

@@ -297,19 +297,18 @@ class DummyResourceOp : public OpKernel {
 };
 
 // Given an op prefix and an op to match, returns whether the op to match
-// is a regex match for any version of the op prefix. For example,
-// MatchesAnyVersionRE("BatchDataset", "BatchDataset") == true
-// MatchesAnyVersionRE("BatchDataset", "BatchDatasetV2") == true
-// MatchesAnyVersionRE("BatchDataset", "BatchDatasetV3") == true
-// MatchesAnyVersionRE("PaddedBatchDataset", "BatchDataset") == false
-bool MatchesAnyVersionRE(StringPiece op_prefix, StringPiece op_to_match);
+// is a match for any version of the op prefix. For example,
+// MatchesAnyVersion("BatchDataset", "BatchDataset") == true
+// MatchesAnyVersion("BatchDataset", "BatchDatasetV2") == true
+// MatchesAnyVersion("BatchDataset", "BatchDatasetV3") == true
+// MatchesAnyVersion("PaddedBatchDataset", "BatchDataset") == false
+bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match);
 
-// Based on `optimizations_enabled`, `optimizations_disabled`, and
-// `optimizations_disabled`, returns the list of optimizations that will be
+// Based on `job_name`, `optimizations_enabled`, `optimizations_disabled` and
+// `optimizations_default`, returns the list of optimizations that will be
 // applied.
 std::vector<tstring> SelectOptimizations(
-    const string& job_name, const string& opt_ins_raw,
-    const string& opt_outs_raw,
+    const string& job_name,
     const absl::flat_hash_map<string, uint64>& live_experiments,
     const std::vector<tstring>& optimizations_enabled,
     const std::vector<tstring>& optimizations_disabled,

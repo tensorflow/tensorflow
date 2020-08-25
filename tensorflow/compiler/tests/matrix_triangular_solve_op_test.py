@@ -135,6 +135,7 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
     self._VerifyTriangularSolve(
         a.astype(np.float32), b.astype(np.float32), True, False, 1e-4)
 
+  @test_util.disable_mlir_bridge("Error handling")
   def testNonSquareCoefficientMatrix(self):
     rng = np.random.RandomState(0)
     for dtype in self.float_types:
@@ -145,6 +146,7 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
           linalg_ops.matrix_triangular_solve(a, b)
 
   @test_util.run_v2_only  # Different error types
+  @test_util.disable_mlir_bridge("Error handling")
   def testWrongDimensionsV2(self):
     randn = np.random.RandomState(0).randn
     for dtype in self.float_types:
@@ -156,6 +158,7 @@ class MatrixTriangularSolveOpTest(xla_test.XLATestCase):
         linalg_ops.matrix_triangular_solve(lhs, rhs)
 
   @test_util.run_v1_only("Different error types")
+  @test_util.disable_mlir_bridge("Error handling")
   def testWrongDimensionsV1(self):
     randn = np.random.RandomState(0).randn
     for dtype in self.float_types:

@@ -376,6 +376,7 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":context",
         ":core",
@@ -958,6 +959,7 @@ cuda_py_test(
         "optonly",  # times out
     ],
     deps = [
+        ":cancellation",
         ":context",
         ":def_function",
         ":remote",

@@ -47,6 +47,7 @@ cc_library(
         # TODO(b/111634734): :lib and :protos_all contain dependencies that
         # cannot be built on mobile platforms. Instead, include the appropriate
         # tf_lib depending on the build platform.
+        "@com_google_absl//absl/memory:memory",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ]),
@@ -171,6 +172,7 @@ tf_cc_test(
     deps = [
         ":constants",
         ":loader",
+        ":reader",
         ":signature_constants",
         ":tag_constants",
         "//tensorflow/core:lib",

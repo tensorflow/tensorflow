@@ -28,6 +28,73 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.saved_model import save_options
+from tensorflow.python.training.saving import saveable_object
+
+
+def get_on_write_saveable(var, primary_var, name):
+  """Return saveable spec for AUTO and ON_WRITE variables."""
+  # We use a callable so that we don't have to evaluate this expression
+  # in the case where we are trying to restore instead of save.
+  def tensor():
+    strategy = var.distribute_strategy
+    return strategy.extended.read_var(var)
+
+  spec = saveable_object.SaveSpec(
+      tensor=tensor,
+      slice_spec="",
+      name=name,
+      dtype=var.dtype,
+      device=primary_var.device)
+
+  return tensor, [spec]
+
+
+def get_on_write_restore_ops(var, tensor):
+  """Return restore ops for AUTO and ON_WRITE variables."""
+  packed_var = var._packed_variable  # pylint: disable=protected-access
+  if packed_var is not None:
+    return control_flow_ops.group(
+        tuple(
+            assign_on_device(d, packed_var, tensor)
+            for d in packed_var.devices))
+  return control_flow_ops.group(
+      tuple(
+          assign_on_device(v.device, v, tensor)
+          for v in var.values))
+
+
+def get_on_read_saveable(var, primary_var, name):
+  """Return saveables for ON_READ variable."""
+
+  # We use a callable so that we don't have to evaluate this expression
+  # in the case where we are trying to restore instead of save.
+  def tensor():
+    strategy = var.distribute_strategy
+    return strategy.extended.read_var(var)
+
+  spec = saveable_object.SaveSpec(
+      tensor=tensor,
+      slice_spec="",
+      name=name,
+      dtype=var.dtype,
+      device=primary_var.device)
+
+  return tensor, [spec]
+
+
+def get_on_read_restore_ops(var, tensor, aggregation):
+  """Return restore ops for ON_READ variables."""
+  # To preserve the sum across save and restore, we have to divide the
+  # total across all devices when restoring a variable that was summed
+  # when saving.
+  if aggregation == vs.VariableAggregation.SUM:
+    strategy = var.distribute_strategy
+    tensor = math_ops.cast(tensor / strategy.num_replicas_in_sync,
+                           var.dtype)
+  return control_flow_ops.group(
+      tuple(
+          assign_on_device(v.device, v, tensor)
+          for v in var.values))
 
 
 # Utility function that indicates if you are in an UpdateContext when running

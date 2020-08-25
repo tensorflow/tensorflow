@@ -3566,46 +3566,49 @@ def _flatten_outer_dims(logits):
   return output
 
 
-def _softmax(logits, compute_op, dim=-1, name=None):
-  """Helper function for softmax and log_softmax.
+def _wrap_2d_function(inputs, compute_op, dim=-1, name=None):
+  """Helper function for ops that accept and return 2d inputs of same shape.
 
-  It reshapes and transposes the input logits into a 2-D Tensor and then invokes
-  the tf.nn._softmax or tf.nn._log_softmax function. The output would be
-  transposed and reshaped back.
+  It reshapes and transposes the inputs into a 2-D Tensor and then invokes
+  the given function. The output would be transposed and reshaped back.
+  If the given function returns a tuple of tensors, each of them will be
+  transposed and reshaped.
 
   Args:
-    logits: A non-empty `Tensor`. Must be one of the following types: `half`,
+    inputs: A non-empty `Tensor`. Must be one of the following types: `half`,
       `float32`, `float64`.
-    compute_op: Either gen_nn_ops.softmax or gen_nn_ops.log_softmax
+    compute_op: The function to wrap. Must accept the input tensor as its first
+      arugment, and a second keyword argument `name`.
     dim: The dimension softmax would be performed on. The default is -1 which
       indicates the last dimension.
     name: A name for the operation (optional).
 
   Returns:
-    A `Tensor`. Has the same type as `logits`. Same shape as `logits`.
+    A `Tensor`. Has the same shape as inputs. If compute_op returns multiple
+      tensors, each of them have the same shape as the input.
   Raises:
-    InvalidArgumentError: if `logits` is empty or `dim` is beyond the last
-      dimension of `logits`.
+    InvalidArgumentError: if `inputs` is empty or `dim` is beyond the last
+      dimension of `inputs`.
   """
 
-  def _swap_axis(logits, dim_index, last_index, name=None):
+  def _swap_axis(input_tensor, dim_index, last_index, name=None):
     """Swaps logits's dim_index and last_index."""
     return array_ops.transpose(
-        logits,
+        input_tensor,
         array_ops.concat([
             math_ops.range(dim_index), [last_index],
             math_ops.range(dim_index + 1, last_index), [dim_index]
         ], 0),
         name=name)
 
-  logits = ops.convert_to_tensor(logits)
+  inputs = ops.convert_to_tensor(inputs)
 
   # We need its original shape for shape inference.
-  shape = logits.get_shape()
+  shape = inputs.get_shape()
   is_last_dim = (dim == -1) or (dim == shape.ndims - 1)
 
   if is_last_dim:
-    return compute_op(logits, name=name)
+    return compute_op(inputs, name=name)
 
   dim_val = dim
   if isinstance(dim, ops.Tensor):
@@ -3618,10 +3621,10 @@ def _softmax(logits, compute_op, dim=-1, name=None):
                                        shape.ndims))
 
   # If dim is not the last dimension, we have to do a transpose so that we can
-  # still perform softmax on its last dimension.
+  # still perform the op on its last dimension.
 
   # In case dim is negative (and is not last dimension -1), add shape.ndims
-  ndims = array_ops.rank(logits)
+  ndims = array_ops.rank(inputs)
   if not isinstance(dim, ops.Tensor):
     if dim < 0:
       dim += ndims
@@ -3629,20 +3632,24 @@ def _softmax(logits, compute_op, dim=-1, name=None):
     dim = array_ops.where(math_ops.less(dim, 0), dim + ndims, dim)
 
   # Swap logits' dimension of dim and its last dimension.
-  input_rank = array_ops.rank(logits)
+  input_rank = array_ops.rank(inputs)
   dim_axis = dim % shape.ndims
-  logits = _swap_axis(logits, dim_axis, math_ops.subtract(input_rank, 1))
+  inputs = _swap_axis(inputs, dim_axis, math_ops.subtract(input_rank, 1))
 
-  # Do the actual softmax on its last dimension.
-  output = compute_op(logits)
+  # Do the actual call on its last dimension.
+  def fix_output(output):
+    output = _swap_axis(
+        output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
 
-  output = _swap_axis(
-      output, dim_axis, math_ops.subtract(input_rank, 1), name=name)
+    # Make shape inference work since transpose may erase its static shape.
+    output.set_shape(shape)
+    return output
 
-  # Make shape inference work since transpose may erase its static shape.
-  output.set_shape(shape)
-
-  return output
+  outputs = compute_op(inputs)
+  if isinstance(outputs, tuple):
+    return tuple(fix_output(output) for output in outputs)
+  else:
+    return fix_output(outputs)
 
 
 @tf_export(v1=["nn.softmax", "math.softmax"])
@@ -3687,7 +3694,7 @@ def softmax(logits, axis=None, name=None, dim=None):
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
     axis = -1
-  return _softmax(logits, gen_nn_ops.softmax, axis, name)
+  return _wrap_2d_function(logits, gen_nn_ops.softmax, axis, name)
 
 
 @tf_export("nn.softmax", "math.softmax", v1=[])
@@ -3715,7 +3722,7 @@ def softmax_v2(logits, axis=None, name=None):
   """
   if axis is None:
     axis = -1
-  return _softmax(logits, gen_nn_ops.softmax, axis, name)
+  return _wrap_2d_function(logits, gen_nn_ops.softmax, axis, name)
 
 
 @tf_export(v1=["nn.log_softmax", "math.log_softmax"])
@@ -3746,7 +3753,7 @@ def log_softmax(logits, axis=None, name=None, dim=None):
   axis = deprecation.deprecated_argument_lookup("axis", axis, "dim", dim)
   if axis is None:
     axis = -1
-  return _softmax(logits, gen_nn_ops.log_softmax, axis, name)
+  return _wrap_2d_function(logits, gen_nn_ops.log_softmax, axis, name)
 
 
 @tf_export("nn.log_softmax", "math.log_softmax", v1=[])
@@ -3774,7 +3781,7 @@ def log_softmax_v2(logits, axis=None, name=None):
   """
   if axis is None:
     axis = -1
-  return _softmax(logits, gen_nn_ops.log_softmax, axis, name)
+  return _wrap_2d_function(logits, gen_nn_ops.log_softmax, axis, name)
 
 
 def _ensure_xent_args(name, sentinel, labels, logits):
@@ -5674,3 +5681,78 @@ tf_export(v1=["nn.quantized_relu_x"])(
     dispatch.add_dispatch_support(gen_nn_ops.quantized_relu_x))
 tf_export(v1=["nn.quantized_max_pool"])(
     dispatch.add_dispatch_support(gen_nn_ops.quantized_max_pool))
+
+
+@tf_export("nn.isotonic_regression", v1=[])
+@dispatch.add_dispatch_support
+def isotonic_regression(inputs, decreasing=True, axis=-1):
+  r"""Solves isotonic regression problems along the given axis.
+
+  For each vector x, the problem solved is
+
+  $$\argmin_{y_1 >= y_2 >= ... >= y_n} \sum_i (x_i - y_i)^2.$$
+
+  As the solution is component-wise constant, a second tensor is returned that
+  encodes the segments. The problems are solved over the given axis.
+
+  Consider the following example, where we solve a batch of two problems. The
+  first input is [3, 1, 2], while the second [1, 3, 4] (as the axis is 1).
+  >>> x = tf.constant([[3, 1, 2], [1, 3, 4]], dtype=tf.float32)
+  >>> y, segments = tf.nn.isotonic_regression(x, axis=1)
+  >>> y  # The solution.
+  <tf.Tensor: shape=(2, 3), dtype=float32, numpy=
+  array([[3.       , 1.5      , 1.5      ],
+         [2.6666667, 2.6666667, 2.6666667]], dtype=float32)>
+
+  Note that the first solution has two blocks [2] and [1.5, 1.5]. The second
+  solution is constant, and thus has a single segment. These segments are
+  exactly what the second returned tensor encodes:
+
+  >>> segments
+  <tf.Tensor: shape=(2, 3), dtype=int32, numpy=
+  array([[0, 1, 1],
+         [0, 0, 0]], dtype=int32)>
+
+
+  Args:
+    inputs: A tensor holding the inputs.
+    decreasing: If set to False, the inequalities in the optimizing constrained
+      are flipped.
+    axis: The axis along which the problems should be solved.
+
+  Returns:
+    output: The solutions, same shape as type as the input.
+    segments: An int32 tensor, same shape as the input indicating the segments
+      that have the same value. Specifically, those positions that have the same
+      value correspond to the same segment. These values start at zero, and are
+      monotonously increasing for each solution.
+  """
+  type_promotions = {
+      # Float types get mapped to themselves, int8/16 to float32, rest to double
+      dtypes.float32:
+          dtypes.float32,
+      dtypes.half:
+          dtypes.half,
+      dtypes.bfloat16:
+          dtypes.bfloat16,
+      dtypes.int8:
+          dtypes.float32,
+      dtypes.int16:
+          dtypes.float32,
+  }
+  inputs = ops.convert_to_tensor(inputs)
+  try:
+    output_dtype = type_promotions[inputs.dtype]
+  except KeyError:
+    output_dtype = dtypes.float64
+
+  def compute_on_matrix(matrix, name=None):
+    iso_fn = functools.partial(
+        gen_nn_ops.isotonic_regression, output_dtype=output_dtype, name=name)
+    if decreasing:
+      return iso_fn(matrix)
+    else:
+      output, segments = iso_fn(-matrix)
+      return -output, segments
+
+  return _wrap_2d_function(inputs, compute_on_matrix, axis)

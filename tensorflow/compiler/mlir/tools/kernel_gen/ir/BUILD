@@ -35,13 +35,3 @@ cc_library(
         "@llvm-project//mlir:SideEffects",
     ],
 )
-
-cc_library(
-    name = "tf_framework_dialect_registration",
-    srcs = ["dialect_registration.cc"],
-    deps = [
-        ":tf_framework_ops",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = 1,
-)

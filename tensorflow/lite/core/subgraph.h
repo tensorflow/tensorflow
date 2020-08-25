@@ -558,12 +558,15 @@ class Subgraph {
   // be reallocated if the graph was modified (i.e., the caller does *not* need
   // to explicitly call |AllocateTensors()| again). If tensors were unallocated,
   // they will remain unallocated after delegate application.
-  // Returns one of the following three status codes:
+  // Returns one of the following status codes:
   // 1. kTfLiteOk: Delegation succeeded
-  // 2. kTfLiteDelegateError: Delegation failed due to an error in the
-  // delegate. The Subgraph has been restored to its pre-delegation state.
+  // 2. kTfLiteDelegateError: Delegation failed due to an error *in the
+  // delegate*. The Subgraph has been restored to its pre-delegation state.
   // NOTE: This reverts all delegates previously applied to the Subgraph.
-  // 3. kTfLiteError: Unexpected/runtime failure.
+  // 3. kTfLiteApplicationError : Delegation failed to be applied due to the
+  // state that the TfLite runtime is in. However, the Subgraph is still in a
+  // invokable state.
+  // 4. kTfLiteError: Unexpected/runtime failure.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
   // This un-applies all delegates that have been applied till now, but retains

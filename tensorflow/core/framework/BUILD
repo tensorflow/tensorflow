@@ -602,6 +602,7 @@ cc_library(
         ":numeric_types",
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:types",
+        "//third_party/eigen3",
     ],
     alwayslink = 1,
 )
@@ -614,7 +615,6 @@ cc_library(
         "//tensorflow/core:__subpackages__",
     ],
     deps = [
-        "//tensorflow/core/lib/bfloat16",
         "//tensorflow/core/platform:types",
         "//third_party/eigen3",
     ],
@@ -1097,9 +1097,9 @@ tf_cc_tests(
     ],
 )
 
-filegroup(
+cc_library(
     name = "pywrap_required_hdrs",
-    srcs = [
+    textual_hdrs = [
         "op_gen_lib.h",
         "rendezvous.h",
     ],

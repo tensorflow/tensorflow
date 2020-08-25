@@ -389,7 +389,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
 
     # TODO(b/162616551): Remove all compat statements after 08/20/2020.
     # This follows b/161915509 and is mainly to test the stateless Case op.
-    if compat.forward_compatible(2020, 8, 20):
+    if compat.forward_compatible(2020, 8, 27):
       # The first two attributes are added to support TFLite use case.
       supportive_attributes = {
           'time_major': time_major,
@@ -483,7 +483,7 @@ class GRU(recurrent.DropoutRNNCellMixin, recurrent.GRU):
     if dropout_mask is not None:
       inputs = inputs * dropout_mask[0]
 
-    if compat.forward_compatible(2020, 8, 20):
+    if compat.forward_compatible(2020, 8, 27):
       gru_kwargs = {
           'inputs': inputs,
           'init_h': _read_variable_value(initial_state[0]),
@@ -797,7 +797,7 @@ def gru_with_backend_selection(inputs, init_h, kernel, recurrent_kernel, bias,
         true_fn=cudnn_gru_fn,
         false_fn=standard_gru_fn)
 
-  if compat.forward_compatible(2020, 8, 20):
+  if compat.forward_compatible(2020, 8, 27):
     # Chooses the implementation dynamicly based on the running device.
     (last_output, outputs, new_h,
      runtime) = control_flow_ops.execute_fn_for_device(
@@ -1141,7 +1141,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       else:
         logging.warn(_CUDNN_NOT_AVAILABLE_MSG % self.name)
 
-    if compat.forward_compatible(2020, 8, 20):
+    if compat.forward_compatible(2020, 8, 27):
       # The first two attributes are added to support TFLite use case.
       supportive_attributes = {
           'time_major': time_major,
@@ -1202,7 +1202,7 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
       if dropout_mask is not None:
         inputs = inputs * dropout_mask[0]
-      if compat.forward_compatible(2020, 8, 20):
+      if compat.forward_compatible(2020, 8, 27):
         lstm_kwargs = {
             'inputs':
                 inputs,
@@ -1633,7 +1633,7 @@ def lstm_with_backend_selection(inputs, init_h, init_c, kernel,
         true_fn=cudnn_lstm_fn,
         false_fn=stardard_lstm_fn)
 
-  if compat.forward_compatible(2020, 8, 20):
+  if compat.forward_compatible(2020, 8, 27):
     # Chooses the implementation dynamicly based on the running device.
     (last_output, outputs, new_h, new_c,
      runtime) = control_flow_ops.execute_fn_for_device(

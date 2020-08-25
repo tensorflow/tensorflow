@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {

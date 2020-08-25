@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops_a_m.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
@@ -81,6 +82,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
   // TODO(hinsu): Drop explicit allowlist when MLIR based bridge is enabled for
   // all tf2xla kernels.
   // clang-format off
+
   static llvm::SmallDenseSet<mlir::TypeID, 512> ops = {
     TypeID::get<TF::AbsOp>(),
     TypeID::get<TF::AcoshOp>(),
@@ -100,6 +102,11 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::AtanhOp>(),
     TypeID::get<TF::AtanOp>(),
     TypeID::get<TF::BatchMatMulV2Op>(),
+    TypeID::get<TF::BatchToSpaceNDOp>(),
+    TypeID::get<TF::BatchToSpaceOp>(),
+    TypeID::get<TF::BesselI0eOp>(),
+    TypeID::get<TF::BesselI1eOp>(),
+    TypeID::get<TF::BetaincOp>(),
     TypeID::get<TF::BiasAddGradOp>(),
     TypeID::get<TF::BiasAddOp>(),
     TypeID::get<TF::BitwiseAndOp>(),
@@ -108,12 +115,17 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::BucketizeOp>(),
     TypeID::get<TF::CastOp>(),
     TypeID::get<TF::ClipByValueOp>(),
+    TypeID::get<TF::CholeskyOp>(),
     TypeID::get<TF::ComplexAbsOp>(),
     TypeID::get<TF::ConjugateTransposeOp>(),
     TypeID::get<TF::CoshOp>(),
     TypeID::get<TF::CrossOp>(),
     TypeID::get<TF::DataFormatDimMapOp>(),
     TypeID::get<TF::DataFormatVecPermuteOp>(),
+    TypeID::get<TF::DepthToSpaceOp>(),
+    TypeID::get<TF::DepthwiseConv2dNativeBackpropFilterOp>(),
+    TypeID::get<TF::DepthwiseConv2dNativeBackpropInputOp>(),
+    TypeID::get<TF::DiagOp>(),
     TypeID::get<TF::DigammaOp>(),
     TypeID::get<TF::DivNoNanOp>(),
     TypeID::get<TF::EluGradOp>(),
@@ -122,6 +134,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::ErfcOp>(),
     TypeID::get<TF::ErfOp>(),
     TypeID::get<TF::Expm1Op>(),
+    TypeID::get<TF::ExtractImagePatchesOp>(),
     TypeID::get<TF::FFT2DOp>(),
     TypeID::get<TF::FFT3DOp>(),
     TypeID::get<TF::FFTOp>(),
@@ -133,10 +146,11 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::HSVToRGBOp>(),
     TypeID::get<TF::IFFT2DOp>(),
     TypeID::get<TF::IFFT3DOp>(),
-    TypeID::get<TF::IFFTOp>(),
     TypeID::get<TF::IRFFT2DOp>(),
     TypeID::get<TF::IRFFT3DOp>(),
-    TypeID::get<TF::IRFFTOp>(),
+    TypeID::get<TF::IgammaOp>(),
+    TypeID::get<TF::IgammacOp>(),
+    TypeID::get<TF::IgammaGradAOp>(),
     TypeID::get<TF::InvertOp>(),
     TypeID::get<TF::InvOp>(),
     TypeID::get<TF::LRNOp>(),
@@ -147,24 +161,38 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::LessEqualOp>(),
     TypeID::get<TF::LessOp>(),
     TypeID::get<TF::LgammaOp>(),
+    TypeID::get<TF::ListDiffOp>(),
     TypeID::get<TF::LogicalAndOp>(),
     TypeID::get<TF::LogicalNotOp>(),
     TypeID::get<TF::LogicalOrOp>(),
     TypeID::get<TF::LogOp>(),
+    TypeID::get<TF::LowerBoundOp>(),
     TypeID::get<TF::MatMulOp>(),
+    TypeID::get<TF::MatrixDiagV3Op>(),
+    TypeID::get<TF::MatrixInverseOp>(),
+    TypeID::get<TF::MatrixSetDiagV3Op>(),
+    TypeID::get<TF::MatrixSolveOp>(),
+    TypeID::get<TF::MatrixTriangularSolveOp>(),
     TypeID::get<TF::MirrorPadOp>(),
     TypeID::get<TF::MulOp>(),
+    TypeID::get<TF::MultinomialOp>(),
     TypeID::get<TF::NegOp>(),
     TypeID::get<TF::NonMaxSuppressionV4Op>(),
     TypeID::get<TF::NotEqualOp>(),
     TypeID::get<TF::PadOp>(),
     TypeID::get<TF::PlaceholderWithDefaultOp>(),
     TypeID::get<TF::PowOp>(),
+    // TODO(hinsu): Canonicalize QuantizeAndDequantize and
+    // QuantizeAndDequantizeV2 to QuantizeAndDequantizeV3 by converting
+    // attributes to operands.
+    TypeID::get<TF::QuantizeAndDequantizeOp>(),
+    TypeID::get<TF::QuantizeAndDequantizeV2Op>(),
+    TypeID::get<TF::QuantizeAndDequantizeV3Op>(),
     TypeID::get<TF::RFFT2DOp>(),
     TypeID::get<TF::RFFT3DOp>(),
     TypeID::get<TF::RGBToHSVOp>(),
+    TypeID::get<TF::RandomUniformIntOp>(),
     TypeID::get<TF::RealDivOp>(),
-    TypeID::get<TF::ReciprocalOp>(),
     TypeID::get<TF::ReciprocalGradOp>(),
     TypeID::get<TF::Relu6GradOp>(),
     TypeID::get<TF::ResizeBilinearOp>(),
@@ -173,6 +201,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::ReverseSequenceOp>(),
     TypeID::get<TF::RightShiftOp>(),
     TypeID::get<TF::RintOp>(),
+    TypeID::get<TF::RollOp>(),
     TypeID::get<TF::RoundOp>(),
     TypeID::get<TF::SelectV2Op>(),
     TypeID::get<TF::SelfAdjointEigV2Op>(),
@@ -184,9 +213,17 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::SoftplusGradOp>(),
     TypeID::get<TF::SoftsignGradOp>(),
     TypeID::get<TF::SoftsignOp>(),
+    TypeID::get<TF::SpaceToBatchNDOp>(),
+    TypeID::get<TF::SpaceToBatchOp>(),
+    TypeID::get<TF::SpaceToDepthOp>(),
     TypeID::get<TF::SparseToDenseOp>(),
     TypeID::get<TF::SqrtGradOp>(),
     TypeID::get<TF::SquareOp>(),
+    TypeID::get<TF::StatelessMultinomialOp>(),
+    TypeID::get<TF::StatelessRandomNormalOp>(),
+    TypeID::get<TF::StatelessRandomUniformOp>(),
+    TypeID::get<TF::StatelessRandomUniformIntOp>(),
+    TypeID::get<TF::StatelessTruncatedNormalOp>(),
     TypeID::get<TF::SubOp>(),
     TypeID::get<TF::TanOp>(),
     TypeID::get<TF::TransposeOp>(),
@@ -194,6 +231,7 @@ bool IsOpAllowedTf2XlaFallback(Operation* op) {
     TypeID::get<TF::TruncatedNormalOp>(),
     TypeID::get<TF::TruncateModOp>(),
     TypeID::get<TF::UnpackOp>(),
+    TypeID::get<TF::UpperBoundOp>(),
     TypeID::get<TF::XdivyOp>(),
     TypeID::get<TF::XlaBroadcastHelperOp>(),
     TypeID::get<TF::XlaConvOp>(),
@@ -493,8 +531,10 @@ tensorflow::XlaExpression Tf2XlaRewriter::GetExprForOperand(Value operand,
 
 class Tf2XlaRewritePattern : public RewritePattern {
  public:
+  // Set benefit to 0 (= least benefit) so this pattern is only used as a
+  // fallback.
   explicit Tf2XlaRewritePattern(const std::string& device_type)
-      : RewritePattern(1, MatchAnyOpTypeTag()), device_type_(device_type) {}
+      : RewritePattern(0, MatchAnyOpTypeTag()), device_type_(device_type) {}
 
   LogicalResult matchAndRewrite(Operation* op,
                                 PatternRewriter& rewriter) const override {

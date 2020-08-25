@@ -33,6 +33,7 @@ from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
@@ -352,7 +353,8 @@ class Sequential(functional.Functional):
   def call(self, inputs, training=None, mask=None):  # pylint: disable=redefined-outer-name
     # If applicable, update the static input shape of the model.
     if not self._has_explicit_input_shape:
-      if not tensor_util.is_tensor(inputs):
+      if not tensor_util.is_tensor(inputs) and not isinstance(
+          inputs, np_arrays.ndarray):
         # This is a Sequential with mutiple inputs. This is technically an
         # invalid use case of Sequential, but we tolerate it for backwards
         # compatibility.

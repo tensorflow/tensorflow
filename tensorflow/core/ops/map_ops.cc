@@ -33,6 +33,17 @@ REGISTER_OP("TensorMapSize")
     .Output("size: int32")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("TensorMapLookup")
+    .Input("input_handle: variant")
+    .Input("key: key_dtype")
+    .Output("value: value_dtype")
+    .Attr("key_dtype: type")
+    .Attr("value_dtype: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->UnknownShape());
+      return Status::OK();
+    });
+
 REGISTER_OP("TensorMapInsert")
     .Input("input_handle: variant")
     .Input("key: key_dtype")
@@ -45,36 +56,32 @@ REGISTER_OP("TensorMapInsert")
       return Status::OK();
     });
 
-REGISTER_OP("TensorMapLookup")
-    .Input("input_handle: variant")
-    .Input("key: key_dtype")
-    .Output("value: value_dtype")
-    .Attr("key_dtype: type")
-    .Attr("value_dtype: type")
-    .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->UnknownShape());
-      return Status::OK();
-    });
-
 REGISTER_OP("TensorMapErase")
     .Input("input_handle: variant")
     .Input("key: key_dtype")
     .Output("output_handle: variant")
-    .Output("value: value_dtype")
     .Attr("key_dtype: type")
     .Attr("value_dtype: type")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
-      c->set_output(0, c->Scalar());        // output map
-      c->set_output(1, c->UnknownShape());  // removed element
+      c->set_output(0, c->Scalar());  // output map
       return Status::OK();
     });
 
 REGISTER_OP("TensorMapHasKey")
     .Input("input_handle: variant")
-    .Input("key: element_dtype")
+    .Input("key: key_dtype")
     .Output("has_key: bool")
-    .Attr("element_dtype: type")
+    .Attr("key_dtype: type")
     .SetShapeFn(shape_inference::ScalarShape);
+
+REGISTER_OP("TensorMapStackKeys")
+    .Input("input_handle: variant")
+    .Output("keys: key_dtype")
+    .Attr("key_dtype: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->UnknownShape());  // output keys
+      return Status::OK();
+    });
 
 }  // namespace
 }  // namespace tensorflow

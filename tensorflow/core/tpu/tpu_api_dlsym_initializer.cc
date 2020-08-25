@@ -72,7 +72,7 @@ Status InitializeTpuLibrary(void* library_handle) {
 }
 
 bool FindAndLoadTpuLibrary() {
-  void* library = dlopen("libtftpu.so", RTLD_NOW);
+  void* library = dlopen("libtpu.so", RTLD_NOW);
   if (library) {
     InitializeTpuLibrary(library);
   }
