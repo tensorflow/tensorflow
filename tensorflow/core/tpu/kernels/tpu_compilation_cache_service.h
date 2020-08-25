@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 
 namespace tensorflow {
-namespace tpu {
 // gRPC service for handling CompilationCache requests.
 // To avoid OOMs during execution, this service using the asynchronous raw gRPC
 // interface to serialize cache results directly to gRPC byte buffers. This
@@ -49,7 +48,7 @@ class TpuCompilationCacheService {
   void HandleRPCsLoop();
 
   using GetTpuProgramCall = Call<TpuCompilationCacheService, AsyncService,
-                                 GetTpuProgramRequest, ::grpc::ByteBuffer>;
+                                 tpu::GetTpuProgramRequest, ::grpc::ByteBuffer>;
 
   // Schedule the cache fetch into the serving thread pool.
   void HandleGetTpuProgram(GetTpuProgramCall* call);
@@ -58,7 +57,7 @@ class TpuCompilationCacheService {
   void GetTpuProgram(GetTpuProgramCall* call);
 
   std::atomic<bool> running_ = true;
-  TpuCompilationCacheInterface* cache_;
+  tpu::TpuCompilationCacheInterface* cache_;
   ::grpc::ServerBuilder* server_builder_;
   std::unique_ptr<::grpc::Server> server_;
   std::unique_ptr<::grpc::ServerCompletionQueue> cq_;
@@ -66,8 +65,6 @@ class TpuCompilationCacheService {
   std::unique_ptr<Thread> polling_thread_;
   AsyncService service_;
 };
-
-}  // namespace tpu
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_SERVICE_H_

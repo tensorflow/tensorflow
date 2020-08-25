@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_support.h"
 
 namespace tensorflow {
-namespace tpu {
 namespace {
 using ::tensorflow::tpu::CompilationCacheEntryRef;
 using ::tensorflow::tpu::TpuCompilationCacheEntry;
@@ -169,5 +168,4 @@ void TpuCompilationCacheService::HandleRPCsLoop() {
 
   VLOG(2) << "Cache thread shutting down.";
 }
-}  // namespace tpu
 }  // namespace tensorflow
