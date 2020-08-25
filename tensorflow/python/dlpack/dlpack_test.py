@@ -69,7 +69,7 @@ class DLPackTest(parameterized.TestCase, test.TestCase):
     tf_tensor2 = dlpack.from_dlpack(dlcapsule)
     self.assertAllClose(np_array, tf_tensor2)
     if tf_tensor_dtype == dtypes.int32:
-      # int32 tensor always on cpu for now
+      # int32 tensor is always on cpu for now
       self.assertEqual(tf_tensor2.device, "/job:localhost/replica:0/task:0/device:CPU:0")
     else:
       self.assertEqual(tf_tensor_device, tf_tensor2.device)
