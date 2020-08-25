@@ -613,10 +613,13 @@ static StatusOr<bool> DeviceCompare(se::Stream* stream,
   LaunchDimensions dim =
       CalculateLaunchDimensions(buffer_shape, gpu_device_info);
 
-  stream->ThenLaunch(se::ThreadDim(dim.threads_per_block()),
-                     se::BlockDim(dim.block_count()), *comparison_kernel,
-                     lhs_typed, rhs_typed, static_cast<float>(kTolerance),
-                     buffer_size, out_param.cref());
+  auto thread_counts = dim.thread_counts_per_block();
+  auto block_counts = dim.block_counts();
+  stream->ThenLaunch(
+      se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
+      se::BlockDim(block_counts.x, block_counts.y, block_counts.z),
+      *comparison_kernel, lhs_typed, rhs_typed, static_cast<float>(kTolerance),
+      buffer_size, out_param.cref());
 
   uint64 result = -1;
   CHECK_EQ(out_param->size(), sizeof(result));

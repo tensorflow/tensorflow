@@ -519,6 +519,12 @@ class IrEmitterUnnested : public IrEmitter,
       absl::Span<HloComputation* const> reducers,
       const TilingKernelInfo& tiling_kernel_info);
 
+  // Emits code for reductions in the output_instructions.
+  Status EmitIRForReduction(
+      HloInstruction* unnested_hlo,
+      absl::Span<HloInstruction* const> output_instructions,
+      ReductionCodegenInfo* reduction_info, const Shape& input_shape);
+
   // For each reducer, emits the shuffle-down loop to accumulate the partial
   // result to the global result.
   void EmitFullWarpShuffleDownLoopForAllReduces(

@@ -209,16 +209,18 @@ StatusOr<std::unique_ptr<se::KernelBase>> CreateKernel(
 
 Status ExecuteKernelOnStream(const se::KernelBase& kernel,
                              absl::Span<const se::DeviceMemoryBase> args,
-                             int64 threads_per_block, int64 block_count,
-                             se::Stream* stream) {
+                             const LaunchDimensions& dims, se::Stream* stream) {
   static constexpr int kKernelArgsLimit = 1024;
   auto kernel_args = absl::make_unique<se::KernelArgsArray<kKernelArgsLimit>>();
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
   }
-  return stream->parent()->Launch(stream, se::ThreadDim(threads_per_block),
-                                  se::BlockDim(block_count), kernel,
-                                  *kernel_args);
+  auto thread_counts = dims.thread_counts_per_block();
+  auto block_counts = dims.block_counts();
+  return stream->parent()->Launch(
+      stream, se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
+      se::BlockDim(block_counts.x, block_counts.y, block_counts.z), kernel,
+      *kernel_args);
 }
 
 se::GpuAsmOpts PtxOptsFromConfig(const HloModuleConfig& hlo_module_config) {
