@@ -72,7 +72,7 @@ We strongly recommend that contributors:
         *   We will be adding internal checks that automate this requirement by
             matching the PR description to the regexp: `(Fixes|Issue) #`
 
-## Guidlines for Specific Contribution Categories
+## Guidelines for Specific Contribution Categories
 
 We provide some additional guidelines for different categories of contributions.
 
@@ -123,8 +123,9 @@ October 2020 and will provide additional guidelines at that time.
 
 *   If you would like to have an exception to this pause, with the understanding
     that your optimized kernels will break as we improve the underlying
-    framework, then please contact the TFLM team and we can figure out some
-    middle ground.
+    framework, then please send an email to the [SIG Micro email
+    group](https://groups.google.com/a/tensorflow.org/g/micro) to figure out
+    a middle ground.
 
 *   Every optimized kernel directory must have a README.md with the github IDs
     of the maintainers and any other relevant documentation. PRs that add
