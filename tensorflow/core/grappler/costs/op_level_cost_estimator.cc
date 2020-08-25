@@ -65,8 +65,10 @@ constexpr char kRecv[] = "_Recv";
 constexpr char kSend[] = "_Send";
 constexpr char kBatchMatMul[] = "BatchMatMul";
 constexpr char kBatchMatMulV2[] = "BatchMatMulV2";
+constexpr char kOneHot[] = "OneHot";
 constexpr char kPack[] = "Pack";
 constexpr char kRank[] = "Rank";
+constexpr char kRange[] = "Range";
 constexpr char kShape[] = "Shape";
 constexpr char kShapeN[] = "ShapeN";
 constexpr char kSize[] = "Size";
@@ -86,6 +88,7 @@ constexpr char kSlice[] = "Slice";
 constexpr char kStridedSlice[] = "StridedSlice";
 constexpr char kSpaceToDepth[] = "SpaceToDepth";
 constexpr char kTranspose[] = "Transpose";
+constexpr char kTile[] = "Tile";
 constexpr char kMaxPool[] = "MaxPool";
 constexpr char kMaxPoolGrad[] = "MaxPoolGrad";
 constexpr char kAvgPool[] = "AvgPool";
@@ -471,7 +474,11 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
   device_cost_impl_.emplace(kFill,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kOneHot,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
   device_cost_impl_.emplace(kPack,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kRange,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
   device_cost_impl_.emplace(kSpaceToDepth,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
@@ -480,6 +487,8 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
   device_cost_impl_.emplace(kSqueeze,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
   device_cost_impl_.emplace(kTranspose,
+                            wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
+  device_cost_impl_.emplace(kTile,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
   device_cost_impl_.emplace(kUnpack,
                             wrap(&OpLevelCostEstimator::PredictPureMemoryOp));
