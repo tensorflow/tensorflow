@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/c/eager/resnet_gradients_util.h"
-#include "tensorflow/c/eager/mnist_gradients_util.h"
+#include "tensorflow/c/eager/resnet_gradients_testutil.h"
+#include "tensorflow/c/eager/mnist_gradients_testutil.h"
 
 #include <memory>
 
@@ -87,14 +87,13 @@ Status Conv2D(AbstractContext* ctx, Tape* tape,
 //                      const char* data, size_t length,
 //                      ForwardOperation* forward_op_)
 
- bool g = true;
- std::cout << "padding = " << padding << ", use_gpu = "<< g << std::endl;
+ bool gpu = true;
  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrIntList(
       conv_op.get(), "strides", strides, num_dims, &forward_op));
  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrString(
       conv_op.get(), "padding", padding, strlen(padding), &forward_op));
  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(
-      conv_op.get(), "use_cudnn_on_gpu", g, &forward_op));
+      conv_op.get(), "use_cudnn_on_gpu", gpu, &forward_op));
 
 
  TF_RETURN_IF_ERROR(AddInput(conv_op.get(), x, &forward_op));
@@ -103,16 +102,6 @@ Status Conv2D(AbstractContext* ctx, Tape* tape,
  int num_retvals = 1;
  Status s = Execute(conv_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
                     registry);
-//  bool use_gpu;
-//  forward_op.attrs.Get("use_cudnn_on_gpu", &use_gpu); // <----- This works!
-//  std::cout << "attrs.use_gpu = " << use_gpu <<std::endl;
-
-//  // std::string p;
-//  char *p;
-//  tensorflow::Padding pa;
-//  forward_op.attrs.Get("padding", &pa); // <--- This doesn't return anything 
-//  std::cout << "attrs.padding = " << pa <<std::endl;
-
  return s;
 }
 

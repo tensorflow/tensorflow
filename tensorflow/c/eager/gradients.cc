@@ -264,8 +264,18 @@ Status AddInputList(AbstractOperation* op_,
 Status SetAttrString(AbstractOperation* op_, const char* attr_name,
                      const char* data, size_t length,
                      ForwardOperation* forward_op_) {
-  std::cout << "attr = " << attr_name << std::endl;                     
-  forward_op_->attrs.Set(attr_name, StringPiece(data, length));
+  std::cout << "inside SetAttrString:" << std::endl;
+  std::cout << "\tdata = " << data << ", len = " <<length << std::endl; 
+  std::cout << "\tattr_name = " << attr_name << std::endl;                     
+  forward_op_->attrs.Set(attr_name, StringPiece(data, length)); // <--this is not setting correctly
+  
+  std::string p;
+  forward_op_->attrs.Get(attr_name, &p);
+  
+  std::cout << "\tattrs.Get(" << attr_name <<") = " << p << std::endl; // <-- p is the empty string
+  std::cout << "exiting SetAttrString" << std::endl;
+
+  // return op_->SetAttrString(attr_name, data, length);
   return op_->SetAttrString(attr_name, data, length);
 }
 Status SetAttrInt(AbstractOperation* op_, const char* attr_name, int64_t value,
@@ -280,7 +290,16 @@ Status SetAttrFloat(AbstractOperation* op_, const char* attr_name, float value,
 }
 Status SetAttrBool(AbstractOperation* op_, const char* attr_name, bool value,
                    ForwardOperation* forward_op_) {
+  std::cout << "inside SetAttrBool:" << std::endl;
+  std::cout << "\tvalue = " << value << std::endl; 
+  std::cout << "\tattr_name = " << attr_name << std::endl;        
   forward_op_->attrs.Set(attr_name, value);
+
+  bool b;
+  forward_op_->attrs.Get(attr_name, &b);
+  std::cout << "\tattrs.Get(" << attr_name <<") = " << b << std::endl;
+  std::cout << "exiting SetAttrBool" << std::endl;
+
   return op_->SetAttrBool(attr_name, value);
 }
 Status SetAttrType(AbstractOperation* op_, const char* attr_name,
@@ -348,9 +367,19 @@ Status SetAttrFloatList(AbstractOperation* op_, const char* attr_name,
 Status SetAttrIntList(AbstractOperation* op_, const char* attr_name,
                       const int64_t* values, int num_values,
                       ForwardOperation* forward_op_) {
+
+  std::cout << "inside SetAttrIntList:" << std::endl;
+  std::cout << "\tnum_values = " << num_values << std::endl; 
+  std::cout << "\tattr_name = " << attr_name << std::endl;   
   forward_op_->attrs.Set(
       attr_name, gtl::ArraySlice<const int64>(
                      reinterpret_cast<const int64*>(values), num_values));
+  
+  // Unable to pass in `v` as an int64_t*, not sure why....
+  // int64_t* v;
+  // forward_op_->attrs.Get(attr_name, &v);
+  // std::cout << "\tattrs.Get(" << attr_name <<") = " << v << std::endl;
+  std::cout << "exiting SetAttrIntList" << std::endl;
   return op_->SetAttrIntList(attr_name, values, num_values);
 }
 Status SetAttrTypeList(AbstractOperation* op_, const char* attr_name,

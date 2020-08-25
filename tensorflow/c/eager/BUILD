@@ -276,13 +276,12 @@ cc_library(
 )
 
 cc_library(
-    name = "resnet_gradients_util",
+    name = "resnet_gradients_testutil",
     srcs = [
-        "resnet_gradients_util.cc",
-        "resnet_gradients_util.h",
+        "resnet_gradients_testutil.cc",
     ],
     hdrs = [
-        "gradients.h",
+        "resnet_gradients_testutil.h",
     ],
     visibility = [
         "//tensorflow:internal",
@@ -294,7 +293,7 @@ cc_library(
         ":c_api_unified_internal",
         ":gradients_internal",
         ":tape",
-        ":mnist_gradients_util",
+        ":mnist_gradients_testutil",
         "//tensorflow/core/common_runtime/eager:attr_builder",
         "//tensorflow/core/lib/llvm_rtti",
         "//tensorflow/c/experimental/ops:array_ops",
@@ -302,6 +301,7 @@ cc_library(
         "//tensorflow/c/experimental/ops:nn_ops",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -360,8 +360,8 @@ tf_cuda_cc_test(
         ":c_api_test_util",
         ":c_api_unified_internal",
         ":gradients_internal",
-        ":mnist_gradients_util",
-        ":resnet_gradients_util",
+        ":mnist_gradients_testutil",
+        ":resnet_gradients_testutil",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",

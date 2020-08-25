@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/gradients_internal.h"
-#include "tensorflow/c/eager/mnist_gradients_util.h"
-#include "tensorflow/c/eager/resnet_gradients_util.h"
+#include "tensorflow/c/eager/mnist_gradients_testutil.h"
+#include "tensorflow/c/eager/resnet_gradients_testutil.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
@@ -194,79 +194,6 @@ void printTensorInt(AbstractTensorHandle* t, int size) {
 
 // =========================== Start Tests ================================
 
-TEST_P(CppGradients, TestMatMulGrad) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  AbstractContextPtr ctx;
-  {
-    AbstractContext* ctx_raw = nullptr;
-    Status s =
-        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
-    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-    ctx.reset(ctx_raw);
-  }
-
-  float A_vals[] = {1.0f, 2.0f, 3.0f, 4.0f};
-  int64_t A_dims[] = {2, 2};
-  float B_vals[] = {.5f, -1.0f, 1.0f, 1.0f};
-  int64_t B_dims[] = {2, 2};
-  int num_dims = 2;
-
-  AbstractTensorHandlePtr A =
-      GetTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
-  AbstractTensorHandlePtr B =
-      GetTensorHandleUtilFloat(ctx.get(), B_vals, B_dims, num_dims);
-
-  GradientRegistry registry;
-  Status s = RegisterGradients(&registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  /* Pseudo-code:
-   *
-   * tape.watch(A)
-   * tape.watch(B)
-   * Y = AB
-   * outputs = tape.gradient(Y, [A, B])
-   */
-
-  std::vector<AbstractTensorHandle*> outputs(2);
-  s = RunModel(MatMulGradModel, ctx.get(), {A.get(), B.get()},
-               absl::MakeSpan(outputs),
-               /*use_function=*/!std::get<2>(GetParam()), registry);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  TF_Tensor* dA_tensor;
-  s = GetValue(outputs[0], &dA_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  float result_data[4] = {0};
-  memcpy(&result_data[0], TF_TensorData(dA_tensor),
-         TF_TensorByteSize(dA_tensor));
-
-  float expected_dA[4] = {-.5f, 2.0f, -.5f, 2.0f};
-  float tolerance = 1e-3;
-  for (int j = 0; j < 4; j++) {
-    ASSERT_NEAR(result_data[j], expected_dA[j], tolerance);
-  }
-
-  TF_Tensor* dB_tensor;
-  s = GetValue(outputs[1], &dB_tensor);
-  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-
-  memcpy(&result_data[0], TF_TensorData(dB_tensor),
-         TF_TensorByteSize(dB_tensor));
-
-  float expected_dB[4] = {4.0f, 4.0f, 6.0f, 6.0f};
-  for (int j = 0; j < 4; j++) {
-    ASSERT_NEAR(result_data[j], expected_dB[j], tolerance);
-  }
-
-  outputs[0]->Unref();
-  outputs[1]->Unref();
-  TF_DeleteTensor(dA_tensor);
-  TF_DeleteTensor(dB_tensor);
-}
-
 TEST_P(CppGradients, TestBiasAddGrad) {
  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
      TF_NewStatus(), TF_DeleteStatus);
@@ -378,19 +305,31 @@ TEST_P(CppGradients, TestConv2DGrad) {
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
   
   // check conv_out
-  std::cout << "conv_out: ";
-  printTensor(outputs[0], 50);
+  float expected_conv_out[] = {10, 1.9, 10, 2.2, 6, 1.6,
+                               6, 2, 2, 1, 12, 1.4, 15, 
+                               2.2, 13, 2.7, 13, 1.7, 6, 
+                               0.3, 7, 1.7, 11, 1.3, 16, 1.3,
+                               7, 1, 0, 0.3, 10, 0.6, 7, 1.4,
+                               4, 1.5, 7, 1.4, 2, 0.7, 0, 0, 9,
+                               0.6, 9, 0.5, 8, 0.5, 4, 0.2};
+  VerifyResult(outputs[0], expected_conv_out, 50);
   
-  // dA
-  std::cout << "dInput: ";
-  printTensor(outputs[1], 25);
+  // dInput = dA
+  float expected_dInput[] = {2.1, 5.3, 5.3, 5.3, 5.3, 2.4,
+                             7, 7, 7, 7, 2.4, 7, 7, 7, 7, 2.4,
+                             7, 7, 7, 7, 2.4, 7, 7, 7, 7};
+  VerifyResult(outputs[1], expected_dInput, 25);
   
   // dfilter
-  std::cout << "dFilter: ";
-  printTensor(outputs[2], 8);
+  float expected_dfilter[] = {37, 37, 31, 31, 31, 31, 27, 27};
+  VerifyResult(outputs[2], expected_dfilter, 8);
  }
 
- TEST_P(CppGradients, TestMathGrads) {
+TEST_P(CppGradients, TestMathGrads) {
+  /** Test for various math grads that include:
+    * Sub, Mul, Neg, Log1p, and Div.
+    */
+
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   AbstractContextPtr ctx;
@@ -417,8 +356,7 @@ TEST_P(CppGradients, TestConv2DGrad) {
   Status s = RegisterGradients(&registry);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
-  
-  // ======== Check grads for Mul: out = A*B ===========
+  // Check grads for Mul: out = A*B 
   std::vector<AbstractTensorHandle*> outputs(2);
   s = RunModel(MulGradModel, ctx.get(), {A.get(), B.get()},
                absl::MakeSpan(outputs),
@@ -432,7 +370,7 @@ TEST_P(CppGradients, TestConv2DGrad) {
   VerifyResult(outputs[1], A_vals, 4);
 
 
-  // ======= Check grads for Sub: out = A - B ===========
+  // Check grads for Sub: out = A - B 
   s = RunModel(SubGradModel, ctx.get(), {A.get(), B.get()},
                absl::MakeSpan(outputs),
                /*use_function=*/!std::get<2>(GetParam()), registry);
@@ -463,7 +401,7 @@ TEST_P(CppGradients, TestConv2DGrad) {
   // Free 2nd output as no longer needed.
   outputs[1]->Unref();
 
-  // ======= Check Grads for Neg: out = -A =======
+  // Check Grads for Neg: out = -A 
   outputs.resize(1);
   s = RunModel(NegGradModel, ctx.get(), {A.get()},
                absl::MakeSpan(outputs),
@@ -474,7 +412,7 @@ TEST_P(CppGradients, TestConv2DGrad) {
   float expected_dA_Neg[] = {-1.0f, -1.0f, -1.0f, -1.0f};
   VerifyResult(outputs[0], expected_dA_Neg, 4);
 
-  // ======= Check Grads for Log1p: out = tf.math.log1p(A) =======
+  // Check Grads for Log1p: out = tf.math.log1p(A) 
   s = RunModel(Log1pGradModel, ctx.get(), {A.get()},
                absl::MakeSpan(outputs),
                /*use_function=*/!std::get<2>(GetParam()), registry);

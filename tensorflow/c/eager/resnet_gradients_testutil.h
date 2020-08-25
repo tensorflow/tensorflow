@@ -14,7 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include <memory>
 
-#include "tensorflow/c/eager/mnist_gradients_util.h"
+#include "tensorflow/c/eager/mnist_gradients_testutil.h"
 
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
