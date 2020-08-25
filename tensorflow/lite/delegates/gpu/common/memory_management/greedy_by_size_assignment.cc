@@ -16,8 +16,13 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/memory_management/greedy_by_size_assignment.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <iterator>
+#include <vector>
 
+#include "absl/status/status.h"
 #include "tensorflow/lite/delegates/gpu/common/memory_management/internal.h"
+#include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"
 
 namespace tflite {
 namespace gpu {

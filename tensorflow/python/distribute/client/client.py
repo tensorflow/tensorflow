@@ -899,15 +899,6 @@ class Client(object):
   def strategy(self):
     return self._strategy
 
-  @contextlib.contextmanager
-  def experimental_variable_partitioning_scope(self):
-    with self._strategy.experimental_variable_partitioning_scope():
-      yield
-
-  (experimental_variable_partitioning_scope.__doc__) = (
-      parameter_server_strategy_v2.ParameterServerStrategyV2
-      .experimental_variable_partitioning_scope.__doc__)
-
   def schedule(self, fn, args=None, kwargs=None):
     """Schedules `fn` to be dispatched to a worker for execution asynchronously.
 

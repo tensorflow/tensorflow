@@ -37,6 +37,9 @@ namespace {
 
 // Optimize TFJS operations in functions.
 struct Optimize : public PassWrapper<Optimize, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const final {
+    registry.insert<TFJSDialect>();
+  }
   void runOnFunction() override;
 };
 

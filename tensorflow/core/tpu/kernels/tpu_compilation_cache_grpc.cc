@@ -30,7 +30,11 @@ namespace tensorflow {
 namespace tpu {
 
 static const char* grpcTpuCompilationCacheService_method_names[] = {
+#if defined(LIBTFTPU)
+    "/tensorflow.tpu.TpuCompilationCacheServiceExternal/GetTpuProgram",
+#else  // LIBTFTPU
     "/tensorflow.tpu.TpuCompilationCacheService/GetTpuProgram",
+#endif  // LIBTFTPU
 };
 
 std::unique_ptr<grpc::TpuCompilationCacheService::Stub>

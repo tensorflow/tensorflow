@@ -194,8 +194,6 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset_ops.Dataset.range(10).map(lambda x: x+1)
     dataset = dataset.apply(testing.assert_next(["MaxIntraOpParallelism"]))
 
-    options = dataset_ops.Options()
-    dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=list(range(1, 11)))
 
     del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]

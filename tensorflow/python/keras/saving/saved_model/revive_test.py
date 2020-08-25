@@ -24,7 +24,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import shutil
 
 from absl.testing import parameterized
@@ -146,17 +145,12 @@ class CustomNetworkWithConfigName(CustomNetworkWithConfig):
     self._config_dict['name'] = self.name
 
 
-class TestModelRevive(keras_parameterized.TestCase):
+class ReviveTestBase(keras_parameterized.TestCase):
 
   def setUp(self):
-    super(TestModelRevive, self).setUp()
+    super(ReviveTestBase, self).setUp()
     self.path = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, self.path, ignore_errors=True)
-
-  def _save_model_dir(self, dirname='saved_model'):
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-    return os.path.join(temp_dir, dirname)
 
   def _assert_revived_correctness(self, model, revived):
     self.assertAllEqual(model.input_names, revived.input_names)
@@ -203,6 +197,11 @@ class TestModelRevive(keras_parameterized.TestCase):
         # created with the same name.
         self.assertEqual(type(model_layer).__name__,
                          type(revived_layer).__name__)
+
+
+# These tests take a while to run, so each should run in a separate shard
+# (putting them in the same TestCase resolves this).
+class TestBigModelRevive(ReviveTestBase):
 
   @keras_parameterized.run_with_all_model_types
   def test_revive(self):
@@ -265,6 +264,9 @@ class TestModelRevive(keras_parameterized.TestCase):
     model.save(self.path, save_format='tf')
     revived = keras_load.load(self.path)
     self._assert_revived_correctness(model, revived)
+
+
+class TestModelRevive(ReviveTestBase):
 
   def test_revive_subclassed_with_nested_model(self):
     model = SubclassedModelNoConfig(1., 2.)

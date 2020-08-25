@@ -29,7 +29,7 @@ The following models are guaranteed to be compatible with the `ImageSegmenter`
 API.
 
 *   The
-    [pretrained image segmentation models on TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&module-type=image-segmentation).
+    [pretrained image segmentation models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/image-segmenter/1).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).

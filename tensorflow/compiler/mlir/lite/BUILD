@@ -281,6 +281,28 @@ cc_library(
 )
 
 cc_library(
+    name = "nms_utils",
+    srcs = [
+        "utils/nms_utils.cc",
+    ],
+    hdrs = [
+        "utils/nms_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/core:framework",
+        "@flatbuffers",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tftext_utils",
     srcs = [
         "utils/tftext_utils.cc",
@@ -373,6 +395,7 @@ cc_library(
     deps = [
         ":constant_utils",
         ":lstm_utils",
+        ":nms_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tftext_utils",
@@ -509,19 +532,6 @@ gentbl(
     ],
 )
 
-# Library with tensorflow Lite dialect static initialization.
-cc_library(
-    name = "tensorflow_lite_dialect_registration",
-    srcs = [
-        "ir/dialect_registration.cc",
-    ],
-    deps = [
-        ":tensorflow_lite",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = 1,
-)
-
 tf_native_cc_binary(
     name = "converter-gen",
     srcs = [
@@ -628,7 +638,6 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":stateful_ops_utils",
         ":tensorflow_lite",
-        ":tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
@@ -672,7 +681,6 @@ cc_library(
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":tensorflow_lite",
-        ":tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",

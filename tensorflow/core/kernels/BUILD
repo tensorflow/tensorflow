@@ -243,7 +243,6 @@ tf_cuda_cc_test(
     srcs = ["collective_nccl_test.cc"],
     tags = tf_cuda_tests_tags() + [
         "guitar",
-        "manual",
         "multi_gpu",
         "no_oss",
         "notap",

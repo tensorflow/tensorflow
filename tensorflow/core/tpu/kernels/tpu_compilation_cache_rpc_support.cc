@@ -14,17 +14,31 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_rpc_support.h"
 
+#if defined(LIBTFTPU)
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
+#endif  // LIBTFTPU
+
 namespace tensorflow {
 namespace tpu {
 std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials() {
   return ::grpc::InsecureChannelCredentials();
 }
 
-Status FillCacheEntryFromGetTpuProgramResponse(
-    absl::string_view local_proto_key, GetTpuProgramResponse* response,
+#if defined(LIBTFTPU)
+template <>
+Status FillCacheEntryFromGetTpuProgramResponse<GetTpuProgramResponseExternal>(
+    absl::string_view local_proto_key, GetTpuProgramResponseExternal* response,
     std::shared_ptr<CacheEntry>* cache_entry) {
   // TODO(b/162904194): implement this method.
   LOG(FATAL) << "Not implemented yet.";
 }
+
+void SendGetTpuProgramResponseHelper(
+    const TpuCompilationCacheEntry& cache_entry,
+    std::function<void(::grpc::ByteBuffer*, ::grpc::Status)> call_fn) {
+  // TODO(b/162904194): implement this method.
+  LOG(FATAL) << "Not implemented yet.";
+}
+#endif  // LIBTFTPU
 }  // namespace tpu
 }  // namespace tensorflow

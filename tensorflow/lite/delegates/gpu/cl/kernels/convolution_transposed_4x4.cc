@@ -28,20 +28,23 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
-    const OperationDef& definition, const DeviceInfo& device_info)
+    const OperationDef& definition, const DeviceInfo& device_info,
+    const ConvolutionTransposedAttributes& attr)
     : GPUOperation(definition) {
   work_group_size_ = int3(8, 4, 1);
+  WeightsUploadType weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   if (device_info.IsPowerVR()) {
-    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
+    weights_upload_type = WeightsUploadType::LOCAL_MEM_ASYNC;
   } else if (device_info.IsNvidia() || device_info.IsIntel()) {
-    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+    weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
   } else if (device_info.IsAMD()) {
-    weights_upload_type_ = WeightsUploadType::CONSTANT_MEM;
+    weights_upload_type = WeightsUploadType::CONSTANT_MEM;
   } else {
-    weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
+    weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   }
 
-  code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type_);
+  code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type);
+  UploadWeights(attr.weights, weights_upload_type);
   if (definition_.precision == CalculationsPrecision::F16 &&
       device_info.IsPowerVR()) {
     compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
@@ -50,13 +53,11 @@ ConvolutionTransposed4x4::ConvolutionTransposed4x4(
 
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     ConvolutionTransposed4x4&& operation)
-    : GPUOperation(std::move(operation)),
-      weights_upload_type_(operation.weights_upload_type_) {}
+    : GPUOperation(std::move(operation)) {}
 
 ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
     ConvolutionTransposed4x4&& operation) {
   if (this != &operation) {
-    std::swap(weights_upload_type_, operation.weights_upload_type_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -317,8 +318,7 @@ bool IsConvolutionTransposed4x4Supported(
 ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
     const DeviceInfo& device_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
-  ConvolutionTransposed4x4 result(definition, device_info);
-  result.UploadWeights(attr.weights);
+  ConvolutionTransposed4x4 result(definition, device_info, attr);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;

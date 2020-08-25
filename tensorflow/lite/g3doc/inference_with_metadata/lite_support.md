@@ -40,6 +40,10 @@ dependencies {
 }
 ```
 
+Explore the
+[TensorFlow Lite Support Library AAR hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-support)
+for different versions of the Support Library.
+
 ### Basic image manipulation and conversion
 
 The TensorFlow Lite Support Library has a suite of basic image manipulation

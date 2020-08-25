@@ -316,14 +316,14 @@ class NcclTestBase : public ::testing::Test {
       // Run the all-reduce.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      NcclReducer reducer;
+      auto* reducer = new NcclReducer();
       auto col_ctx = std::make_shared<CollectiveContext>(
           parent_->col_exec_, parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/&input_, /*output=*/&input_);
-      TF_CHECK_OK(reducer.InitializeCollectiveContext(col_ctx));
+      TF_CHECK_OK(reducer->InitializeCollectiveContext(col_ctx));
       Notification note;
-      reducer.Run([this, &note](Status s) {
+      reducer->Run([this, &note](Status s) {
         status_ = s;
         note.Notify();
       });
@@ -332,6 +332,7 @@ class NcclTestBase : public ::testing::Test {
         CHECK(output_.CopyFrom(*ctx.mutable_output(0), input_.shape()));
       }
 
+      reducer->Unref();
       op_params.op_device_context->Unref();
     }
 
@@ -346,15 +347,15 @@ class NcclTestBase : public ::testing::Test {
       // Run broadcast.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      NcclBroadcaster broadcaster;
+      auto* broadcaster = new NcclBroadcaster();
       auto col_ctx = std::make_shared<CollectiveContext>(
           parent_->col_exec_, parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/col_params_.is_source ? &input_ : nullptr,
           /*output=*/&input_);
-      TF_CHECK_OK(broadcaster.InitializeCollectiveContext(col_ctx));
+      TF_CHECK_OK(broadcaster->InitializeCollectiveContext(col_ctx));
       Notification note;
-      broadcaster.Run([this, &note](Status s) {
+      broadcaster->Run([this, &note](Status s) {
         status_ = s;
         note.Notify();
       });
@@ -363,6 +364,7 @@ class NcclTestBase : public ::testing::Test {
         CHECK(output_.CopyFrom(input_, input_.shape()));
       }
 
+      broadcaster->Unref();
       op_params.op_device_context->Unref();
     }
 
@@ -385,20 +387,21 @@ class NcclTestBase : public ::testing::Test {
       // Run gather.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      NcclGatherer gatherer;
+      auto* gatherer = new NcclGatherer();
       auto col_ctx = std::make_shared<CollectiveContext>(
           parent_->col_exec_, parent_->dev_mgr_.get(),
           /*OpKernelContext=*/&ctx, &op_params, col_params_, exec_key, kStepId,
           /*input=*/&input_,
           /*output=*/&output_);
-      TF_CHECK_OK(gatherer.InitializeCollectiveContext(col_ctx));
+      TF_CHECK_OK(gatherer->InitializeCollectiveContext(col_ctx));
       Notification note;
-      gatherer.Run([this, &note](Status s) {
+      gatherer->Run([this, &note](Status s) {
         status_ = s;
         note.Notify();
       });
       note.WaitForNotification();
 
+      gatherer->Unref();
       op_params.op_device_context->Unref();
     }
 

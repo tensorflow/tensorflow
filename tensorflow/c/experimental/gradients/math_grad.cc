@@ -101,10 +101,10 @@ class MatMulGradientFunction : public GradientFunction {
 
     // Get transpose attrs
     bool t_a;
-    forward_attrs.Get("transpose_a", &t_a);
+    TF_RETURN_IF_ERROR(forward_attrs.Get("transpose_a", &t_a));
 
     bool t_b;
-    forward_attrs.Get("transpose_b", &t_b);
+    TF_RETURN_IF_ERROR(forward_attrs.Get("transpose_b", &t_b));
 
     // Conj each input
     vector<AbstractTensorHandle*> conj_outputs(1);

@@ -41,6 +41,7 @@ from tensorflow.python.eager import backprop_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.eager import forwardprop_util
+from tensorflow.python.eager import monitoring
 from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
@@ -91,6 +92,10 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 IMPLEMENTS_ATTRIBUTE_NAME = "_implements"
 SHARED_RENDEZVOUS_ATTRIBUTE_NAME = "shared_rendezvous"
+
+_graph_building_time_counter = monitoring.Counter(
+    "/tensorflow/core/tf_function/graph_building_time_usecs",
+    "Time for tf.function to build a graph (us).")
 
 
 def _make_input_signature_hashable(elem):
@@ -3313,41 +3318,38 @@ class Function(object):
     if graph_function is not None:
       return graph_function, filtered_flat_args
 
-    logging.vlog(1,
-                 "Creating new FuncGraph for Python function %r (key: %r)",
-                 self._python_function, cache_key)
-    logging.vlog(2,
-                 "Python function signature [args: %s] [kwargs: %s]",
-                 args,
-                 kwargs)
+    with monitoring.MonitoredTimer(_graph_building_time_counter.get_cell()):
+      logging.vlog(1, "Creating new FuncGraph for Python function %r (key: %r)",
+                   self._python_function, cache_key)
+      logging.vlog(2, "Python function signature [args: %s] [kwargs: %s]", args,
+                   kwargs)
 
-    # pylint: disable=protected-access
-    call_context_key = cache_key._replace(input_signature=None)
-    # pylint: disable=protected-access
+      # pylint: disable=protected-access
+      call_context_key = cache_key._replace(input_signature=None)
+      # pylint: disable=protected-access
 
-    ag_status = (
-        ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
-    with ag_ctx.ControlStatusCtx(
-        status=ag_status, options=self._autograph_options):
+      ag_status = (
+          ag_ctx.Status.ENABLED if self._autograph else ag_ctx.Status.DISABLED)
+      with ag_ctx.ControlStatusCtx(
+          status=ag_status, options=self._autograph_options):
 
-      # Build a function with shape relaxation retracing if:
-      # 1. shape relaxation is explicitly enabled
-      # and 2. there's no provided input signature
-      # and 3. there's been a cache miss for this calling context
-      if (self._experimental_relax_shapes
-          and self.input_signature is None
-          and call_context_key in self._function_cache.missed):
-        return self._define_function_with_shape_relaxation(
-            args, kwargs, flat_args, filtered_flat_args, cache_key_context)
+        # Build a function with shape relaxation retracing if:
+        # 1. shape relaxation is explicitly enabled
+        # and 2. there's no provided input signature
+        # and 3. there's been a cache miss for this calling context
+        if (self._experimental_relax_shapes and self.input_signature is None and
+            call_context_key in self._function_cache.missed):
+          return self._define_function_with_shape_relaxation(
+              args, kwargs, flat_args, filtered_flat_args, cache_key_context)
 
-      self._function_cache.missed.add(call_context_key)
-      graph_function = self._create_graph_function(args, kwargs)
-      self._function_cache.primary[cache_key] = graph_function
+        self._function_cache.missed.add(call_context_key)
+        graph_function = self._create_graph_function(args, kwargs)
+        self._function_cache.primary[cache_key] = graph_function
 
-      if ops.get_default_graph()._distribution_strategy_stack:
-        self._traced_with_distribution_strategy = True
+        if ops.get_default_graph()._distribution_strategy_stack:
+          self._traced_with_distribution_strategy = True
 
-      return graph_function, filtered_flat_args
+        return graph_function, filtered_flat_args
 
 
 def register(func, *args, **kwargs):

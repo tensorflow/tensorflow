@@ -1533,8 +1533,29 @@ int64 OpLevelCostEstimator::CalculateOutputSize(const OpInfo& op_info,
   return total_output_size;
 }
 
+bool HasZeroDim(const OpInfo& op_info) {
+  for (int i = 0; i < op_info.inputs_size(); ++i) {
+    const auto& input = op_info.inputs(i);
+    for (int j = 0; j < input.shape().dim_size(); ++j) {
+      const auto& dim = input.shape().dim(j);
+      if (dim.size() == 0) {
+        VLOG(1) << "Convolution config has zero dim "
+                << op_info.ShortDebugString();
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 Costs OpLevelCostEstimator::PredictConv2D(const OpContext& op_context) const {
   const auto& op_info = op_context.op_info;
+  if (HasZeroDim(op_info)) {
+    Costs costs = Costs::ZeroCosts();
+    costs.inaccurate = true;
+    costs.num_ops_with_unknown_shapes = 1;
+    return costs;
+  }
   bool found_unknown_shapes = false;
   auto costs = PredictOpCountBasedCost(
       CountConv2DOperations(op_info, &found_unknown_shapes), op_info);
@@ -1546,6 +1567,12 @@ Costs OpLevelCostEstimator::PredictConv2D(const OpContext& op_context) const {
 Costs OpLevelCostEstimator::PredictConv2DBackpropInput(
     const OpContext& op_context) const {
   const auto& op_info = op_context.op_info;
+  if (HasZeroDim(op_info)) {
+    Costs costs = Costs::ZeroCosts();
+    costs.inaccurate = true;
+    costs.num_ops_with_unknown_shapes = true;
+    return costs;
+  }
   bool found_unknown_shapes = false;
   auto costs =
       PredictOpCountBasedCost(CountConv2DBackpropInputOperations(
@@ -1559,6 +1586,12 @@ Costs OpLevelCostEstimator::PredictConv2DBackpropInput(
 Costs OpLevelCostEstimator::PredictConv2DBackpropFilter(
     const OpContext& op_context) const {
   const auto& op_info = op_context.op_info;
+  if (HasZeroDim(op_info)) {
+    Costs costs = Costs::ZeroCosts();
+    costs.inaccurate = true;
+    costs.num_ops_with_unknown_shapes = true;
+    return costs;
+  }
   bool found_unknown_shapes = false;
   auto costs =
       PredictOpCountBasedCost(CountConv2DBackpropFilterOperations(
@@ -2326,7 +2359,7 @@ Costs OpLevelCostEstimator::PredictResizeBilinear(
       CalculateTensorSize(op_context.op_info.inputs(0), &found_unknown_shapes);
   const int64 output_size =
       CalculateTensorSize(op_context.op_info.outputs(0), &found_unknown_shapes);
-  const int output_elements = CalculateTensorElementCount(
+  const int64 output_elements = CalculateTensorElementCount(
       op_context.op_info.outputs(0), &found_unknown_shapes);
 
   const auto half_pixel_centers =
@@ -2340,7 +2373,7 @@ Costs OpLevelCostEstimator::PredictResizeBilinear(
   }
 
   // Compose cost of bilinear interpolation.
-  auto ops = 0;
+  int64 ops = 0;
 
 #define EIGEN_COST(X) Eigen::internal::functor_traits<Eigen::internal::X>::Cost
   const auto sub_cost_float = EIGEN_COST(scalar_difference_op<float>);

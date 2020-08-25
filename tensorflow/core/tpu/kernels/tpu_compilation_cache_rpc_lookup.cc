@@ -25,6 +25,12 @@ namespace tensorflow {
 namespace tpu {
 namespace {
 
+#if defined(LIBTFTPU)
+using ResponseType = GetTpuProgramResponseExternal;
+#else
+using ResponseType = GetTpuProgramResponse;
+#endif
+
 static constexpr absl::Duration kProtoTimeout = absl::Minutes(15);
 static gpr_timespec TimeToGprTimespec(absl::Time time) {
   if (time == absl::InfiniteFuture()) {
@@ -147,7 +153,7 @@ Status TpuCompilationCacheRpcLookup::RemoteLookupLocked(
   client_context.set_deadline(TimeToGprTimespec(::absl::Now() + kProtoTimeout));
   client_context.set_compression_algorithm(GRPC_COMPRESS_GZIP);
 
-  tpu::GetTpuProgramResponse response;
+  ResponseType response;
   Status s =
       FromGrpcStatus(stub_->GetTpuProgram(&client_context, request, &response));
   VLOG(1) << "Looked up key " << local_proto_key

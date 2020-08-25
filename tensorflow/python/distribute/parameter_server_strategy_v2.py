@@ -30,8 +30,10 @@ from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util import tf_inspect
 
 
 # pylint: disable=protected-access
@@ -48,47 +50,46 @@ class ParameterServerStrategyV2(distribute_lib.Strategy):
   is subject to changes.
   """
 
-  def __init__(self, cluster_resolver):
+  def __init__(self, cluster_resolver, variable_partitioner=None):
     """Initializes the V2 parameter server strategy.
 
     Args:
       cluster_resolver: a `tf.distribute.cluster_resolver.ClusterResolver`
         object.
+      variable_partitioner: a callable with the signature `num_partitions =
+        fn(shape, dtype)`, where `num_partitions` is a list/tuple representing
+        the number of partitions on each axis, and `shape` and `dtype` are of
+        types `tf.TensorShape` and `tf.dtypes.Dtype`. If None, variables will
+        not be partitioned.
+        * `variable_partitioner` will be called for all variables created under
+        strategy `scope` to instruct how the variables should be partitioned.
+        Variables will be partitioned if there are more than one partitions
+        along the partitioning axis, otherwise it falls back to normal
+        `tf.Variable`.
+        * Only the first / outermost axis partitioning is supported, namely,
+        elements in `num_partitions` must be 1 other than the first element.
+        * Partitioner like `min_max_variable_partitioner`,
+        `variable_axis_size_partitioner` and `fixed_size_partitioner` are also
+        supported since they conform to the required signature.
+        * Div partition strategy is used to partition variables.
+        Assuming we assign consecutive integer ids along the first axis of a
+        variable, then ids are assigned to shards in a contiguous manner, while
+        attempting to keep each shard size identical. If the ids do not evenly
+        divide the number of shards, each of the first several shards will be
+        assigned one more id. For instance, a variable whose first dimension is
+        13 has 13 ids, and they are split across 5 shards as:
+        `[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12]]`.
+        * Variables created under `strategy.extended.colocate_vars_with` will
+        not be partitioned, e.g, optimizer's slot variables.
     """
-    self._extended = ParameterServerStrategyV2Extended(self, cluster_resolver)
     self._cluster_resolver = cluster_resolver
+    self._extended = ParameterServerStrategyV2Extended(self, cluster_resolver,
+                                                       variable_partitioner)
     self._verify_args_and_config(cluster_resolver)
     logging.info(
         "ParameterServerStrategyV2 is initialized with cluster_spec: "
         "%s", cluster_resolver.cluster_spec())
     super(ParameterServerStrategyV2, self).__init__(self._extended)
-
-  @tf_contextlib.contextmanager
-  def experimental_variable_partitioning_scope(self):
-    """A context manager for creating `ShardedVariable`.
-
-    Variables created inside a `with experimental_variable_partitioning_scope()`
-    code block will be of type `ShardedVariable` and their values are
-    partitioned among parameter servers along the first / outermost axis. The
-    number of shards are equal to the number of parameter servers.
-
-    Variables created within this scope must be initialized using a callable as
-    `initial_value` and a known shape.
-
-    Div partition strategy is used to partition the variable. Assuming we
-    assign consective integer ids along the first axis of the variable, then ids
-    are assigned to shards in a contiguous manner, while attempting to keep each
-    shard size identical. If the ids do not evenly divide the number of shards,
-    each of the first several shards will be assigned one more id. For instance,
-    a variable whose first dimension is 13 has 13 ids, and they are split across
-    5 shards as: `[[0, 1, 2], [3, 4, 5], [6, 7, 8], [9, 10], [11, 12]]`.
-
-    Yields:
-      A context manager for creating `ShardedVariable`.
-    """
-    with variable_scope.variable_creator_scope(
-        self._extended._make_sharded_variable_creator()):
-      yield
 
   def _verify_args_and_config(self, cluster_resolver):
     if not cluster_resolver.cluster_spec():
@@ -104,11 +105,19 @@ class ParameterServerStrategyV2Extended(
   Please see `tf.distribute.StrategyExtended` doc for more information.
   """
 
-  def __init__(self, container_strategy, cluster_resolver):
+  def __init__(self, container_strategy, cluster_resolver,
+               variable_partitioner):
     """Initialization of ParameterServerStrategyV2Extended."""
     super(ParameterServerStrategyV2Extended, self).__init__(container_strategy)
     self._num_ps = len(cluster_resolver.cluster_spec().as_dict().get("ps", []))
     self._variable_count = 0
+    self._variable_partitioner = variable_partitioner
+
+  @tf_contextlib.contextmanager
+  def _scope(self, strategy):
+    with super()._scope(strategy):
+      with variable_scope.variable_creator_scope(self._make_variable_creator()):
+        yield
 
   def _create_variable(self, next_creator, **kwargs):
 
@@ -136,69 +145,114 @@ class ParameterServerStrategyV2Extended(
         self._variable_count += 1
         return var
 
-  def _make_sharded_variable_creator(self):
+  def _make_variable_creator(self):
     """Returns a function conforming to the `variable_creator` signature.
 
-    The returned function creates `ShardedVariable` when called.
+    The returned function creates `ShardedVariable` or `Variable` when called.
+    `ShardedVariable` will be created if satisfying all the following criteria:
+      1. `self._variable_partitioner` results in more than one partition on the
+         first axis.
+      2. variable's rank is greater than 0.
+      3. variable is not colocated with other variables.
+    Otherwise `Variable` will be created.
     """
 
-    def sharded_variable_creator(next_creator, **kwargs):
-      if "shape" not in kwargs or kwargs["shape"] is None:
-        raise ValueError("shape must be explicitly specified when creating "
-                         "sharded variables")
-      init_fn = kwargs.get("initial_value", None)
-      # We intentionally don't allow non-callable initial_value to ensure the
-      # value is created on PS but not client. If the value is created on
-      # client, it will needed to be sent to PS for variable initialization,
-      # which is inefficient and can potentially hit the 2GB limit on protobuf
-      # serialization.
-      if init_fn is None or not callable(init_fn):
-        raise ValueError("initial_value must be specified as a callable when "
-                         "creating sharded variables")
+    def variable_creator(next_creator, **kwargs):
+      if self._variable_partitioner is None:
+        return next_creator(**kwargs)
+
+      if "colocate_with" in kwargs:  # Never partition colocated_with variables.
+        return next_creator(**kwargs)
+
+      name = kwargs.get("name", None)
+      initial_value = kwargs.get("initial_value", None)
+      if initial_value is None:
+        raise ValueError("initial_value must be specified.")
+      init_from_fn = callable(initial_value)
+
+      dtype = kwargs.get("dtype", None)
+      shape = kwargs.get("shape", None)
+      if init_from_fn and (shape is None or dtype is None):
+        init_from_fn = False
+        initial_value = initial_value()
+      if not init_from_fn:
+        # The initial_value is created on client, it will need to be sent to
+        # PS for variable initialization, which can be inefficient and can
+        # potentially hit the 2GB limit on protobuf serialization.
+        initial_value = ops.convert_to_tensor(initial_value, dtype=dtype)
+        dtype = initial_value.dtype
+        shape = initial_value.shape
+      else:
+        shape = tensor_shape.as_shape(shape)
+
+      if shape.rank == 0:  # Skip partitioning rank-0 variable.
+        return next_creator(**kwargs)
+
+      num_partitions = self._variable_partitioner(shape=shape, dtype=dtype)
+      if not num_partitions or num_partitions[0] == 0 or any(
+          v != 1 for v in num_partitions[1:]):
+        raise ValueError(
+            "variable_partitioner must return a list/tuple whose elements are 1"
+            " besides the first element (non-zero), got: %r" % num_partitions)
+
+      if num_partitions[0] == 1:  # no partition
+        return next_creator(**kwargs)
 
       # Use "div" partition strategy to partition the variable.
-      full_shape = kwargs["shape"]
-      if self._num_ps < full_shape[0]:
-        num_shards = self._num_ps
-      else:
-        num_shards = full_shape[0]
+      num_partitions = min(num_partitions[0], shape[0])
+      base = shape[0] // num_partitions
+      extra = shape[0] % num_partitions
+      # An example: num_partitions=4, shape[0]=10, partitions: [3, 3, 2, 2]
+      # offsets: [0, 3, 6, 8, 10]
       offsets = []
-      base = full_shape[0] // num_shards
-      extra = full_shape[0] % num_shards
-      for i in range(num_shards):
+      for i in range(num_partitions):
         if i == 0:
           offsets.append(0)
         else:
           prev_shard_size = base + (1 if i - 1 < extra else 0)
           offsets.append(offsets[i - 1] + prev_shard_size)
+      offsets.append(shape[0])
 
-      # Note: The way we initialize sharded variables is suboptimal, as it
-      # needs to create the full value tensor separately on each PS which the
-      # variable is going to be placed on. The full value could be very large
-      # and consume a lot of memory. The ideal way is to only create what's
-      # needed on the shard, however that's not practical because:
-      #  1. Initializers don't have sharded behavior support, even though some
-      #     initializers (e.g, uniform) can be used directly.
-      #  2. tf.Variable signature requires "initial_value" to be either a value
-      #     or a callable without arguments, meaning it is not straightforward
-      #     to make the sharded component from it.
       def init_shard_fn(shard_index):
-        full_value = init_fn()
-        if shard_index < num_shards - 1:
+        if not init_from_fn:
+          logging.log_if(
+              logging.WARNING, _INEFFICIENT_INIT_WARNING % name,
+              shard_index == 0 and
+              shape.num_elements() > _LARGE_VARIABLE_NUM_ELEMENTS)
+          return initial_value[offsets[shard_index]:offsets[shard_index + 1]]
+        arg_spec = tf_inspect.getfullargspec(initial_value)
+        if ("partition" not in arg_spec.args and
+            "partition" not in arg_spec.kwonlyargs):
+          # `initial_value` is a callable that doesn't accept `Partition`.
+          logging.log_if(
+              logging.WARNING, _INEFFICIENT_INIT_WARNING % name,
+              shard_index == 0 and
+              shape.num_elements() > _LARGE_VARIABLE_NUM_ELEMENTS)
+          full_value = initial_value()
           return full_value[offsets[shard_index]:offsets[shard_index + 1]]
         else:
-          return full_value[offsets[shard_index]:]
+          # Memory-efficient way of initializing sharded variable. It requires
+          # the `init_fn` to accept a namedtuple `Partition`.
+          component_shape = (offsets[shard_index + 1] -
+                             offsets[shard_index],) + shape[1:]
+          offsets_all_axes = (offsets[shard_index],) + (0,) * len(shape[1:])
+          return initial_value(
+              partition=sharded_variable.Partition(
+                  shape=tensor_shape.as_shape(component_shape),
+                  offsets=offsets_all_axes))
 
       var_list = []
-      for i in range(num_shards):
-        kwargs["shape"] = None
+      for i in range(num_partitions):
+        kwargs["shape"] = (offsets[i + 1] - offsets[i],) + shape[1:]
         kwargs["initial_value"] = lambda: init_shard_fn(i)
+        if name is not None:
+          kwargs["name"] = "{}/part_{}".format(name, i)
         var_list.append(next_creator(**kwargs))
 
       result = sharded_variable.ShardedVariable(var_list)
       return result
 
-    return sharded_variable_creator
+    return variable_creator
 
   def _call_for_each_replica(self, fn, args, kwargs):
     with distribute_lib.ReplicaContext(
@@ -206,3 +260,18 @@ class ParameterServerStrategyV2Extended(
         replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
       # TODO(rchao): Support multi-replica per worker or sync-group.
       return distribute_utils.regroup((fn(*args, **kwargs),))
+
+
+# The warning that will be logged if the way we initialize sharded variables
+# is memory-inefficient.
+_INEFFICIENT_INIT_WARNING = (
+    "Large variable %s is partitioned but not initialized in a memory-efficient"
+    " way. The full value is first being created and then sliced into smaller "
+    "values. To reduce the memory footprint, explicitly specify `dtype` and "
+    "`shape` when creating variables, and pass a callable to Variable's "
+    "`initial_value`. The callable should take only one argument which is a "
+    "namedtuple (shape: `tf.TensorShape`, offsets: list/tuple) where shape is "
+    "the shape of the component variable, and offsets is the offsets of the "
+    "smaller variable on each axis.")
+
+_LARGE_VARIABLE_NUM_ELEMENTS = 1e9
