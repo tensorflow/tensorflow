@@ -18,23 +18,21 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/stl_bind.h"
 
-struct ConcreteFunction;  // Forward declaration.
-
-// TODO(jlchu): Migrate Python characteristics to C++
-
 namespace tensorflow {
 
 namespace py = pybind11;
 
-struct ConcreteFunction {
-  ConcreteFunction() {};
-  py::object _build_call_outputs(py::object result,
+struct _ConcreteFunction {
+  _ConcreteFunction() {};
+  py::object BuildCallOutputs(py::object result,
                                  py::object structured_outputs,
                                  bool _ndarrays_list,
                                  bool _ndarray_singleton);
 };
 
-py::object ConcreteFunction::_build_call_outputs(py::object result,
+// TODO(jlchu): Migrate Python characteristics to C++; call this version from
+// function.py when speed is improved
+py::object _ConcreteFunction::BuildCallOutputs(py::object result,
                                                  py::object structured_outputs,
                                                  bool _ndarrays_list,
                                                  bool _ndarray_singleton) {
@@ -48,8 +46,7 @@ py::object ConcreteFunction::_build_call_outputs(py::object result,
     return result;
   }
 
-  // TODO(jlchu): Verify invariant -result = None only if
-  // structured_outputs = None?
+  // Implied invariant: result == None only if structured_outputs == None
   py::list list_result = (py::list) result;
 
   if (!list_result.empty()) {
@@ -77,9 +74,9 @@ py::object ConcreteFunction::_build_call_outputs(py::object result,
 }
 
 PYBIND11_MODULE(_concrete_function, m) {
-  py::class_<ConcreteFunction>(m, "ConcreteFunction")
+  py::class_<_ConcreteFunction>(m, "ConcreteFunction")
       .def(py::init<>())
-      .def("_build_call_outputs", &ConcreteFunction::_build_call_outputs);
+      .def("_build_call_outputs", &_ConcreteFunction::BuildCallOutputs);
 }
 
 } // namespace tensorflow
