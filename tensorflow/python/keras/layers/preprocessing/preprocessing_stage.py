@@ -116,15 +116,14 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
   nested structure of tensors.
 
   Example:
-  ```python
-  from tensorflow.keras.layers.experimental import preprocessing
-  inputs = {'x2': tf.keras.Input(shape=(5,)),
-            'x1': tf.keras.Input(shape=(1,))}
-  y = preprocessing.Normalization()(inputs['x2'])
-  y, z = tf.keras.layers.Lambda(lambda x: (x, x))(inputs['x1'])
-  outputs = [inputs['x1'], [y, z]]
-  stage = FunctionalPreprocessingStage(inputs, outputs)
-  ```
+
+  >>> inputs = {'x2': tf.keras.Input(shape=(5,)),
+  ...           'x1': tf.keras.Input(shape=(1,))}
+  >>> norm_layer = tf.keras.layers.experimental.preprocessing.Normalization()
+  >>> y = norm_layer(inputs['x2'])
+  >>> y, z = tf.keras.layers.Lambda(lambda x: (x, x))(inputs['x1'])
+  >>> outputs = [inputs['x1'], [y, z]]
+  >>> stage = FunctionalPreprocessingStage(inputs, outputs)
 
   Arguments:
     inputs: An input tensor (must be created via `tf.keras.Input()`), or a
@@ -155,6 +154,7 @@ class FunctionalPreprocessingStage(base_preprocessing_layer.PreprocessingLayer,
         the layers in this preprocessing stage.
 
     Examples:
+
     >>> # For a stage with dict input
     >>> inputs = {'x2': tf.keras.Input(shape=(5,)),
     ...           'x1': tf.keras.Input(shape=(1,))}
@@ -246,6 +246,7 @@ def _unzip_dataset(ds):
     `element_spec` of the input Dataset object.
 
   Example:
+
   >>> ds1 = tf.data.Dataset.from_tensor_slices([1, 2, 3])
   >>> ds2 = tf.data.Dataset.from_tensor_slices([4, 5, 6])
   >>> ds_zipped_tuple = tf.data.Dataset.zip((ds1, ds2))
