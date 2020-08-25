@@ -354,7 +354,7 @@ class DynamicPartitionTest(test.TestCase):
     results = []
     for device in device_list:
       with ops.device(device.name):
-        data = constant_op.constant(np.zeros((1000, )))
+        data = constant_op.constant(np.zeros((1000,)))
         partitions = constant_op.constant(np.arange(1000, dtype=np.int32) % 10)
         result = data_flow_ops.dynamic_partition(data, partitions, 10)
         results.append(self.evaluate(result))
