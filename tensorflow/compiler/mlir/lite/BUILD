@@ -509,19 +509,6 @@ gentbl(
     ],
 )
 
-# Library with tensorflow Lite dialect static initialization.
-cc_library(
-    name = "tensorflow_lite_dialect_registration",
-    srcs = [
-        "ir/dialect_registration.cc",
-    ],
-    deps = [
-        ":tensorflow_lite",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = 1,
-)
-
 tf_native_cc_binary(
     name = "converter-gen",
     srcs = [
@@ -628,7 +615,6 @@ cc_library(
         ":flatbuffer_tflite_operator_lib",
         ":stateful_ops_utils",
         ":tensorflow_lite",
-        ":tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir:op_or_arg_name_mapper",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_tensor",
@@ -672,7 +658,6 @@ cc_library(
         ":convert_type",
         ":flatbuffer_tflite_operator_lib",
         ":tensorflow_lite",
-        ":tensorflow_lite_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:mangling_util",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_types",
