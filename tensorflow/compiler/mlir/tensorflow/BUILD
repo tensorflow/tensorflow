@@ -1075,6 +1075,7 @@ cc_library(
         ":export_utils",
         ":tensorflow",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/stream_executor/lib",
