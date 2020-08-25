@@ -1,6 +1,7 @@
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -64,6 +65,7 @@ exports_files([
 flatbuffer_cc_library(
     name = "schema_fbs",
     srcs = ["schema.fbs"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 # Generic schema for flatbuffer converter (but with mutable makes bigger).

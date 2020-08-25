@@ -2,6 +2,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -429,6 +430,7 @@ cc_library(
     hdrs = [
         "op_macros.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = ["//tensorflow/lite/micro:debug_log"],
 )
@@ -441,6 +443,7 @@ cc_library(
     hdrs = [
         "kernel_util.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
