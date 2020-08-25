@@ -1289,7 +1289,7 @@ namespace {
 // gather/scatter slice size 1.
 bool GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
     const PartitionedHlo& operand, absl::Span<const int64> index_map,
-    absl::Span<const int64> slice_size, int64 num_partitions) {
+    absl::Span<const int64> slice_size) {
   if (operand.sharding().IsTileMaximal()) {
     return false;
   }
@@ -1300,7 +1300,7 @@ bool GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
           operand.sharding().tile_assignment().dim(dim);
     }
   }
-  return trivial_slice_dims_partitions == num_partitions;
+  return trivial_slice_dims_partitions == operand.sharding().NumTiles();
 }
 
 // Returns the min and max for the indices (replicated) in a scatter/gather
@@ -1495,8 +1495,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       return Status::OK();
     }
     if (GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
-            operand, scatter_dims_to_operand_dims, slice_size,
-            num_partitions_) &&
+            operand, scatter_dims_to_operand_dims, slice_size) &&
         ShapeSizeInBytes(updates.base_shape()) <
             ShapeSizeInBytes(scatter->shape())) {
       // Operand is sharded on trivial slice dims (update slice size 1). We can
@@ -2371,8 +2370,7 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
       return Status::OK();
     }
     if (GatherScatterOperandPartitionedOnlyOnTrivialSliceDims(
-            operand, start_index_map, gather->gather_slice_sizes(),
-            num_partitions_) &&
+            operand, start_index_map, gather->gather_slice_sizes()) &&
         ShapeSizeInBytes(gather->shape()) <
             ShapeSizeInBytes(gather->operand(0)->shape())) {
       indices = indices.Reshard(HloSharding::Replicate());
@@ -2434,7 +2432,17 @@ Status SpmdPartitioningVisitor::HandleGather(HloInstruction* hlo) {
           pgather->shape(), HloOpcode::kSelect, broadcast_filter,
           CreateZero(pgather->shape(), &b_), pgather));
       // Combine from different partitions.
-      auto ar = collective_ops_creator_.create_cross_partition_all_reduce(
+      auto collective_ops_creator = collective_ops_creator_;
+      if (operand.sharding().ReplicateOnLastTileDim()) {
+        auto sharding_grouped = GroupShardingOnDims(
+            operand.sharding(),
+            {operand.sharding().tile_assignment().num_dimensions() - 1});
+        auto per_group_partitioner_state = CreatePerGroupPartitioningState(
+            operand.state(), sharding_grouped.device_groups, &b_);
+        collective_ops_creator =
+            per_group_partitioner_state.collective_ops_creator;
+      }
+      auto ar = collective_ops_creator.create_cross_partition_all_reduce(
           &b_, filtered,
           MakeBinaryAdd(filtered->shape().element_type(), module_), {},
           NewChannel());
