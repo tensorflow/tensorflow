@@ -1,4 +1,4 @@
-# Bert question answerer
+# Integrate BERT question answerer
 
 The Task Library `BertQuestionAnswerer` API loads a Bert model and answers
 questions based on the content of a given passage. For more information, see the
@@ -21,10 +21,7 @@ The following models are compatible with the `BertNLClassifier` API.
     [TensorFlow Lite Model Maker for Question Answer](https://www.tensorflow.org/lite/tutorials/model_maker_question_answer).
 
 *   The
-    [pretrained ALBERT models on TensorFlow Hub](https://tfhub.dev/tensorflow/albert_lite_base/1).
-
-*   The
-    [pretrained MobileBERT models on TensorFlow Hub](https://tfhub.dev/tensorflow/tfjs-model/mobilebert/1).
+    [pretrained BERT models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/bert-question-answerer/1).
 
 *   Custom models that meet the
     [model compatibility requirements](#model-compatibility-requirements).
