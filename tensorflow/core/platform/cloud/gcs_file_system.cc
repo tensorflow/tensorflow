@@ -30,7 +30,7 @@ limitations under the License.
 #include <io.h>  // for _mktemp
 #endif
 #include "absl/base/macros.h"
-#include "include/json/json.h"
+#include "json/json.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
