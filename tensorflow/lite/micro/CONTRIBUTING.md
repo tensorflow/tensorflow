@@ -166,3 +166,121 @@ and more scalable.
 Having said that, we still invite feature requests via
 [TF Lite Micro Github issues](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
 to determine if the requested feature aligns with the TFLM roadmap.
+
+# Development Workflow Notes
+
+## Before submitting your PR
+
+ 1. Run in-place clang-format on all the files that are modified in your git
+    tree with
+    ```
+    clang-format -i -style=google `git ls-files -m`
+    ```
+
+ 1. Make sure your code is lint-free.
+
+    Get a copy of cpplint
+    ```
+    git@github.com:google/styleguide.git
+    ```
+
+    Run cpplint.py on all modified files in your git tree:
+    ```
+    cpplint.py `git ls-files -m`
+    ```
+ 1. Run all the tests for x86, and any other platform that you are modifying.
+    ```
+    make -f tensorflow/lite/micro/tools/make/Makefile test
+
+    ```
+
+    Please check the READMEs in the optimized kernel directories for specific
+    instructions.
+
+ 1. Sometimes, bugs are caught by the address sanitizer that can go unnoticed
+    via the Makefile. To run a test with the address sanitizer, use the
+    following command (replace `micro_interpreter_test` with the target that you
+    want to test:
+    ```
+    CC=clang BAZEL_COMPILER=llvm bazel run --copt=-DADDRESS_SANITIZER    
+    --copt=-fsanitize=address --linkopt=-fsanitize=address
+    tensorflow/lite/micro:micro_interpreter_test
+    ```
+
+## During the PR review
+
+ 1. Do not change the git version history. Always merge upstream/master, and no
+    force-pushes please.
+
+    Assuming that you forked tensorflow and added a remote called upstream with:
+    ```
+    git remote add upstream https://github.com/tensorflow/tensorflow.git
+    ```
+
+    Fetch the latest changes from upstream and merge into your local branch.
+    ```
+    git fetch upstream
+    git merge upstream/master
+    ```
+
+    In case of a merge conflict, resolve via:
+    ```
+    git mergetool
+    # Use your favorite diff tools (e.g. meld) to resolve the conflicts.
+    git add <files that were manually resolved>
+    git commit
+    # Update the commit message to call out which files were manually resolved for a
+    # conflict. See [this commit](https://github.com/tensorflow/tensorflow/pull/42571/commits/303e22d09a175fdc1093d57fa09b44367851628b) as an example.
+    ```
+
+   The benefit of `git merge` and resolving the conflicts is that the github review
+   tool can easily show the reviewer ecatly what part of the merge commit was a
+   manual change, and which parts were files that were automatically merged.
+
+   Additionally, the commit message shows which branch was merged (i.e.
+   upstream/master was merged into your feature branch)
+
+ 1. If a force push seems to be the only path forward, please stop and let your
+    PR reviewer know ***before*** force pushing. We will attempt to do the merge
+    for you. This will also help us better understand in what conditions a
+    force-push may be unavoidable.
+
+
+## Reviewer notes
+
+ * [GIthub CLI](cli.github.com) can be useful to quickly checkout a PR to test
+   locally.
+   ```
+   gh pr checkout <PR number>
+   ```
+
+ * Google engineers on the Tensorflow team will have the permissions to push
+   edits to most PRs. This can be useful to make some small fixes as a result of
+   errors due to internal checks that are not easily reproducible via github.
+
+   One example of this is [this comment](https://github.com/tensorflow/tensorflow/pull/38634#issuecomment-683190474).
+
+   And a sketch of the steps:
+   ```
+   git remote add <remote_name> git@github.com:<PR author>/tensorflow.git
+   git fetch <remote_name>
+
+   git checkout -b <local-branch-name> <remote_name>/<PR branch name>
+
+   # make changes and commit to local branch
+
+   # push changes to remove branch
+   git push <remote_name> <PR branch name>
+
+   # remove the temp remote to clean up your git environment.
+   git remote rm <remote_name>
+   ```
+
+## Python notes
+
+Most PRs for TensorFlow Lite Micro will be C++ only. Adding some notes on Python
+that can be expanded and improved as necessary.
+
+ * [TensorFlow guide](https://www.tensorflow.org/community/contribute/code_style#python_style) for Python development
+ * [yapf](https://github.com/google/yapf/) should be used for formatting.
+
