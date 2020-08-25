@@ -1144,6 +1144,13 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SpaceToBatchNDOp
+//===----------------------------------------------------------------------===//
+
+// TODO(b/157475606): Add Verify(SpaceToBatchNDOp)
+// TODO(b/157475606): Add SpaceToBatchNDOp::inferReturnTypes
+
+//===----------------------------------------------------------------------===//
 // SparseSoftmaxCrossEntropyWithLogitsOp
 //===----------------------------------------------------------------------===//
 
