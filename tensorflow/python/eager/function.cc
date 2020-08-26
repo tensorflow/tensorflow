@@ -18,22 +18,20 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/stl_bind.h"
 
-struct ConcreteFunction;  // Forward declaration.
-
-// TODO(jlchu): Migrate Python characteristics to C++
-
 namespace tensorflow {
 
 namespace py = pybind11;
 
 struct PyConcreteFunction {
   PyConcreteFunction() {}
-  py::object _build_call_outputs(py::object result,
-                                 py::object structured_outputs,
-                                 bool _ndarrays_list, bool _ndarray_singleton);
+  py::object BuildCallOutputs(py::object result,
+                              py::object structured_outputs,
+                              bool _ndarrays_list, bool _ndarray_singleton);
 };
 
-py::object PyConcreteFunction::_build_call_outputs(
+// TODO(jlchu): Migrate Python characteristics to C++; call this version from
+// function.py when performance is improved
+py::object PyConcreteFunction::BuildCallOutputs(
     py::object result, py::object structured_outputs, bool _ndarrays_list,
     bool _ndarray_singleton) {
   static const py::module* nest =
@@ -46,8 +44,7 @@ py::object PyConcreteFunction::_build_call_outputs(
     return result;
   }
 
-  // TODO(jlchu): Verify invariant -result = None only if
-  // structured_outputs = None?
+  // Implied invariant: result == None only if structured_outputs == None
   py::list list_result = (py::list)result;
 
   if (!list_result.empty()) {
@@ -77,7 +74,7 @@ py::object PyConcreteFunction::_build_call_outputs(
 PYBIND11_MODULE(_concrete_function, m) {
   py::class_<PyConcreteFunction>(m, "ConcreteFunction")
       .def(py::init<>())
-      .def("_build_call_outputs", &PyConcreteFunction::_build_call_outputs);
+      .def("_build_call_outputs", &PyConcreteFunction::BuildCallOutputs);
 }
 
 }  // namespace tensorflow
