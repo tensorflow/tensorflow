@@ -212,6 +212,7 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":timespan",
+        ":trace_utils",
         ":xplane_builder",
         ":xplane_visitor",
         "//tensorflow/core:platform_base",
