@@ -415,8 +415,8 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:matmul_op",
         "//tensorflow/core/kernels:pad_op",
         "//tensorflow/core/kernels:relu_op",
-        "//tensorflow/core:tensorflow",
         "//tensorflow/core/kernels/image:image",
+        "//tensorflow/core:tensorflow",
     ] + MKL_TEST_DEPS,
 )
 
