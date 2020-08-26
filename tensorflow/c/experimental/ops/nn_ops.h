@@ -51,6 +51,14 @@ Status FusedBatchNormGradV2(AbstractContext* ctx,
                absl::Span<AbstractTensorHandle* const> inputs,
                absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
+Status FusedBatchNorm(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status FusedBatchNormGrad(AbstractContext* ctx,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
 Status Conv2D(AbstractContext* ctx,
                absl::Span<AbstractTensorHandle* const> inputs,
                absl::Span<AbstractTensorHandle*> outputs,

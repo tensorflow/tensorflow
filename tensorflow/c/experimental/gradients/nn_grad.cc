@@ -25,11 +25,15 @@ using tensorflow::ops::Mul;
 using tensorflow::ops::ReluGrad;
 using tensorflow::ops::SparseSoftmaxCrossEntropyLoss;
 using tensorflow::ops::ZerosLike;
+using tensorflow::ops::OnesLike;
 using tensorflow::ops::BiasAddGrad;
 using tensorflow::ops::Shape;
 using tensorflow::ops::Conv2DBackpropFilter;
 using tensorflow::ops::Conv2DBackpropInput;
 using tensorflow::ops::FusedBatchNormGradV3;
+using tensorflow::ops::FusedBatchNormGrad;
+using tensorflow::ops::Sqrt;
+using tensorflow::ops::DivNoNan;
 
 namespace tensorflow {
 namespace gradients {
@@ -213,6 +217,8 @@ class FusedBatchNormV3GradientFunction : public GradientFunction {
     AbstractTensorHandle* scale = forward_inputs[1];
       
     // Cached values from forward pass
+    AbstractTensorHandle* batch_mean = forward_outputs[1];
+    AbstractTensorHandle* batch_var = forward_outputs[2];
     AbstractTensorHandle* rs_1 = forward_outputs[3];
     AbstractTensorHandle* rs_2 = forward_outputs[4];
     AbstractTensorHandle* rs_3 = forward_outputs[5];
@@ -220,9 +226,88 @@ class FusedBatchNormV3GradientFunction : public GradientFunction {
     // Calculate Grad
     std::string name = "FBN_V3_grad";
     vector<AbstractTensorHandle*> fbn_grad_outputs(5);
+
+    // Returns[dX (don't use), dscale, doffset, rs_4, rs_5]
     TF_RETURN_IF_ERROR(FusedBatchNormGradV3(ctx->ctx,
                         {upstream_grad, x_input,
                         scale, rs_1, rs_2, rs_3},
+                        absl::MakeSpan(fbn_grad_outputs),
+                        name.c_str()));
+    
+    
+    /* FusedBatchNormGradV3 gives strange outputs for dX.
+     * 
+     *  Calculate it ourselves analytically: 
+     *
+     *   BatchNorm Out = y =  scale*(X - mean) / sqrt(var) + offset
+     *
+     *   dy/dX = scale/sqrt(var) 
+     *
+     *    ----> dLoss/dX = upstream (dLoss/dy) * dy/dX 
+     *
+     */ 
+
+    // Get sqrt of vars.
+    vector<AbstractTensorHandle*> temp_outputs(1);
+    name = "Sqrt_FBN";
+    TF_RETURN_IF_ERROR(Sqrt(ctx->ctx, {batch_var}, 
+                       absl::MakeSpan(temp_outputs), name.c_str()));
+    AbstractTensorHandle* std_devs = temp_outputs[0];
+
+    // Calculate dy/dX = scale / sqrt(var)
+    name = "Div_FBN";
+    TF_RETURN_IF_ERROR(DivNoNan(ctx->ctx, {scale, std_devs}, 
+                       absl::MakeSpan(temp_outputs), name.c_str()));
+    AbstractTensorHandle* scale_div_std_devs = temp_outputs[0];
+
+    // Calculate Upstream * dy/dX
+    name = "Mul_FBN";
+    TF_RETURN_IF_ERROR(Mul(ctx->ctx, {scale_div_std_devs, upstream_grad}, 
+                       absl::MakeSpan(temp_outputs), name.c_str()));
+    AbstractTensorHandle* dX = temp_outputs[0];
+
+
+    (*grad_outputs)[0] = dX;
+    (*grad_outputs)[1] = fbn_grad_outputs[1]; // dscale
+    (*grad_outputs)[2] = fbn_grad_outputs[2]; // doffset
+    (*grad_outputs)[3] = nullptr; // Don't pass grads for reserve_spaces
+    (*grad_outputs)[4] = nullptr; // Don't pass grads for reseve_spaces
+    
+    return Status::OK();
+  }
+  ~FusedBatchNormV3GradientFunction() override {}
+  
+private:
+  vector<AbstractTensorHandle*> forward_inputs;
+  vector<AbstractTensorHandle*> forward_outputs;
+};
+
+class FusedBatchNormGradientFunction : public GradientFunction {
+  public:
+    explicit FusedBatchNormGradientFunction(
+        vector<AbstractTensorHandle*> f_inputs,
+        vector<AbstractTensorHandle*> f_outputs)
+        : forward_inputs(f_inputs), forward_outputs(f_outputs){}
+  
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                      vector<AbstractTensorHandle*>* grad_outputs) override  {
+    
+    grad_outputs->resize(5);
+  
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    AbstractTensorHandle* x_input = forward_inputs[0];
+    AbstractTensorHandle* scale = forward_inputs[1];
+      
+    // Cached values from forward pass
+    AbstractTensorHandle* rs_1 = forward_outputs[3];
+    AbstractTensorHandle* rs_2 = forward_outputs[4];
+      
+    // Calculate Grad
+    std::string name = "FBN_grad";
+    vector<AbstractTensorHandle*> fbn_grad_outputs(5);
+    TF_RETURN_IF_ERROR(FusedBatchNormGrad(ctx->ctx,
+                        {upstream_grad, x_input,
+                        scale, rs_1, rs_2},
                         absl::MakeSpan(fbn_grad_outputs),
                         name.c_str()));
     
@@ -234,7 +319,7 @@ class FusedBatchNormV3GradientFunction : public GradientFunction {
     
     return Status::OK();
   }
-  ~FusedBatchNormV3GradientFunction() override {}
+  ~FusedBatchNormGradientFunction() override {}
   
 private:
   vector<AbstractTensorHandle*> forward_inputs;
@@ -274,6 +359,12 @@ BackwardFunction* Conv2DRegisterer(const ForwardOperation& op) {
 
 BackwardFunction* FusedBatchNormV3Registerer(const ForwardOperation& op) {
   auto gradient_function = new FusedBatchNormV3GradientFunction(op.inputs, op.outputs);
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* FusedBatchNormRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new FusedBatchNormGradientFunction(op.inputs, op.outputs);
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }

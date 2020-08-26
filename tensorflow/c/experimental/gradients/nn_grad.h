@@ -24,6 +24,7 @@ BackwardFunction* SparseSoftmaxCrossEntropyLossRegisterer(const ForwardOperation
 BackwardFunction* BiasAddRegisterer(const ForwardOperation& op);
 BackwardFunction* Conv2DRegisterer(const ForwardOperation& op);
 BackwardFunction* FusedBatchNormV3Registerer(const ForwardOperation& op);
+BackwardFunction* FusedBatchNormRegisterer(const ForwardOperation& op);
 }  // namespace gradients
 }  // namespace tensorflow
 

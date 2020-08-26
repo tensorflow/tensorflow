@@ -195,5 +195,22 @@ Status Square(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inpu
  return Status::OK();
 }
 
+Status Sqrt(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+ AbstractOperationPtr sq_op(ctx->CreateOperation());
+ TF_RETURN_IF_ERROR(sq_op->Reset("Sqrt", /*raw_device_name=*/nullptr));
+ 
+ if (isa<tracing::TracingOperation>(sq_op.get())) {
+   TF_RETURN_IF_ERROR(
+       dyn_cast<tracing::TracingOperation>(sq_op.get())->SetOpName(name));
+ }
+ 
+ TF_RETURN_IF_ERROR(sq_op->AddInput(inputs[0])); 
+ 
+ int num_retvals = 1;
+ TF_RETURN_IF_ERROR(sq_op->Execute(outputs, &num_retvals));
+ return Status::OK();
+}
+
 }  // namespace ops
 }  // namespace tensorflow

@@ -191,6 +191,101 @@ Status DivNoNan(AbstractContext* ctx, Tape* tape,
                  registry);
 }
 
+Status Sqrt(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry) {
+  AbstractOperationPtr sq_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(sq_op.get(), "Sqrt", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<TracingOperation>(sq_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<TracingOperation>(sq_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(AddInput(sq_op.get(), inputs[0], &forward_op));
+
+  int num_retvals = 1;
+  return Execute(sq_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
+
+Status FusedBatchNormV3(AbstractContext* ctx, Tape* tape,
+   absl::Span<AbstractTensorHandle* const> inputs,
+   absl::Span<AbstractTensorHandle*> outputs, const char* name,
+   bool is_training, const GradientRegistry& registry) {
+ 
+ // Inputs = [x, scale, offset, mean (optional), variance (optional)]
+ AbstractOperationPtr fbn_op(ctx->CreateOperation());
+ ForwardOperation forward_op;
+ forward_op.ctx = ctx;
+ TF_RETURN_IF_ERROR(Reset(fbn_op.get(), "FusedBatchNormV3",
+                          /*raw_device_name=*/nullptr, &forward_op));
+ if (isa<tracing::TracingOperation>(fbn_op.get())) {
+   TF_RETURN_IF_ERROR(
+       dyn_cast<tracing::TracingOperation>(fbn_op.get())->SetOpName(name));
+ }
+ 
+ TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(
+      fbn_op.get(), "is_training", is_training, &forward_op));
+ 
+ for(int i = 0; i < inputs.length(); i++) {
+   TF_RETURN_IF_ERROR(AddInput(fbn_op.get(), inputs[i], &forward_op));
+ }
+ 
+ /*
+  * Returns 6 outputs:
+  *  y = batchnorm out
+  *  batch_mean
+  *  batch_variance
+  *  reserve_spaces 1, 2, and 3
+  *
+  */
+ 
+ int num_retvals = 6;
+ return Execute(fbn_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                registry);
+}
+
+Status FusedBatchNorm(AbstractContext* ctx, Tape* tape,
+   absl::Span<AbstractTensorHandle* const> inputs,
+   absl::Span<AbstractTensorHandle*> outputs, const char* name,
+   bool is_training, const GradientRegistry& registry) {
+ 
+ // Inputs = [x, scale, offset, mean (optional), variance (optional)]
+ AbstractOperationPtr fbn_op(ctx->CreateOperation());
+ ForwardOperation forward_op;
+ forward_op.ctx = ctx;
+ TF_RETURN_IF_ERROR(Reset(fbn_op.get(), "FusedBatchNorm",
+                          /*raw_device_name=*/nullptr, &forward_op));
+ if (isa<tracing::TracingOperation>(fbn_op.get())) {
+   TF_RETURN_IF_ERROR(
+       dyn_cast<tracing::TracingOperation>(fbn_op.get())->SetOpName(name));
+ }
+ 
+ TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrBool(
+      fbn_op.get(), "is_training", is_training, &forward_op));
+ 
+ for(int i = 0; i < inputs.length(); i++) {
+   TF_RETURN_IF_ERROR(AddInput(fbn_op.get(), inputs[i], &forward_op));
+ }
+ 
+ /*
+  * Returns 5 outputs:
+  *  y = batchnorm out
+  *  batch_mean
+  *  batch_variance
+  *  reserve_spaces 1, 2
+  *
+  */
+ 
+ int num_retvals = 5;
+ return Execute(fbn_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                registry);
+}
+
 //===================== Test Models to run =========================
 
 Status BiasAddGradModel(AbstractContext* ctx,
@@ -402,6 +497,70 @@ Status Log1pGradModel(AbstractContext* ctx,
   return Status::OK();
 }
 
+Status FBNGradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0])); // Watch x
+  tape->Watch(ToId(inputs[1])); // Watch scale
+  tape->Watch(ToId(inputs[2])); // Watch offset
+  std::vector<AbstractTensorHandle*> fbn_outputs(6);
+  TF_RETURN_IF_ERROR(FusedBatchNormV3(ctx, tape, inputs, absl::MakeSpan(fbn_outputs),
+                     "fbn_test",/*is_training=*/true, registry));
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+  
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(fbn_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1]), ToId(inputs[2])},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+  
+  outputs[0] = fbn_outputs[0]; // bn_out
+  outputs[1] = out_grads[0]; // dx 
+  outputs[2] = out_grads[1]; // dscale
+  outputs[3] = out_grads[2]; // doffset
+  
+  delete tape;
+  return Status::OK();
+}
+
+Status FBNV1GradModel(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry) {
+  TapeVSpace vspace(ctx);
+  auto tape = new Tape(/*persistent=*/false);
+  tape->Watch(ToId(inputs[0])); // Watch x
+  tape->Watch(ToId(inputs[1])); // Watch scale
+  tape->Watch(ToId(inputs[2])); // Watch offset
+  std::vector<AbstractTensorHandle*> fbn_outputs(5);
+  int64_t strides[] = {1,1,1,1};
+  TF_RETURN_IF_ERROR(FusedBatchNorm(ctx, tape, inputs, absl::MakeSpan(fbn_outputs),
+                     "fbn_test",/*is_training=*/true, registry));
+  std::unordered_map<tensorflow::int64, TapeTensor>
+      source_tensors_that_are_targets;
+  
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(fbn_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1]), ToId(inputs[2])},
+      source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+  
+  outputs[0] = fbn_outputs[0]; // bn_out
+  outputs[1] = out_grads[0]; // dx 
+  outputs[2] = out_grads[1]; // dscale
+  outputs[3] = out_grads[2]; // doffset
+  
+  delete tape;
+  return Status::OK();
+}
 // ====================== End Models ================================
 
 
