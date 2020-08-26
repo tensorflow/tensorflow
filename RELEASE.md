@@ -123,6 +123,13 @@
       customization of how gradients are aggregated across devices, as well as
       `gradients_transformers` to allow for custom gradient transformations
       (such as gradient clipping).
+    * The `steps_per_execution` argument in `compile()` is no longer
+      experimental; if you were passing `experimental_steps_per_execution`,
+      rename it to `steps_per_execution` in your code. This argument controls
+      the number of batches to run during each `tf.function` call when calling
+      `fit()`. Running multiple batches inside a single `tf.function` call can
+      greatly improve performance on TPUs or small models with a large Python
+      overhead.
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing

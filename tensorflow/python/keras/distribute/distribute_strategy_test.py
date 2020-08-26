@@ -1764,7 +1764,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       outputs = keras.layers.Dense(1)(x)
       model = keras.Model(inputs, outputs)
 
-    model.compile('sgd', 'mse', experimental_steps_per_execution=10)
+    model.compile('sgd', 'mse', steps_per_execution=10)
 
     bc = BatchCountingCB()
     x, y = np.ones((100, 10, 10, 3)), np.ones((100, 1))
@@ -1788,7 +1788,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       outputs = keras.layers.Dense(1)(inputs)
       model = keras.Model(inputs, outputs)
 
-    model.compile('sgd', 'mse', experimental_steps_per_execution=20)
+    model.compile('sgd', 'mse', steps_per_execution=20)
 
     bc = BatchCountingCB()
     x, y = np.ones((100, 10)), np.ones((100, 1))
@@ -1812,7 +1812,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       outputs = keras.layers.Dense(1)(inputs)
       model = keras.Model(inputs, outputs)
 
-    model.compile('sgd', 'mse', experimental_steps_per_execution=20)
+    model.compile('sgd', 'mse', steps_per_execution=20)
 
     x, y = np.ones((100, 10)), np.ones((100, 1))
     ds = dataset_ops.DatasetV2.from_tensor_slices((x, y)).batch(2)
@@ -1848,7 +1848,7 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
       outputs = keras.layers.Dense(1)(inputs)
       model = keras.Model(inputs, outputs)
 
-    model.compile('sgd', 'mse', experimental_steps_per_execution=500)
+    model.compile('sgd', 'mse', steps_per_execution=500)
 
     x, y = np.ones((100, 10)), np.ones((100, 1))
     bc = BatchCountingCB()
