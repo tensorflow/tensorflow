@@ -6,10 +6,10 @@ format using the
 Python API. It provides the following class methods based on the original format
 of the model:
 
-*   `tf.compat.v1.lite.TFLiteConverter.from_keras_model_file()`: Converts a
-    [Keras](https://www.tensorflow.org/guide/keras/overview) model file.
 *   `tf.compat.v1.lite.TFLiteConverter.from_saved_model()`: Converts a
     [SavedModel](https://www.tensorflow.org/guide/saved_model).
+*   `tf.compat.v1.lite.TFLiteConverter.from_keras_model_file()`: Converts a
+    [Keras](https://www.tensorflow.org/guide/keras/overview) model file.
 *   `tf.compat.v1.lite.TFLiteConverter.from_session()`: Converts a GraphDef from
     a session.
 *   `tf.compat.v1.lite.TFLiteConverter.from_frozen_graph()`: Converts a Frozen
@@ -24,14 +24,40 @@ In the following sections, we discuss [basic examples](#basic) and
 The following section shows examples of how to convert a basic model from each
 of the supported model formats into a TensorFlow Lite model.
 
-### Convert a Keras model file <a name="basic_keras_file"></a>
+### Convert a SavedModel <a name="basic_savedmodel"></a>
+
+The following example shows how to convert a
+[SavedModel](https://www.tensorflow.org/guide/saved_model) into a TensorFlow
+Lite model.
 
 ```python
 import tensorflow as tf
 
-converter = tf.compat.v1.lite.TFLiteConverter.from_keras_model_file("keras_model.h5")
+# Convert the model.
+converter = tf.compat.v1.lite.TFLiteConverter.from_saved_model(saved_model_dir)
 tflite_model = converter.convert()
-open("converted_model.tflite", "wb").write(tflite_model)
+
+# Save the model.
+with open('model.tflite', 'wb') as f:
+  f.write(tflite_model)
+```
+
+### Convert a Keras model file <a name="basic_keras_file"></a>
+
+The following example shows how to convert a
+[Keras](https://www.tensorflow.org/guide/keras/overview) model file into a
+TensorFlow Lite model.
+
+```python
+import tensorflow as tf
+
+# Convert the model.
+converter = tf.compat.v1.lite.TFLiteConverter.from_keras_model_file('keras_model.h5')
+tflite_model = converter.convert()
+
+# Save the model.
+with open('model.tflite', 'wb') as f:
+  f.write(tflite_model)
 ```
 
 The Keras file contains both the model and the weights. A comprehensive example
@@ -57,50 +83,49 @@ model.train_on_batch(x, y)
 model.predict(x)
 
 # Save tf.keras model in H5 format.
-keras_file = "keras_model.h5"
+keras_file = 'keras_model.h5'
 tf.keras.models.save_model(model, keras_file)
 
-# Convert to TensorFlow Lite model.
+# Convert the model.
 converter = tf.compat.v1.lite.TFLiteConverter.from_keras_model_file(keras_file)
 tflite_model = converter.convert()
-open("converted_model.tflite", "wb").write(tflite_model)
-```
 
-### Convert a SavedModel <a name="basic_savedmodel"></a>
-
-The following example shows how to convert a
-[SavedModel](https://www.tensorflow.org/guide/saved_model) into a TensorFlow
-Lite model.
-
-```python
-import tensorflow as tf
-
-converter = tf.compat.v1.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-tflite_model = converter.convert()
-open("converted_model.tflite", "wb").write(tflite_model)
+# Save the model.
+with open('model.tflite', 'wb') as f:
+  f.write(tflite_model)
 ```
 
 ### Convert a GraphDef from a session <a name="basic_graphdef_sess"></a>
 
-The following example shows how to convert a TensorFlow GraphDef into a
-TensorFlow Lite model from a `tf.Session` object.
+The following example shows how to convert a GraphDef from a `tf.Session` object
+into a TensorFlow Lite model .
 
 ```python
 import tensorflow as tf
 
-img = tf.placeholder(name="img", dtype=tf.float32, shape=(1, 64, 64, 3))
-var = tf.get_variable("weights", dtype=tf.float32, shape=(1, 64, 64, 3))
+img = tf.placeholder(name='img', dtype=tf.float32, shape=(1, 64, 64, 3))
+var = tf.get_variable('weights', dtype=tf.float32, shape=(1, 64, 64, 3))
 val = img + var
-out = tf.identity(val, name="out")
+out = tf.identity(val, name='out')
 
 with tf.Session() as sess:
   sess.run(tf.global_variables_initializer())
+
+  # Convert the model.
   converter = tf.compat.v1.lite.TFLiteConverter.from_session(sess, [img], [out])
   tflite_model = converter.convert()
-  open("converted_model.tflite", "wb").write(tflite_model)
+
+  # Save the model.
+  with open('model.tflite', 'wb') as f:
+    f.write(tflite_model)
 ```
 
 ### Convert a Frozen GraphDef from file <a name="basic_graphdef_file"></a>
+
+The following example shows how to convert a Frozen GraphDef (or a frozen
+graph), usually generated using the
+[freeze_graph.py](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/freeze_graph.py)
+script, into a TensorFlow Lite model.
 
 The example uses
 [Mobilenet_1.0_224](https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_1.0_224_frozen.tgz).
@@ -108,15 +133,19 @@ The example uses
 ```python
 import tensorflow as tf
 
+# Convert the model.
 converter = tf.compat.v1.lite.TFLiteConverter.from_frozen_graph(
     graph_def_file='/path/to/mobilenet_v1_1.0_224/frozen_graph.pb',
                     # both `.pb` and `.pbtxt` files are accepted.
     input_arrays=['input'],
-    output_arrays=['MobilenetV1/Predictions/Softmax'],
     input_shapes={'input' : [1, 224, 224,3]},
+    output_arrays=['MobilenetV1/Predictions/Softmax']
 )
 tflite_model = converter.convert()
-open("converted_model.tflite", "wb").write(tflite_model)
+
+# Save the model.
+with open('model.tflite', 'wb') as f:
+  f.write(tflite_model)
 ```
 
 #### Convert checkpoints <a name="checkpoints"></a>
@@ -167,18 +196,21 @@ The example uses
 ```python
 import tensorflow as tf
 
+# Convert the model.
 converter = tf.compat.v1.lite.TFLiteConverter.from_frozen_graph(
     graph_def_file='/path/to/mobilenet_v1_1.0_224/frozen_graph.pb',
     input_arrays=['input'],
-    output_arrays=['MobilenetV1/Predictions/Softmax'],
     input_shapes={'input' : [1, 224, 224,3]},
+    output_arrays=['MobilenetV1/Predictions/Softmax'],
 )
-converter.quantized_input_stats = {['input'] : (0., 1.)}  # mean, std_dev (input range is [-1, 1])
+converter.quantized_input_stats = {'input' : (0., 1.)}  # mean, std_dev (input range is [-1, 1])
 converter.inference_type = tf.int8 # this is the recommended type.
 # converter.inference_input_type=tf.uint8 # optional
 # converter.inference_output_type=tf.uint8 # optional
 tflite_model = converter.convert()
-with open('mobilenet_v1_1.0_224_quantized.tflite', 'wb') as f:
+
+# Save the model.
+with open('quantized_model.tflite', 'wb') as f:
   f.write(tflite_model)
 ```
 
