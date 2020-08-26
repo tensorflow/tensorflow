@@ -134,6 +134,11 @@ void SoftmaxQuantized(const TfLiteEvalTensor* input, TfLiteEvalTensor* output,
   }
 }
 
+void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(SoftmaxParams));
+}
+
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
@@ -141,28 +146,21 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE(context, NumDimensions(input) >= 1);
   TfLiteTensor* output = GetOutput(context, node, 0);
 
-  // Allocate user_data unless it's already allocated
-  if (node->user_data == nullptr) {
-    void* raw_op_data =
-        context->AllocatePersistentBuffer(context, sizeof(SoftmaxParams));
-    TF_LITE_ENSURE(context, raw_op_data != nullptr);
-    SoftmaxParams* op_data = static_cast<SoftmaxParams*>(raw_op_data);
-    // Only allocate LUTs for KTfLiteInt16 data type
-    if (input->type == kTfLiteInt16) {
-      void* raw_exp_lut = context->AllocatePersistentBuffer(
-          context, sizeof(int16_t) * kInt16LUTArraySize);
-      TF_LITE_ENSURE(context, raw_exp_lut != nullptr);
-      op_data->exp_lut = reinterpret_cast<int16_t*>(raw_exp_lut);
-      void* one_over_one_plus_x_lut = context->AllocatePersistentBuffer(
-          context, sizeof(int16_t) * kInt16LUTArraySize);
-      TF_LITE_ENSURE(context, one_over_one_plus_x_lut != nullptr);
-      op_data->one_over_one_plus_x_lut =
-          reinterpret_cast<int16_t*>(one_over_one_plus_x_lut);
-    }
-    node->user_data = raw_op_data;
+  TF_LITE_ENSURE(context, node->user_data != nullptr);
+  SoftmaxParams* op_data = static_cast<SoftmaxParams*>(node->user_data);
+  // Only allocate LUTs for KTfLiteInt16 data type
+  if (input->type == kTfLiteInt16) {
+    void* raw_exp_lut = context->AllocatePersistentBuffer(
+        context, sizeof(int16_t) * kInt16LUTArraySize);
+    TF_LITE_ENSURE(context, raw_exp_lut != nullptr);
+    op_data->exp_lut = reinterpret_cast<int16_t*>(raw_exp_lut);
+    void* one_over_one_plus_x_lut = context->AllocatePersistentBuffer(
+        context, sizeof(int16_t) * kInt16LUTArraySize);
+    TF_LITE_ENSURE(context, one_over_one_plus_x_lut != nullptr);
+    op_data->one_over_one_plus_x_lut =
+        reinterpret_cast<int16_t*>(one_over_one_plus_x_lut);
   }
 
-  SoftmaxParams* data = static_cast<SoftmaxParams*>(node->user_data);
   if (output->type == kTfLiteInt16) {
     TF_LITE_ENSURE(context, input->type == kTfLiteInt8 ||
                                 input->type == kTfLiteUInt8 ||
@@ -174,20 +172,18 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   // Populate LUT if required
   if (input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
-    data->exp_lut = data->exp_lut;
     // exp LUT only used on negative values
     // we consider exp(-10.0) is insignificant to accumulation
     gen_lut([](float value) { return std::exp(value); }, -10.0f, 0.0f,
-            data->exp_lut, kInt16LUTArraySize);
-    data->one_over_one_plus_x_lut = data->one_over_one_plus_x_lut;
+            op_data->exp_lut, kInt16LUTArraySize);
     gen_lut([](float value) { return 1.0f / (1.0f + value); }, 0.0f, 1.0f,
-            data->one_over_one_plus_x_lut, kInt16LUTArraySize);
-    data->zero_point = output->params.zero_point;
-    data->scale = output->params.scale;
+            op_data->one_over_one_plus_x_lut, kInt16LUTArraySize);
+    op_data->zero_point = output->params.zero_point;
+    op_data->scale = output->params.scale;
   }
 
   auto* params = static_cast<TfLiteSoftmaxParams*>(node->builtin_data);
-  return CalculateSoftmaxParams(context, input, output, params, data);
+  return CalculateSoftmaxParams(context, input, output, params, op_data);
 }
 
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
@@ -217,7 +213,7 @@ TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace activations
 
 TfLiteRegistration Register_SOFTMAX() {
-  return {/*init=*/nullptr,
+  return {/*init=*/activations::SoftmaxInit,
           /*free=*/nullptr,
           /*prepare=*/activations::SoftmaxPrepare,
           /*invoke=*/activations::SoftmaxEval,

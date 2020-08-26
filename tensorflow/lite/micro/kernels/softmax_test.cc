@@ -33,6 +33,9 @@ const int output_zero_point_int8 = -128;
 const int output_zero_point_uint8 = 0;
 const int output_zero_point_int16 = 0;
 
+// Empirical tolerance in quantization space
+const float tolerance_int16 = 7.0;
+
 // 1-dimensional test data.
 const int flat_size_1d = 5;
 const int shape_1d[] = {1, 5};
@@ -474,7 +477,8 @@ TF_LITE_MICRO_TEST(Softmax3DQuantizedInt16ShouldMatchGolden) {
       input_quantized, input_scale, input_zero_point, tflite::testing::shape_3d,
       tflite::testing::golden_3d, golden_quantized,
       tflite::testing::output_scale_int16,
-      tflite::testing::output_zero_point_int16, output_data, 7.0);
+      tflite::testing::output_zero_point_int16, output_data,
+      tflite::testing::tolerance_int16);
 }
 
 TF_LITE_MICRO_TEST(Softmax4DFloatShouldMatchGolden) {
@@ -526,6 +530,7 @@ TF_LITE_MICRO_TEST(Softmax4DQuantizedInt16ShouldMatchGolden) {
       input_quantized, input_scale, input_zero_point, tflite::testing::shape_4d,
       tflite::testing::golden_4d, golden_quantized,
       tflite::testing::output_scale_int16,
-      tflite::testing::output_zero_point_int16, output_data, 7.0);
+      tflite::testing::output_zero_point_int16, output_data,
+      tflite::testing::tolerance_int16);
 }
 TF_LITE_MICRO_TESTS_END
