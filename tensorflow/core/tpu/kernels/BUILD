@@ -129,7 +129,7 @@ cc_library(
         ":tpu_program_c_api_hdrs",
         ":tpu_util_c_api_hdrs",
         "//tensorflow/core/tpu:libtftpu_header",
-        "//tensorflow/stream_executor/tpu:proto_helper",
+        "//tensorflow/stream_executor/tpu:c_api_decl",
     ],
     alwayslink = True,
 )
