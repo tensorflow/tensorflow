@@ -75,8 +75,8 @@ class CompilabilityCheckUtilTest : public ::testing::Test {
     op_filter_.allow_inaccurate_ops = false;
     op_filter_.allow_slow_ops = false;
 
-    checker_ = absl::make_unique<RecursiveCompilabilityChecker>(&op_filter_,
-                                                                &device_type_);
+    checker_ = absl::make_unique<RecursiveCompilabilityChecker>(op_filter_,
+                                                                device_type_);
   }
 
   FunctionLibraryRuntime* GetFunctionLibraryRuntime() {

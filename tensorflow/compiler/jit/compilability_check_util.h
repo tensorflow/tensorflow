@@ -126,9 +126,10 @@ class RecursiveCompilabilityChecker {
     bool allow_inaccurate_ops = false;
   };
 
-  RecursiveCompilabilityChecker(const OperationFilter* op_filter,
-                                const DeviceType* jit_device_type)
-      : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
+  RecursiveCompilabilityChecker(OperationFilter op_filter,
+                                DeviceType jit_device_type)
+      : op_filter_(std::move(op_filter)),
+        jit_device_type_(std::move(jit_device_type)) {}
 
   using UncompilableNodesMap =
       std::map<std::string,
@@ -259,8 +260,8 @@ class RecursiveCompilabilityChecker {
   // Make sure we don't recurse infinitely on recursive functions.
   const size_t kMaxRecursionDepth = 10;
 
-  const OperationFilter& op_filter_;
-  const DeviceType& jit_device_type_;
+  const OperationFilter op_filter_;
+  const DeviceType jit_device_type_;
 };
 
 RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
