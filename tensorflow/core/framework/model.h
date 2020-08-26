@@ -77,7 +77,7 @@ struct Parameter {
   Parameter(const string& name, std::shared_ptr<SharedState> state, double min,
             double max)
       : name(name),
-        value(state->value),
+        value(state->value == kAutotune ? min : state->value),
         min(min),
         max(max),
         state(std::move(state)) {}
