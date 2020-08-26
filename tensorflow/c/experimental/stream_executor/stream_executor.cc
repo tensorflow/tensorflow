@@ -63,12 +63,18 @@ port::Status ValidateSPPlatform(const SP_Platform& platform) {
   VALIDATE_MEMBER(SP_Platform, platform, name);
   VALIDATE_MEMBER(SP_Platform, platform, type);
   VALIDATE_MEMBER(SP_Platform, platform, visible_device_count);
-  VALIDATE_MEMBER(SP_Platform, platform, create_device);
-  VALIDATE_MEMBER(SP_Platform, platform, destroy_device);
-  VALIDATE_MEMBER(SP_Platform, platform, create_stream_executor);
-  VALIDATE_MEMBER(SP_Platform, platform, destroy_stream_executor);
-  VALIDATE_MEMBER(SP_Platform, platform, create_timer_fns);
-  VALIDATE_MEMBER(SP_Platform, platform, destroy_timer_fns);
+  return port::Status::OK();
+}
+
+port::Status ValidateSPPlatformFns(const SP_PlatformFns& platform_fns) {
+  VALIDATE_STRUCT_SIZE(SP_PlatformFns, platform_fns,
+                       SP_PLATFORM_FNS_STRUCT_SIZE);
+  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, create_device);
+  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, destroy_device);
+  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, create_stream_executor);
+  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, destroy_stream_executor);
+  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, create_timer_fns);
+  VALIDATE_MEMBER(SP_PlatformFns, platform_fns, destroy_timer_fns);
   return port::Status::OK();
 }
 
@@ -97,11 +103,18 @@ port::Status ValidateSPDevice(const SP_Device& device) {
   return port::Status::OK();
 }
 
-port::Status ValidateSPStreamExecutor(const SP_StreamExecutor& se) {
+port::Status ValidateSPStreamExecutor(const SP_StreamExecutor& se,
+                                      const SP_Platform& platform) {
   VALIDATE_STRUCT_SIZE(SP_StreamExecutor, se, SP_STREAM_EXECUTOR_STRUCT_SIZE);
   VALIDATE_MEMBER(SP_StreamExecutor, se, allocate);
   VALIDATE_MEMBER(SP_StreamExecutor, se, deallocate);
   VALIDATE_MEMBER(SP_StreamExecutor, se, get_allocator_stats);
+  VALIDATE_MEMBER(SP_StreamExecutor, se, host_memory_allocate);
+  VALIDATE_MEMBER(SP_StreamExecutor, se, host_memory_deallocate);
+  if (platform.supports_unified_memory) {
+    VALIDATE_MEMBER(SP_StreamExecutor, se, unified_memory_allocate);
+    VALIDATE_MEMBER(SP_StreamExecutor, se, unified_memory_deallocate);
+  }
   VALIDATE_MEMBER(SP_StreamExecutor, se, device_memory_usage);
   VALIDATE_MEMBER(SP_StreamExecutor, se, create_stream);
   VALIDATE_MEMBER(SP_StreamExecutor, se, destroy_stream);
@@ -131,9 +144,9 @@ port::Status ValidateSEPlatformRegistrationParams(
   VALIDATE_STRUCT_SIZE(SE_PlatformRegistrationParams, params,
                        SE_PLATFORM_REGISTRATION_PARAMS_STRUCT_SIZE);
   VALIDATE_MEMBER(SE_PlatformRegistrationParams, params, destroy_platform);
+  VALIDATE_MEMBER(SE_PlatformRegistrationParams, params, destroy_platform_fns);
   return port::Status::OK();
 }
-
 #undef VALIDATE_MEMBER
 
 struct TFStatusDeleter {
@@ -297,19 +310,21 @@ void HostCallbackTrampoline(void* ctx, TF_Status* status) {
 
 class CStreamExecutor : public internal::StreamExecutorInterface {
  public:
-  explicit CStreamExecutor(SP_Device device,
-                           void (*destroy_device)(SP_Device* const device),
-                           SP_StreamExecutor* stream_executor,
+  explicit CStreamExecutor(SP_Device device, SP_StreamExecutor* stream_executor,
+                           SP_Platform* platform, SP_PlatformFns* platform_fns,
                            SP_TimerFns* timer_fns, const std::string& name,
                            int visible_device_count)
       : device_(std::move(device)),
-        destroy_device_(destroy_device),
         stream_executor_(stream_executor),
+        platform_(platform),
+        platform_fns_(platform_fns),
         timer_fns_(timer_fns),
         platform_name_(name),
         visible_device_count_(visible_device_count) {}
 
-  ~CStreamExecutor() override { destroy_device_(&device_); }
+  ~CStreamExecutor() override {
+    platform_fns_->destroy_device(platform_, &device_);
+  }
 
   port::Status Init(int device_ordinal, DeviceOptions device_options) override {
     return port::Status::OK();
@@ -347,6 +362,16 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
 
   bool HostMemoryRegister(void* mem, uint64 size) override { return false; }
   bool HostMemoryUnregister(void* mem) override { return false; }
+
+  void* UnifiedMemoryAllocate(uint64 size) override {
+    CHECK(stream_executor_->unified_memory_allocate);
+    return stream_executor_->unified_memory_allocate(&device_, size);
+  }
+
+  void UnifiedMemoryDeallocate(void* mem) override {
+    CHECK(stream_executor_->unified_memory_deallocate);
+    stream_executor_->unified_memory_deallocate(&device_, mem);
+  }
 
   absl::optional<AllocatorStats> GetAllocatorStats() override {
     SP_AllocatorStats c_stats{SP_ALLOCATORSTATS_STRUCT_SIZE};
@@ -647,6 +672,7 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
     // TODO(annarev): Figure out if we need to support more description fields.
     internal::DeviceDescriptionBuilder builder;
     builder.set_name(platform_name_);
+    // TODO(annarev): `Also supports_unified_memory` in DeviceDescription.
     return builder.Build();
   }
 
@@ -674,8 +700,9 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
 
  private:
   SP_Device device_;
-  void (*destroy_device_)(SP_Device* const device);
   SP_StreamExecutor* stream_executor_;
+  SP_Platform* platform_;
+  SP_PlatformFns* platform_fns_;
   SP_TimerFns* timer_fns_;
   std::string platform_name_;
   int visible_device_count_;
@@ -684,18 +711,23 @@ class CStreamExecutor : public internal::StreamExecutorInterface {
 
 CPlatform::CPlatform(SP_Platform platform,
                      void (*destroy_platform)(SP_Platform*),
+                     SP_PlatformFns platform_fns,
+                     void (*destroy_platform_fns)(SP_PlatformFns*),
                      SP_StreamExecutor stream_executor, SP_TimerFns timer_fns)
     : platform_(std::move(platform)),
       destroy_platform_(destroy_platform),
+      platform_fns_(std::move(platform_fns)),
+      destroy_platform_fns_(destroy_platform_fns),
       stream_executor_(std::move(stream_executor)),
       timer_fns_(std::move(timer_fns)),
       name_(platform.name) {}
 
 CPlatform::~CPlatform() {
   executor_cache_.DestroyAllExecutors();
-  platform_.destroy_stream_executor(&stream_executor_);
-  platform_.destroy_timer_fns(&timer_fns_);
+  platform_fns_.destroy_stream_executor(&platform_, &stream_executor_);
+  platform_fns_.destroy_timer_fns(&platform_, &timer_fns_);
   destroy_platform_(&platform_);
+  destroy_platform_fns_(&platform_fns_);
 }
 
 port::StatusOr<std::unique_ptr<DeviceDescription>>
@@ -735,12 +767,12 @@ port::StatusOr<std::unique_ptr<StreamExecutor>> CPlatform::GetUncachedExecutor(
   OwnedTFStatus c_status(TF_NewStatus());
 
   // Create Device
-  platform_.create_device(&device_params, c_status.get());
+  platform_fns_.create_device(&platform_, &device_params, c_status.get());
   TF_RETURN_IF_ERROR(StatusFromTF_Status(c_status.get()));
   TF_RETURN_IF_ERROR(ValidateSPDevice(device));
 
   auto executor = absl::make_unique<CStreamExecutor>(
-      std::move(device), platform_.destroy_device, &stream_executor_,
+      std::move(device), &stream_executor_, &platform_, &platform_fns_,
       &timer_fns_, name_, platform_.visible_device_count);
   auto result = absl::make_unique<StreamExecutor>(this, std::move(executor),
                                                   config.ordinal);
@@ -767,16 +799,19 @@ port::Status RegisterDevicePlugin(SEPluginInitFn init_fn) {
   SE_PlatformRegistrationParams params{
       SE_PLATFORM_REGISTRATION_PARAMS_STRUCT_SIZE};
   SP_Platform platform{SP_PLATFORM_STRUCT_SIZE};
+  SP_PlatformFns platform_fns{SP_PLATFORM_FNS_STRUCT_SIZE};
   params.major_version = SE_MAJOR;
   params.minor_version = SE_MINOR;
   params.revision_version = SE_REVISION;
   params.platform = &platform;
+  params.platform_fns = &platform_fns;
 
   OwnedTFStatus c_status(TF_NewStatus());
   init_fn(&params, c_status.get());
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
   TF_RETURN_IF_ERROR(ValidateSEPlatformRegistrationParams(params));
   TF_RETURN_IF_ERROR(ValidateSPPlatform(platform));
+  TF_RETURN_IF_ERROR(ValidateSPPlatformFns(platform_fns));
 
   // Fill stream executor creation params
   SE_CreateStreamExecutorParams se_params{
@@ -785,21 +820,25 @@ port::Status RegisterDevicePlugin(SEPluginInitFn init_fn) {
   se_params.stream_executor = &se;
 
   // Create StreamExecutor
-  platform.create_stream_executor(&se_params, c_status.get());
+  platform_fns.create_stream_executor(&platform, &se_params, c_status.get());
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
-  TF_RETURN_IF_ERROR(ValidateSPStreamExecutor(se));
+  TF_RETURN_IF_ERROR(ValidateSPStreamExecutor(se, platform));
 
   SP_TimerFns timer_fns{SP_TIMER_FNS_STRUCT_SIZE};
-  platform.create_timer_fns(&timer_fns, c_status.get());
+  platform_fns.create_timer_fns(&platform, &timer_fns, c_status.get());
+  TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
+  TF_RETURN_IF_ERROR(ValidateSPTimerFns(timer_fns));
+
+  platform_fns.create_timer_fns(&platform, &timer_fns, c_status.get());
   TF_RETURN_IF_ERROR(tensorflow::StatusFromTF_Status(c_status.get()));
   TF_RETURN_IF_ERROR(ValidateSPTimerFns(timer_fns));
 
   // Register new platform
   std::string platform_name = std::string(platform.name);
   std::unique_ptr<stream_executor::CPlatform> cplatform(
-      new stream_executor::CPlatform(std::move(platform),
-                                     params.destroy_platform, std::move(se),
-                                     std::move(timer_fns)));
+      new stream_executor::CPlatform(
+          std::move(platform), params.destroy_platform, std::move(platform_fns),
+          params.destroy_platform_fns, std::move(se), std::move(timer_fns)));
   SE_CHECK_OK(stream_executor::MultiPlatformManager::RegisterPlatform(
       std::move(cplatform)));
 
