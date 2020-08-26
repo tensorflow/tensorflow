@@ -45,6 +45,7 @@ class RemoteDevice : public Device {
   ResourceMgr* resource_manager() override {
     LOG(FATAL) << "Accessing the resource manager of a remote device is not "
                << "supported.";
+    return nullptr;
   }
 
   bool IsLocal() const override { return false; }
