@@ -2151,7 +2151,7 @@ class ConcreteFunction(object):
     Returns:
       The actual call output.
     """
-    # TODO(jlchu): implement in C++.
+    # TODO(jlchu): call C++ version in function.cc when speed is improved
     if self._func_graph.structured_outputs is None:
       return result
 
