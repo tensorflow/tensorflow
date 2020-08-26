@@ -37,6 +37,9 @@
 * XLA:CPU and XLA:GPU devices are no longer registered by default. Use
   `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them (to be
   removed).
+* `tf.raw_ops.Max` and `tf.raw_ops.Min` no longer accept inputs of type
+  `tf.complex64` or `tf.complex128`, because the behavior of these ops is not
+  well defined for complex types.
 
 ## Known Caveats
 
