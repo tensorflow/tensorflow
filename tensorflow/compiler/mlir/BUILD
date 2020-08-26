@@ -25,10 +25,21 @@ filegroup(
 )
 
 cc_library(
+    name = "name_utils",
+    srcs = ["utils/name_utils.cc"],
+    hdrs = ["utils/name_utils.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
     name = "op_or_arg_name_mapper",
     srcs = ["op_or_arg_name_mapper.cc"],
     hdrs = ["op_or_arg_name_mapper.h"],
     deps = [
+        ":name_utils",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:IR",
