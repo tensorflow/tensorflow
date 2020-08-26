@@ -395,7 +395,6 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     }
 
     DotDimensionNumbers dnums;
-    std::vector<int64> lhs_outer_dims;
     auto is_batch_dim = [&](int64 d) {
       return x_map.contains(d) && y_map.contains(d) && output_map.contains(d);
     };
@@ -408,11 +407,13 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     };
 
     absl::InlinedVector<int64, 8> rhs_outer_dims;
+    absl::InlinedVector<int64, 8> lhs_outer_dims;
     absl::InlinedVector<int64, 8> rhs_delete_dims;
     absl::InlinedVector<int64, 8> lhs_delete_dims;
     for (int64 i = 0; i < x_rank; ++i) {
       auto dim_name = x_config[i];
       const int64 rhs_dim = rhs_dimension_number(dim_name);
+
       if (is_batch_dim(dim_name)) {
         if (x_shape.dimensions(i) == y_shape.dimensions(rhs_dim)) {
           dnums.add_lhs_batch_dimensions(i);
@@ -448,30 +449,34 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
     }
 
     absl::c_sort(rhs_outer_dims);
-
     absl::InlinedVector<int64, 8> output_transpose_dims;
-    absl::InlinedVector<int64, 8> output_reduce_dims;
-    auto output_dimension_number = [&](int64 d) {
+
+    auto output_dimension_number = [&](int64 d) -> absl::optional<int64> {
       auto pos = absl::c_find(output_config, d);
       if (pos == output_config.end()) {
-        const int64 dim =
-            output_transpose_dims.size() + output_reduce_dims.size();
-        output_reduce_dims.push_back(dim);
-      } else {
-        output_transpose_dims.push_back(pos - output_config.begin());
+        return absl::nullopt;
       }
+      return pos - output_config.begin();
     };
 
     for (auto d : dnums.lhs_batch_dimensions()) {
-      output_dimension_number(x_config[d]);
+      output_transpose_dims.push_back(*output_dimension_number(x_config[d]));
     }
 
     for (auto d : lhs_outer_dims) {
-      output_dimension_number(x_config[d]);
+      if (auto output_dim = output_dimension_number(x_config[d])) {
+        output_transpose_dims.push_back(*output_dim);
+        continue;
+      }
+      lhs_delete_dims.push_back(d);
     }
 
     for (auto d : rhs_outer_dims) {
-      output_dimension_number(y_config[d]);
+      if (auto output_dim = output_dimension_number(y_config[d])) {
+        output_transpose_dims.push_back(*output_dim);
+        continue;
+      }
+      rhs_delete_dims.push_back(d);
     }
 
     const int64 transpose_rank = output_transpose_dims.size();
@@ -482,29 +487,31 @@ xla::XlaOp Einsum(xla::XlaOp x, absl::Span<const int64> x_config, xla::XlaOp y,
 
     // Remove ones that where broadcasted from the x and the y shape and adjust
     // the dimension numbers that are more minor than those dimensions.
+    absl::c_sort(lhs_delete_dims);
     DeleteDimsFromContainer(lhs_delete_dims, &x_shape,
                             dnums.mutable_lhs_batch_dimensions(),
                             dnums.mutable_lhs_contracting_dimensions());
+
+    absl::c_sort(rhs_delete_dims);
     DeleteDimsFromContainer(rhs_delete_dims, &y_shape,
                             dnums.mutable_rhs_batch_dimensions(),
                             dnums.mutable_rhs_contracting_dimensions());
     if (!lhs_delete_dims.empty()) {
-      x = Reshape(x, x_shape.dimensions());
+      x = Reduce(x, ScalarLike(x, 0),
+                 CreateScalarAddComputation(x_shape.element_type(), builder),
+                 lhs_delete_dims);
     }
 
     if (!rhs_delete_dims.empty()) {
-      y = Reshape(y, y_shape.dimensions());
+      y = Reduce(y, ScalarLike(y, 0),
+                 CreateScalarAddComputation(y_shape.element_type(), builder),
+                 rhs_delete_dims);
     }
 
     PrecisionConfig precision_proto;
     precision_proto.add_operand_precision(precision);
     precision_proto.add_operand_precision(precision);
     auto dot = DotGeneral(x, y, dnums, &precision_proto);
-    if (!output_reduce_dims.empty()) {
-      dot = Reduce(dot, ScalarLike(dot, 0),
-                   CreateScalarAddComputation(x_shape.element_type(), builder),
-                   output_reduce_dims);
-    }
     dot = Transpose(dot, transpose_dims);
     if (transpose_rank == output_rank) {
       return dot;
