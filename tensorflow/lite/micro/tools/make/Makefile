@@ -106,6 +106,10 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 # These two must be defined before we include the target specific Makefile.inc
 # because we filter out the examples that are not supported for those targets.
 # See targets/xtensa_xpg_makefile.inc for an example.
+# We limit max depth of directories to search to do not include
+# target specific Makefiles that are included directly by the
+# main example Makefile.
+# See examples/micro_speech/Makefile.inc for an example.
 MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdepth 2 -name Makefile.inc)
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
