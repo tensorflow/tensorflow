@@ -35,6 +35,7 @@ py_strict_library(
         ":doc_typealias",
         "//tensorflow/python:tf_export",
         "//third_party/py/numpy",
+        "@typing_extensions_archive//:typing_extensions",
     ],
 )
 

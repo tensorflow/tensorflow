@@ -814,7 +814,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 12,
     tags = [
-        "no_cuda11",
         "no_oss",
     ],
     xla_enable_strict_auto_jit = False,

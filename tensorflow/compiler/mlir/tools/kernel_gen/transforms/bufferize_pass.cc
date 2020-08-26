@@ -67,6 +67,10 @@ class UnrankedTensorStoreTestOnlyPattern
 };
 
 struct BufferizePass : public BufferizePassBase<BufferizePass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<lmhlo::LmhloDialect>();
+  }
+
  public:
   void runOnOperation() override {
     OwningRewritePatternList patterns;

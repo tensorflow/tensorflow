@@ -1156,7 +1156,7 @@ class ModelCheckpoint(Callback):
       save_freq: `'epoch'` or integer. When using `'epoch'`, the callback saves
         the model after each epoch. When using integer, the callback saves the
         model at end of this many batches. If the `Model` is compiled with
-        `experimental_steps_per_execution=N`, then the saving criteria will be
+        `steps_per_execution=N`, then the saving criteria will be
         checked every Nth batch. Note that if the saving isn't aligned to
         epochs, the monitored metric may potentially be less reliable (it
         could reflect as little as 1 batch, since the metrics get reset every

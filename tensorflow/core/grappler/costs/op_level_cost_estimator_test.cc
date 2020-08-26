@@ -1984,10 +1984,11 @@ TEST_F(OpLevelCostEstimatorTest, PureMemoryOpExecutionTime) {
   std::vector<std::string> reshape_ops = {
       "ConcatV2",     "DataFormatVecPermute",
       "DepthToSpace", "ExpandDims",
-      "Fill",         "Pack",
+      "Fill",         "OneHot",
+      "Pack",         "Range",
       "SpaceToDepth", "Split",
       "Squeeze",      "Transpose",
-      "Unpack"};
+      "Tile",         "Unpack"};
 
   const int kTensorSize = 1000;
   for (auto reshape_op : reshape_ops) {

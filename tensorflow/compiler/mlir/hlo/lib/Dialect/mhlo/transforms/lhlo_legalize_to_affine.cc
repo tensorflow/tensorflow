@@ -139,6 +139,9 @@ void populateLHLOToAffineConversionPattern(MLIRContext* context,
 
 struct LhloLegalizeToAffinePass
     : public PassWrapper<LhloLegalizeToAffinePass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<AffineDialect>();
+  }
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     auto func = getFunction();

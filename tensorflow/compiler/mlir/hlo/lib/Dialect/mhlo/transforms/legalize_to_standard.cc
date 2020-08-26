@@ -178,6 +178,10 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
 namespace {
 struct LegalizeToStandardPass
     : public PassWrapper<LegalizeToStandardPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<StandardOpsDialect>();
+  }
+
   /// Perform the lowering to Standard dialect.
   void runOnFunction() override;
 };

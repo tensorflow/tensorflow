@@ -1620,4 +1620,91 @@ TEST(CAPI, TestTFE_OpAttrsSerialize) {
   TFE_DeleteContext(ctx);
 }
 
+// Needs to work with a const TFE_Op since custom devices should not modify the
+// op they are called with.
+TFE_Op* CloneOp(const TFE_Op* other) {
+  TF_Status* status = TF_NewStatus();
+  TFE_Context* context = TFE_OpGetContext(other, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  const char* op_name = TFE_OpGetName(other, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Op* ret = TFE_NewOp(context, op_name, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  const char* device = TFE_OpGetDevice(other, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpSetDevice(ret, device, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddAttrs(ret, TFE_OpGetAttrs(other));
+  int num_inputs = TFE_OpGetFlatInputCount(other, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  for (int input_index = 0; input_index < num_inputs; ++input_index) {
+    TFE_TensorHandle* input = TFE_OpGetFlatInput(other, input_index, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+    TFE_OpAddInput(ret, input, status);
+    CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  }
+  TF_DeleteStatus(status);
+  return ret;
+}
+
+TEST(CAPI, TestTFE_OpRecreation) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  // Clone an op with attributes and a device set.
+  TFE_Op* original_var_op = TFE_NewOp(ctx, "VarHandleOp", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpSetAttrType(original_var_op, "dtype", TF_INT64);
+  TFE_OpSetAttrShape(original_var_op, "shape", {}, 0, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  EXPECT_EQ("", std::string(TFE_OpGetDevice(original_var_op, status)));
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpSetDevice(original_var_op,
+                  "/job:localhost/replica:0/task:0/device:CPU:0", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Op* cloned = CloneOp(original_var_op);
+
+  EXPECT_EQ("/job:localhost/replica:0/task:0/device:CPU:0",
+            std::string(TFE_OpGetDevice(cloned, status)));
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  EXPECT_EQ("VarHandleOp", std::string(TFE_OpGetName(cloned, status)));
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  int num_retvals = 1;
+  TFE_TensorHandle* ret;
+  TFE_Execute(cloned, &ret, &num_retvals, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteTensorHandle(ret);
+
+  // Clone an op with inputs and no device set.
+  TFE_TensorHandle* input1 = TestMatrixTensorHandle(ctx);
+  TFE_TensorHandle* input2 = TestMatrixTensorHandle(ctx);
+  TFE_Op* original_identity = TFE_NewOp(ctx, "IdentityN", status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_TensorHandle* inputs[] = {input1, input2};
+  TFE_OpAddInputList(original_identity, inputs, 2, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_Op* cloned_identity = CloneOp(original_identity);
+  EXPECT_EQ("", std::string(TFE_OpGetDevice(cloned_identity, status)));
+  TFE_TensorHandle* identity_ret[] = {nullptr, nullptr};
+  num_retvals = 2;
+  TFE_Execute(cloned_identity, identity_ret, &num_retvals, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_DeleteTensorHandle(input1);
+  TFE_DeleteTensorHandle(input2);
+  TFE_DeleteTensorHandle(identity_ret[0]);
+  TFE_DeleteTensorHandle(identity_ret[1]);
+
+  TFE_DeleteOp(cloned_identity);
+  TFE_DeleteOp(original_identity);
+  TFE_DeleteOp(original_var_op);
+  TFE_DeleteOp(cloned);
+  TF_DeleteStatus(status);
+  TFE_DeleteContext(ctx);
+}
+
 }  // namespace

@@ -70,7 +70,8 @@ namespace {
 class PrepareQuantizePass
     : public PassWrapper<PrepareQuantizePass, FunctionPass> {
   void getDependentDialects(DialectRegistry& registry) const override {
-    registry.insert<TFL::TensorFlowLiteDialect>();
+    registry.insert<TFL::TensorFlowLiteDialect,
+                    ::mlir::quant::QuantizationDialect>();
   }
 
  public:

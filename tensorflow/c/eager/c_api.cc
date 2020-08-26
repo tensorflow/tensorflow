@@ -745,7 +745,6 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
       opts->session_options.options,
       static_cast<tensorflow::ContextDevicePlacementPolicy>(
           opts->device_placement_policy),
-      static_cast<tensorflow::ContextMirroringPolicy>(opts->mirroring_policy),
       opts->async, opts->lazy_remote_inputs_copy, device_mgr.release(),
       /*device_mgr_owned*/ true, r,
       tensorflow::GetDefaultCustomKernelCreator()));
@@ -1149,11 +1148,20 @@ void TFE_DeleteOp(TFE_Op* op) {
   tensorflow::unwrap(op)->Release();
 }
 
+const char* TFE_OpGetName(const TFE_Op* op, TF_Status* status) {
+  return tensorflow::unwrap(op)->Name().c_str();
+}
+
+TFE_Context* TFE_OpGetContext(const TFE_Op* op, TF_Status* status) {
+  return tensorflow::wrap(
+      &(OperationFromInterface(tensorflow::unwrap(op))->EagerContext()));
+}
+
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   status->status = tensorflow::unwrap(op)->SetDeviceName(device_name);
 }
 
-const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
+const char* TFE_OpGetDevice(const TFE_Op* op, TF_Status* status) {
   return tensorflow::unwrap(op)->DeviceName().c_str();
 }
 
@@ -1179,6 +1187,15 @@ void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
       {reinterpret_cast<tensorflow::AbstractTensorHandle**>(
            tensorflow::unwrap(inputs)),
        static_cast<size_t>(num_inputs)});
+}
+
+extern int TFE_OpGetFlatInputCount(const TFE_Op* op, TF_Status* status) {
+  return tensorflow::unwrap(op)->GetInputs().size();
+}
+
+extern TFE_TensorHandle* TFE_OpGetFlatInput(const TFE_Op* op, int index,
+                                            TF_Status* status) {
+  return tensorflow::wrap(tensorflow::unwrap(op)->GetInputs()[index]);
 }
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
@@ -1486,7 +1503,7 @@ void TFE_ContextEndStep(TFE_Context* ctx) {
   tensorflow::unwrap(ctx)->EndStep();
 }
 
-const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op) {
+const TFE_OpAttrs* TFE_OpGetAttrs(const TFE_Op* op) {
   return tensorflow::wrap(
       &OperationFromInterface(tensorflow::unwrap(op))->Attrs());
 }

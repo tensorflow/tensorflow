@@ -38,6 +38,7 @@ def _AddTest(test_class, op_name, testcase_name, fn):
   setattr(test_class, test_name, fn)
 
 
+@test_util.run_all_without_tensor_float_32
 class SelfAdjointEigTest(test.TestCase):
 
   @test_util.run_deprecated_v1
@@ -160,8 +161,8 @@ def _GetSelfAdjointEigTest(dtype_, shape_, compute_v_):
         tf_e, tf_v = linalg_ops.self_adjoint_eig(constant_op.constant(a))
 
         # Check that V*diag(E)*V^T is close to A.
-        a_ev = math_ops.matmul(
-            math_ops.matmul(tf_v, array_ops.matrix_diag(tf_e)),
+        a_ev = test_util.matmul_without_tf32(
+            test_util.matmul_without_tf32(tf_v, array_ops.matrix_diag(tf_e)),
             tf_v,
             adjoint_b=True)
         self.assertAllClose(self.evaluate(a_ev), a, atol=atol)

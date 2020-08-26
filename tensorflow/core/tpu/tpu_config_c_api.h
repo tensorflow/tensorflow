@@ -26,9 +26,6 @@ typedef struct TpuSerializedProto TpuSerializedProto;
 
 namespace tensorflow {
 class TpuMeshCommonState;
-namespace tpu {
-class TpuMeshStateInterface;
-}  // namespace tpu
 }  // namespace tensorflow
 
 extern "C" {
