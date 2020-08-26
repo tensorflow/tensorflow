@@ -26,17 +26,16 @@ namespace tensorflow {
 
 namespace py = pybind11;
 
-struct ConcreteFunction {
-  ConcreteFunction(){};
+struct PyConcreteFunction {
+  PyConcreteFunction() {}
   py::object _build_call_outputs(py::object result,
                                  py::object structured_outputs,
                                  bool _ndarrays_list, bool _ndarray_singleton);
 };
 
-py::object ConcreteFunction::_build_call_outputs(py::object result,
-                                                 py::object structured_outputs,
-                                                 bool _ndarrays_list,
-                                                 bool _ndarray_singleton) {
+py::object PyConcreteFunction::_build_call_outputs(
+    py::object result, py::object structured_outputs, bool _ndarrays_list,
+    bool _ndarray_singleton) {
   static const py::module* nest =
       new py::module(py::module::import("tensorflow.python.util.nest"));
   // TODO(jlchu): Look into lazy loading of np_arrays module
@@ -76,9 +75,9 @@ py::object ConcreteFunction::_build_call_outputs(py::object result,
 }
 
 PYBIND11_MODULE(_concrete_function, m) {
-  py::class_<ConcreteFunction>(m, "ConcreteFunction")
+  py::class_<PyConcreteFunction>(m, "ConcreteFunction")
       .def(py::init<>())
-      .def("_build_call_outputs", &ConcreteFunction::_build_call_outputs);
+      .def("_build_call_outputs", &PyConcreteFunction::_build_call_outputs);
 }
 
 }  // namespace tensorflow
