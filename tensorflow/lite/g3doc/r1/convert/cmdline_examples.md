@@ -18,13 +18,12 @@ There are two approaches to running the converter in the command line.
 *   `bazel`:
     *   *Install*: TensorFlow from
         [source](https://www.tensorflow.org/install/source).
-    *   *Example*: `bazel run
-        //third_party/tensorflow/lite/python:tflite_convert --
+    *   *Example*: `bazel run tensorflow/lite/python:tflite_convert --
         --output_file=...`
 
 *All of the following examples use `tflite_convert` for simplicity.
 Alternatively, you can replace '`tflite_convert`' with '`bazel run
-//tensorflow/lite/python:tflite_convert --`'*
+tensorflow/lite/python:tflite_convert --`'*
 
 ### Prior to TensorFlow 1.9 <a name="pre_tensorflow_1.9"></a>
 
