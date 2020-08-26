@@ -287,6 +287,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicLayoutPass();
 // `tf_device.launch_func` `padding_map` attribute to its encapsulated function.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 
+// Creates a pass that adds `tf.ReadVariableOp` to a TPU cluster for resources
+// the cluster only writes to.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUResourceReadForWritePass();
+
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass();
