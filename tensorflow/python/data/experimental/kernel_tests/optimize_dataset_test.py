@@ -104,6 +104,28 @@ def _captured_refvar_test_combinations():
   return functools.reduce(reduce_fn, cases, [])
 
 
+def _disable_intra_op_parallelism_test_combinations():
+
+  def make_tensor_dataset():
+    return dataset_ops.Dataset.from_tensors(42)
+
+  def make_map_dataset():
+    return dataset_ops.Dataset.from_tensors(42).map(lambda x: x + 1)
+
+  cases = [
+      ("FromTensors", make_tensor_dataset, [42]),
+      ("Map", make_map_dataset, [43]),
+  ]
+
+  def reduce_fn(x, y):
+    name, dataset_fn, expected_output = y
+    return x + combinations.combine(
+        dataset_fn=combinations.NamedObject(name, dataset_fn),
+        expected_output=[expected_output])
+
+  return functools.reduce(reduce_fn, cases, [])
+
+
 class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
@@ -186,15 +208,18 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[[0]])
 
-  @combinations.generate(test_base.default_test_combinations())
-  def testOptimizationDisableIntraOpParallelism(self):
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         _disable_intra_op_parallelism_test_combinations()))
+  def testOptimizationDisableIntraOpParallelism(self, dataset_fn,
+                                                expected_output):
     os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "disable_intra_op_parallelism"
     os.environ["TF_JOB_NAME"] = "test_job"
 
-    dataset = dataset_ops.Dataset.range(10).map(lambda x: x+1)
+    dataset = dataset_fn()
     dataset = dataset.apply(testing.assert_next(["MaxIntraOpParallelism"]))
 
-    self.assertDatasetProduces(dataset, expected_output=list(range(1, 11)))
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
 
     del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
     del os.environ["TF_JOB_NAME"]

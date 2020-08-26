@@ -90,7 +90,9 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
   *insert_node.mutable_input()->Add() = max_parallelism_value->name();
 
   for (const auto& attr_name : {"output_types", "output_shapes"}) {
-    graph_utils::CopyAttribute(attr_name, *last_node, &insert_node);
+    if (last_node->attr().contains(attr_name)) {
+      graph_utils::CopyAttribute(attr_name, *last_node, &insert_node);
+    }
   }
 
   auto* added_node = graph.AddNode(std::move(insert_node));
