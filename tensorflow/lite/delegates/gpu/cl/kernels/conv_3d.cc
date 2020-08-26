@@ -167,7 +167,8 @@ std::string GenerateConv(CalculationsPrecision precision,
 }  // namespace
 
 Conv3D::Conv3D(const OperationDef& definition,
-               const Convolution3DAttributes& attr, const CLDevice& device)
+               const Convolution3DAttributes& attr,
+               const DeviceInfo& device_info)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, attr.strides.d),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
@@ -175,12 +176,12 @@ Conv3D::Conv3D(const OperationDef& definition,
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
                    attr.weights.shape.d),
       dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d),
-      conv_params_(GuessBestParams(device, definition, attr)) {
+      conv_params_(GuessBestParams(device_info, definition, attr)) {
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
   code_ = GenerateConv3D(definition_, stride_correction, conv_params_);
   if (definition_.precision == CalculationsPrecision::F16 &&
-      device.IsPowerVR()) {
+      device_info.IsPowerVR()) {
     compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
   }
 }
@@ -245,21 +246,25 @@ int3 Conv3D::GetGridSize() const {
               wg[conv_params_.work_group_launch_order[2]] * work_group_size_.z);
 }
 
-absl::Status Conv3D::Tune(const TuningParameters& params) {
+void Conv3D::GetPossibleKernelWorkGroups(TuningType tuning_type,
+                                         const DeviceInfo& device_info,
+                                         const KernelInfo& kernel_info,
+                                         std::vector<int3>* work_groups) const {
   if (conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP ||
       conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    return absl::OkStatus();
+    work_groups->push_back(work_group_size_);
+    return;
   }
   if (conv_params_.work_group_launch_order[0] == 0 &&
       conv_params_.work_group_launch_order[1] == 1 &&
       conv_params_.work_group_launch_order[2] == 2) {
-    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-    RETURN_IF_ERROR(
-        GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_));
+    GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                              work_groups);
+  } else {
+    work_groups->push_back(work_group_size_);
   }
-  return absl::OkStatus();
 }
 
 std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
@@ -721,7 +726,7 @@ std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
   return c;
 }
 
-Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
+Conv3D::ConvParams Conv3D::GuessBestParams(const DeviceInfo& device_info,
                                            const OperationDef& definition,
                                            int src_slices, int dst_slices,
                                            bool x_kernel_is_1,
@@ -731,7 +736,7 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
   conv_params.x_kernel_is_1 = x_kernel_is_1;
   conv_params.y_kernel_is_1 = y_kernel_is_1;
   conv_params.z_kernel_is_1 = z_kernel_is_1;
-  if (device.IsNvidia()) {
+  if (device_info.IsNvidia()) {
     conv_params.block_size = int4(1, 1, 1, 4);
     work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(2, 0, 1);
@@ -750,7 +755,7 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
     if (src_slices % 4 == 0 && conv_params.block_size.w <= 2) {
       conv_params.src_depth_loop_size = 4;
     }
-  } else if (device.IsPowerVR()) {
+  } else if (device_info.IsPowerVR()) {
     conv_params.block_size = int4(1, 1, 1, 4);
     work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(2, 0, 1);
@@ -788,13 +793,13 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
       conv_params.block_size.x = 2;
       work_group_size_ = int3(4, 8, 1);
     }
-  } else if (device.IsAdreno()) {
+  } else if (device_info.IsAdreno()) {
     conv_params.block_size = int4(2, 2, 1, 2);
     work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM;
-  } else if (device.IsMali()) {
+  } else if (device_info.IsMali()) {
     conv_params.block_size = int4(1, 1, 1, 4);
     work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
@@ -825,7 +830,7 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
 }
 
 Conv3D::ConvParams Conv3D::GuessBestParams(
-    const CLDevice& device, const OperationDef& definition,
+    const DeviceInfo& device_info, const OperationDef& definition,
     const Convolution3DAttributes& attr) {
   const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
   const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
@@ -841,15 +846,16 @@ Conv3D::ConvParams Conv3D::GuessBestParams(
                              attr.dilations.d == 1 &&
                              attr.padding.prepended.d == 0 &&
                              attr.padding.appended.d == 0;
-  return GuessBestParams(device, definition, src_slices, dst_slices,
+  return GuessBestParams(device_info, definition, src_slices, dst_slices,
                          x_kernel_is_1, y_kernel_is_1, z_kernel_is_1);
 }
 
-absl::Status CreateConv3D(const CreationContext& creation_context,
-                          const OperationDef& definition,
-                          const Convolution3DAttributes& attr, Conv3D* result) {
-  *result = Conv3D(definition, attr, *creation_context.device);
-  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+Conv3D CreateConv3D(const DeviceInfo& device_info,
+                    const OperationDef& definition,
+                    const Convolution3DAttributes& attr) {
+  Conv3D result(definition, attr, device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
 }  // namespace cl

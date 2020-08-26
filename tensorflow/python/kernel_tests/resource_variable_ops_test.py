@@ -1006,7 +1006,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         var = variable_scope.get_variable("x", shape=[1, 1],
                                           dtype=dtypes.float32)
         with self.assertRaisesRegex(ValueError,
-                                    "Shapes.*and.*are incompatible"):
+                                    "shape.*and.*are incompatible"):
           assign = var.assign(np.zeros(shape=[2, 2]))
           self.evaluate(assign)
 

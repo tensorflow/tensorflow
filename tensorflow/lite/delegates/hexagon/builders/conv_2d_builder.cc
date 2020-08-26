@@ -267,13 +267,13 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     auto* conv_op = graph_builder_->AddNode(GetTFLiteNodeID());
     conv_op->SetOpType(OP_DepthwiseSupernode_8x8p32to8);
     conv_op->AddInput(space_to_batch_op_out);
-    conv_op->AddInput(TensorID(weights_data_node_->GetID(), 0));
+    conv_op->AddInput(graph_builder_->GetHexagonTensorId(inputs->data[1]));
     conv_op->AddInput(TensorID(data_min_const->GetID(), 0));
     conv_op->AddInput(TensorID(data_max_const->GetID(), 0));
     conv_op->AddInput(TensorID(weights_min_node_->GetID(), 0));
     conv_op->AddInput(TensorID(weights_max_node_->GetID(), 0));
     conv_op->AddInput(TensorID(stride_node->GetID(), 0));
-    conv_op->AddInput(TensorID(bias_data_node_->GetID(), 0));
+    conv_op->AddInput(graph_builder_->GetHexagonTensorId(inputs->data[2]));
     conv_op->AddInput(TensorID(bias_min_node_->GetID(), 0));
     conv_op->AddInput(TensorID(bias_max_node_->GetID(), 0));
     conv_op->AddInput(TensorID(conv_output_min_const->GetID(), 0));
@@ -330,13 +330,13 @@ TfLiteStatus Conv2dOpBuilder::PopulateSubGraph(const TfLiteIntArray* inputs,
     }
     // Inputs
     AddInput(graph_builder_->GetHexagonTensorId(inputs->data[0]));
-    AddInput(TensorID(weights_data_node_->GetID(), 0));
+    AddInput(graph_builder_->GetHexagonTensorId(inputs->data[1]));
     AddInput(TensorID(data_min_const->GetID(), 0));
     AddInput(TensorID(data_max_const->GetID(), 0));
     AddInput(TensorID(weights_min_node_->GetID(), 0));
     AddInput(TensorID(weights_max_node_->GetID(), 0));
     AddInput(TensorID(stride_node->GetID(), 0));
-    AddInput(TensorID(bias_data_node_->GetID(), 0));
+    AddInput(graph_builder_->GetHexagonTensorId(inputs->data[2]));
     AddInput(TensorID(bias_min_node_->GetID(), 0));
     AddInput(TensorID(bias_max_node_->GetID(), 0));
     AddInput(TensorID(conv_output_min_const->GetID(), 0));

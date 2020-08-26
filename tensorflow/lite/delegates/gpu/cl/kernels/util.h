@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 
 #include "absl/types/span.h"
-#include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
 #include "tensorflow/lite/delegates/gpu/common/access_type.h"
@@ -43,6 +43,14 @@ std::string GetXStrideCorrected(const std::string& src_x,
                                 const std::string& batch_size,
                                 const std::string& stride_x,
                                 const std::string& padding_x);
+
+// Calculates correct X coordinate when stride != 1 and batch != 1 for layouts
+// with B after W (for example HWBC4) and WB stored in one axis of GPU
+// resources.
+std::string GetXStrideCorrectedV2(const std::string& src_x,
+                                  const std::string& batch_size,
+                                  const std::string& stride_x,
+                                  const std::string& padding_x);
 
 template <DataType S, typename T>
 void RearrangeWeightsToOHWIOGroupI4O4(
@@ -95,7 +103,7 @@ float4 GetMaskForLastPlane(int channels);
 int3 GetFirstSuitableWorkGroup(const std::vector<int3>& wgs, int max_wg_size);
 
 // task_size as amount of FLT4 processed elements.
-int GetRecommendedBlockSizeForConv(const CLDevice& device,
+int GetRecommendedBlockSizeForConv(const DeviceInfo& device,
                                    CalculationsPrecision precision,
                                    int task_size);
 }  // namespace cl

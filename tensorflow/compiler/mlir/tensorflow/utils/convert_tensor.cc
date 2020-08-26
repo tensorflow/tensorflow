@@ -36,8 +36,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/tstring.h"
@@ -161,7 +161,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
-      auto* dialect = builder->getContext()->getRegisteredDialect("tf");
+      auto* dialect = builder->getContext()->getLoadedDialect("tf");
       return OpaqueElementsAttr::get(dialect, type, MangleTensor(input_tensor));
   }
 

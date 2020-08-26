@@ -30,21 +30,22 @@ string GetCurrentTimeStampAsString();
 // Returns the profile plugin directory given a logdir to TensorBoard.
 string GetTensorBoardProfilePluginDir(const string& logdir);
 
-// Saves all profiling tool data in a profile to a TensorBoard log directory
-// with the given run name. This writes user-facing log messages to `os`.
+// Creates an empty event file if not already exists, which indicates that we
+// have a plugins/profile/ directory in the current logdir.
+Status MaybeCreateEmptyEventFile(const string& logdir);
+
+// Saves all profiling tool data in a profile to <repository_root>/<run>/.
+// This writes user-facing log messages to `os`.
 // Note: this function creates a directory even when all fields in
 // ProfileResponse are unset/empty.
-Status SaveTensorboardProfile(const string& logdir, const string& run,
-                              const string& host,
-                              const ProfileResponse& response,
-                              std::ostream* os);
+Status SaveProfile(const string& repository_root, const string& run,
+                   const string& host, const ProfileResponse& response,
+                   std::ostream* os);
 
-// Gzip the data and save to the specified filepath.
-Status SaveGzippedToolDataToTensorboardProfile(const string& logdir,
-                                               const string& run,
-                                               const string& host,
-                                               const string& tool_name,
-                                               const string& data);
+// Gzip the data and save to <repository_root>/<run>/.
+Status SaveGzippedToolData(const string& repository_root, const string& run,
+                           const string& host, const string& tool_name,
+                           const string& data);
 
 }  // namespace profiler
 }  // namespace tensorflow

@@ -14,9 +14,6 @@ load(
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # For platform specific build config
@@ -269,6 +266,7 @@ filegroup(
         "threadpool_device.h",
         "process_state.h",
         "pool_allocator.h",
+        "permuter.h",
     ] + if_mkl(["//tensorflow/core/graph:mkl_graph_util_header"]),
 )
 
@@ -1130,6 +1128,27 @@ cc_library(
 )
 
 cc_library(
+    name = "permuter",
+    srcs = ["permuter.cc"],
+    hdrs = ["permuter.h"],
+    copts = tf_copts(),
+    deps = [
+        ":base_collective_executor",
+        ":collective_rma_local",
+        ":collective_util",
+        ":copy_tensor",
+        ":device",
+        ":device_mgr",
+        ":dma_helper",
+        ":process_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/profiler/lib:traceme",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "pool_allocator",
     srcs = ["pool_allocator.cc"],
     hdrs = ["pool_allocator.h"],
@@ -1585,6 +1604,7 @@ tf_cuda_library(
         ":parallel_concat_optimizer",
         ":partitioning_utils",
         ":pending_counts",
+        ":permuter",
         ":placer",
         ":pool_allocator",
         ":process_state",
@@ -1889,9 +1909,9 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "ring_reducer_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "ring_reducer_test.cc",
     ],
@@ -1904,7 +1924,6 @@ tf_cc_tests_gpu(
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
@@ -1912,14 +1931,13 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/memory",
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "ring_gatherer_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "ring_gatherer_test.cc",
     ],
@@ -1939,15 +1957,13 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-        "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/memory",
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "hierarchical_tree_broadcaster_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "hierarchical_tree_broadcaster_test.cc",
     ],
@@ -1967,8 +1983,32 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-        "//tensorflow/core/util:protos_test_cc",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "permuter_test",
+    size = "small",
+    srcs = [
+        "permuter_test.cc",
+    ],
+    linkstatic = tf_kernel_tests_linkstatic(),
+    tags = ["no_cuda_on_cpu_tap"],
+    deps = [
+        ":core",
+        ":core_cpu",
+        ":core_cpu_internal",
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:ops",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
         "@com_google_absl//absl/memory",
     ],
 )

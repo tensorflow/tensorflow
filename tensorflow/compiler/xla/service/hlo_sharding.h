@@ -56,14 +56,14 @@ class HloSharding {
 
   // Creates a new sharding where data is replicated within each replication
   // group, and sharded across replication groups according to
-  // group_tile_assignment.
+  // group_tile_assignment. Replication group members will be sorted.
   static HloSharding PartialTile(
       const Array<int64>& group_tile_assignment,
       absl::Span<const absl::Span<const int64>> replication_groups);
 
   // Creates a partially replicated tiled sharding with device-level tile
   // assignment, where the last dimension is the additional replication
-  // dimension.
+  // dimension. Replication group members will be sorted.
   static HloSharding PartialTile(
       const Array<int64>& tile_assignment_last_dim_replicate);
 

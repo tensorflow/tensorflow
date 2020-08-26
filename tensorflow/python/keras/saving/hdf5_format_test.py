@@ -730,6 +730,45 @@ class TestWholeModelSaving(keras_parameterized.TestCase):
       os.close(fd)
       os.remove(fname)
 
+  def test_model_saving_to_new_dir_path(self):
+    saved_model_dir = os.path.join(self._save_model_dir(), 'newdir',
+                                   'saved_model')
+    save_format = testing_utils.get_save_format()
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+
+      x = np.random.random((1, 3))
+      out = model.predict(x)
+
+      keras.models.save_model(model, saved_model_dir, save_format=save_format)
+
+      new_model = keras.models.load_model(saved_model_dir)
+      self._assert_same_weights_and_metrics(model, new_model)
+
+      out2 = new_model.predict(x)
+      self.assertAllClose(out, out2, atol=1e-05)
+
+  def test_model_raise_exception_with_failed_saving(self):
+    if h5py is None:
+      self.skipTest('h5py required to run this test')
+
+    saved_model_dir = self._save_model_dir()
+    saved_model_path = os.path.join(saved_model_dir, 'saved_model.h5')
+
+    with self.cached_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(2, input_shape=(3,)))
+      model.add(keras.layers.RepeatVector(3))
+      model.add(keras.layers.TimeDistributed(keras.layers.Dense(3)))
+
+      with self.assertRaisesRegex(OSError, 'Unable to create file'):
+        with h5py.File(saved_model_path, 'w'):
+          keras.models.save_model(model, saved_model_path)
+
   def test_saving_constant_initializer_with_numpy(self):
     saved_model_dir = self._save_model_dir()
     save_format = testing_utils.get_save_format()
@@ -1237,7 +1276,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       prefix = 'ackpt'
       self.evaluate(v.assign(42.))
       m.save_weights(prefix)
-      self.assertTrue(file_io.file_exists('ackpt.index'))
+      self.assertTrue(file_io.file_exists_v2('ackpt.index'))
       self.evaluate(v.assign(1.))
       m.load_weights(prefix)
       self.assertEqual(42., self.evaluate(v))
@@ -1245,7 +1284,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       prefix = 'subdir/ackpt'
       self.evaluate(v.assign(43.))
       m.save_weights(prefix)
-      self.assertTrue(file_io.file_exists('subdir/ackpt.index'))
+      self.assertTrue(file_io.file_exists_v2('subdir/ackpt.index'))
       self.evaluate(v.assign(2.))
       m.load_weights(prefix)
       self.assertEqual(43., self.evaluate(v))
@@ -1253,7 +1292,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase, parameterized.TestCase):
       prefix = 'ackpt/'
       self.evaluate(v.assign(44.))
       m.save_weights(prefix)
-      self.assertTrue(file_io.file_exists('ackpt/.index'))
+      self.assertTrue(file_io.file_exists_v2('ackpt/.index'))
       self.evaluate(v.assign(3.))
       m.load_weights(prefix)
       self.assertEqual(44., self.evaluate(v))

@@ -92,17 +92,18 @@ class DispatchServer(object):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         creating the TensorFlow server.
     """
-    self._protocol = protocol or DEFAULT_PROTOCOL
-    work_dir = work_dir or ""
-    fault_tolerant_mode = fault_tolerant_mode or False
-    if fault_tolerant_mode and not work_dir:
+    self._protocol = DEFAULT_PROTOCOL if protocol is None else protocol
+    self._work_dir = "" if work_dir is None else work_dir
+    self._fault_tolerant_mode = (False if fault_tolerant_mode is None else
+                                 fault_tolerant_mode)
+    if self._fault_tolerant_mode and not self._work_dir:
       raise ValueError(
           "Cannot enable fault tolerant mode without configuring a work_dir")
     config = service_config_pb2.DispatcherConfig(
         port=port,
         protocol=self._protocol,
-        work_dir=work_dir,
-        fault_tolerant_mode=fault_tolerant_mode)
+        work_dir=self._work_dir,
+        fault_tolerant_mode=self._fault_tolerant_mode)
     self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
         config.SerializeToString())
     if start:

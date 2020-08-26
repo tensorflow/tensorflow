@@ -132,12 +132,36 @@ class HloFftInstruction : public HloInstruction {
   std::vector<int64> fft_length_;
 };
 
+class HloCopyStartInstruction : public HloInstruction {
+ public:
+  explicit HloCopyStartInstruction(const Shape& shape, HloInstruction* operand,
+                                   bool is_cross_program_prefetch);
+
+  bool is_cross_program_prefetch() const { return is_cross_program_prefetch_; }
+  HloInstructionProto ToProto() const override;
+
+ private:
+  std::vector<string> ExtraAttributesToStringImpl(
+      const HloPrintOptions& options) const override;
+  bool IdenticalSlowPath(
+      const HloInstruction& other,
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations) const override;
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  bool is_cross_program_prefetch_;
+};
+
 class HloCompareInstruction : public HloInstruction {
  public:
   explicit HloCompareInstruction(const Shape& shape, HloInstruction* lhs,
                                  HloInstruction* rhs,
-                                 ComparisonDirection direction);
+                                 ComparisonDirection direction,
+                                 absl::optional<Comparison::Type> type);
   ComparisonDirection direction() const { return compare_.GetDirection(); }
+  Comparison::Type type() const { return compare_.GetType(); }
   HloInstructionProto ToProto() const override;
 
  private:
@@ -675,6 +699,25 @@ class HloBroadcastInstruction : public HloInstruction {
       HloCloneContext* context) const override;
 
   std::vector<int64> dimensions_;
+};
+
+class HloDynamicReshapeInstruction : public HloInstruction {
+ public:
+  explicit HloDynamicReshapeInstruction(
+      const Shape& shape, HloInstruction* data_operand,
+      absl::Span<HloInstruction* const> dim_sizes);
+
+  // Returns the input dim sizes dimensions, which is operands[1:]
+  absl::Span<HloInstruction* const> dim_sizes() const {
+    return absl::MakeSpan(operands()).subspan(1, operand_count());
+  }
+
+  std::unique_ptr<HloInstruction> CloneWithNewOperandsImpl(
+      const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+      HloCloneContext* context) const override;
+
+  // Returns the input dim size dimension, which is operands[1+i]
+  HloInstruction* dim_sizes(int64 i) const { return operands()[i + 1]; }
 };
 
 class HloReshapeInstruction : public HloInstruction {

@@ -615,6 +615,10 @@ class ConvertReduceOpToTfMin : public OpConversionPattern<mhlo::ReduceOp> {
 };
 
 class LegalizeHloToTf : public PassWrapper<LegalizeHloToTf, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<TF::TensorFlowDialect>();
+  }
+
  public:
   LegalizeHloToTf() = default;
   LegalizeHloToTf(const LegalizeHloToTf &) {}

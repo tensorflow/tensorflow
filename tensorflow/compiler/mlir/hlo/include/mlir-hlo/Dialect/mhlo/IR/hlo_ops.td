@@ -1079,6 +1079,8 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
   // XLA semantics is available. This limitation is because of the current XLA
   // implementation.
   let results = (outs I32Tensor);
+
+  let hasFolder = 1;
 }
 
 def HLO_MapOp: HLO_Op<"map",
@@ -1329,8 +1331,9 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 }
 
 //===----------------------------------------------------------------------===//
-// MHLO RngUniform Operator.
+// MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
+
 def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let arguments = (ins
     HLO_PredIntOrFpTensor:$a,
@@ -1352,6 +1355,19 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
 
   let results = (outs HLO_FpTensor);
 
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]>, BASE_HLO_RngBitGeneratorOp {
+  let arguments = (ins
+    // TODO(jpienaar): This could be an enum instead.
+    I32Attr:$rng_algorithm,
+    HLO_IntOrFpTensor:$initial_state
+  );
+
+  let results = (outs HLO_TensorOrTuple:$result);
+
+  // TODO(jpienaar): This should not be needed.
   let hasCustomHLOConverter = 1;
 }
 

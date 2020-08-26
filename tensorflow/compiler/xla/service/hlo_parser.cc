@@ -194,6 +194,7 @@ class HloParserImpl : public HloParser {
     kBracedHloComputationList,
     kFftType,
     kComparisonDirection,
+    kComparisonType,
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
@@ -327,6 +328,7 @@ class HloParserImpl : public HloParser {
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
   bool ParseComparisonDirection(ComparisonDirection* result);
+  bool ParseComparisonType(Comparison::Type* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParseRandomAlgorithm(RandomAlgorithm* result);
@@ -881,7 +883,6 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kClz:
     case HloOpcode::kCollectivePermuteDone:
     case HloOpcode::kCopy:
-    case HloOpcode::kCopyStart:
     case HloOpcode::kCopyDone:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
@@ -1089,6 +1090,20 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       break;
     }
+    case HloOpcode::kCopyStart: {
+      // If the is_cross_program_prefetch attribute is not present then default
+      // to false.
+      optional<bool> is_cross_program_prefetch = false;
+      attrs["is_cross_program_prefetch"] = {/*required=*/false, AttrTy::kBool,
+                                            &is_cross_program_prefetch};
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateCopyStart(
+          shape, operands[0], *is_cross_program_prefetch));
+      break;
+    }
     case HloOpcode::kReplicaId: {
       if (!ParseOperands(&operands, /*expected_size=*/0) ||
           !ParseAttributes(attrs)) {
@@ -1104,6 +1119,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
       }
       instruction =
           builder->AddInstruction(HloInstruction::CreatePartitionId());
+      break;
+    }
+    case HloOpcode::kDynamicReshape: {
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction =
+          builder->AddInstruction(HloInstruction::CreateDynamicReshape(
+              shape, operands[0],
+              absl::Span<HloInstruction* const>(operands).subspan(1)));
       break;
     }
     case HloOpcode::kReshape: {
@@ -1362,14 +1387,16 @@ bool HloParserImpl::ParseInstructionRhs(HloComputation::Builder* builder,
     }
     case HloOpcode::kCompare: {
       optional<ComparisonDirection> direction;
+      optional<Comparison::Type> type;
       attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
                             &direction};
+      attrs["type"] = {/*required=*/false, AttrTy::kComparisonType, &type};
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
           !ParseAttributes(attrs)) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateCompare(
-          shape, operands[0], operands[1], *direction));
+          shape, operands[0], operands[1], *direction, type));
       break;
     }
     case HloOpcode::kCholesky: {
@@ -3018,6 +3045,14 @@ bool HloParserImpl::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+      case AttrTy::kComparisonType: {
+        Comparison::Type result;
+        if (!ParseComparisonType(&result)) {
+          return false;
+        }
+        static_cast<optional<Comparison::Type>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
       case AttrTy::kEnum: {
         if (lexer_.GetKind() != TokKind::kIdent) {
           return TokenError("expects an enumeration value");
@@ -4139,6 +4174,21 @@ bool HloParserImpl::ParseComparisonDirection(ComparisonDirection* result) {
   if (!status_or_result.ok()) {
     return TokenError(
         StrFormat("expects comparison direction but sees: %s", val));
+  }
+  *result = status_or_result.ValueOrDie();
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParserImpl::ParseComparisonType(Comparison::Type* result) {
+  VLOG(1) << "ParseComparisonType";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects comparison type");
+  }
+  std::string val = lexer_.GetStrVal();
+  auto status_or_result = StringToComparisonType(val);
+  if (!status_or_result.ok()) {
+    return TokenError(StrFormat("expects comparison type but sees: %s", val));
   }
   *result = status_or_result.ValueOrDie();
   lexer_.Lex();

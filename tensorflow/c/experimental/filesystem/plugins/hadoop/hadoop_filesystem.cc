@@ -308,7 +308,7 @@ typedef struct HDFSFile {
         handle(handle) {}
 } HDFSFile;
 
-static void Cleanup(TF_WritableFile* file) {
+void Cleanup(TF_WritableFile* file) {
   auto hdfs_file = static_cast<HDFSFile*>(file->plugin_file);
   hdfs_file->libhdfs->hdfsCloseFile(hdfs_file->fs, hdfs_file->handle);
   hdfs_file->fs = nullptr;

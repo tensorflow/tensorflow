@@ -97,10 +97,10 @@ An n-way switch statement, implementing the following:
     Variadic<TF_Tensor>:$input,
 
     Confined<SymbolRefArrayAttr, [ArrayMinCount<1>]>:$branches,
-    DefaultValuedAttr<TF_ShapeAttrArray, "{}">:$output_shapes,
 
-    // Used to map StatelessCase and Case to a common op.
-    DefaultValuedAttr<BoolAttr, "false">:$is_stateless
+    // Used to map StatelessCase and Case op defined in TensorFlow to a common
+    // op.
+    BoolAttr:$is_stateless
   );
 
   let results = (outs
@@ -109,8 +109,57 @@ An n-way switch statement, implementing the following:
 
   TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
   TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
+  TF_DerivedResultShapeListAttr output_shapes = TF_DerivedResultShapeListAttr<0>;
 
   let hasCanonicalizer = 1;
+
+  let verifier = [{
+    return Verify(*this);
+  }];
+}
+
+def TF_CaseRegionOp : TF_Op<"CaseRegion",
+      [SingleBlockImplicitTerminator<"YieldOp">, NoRegionArguments]> {
+  let summary = [{
+An n-way switch statement which calls a single branch function.
+  }];
+
+  let description = [{
+An n-way switch statement, implementing the following:
+    ```
+    switch (branch_index) {
+      case 0:
+        output = branches[0](input);
+        break;
+      case 1:
+        output = branches[1](input);
+        break;
+      ...
+      case [[nbranches-1]]:
+      default:
+        output = branches[nbranches-1](input);
+        break;
+    }
+    ```
+  }];
+
+  let arguments = (ins
+    I32Tensor:$branch_index,
+
+    // Used to map StatelessCase and Case op defined in TensorFlow to a common
+    // op.
+    BoolAttr:$is_stateless
+  );
+
+  let results = (outs
+    Variadic<TF_Tensor>:$output
+  );
+
+  let regions = (region VariadicRegion<SizedRegion<1>>:$branches);
+
+  let verifier = [{
+    return Verify(*this);
+  }];
 }
 
 // In MLIR, the TensorFlow tensor value is represented as an ElementsAttr, with
@@ -166,30 +215,6 @@ source_target_pairs=`[[0,1],[1,2],[2,3],[3,0]]` gets the outputs:
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-
-def TF_DataFormatVecPermuteOp : TF_Op<"DataFormatVecPermute", [NoSideEffect, SameOperandsAndResultType]> {
-  let summary = "Permute input tensor from `src_format` to `dst_format`";
-
-  let description = [{
-Input tensor must be a vector of size 4, or a 4x2 tensor.
-  }];
-
-  let arguments = (ins
-    TF_I32OrI64Tensor:$x,
-
-    DefaultValuedAttr<StrAttr, "NHWC">:$src_format,
-    DefaultValuedAttr<StrAttr, "NCHW">:$dst_format
-  );
-
-  let results = (outs
-    TF_I32OrI64Tensor:$y
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let verifier = [{ return Verify(*this); }];
 }
 
 def TF_EmptyTensorListOp : TF_TensorListInitOp<"EmptyTensorList"> {
@@ -292,7 +317,7 @@ else_branch: A function that takes 'inputs' and returns a list of
 }
 
 def TF_YieldOp : TF_Op<"Yield",
-      [Terminator, ParentOneOf<["IfRegionOp", "WhileRegionOp"]>]> {
+      [Terminator, ParentOneOf<["CaseRegionOp", "IfRegionOp", "WhileRegionOp"]>]> {
   let summary = "Yield operation";
 
   let description = [{
@@ -328,7 +353,7 @@ else_branch: A region that computes the outputs of the op if cond = false.
   }];
 
   let arguments = (ins
-    TF_Tensor:$cond,
+    0DTensorOf<[I1]>:$cond,
 
     // Used to map StatelessIf and If op defined in TensorFlow to a common op.
     BoolAttr:$is_stateless
@@ -338,47 +363,13 @@ else_branch: A region that computes the outputs of the op if cond = false.
     Variadic<TF_Tensor>:$output
   );
 
-  TF_DerivedOperandTypeAttr Tcond = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeListAttr Tin = TF_DerivedOperandTypeListAttr<1>;
-  TF_DerivedResultTypeListAttr Tout = TF_DerivedResultTypeListAttr<0>;
-
   let regions = (region SizedRegion<1>:$then_branch, SizedRegion<1>:$else_branch);
 
   let verifier = [{
     return Verify(*this);
   }];
-}
 
-def TF_MeanOp : TF_Op<"Mean", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
-  let summary = "Computes the mean of elements across dimensions of a tensor.";
-
-  let description = [{
-Reduces `input` along the dimensions given in `axis`. Unless
-`keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
-`axis`. If `keep_dims` is true, the reduced dimensions are
-retained with length 1.
-  }];
-
-  let arguments = (ins
-    TF_NumberTensor:$input,
-    TF_I32OrI64Tensor:$reduction_indices,
-
-    DefaultValuedAttr<BoolAttr, "false">:$keep_dims
-  );
-
-  let results = (outs
-    TF_NumberTensor:$output
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeAttr Tidx = TF_DerivedOperandTypeAttr<1>;
-
-  let extraClassDeclaration = [{
-    // TF_FoldOperandsTransposeInterface:
-    SmallVector<unsigned, 4> GetLayoutDependentArgs() { return {0}; }
-    SmallVector<unsigned, 4> GetLayoutDependentResults() { return {}; }
-    LogicalResult FoldOperandsPermutation(ArrayRef<int64_t> permutation);
-  }];
+  let hasCanonicalizer = 1;
 }
 
 def TF_LegacyCallOp : TF_Op<"LegacyCall",
@@ -755,8 +746,6 @@ def TL_WhileRegionOp : TF_Op<"WhileRegion",
   );
   let results = (outs Variadic<AnyTensor>:$output);
 
-  TF_DerivedOperandTypeListAttr T = TF_DerivedOperandTypeListAttr<0>;
-
   let regions = (region SizedRegion<1>:$cond, SizedRegion<1>:$body);
 
   let verifier = [{ return Verify(*this); }];
@@ -839,45 +828,6 @@ Example:
     TF_DerivedOperandOrResultHandleTypeAttr<"resource">;
   TF_DerivedOperandOrResultHandleShapeAttr shape =
     TF_DerivedOperandOrResultHandleShapeAttr<"resource">;
-}
-
-// Not generated because it begins with an underscore, which isn't allowed by
-// the C++ standard.
-def TF_FusedBatchNormExOp : TF_Op<"_FusedBatchNormEx", [NoSideEffect]> {
-  let summary = "Internal FusedBatchNorm operation: reserved for internal use";
-
-  let description = [{
- Do not invoke this operator directly in Python. A fusion optimization is
- expected to create these operators.
-  }];
-
-  let arguments = (ins
-    TensorOf<[F16, F32]>:$x,
-    F32Tensor:$scale,
-    F32Tensor:$offset,
-    F32Tensor:$mean,
-    F32Tensor:$variance,
-    Variadic<TensorOf<[F16, F32]>>:$side_input,
-
-    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
-    DefaultValuedAttr<F32Attr, "1.0f">:$exponential_avg_factor,
-    DefaultValuedAttr<StrAttr, "Identity">:$activation_mode,
-    DefaultValuedAttr<TF_ConvnetDataFormatAttr, "NHWC">:$data_format,
-    DefaultValuedAttr<BoolAttr, "true">:$is_training
-  );
-
-  let results = (outs
-    TensorOf<[F16, F32]>:$y,
-    F32Tensor:$batch_mean,
-    F32Tensor:$batch_variance,
-    F32Tensor:$reserve_space_1,
-    F32Tensor:$reserve_space_2,
-    F32Tensor:$reserve_space_3
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-  TF_DerivedOperandTypeAttr U = TF_DerivedOperandTypeAttr<1>;
-  TF_DerivedOperandSizeAttr num_side_inputs = TF_DerivedOperandSizeAttr<5>;
 }
 
 // Multiple variadic operands with different sizes are not supported by the
@@ -1150,6 +1100,43 @@ def TF_TensorSliceDatasetOp : TF_Op<"TensorSliceDataset", []> {
   TF_DerivedOperandTypeListAttr Toutput_types = TF_DerivedOperandTypeListAttr<0>;
 }
 
+def TF_ToBoolOp : TF_Op<"ToBool", [NoSideEffect]> {
+  let summary = "Converts a tensor to a scalar predicate.";
+
+  let description = [{
+Converts a tensor to a scalar predicate with the following rules:
+
+- For 0D tensors, truthiness is determined by comparing against a "zero"
+  value. For numerical types it is the obvious zero. For strings it is the
+  empty string.
+
+- For >0D tensors, truthiness is determined by looking at the number of
+  elements. If has zero elements, then the result is false. Otherwise the
+  result is true.
+
+This matches the behavior of If and While for determining if a tensor counts
+as true/false for a branch condition.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input
+  );
+
+  let results = (outs
+    0DTensorOf<[I1]>:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+
+  let builders = [OpBuilder<
+    "OpBuilder &builder, OperationState &result, Value value", [{
+      build(builder, result, RankedTensorType::get({}, builder.getI1Type()),
+            value);
+    }]>];
+
+  let hasCanonicalizer = 1;
+}
+
 def TF_BesselI0eOp : TF_Op<"BesselI0e", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes the Bessel i0e function of `x` element-wise.";
 
@@ -1190,36 +1177,6 @@ This function is faster and numerically stabler than `bessel_i1(x)`.
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
-def TF_StringToHashBucketFastOp : TF_Op<"StringToHashBucketFast", [NoSideEffect]> {
-  let summary = [{
-Converts each string in the input Tensor to its hash mod by a number of buckets.
-  }];
-
-  let description = [{
-The hash function is deterministic on the content of the string within the
-process and will never change. However, it is not suitable for cryptography.
-This function may be used when CPU time is scarce and inputs are trusted or
-unimportant. There is a risk of adversaries constructing inputs that all hash
-to the same bucket. To prevent this problem, use a strong hash function with
-`tf.string_to_hash_bucket_strong`.
-
-Examples:
-
->>> tf.strings.to_hash_bucket_fast(["Hello", "TensorFlow", "2.x"], 3).numpy()
-array([0, 2, 2])
-  }];
-
-  let arguments = (ins
-    TF_StrTensor:$input,
-
-    Confined<I64Attr, [IntMinValue<1>]>:$num_buckets
-  );
-
-  let results = (outs
-    I64Tensor:$output
-  );
 }
 
 def TF_TPUPartitionedCallOp : TF_Op<"TPUPartitionedCall", [CallOpInterface]> {

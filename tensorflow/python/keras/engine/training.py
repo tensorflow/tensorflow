@@ -25,10 +25,7 @@ import os
 import six
 
 from tensorflow.python.autograph.lang import directives
-from tensorflow.python.distribute import distribute_coordinator as dc
-from tensorflow.python.distribute import distribute_coordinator_context as dc_context
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
-from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import values as ds_values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
@@ -93,26 +90,6 @@ try:
 except ImportError:
   yaml = None
 # pylint: enable=g-import-not-at-top
-
-
-def enable_multi_worker(method):
-  """Decorator that handles running `method` with multi-worker strategy."""
-
-  def _method_wrapper(self, *args, **kwargs):
-    if not self._in_multi_worker_mode():  # pylint: disable=protected-access
-      return method(self, *args, **kwargs)
-
-    # Running inside `run_distribute_coordinator` already.
-    if dc_context.get_current_worker_context():
-      return method(self, *args, **kwargs)
-
-    return dc.run_distribute_coordinator(
-        lambda _: method(self, *args, **kwargs),
-        self.distribute_strategy,
-        mode=dc.CoordinatorMode.INDEPENDENT_WORKER)
-
-  return tf_decorator.make_decorator(
-      target=method, decorator_func=_method_wrapper)
 
 
 def disable_multi_worker(method):
@@ -234,7 +211,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if is_functional_model_init_params(args, kwargs) and cls == Model:
       # Functional model
       from tensorflow.python.keras.engine import functional  # pylint: disable=g-import-not-at-top
-      return functional.Functional(*args, **kwargs)
+      return functional.Functional(skip_init=True, *args, **kwargs)
     else:
       return super(Model, cls).__new__(cls, *args, **kwargs)
 
@@ -741,8 +718,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
     """
     # These are the only transformations `Model.fit` applies to user-input
-    # data when a `tf.data.Dataset` is provided. These utilities will be exposed
-    # publicly.
+    # data when a `tf.data.Dataset` is provided.
     data = data_adapter.expand_1d(data)
     x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
 
@@ -750,15 +726,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       y_pred = self(x, training=True)
       loss = self.compiled_loss(
           y, y_pred, sample_weight, regularization_losses=self.losses)
-    # For custom training steps, users can just write:
-    #   trainable_variables = self.trainable_variables
-    #   gradients = tape.gradient(loss, trainable_variables)
-    #   self.optimizer.apply_gradients(zip(gradients, trainable_variables))
-    # The _minimize call does a few extra steps unnecessary in most cases,
-    # such as loss scaling and gradient clipping.
-    _minimize(self.distribute_strategy, tape, self.optimizer, loss,
-              self.trainable_variables)
-
+    self.optimizer.minimize(loss, self.trainable_variables, tape=tape)
     self.compiled_metrics.update_state(y, y_pred, sample_weight)
     return {m.name: m.result() for m in self.metrics}
 
@@ -812,8 +780,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
       def train_function(iterator):
         """Runs a training execution with multiple steps."""
-        outputs = step_function(self, iterator)
-        for _ in math_ops.range(self._steps_per_execution - 1):
+        for _ in math_ops.range(self._steps_per_execution):
           outputs = step_function(self, iterator)
         return outputs
 
@@ -824,7 +791,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.train_function = train_function
     return self.train_function
 
-  @enable_multi_worker
   def fit(self,
           x=None,
           y=None,
@@ -1234,8 +1200,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
 
       def test_function(iterator):
         """Runs an evaluation execution with multiple steps."""
-        outputs = step_function(self, iterator)
-        for _ in math_ops.range(self._steps_per_execution - 1):
+        for _ in math_ops.range(self._steps_per_execution):
           outputs = step_function(self, iterator)
         return outputs
 
@@ -1246,7 +1211,6 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     self.test_function = test_function
     return self.test_function
 
-  @enable_multi_worker
   def evaluate(self,
                x=None,
                y=None,
@@ -2698,60 +2662,6 @@ def _tpu_multi_host_concat(v, strategy):
   for replica_id in range(num_replicas_per_host):
     ordered_replicas += replicas[replica_id::num_replicas_per_host]
   return concat(ordered_replicas)
-
-
-def _minimize(strategy, tape, optimizer, loss, trainable_variables):
-  """Minimizes loss for one step by updating `trainable_variables`.
-
-  This is roughly equivalent to
-
-  ```python
-  gradients = tape.gradient(loss, trainable_variables)
-  self.optimizer.apply_gradients(zip(gradients, trainable_variables))
-  ```
-
-  However, this function also applies gradient clipping and loss scaling if the
-  optimizer is a LossScaleOptimizer.
-
-  Args:
-    strategy: `tf.distribute.Strategy`.
-    tape: A gradient tape. The loss must have been computed under this tape.
-    optimizer: The optimizer used to minimize the loss.
-    loss: The loss tensor.
-    trainable_variables: The variables that will be updated in order to minimize
-      the loss.
-  """
-
-  with tape:
-    if isinstance(optimizer, lso.LossScaleOptimizer):
-      loss = optimizer.get_scaled_loss(loss)
-
-  gradients = tape.gradient(loss, trainable_variables)
-
-  # Whether to aggregate gradients outside of optimizer. This requires support
-  # of the optimizer and doesn't work with ParameterServerStrategy and
-  # CentralStorageStrategy.
-  aggregate_grads_outside_optimizer = (
-      optimizer._HAS_AGGREGATE_GRAD and  # pylint: disable=protected-access
-      not isinstance(strategy.extended,
-                     parameter_server_strategy.ParameterServerStrategyExtended))
-
-  if aggregate_grads_outside_optimizer:
-    # We aggregate gradients before unscaling them, in case a subclass of
-    # LossScaleOptimizer all-reduces in fp16. All-reducing in fp16 can only be
-    # done on scaled gradients, not unscaled gradients, for numeric stability.
-    gradients = optimizer._aggregate_gradients(zip(gradients,  # pylint: disable=protected-access
-                                                   trainable_variables))
-  if isinstance(optimizer, lso.LossScaleOptimizer):
-    gradients = optimizer.get_unscaled_gradients(gradients)
-  gradients = optimizer._clip_gradients(gradients)  # pylint: disable=protected-access
-  if trainable_variables:
-    if aggregate_grads_outside_optimizer:
-      optimizer.apply_gradients(
-          zip(gradients, trainable_variables),
-          experimental_aggregate_gradients=False)
-    else:
-      optimizer.apply_gradients(zip(gradients, trainable_variables))
 
 
 def _is_scalar(x):

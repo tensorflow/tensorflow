@@ -22,6 +22,7 @@
     * Code that uses `tf.map_fn`/`tf.cond`/`tf.while_loop`/control flow as op layers and happens to work before TF 2.4. These will explicitly be unsupported now. Converting these ops to Functional API op layers was unreliable before TF 2.4, and prone to erroring incomprehensibly or being silently buggy.
     * Code that directly asserts on a Keras symbolic value in cases where ops like `tf.rank` used to return a static or symbolic value depending on if the input had a fully static shape or not. Now these ops always return symbolic values.
     * Code already susceptible to leaking tensors outside of graphs becomes slightly more likely to do so now.
+    * Code that tries directly getting gradients with respect to symbolic Keras inputs/outputs. Use GradientTape on the actual Tensors passed to the already-constructed model instead.
     * Code that requires very tricky shape manipulation via converted op layers in order to work, where the Keras symbolic shape inference proves insufficient.
     * Code that tries manually walking a `tf.keras.Model` layer by layer and assumes layers only ever have one positional argument. This assumption doesn't hold true before TF 2.4 either, but is more likely to cause issues know.
     * Code that manually enters `keras.backend.get_graph()` before building a functional model. This is no longer needed.
@@ -33,6 +34,9 @@
   shape assumptions (note that you can pass shapes with `None` entries for axes
   that are meant to be dynamic). You can also disable the input checking
   entirely by setting `model.input_spec = None`.
+* XLA:CPU and XLA:GPU devices are no longer registered by default. Use
+  `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them (to be
+  removed).
 
 ## Known Caveats
 
@@ -77,6 +81,12 @@
       server and set `dispatcher_fault_tolerance=True`. The dispatcher will
       store its state to `work_dir`, so that on restart it can continue from its
       previous state after restart.
+    * Added tf.data service support for sharing dataset graphs via shared
+      filesystem instead of over RPC. This reduces load on the dispatcher,
+      improving performance of distributing datasets. For this to work, the
+      dispatcher's `work_dir` must be accessible from workers. If the worker
+      fails to read from the `work_dir`, it falls back to using RPC for dataset
+      graph transfer.
     * Added optional `exclude_cols` parameter to CsvDataset. This parameter is
       the complement of `select_cols`; at most one of these should be specified.
     * We have implemented an optimization which reorders data-discarding
@@ -84,11 +94,14 @@
       dataset when it is safe to do so. The optimization can be disabled via
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
+    * `tf.data.Options` were previously immutable and can now be overriden.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
-      `tf.image.random_*` function. Given the same seed, the stateless functions
-      produce the same results independent of how many times the function is
-      called, and independent of global seed settings.
+      `tf.image.random_*` function. Added a new op
+      `stateless_sample_distorted_bounding_box` which is a determinstic
+      version of `sample_distorted_bounding_box` op. Given the same seed, these
+      stateless functions/ops produce the same results independent of how many
+      times the function is called, and independent of global seed settings.
 *   `tf.distribute`:
     * <ADD RELEASE NOTES HERE>
 * `tf.keras`:
@@ -100,7 +113,13 @@
       * Error messages when Functional API construction goes wrong (and when ops cannot be converted to Keras layers automatically) should be clearer and easier to understand.
     * `Optimizer.minimize` can now accept a loss `Tensor` and a `GradientTape`
       as an alternative to accepting a `callable` loss.
-    * Added `beta` parameter to FTRL optimizer to match paper.
+    * Added `beta` hyperparameter to FTRL optimizer classes (Keras and others)
+      to match FTRL paper (https://research.google.com/pubs/archive/41159.pdf).
+    * Added `mobilenet_v3` to keras application model.
+    * `Optimizer.__init__` now accepts a `gradient_aggregator` to allow for
+      customization of how gradients are aggregated across devices, as well as
+      `gradients_transformers` to allow for custom gradient transformations
+      (such as gradient clipping).
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
@@ -127,6 +146,7 @@
       * Support optional flags `inference_input_type` and `inference_output_type` for full integer quantized models. This allows users to modify the model input and output type to integer types (`tf.int8`, `tf.uint8`) instead of defaulting to float type (`tf.float32`).
     * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
       * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
+    * Add NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
@@ -143,6 +163,14 @@
     * <ADD RELEASE NOTES HERE>
 *   Tracing and Debugging:
     * <ADD RELEASE NOTES HERE>
+*   `tf.train.Checkpoint`:
+    * Now accepts a `root` argument in the initialization, which generates a
+      checkpoint with a root object. This allows users to create a `Checkpoint`
+      object that is compatible with Keras `model.save_weights()` and
+      `model.load_weights`. The checkpoint is also compatible with the
+      checkpoint saved in the `variables/` folder in the SavedModel.
+    * When restoring, `save_path` can be a path to a SavedModel. The function
+      will automatically find the checkpoint in the SavedModel.
 *   Other:
     * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
   and "denylist" where possible. Please see 
@@ -239,6 +267,7 @@ stjohnso98, <NAME>, <HERE>, <USING>, <GITHUB>, <HANDLE>
     * Mutable tables now restore checkpointed values when loaded from SavedModel.
   * GPU
     * TF 2.3 includes PTX kernels only for [compute capability](https://developer.nvidia.com/cuda-gpus) 7.0 to reduce the TF pip binary size.  Earlier releases included PTX for a variety of older compute capabilities.
+    * Remove environmental variable `TF_USE_CUDNN`.
   * Others
     * Retain parent namescope for ops added inside `tf.while_loop`/`tf.cond`/`tf.switch_case`.
     * Update `tf.vectorized_map` to support vectorizing `tf.while_loop` and TensorList operations.
@@ -1570,6 +1599,7 @@ Yuan (Terry) Tang, Yuchen Ying, Yves-Noel Weweler, zhangyujing, zjjott, zyeric,
         color palette of the frame. This has been fixed now
     *   image.resize now considers proper pixel centers and has new kernels
         (incl. anti-aliasing).
+    *   Added an isotonic regression solver (tf.nn.isotonic_regression).
 *   Performance
     *   Turn on MKL-DNN contraction kernels by default. MKL-DNN dynamically
         dispatches the best kernel implementation based on CPU vector

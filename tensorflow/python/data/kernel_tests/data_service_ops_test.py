@@ -26,6 +26,7 @@ from absl.testing import parameterized
 from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import data_service_ops
 from tensorflow.python.data.experimental.ops import distribute_options
+from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.experimental.ops import testing
 from tensorflow.python.data.experimental.service import server_lib
 from tensorflow.python.data.kernel_tests import test_base
@@ -41,6 +42,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import test
 
@@ -61,6 +63,14 @@ def _make_distributed_dataset(dataset,
           job_name=job_name,
           max_outstanding_requests=max_outstanding_requests,
           task_refresh_interval_hint_ms=20))
+
+
+def _all_cluster_configurations():
+  with_work_dir = combinations.combine(
+      work_dir=None, fault_tolerant_mode=[True, False])
+  without_work_dir = combinations.combine(
+      work_dir="", fault_tolerant_mode=False)
+  return with_work_dir + without_work_dir
 
 
 def _make_distributed_range_dataset(num_elements,
@@ -87,13 +97,20 @@ def _make_distributed_range_dataset(num_elements,
 
 class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def start_dispatch_server(self, port=0):
-    work_dir = os.path.join(self.get_temp_dir(), "work_dir")
+  def start_dispatch_server(self,
+                            name="",
+                            port=0,
+                            work_dir=None,
+                            fault_tolerant_mode=True):
+    # If a test starts multiple independent dispatch servers, it should give
+    # them different `name` values.
+    work_dir = os.path.join(self.get_temp_dir(), "work_dir_",
+                            name) if work_dir is None else work_dir
     return server_lib.DispatchServer(
         port=port,
         protocol=server_lib.DEFAULT_PROTOCOL,
         work_dir=work_dir,
-        fault_tolerant_mode=True)
+        fault_tolerant_mode=fault_tolerant_mode)
 
   def start_worker_server(self, dispatcher, port=0):
     return server_lib.WorkerServer(
@@ -105,24 +122,38 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     """Stops `dispatcher` and returns a new dispatcher with the same port."""
     port = int(_address_from_target(dispatcher.target).split(":")[1])
     dispatcher._stop()
-    return self.start_dispatch_server(port=port)
+    return self.start_dispatch_server(
+        port=port,
+        work_dir=dispatcher._work_dir,
+        fault_tolerant_mode=dispatcher._fault_tolerant_mode)
 
-  def start_cluster(self, num_workers):
-    """Creates a cluster of tf.data service servers.
+  def restart_worker(self, worker, dispatcher, use_same_port=True):
+    """Stops `worker` and returns a new worker."""
+    port = 0
+    if use_same_port:
+      port = int(worker._address.split(":")[1])
+    worker._stop()
+    return self.start_worker_server(dispatcher, port)
 
-    Args:
-      num_workers: The number of workers in the cluster.
+  def start_cluster(self,
+                    num_workers,
+                    name="",
+                    work_dir=None,
+                    fault_tolerant_mode=True):
+    """Creates and starts a tf.data service cluster."""
+    dispatcher = self.start_dispatch_server(
+        name=name, work_dir=work_dir, fault_tolerant_mode=fault_tolerant_mode)
+    workers = [self.start_worker_server(dispatcher) for _ in range(num_workers)]
+    return dispatcher, workers
 
-    Returns:
-      A tuple of (dispatcher, list_of_workers).
-    """
-    dispatcher = self.start_dispatch_server()
-    servers = [self.start_worker_server(dispatcher) for _ in range(num_workers)]
-    return dispatcher, servers
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testDistributeBasic(self):
-    dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         _all_cluster_configurations()))
+  def testDistributeBasic(self, work_dir, fault_tolerant_mode):
+    dispatcher, workers = self.start_cluster(  # to avoid gcing workers, pylint: disable=unused-variable
+        1,
+        work_dir=work_dir,
+        fault_tolerant_mode=fault_tolerant_mode)
     num_elements = 10
     ds = _make_distributed_range_dataset(10, dispatcher)
     results = [elem.numpy() for elem in ds]
@@ -174,6 +205,35 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     ds = _make_distributed_range_dataset(100, dispatcher)
     self.assertDatasetProduces(ds, list(range(num_elements)))
     dispatcher = self.restart_dispatcher(dispatcher)
+    self.assertDatasetProduces(ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherManyRestarts(self):
+    dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_elements_start = 10
+    num_elements_end = 15
+    datasets = []
+    for num_elements in range(num_elements_start, num_elements_end):
+      datasets.append(_make_distributed_range_dataset(num_elements, dispatcher))
+      dispatcher = self.restart_dispatcher(dispatcher)
+    for ds, num_elements in zip(datasets,
+                                range(num_elements_start, num_elements_end)):
+      self.assertDatasetProduces(ds, list(range(num_elements)))
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testDispatcherAndWorkerRestart(self):
+    dispatcher, [worker] = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
+    num_elements = 100
+    ds = dataset_ops.Dataset.range(num_elements)
+
+    def restart():
+      return (self.restart_dispatcher(dispatcher),
+              self.restart_worker(worker, dispatcher))
+
+    ds = _make_distributed_dataset(ds, dispatcher)
+    dispatcher, worker = restart()
+    self.assertDatasetProduces(ds, list(range(num_elements)))
+    dispatcher, worker = restart()
     self.assertDatasetProduces(ds, list(range(num_elements)))
 
   @combinations.generate(test_base.eager_only_combinations())
@@ -345,9 +405,11 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
-                         combinations.combine(use_same_port=[True, False])))
-  def testRestartWorker(self, use_same_port):
-    dispatcher, [worker] = self.start_cluster(1)
+                         combinations.combine(use_same_port=[True, False]),
+                         _all_cluster_configurations()))
+  def testRestartWorker(self, use_same_port, work_dir, fault_tolerant_mode):
+    dispatcher, [worker] = self.start_cluster(
+        1, work_dir=work_dir, fault_tolerant_mode=fault_tolerant_mode)
     num_elements = 100
     ds = _make_distributed_range_dataset(num_elements, dispatcher)
     iterator = iter(ds)
@@ -357,11 +419,7 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(i, next(iterator).numpy())
 
     # Stop the original worker and start a new one.
-    port = 0
-    if use_same_port:
-      port = int(worker._address.split(":")[1])
-    worker._stop()
-    new_worker = self.start_worker_server(dispatcher, port=port)  # to avoid gcing workers, pylint: disable=unused-variable
+    worker = self.restart_worker(worker, dispatcher, use_same_port)
 
     # There may have been some elements prefetched from the first worker
     # before it was stopped.
@@ -411,9 +469,12 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSharedJobName(self):
     dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
     num_elements = 100
-    ds = dataset_ops.Dataset.range(num_elements)
-    ds1 = _make_distributed_dataset(ds, dispatcher, job_name="job_name")
-    ds2 = _make_distributed_dataset(ds, dispatcher, job_name="job_name")
+
+    def make_ds():
+      return dataset_ops.Dataset.range(num_elements).shuffle(num_elements)
+
+    ds1 = _make_distributed_dataset(make_ds(), dispatcher, job_name="job_name")
+    ds2 = _make_distributed_dataset(make_ds(), dispatcher, job_name="job_name")
     iter1 = iter(ds1)
     iter2 = iter(ds2)
     results = []
@@ -658,6 +719,40 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     id_1 = data_service_ops.register_dataset(dispatcher.target, ds_1)
     id_2 = data_service_ops.register_dataset(dispatcher.target, ds_2)
     self.assertNotEqual(id_1.numpy(), id_2.numpy())
+
+  @combinations.generate(test_base.eager_only_combinations())
+  def testTwoLevelDistribute(self):
+    cluster_1_size = 3
+    dispatcher_1, workers_1 = self.start_cluster(  # to avoid gcing workers, pylint: disable=unused-variable
+        cluster_1_size,
+        name="cluster_1")
+    dispatcher_2, workers_2 = self.start_cluster(1, name="cluster_2")  # to avoid gcing workers, pylint: disable=unused-variable
+    num_sizes = 10
+    size_repeats = 5
+    strings = ["a" * i for i in range(num_sizes)] * size_repeats
+    ds = dataset_ops.Dataset.from_tensor_slices(strings)
+    ds = ds.shuffle(len(strings))
+    ds = _make_distributed_dataset(ds, dispatcher_1)
+    # Large enough so that all strings of the same size are windowed together.
+    window_size = cluster_1_size * size_repeats
+    batch_size = size_repeats
+
+    def key_func(x):
+      return math_ops.cast(string_ops.string_length_v2(x), dtypes.int64)
+
+    ds = ds.apply(
+        grouping.group_by_window(
+            key_func=key_func,
+            reduce_func=lambda _, x: x.batch(batch_size),
+            window_size=window_size))
+    ds = _make_distributed_dataset(ds, dispatcher_2)
+
+    it = iter(ds)
+    for _ in range(num_sizes):
+      element = next(it).numpy()
+      for _ in range(1, cluster_1_size):
+        self.assertAllEqual(next(it).numpy(), element)
+    self.assertEmpty(list(it))
 
 
 if __name__ == "__main__":

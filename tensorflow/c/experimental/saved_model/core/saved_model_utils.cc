@@ -122,9 +122,9 @@ Status LoadSavedVariable(ImmediateExecutionContext* ctx,
   tensorflow::TensorShape shape(variable.shape());
   tensorflow::DataType dtype = variable.dtype();
 
-  TF_RETURN_IF_ERROR(
-      Variable::CreateUninitialized(ctx, dtype, shape, name, output));
-
+  TF_RETURN_IF_ERROR(Variable::CreateUninitialized(
+      ctx, dtype, shape, name,
+      variable.device().empty() ? nullptr : variable.device().c_str(), output));
   return Status();
 }
 

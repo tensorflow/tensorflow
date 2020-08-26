@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
 
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -36,7 +37,6 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
 from tensorflow.python.training.saving import saveable_object
-from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.types import core
 from tensorflow.python.util.tf_export import tf_export
@@ -434,7 +434,7 @@ class DistributedVarOp(object):
             self.traceback == o.traceback and self.type == o.type)
 
   def __hash__(self):
-    return hash((self.name, self.graph, self.traceback, self.type))
+    return hash((self.name, self.graph, tuple(self.traceback), self.type))
 
 
 class DistributedVariable(DistributedDelegate, variables_lib.Variable,
@@ -471,6 +471,41 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     # Set a VariablePolicy which decides how we replicate/aggregate the given
     # variable.
     self._policy = var_policy
+
+  def __deepcopy__(self, memo):
+    """Perform a deepcopy of the `DistributedVariable`.
+
+    Unlike the deepcopy of a regular tf.Variable, this keeps the original
+    strategy and devices of the `DistributedVariable`.  To avoid confusion
+    with the behavior of deepcopy on a regular `Variable` (which does
+    copy into new devices), we only allow a deepcopy of a `DistributedVariable`
+    within its originating strategy scope.
+
+    Args:
+      memo: The memoization object for `deepcopy`.
+
+    Returns:
+      A deep copy of the current `DistributedVariable`.
+
+    Raises:
+      RuntimeError: If trying to deepcopy into a different strategy.
+    """
+    with ds_context.enter_or_assert_strategy(self._distribute_strategy):
+      new_values = []
+
+      for value in self._values:
+        with ops.device(value.device):
+          new_values.append(copy.deepcopy(value, memo))
+
+    copied_variable = type(self)(
+        strategy=self._distribute_strategy,
+        values=new_values,
+        aggregation=self._aggregation,
+        var_policy=copy.deepcopy(self._policy, memo))
+
+    memo[id(self)] = copied_variable
+
+    return copied_variable
 
   def _use_packed_variable(self):
     # Don't use packed variable when under a SaveContext to avoid explicit
@@ -916,6 +951,13 @@ class DistributedVariable(DistributedDelegate, variables_lib.Variable,
     return obj_map, resource_map
 
 
+# We extend from `saveable_object.SaveableObject` instead of
+# `saveable_object_util.ResourceVariableSaveable` since we need to read the
+# value of ONREAD variables when saving. `SaveableObject` provides a way to
+# specify the function to run to get the value of the variable or tensor at
+# saving time. We can use this for both ON_READ and ON_WRITE variables.
+# TODO(b/164586507): Consolidate ON_WRITE and ON_READ saving/restoring logic
+# if possible.
 class _DistributedVariableSaveable(saveable_object.SaveableObject):
   """Class for defining how to restore a DistributedVariable."""
 
@@ -935,26 +977,21 @@ class _DistributedVariableSaveable(saveable_object.SaveableObject):
         self._distributed_variable, tensor)
 
 
-class _MirroredSaveable(saveable_object_util.ResourceVariableSaveable):
+class _MirroredSaveable(saveable_object.SaveableObject):
   """Class for defining how to restore a MirroredVariable."""
 
   def __init__(self, mirrored_variable, primary_variable, name):
     self._mirrored_variable = mirrored_variable
-    super(_MirroredSaveable, self).__init__(primary_variable, "", name)
+    tensor, spec = values_util.get_on_write_saveable(self._mirrored_variable,
+                                                     primary_variable,
+                                                     name)
+    super(_MirroredSaveable, self).__init__(tensor, spec, name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
-    packed_var = self._mirrored_variable._packed_variable  # pylint: disable=protected-access
-    if packed_var is not None:
-      return control_flow_ops.group(
-          tuple(
-              values_util.assign_on_device(d, packed_var, tensor)
-              for d in packed_var.devices))
-    return control_flow_ops.group(
-        tuple(
-            values_util.assign_on_device(v.device, v, tensor)
-            for v in self._mirrored_variable.values))
+    return values_util.get_on_write_restore_ops(self._mirrored_variable,
+                                                tensor)
 
 
 class MirroredVariable(DistributedVariable, Mirrored):
@@ -991,8 +1028,6 @@ class MirroredVariable(DistributedVariable, Mirrored):
     return super(MirroredVariable, self).scatter_update(*args, **kwargs)
 
   def _get_cross_replica(self):
-    if values_util.is_saving_non_distributed():
-      return self._primary.read_value()
     # Return identity, to avoid directly exposing the variable to the user and
     # allowing it to be modified by mistake.
     return array_ops.identity(Mirrored._get_cross_replica(self))
@@ -1038,38 +1073,17 @@ class _SyncOnReadSaveable(saveable_object.SaveableObject):
 
   def __init__(self, sync_on_read_variable, name):
     self._sync_on_read_variable = sync_on_read_variable
+    tensor, spec = values_util.get_on_read_saveable(
+        sync_on_read_variable, sync_on_read_variable._primary, name)
 
-    # We use a callable so that we don't have to evaluate this expression
-    # in the case where we are trying to restore instead of save.
-    def tensor():
-      strategy = sync_on_read_variable._distribute_strategy  # pylint: disable=protected-access
-      return strategy.extended.read_var(sync_on_read_variable)
-
-    spec = saveable_object.SaveSpec(
-        tensor=tensor,
-        slice_spec="",
-        name=name,
-        dtype=sync_on_read_variable.dtype,
-        device=sync_on_read_variable._primary.device)  # pylint: disable=protected-access
-
-    super(_SyncOnReadSaveable, self).__init__(tensor, [spec], name)
+    super(_SyncOnReadSaveable, self).__init__(tensor, spec, name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
-    # To preserve the sum across save and restore, we have to divide the
-    # total across all devices when restoring a variable that was summed
-    # when saving.
     tensor, = restored_tensors
-    if self._sync_on_read_variable.aggregation == vs.VariableAggregation.SUM:
-      # pylint: disable=protected-access
-      strategy = self._sync_on_read_variable._distribute_strategy
-      tensor = math_ops.cast(tensor / strategy.num_replicas_in_sync,
-                             self._sync_on_read_variable.dtype)
-      # pylint: enable=protected-access
-    return control_flow_ops.group(
-        tuple(
-            values_util.assign_on_device(v.device, v, tensor)
-            for v in self._sync_on_read_variable.values))
+    return values_util.get_on_read_restore_ops(
+        self._sync_on_read_variable, tensor,
+        self._sync_on_read_variable.aggregation)
 
 
 class SyncOnReadVariable(DistributedVariable):
@@ -1170,8 +1184,6 @@ class SyncOnReadVariable(DistributedVariable):
         return self._get_on_device_or_primary().value()
 
   def _get_cross_replica(self):
-    if values_util.is_saving_non_distributed():
-      return self._primary.read_value()
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       # Consider returning a tensor value here to make the return value of
       # _get_cross_replica consistent.
@@ -1396,35 +1408,11 @@ class OnReadPolicy(VariablePolicy):
 
   def get_saveable(self, var, primary_var, name):
     """Create a saveable object for the given variable."""
-
-    # We use a callable so that we don't have to evaluate this expression
-    # in the case where we are trying to restore instead of save.
-    def tensor():
-      strategy = var.distribute_strategy
-      return strategy.extended.read_var(var)
-
-    spec = saveable_object.SaveSpec(
-        tensor=tensor,
-        slice_spec="",
-        name=name,
-        dtype=var.dtype,
-        device=primary_var.device)
-
-    return tensor, [spec]
+    return values_util.get_on_read_saveable(var, primary_var, name)
 
   def get_restore_ops(self, var, tensor):
     """Restore the same value into all variables."""
-    # To preserve the sum across save and restore, we have to divide the
-    # total across all devices when restoring a variable that was summed
-    # when saving.
-    if self._aggregation == vs.VariableAggregation.SUM:
-      strategy = var._distribute_strategy  # pylint: disable=protected-access
-      num_replicas_in_sync = strategy.num_replicas_in_sync
-      tensor = math_ops.cast(tensor / num_replicas_in_sync, var.dtype)
-    return control_flow_ops.group(
-        tuple(
-            values_util.assign_on_device(v.device, v, tensor)
-            for v in var.values))
+    return values_util.get_on_read_restore_ops(var, tensor, self._aggregation)
 
 
 class AutoPolicy(VariablePolicy):
@@ -1448,7 +1436,7 @@ class AutoPolicy(VariablePolicy):
   def _get_cross_replica(self, var):
     # Return identity, to avoid directly exposing the variable to the user and
     # allowing it to be modified by mistake.
-    return array_ops.identity(Mirrored._get_cross_replica(var))  # pylint: disable=protected-access
+    return array_ops.identity(var._get_on_device_or_primary())  # pylint: disable=protected-access
 
   def _update_replica(self, var, update_fn, value, **kwargs):
     return update_fn(var._get_on_device_or_primary(), value, **kwargs)  # pylint: disable=protected-access
@@ -1509,14 +1497,11 @@ class AutoPolicy(VariablePolicy):
                                       name=name)
 
   def get_saveable(self, var, primary_var, name):
-    del var, name
-    return primary_var, ""
+    """Saveable ops for AUTO variables."""
+    return values_util.get_on_write_saveable(var, primary_var, name)
 
   def get_restore_ops(self, var, tensor):
-    return control_flow_ops.group(
-        tuple(
-            values_util.assign_on_device(v.device, v, tensor)
-            for v in var.values))
+    return values_util.get_on_write_restore_ops(var, tensor)
 
 
 class OnWritePolicy(AutoPolicy):

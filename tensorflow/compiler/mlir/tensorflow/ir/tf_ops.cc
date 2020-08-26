@@ -55,6 +55,8 @@ limitations under the License.
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Interfaces/DecodeAttributesInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
@@ -74,23 +76,6 @@ namespace TF {
 //===----------------------------------------------------------------------===//
 
 namespace {
-// Returns true if the op can be duplicated.
-bool CanDuplicate(Operation *op) {
-  // If the op is marked with the cannot duplicate trait, it cannot be
-  // duplicated.
-  if (op->hasTrait<OpTrait::TF::CannotDuplicate>()) return false;
-
-  // If the op has no memory side effects, it can be duplicated.
-  if (MemoryEffectOpInterface::hasNoEffect(op)) return true;
-
-  // If the op is marked stateless using the `is_stateless` attribute, that
-  // attribute determines if the op can be duplicated.
-  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
-    return is_stateless.getValue();
-
-  // Otherwise, assume ops can be duplicated by default.
-  return true;
-}
 
 // Returns true of the given function has a single uses (within the scope
 // of the module containing it and all parent modules).
@@ -129,6 +114,22 @@ bool HasSingleUse(FuncOp func) {
   return true;
 }
 
+struct TFConstantFoldInterface : public DialectFoldInterface {
+  TFConstantFoldInterface(Dialect *dialect) : DialectFoldInterface(dialect) {}
+  LogicalResult fold(Operation *op, ArrayRef<Attribute> operands,
+                     SmallVectorImpl<OpFoldResult> &results) const final {
+    return TensorFlowDialect::constantFold(op, operands, results);
+  }
+};
+
+struct TFDecodeAttributesInterface : public DialectDecodeAttributesInterface {
+  TFDecodeAttributesInterface(Dialect *dialect)
+      : DialectDecodeAttributesInterface(dialect) {}
+  LogicalResult decode(OpaqueElementsAttr input, ElementsAttr &output) const {
+    return TensorFlowDialect::decode(input, output);
+  }
+};
+
 struct TFInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
@@ -156,7 +157,7 @@ struct TFInlinerInterface : public DialectInlinerInterface {
     //     post inlining, the function will be dead and eliminated from the IR.
     //     So there won't be any code duplication.
     FuncOp func = op->getParentOfType<FuncOp>();
-    return !func || CanDuplicate(op) || HasSingleUse(func);
+    return !func || TensorFlowDialect::CanDuplicate(op) || HasSingleUse(func);
   }
 
   //===--------------------------------------------------------------------===//
@@ -183,9 +184,48 @@ struct TFInlinerInterface : public DialectInlinerInterface {
 // TF Dialect
 //===----------------------------------------------------------------------===//
 
+// Returns true if the op can be duplicated.
+bool TensorFlowDialect::CanDuplicate(Operation *op) {
+  // If the op is marked with the cannot duplicate trait, it cannot be
+  // duplicated.
+  if (op->hasTrait<OpTrait::TF::CannotDuplicate>()) return false;
+
+  // If the op has no memory side effects, it can be duplicated.
+  if (MemoryEffectOpInterface::hasNoEffect(op)) return true;
+
+  // If the op is marked stateless using the `is_stateless` attribute, that
+  // attribute determines if the op can be duplicated.
+  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
+    return is_stateless.getValue();
+
+  // Otherwise, assume ops can be duplicated by default if its registered, else
+  // it cannot be for unknown ops.
+  return op->isRegistered();
+}
+
+// Returns true if the op can have side effects.
+bool TensorFlowDialect::CanHaveSideEffects(Operation *op) {
+  // If the op has no memory side effects, it has no side effects
+  if (MemoryEffectOpInterface::hasNoEffect(op)) return false;
+
+  // If the op is marked stateless using the `is_stateless` attribute, then
+  // it has no side effects.
+  if (auto is_stateless = op->getAttrOfType<BoolAttr>("is_stateless"))
+    return !is_stateless.getValue();
+
+  // Terminators defined in the TF dialect do not have side effects.
+  if (op->isKnownTerminator()) return false;
+
+  // Otherwise assume that the op can have side effects.
+  return true;
+}
+
 std::vector<TensorFlowDialect::AdditionalOpFunction>
     *TensorFlowDialect::additional_operation_hooks_ =
         new std::vector<TensorFlowDialect::AdditionalOpFunction>();
+
+TensorFlowDialect::ConstantFoldHook TensorFlowDialect::constant_fold_hook_;
+TensorFlowDialect::DecodeConstantHook TensorFlowDialect::decode_constant_hook_;
 
 TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
     : Dialect(/*name=*/"tf", context, TypeID::get<TensorFlowDialect>()) {
@@ -198,7 +238,8 @@ TensorFlowDialect::TensorFlowDialect(MLIRContext *context)
 #define HANDLE_LAST_TF_TYPE(tftype, enumerant, name) tftype##Type
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
       >();
-  addInterfaces<TFInlinerInterface>();
+  addInterfaces<TFInlinerInterface, TFDecodeAttributesInterface,
+                TFConstantFoldInterface>();
   addAttributes<ShapeAttr, FuncAttr>();
 
   // Support unknown operations because not all TensorFlow operations are
@@ -317,16 +358,12 @@ Attribute TensorFlowDialect::parseAttribute(DialectAsmParser &parser,
 
 void TensorFlowDialect::printAttribute(Attribute attr,
                                        DialectAsmPrinter &os) const {
-  switch (attr.getKind()) {
-    case AttrKind::SHAPE:
-      PrintShapeAttr(attr.cast<ShapeAttr>(), os);
-      break;
-    case AttrKind::FUNC:
-      PrintFuncAttr(attr.cast<FuncAttr>(), os);
-      break;
-    default:
-      llvm_unreachable("unexpected tensorflow attribute kind");
-  }
+  if (auto shape_attr = attr.dyn_cast<ShapeAttr>())
+    PrintShapeAttr(shape_attr, os);
+  else if (auto func_attr = attr.dyn_cast<FuncAttr>())
+    PrintFuncAttr(func_attr, os);
+  else
+    llvm_unreachable("unexpected tensorflow attribute type");
 }
 
 // Parses a type registered to this dialect.
@@ -335,51 +372,37 @@ Type TensorFlowDialect::parseType(DialectAsmParser &parser) const {
   if (parser.parseKeyword(&data)) return Type();
 
   Location loc = parser.getEncodedSourceLoc(parser.getNameLoc());
-  auto typeKind = llvm::StringSwitch<unsigned>(data)
+
 #define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  .Case(name, TensorFlowTypes::enumerant)
+  if (data == name) return tftype##Type::get(getContext());
 // Custom TensorFlow types are handled separately at the end as they do partial
 // match.
 #define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-                      .StartsWith("resource", TensorFlowTypes::RESOURCE)
-                      .StartsWith("variant", TensorFlowTypes::VARIANT)
-                      .Default(0);
-  switch (typeKind) {
-    default:
-      return (emitError(loc, "unknown TensorFlow type: " + data), nullptr);
 
-#define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  case TensorFlowTypes::enumerant:              \
-    return tftype##Type::get(getContext());
-#define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name)
-// NOLINTNEXTLINE
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-    case TensorFlowTypes::RESOURCE:
-      return ParseResourceType(parser, loc);
-    case TensorFlowTypes::VARIANT:
-      return ParseVariantType(parser, loc);
-  }
+  if (data.startswith("resource")) return ParseResourceType(parser, loc);
+  if (data.startswith("variant")) return ParseVariantType(parser, loc);
+  return (emitError(loc, "unknown TensorFlow type: " + data), nullptr);
 }
 
 // Prints a type registered to this dialect.
 void TensorFlowDialect::printType(Type ty, DialectAsmPrinter &os) const {
   assert(ty.isa<TensorFlowType>());
-  switch (ty.getKind()) {
-    default:
-      llvm_unreachable("unexpected tensorflow type kind");
-#define HANDLE_TF_TYPE(tftype, enumerant, name) \
-  case TensorFlowTypes::enumerant:              \
-    os << name;                                 \
-    break;
+#define HANDLE_TF_TYPE(tftype, enumerant, name)        \
+  if (auto derived_ty = ty.dyn_cast<tftype##Type>()) { \
+    os << name;                                        \
+    return;                                            \
+  }
 #define HANDLE_CUSTOM_TF_TYPE(tftype, enumerant, name) \
-  case TensorFlowTypes::enumerant:                     \
-    Print##tftype##Type(ty.cast<tftype##Type>(), os);  \
-    break;
+  if (auto derived_ty = ty.dyn_cast<tftype##Type>()) { \
+    Print##tftype##Type(derived_ty, os);               \
+    return;                                            \
+  }
 // NOLINTNEXTLINE
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-  }
+
+  llvm_unreachable("unexpected tensorflow type kind");
 }
 
 namespace {

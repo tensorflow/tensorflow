@@ -35,22 +35,38 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that shards the `Dataset` automatically.
 
   This dataset takes in an existing dataset and tries to automatically figure
-  out how to shard the dataset in a multi-worker scenario. Currently, it uses
-  Grappler to walk up the dataset graph until it finds a reader dataset (e.g.
-  CSVDataset, TFRecordDataset), then inserts a ShardDataset op before that node
+  out how to shard the dataset in a multi-worker scenario using graph rewrites.
+
+  If the AutoShardPolicy is set to FILE, it walks up the dataset graph until
+  it finds a reader dataset, then inserts a ShardDataset op before that node
   so that each worker only sees some files.
+
+  If the AutoShardPolicy is set to DATA, it inserts a ShardDataset op at the
+  end of the input pipeline, before any terminal PrefetchDataset if there is
+  one. Additionally, if there is a RebatchDatasetV2 in the input pipeline, it
+  is written to legacy RebatchDataset for correctness reasons, since
+  RebatchDatasetV2 is incompatible with data sharding.
+
+  If the AutoShardPolicy is set to AUTO, it tries to do file-based sharding.
+  If it cannot find a reader dataset, it falls back to doing data-based
+  sharding.
+
+  If the AutoShardPolicy is set to OFF, it does nothing.
 
   Args:
     num_workers: Total number of workers to shard this dataset across.
     index: The current worker index (out of the total number of workers) this
       dataset is for.
+    num_replicas: The total number of replicas across all workers. This is used
+      only when sharding by data (either DATA or AUTO) in order to rewrite
+      RebatchDatasetV2 to RebatchDataset.
 
   Raises:
     NotFoundError: If we cannot find a suitable reader dataset to begin
       automatically sharding the dataset.
   """
 
-  def __init__(self, input_dataset, num_workers, index):
+  def __init__(self, input_dataset, num_workers, index, num_replicas=None):
     self._input_dataset = input_dataset
 
     self._element_spec = input_dataset.element_spec
@@ -60,6 +76,7 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
         index=index,
         auto_shard_policy=int(
             input_dataset.options().experimental_distribute.auto_shard_policy),
+        num_replicas=num_replicas,
         **self._flat_structure)
     super(_AutoShardDataset, self).__init__(input_dataset, variant_tensor)
 
@@ -68,9 +85,9 @@ class _AutoShardDataset(dataset_ops.UnaryDataset):
     return self._element_spec
 
 
-def _AutoShardDatasetV1(input_dataset, num_workers, index):  # pylint: disable=invalid-name
+def _AutoShardDatasetV1(input_dataset, num_workers, index, num_replicas=None):  # pylint: disable=invalid-name
   return dataset_ops.DatasetV1Adapter(
-      _AutoShardDataset(input_dataset, num_workers, index))
+      _AutoShardDataset(input_dataset, num_workers, index, num_replicas))
 
 
 class _RebatchDataset(dataset_ops.UnaryDataset):

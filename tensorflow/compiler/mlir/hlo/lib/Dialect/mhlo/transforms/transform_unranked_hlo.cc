@@ -153,6 +153,10 @@ struct BinaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
 
 struct TransformUnrankedHloPass
     : public PassWrapper<TransformUnrankedHloPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<shape::ShapeDialect>();
+  }
+
   void runOnFunction() override {
     // Setup conversion target.
     MLIRContext &ctx = getContext();
@@ -170,7 +174,7 @@ struct TransformUnrankedHloPass
     PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
 
     // Apply transformation.
-    if (failed(applyFullConversion(getFunction(), target, patterns)))
+    if (failed(applyPartialConversion(getFunction(), target, patterns)))
       return signalPassFailure();
   }
 };

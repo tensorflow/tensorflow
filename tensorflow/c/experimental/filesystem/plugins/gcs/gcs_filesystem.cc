@@ -778,28 +778,65 @@ static bool FolderExists(GCSFile* gcs_file, std::string dir,
   return true;
 }
 
-void CreateDir(const TF_Filesystem* filesystem, const char* path,
-               TF_Status* status) {
+static void ClearFileCaches(GCSFile* gcs_file, const std::string& path) {
+  absl::ReaderMutexLock l(&gcs_file->block_cache_lock);
+  gcs_file->file_block_cache->RemoveFile(path);
+  gcs_file->stat_cache->Delete(path);
+}
+
+void PathExists(const TF_Filesystem* filesystem, const char* path,
+                TF_Status* status) {
   std::string bucket, object;
   ParseGCSPath(path, true, &bucket, &object, status);
   if (TF_GetCode(status) != TF_OK) return;
+
   auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
   if (object.empty()) {
-    auto bucket_metadata = gcs_file->gcs_client.GetBucketMetadata(bucket);
-    TF_SetStatusFromGCSStatus(bucket_metadata.status(), status);
+    bool result = BucketExists(gcs_file, bucket, status);
+    if (result) return TF_SetStatus(status, TF_OK, "");
+  }
+
+  GcsFileStat stat;
+  StatForObject(gcs_file, path, bucket, object, &stat, status);
+  if (TF_GetCode(status) != TF_NOT_FOUND) return;
+
+  bool result = FolderExists(gcs_file, path, status);
+  if (TF_GetCode(status) != TF_OK || (TF_GetCode(status) == TF_OK && result))
+    return;
+  return TF_SetStatus(
+      status, TF_NOT_FOUND,
+      absl::StrCat("The path ", path, " does not exist.").c_str());
+}
+
+void CreateDir(const TF_Filesystem* filesystem, const char* path,
+               TF_Status* status) {
+  std::string dir = path;
+  MaybeAppendSlash(&dir);
+  std::string bucket, object;
+  ParseGCSPath(dir, true, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return;
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  if (object.empty()) {
+    bool is_directory = BucketExists(gcs_file, bucket, status);
+    if (TF_GetCode(status) != TF_OK) return;
+    if (!is_directory)
+      TF_SetStatus(status, TF_NOT_FOUND,
+                   ("The specified bucket " + dir + " was not found.").c_str());
     return;
   }
 
-  MaybeAppendSlash(&object);
-  auto object_metadata = gcs_file->gcs_client.GetObjectMetadata(bucket, object);
-  TF_SetStatusFromGCSStatus(object_metadata.status(), status);
-  if (TF_GetCode(status) == TF_NOT_FOUND) {
-    auto insert_metadata =
-        gcs_file->gcs_client.InsertObject(bucket, object, "");
-    TF_SetStatusFromGCSStatus(insert_metadata.status(), status);
-  } else if (TF_GetCode(status) == TF_OK) {
+  PathExists(filesystem, dir.c_str(), status);
+  if (TF_GetCode(status) == TF_OK)
+    return TF_SetStatus(status, TF_ALREADY_EXISTS, path);
+
+  auto metadata = gcs_file->gcs_client.InsertObject(
+      bucket, object, "",
+      // Adding this parameter means HTTP_CODE_PRECONDITION_FAILED
+      // will be returned if the object already exists, so avoid reuploading.
+      gcs::IfGenerationMatch(0));
+  TF_SetStatusFromGCSStatus(metadata.status(), status);
+  if (TF_GetCode(status) == TF_FAILED_PRECONDITION)
     TF_SetStatus(status, TF_ALREADY_EXISTS, path);
-  }
 }
 
 // TODO(vnvo2409): `RecursivelyCreateDir` should use `CreateDir` instead of the
@@ -815,79 +852,31 @@ void DeleteFile(const TF_Filesystem* filesystem, const char* path,
   auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
   auto gcs_status = gcs_file->gcs_client.DeleteObject(bucket, object);
   TF_SetStatusFromGCSStatus(gcs_status, status);
+  if (TF_GetCode(status) == TF_OK) ClearFileCaches(gcs_file, path);
 }
 
+// Checks that the directory is empty (i.e no objects with this prefix exist).
+// Deletes the GCS directory marker if it exists.
 void DeleteDir(const TF_Filesystem* filesystem, const char* path,
                TF_Status* status) {
-  std::string bucket, object;
-  ParseGCSPath(path, false, &bucket, &object, status);
-  if (TF_GetCode(status) != TF_OK) return;
-  MaybeAppendSlash(&object);
+  // A directory is considered empty either if there are no matching objects
+  // with the corresponding name prefix or if there is exactly one matching
+  // object and it is the directory marker. Therefore we need to retrieve
+  // at most two children for the prefix to detect if a directory is empty.
   auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
-  int object_count = 0;
-  for (auto&& metadata :
-       gcs_file->gcs_client.ListObjects(bucket, gcs::Prefix(object))) {
-    if (!metadata) {
-      TF_SetStatusFromGCSStatus(metadata.status(), status);
-      return;
-    }
-    ++object_count;
-    // We consider a path is a non-empty directory in two cases:
-    // - There are more than two objects whose keys start with the name of this
-    // directory.
-    // - There is one object whose key contains the name of this directory ( but
-    // not equal ).
-    if (object_count > 1 || metadata->name() != object) {
-      TF_SetStatus(status, TF_FAILED_PRECONDITION,
-                   "Cannot delete a non-empty directory.");
-      return;
-    }
-  }
-  auto gcs_status = gcs_file->gcs_client.DeleteObject(bucket, object);
-  TF_SetStatusFromGCSStatus(gcs_status, status);
-}
-
-// TODO(vnvo2409): `DeleteRecursively` needs `GetChildrens` but there will be
-// some differents compared to the default implementation. Will be refactored.
-static void DeleteRecursively(const TF_Filesystem* filesystem, const char* path,
-                              uint64_t* undeleted_files,
-                              uint64_t* undeleted_dirs, TF_Status* status) {
-  std::string bucket, object;
-  ParseGCSPath(path, false, &bucket, &object, status);
+  auto childrens = GetChildrenBounded(gcs_file, path, 2, true, true, status);
   if (TF_GetCode(status) != TF_OK) return;
-
-  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
-  auto gcs_status = gcs::DeleteByPrefix(gcs_file->gcs_client, bucket, object);
-  TF_SetStatusFromGCSStatus(gcs_status, status);
-  if (TF_GetCode(status) != TF_OK) return;
-  *undeleted_dirs = 0;
-  *undeleted_files = 0;
-}
-
-// TODO(vnvo2409): `RewriteObjectBlocking` will set `status` to `TF_NOT_FOUND`
-// if the object does not exist. In that case, we will have to check if the
-// `src` is a directory or not to set the correspondent `status` (i.e
-// `TF_NOT_FOUND` if path `src` does not exist, `TF_FAILED_PRECONDITION` if
-// path `src` is a directory).
-void RenameFile(const TF_Filesystem* filesystem, const char* src,
-                const char* dst, TF_Status* status) {
-  std::string bucket_src, object_src;
-  ParseGCSPath(src, false, &bucket_src, &object_src, status);
-  if (TF_GetCode(status) != TF_OK) return;
-
-  std::string bucket_dst, object_dst;
-  ParseGCSPath(dst, false, &bucket_dst, &object_dst, status);
-  if (TF_GetCode(status) != TF_OK) return;
-
-  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
-  auto metadata = gcs_file->gcs_client.RewriteObjectBlocking(
-      bucket_src, object_src, bucket_dst, object_dst);
-  if (!metadata) {
-    TF_SetStatusFromGCSStatus(metadata.status(), status);
+  if (childrens.size() > 1 || (childrens.size() == 1 && !childrens[0].empty()))
+    return TF_SetStatus(status, TF_FAILED_PRECONDITION,
+                        "Cannot delete a non-empty directory.");
+  if (childrens.size() == 1 && childrens[0].empty()) {
+    // This is the directory marker object. Delete it.
+    std::string dir = path;
+    MaybeAppendSlash(&dir);
+    DeleteFile(filesystem, dir.c_str(), status);
     return;
   }
-  auto gcs_status = gcs_file->gcs_client.DeleteObject(bucket_src, object_src);
-  TF_SetStatusFromGCSStatus(gcs_status, status);
+  TF_SetStatus(status, TF_OK, "");
 }
 
 void CopyFile(const TF_Filesystem* filesystem, const char* src, const char* dst,
@@ -906,31 +895,6 @@ void CopyFile(const TF_Filesystem* filesystem, const char* src, const char* dst,
   TF_SetStatusFromGCSStatus(metadata.status(), status);
 }
 
-// TODO(vnvo2409): This approach can cause a problem when our path is
-// `path/to/dir` and there is an object with key `path/to/directory`. Will be
-// fixed when refactoring.
-void PathExists(const TF_Filesystem* filesystem, const char* path,
-                TF_Status* status) {
-  std::string bucket, object;
-  ParseGCSPath(path, true, &bucket, &object, status);
-  if (TF_GetCode(status) != TF_OK) return;
-
-  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
-  for (auto&& metadata :
-       gcs_file->gcs_client.ListObjects(bucket, gcs::Prefix(object))) {
-    if (!metadata) {
-      TF_SetStatusFromGCSStatus(metadata.status(), status);
-      return;
-    }
-    // We consider a path exists if there is at least one object whose key
-    // contains the path.
-    return TF_SetStatus(status, TF_OK, "");
-  }
-  return TF_SetStatus(
-      status, TF_NOT_FOUND,
-      absl::StrCat("The path ", path, " does not exist.").c_str());
-}
-
 bool IsDirectory(const TF_Filesystem* filesystem, const char* path,
                  TF_Status* status) {
   std::string bucket, object;
@@ -939,39 +903,125 @@ bool IsDirectory(const TF_Filesystem* filesystem, const char* path,
 
   auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
   if (object.empty()) {
-    auto bucket_metadata = gcs_file->gcs_client.GetBucketMetadata(bucket);
-    TF_SetStatusFromGCSStatus(bucket_metadata.status(), status);
-    if (TF_GetCode(status) == TF_OK)
-      return true;
-    else
-      return false;
+    bool result = BucketExists(gcs_file, bucket, status);
+    if (TF_GetCode(status) != TF_OK) return false;
+    if (!result)
+      TF_SetStatus(
+          status, TF_NOT_FOUND,
+          ("The specified bucket gs://" + bucket + " was not found.").c_str());
+    return result;
   }
 
-  // We check if there is an object with this key on the GCS server.
-  auto metadata = gcs_file->gcs_client.GetObjectMetadata(bucket, object);
-  if (metadata) {
-    TF_SetStatus(status, TF_OK, "");
-    if (metadata->name().back() == '/')
-      return true;
-    else
-      return false;
-  }
+  bool is_folder = FolderExists(gcs_file, path, status);
+  if (TF_GetCode(status) != TF_OK) return false;
+  if (is_folder) return true;
 
-  // If there is no object with this key on the GCS server. We check if there is
-  // any object whose key contains that path.
-  MaybeAppendSlash(&object);
-  for (auto&& metadata :
-       gcs_file->gcs_client.ListObjects(bucket, gcs::Prefix(object))) {
-    if (!metadata) {
-      TF_SetStatusFromGCSStatus(metadata.status(), status);
-      return false;
-    }
-    TF_SetStatus(status, TF_OK, "");
-    return true;
+  bool is_object = ObjectExists(gcs_file, path, bucket, object, status);
+  if (TF_GetCode(status) != TF_OK) return false;
+  if (is_object) {
+    TF_SetStatus(
+        status, TF_FAILED_PRECONDITION,
+        absl::StrCat("The specified path ", path, " is not a directory.")
+            .c_str());
+    return false;
   }
   TF_SetStatus(status, TF_NOT_FOUND,
                absl::StrCat("The path ", path, " does not exist.").c_str());
   return false;
+}
+
+static void RenameObject(const TF_Filesystem* filesystem,
+                         const std::string& src, const std::string& dst,
+                         TF_Status* status) {
+  std::string bucket_src, object_src;
+  ParseGCSPath(src, false, &bucket_src, &object_src, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string bucket_dst, object_dst;
+  ParseGCSPath(dst, false, &bucket_dst, &object_dst, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  auto metadata = gcs_file->gcs_client.RewriteObjectBlocking(
+      bucket_src, object_src, bucket_dst, object_dst);
+  TF_SetStatusFromGCSStatus(metadata.status(), status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  ClearFileCaches(gcs_file, dst);
+  DeleteFile(filesystem, src.c_str(), status);
+}
+
+void RenameFile(const TF_Filesystem* filesystem, const char* src,
+                const char* dst, TF_Status* status) {
+  if (!IsDirectory(filesystem, src, status)) {
+    if (TF_GetCode(status) == TF_FAILED_PRECONDITION)
+      RenameObject(filesystem, src, dst, status);
+    return;
+  }
+
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  std::vector<std::string> childrens =
+      GetChildrenBounded(gcs_file, src, UINT64_MAX, true, true, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string src_dir = src;
+  std::string dst_dir = dst;
+  MaybeAppendSlash(&src_dir);
+  MaybeAppendSlash(&dst_dir);
+  for (const std::string& children : childrens) {
+    RenameObject(filesystem, src_dir + children, dst_dir + children, status);
+    if (TF_GetCode(status) != TF_OK) return;
+  }
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void DeleteRecursively(const TF_Filesystem* filesystem, const char* path,
+                       uint64_t* undeleted_files, uint64_t* undeleted_dirs,
+                       TF_Status* status) {
+  if (!undeleted_files || !undeleted_dirs)
+    return TF_SetStatus(
+        status, TF_INTERNAL,
+        "'undeleted_files' and 'undeleted_dirs' cannot be nullptr.");
+  *undeleted_files = 0;
+  *undeleted_dirs = 0;
+  if (!IsDirectory(filesystem, path, status)) {
+    *undeleted_dirs = 1;
+    return;
+  }
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  std::vector<std::string> childrens =
+      GetChildrenBounded(gcs_file, path, UINT64_MAX, true, true, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string dir = path;
+  MaybeAppendSlash(&dir);
+  for (const std::string& children : childrens) {
+    const std::string& full_path = dir + children;
+    DeleteFile(filesystem, full_path.c_str(), status);
+    if (TF_GetCode(status) != TF_OK) {
+      if (IsDirectory(filesystem, full_path.c_str(), status))
+        // The object is a directory marker.
+        (*undeleted_dirs)++;
+      else
+        (*undeleted_files)++;
+    }
+  }
+}
+
+int GetChildren(const TF_Filesystem* filesystem, const char* path,
+                char*** entries, TF_Status* status) {
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  std::vector<std::string> childrens =
+      GetChildrenBounded(gcs_file, path, UINT64_MAX, false, false, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+
+  int num_entries = childrens.size();
+  *entries = static_cast<char**>(
+      plugin_memory_allocate(num_entries * sizeof((*entries)[0])));
+  for (int i = 0; i < num_entries; i++)
+    (*entries)[i] = strdup(childrens[i].c_str());
+  TF_SetStatus(status, TF_OK, "");
+  return num_entries;
 }
 
 void Stat(const TF_Filesystem* filesystem, const char* path,
@@ -1011,6 +1061,17 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
   }
 }
 
+static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
+  return strdup(uri);
+}
+
+static void FlushCaches(const TF_Filesystem* filesystem) {
+  auto gcs_file = static_cast<GCSFile*>(filesystem->plugin_filesystem);
+  absl::ReaderMutexLock l(&gcs_file->block_cache_lock);
+  gcs_file->file_block_cache->Flush();
+  gcs_file->stat_cache->Clear();
+}
+
 }  // namespace tf_gcs_filesystem
 
 static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
@@ -1027,6 +1088,13 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
       plugin_memory_allocate(TF_WRITABLE_FILE_OPS_SIZE));
   ops->writable_file_ops->cleanup = tf_writable_file::Cleanup;
 
+  ops->read_only_memory_region_ops = static_cast<TF_ReadOnlyMemoryRegionOps*>(
+      plugin_memory_allocate(TF_READ_ONLY_MEMORY_REGION_OPS_SIZE));
+  ops->read_only_memory_region_ops->cleanup =
+      tf_read_only_memory_region::Cleanup;
+  ops->read_only_memory_region_ops->data = tf_read_only_memory_region::Data;
+  ops->read_only_memory_region_ops->length = tf_read_only_memory_region::Length;
+
   ops->filesystem_ops = static_cast<TF_FilesystemOps*>(
       plugin_memory_allocate(TF_FILESYSTEM_OPS_SIZE));
   ops->filesystem_ops->init = tf_gcs_filesystem::Init;
@@ -1036,6 +1104,20 @@ static void ProvideFilesystemSupportFor(TF_FilesystemPluginOps* ops,
   ops->filesystem_ops->new_writable_file = tf_gcs_filesystem::NewWritableFile;
   ops->filesystem_ops->new_appendable_file =
       tf_gcs_filesystem::NewAppendableFile;
+  ops->filesystem_ops->new_read_only_memory_region_from_file =
+      tf_gcs_filesystem::NewReadOnlyMemoryRegionFromFile;
+  ops->filesystem_ops->create_dir = tf_gcs_filesystem::CreateDir;
+  ops->filesystem_ops->delete_file = tf_gcs_filesystem::DeleteFile;
+  ops->filesystem_ops->delete_dir = tf_gcs_filesystem::DeleteDir;
+  ops->filesystem_ops->delete_recursively =
+      tf_gcs_filesystem::DeleteRecursively;
+  ops->filesystem_ops->copy_file = tf_gcs_filesystem::CopyFile;
+  ops->filesystem_ops->path_exists = tf_gcs_filesystem::PathExists;
+  ops->filesystem_ops->is_directory = tf_gcs_filesystem::IsDirectory;
+  ops->filesystem_ops->stat = tf_gcs_filesystem::Stat;
+  ops->filesystem_ops->get_children = tf_gcs_filesystem::GetChildren;
+  ops->filesystem_ops->translate_name = tf_gcs_filesystem::TranslateName;
+  ops->filesystem_ops->flush_caches = tf_gcs_filesystem::FlushCaches;
 }
 
 void TF_InitPlugin(TF_FilesystemPluginInfo* info) {

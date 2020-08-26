@@ -556,6 +556,36 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter.convert()
     self._assertValidDebugInfo(converter._debug_info)
 
+  @test_util.run_v2_only
+  def testFlexOpWithInt8OpSet(self):
+    model = tf.keras.Sequential()
+    input_shape = (1, 4, 4, 4, 1)
+    model.add(
+        tf.keras.layers.Conv3D(
+            4,
+            kernel_size=(1, 1, 1),
+            activation='relu',
+            input_shape=input_shape[1:]))
+    model.add(tf.keras.layers.Flatten())
+    model.add(tf.keras.layers.Dense(2, activation='relu'))
+
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=input_shape, dtype=tf.float32)])
+    def _call_fn(inputs):
+      return model(inputs, training=False)
+
+    concrete_func = _call_fn.get_concrete_function(
+        tf.TensorSpec(input_shape, dtype=tf.float32))
+
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS_INT8,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
+
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):
 

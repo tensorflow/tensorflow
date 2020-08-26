@@ -91,7 +91,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
 
     // Build the newly fused operation to replace the batch norm
     OperationState state(batch_norm.getLoc(),
-                         FusedBatchNormExOp::getOperationName());
+                         _FusedBatchNormExOp::getOperationName());
     state.addOperands(batch_norm.getOperands());
     if (side_input) state.operands.push_back(side_input);
     state.addTypes(batch_norm.getResultTypes());

@@ -55,9 +55,8 @@ TEST_F(OpenCLOperationTest, ConvConstantsSimpleWeights) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvConstants operation;
-      ASSERT_OK(
-          CreateConvConstants(creation_context_, op_def, attr, &operation));
+      GPUOperation operation =
+          CreateConvConstants(creation_context_.GetDeviceInfo(), op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 2, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -91,9 +90,8 @@ TEST_F(OpenCLOperationTest, ConvConstants) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      ConvConstants operation;
-      ASSERT_OK(
-          CreateConvConstants(creation_context_, op_def, attr, &operation));
+      GPUOperation operation =
+          CreateConvConstants(creation_context_.GetDeviceInfo(), op_def, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor, creation_context_, &operation,
                                     BHWC(1, 2, 2, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,

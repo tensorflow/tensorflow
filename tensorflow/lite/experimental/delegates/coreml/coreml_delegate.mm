@@ -109,6 +109,9 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
     case kTfLiteBuiltinMirrorPad: {
       return delegates::coreml::IsMirrorPadOpSupported(registration, node, context);
     }
+    case kTfLiteBuiltinMean: {
+      return delegates::coreml::IsMeanOpSupported(registration, node, context);
+    }
     case kTfLiteBuiltinMul: {
       return node->builtin_data != nullptr &&
              delegates::coreml::IsBinaryOpSupported(registration, node, context);

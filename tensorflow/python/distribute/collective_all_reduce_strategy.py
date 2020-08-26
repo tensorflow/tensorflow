@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import threading
+import time
 import weakref
 
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -37,6 +39,8 @@ from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
@@ -175,6 +179,16 @@ class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
 
 class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   """Implementation of CollectiveAllReduceStrategy."""
+
+  # Whether to perdically check the health of the cluster. If any worker is not
+  # reachable, collectives are aborted and the user program should get a
+  # tf.errors.UnavailableError. It's required to restart in order to recover.
+  _enable_check_health = False
+  # Check health interval in seconds.
+  _check_health_interval = 30
+  # Timeout in seconds for the first check health. The first check health needs
+  # to wait for cluster, which may make a longer time.
+  _check_health_initial_timeout = 1200
 
   def __init__(self,
                container_strategy,
@@ -370,12 +384,20 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
+    # TODO(b/151232436): Enable check health thread by default.
+    if self._enable_check_health:
+      self._start_check_health_thread()
+
     logging.info(
         "MultiWorkerMirroredStrategy with cluster_spec = %r, task_type = %r, "
         "task_id = %r, num_workers = %r, local_devices = %r, "
         "communication = %s", cluster_spec.as_dict(), task_type,
         task_id, self._num_workers, local_devices,
         self._communication)
+
+  def __del__(self):
+    if self._enable_check_health:
+      self._stop_check_health_thread()
 
   def _input_workers_with_options(self, options=None):
     host_device = device_util.get_host_for_device(self._worker_device)
@@ -451,7 +473,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
+        num_replicas_in_sync=self._num_replicas_in_sync,
         input_context=input_context)
 
   def _experimental_distribute_datasets_from_function(self, dataset_fn,
@@ -481,7 +503,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers,
         self._container_strategy(),
-        split_batch_by=self._num_replicas_in_sync,
+        num_replicas_in_sync=self._num_replicas_in_sync,
         input_context=input_context)
 
   def _make_input_fn_iterator(
@@ -606,6 +628,88 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         value,
         destinations=destinations,
         experimental_hints=experimental_hints)
+
+  def _check_health(self, device, group_key, instance_key):
+    first = True
+    # We need to use a large enough value so that the all-reduce forms a
+    # complete RING. In RING implementation, when value is too small, the
+    # all-reduce may degrade into broadcasts. This means that some worker
+    # failure may not be detected.
+    value = array_ops.ones((32, 32), dtype=dtypes.float32)
+    while True:
+      if self._check_health_thread_should_stop.is_set():
+        return
+      timeout = None
+      if first:
+        # For the first check health we set timeout since it may need to do
+        # group resolution, which may hang if the cluster is never healthy.
+        timeout = self._check_health_initial_timeout
+        first = False
+      try:
+        # We use an dummy all-reduce as a way to check the health of a cluster.
+        # For RING it should be able to detect failed workers in the cluster if
+        # the values are large enough.
+        #
+        # We're not using CrossDeviceOps because we need to run it with
+        # pre-allocated group and instance keys.
+        #
+        # TODO(b/151232436): Replace the reduce with a check health op once we
+        # add that.
+        with ops.device(device):
+          collective_ops.all_reduce(
+              value,
+              group_size=self._num_workers,
+              group_key=group_key,
+              instance_key=instance_key,
+              merge_op="Add",
+              final_op="Id",
+              subdiv_offsets=[0],
+              communication_hint="ring",
+              timeout=timeout)
+          if context.is_async():
+            context.async_wait()
+      except (errors.UnavailableError, errors.DeadlineExceededError,
+              errors.FailedPreconditionError, errors.CancelledError) as e:
+        # TODO(b/151232436): Always raise UnavailableError when a peer fails.
+        # Now there could be many kinds of errors:
+        # - Unavailable: when the peer is not reachable, e.g. it's down.
+        # - FailedPrecondition: when the peer has restarted.
+        # - DeadlineExceeded: when the first check health exceeds the deadline,
+        #   e.g. the peers take too long to be ready.
+        # - Cancelled: when failures in organic collectives aborts first,
+        #   outgoing RPCs may be aborted with Cancelled.
+        logging.error("Cluster check alive failed, aborting collectives")
+        context.context().abort_collective_ops(
+            errors.UNAVAILABLE, "cluster check alive failed: %s" % e)
+      except Exception as e:  # pylint: disable=broad-except
+        logging.exception("Unexpected exception in check alive.")
+        context.context().abort_collective_ops(
+            errors.INTERNAL, "unexecpted exception in check alive: %s" % e)
+        return
+      time.sleep(self._check_health_interval)
+
+  def _start_check_health_thread(self):
+    # Allocate group and instance key before starting the thread to avoid
+    # indeterminism. There can only be one thread that assigns group keys and
+    # instance keys, otherwise different workers may end up with unmatched keys
+    # since execution order between threads are arbitrary.
+    device = device_util.canonicalize(self._worker_device)
+    group_key = self._collective_keys.get_group_key([device])
+    instance_key = self._collective_keys.get_op_instance_key()
+    self._check_health_thread_should_stop = threading.Event()
+    # Start the thread as daemon to avoid it blocking the program from exiting.
+    # We try best to shutdown the thread but __del__ is not guaranteed to be
+    # called when program exists.
+    self._check_health_thread = threading.Thread(
+        target=self._check_health,
+        args=(device, group_key, instance_key),
+        daemon=True)
+    self._check_health_thread.start()
+
+  def _stop_check_health_thread(self):
+    self._check_health_thread_should_stop.set()
+    self._check_health_thread.join()
+    self._check_health_thread = None
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication ==

@@ -30,9 +30,10 @@ def make_rfft2d_tests(options):
 
   test_parameters = [{
       "input_dtype": [tf.float32],
-      "input_shape": [[8, 8], [3, 8, 8]],
+      "input_shape": [[8, 8], [3, 8, 8], [3, 1, 16]],
       "fft_length": [
-          None, [4, 4], [4, 8], [8, 4], [8, 8], [8, 16], [16, 8], [16, 16]
+          None, [4, 4], [4, 8], [8, 4], [8, 8], [8, 16], [16, 8], [16, 16],
+          [1, 8], [1, 16]
       ]
   }]
 

@@ -1414,7 +1414,7 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         "ModifyGraphWithDelegate is disallowed when graph is immutable.");
-    return kTfLiteError;
+    return kTfLiteApplicationError;
   }
 
   if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
@@ -1486,8 +1486,10 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
 TfLiteStatus Subgraph::SetCustomAllocationForTensor(
     int tensor_index, const TfLiteCustomAllocation& allocation) {
   TfLiteTensor* tensor = &context_.tensors[tensor_index];
-  TF_LITE_ENSURE(context(), tensor->allocation_type == kTfLiteArenaRw ||
-                                tensor->allocation_type == kTfLiteCustom);
+  TF_LITE_ENSURE(context(),
+                 (tensor->allocation_type == kTfLiteArenaRw ||
+                  tensor->allocation_type == kTfLiteArenaRwPersistent ||
+                  tensor->allocation_type == kTfLiteCustom));
   TF_LITE_ENSURE_STATUS(
       ValidateCustomAllocationForTensor(context(), tensor, allocation));
 

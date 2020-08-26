@@ -21,6 +21,10 @@ TensorFlow ops when TFLite builtin ops are not sufficient.
 
 Models converted with TensorFlow ops will require a TensorFlow Lite interpreter
 that has a larger binary size than the interpreter with only TFLite builtin ops.
+For Android, It is possible to reduce binary size by selectively linking only
+required Tensorflow ops. For the details, please see the
+[Reduce TensorFlow Lite binary size](../guide/reduce_binary_size.md) section.
+
 Additionally, performance optimizations will not be available for any TensorFlow
 ops in the TensorFlow Lite model.
 
@@ -66,7 +70,7 @@ open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
 The following example shows how to use this feature in the
-[`tflite_convert`](../convert/cmdline_examples.md) command line tool using the
+[`tflite_convert`](../convert/cmdline.md) command line tool using the
 command line flag `target_ops`.
 
 ```sh
@@ -98,8 +102,10 @@ includes the necessary library of TensorFlow ops.
 
 ### Android AAR
 
-For Android, we recommend using the prebuilt [AAR with TensorFlow ops hosted at
-JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-select-tf-ops).
+To reduce the binary size, please build your own custom AAR files as guided in
+the [next section](#building-the-android-aar). If the binary size is not a
+considerable concern, we recommend using the prebuilt
+[AAR with TensorFlow ops hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-select-tf-ops).
 
 You can specify this in your `build.gradle` dependencies by adding it alongside
 the standard TensorFlow Lite AAR as follows:
@@ -112,9 +118,9 @@ dependencies {
 }
 ```
 
-Once you've added the dependency, the necessary delegate for handling
-the graph's TensorFlow ops should be automatically installed for
-graphs that require them.
+Once you've added the dependency, the necessary delegate for handling the
+graph's TensorFlow ops should be automatically installed for graphs that require
+them.
 
 *Note*: The TensorFlow ops dependency is relatively large, so you'll probably
 want to filter out unnecessary x86 ABIs in your `.gradle` file by setting up
@@ -132,23 +138,32 @@ android {
 
 #### Building the Android AAR
 
-For more advanced cases, you can also build the library manually. Assuming a
-<a href="android.md">working TensorFlow Lite build environment</a>, build the
-Android AAR with select TensorFlow ops as follows:
+For reducing the binary size or other advanced cases, you can also build the
+library manually. Assuming a <a href="android.md">working TensorFlow Lite build
+environment</a>, build the Android AAR with select TensorFlow ops as follows:
 
 ```sh
-bazel build --cxxopt='--std=c++14' -c opt   \
-  --config=android_arm --config=monolithic  \
-  //tensorflow/lite/java:tensorflow-lite-select-tf-ops
+sh tensorflow/lite/tools/build_aar.sh \
+  --input_models=/a/b/model_one.tflite,/c/d/model_two.tflite \
+  --target_archs=x86,x86_64,arm64-v8a,armeabi-v7a
 ```
 
-This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. From there,
-you can either import the AAR directly into your project, or publish the custom
-AAR to your local Maven repository:
+This will generate the AAR file `bazel-bin/tmp/tensorflow-lite.aar` for
+TensorFlow Lite built-in and custom ops; and generate the AAR file
+`bazel-bin/tmp/tensorflow-lite-select-tf-ops.aar` for TensorFlow ops. If you
+don't have a working build environment, You can also
+[build above files with docker](../guide/reduce_binary_size.md#selectively_build_tensorflow_lite_with_docker).
+
+From there, you can either import the AAR files directly into your project, or
+publish the custom AAR files to your local Maven repository:
 
 ```sh
 mvn install:install-file \
-  -Dfile=bazel-bin/tensorflow/lite/java/tensorflow-lite-select-tf-ops.aar \
+  -Dfile=bazel-bin/tmp/tensorflow-lite.aar \
+  -DgroupId=org.tensorflow \
+  -DartifactId=tensorflow-lite -Dversion=0.1.100 -Dpackaging=aar
+mvn install:install-file \
+  -Dfile=bazel-bin/tmp/tensorflow-lite-select-tf-ops.aar \
   -DgroupId=org.tensorflow \
   -DartifactId=tensorflow-lite-select-tf-ops -Dversion=0.1.100 -Dpackaging=aar
 ```
@@ -166,7 +181,8 @@ allprojects {
 }
 
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
+    implementation 'org.tensorflow:tensorflow-lite:0.1.100'
+    implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.1.100'
 }
 ```
 
@@ -285,10 +301,16 @@ Using only TF ops (`SELECT_TF_OPS`)  | 264.5
 The following table describes the binary size of TensorFlow Lite for each build.
 These targets were built for Android using `--config=android_arm -c opt`.
 
-Build                 | C++ Binary Size | Android APK Size
---------------------- | --------------- | ----------------
-Only built-in ops     | 796 KB          | 561 KB
-Built-in ops + TF ops | 23.0 MB         | 8.0 MB
+Build                     | C++ Binary Size | Android APK Size
+------------------------- | --------------- | ----------------
+Only built-in ops         | 796 KB          | 561 KB
+Built-in ops + TF ops     | 23.0 MB         | 8.0 MB
+Built-in ops + TF ops (1) | 4.1 MB          | 1.8 MB
+
+(1) These libraries are selectively built for
+[i3d-kinetics-400 model](https://tfhub.dev/deepmind/i3d-kinetics-400/1) with 8
+TFLite builtin ops and 3 Tensorflow ops. For more details, please see the
+[Reduce TensorFlow Lite binary size](../guide/reduce_binary_size.md) section.
 
 ## Known limitations
 
@@ -309,10 +331,6 @@ The following is a list of some of the known limitations:
 
 The following is a list of improvements to this pipeline that are in progress:
 
-*   *Selective registration* - There is work being done to make it simple to
-    generate TFLite interpreter binaries that only contain the TensorFlow ops
-    required for a particular set of models.
-*   *Improved usability* - The conversion process will be simplified to only
-    require a single pass through the converter.
 *   *Improved performance* - Work is being done to ensure TensorFlow Lite with
-    TensorFlow ops has performance parity to TensorFlow Mobile.
+    TensorFlow ops nicely cooperates with hardware accelerated delegates, for
+    example, NNAPI and GPU delegates.

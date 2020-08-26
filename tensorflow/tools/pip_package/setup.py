@@ -67,6 +67,7 @@ REQUIRED_PACKAGES = [
     'tensorboard >= 2.3.0, < 3',
     'tensorflow_estimator >= 2.3.0, < 2.4.0',
     'termcolor >= 1.1.0',
+    'typing_extensions >= 3.7.4.2',
     'wrapt >= 1.11.1',
     'wheel >= 0.26',
     'six >= 1.12.0',

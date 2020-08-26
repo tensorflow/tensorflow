@@ -140,6 +140,26 @@ TEST_F(AlgebraicSimplifierTest, MultiplyChain) {
           m::MultiplyAnyOrder(m::ConstantScalar(2), m::ConstantScalar(4)))));
 }
 
+// (a*C1)*C2 => a*(C1*C2)
+TEST_F(AlgebraicSimplifierTest, MultiplyChain2) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      a = f32[] constant(2)
+      b = f32[] constant(4)
+      c = f32[] multiply(p0, a)
+      ROOT y = f32[] multiply(c, b)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(
+                  m::Parameter(0), m::MultiplyAnyOrder(m::ConstantScalar(2),
+                                                       m::ConstantScalar(4)))));
+}
+
 // MUL(MUL(X, BROADCAST(constant)), BROADCAST(Y)) ==>
 // MUL(X, BROADCAST(MUL(Y, BROADCAST(constant))))
 TEST_F(AlgebraicSimplifierTest, MultiplyBroadcastReassoc) {
@@ -5626,6 +5646,30 @@ std::vector<DotOfGatherTestSpec> DotOfGatherPositiveNegativeTests() {
 INSTANTIATE_TEST_SUITE_P(
     DotOfGatherSimplificationTestInstantiation, DotOfGatherSimplificationTest,
     ::testing::ValuesIn(DotOfGatherPositiveNegativeTests()));
+
+TEST_F(AlgebraicSimplifierTest, GatherOfScalarToBroadcast) {
+  const char* hlo_string = R"(
+  HloModule repeat
+
+  ENTRY main {
+    o = f32[1,1] parameter(0)
+    i = s32[100,2] parameter(1)
+    ROOT g = f32[100] gather(o, i), collapsed_slice_dims={0,1},
+                                  start_index_map={0,1},
+                                  index_vector_dim=1,
+                                  offset_dims={},
+                                  slice_sizes={1,1}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
+}
 
 TEST_F(AlgebraicSimplifierTest, TupleReduceReshape) {
   const char* hlo_string = R"(

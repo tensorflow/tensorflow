@@ -191,6 +191,20 @@ func @concatenate_const_2D_horizontal() -> tensor<2x2xi32> {
   return %2 : tensor<2x2xi32>
 }
 
+// CHECK-LABEL: constant_like_constant
+func @constant_like_constant(%arg0: tensor<3x4xi32>) -> tensor<3x4xf32> {
+  // CHECK: mhlo.constant dense<3.200000e+00>
+  %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<3x4xi32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// CHECK-LABEL: constant_like_constant_dynamic
+func @constant_like_constant_dynamic(%arg0: tensor<*xi32>) -> tensor<*xf32> {
+  // CHECK: chlo.constant_like
+  %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<*xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: dynamic_slice_variable_start
 func @dynamic_slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
   // CHECK: "mhlo.dynamic-slice"
@@ -582,4 +596,33 @@ func @unpack_repack_same_tuple_single_element(%arg0: tuple<tensor<i32>>) -> tupl
 
   // CHECK: return [[ARG0]]
   return %3 : tuple<tensor<i32>>
+}
+
+// CHECK-LABEL: func @erase_dead_lhlo_constant
+func @erase_dead_lhlo_constant() {
+  %M = alloc() : memref<256x1024xf32>
+  // CHECK-NEXT: return
+  "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
+  dealloc %M : memref<256x1024xf32>
+  return
+}
+
+// A negative test for dead lhlo constant op erasure.
+// CHECK-LABEL: func @erase_dead_lhlo_constant_negative
+func @erase_dead_lhlo_constant_negative(%M : memref<4xf32>) -> memref<256x1024xf32> {
+  // CHECK-NEXT: lmhlo.constant
+  "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<4xf32>) -> ()
+  // CHECK-NEXT: alloc
+  // CHECK-NEXT: lmhlo.constant
+  %N = alloc() : memref<256x1024xf32>
+  "lmhlo.constant"(%N) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
+  return %N : memref<256x1024xf32>
+}
+
+// CHECK-LABEL: func @fold_get_dimension_size
+func @fold_get_dimension_size(%I : tensor<1x128x512xf32>) -> tensor<i32> {
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 2 : i32} : (tensor<1x128x512xf32>) -> tensor<i32>
+  return %size : tensor<i32>
+  // CHECK-NEXT: %[[C:.*]] = mhlo.constant dense<512> : tensor<i32>
+  // CHECK-NEXT: return %[[C]]
 }

@@ -230,7 +230,7 @@ R"(HloModule SelectR1F32WithCmpR1F32sFromParamsSmall_module
 ENTRY %SelectR1F32WithCmpR1F32sFromParamsSmall.v4 (v1: f32[4], v2: f32[4]) -> f32[4] {
   %v1 = f32[4]{0} parameter(0), sharding={maximal device=1}
   %v2 = f32[4]{0} parameter(1), sharding={maximal device=1}
-  %greater-than = pred[4]{0} compare(f32[4]{0} %v1, f32[4]{0} %v2), direction=GT, sharding={replicated}
+  %greater-than = pred[4]{0} compare(f32[4]{0} %v1, f32[4]{0} %v2), direction=GT, type=TOTALORDER, sharding={replicated}
   ROOT %select = f32[4]{0} select(pred[4]{0} %greater-than, f32[4]{0} %v1, f32[4]{0} %v2), sharding={}
 }
 
@@ -318,7 +318,7 @@ R"(HloModule CopyStartAndCopyDone_module
 
 ENTRY %CopyStartAndCopyDone (v1: f32[], v2: f32[2,3]) -> (f32[], f32[2,3]) {
   %v1 = f32[] parameter(0)
-  %copy-start.1 = (f32[], f32[], u32[]) copy-start(f32[] %v1)
+  %copy-start.1 = (f32[], f32[], u32[]) copy-start(f32[] %v1), is_cross_program_prefetch=true
   %copy-done.1 = f32[] copy-done((f32[], f32[], u32[]) %copy-start.1)
   %v2 = f32[2,3]{1,0:S(1)} parameter(1)
   %copy-start.2 = (f32[2,3]{1,0:S(2)}, f32[2,3]{1,0:S(1)}, u32[]) copy-start(f32[2,3]{1,0:S(1)} %v2)
@@ -512,7 +512,7 @@ R"(HloModule R4F32OverlapSmall_module
 %ge_F32.v3 (lhs: f32[], rhs: f32[]) -> pred[] {
   %lhs = f32[] parameter(0)
   %rhs = f32[] parameter(1)
-  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE
+  ROOT %greater-than-or-equal-to = pred[] compare(f32[] %lhs, f32[] %rhs), direction=GE, type=TOTALORDER
 }
 
 %add_F32.v3 (lhs.1: f32[], rhs.1: f32[]) -> f32[] {

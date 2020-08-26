@@ -707,7 +707,6 @@ OpFoldResult ReshapeOp::fold(ArrayRef<Attribute> operands) {
 
   // Fold reshape if operand and result types are the same and all dimensions
   // are statically known (no-op reshape).
-  // TODO(ezhulenev): Add the same folding for BroadcastToOp.
   auto result_ty = getType().dyn_cast<ShapedType>();
   if (result_ty && result_ty.hasStaticShape() &&
       result_ty == tensor.getType()) {
@@ -932,24 +931,75 @@ static LogicalResult Verify(ShapeNOp op) {
   return success();
 }
 
-LogicalResult ShapeNOp::fold(ArrayRef<Attribute> operands,
-                             SmallVectorImpl<OpFoldResult> &results) {
-  if (getNumOperands() == 0) return success();
-  int width =
-      getType(0).cast<ShapedType>().getElementType().getIntOrFloatBitWidth();
-
-  for (Type input_ty : getOperandTypes()) {
-    OpFoldResult result = ConvertShapeToAttr(input_ty, width);
-    if (!result) return failure();
-
-    results.push_back(result);
-  }
-  return success();
-}
-
-// TODO(hinsu): Add canonicalization pattern for ShapeN ops that don't have all
+namespace {
+// Canonicalization pattern for ShapeNOp that don't have all
 // static input shapes. Replacing output values corresponding to static input
 // types may enable optimizations in users of the values.
+class ShapeNPartialStaticInputShape : public OpRewritePattern<ShapeNOp> {
+  using OpRewritePattern<ShapeNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ShapeNOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() == 0) {
+      rewriter.eraseOp(op);
+      return success();
+    }
+
+    int width = getElementTypeOrSelf(op.getType(0)).getIntOrFloatBitWidth();
+
+    SmallVector<Value, 4> results(op.getNumOperands());
+    SmallVector<int64_t, 4> dynamic_indices;
+    SmallVector<Value, 4> dynamic_inputs;
+    SmallVector<Type, 4> result_types;
+    for (auto e : llvm::enumerate(op.getOperands())) {
+      if (Attribute result = ConvertShapeToAttr(e.value().getType(), width)) {
+        results[e.index()] = rewriter.create<TF::ConstOp>(op.getLoc(), result);
+      } else {
+        dynamic_indices.push_back(e.index());
+        dynamic_inputs.push_back(e.value());
+        result_types.push_back(op.getType(e.index()));
+      }
+    }
+
+    if (dynamic_inputs.size() == op.getNumOperands()) {
+      // Cannot canonicalize ShapeN if all inputs are dynamic.
+      return failure();
+    }
+
+    // Create a ShapeNOp for all dynamic inputs.
+    if (!dynamic_inputs.empty()) {
+      auto dynamic_shape_n = rewriter.create<TF::ShapeNOp>(
+          op.getLoc(), result_types, dynamic_inputs);
+      for (auto index_result :
+           llvm::zip(dynamic_indices, dynamic_shape_n.getResults())) {
+        results[std::get<0>(index_result)] = std::get<1>(index_result);
+      }
+    }
+
+    rewriter.replaceOp(op, results);
+    return success();
+  }
+};
+
+// Canonicalize ShapeNOp to ShapeOp if there is only one operand.
+class ShapeNToShape : public OpRewritePattern<ShapeNOp> {
+  using OpRewritePattern<ShapeNOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(ShapeNOp op,
+                                PatternRewriter &rewriter) const override {
+    if (op.getNumOperands() != 1) {
+      return failure();
+    }
+    auto shape = rewriter.create<TF::ShapeOp>(op.getLoc(), op.getType(0),
+                                              op.getOperand(0));
+    rewriter.replaceOp(op, {shape});
+    return success();
+  }
+};
+}  // namespace
+
+void ShapeNOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                           MLIRContext *context) {
+  results.insert<ShapeNToShape, ShapeNPartialStaticInputShape>(context);
+}
 
 //===----------------------------------------------------------------------===//
 // SizeOp
@@ -964,7 +1014,21 @@ static LogicalResult Verify(SizeOp op) {
     return op.emitOpError(
         "requires ranked input tensor to be of rank INT32_MAX or less");
 
+  // Output type needs to be scalar.
+  if (!IsOfRankOrUnranked(op.output(), /*rank=*/0))
+    return op.emitOpError("requires scalar output");
+
   return success();
+}
+
+OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
+  ShapedType output_type = getType().cast<ShapedType>();
+  ShapedType input_type = getOperand().getType().cast<ShapedType>();
+  if (!input_type.hasStaticShape()) return {};
+  int size = input_type.getNumElements();
+  return DenseElementsAttr::get(
+      output_type,
+      IntegerAttr::get(output_type.getElementType(), /*value=*/size));
 }
 
 //===----------------------------------------------------------------------===//
@@ -1078,6 +1142,13 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
 
   return success();
 }
+
+//===----------------------------------------------------------------------===//
+// SpaceToBatchNDOp
+//===----------------------------------------------------------------------===//
+
+// TODO(b/157475606): Add Verify(SpaceToBatchNDOp)
+// TODO(b/157475606): Add SpaceToBatchNDOp::inferReturnTypes
 
 //===----------------------------------------------------------------------===//
 // SparseSoftmaxCrossEntropyWithLogitsOp
@@ -1732,26 +1803,57 @@ static LogicalResult Verify(TopKV2Op op) {
 //===----------------------------------------------------------------------===//
 
 namespace {
-// If the input to ToBoolOp is a `tensor<i1>`, then the ToBoolOp is an identity
-// function and can be removed.
-class ToBoolOfZeroDBoolTensor : public OpRewritePattern<ToBoolOp> {
+// If the input to ToBoolOp is a ranked tensor, then the ToBoolOp can be folded
+// into an identity or an equality comparison.
+class ToBoolOfRankedTensor : public OpRewritePattern<ToBoolOp> {
   using OpRewritePattern<ToBoolOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(ToBoolOp op,
                                 PatternRewriter &rewriter) const override {
-    if (auto type = op.getOperand().getType().dyn_cast<RankedTensorType>()) {
-      if (type.getRank() == 0 && type.getElementType().isInteger(1)) {
-        rewriter.replaceOp(op, op.getOperand());
-        return success();
-      }
+    auto type = op.getOperand().getType().dyn_cast<RankedTensorType>();
+    // If the input is an unranked tensor, cannpt rewrite.
+    if (!type) return failure();
+
+    // Expected return type of the ToBool operation.
+    auto result_type = op.getResult().getType().cast<RankedTensorType>();
+
+    // If input is already a tensor<i1>, it can be folded into an identity.
+    if (type == result_type) {
+      rewriter.replaceOp(op, op.getOperand());
+      return success();
     }
-    return failure();
+
+    if (type.getRank() == 0) {
+      // If the input is a scalar tensor, the ToBool can be expanded to
+      // element != 0 (for numerical values) or element == empty (for string).
+      Type element_type = type.getElementType();
+      Attribute zero_attr;
+      if (element_type.isIntOrFloat())
+        zero_attr = rewriter.getZeroAttr(type);
+      else if (element_type.isa<TF::StringType>())
+        zero_attr = DenseStringElementsAttr::get(type, {""});
+
+      if (!zero_attr) return failure();
+
+      auto zero_const = rewriter.create<TF::ConstOp>(op.getLoc(), zero_attr);
+      rewriter.replaceOpWithNewOp<TF::NotEqualOp>(
+          op, result_type, op.getOperand(), zero_const, false);
+    } else {
+      // If the input is a non-scalar ranked tensor, ToBool can be expanded
+      // to numElements != 0. numElements will be 0 iff one of the dimensions is
+      // zero.
+      bool any_zero =
+          llvm::any_of(type.getShape(), [](int64_t dim) { return dim == 0; });
+      rewriter.replaceOpWithNewOp<TF::ConstOp>(
+          op, result_type, DenseElementsAttr::get(result_type, {!any_zero}));
+    }
+    return success();
   }
 };
 }  // namespace
 
 void ToBoolOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                            MLIRContext *context) {
-  results.insert<ToBoolOfZeroDBoolTensor>(context);
+  results.insert<ToBoolOfRankedTensor>(context);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1844,11 +1946,9 @@ void TransposeOp::build(OpBuilder &builder, OperationState &result, Value x,
 namespace {
 
 OpFoldResult FoldIdentityTranspose(TransposeOp op) {
-  auto const_perm = dyn_cast_or_null<TF::ConstOp>(op.perm().getDefiningOp());
-  if (!const_perm) return {};
-
-  auto const_value = const_perm.value();
-  const auto elements = const_value.getValues<APInt>();
+  DenseIntElementsAttr perm;
+  if (!matchPattern(op.perm(), m_Constant(&perm))) return {};
+  const auto elements = perm.getValues<APInt>();
 
   for (auto it : llvm::enumerate(elements)) {
     if (it.index() != it.value()) return {};
@@ -1871,14 +1971,14 @@ OpFoldResult FoldCancellableTranspose(TransposeOp op) {
   if (!transpose) return {};
 
   // Permutations defined by constant operations.
-  auto perm0 = dyn_cast_or_null<TF::ConstOp>(op.perm().getDefiningOp());
-  auto perm1 = dyn_cast_or_null<TF::ConstOp>(transpose.perm().getDefiningOp());
-  if (!perm0 || !perm1) return {};
+  DenseIntElementsAttr perm0;
+  DenseIntElementsAttr perm1;
+  if (!matchPattern(op.perm(), m_Constant(&perm0)) ||
+      !matchPattern(transpose.perm(), m_Constant(&perm1)))
+    return {};
 
   // With permutation indices that cancel each other
-  auto perm0_value = perm0.value().cast<DenseIntElementsAttr>();
-  auto perm1_value = perm1.value().cast<DenseIntElementsAttr>();
-  if (!AreCancellablePermutations(perm0_value, perm1_value)) return {};
+  if (!AreCancellablePermutations(perm0, perm1)) return {};
 
   return transpose.x();
 }

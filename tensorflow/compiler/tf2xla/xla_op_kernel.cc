@@ -259,6 +259,32 @@ static Status LiteralToPredVector(const xla::LiteralSlice& literal,
   return Status::OK();
 }
 
+Status XlaOpKernelContext::ResolveInputDynamismIntoPred(int index, bool* out) {
+  xla::Literal literal;
+  XlaExpression e = InputExpression(index);
+  auto* client = compiler() ? compiler()->client() : nullptr;
+  xla::StatusOr<Tensor> dynamism_or_status = e.ResolveDynamism(client);
+  if (!dynamism_or_status.ok()) {
+    Status status = dynamism_or_status.status();
+    errors::AppendToMessage(&status, "while evaluating input dynamism", index,
+                            " of ", context_->op_kernel().type_string());
+    return status;
+  }
+  Tensor dynamism = dynamism_or_status.ValueOrDie();
+
+  Tensor temp(dynamism.dtype());
+  TensorShape tensor_shape({});
+  if (!temp.CopyFrom(dynamism, tensor_shape)) {
+    return errors::InvalidArgument(
+        context_->op_kernel().name(), " input ", index, " has shape ",
+        dynamism.shape().DebugString(), " which is not a R0 ", tensor_shape);
+  }
+
+  TF_ASSIGN_OR_RETURN(literal, HostTensorToLiteral(temp));
+  *out = literal.Get<bool>({});
+  return Status::OK();
+}
+
 Status XlaOpKernelContext::ResolveInputDynamismIntoPredVector(
     int index, std::vector<bool>* out) {
   xla::Literal literal;

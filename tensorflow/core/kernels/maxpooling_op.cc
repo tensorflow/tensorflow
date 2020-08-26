@@ -321,30 +321,6 @@ class MaxPoolingGradOp : public OpKernel {
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
-template <typename T>
-static void MaxPoolingBackwardCustomKernel(
-    OpKernelContext* context, const std::vector<int32>& size,
-    const std::vector<int32>& stride, Padding padding, const Tensor* tensor_in,
-    const Tensor& out_backprop, const TensorShape& tensor_in_shape) {
-  Tensor* output = nullptr;
-  OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                              {0}, 0, tensor_in_shape, &output));
-
-  PoolParameters params{context, size,        stride,
-                        padding, FORMAT_NHWC, tensor_in_shape};
-  if (!context->status().ok()) {
-    return;
-  }
-
-  functor::MaxPoolBackwardNoMask<T>()(
-      tensor_in->flat<T>().data(), params.tensor_in_batch,
-      params.tensor_in_rows, params.tensor_in_cols, params.depth,
-      params.out_height, params.out_width, params.window_rows,
-      params.window_cols, params.row_stride, params.col_stride, params.pad_rows,
-      params.pad_cols, out_backprop.flat<T>().data(), output->flat<T>().data(),
-      context->eigen_device<Eigen::GpuDevice>());
-}
-
 template <class T>
 class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
  public:
@@ -372,7 +348,6 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
     }
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
 
-    use_dnn_ = CanUseCudnn();
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false,
                                    &propagate_nans_));
   }
@@ -417,18 +392,10 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
     OP_REQUIRES(context, ksize_n == 1 && stride_n == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
-
-    if (use_dnn_) {
-      DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum,
-                                   ksize, stride, padding_, data_format_,
-                                   &tensor_in, &tensor_out, out_backprop,
-                                   output_shape, propagate_nans_);
-    } else {
-      CHECK(data_format_ == FORMAT_NHWC)
-          << "Non-Cudnn MaxPoolGrad only supports NHWC format";
-      MaxPoolingBackwardCustomKernel<T>(context, ksize, stride, padding_,
-                                        &tensor_in, out_backprop, output_shape);
-    }
+    DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize,
+                                 stride, padding_, data_format_, &tensor_in,
+                                 &tensor_out, out_backprop, output_shape,
+                                 propagate_nans_);
   }
 
  private:
@@ -436,7 +403,6 @@ class MaxPoolingGradOp<Eigen::GpuDevice, T> : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
-  bool use_dnn_;
   bool propagate_nans_;
 };
 
@@ -1139,7 +1105,6 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
     OP_REQUIRES(context, ksize_n == 1 && stride_n == 1,
                 errors::Unimplemented(
                     "Pooling is not yet supported on the batch dimension."));
-    use_dnn_ = CanUseCudnn();
 
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false,
                                    &propagate_nans_));
@@ -1165,17 +1130,15 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
                     "qint8 should be used with data_format NCHW_VECT_C."));
 
 #if CUDNN_VERSION >= 7300
-    if (use_dnn_) {
-      DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize_,
-                               stride_, padding_, data_format_, tensor_in,
-                               out_shape, propagate_nans_);
+    DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize_,
+                             stride_, padding_, data_format_, tensor_in,
+                             out_shape, propagate_nans_);
 #else
     // These is_int8x4 checks avoid linker errors for missing qint8 kernels.
-    if (!is_int8x4 && use_dnn_ && data_format_ == FORMAT_NCHW) {
+    if (!is_int8x4 && data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize_,
                                stride_, padding_, data_format_, tensor_in,
                                out_shape, propagate_nans_);
-#endif
     } else {
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
@@ -1195,6 +1158,7 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
                    << ") is not supported.";
       }
     }
+#endif
   }
 
  private:
@@ -1202,7 +1166,6 @@ class MaxPoolingNoMaskOp<GPUDevice, T> : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
-  bool use_dnn_;
   bool propagate_nans_;
 };
 
@@ -1232,7 +1195,6 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
                       "Pooling is not yet supported on the batch dimension."));
     }
     OP_REQUIRES_OK(context, context->GetAttr("padding", &padding_));
-    use_dnn_ = CanUseCudnn();
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MAXPOOL_NANPROP", false,
                                    &propagate_nans_));
   }
@@ -1275,13 +1237,13 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
     TensorShape out_shape =
         ShapeFromFormat(data_format_, params.tensor_in_batch, params.out_height,
                         params.out_width, params.depth);
-    if (use_dnn_ && data_format_ == FORMAT_NCHW) {
+    if (data_format_ == FORMAT_NCHW) {
       DnnPoolingOp<T>::Compute(context, se::dnn::PoolingMode::kMaximum, ksize,
                                stride, padding_, data_format_, tensor_in,
                                out_shape, propagate_nans_);
     } else {
       CHECK(data_format_ == FORMAT_NHWC)
-          << "Non-Cudnn MaxPool only supports NHWC format";
+          << "MaxPool only supports NCHW or NHWC format";
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
       LaunchMaxPoolingNoMask<Device, T>::launch(context, params, tensor_in,
@@ -1294,7 +1256,6 @@ class MaxPoolingNoMaskV2Op<GPUDevice, T> : public OpKernel {
   std::vector<int32> stride_;
   Padding padding_;
   TensorFormat data_format_;
-  bool use_dnn_;
   bool propagate_nans_;
 };
 

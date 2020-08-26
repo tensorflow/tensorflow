@@ -18,9 +18,6 @@ limitations under the License.
 
 #include <vector>
 
-#include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/types.h"
-
 namespace tflite {
 namespace gpu {
 

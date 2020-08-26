@@ -41,31 +41,5 @@ bool IsGoogleTensorRTEnabled() {
 #endif
 }
 
-void GetLinkedTensorRTVersion(int* major, int* minor, int* patch) {
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  *major = NV_TENSORRT_MAJOR;
-  *minor = NV_TENSORRT_MINOR;
-  *patch = NV_TENSORRT_PATCH;
-#else
-  *major = 0;
-  *minor = 0;
-  *patch = 0;
-#endif
-}
-
-void GetLoadedTensorRTVersion(int* major, int* minor, int* patch) {
-#if GOOGLE_CUDA && GOOGLE_TENSORRT
-  int ver = getInferLibVersion();
-  *major = ver / 1000;
-  ver = ver - *major * 1000;
-  *minor = ver / 100;
-  *patch = ver - *minor * 100;
-#else
-  *major = 0;
-  *minor = 0;
-  *patch = 0;
-#endif
-}
-
 }  // namespace tensorrt
 }  // namespace tensorflow

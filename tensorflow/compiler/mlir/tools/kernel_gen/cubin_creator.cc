@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
@@ -246,21 +247,14 @@ Status PropagateTensorFlowABIKnowledgeToKernel(
   return Status::OK();
 }
 
-void RegisterDialects() {
-  static bool init_once = []() {
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    return true;
-  }();
-  (void)init_once;
-}
 }  // namespace
 
 StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
     llvm::StringRef tf_code, std::pair<int32_t, int32_t> compute_capability,
     llvm::ArrayRef<uint32_t> tile_sizes, llvm::ArrayRef<uint32_t> same_shape,
     llvm::ArrayRef<uint32_t> unroll_factors) {
-  RegisterDialects();
   mlir::MLIRContext context;
+  mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
 
   TF_RETURN_IF_ERROR(LowerTfOpToLhloWithDynamicShapes(module.get()));

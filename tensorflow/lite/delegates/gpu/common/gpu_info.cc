@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/gpu_info.h"
 
-#include <algorithm>
-#include <cctype>
 #include <string>
 
 #include "absl/strings/ascii.h"

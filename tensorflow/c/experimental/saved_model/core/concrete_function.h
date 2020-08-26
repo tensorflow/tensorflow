@@ -26,10 +26,14 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Note that ConcreteFunctions's lifetimes are effectively bound
-// to the SavedModel they are loaded from, since they retain pointers
-// to the TensorHandles owned by the SavedModel, and the FunctionDef
-// of the SavedModel.
+// ConcreteFunctions correspond to an instance of a tf.function with a known set
+// of inputs (either through get_concrete_function) or an input_signature.
+// ConcreteFunction attempts to preserve the user-facing semantics of the
+// tf.function python API and can take a limited set of types as arguments
+// (to be modeled in tensorflow::Value), not just Tensors.
+// SavedModelAPI's ConcreteFunctions' lifetimes are bound to the SavedModel they
+// are loaded from, since they retain pointers to the TensorHandles owned by the
+// SavedModel, and the FunctionDef of the SavedModel.
 // Note(bmzhao): This class is only TEMPORARILY virtual, as a way to unblock
 // TFRT integration with TF Serving. Do not add more virtual implementations of
 // this class. Eventually we want to remove this virtual base class indirection

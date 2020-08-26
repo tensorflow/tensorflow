@@ -1005,3 +1005,12 @@ add {
   // CHECK: "mhlo.not"(%[[ARG0]]) {name = "{{.*}}"} : (tensor<4xui16>) -> tensor<4xui16>
   ROOT %not.2 = u16[4] not(u16[4] %Arg_0.1)
 }
+
+// CHECK-LABEL:  func @rngbitgen
+// CHECK-SAME:    (%[[ARG0:.*]]: tensor<3xui64>)
+%rngbitgen (Arg_0.1: u64[3]) -> (u64[3], u32[2,2]) {
+  %Arg_0.1 = u64[3] parameter(0)
+  // CHECK: "mhlo.rng_bit_generator"(%[[ARG0]]) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
+  ROOT %rng-bit-generator.2 = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %Arg_0.1), algorithm=rng_philox
+}
+

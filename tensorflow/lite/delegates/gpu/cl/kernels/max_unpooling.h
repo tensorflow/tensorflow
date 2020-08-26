@@ -25,34 +25,10 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class MaxUnpooling : public GPUOperation {
- public:
-  MaxUnpooling(const OperationDef& definition,
-               const MaxUnpooling2DAttributes& attr);
-  MaxUnpooling(const OperationDef& definition,
-               const MaxUnpooling3DAttributes& attr);
-
-  absl::Status BindArguments() override;
-  int3 GetGridSize() const override;
-
-  // Move only
-  MaxUnpooling(MaxUnpooling&& kernel);
-  MaxUnpooling& operator=(MaxUnpooling&& kernel);
-  MaxUnpooling(const MaxUnpooling&) = delete;
-  MaxUnpooling& operator=(const MaxUnpooling&) = delete;
-
- private:
-  std::string GetMaxUnpoolingKernelCode(const OperationDef& op_def);
-
-  int4 stride_;
-  int4 padding_;
-  int4 kernel_size_;
-};
-
-MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,
+GPUOperation CreateMaxUnpooling(const OperationDef& definition,
                                 const MaxUnpooling2DAttributes& attr);
 
-MaxUnpooling CreateMaxUnpooling(const OperationDef& definition,
+GPUOperation CreateMaxUnpooling(const OperationDef& definition,
                                 const MaxUnpooling3DAttributes& attr);
 
 }  // namespace cl

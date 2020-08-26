@@ -45,7 +45,6 @@ class DecodeImageOpTest(test.TestCase):
       self.assertEqual(len(bmp0), 4194)
       self.assertAllEqual(image0, image1)
 
-  @test_util.run_deprecated_v1
   def testGif(self):
     # Read some real GIFs
     path = os.path.join(prefix_path, "gif", "testdata", "scan.gif")
@@ -76,11 +75,10 @@ class DecodeImageOpTest(test.TestCase):
 
         self.assertAllClose(frame, gt)
 
-        bad_channels = image_ops.decode_image(gif0, channels=1)
         with self.assertRaises(errors_impl.InvalidArgumentError):
+          bad_channels = image_ops.decode_image(gif0, channels=1)
           self.evaluate(bad_channels)
 
-  @test_util.run_deprecated_v1
   def testJpeg(self):
     # Read a real jpeg and verify shape
     path = os.path.join(prefix_path, "jpeg", "testdata", "jpeg_merge_test1.jpg")
@@ -93,8 +91,8 @@ class DecodeImageOpTest(test.TestCase):
       self.assertEqual(image0.shape, (256, 128, 3))
       self.assertAllEqual(image0, image1)
 
-      bad_channels = image_ops.decode_image(jpeg0, channels=4)
       with self.assertRaises(errors_impl.InvalidArgumentError):
+        bad_channels = image_ops.decode_image(jpeg0, channels=4)
         self.evaluate(bad_channels)
 
   def testPng(self):

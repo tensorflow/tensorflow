@@ -23,7 +23,7 @@ limitations under the License.
 
 namespace xla {
 
-class CpuDevice : public Device {
+class CpuDevice : public PjRtDevice {
  public:
   CpuDevice(int id, std::unique_ptr<LocalDeviceState> local_device_state);
 };

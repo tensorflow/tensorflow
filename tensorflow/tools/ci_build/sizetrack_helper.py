@@ -54,8 +54,10 @@ import csv
 import datetime
 import os
 import os.path
+import pathlib
 import platform
 import subprocess
+
 
 parser = argparse.ArgumentParser(
     usage=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
@@ -98,6 +100,10 @@ parser.add_argument(
     type=str,
     help="Name of job calling this script. Default: $KOKORO_JOB_NAME.")
 parser.add_argument(
+    "--build_id",
+    type=str,
+    help="UUID of build calling this script. Default: $KOKORO_BUILD_ID.")
+parser.add_argument(
     "--print_schema",
     action="store_true",
     help="Print the table schema and don't do anything else.")
@@ -112,13 +118,16 @@ size.add_argument(
     help="Manually set the recorded size instead of providing an artifact.")
 FLAGS = parser.parse_args()
 
+
+NOW = datetime.datetime.now(
+    datetime.timezone.utc).replace(microsecond=0).isoformat()
 TABLE_NAME = "{}.{}".format(FLAGS.dataset, FLAGS.table)
 PROJECT_LEVEL_TABLE_NAME = "{}:{}".format(FLAGS.project, TABLE_NAME)
 CL_TRAILER = "PiperOrigin-RevId"
 PRETTY_COMMIT_DATE = "%cI"
 PRETTY_CL = "%(trailers:key={},valueonly)".format(CL_TRAILER)
 PRETTY_HEAD_INFO = "%h\t{cl}\t%s\t%ae\t%aI\t%ce\t%cI".format(cl=PRETTY_CL)
-PRETTY_EARLY = "{cl}\t%aI\t%cI".format(cl=PRETTY_CL)
+PRETTY_EARLY = "%aI\t{cl}\t%cI".format(cl=PRETTY_CL)
 PRETTY_COMMIT = "%h"
 # This is a BigQuery table schema defined as CSV
 # See https://cloud.google.com/bigquery/docs/schemas
@@ -146,6 +155,7 @@ SCHEMA = ",".join([
     "logged_date:timestamp",
     "uploaded_to:string",
     "job:string",
+    "build_id:string",
 ])
 # Select the earliest recorded commit in the same table for the same artifact
 # and team. Used to determine the full range of tested commits for each
@@ -231,6 +241,15 @@ def gcloud(tool, args, stdin=None):
   return ret.stdout.strip()
 
 
+def bq(args, stdin=None):
+  """Helper for running bq, the BigQuery tool."""
+  # bq prints extra messages to stdout if ~/.bigqueryrc doesn't exist
+  pathlib.Path(pathlib.Path.home() / ".bigqueryrc").touch()
+  return gcloud(
+      "bq", ["--project_id", FLAGS.project, "--headless", *args],
+      stdin=stdin)
+
+
 def get_all_tested_commits():
   """Get details about the full commit range tested by this invocation."""
   head_info = git_pretty("HEAD", PRETTY_HEAD_INFO, n=1)
@@ -245,23 +264,20 @@ def get_all_tested_commits():
   # --format=csv returns an empty string if no results, or else two lines:
   # commit
   # COMMIT_HASH
-  earliest_commit = gcloud(
-      "bq", [
-          "--project_id", FLAGS.project, "--headless", "-q", "query",
-          "--format", "csv", "--nouse_legacy_sql"
-      ],
-      stdin=query_earliest_included_commit)
+  earliest_commit = bq(["query", "--format", "csv", "--nouse_legacy_sql"],
+                       stdin=query_earliest_included_commit)
 
   # Compute the commit/CL range since the last test
   if earliest_commit:
 
     earliest_commit = earliest_commit.splitlines()[-1]  # Ignore CSV header
-    early_cl, early_author_date, early_commit_date = git_pretty(
+    early_author_date, early_cl, early_commit_date = git_pretty(
         earliest_commit, PRETTY_EARLY, n=1)[0].split("\t")
 
     all_range = "{commit}..HEAD".format(commit=earliest_commit)
-    all_commits = ",".join(git_pretty(all_range, PRETTY_COMMIT))
-    all_changelists = ",".join(git_pretty(all_range, PRETTY_CL))
+    # Reversed: convert to chronological
+    all_commits = ",".join(reversed(git_pretty(all_range, PRETTY_COMMIT)))
+    all_changelists = ",".join(reversed(git_pretty(all_range, PRETTY_CL)))
 
     return [
         earliest_commit, early_cl, early_author_date, early_commit_date,
@@ -278,15 +294,13 @@ def get_upload_path():
   """Generate URL for 'gsutil cp'."""
   if FLAGS.upload and FLAGS.artifact:
     artifact_filename = os.path.basename(FLAGS.artifact.name)
-    ts = datetime.datetime.now(
-        datetime.timezone.utc).replace(microsecond=0).isoformat()
     # note: not os.path.join here, because gsutil is always linux-style
     # Using a timestamp prevents duplicate entries
     path = "{bucket}/{team}/{artifact_id}/{now}.{artifact_filename}".format(
         bucket=FLAGS.bucket,
         team=FLAGS.team,
         artifact_id=FLAGS.artifact_id,
-        now=ts,
+        now=NOW,
         artifact_filename=artifact_filename)
     return path
   else:
@@ -320,6 +334,7 @@ def build_row():
       current_time,
       get_upload_path(),
       FLAGS.job,
+      FLAGS.build_id,
   ]
 
 
@@ -339,6 +354,8 @@ def main():
 
   if not FLAGS.job:
     FLAGS.job = os.environ.get("KOKORO_JOB_NAME", "NO_JOB")
+  if not FLAGS.build_id:
+    FLAGS.build_id = os.environ.get("KOKORO_BUILD_ID", "NO_BUILD")
 
   # Generate data about this artifact into a Tab Separated Value file
   next_tsv_row = build_row()
@@ -356,12 +373,12 @@ def main():
     print("DRY RUN: Generated this TSV row:")
     print("\t".join(map(str, next_tsv_row)))
   else:
-    with open("data.tsv", "w") as tsvfile:
-      writer = csv.writer(tsvfile, delimiter="\t", quoting=csv.QUOTE_MINIMAL)
+    with open("data.tsv", "w", newline="") as tsvfile:
+      writer = csv.writer(tsvfile, delimiter="\t", quoting=csv.QUOTE_MINIMAL,
+                          lineterminator=os.linesep)
       writer.writerow(next_tsv_row)
-    gcloud("bq", [
-        "--project_id", FLAGS.project, "--headless", "-q", "load",
-        "--source_format", "CSV", "--field_delimiter", "tab",
+    bq([
+        "load", "--source_format", "CSV", "--field_delimiter", "tab",
         PROJECT_LEVEL_TABLE_NAME, "data.tsv", SCHEMA
     ])
 

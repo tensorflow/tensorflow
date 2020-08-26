@@ -43,8 +43,18 @@ For more details, see the
 
 ## Installation
 
-Install a prebuilt pip package.
+There are two ways to install Model Maker.
+
+*   Install a prebuilt pip package.
 
 ```shell
 pip install tflite-model-maker
+```
+
+*   Clone the source code from GitHub and install.
+
+```shell
+git clone https://github.com/tensorflow/examples
+cd examples/tensorflow_examples/lite/model_maker/pip_package
+pip install -e .
 ```
