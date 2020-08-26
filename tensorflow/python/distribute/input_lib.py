@@ -898,10 +898,9 @@ class DistributedIteratorForReplicas(DistributedIterator):
     if not self._enable_get_next_as_optional:
       replicas = []
       for iterator in self._iterators:
-        with ops.device(iterator._worker):
-          next_out = iterator.get_next_as_list_static_shapes(iterator._worker)
-          replicas.append(next_out)
-      return values.regroup(replicas)
+        next_out = iterator.get_next_as_list_static_shapes(iterator._worker)
+        replicas.append(next_out)
+      return distribute_utils.regroup(replicas)
 
 
 class _IterableInput(DistributedDatasetInterface):
