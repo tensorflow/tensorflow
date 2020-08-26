@@ -157,6 +157,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["adadelta_test.py"],
     shard_count = 4,
+    tags = ["no_rocm"],
     tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
@@ -298,6 +299,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["rmsprop_test.py"],
     shard_count = 2,
+    tags = ["no_rocm"],
     tfrt_enabled = True,
     deps = [
         ":optimizer_v2",
