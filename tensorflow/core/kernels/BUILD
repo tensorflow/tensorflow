@@ -1671,6 +1671,7 @@ tf_cuda_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels/image",
+        "//tensorflow/core/platform:tf32_utils",
         "@com_google_absl//absl/algorithm:container",
     ],
 )

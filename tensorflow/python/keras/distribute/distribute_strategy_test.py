@@ -1605,6 +1605,8 @@ class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
       self.assertEqual(-1.0, v)
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class TestDistributionStrategyWithKerasModels(test.TestCase,
                                               parameterized.TestCase):
 

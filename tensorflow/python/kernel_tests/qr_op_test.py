@@ -200,6 +200,8 @@ def _GetQrGradOpTest(dtype_, shape_, full_matrices_):
     return a
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
+  @test_util.run_without_tensor_float_32("Tests Qr gradient, which calls matmul"
+                                        )
   def Test(self):
     np.random.seed(42)
     # Optimal stepsize for central difference is O(epsilon^{1/3}).
