@@ -257,6 +257,11 @@ inline EagerOperation* OperationFromInterface(
   return down_cast<EagerOperation*>(operation);
 }
 
+inline const EagerOperation* OperationFromInterface(
+    const ImmediateExecutionOperation* operation) {
+  return down_cast<const EagerOperation*>(operation);
+}
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_COMMON_RUNTIME_EAGER_EAGER_OPERATION_H_
