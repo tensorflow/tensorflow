@@ -538,10 +538,10 @@ def subtract(x, y, name=None):
   *Note*: Subtract supports broadcasting. More about broadcasting 
   [here](https://numpy.org/doc/stable/user/basics.broadcasting.html)
   
-  For example:
   Both input and output have a range `(-inf, inf)`.
 
-  # `x` and `y` are tensors of shape (1)
+  For example:
+
   >>> x = tf.constant([1.0, -1.0, 5.0, -2.0, 0.0])
   >>> y = tf.constant([5.0, 1.0, 3.7, -19.9, float("inf")])
   >>> tf.subtract(x,y)
@@ -4963,11 +4963,11 @@ def add(x,y,name=None):
   [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
 
   Given two input tensors, the `tf.add` operation computes the sum for every element in the tensor.
-
-  For example:
+  
   Both input and output have a range `(-inf, inf)`.
 
-  # `x` and `y` are tensors of shape (1)
+  For example:
+
   >>> x = tf.constant([1.0, -1.0, 5.0, -2.0, 0.0])
   >>> y = tf.constant([5.0, 1.0, 3.7, -19.9, float("inf")])
   >>> tf.add(x,y)
@@ -4999,7 +4999,6 @@ def acos(x,name=None):
 
   For example:
 
-  # `x` is a tensor of the shape(1)
   >>> x = tf.constant([1.0, -0.5, 3.4, 0.2, 0.0, -2], dtype = tf.float32)
   >>> tf.math.acos(x)
   <tf.Tensor: shape=(6,), dtype=float32, numpy=
