@@ -2378,12 +2378,13 @@ class Layer(base_layer.Layer):
 
   def _dedup_weights(self, weights):
     """Dedupe weights while maintaining order as much as possible."""
-    output, seen_weights = [], object_identity.ObjectIdentitySet()
+    output, seen_ids = [], set()
     for w in weights:
-      if w not in seen_weights:
+      if id(w) not in seen_ids:
         output.append(w)
         # Track the Variable's identity to avoid __eq__ issues.
-        seen_weights.add(w)
+        seen_ids.add(id(w))
+
     return output
 
   # SavedModel properties. Please see keras/saving/saved_model for details.

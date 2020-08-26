@@ -2586,10 +2586,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # we copy them to avoid loss of KerasHistory metadata.
     flat_outputs = nest.flatten(outputs)
     flat_inputs = nest.flatten((args, kwargs))
-    inputs_set = object_identity.ObjectIdentitySet(flat_inputs)
+    input_ids_set = {id(i) for i in flat_inputs}
     outputs_copy = []
     for x in flat_outputs:
-      if x in inputs_set:
+      if id(x) in input_ids_set:
         with backend.name_scope(self.name):
           x = array_ops.identity(x)
       outputs_copy.append(x)
@@ -2985,12 +2985,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   def _dedup_weights(self, weights):
     """Dedupe weights while maintaining order as much as possible."""
-    output, seen_weights = [], object_identity.ObjectIdentitySet()
+    output, seen_ids = [], set()
     for w in weights:
-      if w not in seen_weights:
+      if id(w) not in seen_ids:
         output.append(w)
         # Track the Variable's identity to avoid __eq__ issues.
-        seen_weights.add(w)
+        seen_ids.add(id(w))
+
     return output
 
   def _split_out_first_arg(self, args, kwargs):
