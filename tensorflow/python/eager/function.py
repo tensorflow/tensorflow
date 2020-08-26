@@ -105,13 +105,13 @@ def _make_input_signature_hashable(elem):
   Returns:
     A hashable object for the requested input signature
   """
-  # TODO(slebedev): consider using nest.
-  if isinstance(elem, tuple):
-    return tuple(map(_make_input_signature_hashable, elem))
-
   try:
     hash(elem)
   except TypeError:
+    # TODO(slebedev): consider using nest.
+    if isinstance(elem, tuple):
+      return tuple(map(_make_input_signature_hashable, elem))
+
     # TFE_Py_EncodeArg weakrefs arguments it does not recognize, and we expect
     # all recognized types to be hashable.
     assert isinstance(elem, weakref.ReferenceType)
@@ -1941,8 +1941,7 @@ class ConcreteFunction(object):
     forward_function, args_with_tangents = forward_backward.forward()
     if executing_eagerly:
       flat_outputs = forward_function.call(
-          ctx, args_with_tangents,
-          cancellation_manager=cancellation_manager)
+          ctx, args_with_tangents, cancellation_manager=cancellation_manager)
     else:
       with default_graph._override_gradient_function(  # pylint: disable=protected-access
           {"PartitionedCall": self._get_gradient_function(),

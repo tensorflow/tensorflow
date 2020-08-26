@@ -177,7 +177,8 @@ Status UpgradeLegacyGraph(Graph* graph, FunctionLibraryDefinition* flib_def,
       restrict_functionalization_to_tpu_nodes
           ? [](const Node* n) { return n->attrs().Find(kTpuReplicateAttr); }
           : NodeFilter{};
-  return FunctionalizeControlFlow(graph, flib_def, node_filter);
+  return FunctionalizeControlFlow(graph, flib_def, node_filter,
+                                  /*include_functions=*/true);
 }
 
 // Stateful helper class to import a TensorFlow model into an MLIR Module.
@@ -2135,6 +2136,11 @@ StatusOr<mlir::OwningModuleRef> GraphDefImporter::Convert(
     mlir::MLIRContext* context, const Graph& graph,
     const GraphDebugInfo& debug_info, const FunctionLibraryDefinition& flib_def,
     const GraphImportConfig& specs, llvm::StringRef func_name) {
+  // Load dialects involved in the conversion
+  context->loadDialect<mlir::StandardOpsDialect>();
+  context->loadDialect<mlir::TF::TensorFlowDialect>();
+  context->loadDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
+
   mlir::OwningModuleRef module =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
   std::unordered_map<std::string, std::string> tf_name_to_mlir_name;

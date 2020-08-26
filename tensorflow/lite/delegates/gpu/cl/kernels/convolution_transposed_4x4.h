@@ -61,14 +61,12 @@ class ConvolutionTransposed4x4 : public GPUOperation {
 
  private:
   ConvolutionTransposed4x4(const OperationDef& definition,
-                           const CLDevice& device);
-  friend absl::Status CreateConvolutionTransposed4x4(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const ConvolutionTransposedAttributes& attr,
-      ConvolutionTransposed4x4* result);
+                           const DeviceInfo& device_info);
+  friend ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
   template <DataType T>
-  absl::Status UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
-                             CLContext* context);
+  void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
@@ -81,8 +79,8 @@ class ConvolutionTransposed4x4 : public GPUOperation {
 };
 
 template <DataType T>
-absl::Status ConvolutionTransposed4x4::UploadWeights(
-    const tflite::gpu::Tensor<OHWI, T>& weights, CLContext* context) {
+void ConvolutionTransposed4x4::UploadWeights(
+    const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 4;  //  This operation support only 4x4 kernel
@@ -92,19 +90,6 @@ absl::Status ConvolutionTransposed4x4::UploadWeights(
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
   const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
-  Buffer weights_buffer;
-  if (f32_weights) {
-    std::vector<float4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(
-        flt4_size * flt4_count, gpu_data.data(), context, &weights_buffer));
-  } else {
-    std::vector<half4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(
-        flt4_size * flt4_count, gpu_data.data(), context, &weights_buffer));
-  }
-
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
@@ -113,12 +98,19 @@ absl::Status ConvolutionTransposed4x4::UploadWeights(
               ConvolutionTransposed4x4::WeightsUploadType::CONSTANT_MEM
           ? MemoryType::CONSTANT
           : MemoryType::GLOBAL;
+  desc.size = flt4_size * flt4_count;
+  desc.data.resize(desc.size);
 
-  args_.AddObject("weights", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
+  if (f32_weights) {
+    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, flt4_count));
+  } else {
+    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, flt4_count));
+  }
 
-  return absl::OkStatus();
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 template <DataType S, typename T>
@@ -164,13 +156,12 @@ void ConvolutionTransposed4x4::RearrangeWeightsData(
 }
 
 bool IsConvolutionTransposed4x4Supported(
-    const CLDevice& device, const OperationDef& definition,
+    const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
 
-absl::Status CreateConvolutionTransposed4x4(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr,
-    ConvolutionTransposed4x4* result);
+ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

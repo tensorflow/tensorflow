@@ -19,6 +19,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 
@@ -41,7 +42,7 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
         builder_(module.getContext()),
         i8_type_(builder_.getIntegerType(8)) {}
 
-  ::xla::StatusOr<mlir::Operation*> EmitSortOp(::xla::HloInstruction* instr);
+  ::xla::StatusOr<lmhlo::SortOp> EmitSortOp(::xla::HloInstruction* instr);
 
  private:
   template <typename OpType>
@@ -86,9 +87,9 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   // (see below).
   llvm::DenseMap<const ::xla::BufferAllocation*, Value> allocations_;
 
-  // This map provides access to MLIR buffers for each HLO instruction, keyed by
-  // its buffer slice. A slice is contained in a BufferAllocation, and has an
-  // offset and a size.
+  // This map provides access to MLIR buffers for each HLO instruction, keyed
+  // instruction identity. A slice is contained in a BufferAllocation, and has
+  // an offset and a size.
   //
   // As for why we don't use HloInstruction*, see GetOrCreateView(), but mostly
   // we want to leverage better of the aliased buffers.
@@ -101,8 +102,8 @@ class LhloDialectEmitter : public ::xla::DfsHloVisitorWithDefault {
   //
   // `slices_` is populated lazily in the `GetOrCreateView()` helper as we
   // process every instruction.
-  using SliceKey = std::tuple<const ::xla::BufferAllocation*, int64_t, int64_t>;
-  llvm::DenseMap<SliceKey, llvm::SmallVector<Value, 1>> slices_;
+  llvm::DenseMap<const xla::HloInstruction*, llvm::SmallVector<Value, 1>>
+      slices_;
 
   // The BufferAssignment computed by XLA ahead of time.
   const ::xla::BufferAssignment& assignment_;

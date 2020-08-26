@@ -146,7 +146,7 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
                              delete cpu_tensor;
                              // This callback must not block, so execute
                              // done in another thread.
-                             RunClosure([s, done] { done(s); });
+                             work_queue_->Schedule([s, done] { done(s); });
                            });
         delete state;
         return;
@@ -183,6 +183,62 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
   dev_resolver_->GetDeviceAttributesAsync(peer_device, peer_task,
                                           &state->server_attributes,
                                           dev_attributes_callback);
+}
+
+void CollectiveRemoteAccessDistributed::CheckPeerHealth(
+    const string& peer_task, const StatusCallback& done) {
+  if (peer_task == task_name_) {
+    // Fast path if the peer is the worker itself.
+    done(Status::OK());
+    return;
+  }
+  // We send a GetStatus RPC with fail_fast=false to check the health of a peer
+  // task. If the RPC succeeds, we verify if the peer_device incarnation matches
+  // the local record if we have it. Note that DeviceResolverInterface always
+  // caches the device attributes.
+  WorkerInterface* wi = worker_cache_->GetOrCreateWorker(peer_task);
+  if (wi == nullptr) {
+    done(errors::InvalidArgument(peer_task,
+                                 " not found. It's probably in valid. The "
+                                 "valid form is /job:xxx/replica:0/task:N"));
+    return;
+  }
+  auto req = new GetStatusRequest();
+  auto resp = new GetStatusResponse();
+  // We're not using Cancellable call because GetStatusAsync doesn't support
+  // cancellation yet.
+  wi->GetStatusAsync(
+      req, resp, /*fail_fast*/ true,
+      [this, req, resp, wi, peer_task, done](Status s) {
+        std::vector<DeviceAttributes> cached_attrs;
+        if (s.ok()) {
+          s = dev_resolver_->GetTaskCached(peer_task, &cached_attrs);
+        }
+        if (s.ok()) {
+          absl::flat_hash_set<uint64> remote_incarnations;
+          for (const DeviceAttributes& da : resp->device_attributes()) {
+            remote_incarnations.insert(da.incarnation());
+          }
+          for (const DeviceAttributes& attr : cached_attrs) {
+            if (!remote_incarnations.contains(attr.incarnation())) {
+              s = errors::FailedPrecondition(
+                  attr.name(), " with incarnation ", attr.incarnation(),
+                  " is not available. This usually means ", peer_task,
+                  " has restarted");
+              break;
+            }
+          }
+        } else if (errors::IsNotFound(s)) {
+          // Skip validating device incarnation if we don't know what the
+          // incarnation should be. The device attribute is cached after the
+          // first collective.
+          s = Status::OK();
+        }
+        delete req;
+        delete resp;
+        worker_cache_->ReleaseWorker(peer_task, wi);
+        done(s);
+      });
 }
 
 void CollectiveRemoteAccessDistributed::StartAbort(const Status& s) {

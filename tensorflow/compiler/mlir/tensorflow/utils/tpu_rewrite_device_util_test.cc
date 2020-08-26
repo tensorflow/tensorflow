@@ -602,6 +602,7 @@ TEST(TPURewriteDeviceUtilTest, ValidGeneralDeviceAssignmentMesh1x2x1x3) {
 
 TEST(TPURewriteDeviceUtilTest, TestGetDeviceCoordinates) {
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   mlir::Builder builder(&context);
   auto device_assignment_attr = builder.getI64ArrayAttr({1, 2, 3});
   auto status_or_device_coodinates =
@@ -615,6 +616,7 @@ TEST(TPURewriteDeviceUtilTest, TestGetDeviceCoordinates) {
 
 TEST(TPURewriteDeviceUtilTest, TestInvalidAttrForDeviceAssignmentDisallowed) {
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   mlir::Builder builder(&context);
   auto device_assignment_attr = builder.getF32ArrayAttr({1.0, 2.0, 3.0});
   auto status_or_device_coodinates =
@@ -627,6 +629,7 @@ TEST(TPURewriteDeviceUtilTest, TestInvalidAttrForDeviceAssignmentDisallowed) {
 TEST(TPURewriteDeviceUtilTest, TestGetHostFailDeviceMissingAttributes) {
   mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   mlir::OpBuilder builder(module_ref->getBodyRegion());

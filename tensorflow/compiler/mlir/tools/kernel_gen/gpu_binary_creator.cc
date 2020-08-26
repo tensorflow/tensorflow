@@ -266,6 +266,7 @@ tensorflow::kernel_gen::GenerateGpuBinaryForTfCode(
     llvm::ArrayRef<uint32_t> unroll_factors) {
   RegisterDialects();
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef module = mlir::parseSourceString(tf_code, &context);
 
   TF_RETURN_IF_ERROR(LowerTfOpToLhloWithDynamicShapes(module.get()));

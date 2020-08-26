@@ -379,6 +379,12 @@ absl::optional<HloInstruction*> TileToPartialReplicateHaloExchange(
     const SPMDCollectiveOpsCreator& collective_ops_creator,
     int64* next_channel_id, HloInstruction* partition_id, SpmdBuilder* b);
 
+// Finds a list of dimensions that can be grouped on such that it will have the
+// specified device groups. Group order and dimension order are ignored.
+absl::optional<std::vector<int64>> FindMatchingPartitionedDimsForGrouping(
+    const HloSharding& sharding,
+    const std::vector<std::vector<int64>>& device_groups);
+
 }  // namespace spmd
 }  // namespace xla
 

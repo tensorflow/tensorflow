@@ -331,7 +331,8 @@ void RemoveClusterAliasedOutputs(OpBuilder* builder,
   for (auto result :
        llvm::zip(cluster_terminator->getOperands(), cluster.getResults())) {
     Value cluster_terminator_operand = std::get<0>(result);
-    if (cluster.getOperation()->isProperAncestor(
+    if (cluster_terminator_operand.getDefiningOp() &&
+        cluster.getOperation()->isProperAncestor(
             cluster_terminator_operand.getDefiningOp())) {
       new_cluster_results.push_back(cluster_terminator_operand);
       new_cluster_result_types.push_back(cluster_terminator_operand.getType());

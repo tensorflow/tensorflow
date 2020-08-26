@@ -129,6 +129,21 @@ class TpuExecutable : public Executable {
     ExecutorApiFn()->TpuExecutable_ExecuteAsyncOnStreamFn(
         se_executable_, &se_run_options, se_args, arguments.size(), nullptr,
         &se_execution_output, status.c_status);
+
+    for (int i = 0; i < arguments.size(); ++i) {
+      ApiConverter::Free(&se_args[i]->shape_tree.shape);
+      ApiConverter::Free(&se_args[i]->dynamic_shape);
+      ApiConverter::Free(&se_args[i]->host_shape);
+
+      for (int j = 0; j < se_args[i]->unowned_indices_size; ++i) {
+        ApiConverter::Free(&se_args[i]->unowned_indices[j]);
+      }
+
+      delete[] se_args[i]->shape_tree.buffers;
+      delete se_args[i];
+    }
+    delete[] se_args;
+
     if (!status.ok()) {
       return status.status();
     }
@@ -223,6 +238,8 @@ class TpuCompiler : public Compiler {
     }
     HloModuleProto result_proto =
         stream_executor::tpu::DeserializeProto<HloModuleProto>(result.proto);
+    stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
+    stream_executor::tpu::SerializedProto_Free(result.proto);
     return HloModule::CreateFromProto(result_proto, module->config());
   }
 
@@ -258,6 +275,7 @@ class TpuCompiler : public Compiler {
 
     std::unique_ptr<Executable> exec =
         absl::make_unique<TpuExecutable>(result, std::move(module));
+    stream_executor::tpu::SerializedProto_Free(hlo_module.proto);
     return exec;
   }
 
@@ -307,6 +325,10 @@ class TpuCompiler : public Compiler {
       executables[i] = absl::make_unique<TpuExecutable>(se_executables[i],
                                                         std::move(modules[i]));
     }
+
+    stream_executor::tpu::SerializedProto_Free(se_module_group.proto);
+    delete se_module_group.module_config;
+    delete[] se_executables;
 
     return executables;
   }

@@ -43,6 +43,9 @@ class DeviceResolverDistributed : public DeviceResolverInterface {
                                 DeviceAttributes* attributes,
                                 const StatusCallback& done) override;
 
+  Status GetTaskCached(const string& task,
+                       std::vector<DeviceAttributes>* attributes) override;
+
   void ClearTask(const string& task) override;
 
   void ClearCache() override;

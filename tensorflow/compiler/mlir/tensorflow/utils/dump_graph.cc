@@ -66,6 +66,7 @@ Status DumpTextualIRToFile(const MlirDumpConfig& config, const Graph& graph,
                            WritableFile* file) {
   WritableFileRawStream os(std::move(file));
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef module;
   if (flib_def) {
     flib_def = &graph.flib_def();

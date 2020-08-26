@@ -679,7 +679,6 @@ tf_python_pybind_extension(
         "lib/core/numpy.h",
         "lib/core/safe_ptr.h",
         "//tensorflow/c:headers",
-        "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
@@ -692,6 +691,7 @@ tf_python_pybind_extension(
         ":pybind11_lib",
         ":pybind11_status",
         "//third_party/py/numpy:headers",
+        "//tensorflow/c:pywrap_required_hdrs",
         "@pybind11",
         "//third_party/python_runtime:headers",
         "//tensorflow/core:protos_all_cc",
@@ -1022,7 +1022,6 @@ cc_library(
         "lib/core/numpy.h",
         "lib/core/safe_ptr.h",
         "//tensorflow/c:headers",
-        "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:headers",
     ],
     features = [
@@ -1033,6 +1032,7 @@ cc_library(
     ]),
     deps = [
         ":numpy_lib",
+        "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c:tf_status_headers",
         "//tensorflow/core:framework_internal_headers_lib",
         "//tensorflow/core/common_runtime:core_cpu_headers_lib",
@@ -2997,6 +2997,7 @@ tf_gen_op_wrapper_private_py(
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
     deps = [
+        "//tensorflow/c/kernels:histogram_summary_op_lib",
         "//tensorflow/c/kernels:summary_op_lib",
         "//tensorflow/core:logging_ops_op_lib",
     ],
@@ -3451,12 +3452,11 @@ cuda_py_test(
     srcs = ["ops/collective_ops_gpu_test.py"],
     python_version = "PY3",
     tags = [
+        "guitar",
         "multi_gpu",
         "no_rocm",
         "no_windows",
-        "noguitar",  # b/163673583
     ],
-    tfrt_enabled = True,
     deps = [
         ":client_testlib",
         ":collective_ops",
@@ -6922,6 +6922,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["training/adam_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":array_ops",
         ":client_testlib",
@@ -8348,7 +8349,6 @@ tf_python_pybind_extension(
         "util/util.h",
         ":py_exception_registry_hdr",
         "//tensorflow/c:headers",
-        "//tensorflow/c:pywrap_required_hdrs",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
         "//tensorflow/core/common_runtime/eager:pywrap_required_hdrs",
@@ -8366,6 +8366,7 @@ tf_python_pybind_extension(
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
+        "//tensorflow/c:pywrap_required_hdrs",
         "@pybind11",
         "//third_party/python_runtime:headers",
         "//tensorflow/c/experimental/saved_model/core:pywrap_required_hdrs",

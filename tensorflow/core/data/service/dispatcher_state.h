@@ -26,7 +26,7 @@ namespace tensorflow {
 namespace data {
 
 // A class encapsulating the journaled state of the dispatcher. All state
-// modifications must be done via `ApplyUpdate`. This helps to ensure that
+// modifications must be done via `Apply`. This helps to ensure that
 // replaying the journal will allow us to restore the exact same state.
 //
 // The following usage pattern will keep the journal in sync with the state of
@@ -34,7 +34,7 @@ namespace data {
 // {
 //   mutex_lock l(mu_);
 //   Update update = ...  // create an update
-//   dispatcher_state.ApplyUpdate(update);
+//   dispatcher_state.Apply(update);
 //   journal_writer.write(Update);
 //   // Unlock mu_
 // }
@@ -60,15 +60,11 @@ class DispatcherState {
 
   // A dataset registered with the dispatcher.
   struct Dataset {
-    explicit Dataset(int64 dataset_id, int64 fingerprint,
-                     const DatasetDef& dataset_def)
-        : dataset_id(dataset_id),
-          fingerprint(fingerprint),
-          dataset_def(dataset_def) {}
+    explicit Dataset(int64 dataset_id, int64 fingerprint)
+        : dataset_id(dataset_id), fingerprint(fingerprint) {}
 
     const int64 dataset_id;
     const int64 fingerprint;
-    const DatasetDef dataset_def;
   };
 
   // A worker registered with the dispatcher.
@@ -110,6 +106,8 @@ class DispatcherState {
     const int64 dataset_id;
     const ProcessingMode processing_mode;
     const absl::optional<NamedJobKey> named_job_key;
+    int64 num_clients = 0;
+    int64 last_client_released_micros = -1;
     bool finished = false;
   };
 
@@ -152,6 +150,13 @@ class DispatcherState {
   // Gets a named job by key. Returns NOT_FOUND if there is no such job.
   Status NamedJobByKey(NamedJobKey key, std::shared_ptr<const Job>* job) const;
 
+  // Returns the job associated with the given job client id. Returns NOT_FOUND
+  // if the job_client_id is unknown or has been released.
+  Status JobForJobClientId(int64 job_client_id,
+                           std::shared_ptr<const Job>& job);
+  // Returns the next available job client id.
+  int64 NextAvailableJobClientId() const;
+
   // Returns the next available task id.
   int64 NextAvailableTaskId() const;
   // Gets a task by id. Returns NOT_FOUND if there is no such task.
@@ -169,6 +174,8 @@ class DispatcherState {
   void RegisterDataset(const RegisterDatasetUpdate& register_dataset);
   void RegisterWorker(const RegisterWorkerUpdate& register_worker);
   void CreateJob(const CreateJobUpdate& create_job);
+  void AcquireJobClient(const AcquireJobClientUpdate& acquire_job_client);
+  void ReleaseJobClient(const ReleaseJobClientUpdate& release_job_client);
   void CreateTask(const CreateTaskUpdate& create_task);
   void FinishTask(const FinishTaskUpdate& finish_task);
 
@@ -188,6 +195,10 @@ class DispatcherState {
   // Named jobs, keyed by their names and indices. Not all jobs have names, so
   // this is a subset of the jobs stored in `jobs_`.
   absl::flat_hash_map<NamedJobKey, std::shared_ptr<Job>> named_jobs_;
+
+  int64 next_available_job_client_id_ = 0;
+  // Mapping from client ids to the jobs they are associated with.
+  absl::flat_hash_map<int64, std::shared_ptr<Job>> jobs_for_client_ids_;
 
   int64 next_available_task_id_ = 0;
   // Tasks, keyed by task ids.

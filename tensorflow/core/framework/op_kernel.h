@@ -1457,6 +1457,7 @@ class Name : public KernelDefBuilder {
 #define REGISTER_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)        \
   constexpr bool should_register_##ctr##__flag =                      \
       SHOULD_REGISTER_OP_KERNEL(#__VA_ARGS__);                        \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel")                                  \
   static ::tensorflow::kernel_factory::OpKernelRegistrar              \
       registrar__body__##ctr##__object(                               \
           should_register_##ctr##__flag                               \
@@ -1479,6 +1480,8 @@ class Name : public KernelDefBuilder {
   REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, __VA_ARGS__)
 
 #define REGISTER_SYSTEM_KERNEL_BUILDER_UNIQ(ctr, kernel_builder, ...)    \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel")                                     \
+  TF_ATTRIBUTE_ANNOTATE("tf:kernel:system")                              \
   static ::tensorflow::kernel_factory::OpKernelRegistrar                 \
       registrar__body__##ctr##__object(                                  \
           ::tensorflow::register_kernel::system::kernel_builder.Build(), \

@@ -110,26 +110,20 @@ int3 FullyConnected::GetGridSize() const {
   return int3(dst_[0]->Slices(), 1, 1);
 }
 
-absl::Status CreateFullyConnected(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const FullyConnectedAttributes& attr,
-                                  FullyConnected* result) {
-  *result = FullyConnected(definition, creation_context.device->info_);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+FullyConnected CreateFullyConnected(const DeviceInfo& device_info,
+                                    const OperationDef& definition,
+                                    const FullyConnectedAttributes& attr) {
+  FullyConnected result(definition, device_info);
+  result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
 
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
-
-  return absl::OkStatus();
+  return result;
 }
 
 }  // namespace cl

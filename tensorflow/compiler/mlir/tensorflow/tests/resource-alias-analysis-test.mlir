@@ -173,7 +173,7 @@ func @passthru(%arg0: !tf_res) -> (!tf_res, !tf_res) {
 // -----
 // Test aliasing through IfRegion
 
-!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+!tf_res = type tensor<*x!tf.resource<tensor<i1>>>
 
 // CHECK-LABEL: func @if_region_aliasing
 // expected-remark@below {{Region #0, Arg #0, ID 7 : 1, 4, 6, 7}}
@@ -181,7 +181,7 @@ func @passthru(%arg0: !tf_res) -> (!tf_res, !tf_res) {
 func @if_region_aliasing(%arg0: !tf_res, %arg1: !tf_res) {
   // expected-remark@below {{Result #0, ID 0 : 0, 1, 3, 4, 5}}
   %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
-  %read0 = "tf.ReadVariableOp"(%vh0) : (!tf_res) -> tensor<32xf32>
+  %read0 = "tf.ReadVariableOp"(%vh0) : (!tf_res) -> tensor<i1>
   // expected-remark@below {{Result #0, ID 4 : Unknown}}
   // expected-remark@below {{Result #1, ID 5 : 0, 1, 2, 3, 4, 5, 6, 8}}
   // expected-remark@below {{Result #2, ID 6 : 1, 2, 4, 5, 6, 7, 8}}
@@ -195,7 +195,7 @@ func @if_region_aliasing(%arg0: !tf_res, %arg1: !tf_res) {
             // expected-remark@below {{Result #0, ID 3 : 0, 1, 3, 4, 5}}
             %id0 = "tf.Identity"(%vh0) : (!tf_res) -> !tf_res
             "tf.Yield"(%id0, %id0, %arg0) : (!tf_res, !tf_res, !tf_res) -> ()
-          }) {is_stateless = true} : (tensor<32xf32>) -> (!tf_res, !tf_res, !tf_res)
+          }) {is_stateless = true} : (tensor<i1>) -> (!tf_res, !tf_res, !tf_res)
   return
 }
 
@@ -232,3 +232,55 @@ func @while_region_aliasing(%arg0: !tf_res, %arg1: !tf_res, %arg2: !tf_res) {
   return
 }
 
+// -----
+// Test aliasing through calls
+!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+
+// CHECK-LABEL: func @aliasing_through_calls
+func @aliasing_through_calls(%arg0: tensor<32xf32>) -> () {
+  // expected-remark@below {{Result #0, ID 0 : 0, 1, 2}}
+  %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
+  // expected-remark@below {{Result #0, ID 1 : Unknown}}
+  // expected-remark@below {{Result #1, ID 2 : 0, 1, 2}}
+  %c:2 = call @passthru(%vh0) : (!tf_res) -> (!tf_res, !tf_res)
+  return
+}
+
+// expected-remark@below {{Region #0, Arg #0, ID 1 : 1}}
+func @passthru(%arg0: !tf_res) -> (!tf_res, !tf_res) {
+  // expected-remark@below {{Result #0, ID 0 : 0}}
+  %vh0 = "tf.VarHandleOp"() {container = "c", shared_name = "v0"} : () -> !tf_res
+  return %vh0, %arg0 : !tf_res, !tf_res
+}
+
+// -----
+// Test aliasing through tf_device.launch
+!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+
+// CHECK-LABEL: func @aliasing_through_launch
+func @aliasing_through_launch(%arg0: tensor<32xf32>) {
+  // expected-remark@below {{Result #0, ID 0 : 0, 1}}
+  %vh = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> !tf_res
+
+  // expected-remark@below {{Result #0, ID 1 : 0, 1}}
+  %launch = "tf_device.launch"() ({
+    tf_device.return %vh : !tf_res
+  }) {device = ""} : () -> !tf_res
+  return
+}
+
+// -----
+// Test aliasing through tf_device.cluster
+!tf_res = type tensor<*x!tf.resource<tensor<32xf32>>>
+
+// CHECK-LABEL: func @aliasing_through_cluster
+func @aliasing_through_cluster(%arg0: tensor<32xf32>) {
+  // expected-remark@below {{Result #0, ID 0 : 0, 1}}
+  %vh = "tf.VarHandleOp"() {container = "c", shared_name = "v"} : () -> !tf_res
+
+  // expected-remark@below {{Result #0, ID 1 : 0, 1}}
+  %cluster = "tf_device.cluster"() ({
+    tf_device.return %vh : !tf_res
+  }) : () -> !tf_res
+  return
+}

@@ -46,6 +46,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       hlo_module.entry_computation()->root_instruction();
 
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef mlir_module(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 

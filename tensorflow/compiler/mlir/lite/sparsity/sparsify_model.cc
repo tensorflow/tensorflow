@@ -37,6 +37,7 @@ TfLiteStatus SparsifyModel(const tflite::ModelT& input_model,
                            flatbuffers::FlatBufferBuilder* builder,
                            tflite::ErrorReporter* error_reporter) {
   MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   StatusScopedDiagnosticHandler statusHandler(&context,
                                               /*propagate=*/true);
 

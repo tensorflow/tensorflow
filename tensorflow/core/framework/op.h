@@ -313,6 +313,7 @@ struct OpDefBuilderReceiver {
 #define REGISTER_OP(name) REGISTER_OP_UNIQ_HELPER(__COUNTER__, name)
 #define REGISTER_OP_UNIQ_HELPER(ctr, name) REGISTER_OP_UNIQ(ctr, name)
 #define REGISTER_OP_UNIQ(ctr, name)                                          \
+  TF_ATTRIBUTE_ANNOTATE("tf:op")                                             \
   static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr    \
       TF_ATTRIBUTE_UNUSED =                                                  \
           ::tensorflow::register_op::OpDefBuilderWrapper<SHOULD_REGISTER_OP( \
@@ -326,6 +327,8 @@ struct OpDefBuilderReceiver {
 #define REGISTER_SYSTEM_OP_UNIQ_HELPER(ctr, name) \
   REGISTER_SYSTEM_OP_UNIQ(ctr, name)
 #define REGISTER_SYSTEM_OP_UNIQ(ctr, name)                                \
+  TF_ATTRIBUTE_ANNOTATE("tf:op")                                          \
+  TF_ATTRIBUTE_ANNOTATE("tf:op:system")                                   \
   static ::tensorflow::register_op::OpDefBuilderReceiver register_op##ctr \
       TF_ATTRIBUTE_UNUSED =                                               \
           ::tensorflow::register_op::OpDefBuilderWrapper<true>(name)

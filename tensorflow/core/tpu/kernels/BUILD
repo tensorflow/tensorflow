@@ -45,6 +45,7 @@ cc_library(
     name = "tpu_compile_op_common",
     srcs = ["tpu_compile_op_common.cc"],
     hdrs = ["tpu_compile_op_common.h"],
+    linkopts = ["-Wl,--warn-backrefs-exclude=*/learning/brain/google/xla/_objs/tpu_compilation_metrics_google/*"],  # TODO(b/163560146) Fix the dependency issue
     deps = [
         ":tpu_compilation_cache_entry_unloader",
         ":tpu_compilation_cache_interface",
@@ -333,6 +334,7 @@ cc_library(
     name = "tpu_compilation_cache_interface",
     srcs = ["tpu_compilation_cache_interface.cc"],
     hdrs = ["tpu_compilation_cache_interface.h"],
+    linkopts = ["-Wl,--warn-backrefs-exclude=*/learning/brain/google/xla/_objs/tpu_compilation_metrics_google/*"],  # TODO(b/163560146) Fix the dependency issue.
     deps = [
         ":compiled_subgraph",
         ":tpu_compilation_cache_entry",

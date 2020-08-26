@@ -518,7 +518,8 @@ void TestDistributedFunctionCancellation(bool inject_error) {
   TFE_TensorHandle* var_handle = TestVariable(ctx, 2.0, dev2_name);
   EXPECT_NE(var_handle, nullptr);
 
-  const string function_def = VariableAddFunctionWithGraphError();
+  const string function_def = inject_error ? VariableAddFunctionWithGraphError()
+                                           : VariableAddFunction();
   TFE_ContextAddFunctionDef(ctx, function_def.data(), function_def.size(),
                             status);
   ASSERT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);

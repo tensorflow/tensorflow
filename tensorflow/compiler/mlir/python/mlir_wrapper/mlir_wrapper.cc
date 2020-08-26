@@ -38,6 +38,7 @@ PYBIND11_MODULE(mlir_wrapper, m) {
     SM.AddNewSourceBuffer(llvm::MemoryBuffer::getMemBuffer(input),
                           llvm::SMLoc());
     mlir::MLIRContext ctx;
+    ctx.loadAllGloballyRegisteredDialects();
     auto module = mlir::parseSourceFile(SM, &ctx);
     if (!module) {
       return false;
