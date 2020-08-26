@@ -144,8 +144,9 @@ bool IsResourceOutputShapesAttribute(const AttrValue& attr_value,
 
 void LoadImporterDialects(mlir::MLIRContext& context) {
   // Load dialects involved in the conversion
-  mlir::RegisterAllTensorFlowDialects(context.getDialectRegistry());
-  context.getDialectRegistry().loadAll(&context);
+  mlir::DialectRegistry registry;
+  mlir::RegisterAllTensorFlowDialects(registry);
+  registry.loadAll(&context);
 }
 
 // This class is used to generate new MLIR function name strings that are both

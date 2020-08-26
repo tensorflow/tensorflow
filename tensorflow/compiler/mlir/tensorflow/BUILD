@@ -1318,6 +1318,7 @@ cc_library(
     deps = [
         ":convert_graphdef",
         ":mlir_roundtrip_flags",
+        ":tensorflow",
         "//tensorflow/compiler/tf2xla:functionalize_control_flow_pass_registration",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",

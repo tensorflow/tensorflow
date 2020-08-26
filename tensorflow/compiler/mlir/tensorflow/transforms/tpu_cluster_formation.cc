@@ -78,6 +78,10 @@ using ClusterMap = llvm::SmallDenseMap<llvm::StringRef,
 struct TPUClusterFormation
     : public TF::PerFunctionAggregateAnalysisConsumerPass<
           TPUClusterFormation, TF::ResourceAliasAnalysis> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<tf_device::TensorFlowDeviceDialect>();
+  }
+
   void runOnFunction(
       FuncOp func,
       const TF::ResourceAliasAnalysis::Info& resource_alias_analysis);

@@ -36,6 +36,10 @@ static constexpr StringRef kTFEntry = "tf_entry";
 // * std.dealloc becomes tf_framework.dealloc_raw.
 class EmbedTFFrameworkPass
     : public EmbedTFFrameworkPassBase<EmbedTFFrameworkPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mlir::kernel_gen::tf_framework::TFFrameworkDialect>();
+  }
+
  public:
   void runOnOperation() override {
     ModuleOp m = getOperation();

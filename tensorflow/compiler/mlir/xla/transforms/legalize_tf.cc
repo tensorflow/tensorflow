@@ -72,7 +72,8 @@ constexpr char kShardingAttr[] = "mhlo.sharding";
 
 class LegalizeTF : public PassWrapper<LegalizeTF, FunctionPass> {
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect>();
+    registry.insert<chlo::HloClientDialect, mhlo::MhloDialect,
+                    shape::ShapeDialect, StandardOpsDialect>();
   }
 
  public:
