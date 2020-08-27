@@ -169,6 +169,7 @@ cuda_py_test(
     ],
     python_version = "PY3",
     tags = [
+        "no_cuda11",  # TODO(b/166308253): enable the test for CUDA 11.
         "no_cuda_on_cpu_tap",
         "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
         "no_pip",
