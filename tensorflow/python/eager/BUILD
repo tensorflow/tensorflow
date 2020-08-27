@@ -561,6 +561,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
+        "_concrete_function",
         ":context",
         ":core",
         ":execute",

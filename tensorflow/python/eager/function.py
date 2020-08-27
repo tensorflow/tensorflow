@@ -77,6 +77,8 @@ from tensorflow.python.util import object_identity
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
+from tensorflow.python.eager import _concrete_function
+
 # Loaded lazily due to a circular dependency (roughly
 # tf.function->autograph->->dataset->tf.function).
 # TODO(b/133251390): Use a regular import.
@@ -2687,26 +2689,8 @@ class FunctionSpec(object):
       return inputs, {}, flat_inputs, filtered_flat_inputs
 
 
-def _as_ndarray(value):
-  """Converts value to an ndarray, assumes _is_ndarray(value)."""
-  # TODO(tomhennigan) Support __array_interface__ too.
-  return value.__array__()
-
-
-def _is_ndarray(value):
-  """Tests whether the given value is an ndarray (and not a TF tensor/var)."""
-  # TODO(tomhennigan) Support __array_interface__ too.
-  return hasattr(value, "__array__") and not (
-      isinstance(value, ops.Tensor)
-      or isinstance(value, resource_variable_ops.BaseResourceVariable)
-      or hasattr(value, "_should_act_as_resource_variable")
-
-      # For legacy reasons we do not automatically promote Numpy strings.
-      or isinstance(value, np.str_)
-      # NumPy dtypes have __array__ as unbound methods.
-      or isinstance(value, type)
-      # CompositeTensors should be flattened instead.
-      or isinstance(value, composite_tensor.CompositeTensor))
+_as_ndarray = _concrete_function._as_ndarray
+_is_ndarray = _concrete_function._is_ndarray
 
 
 def _convert_numpy_inputs(inputs):
