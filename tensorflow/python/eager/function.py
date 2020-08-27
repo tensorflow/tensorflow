@@ -2691,44 +2691,7 @@ class FunctionSpec(object):
 
 _as_ndarray = _concrete_function._as_ndarray
 _is_ndarray = _concrete_function._is_ndarray
-
-
-def _convert_numpy_inputs(inputs):
-  """Convert numpy array inputs to tensors."""
-  # We assume that any CompositeTensors have already converted their components
-  # from numpy arrays to Tensors, so we don't need to expand composites here for
-  # the numpy array conversion. Instead, we do so because the flattened inputs
-  # are eventually passed to ConcreteFunction()._call_flat, which requires
-  # expanded composites.
-  flat_inputs = nest.flatten(inputs, expand_composites=True)
-
-  # Check for NumPy arrays in arguments and convert them to Tensors.
-  # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
-  # finding a way to store them directly in the cache key (currently not
-  # possible since ndarrays are not hashable).
-  need_packing = False
-  filtered_flat_inputs = []
-  for index, value in enumerate(flat_inputs):
-    if isinstance(value,
-                  (ops.Tensor, resource_variable_ops.BaseResourceVariable)):
-      filtered_flat_inputs.append(value)
-    elif hasattr(value, "__array__") and not (
-        hasattr(value, "_should_act_as_resource_variable") or
-        isinstance(value, (np.str_, type, composite_tensor.CompositeTensor))):
-      # This case is equivalent to _is_ndarray(value) == True
-      a = _as_ndarray(value)
-      if not isinstance(a, np.ndarray):
-        raise TypeError("The output of __array__ must be an np.ndarray "
-                        "(got {} from {}).".format(type(a), type(value)))
-      flat_inputs[index] = constant_op.constant(a)
-      filtered_flat_inputs.append(flat_inputs[index])
-      need_packing = True
-  if need_packing:
-    return (nest.pack_sequence_as(
-        structure=inputs, flat_sequence=flat_inputs,
-        expand_composites=True), flat_inputs, filtered_flat_inputs)
-  else:
-    return inputs, flat_inputs, filtered_flat_inputs
+_convert_numpy_inputs = _concrete_function._convert_numpy_inputs
 
 
 def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
