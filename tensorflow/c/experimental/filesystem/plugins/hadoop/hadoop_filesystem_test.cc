@@ -75,12 +75,77 @@ class HadoopFileSystemTest : public ::testing::Test {
     return reader;
   }
 
+  void WriteString(const std::string& path, const std::string& content) {
+    auto writer = GetWriter();
+    tf_hadoop_filesystem::NewWritableFile(filesystem_, path.c_str(),
+                                          writer.get(), status_);
+    if (TF_GetCode(status_) != TF_OK) return;
+    tf_writable_file::Append(writer.get(), content.c_str(), content.length(),
+                             status_);
+    if (TF_GetCode(status_) != TF_OK) return;
+    tf_writable_file::Close(writer.get(), status_);
+    if (TF_GetCode(status_) != TF_OK) return;
+  }
+
+  std::string ReadAll(const std::string& path) {
+    auto reader = GetReader();
+    tf_hadoop_filesystem::NewRandomAccessFile(filesystem_, path.c_str(),
+                                              reader.get(), status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+
+    auto file_size =
+        tf_hadoop_filesystem::GetFileSize(filesystem_, path.c_str(), status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+
+    std::string content;
+    content.resize(file_size);
+    auto read = tf_random_access_file::Read(reader.get(), 0, file_size,
+                                            &content[0], status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+    if (read >= 0) content.resize(read);
+    if (file_size != content.size())
+      TF_SetStatus(
+          status_, TF_DATA_LOSS,
+          std::string("expected " + std::to_string(file_size) + " got " +
+                      std::to_string(content.size()) + " bytes")
+              .c_str());
+    return content;
+  }
+
  protected:
   TF_Filesystem* filesystem_;
   TF_Status* status_;
 };
 
-TEST_F(HadoopFileSystemTest, Init) { ASSERT_TF_OK(status_); }
+TEST_F(HadoopFileSystemTest, RandomAccessFile) {
+  const std::string path = TmpDir("RandomAccessFile");
+  const std::string content = "abcdefghijklmn";
+
+  WriteString(path, content);
+  ASSERT_TF_OK(status_);
+
+  auto reader = GetReader();
+  tf_hadoop_filesystem::NewRandomAccessFile(filesystem_, path.c_str(),
+                                            reader.get(), status_);
+  EXPECT_TF_OK(status_);
+
+  std::string result;
+  result.resize(content.size());
+  auto read = tf_random_access_file::Read(reader.get(), 0, content.size(),
+                                          &result[0], status_);
+  result.resize(read);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(content.size(), result.size());
+  EXPECT_EQ(content, result);
+
+  result.clear();
+  result.resize(4);
+  read = tf_random_access_file::Read(reader.get(), 2, 4, &result[0], status_);
+  result.resize(read);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(4, result.size());
+  EXPECT_EQ(content.substr(2, 4), result);
+}
 
 }  // namespace
 }  // namespace tensorflow

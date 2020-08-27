@@ -245,7 +245,7 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
 
   char* dst = buffer;
   bool eof_retried = false;
-  int64_t r = 0;
+  int64_t read = 0;
   while (TF_GetCode(status) == TF_OK && !eof_retried) {
     // We lock inside the loop rather than outside so we don't block other
     // concurrent readers.
@@ -255,12 +255,13 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
     // of int32. -2 offset can avoid JVM OutOfMemoryError.
     size_t read_n =
         (std::min)(n, static_cast<size_t>(std::numeric_limits<int>::max() - 2));
-    r = libhdfs->hdfsPread(fs, handle, static_cast<tOffset>(offset), dst,
-                           static_cast<tSize>(read_n));
+    int64_t r = libhdfs->hdfsPread(fs, handle, static_cast<tOffset>(offset),
+                                   dst, static_cast<tSize>(read_n));
     if (r > 0) {
       dst += r;
       n -= r;
       offset += r;
+      read += r;
     } else if (!eof_retried && r == 0) {
       // Always reopen the file upon reaching EOF to see if there's more data.
       // If writers are streaming contents while others are concurrently
@@ -272,11 +273,13 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
         TF_SetStatusFromIOError(status, errno, path);
         return -1;
       }
-      handle = libhdfs->hdfsOpenFile(fs, hdfs_path, O_RDONLY, 0, 0, 0);
-      if (handle == nullptr) {
+      hdfs_file->handle =
+          libhdfs->hdfsOpenFile(fs, hdfs_path, O_RDONLY, 0, 0, 0);
+      if (hdfs_file->handle == nullptr) {
         TF_SetStatusFromIOError(status, errno, path);
         return -1;
       }
+      handle = hdfs_file->handle;
       eof_retried = true;
     } else if (eof_retried && r == 0) {
       TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
@@ -286,7 +289,7 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
       TF_SetStatusFromIOError(status, errno, path);
     }
   }
-  return r;
+  return read;
 }
 
 }  // namespace tf_random_access_file
