@@ -120,7 +120,7 @@ py::tuple ConvertNumpyInputs(py::object inputs) {
   // finding a way to store them directly in the cache key (currently not
   // possible since ndarrays are not hashable).
   bool need_packing = false;
-  py::list filtered_flat_inputs = py::list();
+  py::list filtered_flat_inputs;
 
   for (int i = 0; i < flat_inputs.size(); ++i) {
     PyObject* value_ptr = flat_inputs[i].ptr();
