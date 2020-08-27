@@ -674,13 +674,17 @@ TfLiteStatus Subgraph::ResetVariableTensors() {
       continue;
     }
 
-    // Variable tensors have to be `kTfLiteArenaRwPersistent`, and must be
-    // allocated after the initial `PrepareOpsAndTensors()` is called.
-    TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type,
-                      kTfLiteArenaRwPersistent);
-    TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
-
-    tflite::ResetVariableTensor(&tensor);
+    if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
+      // If variable tensors allocation type is `kTfLiteArenaRwPersistent`, then
+      // they must be allocated after the initial `PrepareOpsAndTensors()` is
+      // called.
+      TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
+      tflite::ResetVariableTensor(&tensor);
+    } else {
+      // If variable tensors allocation type is not `kTfLiteArenaRwPersistent`,
+      // then it can only be `kTfLiteCustom` in which case, we do not reset it.
+      TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type, kTfLiteCustom);
+    }
   }
   return kTfLiteOk;
 }
