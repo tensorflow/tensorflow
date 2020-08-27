@@ -149,7 +149,6 @@ def LegalizeMaxPool2D : Pat<
               IsIntList1XY1:$ksize,
               IsIntList1XY1:$strides,
               $padding,
-              $explicit_paddings,
               IsDataFormatNHWC:$format),
           (TFL_MaxPool2DOp $value,
               /*padding=*/$padding,

@@ -688,7 +688,6 @@ def _MaxPoolGrad(op, grad):
       op.get_attr("ksize"),
       op.get_attr("strides"),
       padding=op.get_attr("padding"),
-      explicit_paddings=op.get_attr("explicit_paddings"),
       data_format=op.get_attr("data_format"))
 
 

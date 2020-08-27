@@ -181,13 +181,11 @@
       checkpoint saved in the `variables/` folder in the SavedModel.
     * When restoring, `save_path` can be a path to a SavedModel. The function
       will automatically find the checkpoint in the SavedModel.
-*   `tf.nn`:
-    * `tf.nn.max_pool2d` now supports explicit padding.
 *   Other:
     * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
   and "denylist" where possible. Please see 
   https://developers.google.com/style/word-list#blacklist for more context.
-  <ADD RELEASE NOTES HERE>
+    * <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors
 
