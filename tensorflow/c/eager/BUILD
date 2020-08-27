@@ -6,7 +6,6 @@ load(
     "tf_copts",
     "tf_cuda_cc_test",
     "tf_cuda_library",
-    "tfe_xla_copts",
 )
 load(
     "//tensorflow/core/platform:build_config.bzl",
@@ -31,7 +30,7 @@ tf_cuda_library(
         "c_api_unified_experimental.h",
     ],
     hdrs = ["c_api.h"],
-    copts = tf_copts() + tfe_xla_copts(),
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
@@ -72,13 +71,6 @@ tf_cuda_library(
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core/profiler/lib:traceme",
         ],
-    }) + select({
-        "//tensorflow:with_xla_support": [
-            "//tensorflow/compiler/tf2xla:xla_compiler",
-            "//tensorflow/compiler/jit",
-            "//tensorflow/compiler/jit:xla_device",
-        ],
-        "//conditions:default": [],
     }) + [
         "@com_google_absl//absl/memory",
         "//tensorflow/core/common_runtime/eager:eager_operation",
@@ -228,7 +220,6 @@ tf_cuda_cc_test(
         "gradients_test.cc",
     ],
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
@@ -290,7 +281,6 @@ tf_cuda_cc_test(
         "mnist_gradients_test.cc",
     ],
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + [
         "nomac",
@@ -553,7 +543,6 @@ tf_cuda_cc_test(
         "c_api_debug_test.cc",
         "c_api_test.cc",
     ],
-    extra_copts = tfe_xla_copts(),
     tags = [
         "noguitar",  # TODO(b/155445984): flaky
         #"guitar",
@@ -608,7 +597,6 @@ tf_cuda_cc_test(
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
     ],
@@ -641,7 +629,6 @@ tf_cuda_cc_test(
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
     ],
@@ -660,7 +647,6 @@ tf_cuda_cc_test(
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
         "noasan",  # leaks gRPC server instances
@@ -694,7 +680,6 @@ tf_cuda_cc_test(
     ],
     # TODO(b/136478427): Figure out how to correctly shut the server down
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     tags = [
         "no_windows",
     ],
@@ -729,7 +714,7 @@ tf_cuda_library(
         "c_api_experimental.h",
         "c_api_unified_experimental.h",
     ],
-    copts = tf_copts() + tfe_xla_copts(),
+    copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
@@ -801,7 +786,6 @@ tf_cuda_cc_test(
         "c_api_experimental_test.cc",
     ],
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [
@@ -825,7 +809,6 @@ tf_cuda_cc_test(
         "c_api_unified_experimental_test.cc",
     ],
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [

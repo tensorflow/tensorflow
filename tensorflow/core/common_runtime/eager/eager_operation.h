@@ -120,8 +120,6 @@ class EagerOperation : public ImmediateExecutionOperation {
   Status InputLength(const char* input_name, int* length) override;
   Status OutputLength(const char* output_name, int* length) override;
 
-  Status SetUseXla(bool enable) override;
-
   void SetStackTrace(AbstractStackTrace stack_trace) override {
     stack_trace_ = stack_trace;
   }
@@ -227,7 +225,6 @@ class EagerOperation : public ImmediateExecutionOperation {
   // updated accordingly.
   VariantDevice device_;
 
-  bool use_xla_ = false;
   absl::optional<AbstractStackTrace> stack_trace_;
   bool is_function_;  // Conceptually const, but can't be because of Reset
   bool colocation_exempt_;
