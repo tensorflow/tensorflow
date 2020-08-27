@@ -81,3 +81,26 @@ cc_library(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+cc_library(
+    name = "tf_signature_def_function",
+    srcs = [
+        "tf_signature_def_function.cc",
+    ],
+    hdrs = [
+        "tf_signature_def_function.h",
+    ],
+    deps = [
+        ":tensorhandle_convertible",
+        "//tensorflow/c/eager:abstract_tensor_handle",
+        "//tensorflow/c/eager:immediate_execution_context",
+        "//tensorflow/c/eager:immediate_execution_operation",
+        "//tensorflow/c/eager:immediate_execution_tensor_handle",
+        "//tensorflow/c/experimental/saved_model/core:signature_def_function",
+        "//tensorflow/c/experimental/saved_model/core:signature_def_function_metadata",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/common_runtime/eager:context",
+        "@com_google_absl//absl/types:span",
+    ],
+)
