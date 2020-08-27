@@ -1,4 +1,4 @@
-/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,19 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_PROFILING_ATRACE_PROFILER_H_
-#define TENSORFLOW_LITE_PROFILING_ATRACE_PROFILER_H_
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+#include "tensorflow/lite/testing/util.h"
 
-#include <memory>
-
-#include "tensorflow/lite/core/api/profiler.h"
-
-namespace tflite {
-namespace profiling {
-
-std::unique_ptr<tflite::Profiler> MaybeCreateATraceProfiler();
-
-}  // namespace profiling
-}  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_PROFILING_ATRACE_PROFILER_H_
+int main(int argc, char** argv) {
+  ::tflite::LogToStderr();
+  ::testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
+}

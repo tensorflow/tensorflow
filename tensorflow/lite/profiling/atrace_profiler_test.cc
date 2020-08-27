@@ -12,19 +12,37 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef TENSORFLOW_LITE_PROFILING_ATRACE_PROFILER_H_
-#define TENSORFLOW_LITE_PROFILING_ATRACE_PROFILER_H_
+#include "tensorflow/lite/profiling/atrace_profiler.h"
 
-#include <memory>
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
+#endif
 
-#include "tensorflow/lite/core/api/profiler.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
 namespace tflite {
 namespace profiling {
 
-std::unique_ptr<tflite::Profiler> MaybeCreateATraceProfiler();
+namespace {
 
+TEST(ATraceProfilerTest, MaybeCreateATraceProfiler) {
+  auto default_profiler = MaybeCreateATraceProfiler();
+  EXPECT_EQ(nullptr, default_profiler.get());
+
+#if defined(__ANDROID__)
+  if (__system_property_set("debug.tflite.trace", "1") == 0) {
+    auto profiler = MaybeCreateATraceProfiler();
+    EXPECT_NE(nullptr, profiler.get());
+  }
+
+  if (__system_property_set("debug.tflite.trace", "0") == 0) {
+    auto no_profiler = MaybeCreateATraceProfiler();
+    EXPECT_EQ(nullptr, no_profiler.get());
+  }
+#endif  // __ANDROID__
+}
+
+}  // namespace
 }  // namespace profiling
 }  // namespace tflite
-
-#endif  // TENSORFLOW_LITE_PROFILING_ATRACE_PROFILER_H_

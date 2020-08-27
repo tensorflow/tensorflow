@@ -157,6 +157,8 @@
     * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
       * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
     * Add NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
+    * TFLite Profiler for Android is available. See the detailed
+      [guide](https://www.tensorflow.org/lite/performance/measurement#trace_tensorflow_lite_internals_in_android).
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
