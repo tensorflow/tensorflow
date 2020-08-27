@@ -893,6 +893,14 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     TF_SetStatus(status.get(), static_cast<TF_Code>(code), message);
     TFE_AbortCollectiveOps(tensorflow::InputTFE_Context(ctx), status.get());
   });
+  m.def("TFE_CollectiveOpsCheckPeerHealth",
+        [](const py::handle& ctx, const char* task) {
+          tensorflow::Safe_TF_StatusPtr status =
+              tensorflow::make_safe(TF_NewStatus());
+          TFE_CollectiveOpsCheckPeerHealth(tensorflow::InputTFE_Context(ctx),
+                                           task, status.get());
+          tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
+        });
   m.def("TF_ListPhysicalDevices", &tensorflow::TF_ListPhysicalDevices);
   m.def("TF_GetDeviceDetails", &tensorflow::TF_GetDeviceDetails);
   m.def("TF_DeleteDeviceList", &TF_DeleteDeviceList,

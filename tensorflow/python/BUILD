@@ -3422,6 +3422,25 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "collective_ops_multi_worker_test",
+    size = "medium",
+    srcs = ["ops/collective_ops_multi_worker_test.py"],
+    python_version = "PY3",
+    tags = ["no_rocm"],
+    tfrt_enabled = False,
+    deps = [
+        ":collective_ops",
+        ":constant_op",
+        ":errors",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
+    ],
+)
+
+tf_py_test(
     name = "collective_ops_xla_test",
     size = "small",
     srcs = ["ops/collective_ops_xla_test.py"],
