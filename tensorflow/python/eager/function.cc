@@ -18,9 +18,19 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/stl_bind.h"
 
-namespace tensorflow {
-
 namespace py = pybind11;
+
+static const py::object Tensor =
+    py::module::import("tensorflow.python.framework.ops").attr("Tensor");
+static const py::object BaseResourceVariable =
+    py::module::import("tensorflow.python.ops.resource_variable_ops")
+        .attr("BaseResourceVariable");
+static const py::module* np = new py::module(py::module::import("numpy"));
+static const py::object CompositeTensor =
+    py::module::import("tensorflow.python.framework.composite_tensor")
+        .attr("CompositeTensor");
+
+namespace tensorflow {
 
 struct PyConcreteFunction {
   PyConcreteFunction() {}
@@ -71,10 +81,37 @@ py::object PyConcreteFunction::BuildCallOutputs(
   return nest->attr("pack_sequence_as")(structured_outputs, outputs_list, true);
 }
 
+py::object AsNdarray(py::object value) {
+  // TODO(tomhennigan) Support __array_interface__ too.
+  return value.attr("__array__")();
+}
+
+bool IsNdarray(py::object value) {
+  // TODO(tomhennigan) Support __array_interface__ too.
+  PyObject* value_ptr = value.ptr();
+  return PyObject_HasAttr(value_ptr,
+                          PyUnicode_DecodeUTF8("__array__", 9, "strict")) && !(
+      PyObject_IsInstance(value_ptr, Tensor.ptr())
+      || PyObject_IsInstance(value_ptr, BaseResourceVariable.ptr())
+      || PyObject_HasAttr(value_ptr, PyUnicode_DecodeUTF8(
+             "_should_act_as_resource_variable", 32, "strict"))
+      // For legacy reasons we do not automatically promote Numpy strings.
+      || PyObject_IsInstance(value_ptr, np->attr("str_").ptr())
+      // NumPy dtypes have __array__ as unbound methods.
+      || PyObject_IsInstance(value_ptr, (PyObject*) &PyType_Type)
+      // CompositeTensors should be flattened instead.
+      || PyObject_IsInstance(value_ptr, CompositeTensor.ptr()));
+}
+
 PYBIND11_MODULE(_concrete_function, m) {
   py::class_<PyConcreteFunction>(m, "ConcreteFunction")
       .def(py::init<>())
       .def("_build_call_outputs", &PyConcreteFunction::BuildCallOutputs);
+  m.def("_as_ndarray", &AsNdarray,
+        "Converts value to an ndarray, assumes _is_ndarray(value).");
+  m.def(
+      "_is_ndarray", &IsNdarray,
+      "Tests whether the given value is an ndarray (and not a TF tensor/var).");
 }
 
 }  // namespace tensorflow
