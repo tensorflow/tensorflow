@@ -70,7 +70,7 @@ def GetTestConfigs(include_nchw_vect_c=False, one_dimensional=False):
     tf_logging.info("NCHW and NCHW_VECT_C tests skipped because not run with "
                     "--config=cuda or no GPUs available.")
     return test_configs
-# "NCHW" format is currently supported exclusively on CUDA GPUs.
+  # "NCHW" format is currently supported exclusively on CUDA GPUs.
   test_configs += [("NCHW", True)]
   if include_nchw_vect_c:
     if test.is_gpu_available(
@@ -285,6 +285,17 @@ class PoolingTest(test.TestCase):
         expected=expected_output,
         use_gpu=use_gpu)
 
+  def _testAvgPoolEmpty(self, use_gpu):
+    expected_output = [7.0, 8.0, 9.0]
+    self._VerifyValues(
+        nn_ops.avg_pool,
+        input_sizes=[1, 3, 3, 0],
+        ksize=[1, 2, 2, 1],
+        strides=[1, 2, 2, 1],
+        padding="VALID",
+        expected=expected_output,
+        use_gpu=use_gpu)
+
   def _testAvgPoolSamePadding(self, use_gpu):
     expected_output = [8.5, 9.5, 10.5, 14.5, 15.5, 16.5]
     self._VerifyValues(
@@ -430,18 +441,6 @@ class PoolingTest(test.TestCase):
         padding="SAME",
         expected=[],
         use_gpu=use_gpu)
-
-  def testInvalidStrides(self):
-    strides = [1, 1, 1, 1]
-    for op in (nn_ops.avg_pool, nn_ops.max_pool):
-      for zero_dim in range(4):
-        bad_strides = strides
-        bad_strides[zero_dim] = 0
-        with self.cached_session(use_gpu=True):
-          t = constant_op.constant(1.0, shape=[3, 3, 3, 3])
-          with self.assertRaises((ValueError, errors_impl.UnimplementedError)):
-            self.evaluate(
-                op(t, ksize=[2, 2, 2, 2], strides=bad_strides, padding="SAME"))
 
   @test_util.run_deprecated_v1
   def testAvgPooling(self):
