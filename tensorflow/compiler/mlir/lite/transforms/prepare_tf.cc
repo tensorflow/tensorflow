@@ -746,8 +746,13 @@ struct ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
                              tf_fused_batch_norm_op.getAttrs());
     Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
 
-    rewriter.replaceOp(tf_fused_batch_norm_op,
-                       tf_fused_batch_norm_op_v3->getResults());
+    const auto& new_results = tf_fused_batch_norm_op_v3->getResults();
+
+    for (unsigned i = 0; i < tf_fused_batch_norm_op.getNumResults(); i++) {
+      tf_fused_batch_norm_op.getResult(i).replaceAllUsesWith(new_results[i]);
+    }
+
+    rewriter.eraseOp(tf_fused_batch_norm_op);
     return success();
   }
 };
