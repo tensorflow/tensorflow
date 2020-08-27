@@ -212,11 +212,9 @@ inline void DepthwiseConv(
 
             // Accumulate partial results to acc for a small chunk of channels
             for (int filter_y = 0; filter_y < filter_height; ++filter_y) {
-              const int in_y =
-                  in_y_origin + dilation_height_factor * filter_y;
+              const int in_y = in_y_origin + dilation_height_factor * filter_y;
               for (int filter_x = 0; filter_x < filter_width; ++filter_x) {
-                const int in_x =
-                    in_x_origin + dilation_width_factor * filter_x;
+                const int in_x = in_x_origin + dilation_width_factor * filter_x;
                 // Zero padding by omitting the areas outside the image.
                 const bool is_point_inside_image =
                     (in_x >= 0) && (in_x < input_width) && (in_y >= 0) &&
@@ -228,15 +226,14 @@ inline void DepthwiseConv(
 
                 for (int offset_ch = 0; offset_ch < steps; ++offset_ch) {
                   const int in_channel = begin_ch + offset_ch;
-                  const int output_channel =
-                      m + in_channel * depth_multiplier;
+                  const int output_channel = m + in_channel * depth_multiplier;
 
                   int32_t input_val = input_data[Offset(
                       input_shape, batch, in_y, in_x, in_channel)];
                   int32_t filter_val = filter_data[Offset(
                       filter_shape, 0, filter_y, filter_x, output_channel)];
-                  acc[offset_ch] += (filter_val + filter_offset) *
-                                    (input_val + input_offset);
+                  acc[offset_ch] +=
+                      (filter_val + filter_offset) * (input_val + input_offset);
                 }
               }
             }
@@ -251,8 +248,8 @@ inline void DepthwiseConv(
                 value += bias_data[output_channel];
               }
 
-              value = MultiplyByQuantizedMultiplier(
-                  value, output_multiplier, output_shift);
+              value = MultiplyByQuantizedMultiplier(value, output_multiplier,
+                                                    output_shift);
               value += output_offset;
               value = std::max(value, output_activation_min);
               value = std::min(value, output_activation_max);
@@ -285,7 +282,7 @@ struct OpData {
 
   // Cached tensor zero point values for quantized operations.
   int32_t input_zero_point;
-  int32_t filter_zero_point; //***
+  int32_t filter_zero_point;
   int32_t output_zero_point;
 
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -465,15 +462,14 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   // Legacy ops used mixed left and right shifts. Now all are +ve-means-left.
   op_params.output_shift = -data.output_shift;
 
-  vexriscv::DepthwiseConv(
-      op_params, tflite::micro::GetTensorShape(input),
-      tflite::micro::GetTensorData<uint8_t>(input),
-      tflite::micro::GetTensorShape(filter),
-      tflite::micro::GetTensorData<uint8_t>(filter),
-      tflite::micro::GetTensorShape(bias),
-      tflite::micro::GetTensorData<int32_t>(bias),
-      tflite::micro::GetTensorShape(output),
-      tflite::micro::GetTensorData<uint8_t>(output));
+  vexriscv::DepthwiseConv(op_params, tflite::micro::GetTensorShape(input),
+                          tflite::micro::GetTensorData<uint8_t>(input),
+                          tflite::micro::GetTensorShape(filter),
+                          tflite::micro::GetTensorData<uint8_t>(filter),
+                          tflite::micro::GetTensorShape(bias),
+                          tflite::micro::GetTensorData<int32_t>(bias),
+                          tflite::micro::GetTensorShape(output),
+                          tflite::micro::GetTensorData<uint8_t>(output));
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
