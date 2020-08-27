@@ -34,6 +34,10 @@ limitations under the License.
 #include "third_party/gpus/cudnn/cudnn.h"
 #endif  // GOOGLE_CUDA
 
+#ifdef INTEL_MKL
+#include "tensorflow/core/graph/mkl_graph_util.h"
+#endif  // INTEL_MKL
+
 namespace tensorflow {
 namespace grappler {
 
@@ -805,6 +809,12 @@ bool FindFusedBatchNormEx(const RemapperContext& ctx, int node_index,
 #ifndef ENABLE_MKLDNN_V1
     // We fuse FusedBatchNorm on GPU or MKL CPU.
     if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
+#else
+    if (NativeFormatEnabled()) {
+      // Temporarily disable FusedBatchNorm fusion on CPU until
+      // we support it under native format mode
+      if (!NodeIsOnGpu(fused_batch_norm_node_def)) return false;
+    }
 #endif
 
     DataType t_dtype = GetDataTypeFromAttr(*fused_batch_norm_node_def, "T");
