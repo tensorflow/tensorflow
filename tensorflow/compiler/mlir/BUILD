@@ -25,6 +25,24 @@ filegroup(
 )
 
 cc_library(
+    name = "string_container_utils",
+    hdrs = ["utils/string_container_utils.h"],
+    deps = [
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "array_container_utils",
+    hdrs = ["utils/array_container_utils.h"],
+    deps = [
+        "@com_google_absl//absl/types:span",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
     name = "name_utils",
     srcs = ["utils/name_utils.cc"],
     hdrs = ["utils/name_utils.h"],
