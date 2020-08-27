@@ -29,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -55,11 +57,12 @@ namespace data {
 
 namespace {
 
+constexpr char kComponent[] = "component";
 constexpr char kInvocationResults[] = "invocation_results";
-constexpr char kSizeSuffix[] = ".size";
-constexpr char kEndOfInputSuffix[] = ".end_of_input";
-constexpr char kCodeSuffix[] = ".code";
-constexpr char kErrorMessage[] = ".error_message";
+constexpr char kSize[] = "size";
+constexpr char kEndOfInput[] = "end_of_input";
+constexpr char kErrorCode[] = "code";
+constexpr char kErrorMessage[] = "error_message";
 
 // Period between reporting dataset statistics.
 constexpr int kStatsReportingPeriodMillis = 1000;
@@ -109,7 +112,13 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
                                           params);
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64 Cardinality() const override {
+    if (preserve_cardinality_) {
+      return input_->Cardinality();
+    } else {
+      return kUnknownCardinality;
+    }
+  }
 
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
@@ -235,6 +244,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       RecordStop(ctx);
       result->notification.WaitForNotification();
       RecordStart(ctx);
+      profiler::TraceMe traceme([&] {
+        return profiler::TraceMeEncode("ParallelMapConsume",
+                                       {{"element_id", result->id}});
+      });
       return ProcessResult(ctx, result, out_tensors, end_of_sequence);
     }
 
@@ -262,27 +275,25 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             "Unexpected outstanding calls encountered.");
       }
       TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
-      TF_RETURN_IF_ERROR(writer->WriteScalar(
-          full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
-          invocation_results_.size()));
+      TF_RETURN_IF_ERROR(
+          writer->WriteScalar(absl::StrCat(prefix(), "::", kInvocationResults),
+                              kSize, invocation_results_.size()));
       for (size_t i = 0; i < invocation_results_.size(); i++) {
         const auto& result = *(invocation_results_[i]);
-        TF_RETURN_IF_ERROR(WriteStatusLocked(writer, i, result.status));
-        TF_RETURN_IF_ERROR(writer->WriteScalar(
-            full_name(
-                strings::StrCat(kInvocationResults, "[", i, "]", kSizeSuffix)),
-            result.return_values.size()));
+        std::string element_prefix =
+            absl::StrCat(prefix(), "::", kInvocationResults, "::", i);
+        TF_RETURN_IF_ERROR(
+            WriteStatusLocked(writer, element_prefix, result.status));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(element_prefix, kSize,
+                                               result.return_values.size()));
         for (size_t j = 0; j < result.return_values.size(); j++) {
           TF_RETURN_IF_ERROR(writer->WriteTensor(
-              full_name(
-                  strings::StrCat(kInvocationResults, "[", i, "][", j, "]")),
+              element_prefix, absl::StrCat(kComponent, "[", j, "]"),
               result.return_values[j]));
         }
         if (result.end_of_input) {
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              full_name(strings::StrCat(kInvocationResults, "[", i, "]",
-                                        kEndOfInputSuffix)),
-              ""));
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(element_prefix, kEndOfInput, ""));
         }
       }
       return Status::OK();
@@ -293,39 +304,36 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(*mu_);
       TF_RETURN_IF_ERROR(RestoreInput(ctx, reader, input_impl_));
       int64 invocation_results_size;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(
-          full_name(strings::StrCat(kInvocationResults, kSizeSuffix)),
-          &invocation_results_size));
+      TF_RETURN_IF_ERROR(
+          reader->ReadScalar(absl::StrCat(prefix(), "::", kInvocationResults),
+                             kSize, &invocation_results_size));
       if (!invocation_results_.empty()) invocation_results_.clear();
       for (size_t i = 0; i < invocation_results_size; i++) {
         invocation_results_.push_back(std::make_shared<InvocationResult>());
         auto& result = *invocation_results_.back();
-        TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &result.status));
+        std::string element_prefix =
+            absl::StrCat(prefix(), "::", kInvocationResults, "::", i);
+        TF_RETURN_IF_ERROR(
+            ReadStatusLocked(reader, element_prefix, &result.status));
         size_t num_return_values;
         {
           int64 size;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(
-              full_name(strings::StrCat(kInvocationResults, "[", i, "]",
-                                        kSizeSuffix)),
-              &size));
+          TF_RETURN_IF_ERROR(reader->ReadScalar(element_prefix, kSize, &size));
           num_return_values = static_cast<size_t>(size);
           if (num_return_values != size) {
-            return errors::InvalidArgument(strings::StrCat(
-                full_name(strings::StrCat(kInvocationResults, "[", i, "]",
-                                          kSizeSuffix)),
-                ": ", size, " is not a valid value of type size_t."));
+            return errors::InvalidArgument(
+                element_prefix, ",", kSize, ": ", size,
+                " is not a valid value of type size_t.");
           }
         }
         result.return_values.reserve(num_return_values);
         for (size_t j = 0; j < num_return_values; j++) {
           result.return_values.emplace_back();
-          TF_RETURN_IF_ERROR(
-              reader->ReadTensor(full_name(strings::StrCat(
-                                     kInvocationResults, "[", i, "][", j, "]")),
-                                 &result.return_values.back()));
+          TF_RETURN_IF_ERROR(reader->ReadTensor(
+              element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+              &result.return_values.back()));
         }
-        result.end_of_input = reader->Contains(full_name(strings::StrCat(
-            kInvocationResults, "[", i, "]", kEndOfInputSuffix)));
+        result.end_of_input = reader->Contains(element_prefix, kEndOfInput);
         result.notification.Notify();
       }
       return Status::OK();
@@ -352,10 +360,14 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
 
    private:
     struct InvocationResult {
+      InvocationResult() = default;
+      explicit InvocationResult(int64 id) : id(id) {}
+
       Notification notification;
       Status status;
       std::vector<Tensor> return_values;
-      bool end_of_input;
+      bool end_of_input = false;
+      int64 id = -1;
     };
 
     void CancelThreads(bool wait) TF_LOCKS_EXCLUDED(mu_) {
@@ -396,6 +408,10 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
     void CallFunction(const std::shared_ptr<IteratorContext>& ctx,
                       const std::shared_ptr<InvocationResult>& result)
         TF_LOCKS_EXCLUDED(*mu_) {
+      profiler::TraceMe traceme([&] {
+        return profiler::TraceMeEncode("ParallelMapProduce",
+                                       {{"element_id", result->id}});
+      });
       // Get the next input element.
       std::vector<Tensor> input_element;
       result->status = input_impl_->GetNext(ctx.get(), &input_element,
@@ -484,6 +500,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
         return num_calls_ >= num_parallel_calls ||
                invocation_results_.size() >= num_parallel_calls;
       };
+      // Counts the total number of calls to use as an id of InvocationResult.
+      int64 num_total_calls = 0;
       while (true) {
         {
           mutex_lock l(*mu_);
@@ -496,7 +514,8 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
             return;
           }
           while (!busy()) {
-            invocation_results_.push_back(std::make_shared<InvocationResult>());
+            invocation_results_.push_back(
+                std::make_shared<InvocationResult>(num_total_calls++));
             new_calls.push_back(invocation_results_.back());
             num_calls_++;
           }
@@ -569,43 +588,33 @@ class ParallelMapDatasetOp::Dataset : public DatasetBase {
       }
     }
 
-    Status WriteStatusLocked(IteratorStateWriter* writer, size_t index,
-                             const Status& status)
+    Status WriteStatusLocked(IteratorStateWriter* writer,
+                             const std::string& key, const Status& status)
         TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(writer->WriteScalar(
-          CodeKey(index), static_cast<int64>(status.code())));
+          key, kErrorCode, static_cast<int64>(status.code())));
       if (!status.ok()) {
-        TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
-                                               status.error_message()));
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(key, kErrorMessage, status.error_message()));
       }
       return Status::OK();
     }
 
-    Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
+    Status ReadStatusLocked(IteratorStateReader* reader, const std::string& key,
                             Status* status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64 code_int;
-      TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
+      TF_RETURN_IF_ERROR(reader->ReadScalar(key, kErrorCode, &code_int));
       error::Code code = static_cast<error::Code>(code_int);
 
       if (code != error::Code::OK) {
         tstring error_message;
         TF_RETURN_IF_ERROR(
-            reader->ReadScalar(ErrorMessageKey(index), &error_message));
+            reader->ReadScalar(key, kErrorMessage, &error_message));
         *status = Status(code, error_message);
       } else {
         *status = Status::OK();
       }
       return Status::OK();
-    }
-
-    string CodeKey(size_t index) {
-      return full_name(
-          strings::StrCat(kInvocationResults, "[", index, "]", kCodeSuffix));
-    }
-
-    string ErrorMessageKey(size_t index) {
-      return full_name(
-          strings::StrCat(kInvocationResults, "[", index, "]", kErrorMessage));
     }
 
     // Used for coordination between the main thread and the runner thread.

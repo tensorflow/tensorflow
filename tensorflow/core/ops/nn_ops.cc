@@ -252,7 +252,9 @@ REGISTER_OP("_FusedBatchNormEx")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormExShape)
     .Doc(R"doc(
-*NOTE*: Do not invoke this operator directly in Python. Grappler is
+Internal FusedBatchNorm operation: reserved for internal use.
+
+Do not invoke this operator directly in Python. A fusion optimization is
 expected to create these operators.
 )doc");
 
@@ -405,8 +407,25 @@ REGISTER_OP("_FusedConv2D")
     // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
-*NOTE*: Do not invoke this operator directly in Python. Grappler is
-expected to create these operators.
+Performs a convolution followed by a specified series of operations.
+
+The inputs to the convolution are `input` and `filter`. The series of operations
+that follows is specified by the `fused_ops` attribute, which is a list of TF op
+names specified as strings (e.g. "Relu"). They are performed in order, where the
+(first) input to each op is the output of the preceding op. The first input and
+the output of each fused_op must be of type T.
+
+Currently supported fused_op combinations are: [X] and [X,A], where X is one of
+{"BiasAdd","FusedBatchNorm"} and A is one of {"Elu","Relu","Relu6"}.
+
+* The first input to op X is the Conv2D result, and the additional input(s) to X
+are specified by `args`.
+* If there is an op A specified, the output of op X is the input to op A, and op
+A produces the _FusedConv2D output. Otherwise, op X produces the _FusedConv2D
+output.
+
+*NOTE*: Do not invoke this operator directly in Python. Grappler is expected to
+create these operators.
 )doc");
 
 namespace {
@@ -822,11 +841,12 @@ REGISTER_OP("MaxPool")
         "uint16, qint8} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
     .Output("output: T")
-    .SetShapeFn(shape_inference::MaxPoolShape);
+    .SetShapeFn(shape_inference::MaxPoolShapeWithExplicitPadding);
 
 REGISTER_OP("MaxPoolV2")
     .Attr(
@@ -846,7 +866,8 @@ REGISTER_OP("MaxPoolV2")
 REGISTER_OP("MaxPoolGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Input("orig_input: T")
     .Input("orig_output: T")
@@ -871,6 +892,7 @@ REGISTER_OP("MaxPoolGradV2")
       return UnchangedShapeWithRank(c, 4);
     });
 
+// TODO(b/150813181): Implement explicit padding.
 REGISTER_OP("MaxPoolGradGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -1678,7 +1700,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_MklEagerConv2D")
+REGISTER_OP("_MklNativeConv2D")
     .Input("input: T")
     .Input("filter: T")
     .Output("output: T")
@@ -1828,7 +1850,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_MklEagerConv2DBackpropFilter")
+REGISTER_OP("_MklNativeConv2DBackpropFilter")
     .Input("input: T")
     .Input("filter_sizes: int32")
     .Input("out_backprop: T")
@@ -1989,7 +2011,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_MklEagerConv2DBackpropInput")
+REGISTER_OP("_MklNativeConv2DBackpropInput")
     .Input("input_sizes: int32")
     .Input("filter: T")
     .Input("out_backprop: T")
@@ -3388,5 +3410,17 @@ REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
+REGISTER_OP("IsotonicRegression")
+    .Input("input: T")
+    .Output("output: output_dtype")
+    .Output("segments: int32")
+    .Attr("T: realnumbertype")
+    .Attr("output_dtype: {half, bfloat16, float, double} = DT_FLOAT")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* context) {
+      context->set_output(0, context->input(0));
+      context->set_output(1, context->input(0));
+      return tensorflow::Status::OK();
+    });
 
 }  // namespace tensorflow

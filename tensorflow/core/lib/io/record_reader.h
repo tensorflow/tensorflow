@@ -20,6 +20,8 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/inputstream_interface.h"
 #if !defined(IS_SLIM_BUILD)
+#include "tensorflow/core/lib/io/snappy/snappy_compression_options.h"
+#include "tensorflow/core/lib/io/snappy/snappy_inputstream.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_inputstream.h"
 #endif  // IS_SLIM_BUILD
@@ -32,9 +34,12 @@ class RandomAccessFile;
 
 namespace io {
 
-class RecordReaderOptions {
- public:
-  enum CompressionType { NONE = 0, ZLIB_COMPRESSION = 1 };
+struct RecordReaderOptions {
+  enum CompressionType {
+    NONE = 0,
+    ZLIB_COMPRESSION = 1,
+    SNAPPY_COMPRESSION = 2
+  };
   CompressionType compression_type = NONE;
 
   // If buffer_size is non-zero, then all reads must be sequential, and no
@@ -46,8 +51,9 @@ class RecordReaderOptions {
       const string& compression_type);
 
 #if !defined(IS_SLIM_BUILD)
-  // Options specific to zlib compression.
+  // Options specific to compression.
   ZlibCompressionOptions zlib_options;
+  SnappyCompressionOptions snappy_options;
 #endif  // IS_SLIM_BUILD
 };
 
@@ -91,6 +97,13 @@ class RecordReader {
   // OUT_OF_RANGE for end of file, or something else for an error.
   Status ReadRecord(uint64* offset, tstring* record);
 
+  // Skip num_to_skip record starting at "*offset" and update *offset
+  // to point to the offset of the next num_to_skip + 1 record.
+  // Return OK on success, OUT_OF_RANGE for end of file, or something
+  // else for an error. "*num_skipped" records the number of records that
+  // are actually skipped. It should be equal to num_to_skip on success.
+  Status SkipRecords(uint64* offset, int num_to_skip, int* num_skipped);
+
   // Return the metadata of the Record file.
   //
   // The current implementation scans the file to completion,
@@ -104,6 +117,7 @@ class RecordReader {
 
  private:
   Status ReadChecksummed(uint64 offset, size_t n, tstring* result);
+  Status PositionInputStream(uint64 offset);
 
   RecordReaderOptions options_;
   std::unique_ptr<InputStreamInterface> input_stream_;
@@ -127,13 +141,21 @@ class SequentialRecordReader {
 
   virtual ~SequentialRecordReader() = default;
 
-  // Reads the next record in the file into *record. Returns OK on success,
+  // Read the next record in the file into *record. Returns OK on success,
   // OUT_OF_RANGE for end of file, or something else for an error.
   Status ReadRecord(tstring* record) {
     return underlying_.ReadRecord(&offset_, record);
   }
 
-  // Returns the current offset in the file.
+  // Skip the next num_to_skip record in the file. Return OK on success,
+  // OUT_OF_RANGE for end of file, or something else for an error.
+  // "*num_skipped" records the number of records that are actually skipped.
+  // It should be equal to num_to_skip on success.
+  Status SkipRecords(int num_to_skip, int* num_skipped) {
+    return underlying_.SkipRecords(&offset_, num_to_skip, num_skipped);
+  }
+
+  // Return the current offset in the file.
   uint64 TellOffset() { return offset_; }
 
   // Seek to this offset within the file and set this offset as the current

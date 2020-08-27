@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/algorithm/container.h"
 #include "absl/memory/memory.h"
 #include "absl/synchronization/mutex.h"
 #include "pybind11/functional.h"
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver.h"
+#include "tensorflow/compiler/xla/python/py_client.h"
 #include "tensorflow/compiler/xla/python/types.h"
 
 namespace xla {
@@ -38,20 +40,25 @@ class OutfeedReceiverForPython {
  public:
   // A callback to Python takes: consumer id, received literal.
   using CallbackToPython =
-      std::function<void(ClientAndPtr<Device>, uint32_t, pybind11::object)>;
+      std::function<void(ClientAndPtr<PjRtDevice>, uint32_t, pybind11::object)>;
 
   OutfeedReceiverForPython(CallbackToPython callback_python,
-                           std::vector<std::shared_ptr<PjRtClient>> clients,
-                           ssize_t max_callback_queue_size_bytes) {
-    callback_python_ = callback_python;
-    outfeed_receiver_shutting_down_ = false;
+                           std::vector<std::shared_ptr<PyClient>> clients,
+                           ssize_t max_callback_queue_size_bytes)
+      : callback_python_(std::move(callback_python)),
+        clients_(std::move(clients)) {
     OutfeedReceiver::Callback callback =
-        [this](Device* device, std::shared_ptr<PjRtClient> client,
-               uint32_t consumer_id, std::shared_ptr<Literal> literal) {
-          this->Callback(device, client, consumer_id, literal);
+        [this](PjRtDevice* device, uint32_t consumer_id,
+               std::shared_ptr<Literal> literal) {
+          this->Callback(device, consumer_id, std::move(literal));
         };
+    std::vector<PjRtClient*> client_ptrs(clients_.size());
+    absl::c_transform(clients_, client_ptrs.begin(),
+                      [](const std::shared_ptr<PyClient>& client) {
+                        return client->pjrt_client();
+                      });
     outfeed_receiver_ = absl::make_unique<OutfeedReceiver>(
-        callback, std::move(clients), max_callback_queue_size_bytes);
+        callback, client_ptrs, max_callback_queue_size_bytes);
   }
   OutfeedReceiverForPython(const OutfeedReceiverForPython&) = delete;
   OutfeedReceiverForPython& operator=(const OutfeedReceiverForPython&) = delete;
@@ -79,8 +86,8 @@ class OutfeedReceiverForPython {
                                                   arrays);
   }
 
-  void Callback(Device* device, std::shared_ptr<PjRtClient> client,
-                uint32_t consumer_id, std::shared_ptr<Literal> literal) {
+  void Callback(PjRtDevice* device, uint32_t consumer_id,
+                std::shared_ptr<Literal> literal) {
     {
       absl::MutexLock lock(&mu_);
       if (outfeed_receiver_shutting_down_) {
@@ -88,19 +95,26 @@ class OutfeedReceiverForPython {
         return;
       }
     }
+    // We expect the number of clients to be small, so an O(n) search is fine.
+    auto it = absl::c_find_if(
+        clients_, [device](const std::shared_ptr<PyClient>& client) {
+          return client->pjrt_client() == device->client();
+        });
+    CHECK(it != clients_.end());
     py::gil_scoped_acquire gil_acquire;  // Need GIL also for LiteralToPython
     py::object literal_python =
         LiteralToPython(std::move(literal)).ValueOrDie();
     // The callback_ should handle all exceptions in user-code. If we get
     // an exception here, it is a bug in the callback and we should stop.
-    callback_python_(WrapWithClient<Device>(std::move(client), device),
-                     consumer_id, std::move(literal_python));
+    callback_python_(WrapWithClient<PjRtDevice>(*it, device), consumer_id,
+                     std::move(literal_python));
   }
 
  private:
   CallbackToPython callback_python_;
   absl::Mutex mu_;
-  bool outfeed_receiver_shutting_down_ TF_GUARDED_BY(mu_);
+  bool outfeed_receiver_shutting_down_ TF_GUARDED_BY(mu_) = false;
+  std::vector<std::shared_ptr<PyClient>> clients_;
   std::unique_ptr<OutfeedReceiver> outfeed_receiver_;
 };
 
@@ -112,7 +126,7 @@ void BuildOutfeedReceiverSubmodule(py::module* m) {
   outfeed_receiver.def(
       "start",
       [](OutfeedReceiverForPython::CallbackToPython callback_to_python,
-         std::vector<std::shared_ptr<PjRtClient>> clients,
+         std::vector<std::shared_ptr<PyClient>> clients,
          ssize_t max_callback_queue_size_bytes)
           -> std::unique_ptr<OutfeedReceiverForPython> {
         auto server = absl::make_unique<OutfeedReceiverForPython>(

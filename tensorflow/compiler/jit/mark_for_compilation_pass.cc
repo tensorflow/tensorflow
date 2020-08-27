@@ -1096,33 +1096,33 @@ StatusOr<bool> IsIdentityDrivingConstsInLoop(Node* node) {
   return true;
 }
 
-absl::flat_hash_set<string> GetOrCreateWhitelist() {
-  absl::flat_hash_map<string, std::vector<string>>* whitelist_table =
-      tensorflow::GetWhitelistTable();
+absl::flat_hash_set<string> GetOrCreateAllowlist() {
+  absl::flat_hash_map<string, std::vector<string>>* allowlist_table =
+      tensorflow::GetAllowlistTable();
   MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  absl::flat_hash_set<string> whitelist;
+  absl::flat_hash_set<string> allowlist;
 
   for (auto s : absl::StrSplit(flags->tf_xla_ops_to_cluster, ',')) {
     if (s == "FUSIBLE") {
-      for (auto pair : *whitelist_table) {
-        whitelist.insert(pair.second.begin(), pair.second.end());
+      for (auto pair : *allowlist_table) {
+        allowlist.insert(pair.second.begin(), pair.second.end());
       }
-    } else if (whitelist_table->contains(s)) {
-      auto v = whitelist_table->at(s);
-      whitelist.insert(v.begin(), v.end());
+    } else if (allowlist_table->contains(s)) {
+      auto v = allowlist_table->at(s);
+      allowlist.insert(v.begin(), v.end());
     } else if (!s.empty()) {
       // Should be a user provided TF operation.
-      whitelist.insert(string(s));
+      allowlist.insert(string(s));
     }
   }
 
-  if (VLOG_IS_ON(2) && !whitelist.empty()) {
-    std::vector<string> vwhitelist(whitelist.begin(), whitelist.end());
-    absl::c_sort(vwhitelist);
+  if (VLOG_IS_ON(2) && !allowlist.empty()) {
+    std::vector<string> vallowlist(allowlist.begin(), allowlist.end());
+    absl::c_sort(vallowlist);
     VLOG(2) << "XLA clustering will only consider the following TF operations: "
-            << absl::StrJoin(vwhitelist, " ");
+            << absl::StrJoin(vallowlist, " ");
   }
-  return whitelist;
+  return allowlist;
 }
 
 Status MarkForCompilationPassImpl::FindCompilationCandidates() {
@@ -1156,12 +1156,12 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
 
   VLOG(2) << "sorted_nodes.size() = " << sorted_nodes.size();
 
-  auto whitelist = GetOrCreateWhitelist();
+  auto allowlist = GetOrCreateAllowlist();
 
   std::vector<string> vall_ops = XlaOpRegistry::GetAllRegisteredOps();
   absl::flat_hash_set<string> all_ops(vall_ops.begin(), vall_ops.end());
   // Check that user's provided TF operation really exists.
-  for (const auto& s : whitelist) {
+  for (const auto& s : allowlist) {
     if (!all_ops.contains(string(s))) {
       return errors::InvalidArgument(
           "The operation '", s,
@@ -1196,17 +1196,14 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    DeviceType jit_device_type(registration->compilation_device_name);
-
-    RecursiveCompilabilityChecker::OperationFilter op_filter =
-        CreateOperationFilter(*registration);
-
-    if (!RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
+    if (!RecursiveCompilabilityChecker{
+            CreateOperationFilter(*registration),
+            DeviceType{registration->compilation_device_name}}
              .IsCompilableNode(*node, lib_runtime)) {
       continue;
     }
 
-    if (!whitelist.empty() && !whitelist.contains(node->def().op())) {
+    if (!allowlist.empty() && !allowlist.contains(node->def().op())) {
       VLOG(1) << "Rejecting TF operation " << node->def().op()
               << " as it is not listed in --tf_xla_ops_to_cluster.";
       continue;
@@ -1718,7 +1715,6 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
   const XlaOpRegistry::DeviceRegistration* registration;
   CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
                                             &registration));
-  DeviceType jit_device_type(registration->compilation_device_name);
 
   // We can always *compile* resource operations, stateful RNGs and dummy ops,
   // even if we are sometimes unable to auto-cluster them.
@@ -1733,7 +1729,8 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
   op_filter.allow_slow_ops = true;
   op_filter.allow_inaccurate_ops = true;
 
-  RecursiveCompilabilityChecker checker{&op_filter, &jit_device_type};
+  RecursiveCompilabilityChecker checker{
+      op_filter, DeviceType{registration->compilation_device_name}};
   if (!uncompilable_node_info) {
     // We do not need uncompilable node info. Just return the result.
     return checker.IsCompilableCall(ndef, flr);
@@ -1781,7 +1778,7 @@ Status MarkForCompilationPass::RunForTest(
   return MarkForCompilation(options, debug_options);
 }
 
-absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
+absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
   // Table format: category name: {list of TF operations in that category}
   static absl::flat_hash_map<string, std::vector<string>>* result =
       new absl::flat_hash_map<string, std::vector<string>>{
@@ -1837,7 +1834,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
       "ConcatOffset", "Const", "MirrorPad", "Pack", "Pad", "PadV2", "Reverse",
       "ReverseV2", "ReverseSequence", "Slice", "Split", "SplitV",
       "StridedSlice", "StridedSliceGrad", "ResourceStridedSliceAssign",
-      "Tile", "Transpose", "InvertPermutation", "Unpack"}}};
+      "Tile", "Transpose", "InvertPermutation", "Unpack", "DeviceIndex"}}};
   // clang-format on
   return result;
 }
@@ -1845,7 +1842,7 @@ absl::flat_hash_map<string, std::vector<string>>* GetWhitelistTable() {
 namespace testing {
 void ResetClusterSequenceNumber() { cluster_sequence_num = 0; }
 
-absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
+absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
   absl::flat_hash_set<string> result{"AdjustContrastv2",
                                      "AdjustHue",
                                      "AdjustSaturation",
@@ -1952,6 +1949,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "ParallelDynamicStitch",
                                      "ParameterizedTruncatedNormal",
                                      "PartitionedCall",
+                                     "PopulationCount",
                                      "Qr",
                                      "QuantizeAndDequantizeV2",
                                      "QuantizeAndDequantizeV3",
@@ -2014,6 +2012,7 @@ absl::flat_hash_set<string> GetKnownXLAWhitelistOp() {
                                      "StatefulUniform",
                                      "StatefulUniformFullInt",
                                      "StatefulUniformInt",
+                                     "StatelessCase",
                                      "StatelessIf",
                                      "StatelessMultinomial",
                                      "StatelessRandomNormal",

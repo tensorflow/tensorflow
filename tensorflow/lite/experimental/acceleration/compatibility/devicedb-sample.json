@@ -1,0 +1,165 @@
+{
+  "root": [
+    {
+      "variable": "tflite.device_model",
+      "items": [
+        {
+          "value": "m712c",
+          "derived_properties": [
+            {
+              "variable": "tflite.soc_model",
+              "value": "exynos_7872"
+            }
+          ]
+        },
+        {
+          "value": "sc_02l",
+          "derived_properties": [
+            {
+              "variable": "tflite.soc_model",
+              "value": "exynos_7885"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "variable": "tflite.opengl_es_version",
+      "items": [
+        {
+          "value": "3.1",
+          "children": [
+            {
+              "variable": "tflite.soc_model",
+              "items": [
+                {
+                  "value": "exynos_7872",
+                  "children": [
+                    {
+                      "variable": "tflite.android_sdk_version",
+                      "items": [
+                        {
+                          "value": "24",
+                          "derived_properties": [
+                            {
+                              "variable": "tflite.gpu.status",
+                              "value": "SUPPORTED"
+                            }
+                          ]
+                        }
+                      ],
+                      "comparison": "MINIMUM"
+                    }
+                  ]
+                },
+                {
+                  "value": "exynos_7883",
+                  "children": [
+                    {
+                      "variable": "tflite.android_sdk_version",
+                      "items": [
+                        {
+                          "value": "28",
+                          "derived_properties": [
+                            {
+                              "variable": "tflite.gpu.status",
+                              "value": "SUPPORTED"
+                            }
+                          ]
+                        }
+                      ],
+                      "comparison": "MINIMUM"
+                    }
+                  ]
+                }
+              ]
+            }
+
+          ]
+        }
+      ]
+    },
+    {
+      "variable": "tflite.android_sdk_version",
+      "items": [
+        {
+          "value": "21",
+          "children": [
+            {
+              "variable": "tflite.device_model",
+              "items": [
+                {
+                  "value": "huawei_gra_l09",
+                  "children": [
+                    {
+                      "variable": "tflite.device_name",
+                      "items": [
+                        {
+                          "value": "hwgra",
+                          "derived_properties": [
+                            {
+                              "variable": "tflite.gpu.status",
+                              "value": "SUPPORTED"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "value": "24",
+          "children": [
+            {
+              "variable": "tflite.device_model",
+              "items": [
+                  {
+                  "value": "sm_j810f",
+                  "children": [
+                    {
+                      "variable": "tflite.device_name",
+                      "items": [
+                        {
+                          "value": "j8y18lte",
+                          "derived_properties": [
+                            {
+                              "variable": "tflite.gpu.status",
+                              "value": "UNSUPPORTED"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "value": "sm_j810m",
+                  "children": [
+                    {
+                      "variable": "tflite.device_name",
+                      "items": [
+                        {
+                          "value": "j8y18lte",
+                          "derived_properties": [
+                            {
+                              "variable": "tflite.gpu.status",
+                              "value": "SUPPORTED"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

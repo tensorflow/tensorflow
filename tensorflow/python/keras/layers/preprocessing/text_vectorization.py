@@ -25,17 +25,17 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 LOWER_AND_STRIP_PUNCTUATION = "lower_and_strip_punctuation"
@@ -71,7 +71,7 @@ _ACCUMULATOR_NUM_DOCUMENTS = "num_documents"
 
 @keras_export(
     "keras.layers.experimental.preprocessing.TextVectorization", v1=[])
-class TextVectorization(CombinerPreprocessingLayer):
+class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Text vectorization layer.
 
   This layer has basic options for managing text in a Keras model. It
@@ -89,23 +89,25 @@ class TextVectorization(CombinerPreprocessingLayer):
   to create the vocabulary.
 
   The processing of each sample contains the following steps:
-    1) standardize each sample (usually lowercasing + punctuation stripping)
-    2) split each sample into substrings (usually words)
-    3) recombine substrings into tokens (usually ngrams)
-    4) index tokens (associate a unique int value with each token)
-    5) transform each sample using this index, either into a vector of ints or
+
+    1. standardize each sample (usually lowercasing + punctuation stripping)
+    2. split each sample into substrings (usually words)
+    3. recombine substrings into tokens (usually ngrams)
+    4. index tokens (associate a unique int value with each token)
+    5. transform each sample using this index, either into a vector of ints or
        a dense float vector.
 
   Some notes on passing Callables to customize splitting and normalization for
   this layer:
-    1) Any callable can be passed to this Layer, but if you want to serialize
+
+    1. Any callable can be passed to this Layer, but if you want to serialize
        this object you should only pass functions that are registered Keras
        serializables (see `tf.keras.utils.register_keras_serializable` for more
        details).
-    2) When using a custom callable for `standardize`, the data received
+    2. When using a custom callable for `standardize`, the data received
        by the callable will be exactly as passed to this layer. The callable
        should return a tensor of the same shape as the input.
-    3) When using a custom callable for `split`, the data received by the
+    3. When using a custom callable for `split`, the data received by the
        callable will have the 1st dimension squeezed out - instead of
        `[["string to split"], ["another string to split"]]`, the Callable will
        see `["string to split", "another string to split"]`. The callable should
@@ -289,6 +291,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     super(TextVectorization, self).__init__(
         combiner=None,
         **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("TextVectorization")
 
     mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(
@@ -513,7 +516,7 @@ class TextVectorization(CombinerPreprocessingLayer):
 
   def _preprocess(self, inputs):
     if self._standardize == LOWER_AND_STRIP_PUNCTUATION:
-      if ragged_tensor.is_ragged(inputs):
+      if tf_utils.is_ragged(inputs):
         lowercase_inputs = ragged_functional_ops.map_flat_values(
             gen_string_ops.string_lower, inputs)
         # Depending on configuration, we may never touch the non-data tensor
@@ -578,7 +581,7 @@ class TextVectorization(CombinerPreprocessingLayer):
       # choose whether to pad or trim it based on each tensor.
 
       # We need to convert to dense if we have a ragged tensor.
-      if ragged_tensor.is_ragged(indexed_data):
+      if tf_utils.is_ragged(indexed_data):
         dense_data = indexed_data.to_tensor(default_value=0)
       else:
         dense_data = indexed_data

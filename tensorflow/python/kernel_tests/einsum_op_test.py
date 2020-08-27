@@ -35,6 +35,8 @@ from tensorflow.python.platform import benchmark
 from tensorflow.python.platform import test
 
 
+@test_util.run_all_without_tensor_float_32(
+    'Tests einsum, which sometimes does a matmul with cuBLAS')
 class EinsumOpTest(test.TestCase):
 
   def _check(self, s, *input_shapes, **kwargs):
@@ -237,7 +239,6 @@ class EinsumOpTest(test.TestCase):
           ((4, 3), (None, 3)))
     check('...ij,...jk->...ik', ((3, 1, 2, 3), None), ((1, 7, 3, 4), None))
 
-  @test_util.disable_xla('b/131919749')
   def testOutputRepeatedLabels(self):
     # This is the reverse operation of generalized traces, to be used for
     # computing symbolic gradients of einsum. Note: this operation is not
@@ -264,7 +265,6 @@ class EinsumOpTest(test.TestCase):
     # From transformer xl.
     check('ibnd,ijbn->jnd', [(1, 0, 5, 10), (1, 1, 0, 5)], (1, 5, 10))
 
-  @test_util.disable_xla('b/131919749')
   def testEmptyWithRepeatedLabels(self):
 
     def check(equation, input_shapes, output_shape):
@@ -287,6 +287,8 @@ class EinsumOpTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_all_without_tensor_float_32(
+    "Tests einsum's gradient, which sometimes does a matmul with cuBLAS")
 class EinsumGradTest(test.TestCase):
 
   def _check_gradient(self, s, *input_shapes):
@@ -310,7 +312,6 @@ class EinsumGradTest(test.TestCase):
           self.assertLess(
               gradient_checker_v2.max_error(analytical, numerical), tol)
 
-  @test_util.disable_xla('b/131919749')
   def testUnary(self):
     # Unary cases.
     self._check_gradient('->', ())
@@ -319,7 +320,6 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('aabcd->add', (3, 3, 5, 4, 4))
     self._check_gradient('abcd->da', (3, 5, 4, 2))
 
-  @test_util.disable_xla('b/131919749')
   def testUnaryEllipsis(self):
     self._check_gradient('...->...', ())
     self._check_gradient('...->', ())
@@ -362,11 +362,9 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('ijkm,ijln->ijmn', (2, 3, 3, 4), (2, 3, 3, 2))
     self._check_gradient('abce,badf->abcd', (1, 2, 3, 4), (2, 1, 4, 3))
 
-  @test_util.disable_xla('b/131919749')
   def testReducedIndicesWithRepeatedLabels(self):
     self._check_gradient('abce,badf->bcba', (1, 2, 3, 4), (2, 1, 4, 3))
 
-  @test_util.disable_xla('b/131919749')
   def testRepeatedLabels(self):
     # Repeated indices.
     self._check_gradient('aba,a->b', (3, 4, 3), (3,))
@@ -376,7 +374,6 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('aab,bc->ac', (1, 1, 3), (3, 4))
     self._check_gradient('aab,bcc->ac', (2, 2, 3), (3, 4, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testEmptyWithRepeatedLabels(self):
     self._check_gradient('aab,bc->ac', (0, 0, 10), (10, 10))
     self._check_gradient('aab,bc->ac', (1, 1, 0), (0, 10))
@@ -388,7 +385,6 @@ class EinsumGradTest(test.TestCase):
     self._check_gradient('...ij,...jk->...ik', (3, 1, 3, 2), (1, 5, 2, 4))
     self._check_gradient('i...j,j...k->i...k', (3, 1, 2, 2), (2, 2, 3, 1, 4))
 
-  @test_util.disable_xla('b/131919749')
   def testBroadcastingWithRepeatedLabels(self):
     self._check_gradient('ij,jk...k->i...', (3, 2), (2, 4, 1, 4))
     self._check_gradient('aab,b...c->a...c', (1, 1, 3), (3, 1, 1, 4))
@@ -435,7 +431,7 @@ class EinsumBenchmark(test.Benchmark):
           input_shape = (dim,) * len(subscript)
           input_vars.append(
               variables.Variable(np.array(r.randn(*input_shape), np.float32)))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Call einsum_v1.
         self.run_op_benchmark(

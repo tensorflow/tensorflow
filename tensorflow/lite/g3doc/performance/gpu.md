@@ -93,7 +93,7 @@ target 'YourProjectName'
 
 </section>
 
-From TensorFlow Lite 2.1.0, GPU delegate is inlcuded in the `TensorFlowLiteC`
+From TensorFlow Lite 2.1.0, GPU delegate is included in the `TensorFlowLiteC`
 pod. You can choose between `TensorFlowLiteC` and `TensorFlowLiteSwift`
 depending on the language.
 
@@ -178,6 +178,28 @@ delegate.close();
 ```
 
 ### iOS
+
+#### Swift
+
+Initialize TensorFlow Lite interpreter with the GPU delegate.
+
+```swift
+import TensorFlowLite
+
+// Load model ...
+
+let delegate = MetalDelegate()
+
+if let interpreter = try Interpreter(modelPath: modelPath,
+                                     delegates: [delegate]) {
+  // Run inference ...
+}
+
+```
+
+#### Objective-C
+
+Note: For Objective-C, GPU delegate is provided via C API.
 
 In your application code, include the GPU delegate header and call the
 `Interpreter::ModifyGraphWithDelegate` function to register the GPU delegate to

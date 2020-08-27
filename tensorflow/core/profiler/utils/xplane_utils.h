@@ -21,19 +21,24 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/trace_utils.h"
 
 namespace tensorflow {
 namespace profiler {
 
 // Returns the plane with the given name or nullptr if not found.
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name);
+XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
+
+// Returns the plane with the given name in the container. If necessary, adds a
+// new plane to the container.
+XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
 
 // Returns all the planes with a given prefix.
 std::vector<const XPlane*> FindPlanesWithPrefix(const XSpace& space,
                                                 absl::string_view prefix);
-
-// Returns the plane with the given name, create it if necessary.
-XPlane* GetOrCreatePlane(XSpace* space, absl::string_view name);
+std::vector<XPlane*> FindMutablePlanesWithPrefix(XSpace* space,
+                                                 absl::string_view prefix);
 
 // Returns true if event is nested by parent.
 bool IsNested(const tensorflow::profiler::XEvent& event,
@@ -49,18 +54,47 @@ void RemovePlaneWithName(XSpace* space, absl::string_view name);
 void RemoveEmptyPlanes(XSpace* space);
 void RemoveEmptyLines(XPlane* plane);
 
-// Returns the plane with the given name in the container or null if not found.
-XPlane* FindMutablePlaneWithName(XSpace* space, absl::string_view name);
+// Sort lines in plane with a provided comparator.
+template <class Compare>
+void SortXLinesBy(XPlane* plane, Compare comp) {
+  std::sort(plane->mutable_lines()->pointer_begin(),
+            plane->mutable_lines()->pointer_end(), comp);
+}
 
-// Returns the plane with the given name in the container. If necessary, adds a
-// new plane to the container.
-XPlane* FindOrAddMutablePlaneWithName(XSpace* space, absl::string_view name);
+class XLinesComparatorByName {
+ public:
+  bool operator()(const XLine* a, const XLine* b) const {
+    auto& line_a = a->display_name().empty() ? a->name() : a->display_name();
+    auto& line_b = b->display_name().empty() ? b->name() : b->display_name();
+    return line_a < line_b;
+  }
+};
 
 // Sorts each XLine's XEvents by offset_ps (ascending) and duration_ps
 // (descending) so nested events are sorted from outer to innermost.
 void SortXPlane(XPlane* plane);
 // Sorts each plane of the XSpace.
 void SortXSpace(XSpace* space);
+
+// Functor that compares XEvents for sorting by timespan.
+struct XEventsComparator {
+  bool operator()(const XEvent* a, const XEvent* b) const;
+};
+
+// Returns a sorted vector of all XEvents in the given XPlane.
+template <class Compare>
+std::vector<XEvent*> GetSortedEvents(XPlane* plane, Compare comp,
+                                     bool include_derived_events = false) {
+  std::vector<XEvent*> events;
+  for (XLine& line : *plane->mutable_lines()) {
+    if (!include_derived_events && IsDerivedThreadId(line.id())) continue;
+    for (XEvent& event : *line.mutable_events()) {
+      events.push_back(&event);
+    }
+  }
+  absl::c_sort(events, XEventsComparator());
+  return events;
+}
 
 // Normalize timestamps by time-shifting to start_time_ns_ as origin.
 void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns);

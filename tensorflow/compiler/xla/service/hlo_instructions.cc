@@ -204,24 +204,77 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
                                               fft_length_);
 }
 
-HloCompareInstruction::HloCompareInstruction(const Shape& shape,
-                                             HloInstruction* lhs,
-                                             HloInstruction* rhs,
-                                             ComparisonDirection direction)
-    : HloInstruction(HloOpcode::kCompare, shape), direction_(direction) {
+HloCopyStartInstruction::HloCopyStartInstruction(const Shape& shape,
+                                                 HloInstruction* operand,
+                                                 bool is_cross_program_prefetch)
+    : HloInstruction(HloOpcode::kCopyStart, shape),
+      is_cross_program_prefetch_(is_cross_program_prefetch) {
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloCopyStartInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_is_cross_program_prefetch(is_cross_program_prefetch_);
+  return proto;
+}
+
+std::vector<string> HloCopyStartInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> result;
+  if (is_cross_program_prefetch()) {
+    result.push_back("is_cross_program_prefetch=true");
+  }
+  return result;
+}
+
+bool HloCopyStartInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloCopyStartInstruction&>(other);
+  return is_cross_program_prefetch() ==
+         casted_other.is_cross_program_prefetch();
+}
+
+std::unique_ptr<HloInstruction>
+HloCopyStartInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return absl::make_unique<HloCopyStartInstruction>(
+      shape, new_operands[0], is_cross_program_prefetch());
+}
+
+HloCompareInstruction::HloCompareInstruction(
+    const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
+    ComparisonDirection direction, absl::optional<Comparison::Type> type)
+    : HloInstruction(HloOpcode::kCompare, shape),
+      compare_(direction, type ? (*type)
+                               : Comparison::DefaultComparisonType(
+                                     lhs->shape().element_type())) {
   AppendOperand(lhs);
   AppendOperand(rhs);
 }
 
 HloInstructionProto HloCompareInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
-  proto.set_comparison_direction(ComparisonDirectionToString(direction_));
+  proto.set_comparison_direction(
+      ComparisonDirectionToString(compare_.GetDirection()));
+  proto.set_comparison_type(ComparisonTypeToString(compare_.GetType()));
   return proto;
 }
 
 std::vector<string> HloCompareInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("direction=", ComparisonDirectionToString(direction()))};
+  std::vector<string> result;
+  result.push_back(
+      StrCat("direction=", ComparisonDirectionToString(direction())));
+  if (compare_.GetType() !=
+      Comparison::DefaultComparisonType(operand(0)->shape().element_type())) {
+    result.push_back(
+        StrCat("type=", ComparisonTypeToString(compare_.GetType())));
+  }
+  return result;
 }
 
 bool HloCompareInstruction::IdenticalSlowPath(
@@ -236,8 +289,8 @@ std::unique_ptr<HloInstruction> HloCompareInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
   CHECK_EQ(new_operands.size(), 2);
-  return absl::make_unique<HloCompareInstruction>(shape, new_operands[0],
-                                                  new_operands[1], direction());
+  return absl::make_unique<HloCompareInstruction>(
+      shape, new_operands[0], new_operands[1], direction(), type());
 }
 
 namespace {
@@ -550,6 +603,7 @@ bool HloCollectiveInstruction::IdenticalSlowPath(
   const auto& casted_other =
       static_cast<const HloCollectiveInstruction&>(other);
   return HloChannelInstruction::IdenticalSlowPath(other, eq_computations) &&
+         constrain_layout() == casted_other.constrain_layout() &&
          absl::c_equal(replica_groups(), casted_other.replica_groups(),
                        [](const ReplicaGroup& a, const ReplicaGroup& b) {
                          return absl::c_equal(a.replica_ids(), b.replica_ids());
@@ -1014,6 +1068,25 @@ HloBroadcastInstruction::CloneWithNewOperandsImpl(
                                                     dimensions());
 }
 
+HloDynamicReshapeInstruction::HloDynamicReshapeInstruction(
+    const Shape& shape, HloInstruction* data_operand,
+    absl::Span<HloInstruction* const> dim_sizes)
+    : HloInstruction(HloOpcode::kDynamicReshape, shape) {
+  AppendOperand(data_operand);
+  for (auto operand : dim_sizes) {
+    AppendOperand(operand);
+  }
+}
+
+std::unique_ptr<HloInstruction>
+HloDynamicReshapeInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_GE(new_operands.size(), 1);
+  return absl::make_unique<HloDynamicReshapeInstruction>(
+      shape, new_operands[0], new_operands.subspan(1));
+}
+
 HloReshapeInstruction::HloReshapeInstruction(const Shape& shape,
                                              HloInstruction* operand,
                                              int64 inferred_dimension)
@@ -1101,7 +1174,9 @@ bool HloMapInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
-  return eq_computations(to_apply(), other.to_apply());
+  const auto& casted_other = static_cast<const HloMapInstruction&>(other);
+  return eq_computations(to_apply(), casted_other.to_apply()) &&
+         dimensions() == casted_other.dimensions();
 }
 
 std::unique_ptr<HloInstruction> HloMapInstruction::CloneWithNewOperandsImpl(
@@ -1425,9 +1500,25 @@ void HloFusionInstruction::MergeFusionInstruction(
         unfused_instructions.empty());
   // Replace instruction_to_merge use of 'this' with unfused_root.
   TF_CHECK_OK(instruction_to_merge->ReplaceUseWith(this, unfused_root));
-  // Fuse 'unfused_instructions' into 'this'.
+
+  // Build a dummy root for the cloned fusion as we may remove the original root
+  // in the fusion process.
+  if (!unfused_instructions.empty()) {
+    HloComputation* computation = unfused_root->parent();
+    auto* dummy_root = computation->AddInstruction(
+        HloInstruction::CreateConstant(LiteralUtil::Zero(U32)));
+    computation->set_root_instruction(dummy_root,
+                                      /*accept_different_shape=*/true);
+  }
+
+  // Fuse 'unfused_instructions' into 'this'. Everytime we fuse an instruction
+  // we remove it from the closed fusion node. This is so that we don't add
+  // extra users to the producer of that instruction (we use user count to
+  // decide if a side-effectful instruction is fusible).
   for (auto& instruction : unfused_instructions) {
-    FuseInstruction(instruction);
+    auto* fused = FuseInstruction(instruction);
+    TF_CHECK_OK(instruction->ReplaceAllUsesWith(fused));
+    TF_CHECK_OK(instruction->parent()->RemoveInstruction(instruction));
   }
   CHECK_EQ(0, cloned_fusion->user_count());
   TF_CHECK_OK(parent()->parent()->RemoveEmbeddedComputation(
@@ -1802,7 +1893,8 @@ bool HloRngInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
-  return true;
+  const auto& casted_other = static_cast<const HloRngInstruction&>(other);
+  return distribution_ == casted_other.distribution_;
 }
 
 std::unique_ptr<HloInstruction> HloRngInstruction::CloneWithNewOperandsImpl(
@@ -2498,7 +2590,8 @@ bool HloDynamicSliceInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
         eq_computations) const {
-  return true;
+  const auto& casted_other = static_cast<const HloMapInstruction&>(other);
+  return dynamic_slice_sizes() == casted_other.dynamic_slice_sizes();
 }
 
 std::unique_ptr<HloInstruction>

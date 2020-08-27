@@ -46,8 +46,15 @@ OpBuilder* GraphBuilder::AddBuilder(int builtin_code, const TfLiteNode* node) {
       return AddBuilder(CreateLogisticOpBuilder, node);
     case kTfLiteBuiltinMaxPool2d:
       return AddBuilder(CreateMaxPool2dOpBuilder, node);
+    case kTfLiteBuiltinMean:
+      return AddBuilder(CreateMeanOpBuilder, node);
+    case kTfLiteBuiltinMirrorPad:
+      return AddBuilder(CreateMirrorPadOpBuilder, node);
     case kTfLiteBuiltinMul:
       return AddBuilder(CreateMulOpBuilder, node);
+    case kTfLiteBuiltinPad:
+    case kTfLiteBuiltinPadv2:
+      return AddBuilder(CreatePadOpBuilder, node);
     case kTfLiteBuiltinRelu:
       return AddBuilder(CreateReluOpBuilder, node);
     case kTfLiteBuiltinReluN1To1:

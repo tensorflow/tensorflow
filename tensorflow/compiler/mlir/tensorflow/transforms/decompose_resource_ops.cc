@@ -50,6 +50,24 @@ static Type GetResourceSubtypeOrDefault(Value resource, Type element_type) {
   return UnrankedTensorType::get(element_type);
 }
 
+static bool HasResourceSubtype(Value resource) {
+  return resource.getType()
+             .cast<TensorType>()
+             .getElementType()
+             .cast<ResourceType>()
+             .getSubtypes()
+             .size() == 1;
+}
+
+static Type GetResourceSubtype(Value resource) {
+  return resource.getType()
+      .cast<TensorType>()
+      .getElementType()
+      .cast<ResourceType>()
+      .getSubtypes()
+      .front();
+}
+
 #include "tensorflow/compiler/mlir/tensorflow/transforms/generated_decompose_resource_ops.inc"
 }  // namespace
 

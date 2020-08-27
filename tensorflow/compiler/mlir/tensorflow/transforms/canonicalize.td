@@ -27,6 +27,8 @@ def SingleResultAndOperandHaveSameType : Constraint<
 
 def IsRank2Tensor : Type<HasAnyRankOfPred<[2]>, "Rank 2 tensor">;
 
+def IsRank4Tensor : Type<HasAnyRankOfPred<[4]>, "Rank 4 tensor">;
+
 // Checks if all the users is ReadVariableOp.
 def HasOnlyReadVariableOpUsers : Constraint<
   CPred<"llvm::all_of($0.getUsers(), [](mlir::OpOperand op) { "
@@ -66,6 +68,21 @@ def BatchMatMulV2ToMatMul : Pat<(TF_BatchMatMulV2Op $x, $y, $adj_x, $adj_y),
                               [(IsRank2Tensor $x), (IsRank2Tensor $y)]>;
 
 //===----------------------------------------------------------------------===//
+// BatchToSpace op patterns.
+//===----------------------------------------------------------------------===//
+
+def BatchToSpaceBlockSizeToBlockShape : NativeCodeCall<
+  "DenseElementsAttr::get(RankedTensorType::get({2}, $_builder.getI64Type()), "
+  "ArrayRef<APInt>{$0.getValue(), $0.getValue()})">;
+
+def BatchToSpaceToBatchToSpaceND :
+    Pat<(TF_BatchToSpaceOp $input, $crops, $block_size),
+        (TF_BatchToSpaceNDOp $input,
+         (TF_ConstOp (BatchToSpaceBlockSizeToBlockShape $block_size)),
+         $crops),
+        [(IsRank4Tensor $input), (IsRank2Tensor $crops)]>;
+
+//===----------------------------------------------------------------------===//
 // BiasAddV1 op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -82,6 +99,13 @@ def BitcastSameType : Pat<(TF_BitcastOp:$res $arg), (replaceWithValue $arg),
 
 def BitcastNested : Pat<(TF_BitcastOp (TF_BitcastOp $arg)),
                         (TF_BitcastOp $arg)>;
+
+//===----------------------------------------------------------------------===//
+// Concat op patterns.
+//===----------------------------------------------------------------------===//
+
+def ConvertToConcatV2 : Pat<(TF_ConcatOp $axis, $inputs),
+                            (TF_ConcatV2Op $inputs, $axis)>;
 
 //===----------------------------------------------------------------------===//
 // Conj op patterns.
@@ -110,10 +134,23 @@ def InvertNested : Pat<(TF_InvertOp (TF_InvertOp $arg)),
 
 def LogOfSoftmax : Pat<(TF_LogOp (TF_SoftmaxOp $arg)), (TF_LogSoftmaxOp $arg)>;
 
+// Canonicalize: Log(1.0 + x) to Log1p(x)
+//
+// We currently do this rewrite only if the constant `1` is a scalar, because
+// it is safely broadcastable to any shape. To be able to canonicalize when
+// constant values is not a scalar, we have to first prove that it is
+// broadcastable to `x`, which requires static shape information.
+def LogToLog1p : Pat<
+    (TF_LogOp (TF_AddV2Op
+                $arg,
+                (TF_ConstOp ConstantAttr<RankedF32ElementsAttr<[]>, "1.0f">))),
+    (TF_Log1pOp $arg)>;
+
 //===----------------------------------------------------------------------===//
 // LogicalNot op patterns.
 //===----------------------------------------------------------------------===//
 
+// TODO(ezhulenev): Generalize this pattern for all involutions.
 def LogicalNotNested : Pat<(TF_LogicalNotOp (TF_LogicalNotOp $arg)),
                            (replaceWithValue $arg)>;
 
@@ -151,12 +188,31 @@ def NegNested : Pat<(TF_NegOp (TF_NegOp $arg)), (replaceWithValue $arg)>;
 def RealDivWithSqrtDivisor : Pat<(TF_RealDivOp $arg0, (TF_SqrtOp $arg1)),
                                  (TF_MulOp $arg0, (TF_RsqrtOp $arg1))>;
 
+// Replace division by a constant with a multiplication by a reciprocal of that
+// constant. Floating point division can be ~10x more expensive than a
+// multiplication.
+def RealDivWithConstDivisor : Pat<
+  (TF_RealDivOp $arg0, (TF_ConstOp FloatElementsAttr<32>:$value)),
+  (TF_MulOp $arg0, (TF_ReciprocalOp (TF_ConstOp $value)))>;
+
 //===----------------------------------------------------------------------===//
 // Reciprocal op patterns.
 //===----------------------------------------------------------------------===//
 
 def ReciprocalNested : Pat<(TF_ReciprocalOp (TF_ReciprocalOp $arg)),
                            (replaceWithValue $arg)>;
+
+//===----------------------------------------------------------------------===//
+// Reshape op patterns.
+//===----------------------------------------------------------------------===//
+
+def RedundantReshape : Pat<(TF_ReshapeOp (TF_ReshapeOp $arg, $unused), $shape),
+                           (TF_ReshapeOp $arg, $shape)>;
+
+def IsSame : Constraint<CPred<"$0 == $1">>;
+def ReshapeToSelfShape : Pat<(TF_ReshapeOp $arg0, (TF_ShapeOp $arg1)),
+                         (replaceWithValue $arg0),
+                         [(IsSame $arg0, $arg1)]>;
 
 //===----------------------------------------------------------------------===//
 // Select op patterns.

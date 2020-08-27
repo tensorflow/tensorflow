@@ -19,7 +19,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
-#if GOOGLE_CUDA
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
+
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -53,5 +54,5 @@ class RegisterLogger {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_LOGGER_REGISTRY_H_

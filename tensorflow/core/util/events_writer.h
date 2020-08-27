@@ -44,7 +44,7 @@ class EventsWriter {
   // to the ultimate filename once Init() is called.
   // Note that it is not recommended to simultaneously have two
   // EventWriters writing to the same file_prefix.
-  explicit EventsWriter(const string& file_prefix);
+  explicit EventsWriter(const std::string& file_prefix);
   ~EventsWriter();
 
   // Sets the event file filename and opens file for writing.  If not called by
@@ -54,11 +54,11 @@ class EventsWriter {
   // but has since disappeared (e.g. deleted by another process), this will open
   // a new file with a new timestamp in its filename.
   Status Init();
-  Status InitWithSuffix(const string& suffix);
+  Status InitWithSuffix(const std::string& suffix);
 
   // Returns the filename for the current events file:
   // filename_ = [file_prefix_].out.events.[timestamp].[hostname][suffix]
-  string FileName();
+  std::string FileName();
 
   // Append "event" to the file.  The "tensorflow::" part is for swig happiness.
   void WriteEvent(const tensorflow::Event& event);
@@ -84,9 +84,9 @@ class EventsWriter {
   Status InitIfNeeded();
 
   Env* env_;
-  const string file_prefix_;
-  string file_suffix_;
-  string filename_;
+  const std::string file_prefix_;
+  std::string file_suffix_;
+  std::string filename_;
   std::unique_ptr<WritableFile> recordio_file_;
   std::unique_ptr<io::RecordWriter> recordio_writer_;
   int num_outstanding_events_;

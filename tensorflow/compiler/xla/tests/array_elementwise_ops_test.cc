@@ -1203,6 +1203,16 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32s) {
   ComputeAndCompareR1<bool>(&builder, {false, false, true, false, false}, {});
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, CompareEqF32sTO) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  auto lhs = ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, NAN, 6.0f});
+  auto rhs = ConstantR1<float>(&builder, {10.0f, 5.0f, 2.25f, NAN, NAN});
+  EqTotalOrder(lhs, rhs);
+
+  ComputeAndCompareR1<bool>(&builder, {false, false, true, true, false}, {});
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, CompareEqZeroElementF32s) {
   XlaBuilder builder(TestName());
   auto lhs = ConstantR1<float>(&builder, {});
@@ -1220,6 +1230,22 @@ XLA_TEST_F(ArrayElementwiseOpTest, CompareGeF32s) {
   Ge(lhs, rhs);
 
   ComputeAndCompareR1<bool>(&builder, {false, true, true, false, false}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, CompareGeF32sTO) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  // For portability, need to represent NAN using the following call.
+  // The C++ standard does not specify if quiet_NaN() sets the sign bit of
+  // its result. The call to std::fabs will ensure that it is not set.
+  auto nan = std::fabs(std::numeric_limits<float>::quiet_NaN());
+  auto lhs =
+      ConstantR1<float>(&builder, {-2.5f, 25.5f, 2.25f, nan, 6.0f, 6.0f});
+  auto rhs = ConstantR1<float>(&builder, {10.0f, 5.0f, 1.0f, 10.0f, nan, -nan});
+  GeTotalOrder(lhs, rhs);
+
+  ComputeAndCompareR1<bool>(&builder, {false, true, true, true, false, true},
+                            {});
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, CompareGtF32s) {

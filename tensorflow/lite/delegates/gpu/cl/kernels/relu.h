@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string>
 
-#include "tensorflow/lite/delegates/gpu/cl/kernels/flt_type.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 
@@ -26,33 +25,8 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class ReLU : public ElementwiseOperation {
- public:
-  // Move only
-  ReLU(ReLU&& operation);
-  ReLU& operator=(ReLU&& operation);
-  ReLU(const ReLU&) = delete;
-  ReLU& operator=(const ReLU&) = delete;
-
-  void SetLinkIndex(int index) override;
-  std::string GetCoreCode(const LinkingContext& context) const override;
-  std::string GetArgsDeclaration() const override;
-  absl::Status BindArguments(CLKernel* kernel) override;
-
-  friend ReLU CreateReLU(const CreationContext& creation_context,
-                         const OperationDef& definition,
-                         const ReLUAttributes& attr);
-
- private:
-  ReLU(const OperationDef& definition, const ReLUAttributes& attr,
-       CalculationsPrecision scalar_precision);
-
-  FLT alpha_;
-  FLT clip_;
-};
-
-ReLU CreateReLU(const CreationContext& creation_context,
-                const OperationDef& definition, const ReLUAttributes& attr);
+GPUOperation CreateReLU(const OperationDef& definition,
+                        const ReLUAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

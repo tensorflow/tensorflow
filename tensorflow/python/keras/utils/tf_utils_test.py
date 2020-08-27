@@ -27,7 +27,13 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import variables
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -157,6 +163,36 @@ class ConvertInnerNodeDataTest(test.TestCase):
                                             wrap=True)
     self.assertTrue(all(isinstance(ele, tf_utils.ListWrapper) for ele in data))
 
+
+class AttrsTest(test.TestCase):
+
+  def test_map_structure_with_atomic_accept_attr(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    @attr.s(frozen=True)
+    class Foo(object):
+
+      bar = attr.ib()
+
+    self.assertEqual(
+        Foo(2),
+        tf_utils.map_structure_with_atomic(
+            is_atomic_fn=lambda x: isinstance(x, int),
+            map_fn=lambda x: x + 1,
+            nested=Foo(1)))
+
+
+class TestIsRagged(test.TestCase):
+
+  def test_is_ragged_return_true_for_ragged_tensor(self):
+    tensor = ragged_tensor.RaggedTensor.from_row_splits(
+        values=[3, 1, 4, 1, 5, 9, 2, 6], row_splits=[0, 4, 4, 7, 8, 8])
+    self.assertTrue(tf_utils.is_ragged(tensor))
+
+  def test_is_ragged_return_false_for_list(self):
+    tensor = [1., 2., 3.]
+    self.assertFalse(tf_utils.is_ragged(tensor))
 
 if __name__ == '__main__':
   test.main()

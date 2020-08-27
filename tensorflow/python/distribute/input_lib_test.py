@@ -34,17 +34,19 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import composite_tensor
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -65,7 +67,7 @@ class DistributedIteratorTestBase(test.TestCase):
                      dataset_or_input_fn,
                      input_workers,
                      devices,
-                     split_batch_by,
+                     num_replicas_in_sync,
                      strategy,
                      input_context=None):
     # The `input_context` passed in is to shard dataset for
@@ -97,7 +99,7 @@ class DistributedIteratorTestBase(test.TestCase):
           dataset_or_input_fn,
           input_workers,
           strategy,
-          split_batch_by=split_batch_by,
+          num_replicas_in_sync=num_replicas_in_sync,
           input_context=input_context)
     return iterator
 
@@ -105,7 +107,7 @@ class DistributedIteratorTestBase(test.TestCase):
                     input_type,
                     dataset,
                     input_workers,
-                    split_batch_by,
+                    num_replicas_in_sync,
                     strategy,
                     input_context=None):
     if input_type == "dataset":
@@ -114,14 +116,14 @@ class DistributedIteratorTestBase(test.TestCase):
             dataset,
             input_workers,
             strategy,
-            split_batch_by=split_batch_by,
+            num_replicas_in_sync=num_replicas_in_sync,
             input_context=input_context)
       else:
         return input_lib.DistributedDatasetV1(
             dataset,
             input_workers,
             strategy,
-            split_batch_by=split_batch_by,
+            num_replicas_in_sync=num_replicas_in_sync,
             input_context=input_context)
     else:
       return strategy.experimental_distribute_datasets_from_function(dataset)
@@ -135,7 +137,7 @@ class DistributedIteratorTestBase(test.TestCase):
                             expected_values,
                             strategy,
                             sess=None,
-                            split_batch_by=None,
+                            num_replicas_in_sync=None,
                             input_context=None):
     if iteration_type == "for_loop" and not context.executing_eagerly():
       self.skipTest("unsupported test combination.")
@@ -155,7 +157,7 @@ class DistributedIteratorTestBase(test.TestCase):
           dataset_or_input_fn,
           input_workers,
           devices,
-          split_batch_by,
+          num_replicas_in_sync,
           strategy,
           input_context=input_context)
     else:
@@ -164,7 +166,7 @@ class DistributedIteratorTestBase(test.TestCase):
           input_type,
           dataset_or_input_fn,
           input_workers,
-          split_batch_by,
+          num_replicas_in_sync,
           strategy,
           input_context=input_context)
 
@@ -185,49 +187,90 @@ class DistributedIteratorTestBase(test.TestCase):
       if not ops.executing_eagerly_outside_functions():
         evaluate(control_flow_ops.group(iterator.initializer))
 
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = evaluate(
-            [values.select_replica(r,
-                                   next_element) for r in range(len(devices))])
-        self.assertEqual(len(expected_value), len(computed_value))
-        for i in range(len(expected_value)):
-          self.assertAllEqual(expected_value[i], computed_value[i])
+      def test_get_next(iterator):
+        for expected_value in expected_values:
+          next_element = iterator.get_next()
+          computed_value = evaluate([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))
+          ])
 
-      with self.assertRaises(errors.OutOfRangeError):
-        next_element = iterator.get_next()
-        evaluate(
-            [values.select_replica(r,
-                                   next_element) for r in range(len(devices))])
+          self.assertEqual(len(expected_value), len(computed_value))
+          for i in range(len(expected_value)):
+            self.assertAllEqual(expected_value[i], computed_value[i])
 
-      # After re-initializing the iterator, should be able to iterate again.
-      if not ops.executing_eagerly_outside_functions():
-        evaluate(control_flow_ops.group(iterator.initializer))
+        with self.assertRaises(errors.OutOfRangeError):
+          next_element = iterator.get_next()
+          evaluate([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))
+          ])
+
+        # After re-initializing the iterator, should be able to iterate again.
+        if not ops.executing_eagerly_outside_functions():
+          evaluate(control_flow_ops.group(iterator.initializer))
+        else:
+          if api_type == "wrap_into_iterator":
+            self.skipTest("unsupported test combination")
+          else:
+            iterator = iter(dataset)
+
+        for expected_value in expected_values:
+          next_element = iterator.get_next()
+          computed_value = evaluate([
+              distribute_utils.select_replica(r, next_element)
+              for r in range(len(devices))
+          ])
+          self.assertEqual(len(expected_value), len(computed_value))
+          for i in range(len(expected_value)):
+            self.assertAllEqual(expected_value[i], computed_value[i])
+
+      def test_get_next_as_optional(iterator):
+        for expected_value in expected_values:
+          next_element = iterator.get_next_as_optional()
+          computed_value = evaluate([
+              distribute_utils.select_replica(r, next_element.get_value())
+              for r in range(len(devices))
+          ])
+
+          self.assertEqual(len(expected_value), len(computed_value))
+          for i in range(len(expected_value)):
+            self.assertAllEqual(expected_value[i], computed_value[i])
+
+        next_element = iterator.get_next_as_optional()
+        self.assertFalse(self.evaluate(next_element.has_value()))
+        with self.assertRaises(errors.InvalidArgumentError):
+          evaluate([
+              distribute_utils.select_replica(r, next_element.get_value())
+              for r in range(len(devices))
+          ])
+
+      test_get_next(iterator)
+
+      # re-initializing the iterator
+      if not tf2.enabled():
+        self.skipTest("Not testing get_next_as_optional in TF1")
       else:
         if api_type == "wrap_into_iterator":
           self.skipTest("unsupported test combination")
         else:
           iterator = iter(dataset)
 
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = evaluate(
-            [values.select_replica(r,
-                                   next_element) for r in range(len(devices))])
-        self.assertEqual(len(expected_value), len(computed_value))
-        for i in range(len(expected_value)):
-          self.assertAllEqual(expected_value[i], computed_value[i])
+      test_get_next_as_optional(iterator)
 
     if iteration_type == "for_loop" and context.executing_eagerly():
       actual_values = []
       for x in dataset:
         computed_value = self.evaluate(
-            [values.select_replica(r, x) for r in range(len(devices))])
+            [distribute_utils.select_replica(r, x)
+             for r in range(len(devices))])
         actual_values.append(computed_value)
       for i, expected_value in enumerate(expected_values):
         self.assertEqual(len(expected_value), len(actual_values[i]))
         for j in range(len(expected_value)):
-          self.assertAllEqual(expected_value[j], actual_values[i][j])
+          self.assertAllEqual(
+              expected_value[j], actual_values[i][j],
+              "%s vs %s" % (expected_value[j], actual_values[i][j]))
 
   def _create_dataset_or_input_fn(self, input_type, input_fn):
     if input_type == "input_fn":
@@ -321,10 +364,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
   def testOneDeviceCPU(self, input_type, api_type, iteration_type, distribution,
                        enable_get_next_as_optional):
     worker_device_pairs = [("/device:CPU:0", ["/device:CPU:0"])]
-    if tf2.enabled():
-      dataset_fn = lambda _: dataset_ops.DatasetV2.range(10)
-    else:
-      dataset_fn = lambda _: dataset_ops.DatasetV1.range(10)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(10)
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -356,10 +396,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
                                  distribution, enable_get_next_as_optional):
     worker_device_pairs = [("/device:CPU:0", ["/device:GPU:0",
                                               "/device:CPU:0"])]
-    if tf2.enabled():
-      dataset_fn = lambda _: dataset_ops.DatasetV2.range(10)
-    else:
-      dataset_fn = lambda _: dataset_ops.Dataset.range(10)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(10)
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -392,10 +429,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
       worker_device_pairs.setdefault(host_device, [])
       worker_device_pairs[host_device].append(tpu_device)
     worker_device_pairs = worker_device_pairs.items()
-    if tf2.enabled():
-      dataset_fn = lambda _: dataset_ops.DatasetV2.range(10)
-    else:
-      dataset_fn = lambda _: dataset_ops.Dataset.range(10)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(10)
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -430,14 +464,10 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
 
     def dataset_fn(ctx):
       del ctx
-      if tf2.enabled():
-        dataset1 = dataset_ops.DatasetV2.range(10)
-        dataset2 = dataset_ops.DatasetV2.range(10).map(lambda x: x**2)
-        return dataset_ops.DatasetV2.zip((dataset1, dataset2))
-      else:
-        dataset1 = dataset_ops.Dataset.range(10)
-        dataset2 = dataset_ops.Dataset.range(10).map(lambda x: x**2)
-        return dataset_ops.Dataset.zip((dataset1, dataset2))
+      dataset1 = dataset_ops.Dataset.range(10)
+      dataset2 = dataset_ops.Dataset.range(10).map(lambda x: x**2)
+      return dataset_ops.Dataset.zip((dataset1, dataset2))
+
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -465,7 +495,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
     worker_device_pairs = [("/device:CPU:0", ["/device:CPU:0"])]
     input_workers = input_lib.InputWorkers(worker_device_pairs)
 
-    dataset = dataset_ops.DatasetV2.range(10)
+    dataset = dataset_ops.Dataset.range(10)
     dist_dataset = input_lib.get_distributed_dataset(dataset, input_workers,
                                                      distribution)
 
@@ -488,12 +518,12 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
                                drop_remainder, distribution):
     worker_device_pairs = [("/device:CPU:0", ["/device:GPU:0",
                                               "/device:CPU:0"])]
-    if tf2.enabled():
-      dataset_fn = lambda _: dataset_ops.DatasetV2.range(9).batch(  # pylint: disable=g-long-lambda
+
+    def dataset_fn(ctx):
+      del ctx
+      return dataset_ops.Dataset.range(9).batch(
           2, drop_remainder=drop_remainder)
-    else:
-      dataset_fn = lambda _: dataset_ops.Dataset.range(9).batch(  # pylint: disable=g-long-lambda
-          2, drop_remainder=drop_remainder)
+
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -518,27 +548,25 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
           input_type=["dataset"],
           api_type=["wrap_into_iterator", "wrap_into_dataset"],
           iteration_type=["get_next", "for_loop"],
-          split_batch_by=[None, 2],
+          num_replicas_in_sync=[None, 2],
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.central_storage_strategy_with_gpu_and_cpu
           ],
           enable_get_next_as_optional=[True, False]))
   def testBatchSplitting(self, input_type, api_type, iteration_type,
-                         split_batch_by, distribution,
+                         num_replicas_in_sync, distribution,
                          enable_get_next_as_optional):
     worker_device_pairs = [("/device:CPU:0", ["/device:GPU:0",
                                               "/device:CPU:0"])]
     batch_size = 10
-    if tf2.enabled():
-      dataset_fn = lambda _: dataset_ops.DatasetV2.range(100).batch(batch_size)
-    else:
-      dataset_fn = lambda _: dataset_ops.Dataset.range(100).batch(batch_size)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(100).batch(batch_size)
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
     updated_batch_size = (
-        batch_size // split_batch_by if split_batch_by else batch_size)
+        batch_size //
+        num_replicas_in_sync if num_replicas_in_sync else batch_size)
     expected_values = [[range(i, i+updated_batch_size),
                         range(i+updated_batch_size, i+2*updated_batch_size)]
                        for i in range(0, 100, updated_batch_size*2)]
@@ -554,7 +582,7 @@ class DistributedIteratorSingleWorkerTest(DistributedIteratorTestBase,
         expected_values,
         distribution,
         sess=None,
-        split_batch_by=split_batch_by)
+        num_replicas_in_sync=num_replicas_in_sync)
 
   @combinations.generate(
       combinations.combine(
@@ -699,24 +727,29 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     # Assert that the tensors are rebatched and sparsity is preserved.
     per_replica_batch = defun(lambda x: next(iter(x)))(dataset)
     self.assertAllEqual(
-        values.select_replica(0, per_replica_batch["dense"]),
+        distribute_utils.select_replica(0, per_replica_batch["dense"]),
         [[0., 0., 0.], [1., 0., 0.], [2., 2., 0.], [3., 3., 3.]])
     self.assertAllEqual(
-        values.select_replica(1, per_replica_batch["dense"]),
+        distribute_utils.select_replica(1, per_replica_batch["dense"]),
         [[0., 0., 0.], [5., 0., 0.], [6., 6., 0.], [7., 7., 7.]])
     # Transitively check the ragged and sparse tensors by densification.
     for i in range(2):
       self.assertLen(
-          values.select_replica(i, per_replica_batch["ragged"]).values, 6)
+          distribute_utils.select_replica(i,
+                                          per_replica_batch["ragged"]).values,
+          6)
       self.assertAllEqual(
-          values.select_replica(i, per_replica_batch["ragged"]).to_tensor(),
-          values.select_replica(i, per_replica_batch["dense"]))
+          distribute_utils.select_replica(
+              i, per_replica_batch["ragged"]).to_tensor(),
+          distribute_utils.select_replica(i, per_replica_batch["dense"]))
       self.assertLen(
-          values.select_replica(i, per_replica_batch["sparse"]).indices, 6)
+          distribute_utils.select_replica(i,
+                                          per_replica_batch["sparse"]).indices,
+          6)
       self.assertAllEqual(
           sparse_ops.sparse_tensor_to_dense(
-              values.select_replica(i, per_replica_batch["sparse"])),
-          values.select_replica(i, per_replica_batch["dense"]))
+              distribute_utils.select_replica(i, per_replica_batch["sparse"])),
+          distribute_utils.select_replica(i, per_replica_batch["dense"]))
     # Iterate through all the batches and sum them up.
     def sum_batch(per_replica_features):
       """Sums the `PerReplica` values in the `per_replica_features` map."""
@@ -816,6 +849,92 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     self.assertEqual(iterator._enable_get_next_as_optional,
                      (not drop_remainder) and enable_get_next_as_optional)
 
+  @combinations.generate(
+      combinations.combine(
+          tf_api_version=2,
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+              strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
+              strategy_combinations.one_device_strategy,
+              strategy_combinations.mirrored_strategy_with_one_cpu,
+              # TODO(mdan): Add these?
+              # strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              # strategy_combinations.multi_worker_mirrored_2x1_gpu,
+              # strategy_combinations.multi_worker_mirrored_2x2_gpu,
+          ],
+          input_type=["dataset", "input_fn"],
+          drop_remainder=[False, True],
+      ))
+  def testRaggedSparseGetNextAsOptionalInLoop(
+      self, distribution, input_type, drop_remainder):
+    """Test with `RaggedTensor`s and `SparseTensor`s."""
+    self.skipTest("b/323359921")
+
+    global_batch_size = 8
+
+    def dataset_fn(ctx=None):
+      ctx = ctx or distribute_lib.InputContext()
+      batch_size = ctx.get_per_replica_batch_size(global_batch_size)
+      # Use 20 which isn't divisible by 8 to test partial batch behavior.
+      row_lengths = np.mod(np.arange(20), 4).astype(np.int64)
+      ragged_tensor = ragged_tensor_lib.RaggedTensor.from_row_lengths(
+          np.repeat(np.arange(20, dtype=np.float32), row_lengths), row_lengths)
+      dataset = dataset_ops.DatasetV2.from_tensor_slices({
+          "dense": ragged_tensor.to_tensor(),
+          "ragged": ragged_tensor,
+          "sparse": ragged_tensor.to_sparse(),
+      })
+      dataset = dataset.shard(ctx.num_input_pipelines, ctx.input_pipeline_id)
+      return dataset.batch(batch_size, drop_remainder=drop_remainder)
+
+    if input_type == "dataset":
+      ds = distribution.experimental_distribute_dataset(
+          dataset_fn(distribute_lib.InputContext()))
+    else:
+      ds = distribution.experimental_distribute_datasets_from_function(
+          dataset_fn)
+
+    # Iterate through all the batches and sum them up.
+    def sum_batch(per_replica_features):
+      """Sums the `PerReplica` values in the `per_replica_features` map."""
+
+      def map_fn(per_replica_values):
+        per_replica_sums = distribution.run(
+            (lambda x: math_ops.reduce_sum(x.values)) if all(
+                map(sparse_tensor.is_sparse, per_replica_values.values)) else
+            math_ops.reduce_sum, (per_replica_values,))
+        return distribution.reduce(
+            reduce_util.ReduceOp.SUM, per_replica_sums, axis=None)
+
+      return nest.map_structure(map_fn, per_replica_features)
+
+    def _reduce(state, batch):
+      sums = sum_batch(batch)
+      return {name: value + sums[name] for name, value in state.items()}
+
+    def sum_while_loop(ds):
+      iterator = iter(ds)
+      sums = {"dense": 0., "ragged": 0., "sparse": 0.}
+      try_next = constant_op.constant(True)
+
+      while try_next:
+        opt_iterate = iterator.get_next_as_optional()
+        if opt_iterate.has_value():
+          sums = _reduce(sums, opt_iterate.get_value())
+        else:
+          try_next = False
+      return sums
+
+    sums = def_function.function(sum_while_loop)(ds)
+    # For loops always call get next as optional inside tf functions, so we
+    # expect 310 here when using an input function (as there are 5 batches of
+    # size 4 round robined over 2 replicas.
+    expected_for_sum = 200.
+    if not drop_remainder or input_type == "input_fn":
+      expected_for_sum = 310.
+    self.assertAllEqual(nest.flatten(sums), [expected_for_sum] * 3)
+
 
 class DistributedIteratorMultiWorkerTest(
     multi_worker_test_base.MultiWorkerTestBase, DistributedIteratorTestBase,
@@ -850,12 +969,8 @@ class DistributedIteratorMultiWorkerTest(
                              auto_shard_policy):
     ds_option = dataset_ops.Options()
     ds_option.experimental_distribute.auto_shard_policy = auto_shard_policy
-    if tf2.enabled():
-      dataset_fn = (
-          lambda _: dataset_ops.DatasetV2.range(4).with_options(ds_option))
-    else:
-      dataset_fn = (
-          lambda _: dataset_ops.Dataset.range(4).with_options(ds_option))
+    dataset_fn = (
+        lambda _: dataset_ops.Dataset.range(4).with_options(ds_option))
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -882,10 +997,7 @@ class DistributedIteratorMultiWorkerTest(
           enable_get_next_as_optional=[True, False]))
   def testOneDevicePerWorker(self, input_type, api_type, iteration_type,
                              enable_get_next_as_optional):
-    if tf2.enabled():
-      dataset_fn = lambda _: dataset_ops.DatasetV2.range(4)
-    else:
-      dataset_fn = lambda _: dataset_ops.Dataset.range(4)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(4)
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -923,10 +1035,7 @@ class DistributedIteratorMultiWorkerTest(
           required_gpus=1))
   def testTwoDevicesPerWorker(self, input_type, api_type, iteration_type,
                               enable_get_next_as_optional):
-    if tf2.enabled():
-      dataset_fn = lambda _: dataset_ops.DatasetV2.range(4)
-    else:
-      dataset_fn = lambda _: dataset_ops.Dataset.range(4)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(4)
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -972,14 +1081,10 @@ class DistributedIteratorMultiWorkerTest(
 
     def dataset_fn(ctx):
       del ctx
-      if tf2.enabled():
-        dataset1 = dataset_ops.DatasetV2.range(4)
-        dataset2 = dataset_ops.DatasetV2.range(4).map(lambda x: x**2)
-        return dataset_ops.DatasetV2.zip((dataset1, dataset2))
-      else:
-        dataset1 = dataset_ops.Dataset.range(4)
-        dataset2 = dataset_ops.Dataset.range(4).map(lambda x: x**2)
-        return dataset_ops.Dataset.zip((dataset1, dataset2))
+      dataset1 = dataset_ops.Dataset.range(4)
+      dataset2 = dataset_ops.Dataset.range(4).map(lambda x: x**2)
+      return dataset_ops.Dataset.zip((dataset1, dataset2))
+
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -1015,10 +1120,7 @@ class DistributedIteratorMultiWorkerTest(
                  self._cpu_and_one_gpu_devices()[1][1]),
         cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce(
             ["/job:worker/task:0", "/job:worker/task:1"], 2))
-    if tf2.enabled():
-      dataset_fn = lambda _: dataset_ops.DatasetV2.range(9).batch(2)
-    else:
-      dataset_fn = lambda _: dataset_ops.Dataset.range(9).batch(2)
+    dataset_fn = lambda _: dataset_ops.Dataset.range(9).batch(2)
     dataset_or_input_fn = self._create_dataset_or_input_fn(
         input_type, dataset_fn)
 
@@ -1077,10 +1179,7 @@ class DistributedIteratorMultiWorkerTest(
         strategy = strategy_cls()
       with context.graph_mode(), strategy.scope(), self.cached_session(
           target="grpc://" + self._cluster_spec[task_type][task_id]) as sess:
-        if tf2.enabled():
-          dataset_fn = lambda _: dataset_ops.DatasetV2.range(5).batch(2)
-        else:
-          dataset_fn = lambda _: dataset_ops.Dataset.range(5).batch(2)
+        dataset_fn = lambda _: dataset_ops.Dataset.range(5).batch(2)
         dataset_or_input_fn = self._create_dataset_or_input_fn(
             input_type, dataset_fn)
         if (input_type == "dataset" and strategy_cls is
@@ -1100,7 +1199,6 @@ class DistributedIteratorMultiWorkerTest(
           expected_values = [[[0, 1]], [[2, 3]], [[4]]]
           input_context = None
 
-        strategy.extended.experimental_enable_get_next_as_optional = True
         self._test_input_iteration(
             input_type,
             api_type,
@@ -1151,5 +1249,195 @@ class DistributedIteratorMultiWorkerTest(
           strategy,
           sess=sess)
 
+
+# TODO(yuefengz): Refactor this into TF2 multi worker tests when those changes
+# have landed.
+class MultiWorkerRebatchingBehaviorTest(DistributedIteratorTestBase,
+                                        parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          input_type=["dataset"],
+          api_type=["wrap_into_iterator", "wrap_into_dataset"],
+          iteration_type=["get_next", "for_loop"],
+          distribution=[
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          ]))
+  def testPartialBatchWithFileSharding(self, input_type, api_type,
+                                       iteration_type, distribution):
+    # Test case: 2 workers, 1 replica each.
+    # This test simulates the sharded behavior when we have two files each with
+    # 12 elements and a global batch size of 8. When we consider the dataset in
+    # aggregate (non-distributed), there are 24 elements divided into 3 batches
+    # of size 8. Hence, the correct distributed behavior is for each replica to
+    # see sub-batches of size 4, over three steps.
+    def dataset_fn(ctx):
+      del ctx
+      dataset = dataset_ops.Dataset.range(12).batch(8)
+
+      # Set the sharding behavior to OFF for simplicity of test setup; namely,
+      # `dataset` defines the per-worker dataset and will not be further
+      # sharded. Each worker will see a dataset that is
+      # tf.data.Dataset.range(12).batch(8).rebatch(...).
+      options = dataset_ops.Options()
+      options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
+      dataset = dataset.with_options(options)
+      return dataset
+
+    dataset = self._create_dataset_or_input_fn(input_type, dataset_fn)
+
+    # Actual devices don't matter in this test as long as there is 1 local
+    # replica.
+    worker_device_pairs = [("/device:CPU:0", ["/device:CPU:0"])]
+
+    # Each test runs individually on each worker, so we compare the
+    # values on each worker. Each worker should rebatch its dataset into
+    # smaller batches of size 4.
+    expected_values = [[[0, 1, 2, 3]], [[4, 5, 6, 7]], [[8, 9, 10, 11]]]
+    self._test_input_iteration(
+        input_type,
+        api_type,
+        iteration_type,
+        dataset,
+        worker_device_pairs,
+        expected_values,
+        distribution,
+        num_replicas_in_sync=distribution.num_replicas_in_sync,
+        input_context=distribution.extended._make_input_context())
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          input_type=["dataset"],
+          api_type=["wrap_into_iterator", "wrap_into_dataset"],
+          iteration_type=["get_next", "for_loop"],
+          distribution=[
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          ]))
+  def testPartialBatchWithFileShardingWithLegacyRebatch(self, input_type,
+                                                        api_type,
+                                                        iteration_type,
+                                                        distribution):
+    # Test case: 2 workers, 1 replica each.
+    # This test simulates the sharded behavior when we have two files each with
+    # 12 elements and a global batch size of 8. When we consider the dataset in
+    # aggregate (non-distributed), there are 24 elements divided into 3 batches
+    # of size 8. Hence, the correct distributed behavior is for each replica to
+    # see sub-batches of size 4, over three steps. However, when we create a
+    # DistributedDataset and cannot statically infer the intended global batch
+    # size (e.g. if the user does not use a batching dataset), each worker will
+    # rebatch based on the dynamic batch size of the data encountered, even when
+    # it encounters partial batches. The last per-worker partial batch (size 4)
+    # ends up being split into two replicas, resulting in 4 steps in total, of
+    # (global) batch sizes 8, 8, 4, 4.
+    def dataset_fn(ctx):
+      del ctx
+      # The following dataset is equivalent to
+      # tf.data.Dataset.range(12).batch(8), but does not use a batching dataset.
+      # This causes DistributedDataset to use LegacyRebatch instead.
+      batch_sizes = dataset_ops.Dataset.from_tensor_slices([8, 4])
+      offsets = dataset_ops.Dataset.from_tensor_slices([0, 8])
+      dataset = dataset_ops.Dataset.zip((offsets, batch_sizes))
+
+      def map_fn(offset, batch_size):
+        return math_ops.range(offset, offset + batch_size)
+
+      dataset = dataset.map(map_fn)
+
+      # Set the sharding behavior to OFF for simplicity of test setup; namely,
+      # `dataset` defines the per-worker dataset and will not be further
+      # sharded. Each worker will see a dataset that is equivalent to
+      # tf.data.Dataset.range(12).batch(8).rebatch(...).
+      options = dataset_ops.Options()
+      options.experimental_distribute.auto_shard_policy = AutoShardPolicy.OFF
+      dataset = dataset.with_options(options)
+      return dataset
+
+    dataset = self._create_dataset_or_input_fn(input_type, dataset_fn)
+
+    # Actual devices don't matter in this test as long as the number of global
+    # replicas is 2.
+    worker_device_pairs = [("/device:CPU:0", ["/device:CPU:0"])]
+
+    # Each test runs individually on each worker, so we compare the
+    # values on each worker. Each worker should rebatch its dataset into
+    # smaller batches of size 4.
+    expected_values = [[[0, 1, 2, 3]], [[4, 5, 6, 7]], [[8, 9]], [[10, 11]]]
+    self._test_input_iteration(
+        input_type,
+        api_type,
+        iteration_type,
+        dataset,
+        worker_device_pairs,
+        expected_values,
+        distribution,
+        num_replicas_in_sync=distribution.num_replicas_in_sync,
+        input_context=distribution.extended._make_input_context())
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          input_type=["dataset"],
+          api_type=["wrap_into_iterator", "wrap_into_dataset"],
+          iteration_type=["get_next", "for_loop"],
+          distribution=[
+              strategy_combinations.multi_worker_mirrored_2x1_cpu,
+              strategy_combinations.multi_worker_mirrored_2x1_gpu,
+          ],
+          auto_shard_policy=[AutoShardPolicy.AUTO, AutoShardPolicy.DATA]))
+  def testWithDataSharding(self, input_type, api_type, iteration_type,
+                           distribution, auto_shard_policy):
+    # Test case: 2 workers, 1 replica each.
+    # This test simulates the sharded behavior the dataset is sharded by data
+    # and the batch size is indivisible by the number of replicas. This checks
+    # that the elements are as expected and the batch size across all workers
+    # adds up to 3. This test will only pass if the autoshard rewrite rewrites
+    # RebatchDatasetV2 to legacy RebatchDataset when sharding by data.
+    def dataset_fn(ctx):
+      del ctx
+      dataset = dataset_ops.Dataset.range(8).batch(3)
+
+      # Set the sharding behavior to OFF for simplicity of test setup; namely,
+      # `dataset` defines the per-worker dataset and will not be further
+      # sharded. Each worker will see a dataset that is
+      # tf.data.Dataset.range(12).batch(8).rebatch(...).
+      options = dataset_ops.Options()
+      options.experimental_distribute.auto_shard_policy = auto_shard_policy
+      dataset = dataset.with_options(options)
+      return dataset
+
+    dataset = self._create_dataset_or_input_fn(input_type, dataset_fn)
+
+    # Actual devices don't matter in this test as long as there is 1 local
+    # replica.
+    worker_device_pairs = [("/device:CPU:0", ["/device:CPU:0"])]
+
+    # Each test runs individually on each worker, so we compare the
+    # values on each worker. We expect each worker to see different shards of
+    # data.
+    cr = distribution.cluster_resolver
+    worker_id = multi_worker_util.id_in_cluster(cr.cluster_spec(), cr.task_type,
+                                                cr.task_id)
+
+    if worker_id == 0:
+      expected_values = [[[0, 1]], [[3, 4]], [[6]]]
+    elif worker_id == 1:
+      expected_values = [[[2]], [[5]], [[7]]]
+
+    self._test_input_iteration(
+        input_type,
+        api_type,
+        iteration_type,
+        dataset,
+        worker_device_pairs,
+        expected_values,
+        distribution,
+        num_replicas_in_sync=distribution.num_replicas_in_sync,
+        input_context=distribution.extended._make_input_context())
+
+
 if __name__ == "__main__":
-  test.main()
+  combinations.main()

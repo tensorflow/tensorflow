@@ -9,6 +9,10 @@ tf_module {
     mtype: "<type \'int\'>"
   }
   member_method {
+    name: "get_build_info"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_compile_flags"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }

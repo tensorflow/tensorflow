@@ -1,4 +1,4 @@
-// RUN: tf-opt -tf-rewrite-tpu-embedding-ops %s | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt -tf-rewrite-tpu-embedding-ops %s | FileCheck %s
 
 // CHECK-LABEL: func @recv_tpu_embedding_activations
 func @recv_tpu_embedding_activations() -> (tensor<512x256xf32>) {

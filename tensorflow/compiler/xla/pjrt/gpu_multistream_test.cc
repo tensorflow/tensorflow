@@ -32,7 +32,7 @@ TEST(GpuMultiStream, Basics) {
       GetNvidiaGpuClient(/*asynchronous=*/true, GpuAllocatorConfig(),
                          /*distributed_client=*/nullptr, /*node_id=*/0));
 
-  Device* device = client->local_devices().at(0);
+  PjRtDevice* device = client->local_devices().at(0);
 
   int n = 1024;
   Shape shape = ShapeUtil::MakeShape(S32, {n});
@@ -72,18 +72,21 @@ TEST(GpuMultiStream, Basics) {
     TF_ASSERT_OK_AND_ASSIGN(
         auto dummy_buffer,
         PjRtBuffer::FromHostBuffer(
-            dummy_inputs.data(), dummy_shape, /*force_copy=*/false,
+            dummy_inputs.data(), dummy_shape,
+            PjRtBuffer::HostBufferSemantics::kImmutableUntilTransferCompletes,
             /*buffer_reference=*/nullptr, client.get(), device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer0,
-        PjRtBuffer::FromHostBuffer(inputs.data(), shape, /*force_copy=*/false,
-                                   /*buffer_reference=*/nullptr, client.get(),
-                                   device));
+        PjRtBuffer::FromHostBuffer(
+            inputs.data(), shape,
+            PjRtBuffer::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            /*buffer_reference=*/nullptr, client.get(), device));
     TF_ASSERT_OK_AND_ASSIGN(
         auto in_buffer1,
-        PjRtBuffer::FromHostBuffer(inputs.data(), shape, /*force_copy=*/false,
-                                   /*buffer_reference=*/nullptr, client.get(),
-                                   device));
+        PjRtBuffer::FromHostBuffer(
+            inputs.data(), shape,
+            PjRtBuffer::HostBufferSemantics::kImmutableUntilTransferCompletes,
+            /*buffer_reference=*/nullptr, client.get(), device));
     // The execution may be enqueued before the transfers complete, requiring
     // adequate device-side synchronization.
     ExecuteOptions options;

@@ -12,13 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -52,7 +55,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                  data_type == kTfLiteFloat32 || data_type == kTfLiteUInt8 ||
                      data_type == kTfLiteInt8 || data_type == kTfLiteInt32 ||
                      data_type == kTfLiteInt64);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
   const int block_size = params->block_size;
   const int input_height = input->dims->data[1];

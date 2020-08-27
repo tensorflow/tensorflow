@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_quant_adjustments.h"
 
-#include <gmock/gmock.h>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
 #include "absl/types/any.h"
 #include "absl/types/optional.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -51,7 +57,7 @@ TEST(AddQuantAdjustments, OneNode) {
   Tensor<Linear, DataType::FLOAT32> add_tensor;
   add_tensor.shape = Linear(8);
   add_tensor.data.resize(8);
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   add_attr.param = add_tensor;
   auto add_node = graph.NewNode();
   add_node->operation.type = ToString(OperationType::ADD);
@@ -95,7 +101,7 @@ TEST(AddQuantAdjustments, GeneralCase) {
   Tensor<Linear, DataType::FLOAT32> add_tensor;
   add_tensor.shape = Linear(8);
   add_tensor.data.resize(8);
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   add_attr.param = add_tensor;
   auto add1_node = graph.NewNode();
   add1_node->operation.type = ToString(OperationType::ADD);

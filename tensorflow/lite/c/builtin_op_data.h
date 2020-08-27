@@ -67,8 +67,9 @@ typedef struct {
 typedef enum {
   kTfLiteActNone = 0,
   kTfLiteActRelu,
-  kTfLiteActRelu1,  // min(max(-1, x), 1)
-  kTfLiteActRelu6,  // min(max(0, x), 6)
+  kTfLiteActReluN1To1,                    // min(max(-1, x), 1)
+  kTfLiteActRelu1 = kTfLiteActReluN1To1,  // kTfLiteActRelu1 will be deprecated.
+  kTfLiteActRelu6,                        // min(max(0, x), 6)
   kTfLiteActTanh,
   kTfLiteActSignBit,
   kTfLiteActSigmoid,
@@ -198,6 +199,8 @@ typedef struct {
 
 typedef struct {
   TfLiteFusedActivation activation;
+  // Parameter added for the version 4.
+  bool pot_scale_int16;
 } TfLiteAddParams;
 
 typedef struct {
@@ -219,6 +222,8 @@ typedef struct {
 
 typedef struct {
   TfLiteFusedActivation activation;
+  // Parameter added for the version 5.
+  bool pot_scale_int16;
 } TfLiteSubParams;
 
 typedef struct {

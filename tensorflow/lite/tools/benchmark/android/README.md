@@ -1,12 +1,12 @@
-# TFLite Android Model Benchmark Tool
+# TFLite Model Benchmark Tool with Android Apk
 
 ## Description
 
 This Android benchmark app is a simple wrapper around the TensorFlow Lite
 [command-line benchmark utility](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/tools/benchmark).
 
-Pushing and executing binaries directly on Android is a valid approach to
-benchmarking, but it can result in subtle (but observable) differences in
+Pushing and executing binaries directly on an Android device is a valid approach
+to benchmarking, but it can result in subtle (but observable) differences in
 performance relative to execution within an actual Android app. In particular,
 Android's scheduler tailors behavior based on thread and process priorities,
 which differ between a foreground Activity/Application and a regular background
@@ -29,6 +29,26 @@ to edit the `WORKSPACE` to configure the android NDK/SDK.
 bazel build -c opt \
   --config=android_arm64 \
   tensorflow/lite/tools/benchmark/android:benchmark_model
+```
+
+(Optional) To enable Hexagon delegate with `--use_hexagon=true` option, you can
+download and install the libraries as the guided in [hexagon delegate]
+(https://www.tensorflow.org/lite/performance/hexagon_delegate#step_2_add_hexagon_libraries_to_your_android_app)
+page. For example, if you installed the libraries at third_party/hexagon_nn_skel
+and created third_party/hexagon_nn_skel/BUILD with a build target,
+
+```
+filegroup(
+    name = "libhexagon_nn_skel",
+    srcs = glob(["*.so"]),
+)
+```
+
+you need to modify tflite_hexagon_nn_skel_libraries macro in
+tensorflow/lite/special_rules.bzl to specifiy the build target.
+
+```
+return ["//third_party/hexagon_nn_skel:libhexagon_nn_skel"]
 ```
 
 (2) Connect your phone. Install the benchmark APK to your phone with adb:

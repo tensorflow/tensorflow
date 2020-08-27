@@ -23,12 +23,15 @@ filegroup(
     srcs = [
         "c_api.h",
         "c_api_experimental.h",
+        "c_api_macros.h",
         "tensor_interface.h",
         "tf_attrtype.h",
         "tf_datatype.h",
         "tf_file_statistics.h",
         "tf_status.h",
         "tf_tensor.h",
+        "tf_tstring.h",
+        "//tensorflow/core/platform:ctstring",
     ],
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -48,16 +51,18 @@ filegroup(
             "*test*",
         ],
     ) + [
+        "//tensorflow/core/platform:ctstring",
         "//tensorflow/cc:srcs_no_runtime",
         "//tensorflow/core/distributed_runtime:server_lib.h",
     ],
     visibility = ["//visibility:public"],
 )
 
-filegroup(
+cc_library(
     name = "pywrap_required_hdrs",
-    srcs = [
+    textual_hdrs = [
         "c_api_internal.h",
+        "c_api_macros.h",
         "conversion_macros.h",
         "python_api.h",
         "tensor_interface.h",
@@ -76,8 +81,10 @@ tf_cuda_library(
     hdrs = [
         "c_api.h",
         "c_api_internal.h",
+        "c_api_macros.h",
         "tf_datatype.h",
         "tf_tensor.h",
+        "tf_tstring.h",
     ],
     visibility = [
         "//tensorflow:internal",
@@ -173,6 +180,7 @@ tf_cuda_library(
     copts = tf_copts(),
     visibility = [
         "//tensorflow/c:__subpackages__",
+        "//tensorflow/python:__subpackages__",
         "//third_party/llvm/llvm-project:__subpackages__",
     ],
     deps = [
@@ -206,6 +214,18 @@ tf_cuda_library(
         ],
     }),
     alwayslink = 1,
+)
+
+cc_library(
+    name = "logging",
+    srcs = ["logging.cc"],
+    hdrs = ["logging.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_macros",
+        "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:stringprintf",
+    ],
 )
 
 tf_cuda_library(
@@ -294,6 +314,7 @@ cc_library(
     hdrs = ["tf_tensor.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":c_api_macros",
         ":tensor_interface",
         ":tf_datatype",
         ":tf_status",
@@ -320,6 +341,7 @@ tf_cuda_library(
     ],
     visibility = ["//tensorflow:internal"],
     deps = [
+        ":c_api_macros",
         ":tensor_interface",
         ":tf_datatype",
         ":tf_status",

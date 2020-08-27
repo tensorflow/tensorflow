@@ -1,4 +1,4 @@
-// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=FunctionalizeControlFlowForXlaPass | FileCheck %s --dump-input-on-failure
+// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=FunctionalizeControlFlowForXlaPass | FileCheck %s
 
 func @main() {
   tf_executor.graph {

@@ -55,6 +55,16 @@ public final class InterpreterMobileNetTest {
   }
 
   @Test
+  public void testMobileNetEnhancedCpuKernels() {
+    runMobileNetFloatTest(new Interpreter.Options().setUseXNNPACK(true));
+  }
+
+  @Test
+  public void testMobileNetEnhancedCpuKernelsMultithreaded() {
+    runMobileNetFloatTest(new Interpreter.Options().setUseXNNPACK(true).setNumThreads(2));
+  }
+
+  @Test
   public void testMobileNetQuantized() {
     runMobileNetQuantizedTest(new Interpreter.Options());
   }
@@ -62,6 +72,12 @@ public final class InterpreterMobileNetTest {
   @Test
   public void testMobileNetQuantizedMultithreaded() {
     runMobileNetQuantizedTest(new Interpreter.Options().setNumThreads(2));
+  }
+
+  @Test
+  public void testMobileNetQuantizedEnhancedCpu() {
+    // The "enhanced CPU flag" should only impact float models, this is a sanity test to confirm.
+    runMobileNetQuantizedTest(new Interpreter.Options().setUseXNNPACK(true));
   }
 
   private static void runMobileNetFloatTest(Interpreter.Options options) {

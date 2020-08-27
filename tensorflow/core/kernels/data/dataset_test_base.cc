@@ -64,12 +64,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -220,8 +220,6 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
     break;
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_tstring(CASE);
-    TF_CALL_uint32(CASE);
-    TF_CALL_uint64(CASE);
     // TODO(feihugis): figure out how to support variant tensors.
 #undef CASE
     default:

@@ -1021,8 +1021,8 @@ class RNNTest(keras_parameterized.TestCase):
 
   def test_get_initial_state(self):
     cell = keras.layers.SimpleRNNCell(5)
-    with self.assertRaisesRegexp(ValueError,
-                                 'batch_size and dtype cannot be None'):
+    with self.assertRaisesRegex(ValueError,
+                                'batch_size and dtype cannot be None'):
       cell.get_initial_state(None, None, None)
 
     if not context.executing_eagerly():
@@ -1359,7 +1359,7 @@ class RNNTest(keras_parameterized.TestCase):
     cell = keras.layers.SimpleRNNCell(5)
     x = keras.Input((None, 5))
     layer = keras.layers.RNN(cell, return_sequences=True, unroll=True)
-    with self.assertRaisesRegexp(ValueError, 'Cannot unroll a RNN.*'):
+    with self.assertRaisesRegex(ValueError, 'Cannot unroll a RNN.*'):
       layer(x)
 
   def test_full_input_spec(self):
@@ -1385,11 +1385,11 @@ class RNNTest(keras_parameterized.TestCase):
 
   def test_reset_states(self):
     # See https://github.com/tensorflow/tensorflow/issues/25852
-    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+    with self.assertRaisesRegex(ValueError, 'it needs to know its batch size'):
       simple_rnn = keras.layers.SimpleRNN(1, stateful=True)
       simple_rnn.reset_states()
 
-    with self.assertRaisesRegexp(ValueError, 'it needs to know its batch size'):
+    with self.assertRaisesRegex(ValueError, 'it needs to know its batch size'):
       cell = Minimal2DRNNCell(1, 2)
       custom_rnn = keras.layers.RNN(cell, stateful=True)
       custom_rnn.reset_states()
@@ -1486,6 +1486,27 @@ class RNNTest(keras_parameterized.TestCase):
     predict_7 = model_3.predict(test_inputs)
     self.assertAllClose(predict_1, predict_6)
     self.assertAllClose(predict_6, predict_7)
+
+  def test_stateful_rnn_with_customized_get_initial_state(self):
+
+    class TestCell(keras.layers.AbstractRNNCell):
+
+      state_size = 1
+      output_size = 2
+
+      def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+        return np.ones((batch_size, 1), dtype=dtype)
+
+      def call(self, inputs, states):
+        return inputs, states
+
+    layer = keras.layers.RNN(TestCell(), stateful=True, return_state=True)
+    inputs = keras.Input(shape=(10, 2), batch_size=4)
+    model = keras.Model(inputs, layer(inputs))
+    x = np.ones((4, 10, 2), dtype=np.float32)
+    output, state = model.predict(x)
+    self.assertAllClose(output, np.ones((4, 2)))
+    self.assertAllClose(state, np.ones((4, 1)))
 
   def test_input_dim_length(self):
     simple_rnn = keras.layers.SimpleRNN(5, input_length=10, input_dim=8)
@@ -1608,8 +1629,8 @@ class RNNTest(keras_parameterized.TestCase):
 
     # Must raise error when unroll is set to True
     unroll_rnn_layer = layer(3, unroll=True)
-    with self.assertRaisesRegexp(ValueError,
-                                 'The input received contains RaggedTensors *'):
+    with self.assertRaisesRegex(ValueError,
+                                'The input received contains RaggedTensors *'):
       unroll_rnn_layer(inputs)
 
     # Check if return sequences outputs are correct
@@ -1745,8 +1766,8 @@ class Minimal2DRNNCell(keras.layers.Layer):
   def __init__(self, unit_a, unit_b, **kwargs):
     self.unit_a = unit_a
     self.unit_b = unit_b
-    self.state_size = tensor_shape.as_shape([unit_a, unit_b])
-    self.output_size = tensor_shape.as_shape([unit_a, unit_b])
+    self.state_size = tensor_shape.TensorShape([unit_a, unit_b])
+    self.output_size = tensor_shape.TensorShape([unit_a, unit_b])
     super(Minimal2DRNNCell, self).__init__(**kwargs)
 
   def build(self, input_shape):

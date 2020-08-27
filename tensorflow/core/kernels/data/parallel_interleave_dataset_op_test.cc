@@ -159,7 +159,7 @@ ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams2() {
       /*other_arguments=*/{},
       /*cycle_length=*/2,
       /*block_length=*/1,
-      /*buffer_output_elements=*/0,
+      /*buffer_output_elements=*/1,
       /*prefetch_input_elements=*/0,
       /*num_parallel_calls=*/2,
       /*func=*/
@@ -184,7 +184,7 @@ ParallelInterleaveDatasetParams ParallelInterleaveDatasetParams3() {
       /*other_arguments=*/{},
       /*cycle_length=*/3,
       /*block_length=*/1,
-      /*buffer_output_elements=*/0,
+      /*buffer_output_elements=*/1,
       /*prefetch_input_elements=*/1,
       /*num_parallel_calls=*/2,
       /*func=*/
@@ -488,7 +488,7 @@ ParallelInterleaveDatasetParamsWithInvalidBufferOutputElements() {
       /*other_arguments=*/{},
       /*cycle_length=*/1,
       /*block_length=*/1,
-      /*buffer_output_elements=*/-2,
+      /*buffer_output_elements=*/model::kAutotune,
       /*prefetch_input_elements=*/model::kAutotune,
       /*num_parallel_calls=*/-5,
       /*func=*/
@@ -514,7 +514,7 @@ ParallelInterleaveDatasetParamsWithInvalidPrefetchInputElements() {
       /*other_arguments=*/{},
       /*cycle_length=*/1,
       /*block_length=*/1,
-      /*buffer_output_elements=*/-2,
+      /*buffer_output_elements=*/model::kAutotune,
       /*prefetch_input_elements=*/model::kAutotune,
       /*num_parallel_calls=*/-5,
       /*func=*/

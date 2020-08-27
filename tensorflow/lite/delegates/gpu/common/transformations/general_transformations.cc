@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
 
+#include <memory>
+
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_quant_adjustments.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/fuse_add_to_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/fuse_mul_to_conv.h"
@@ -54,9 +57,7 @@ bool ApplyGeneralTransformations(ModelTransformer* transformer) {
          transformer->Apply("merge_convolution_with_add",
                             NewMergeConvolutionWithAdd().get()) &&
          transformer->Apply("merge_mul_with_convolution",
-                            NewMergeMulWithConvolution().get()) &&
-         transformer->Apply("merge_add_with_convolution",
-                            NewMergeAddWithConvolution().get());
+                            NewMergeMulWithConvolution().get());
 }
 
 }  // namespace gpu

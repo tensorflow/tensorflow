@@ -184,6 +184,7 @@ TEST_F(InstructionFusionTest, AvoidDuplicationIfNotAllFusibleRecursively) {
     abs1 = f32[] abs(add)
     rng = f32[] rng(p1, abs1), distribution=rng_uniform
     abs2 = f32[] abs(rng)
+    abs3 = f32[] abs(rng)    
     ROOT root = f32[] subtract(abs2, add)
   })")
                     .ValueOrDie();
@@ -375,6 +376,7 @@ TEST_F(InstructionFusionTest, AllowBinarySameValueOperandsDuplication) {
     abs1 = f32[] abs(add)
     rng = f32[] rng(p0, abs1), distribution=rng_uniform
     abs2 = f32[] abs(rng)
+    abs3 = f32[] abs(rng)
     ROOT root = f32[] subtract(abs2, add)
   })")
                     .ValueOrDie();

@@ -153,16 +153,9 @@ limitations under the License.
 #endif  // defined(IS_MOBILE_PLATFORM)  - end of TF_CALL_type defines
 
 // Defines for sets of types.
-
-// TODO(b/111604096): Add uint32 and uint64 to TF_CALL_INTEGRAL_TYPES.
-//
-// The uint32 and uint64 types were introduced in 10/2017 to be used via XLA and
-// thus were not included in TF_CALL_INTEGRAL_TYPES. Including them in
-// TF_CALL_INTEGRAL_TYPES should only happen after evaluating the effect on the
-// TF binary size and performance.
-#define TF_CALL_INTEGRAL_TYPES(m)                                      \
-  TF_CALL_int64(m) TF_CALL_int32(m) TF_CALL_uint16(m) TF_CALL_int16(m) \
-      TF_CALL_uint8(m) TF_CALL_int8(m)
+#define TF_CALL_INTEGRAL_TYPES(m)                                       \
+  TF_CALL_uint64(m) TF_CALL_int64(m) TF_CALL_uint32(m) TF_CALL_int32(m) \
+      TF_CALL_uint16(m) TF_CALL_int16(m) TF_CALL_uint8(m) TF_CALL_int8(m)
 
 #define TF_CALL_FLOAT_TYPES(m) \
   TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)
@@ -174,18 +167,19 @@ limitations under the License.
 #define TF_CALL_REAL_NUMBER_TYPES_NO_BFLOAT16(m) \
   TF_CALL_INTEGRAL_TYPES(m) TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m)
 
-#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)                              \
-  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)   \
-      TF_CALL_int64(m) TF_CALL_uint16(m) TF_CALL_int16(m) TF_CALL_uint8(m) \
-          TF_CALL_int8(m)
+#define TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)                                \
+  TF_CALL_half(m) TF_CALL_bfloat16(m) TF_CALL_float(m) TF_CALL_double(m)     \
+      TF_CALL_uint64(m) TF_CALL_int64(m) TF_CALL_uint32(m) TF_CALL_uint16(m) \
+          TF_CALL_int16(m) TF_CALL_uint8(m) TF_CALL_int8(m)
 
-// Call "m" for all number types, including complex64 and complex128.
+#define TF_CALL_COMPLEX_TYPES(m) TF_CALL_complex64(m) TF_CALL_complex128(m)
+
+// Call "m" for all number types, including complex types
 #define TF_CALL_NUMBER_TYPES(m) \
-  TF_CALL_REAL_NUMBER_TYPES(m) TF_CALL_complex64(m) TF_CALL_complex128(m)
+  TF_CALL_REAL_NUMBER_TYPES(m) TF_CALL_COMPLEX_TYPES(m)
 
 #define TF_CALL_NUMBER_TYPES_NO_INT32(m) \
-  TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m)  \
-  TF_CALL_complex64(m) TF_CALL_complex128(m)
+  TF_CALL_REAL_NUMBER_TYPES_NO_INT32(m) TF_CALL_COMPLEX_TYPES(m)
 
 #define TF_CALL_POD_TYPES(m) TF_CALL_NUMBER_TYPES(m) TF_CALL_bool(m)
 
@@ -202,8 +196,7 @@ limitations under the License.
 
 // Call "m" on all types supported on GPU.
 #define TF_CALL_GPU_ALL_TYPES(m) \
-  TF_CALL_GPU_NUMBER_TYPES(m)    \
-  TF_CALL_bool(m) TF_CALL_complex64(m) TF_CALL_complex128(m)
+  TF_CALL_GPU_NUMBER_TYPES(m) TF_CALL_COMPLEX_TYPES(m) TF_CALL_bool(m)
 
 #define TF_CALL_GPU_NUMBER_TYPES_NO_HALF(m) TF_CALL_float(m) TF_CALL_double(m)
 
@@ -213,11 +206,10 @@ limitations under the License.
   TF_CALL_qint8(m) TF_CALL_quint8(m) TF_CALL_qint32(m)
 
 // Types used for save and restore ops.
-#define TF_CALL_SAVE_RESTORE_TYPES(m)                                     \
-  TF_CALL_INTEGRAL_TYPES(m)                                               \
-  TF_CALL_half(m) TF_CALL_float(m) TF_CALL_double(m) TF_CALL_complex64(m) \
-      TF_CALL_complex128(m) TF_CALL_bool(m) TF_CALL_tstring(m)            \
-          TF_CALL_QUANTIZED_TYPES(m)
+#define TF_CALL_SAVE_RESTORE_TYPES(m)      \
+  TF_CALL_REAL_NUMBER_TYPES_NO_BFLOAT16(m) \
+  TF_CALL_COMPLEX_TYPES(m)                 \
+  TF_CALL_QUANTIZED_TYPES(m) TF_CALL_bool(m) TF_CALL_tstring(m)
 
 #ifdef TENSORFLOW_SYCL_NO_DOUBLE
 #define TF_CALL_SYCL_double(m)

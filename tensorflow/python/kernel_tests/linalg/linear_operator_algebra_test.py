@@ -67,14 +67,14 @@ class AdjointTest(test.TestCase):
     class CustomLinOp(linear_operator.LinearOperator):
       pass
 
-    with self.assertRaisesRegexp(TypeError, "must be callable"):
+    with self.assertRaisesRegex(TypeError, "must be callable"):
       linear_operator_algebra.RegisterAdjoint(CustomLinOp)("blah")
 
     # First registration is OK
     linear_operator_algebra.RegisterAdjoint(CustomLinOp)(lambda a: None)
 
     # Second registration fails
-    with self.assertRaisesRegexp(ValueError, "has already been registered"):
+    with self.assertRaisesRegex(ValueError, "has already been registered"):
       linear_operator_algebra.RegisterAdjoint(CustomLinOp)(lambda a: None)
 
   def testExactAdjointRegistrationsAllMatch(self):
@@ -102,10 +102,10 @@ class CholeskyTest(test.TestCase):
     def _cholesky(a):  # pylint: disable=unused-argument,unused-variable
       return "OK"
 
-    with self.assertRaisesRegexp(ValueError, "positive definite"):
+    with self.assertRaisesRegex(ValueError, "positive definite"):
       CustomLinOp(dtype=None, is_self_adjoint=True).cholesky()
 
-    with self.assertRaisesRegexp(ValueError, "self adjoint"):
+    with self.assertRaisesRegex(ValueError, "self adjoint"):
       CustomLinOp(dtype=None, is_positive_definite=True).cholesky()
 
     custom_linop = CustomLinOp(
@@ -117,14 +117,14 @@ class CholeskyTest(test.TestCase):
     class CustomLinOp(linear_operator.LinearOperator):
       pass
 
-    with self.assertRaisesRegexp(TypeError, "must be callable"):
+    with self.assertRaisesRegex(TypeError, "must be callable"):
       linear_operator_algebra.RegisterCholesky(CustomLinOp)("blah")
 
     # First registration is OK
     linear_operator_algebra.RegisterCholesky(CustomLinOp)(lambda a: None)
 
     # Second registration fails
-    with self.assertRaisesRegexp(ValueError, "has already been registered"):
+    with self.assertRaisesRegex(ValueError, "has already been registered"):
       linear_operator_algebra.RegisterCholesky(CustomLinOp)(lambda a: None)
 
   def testExactCholeskyRegistrationsAllMatch(self):
@@ -161,7 +161,7 @@ class MatmulTest(test.TestCase):
     class CustomLinOp(linear_operator.LinearOperator):
       pass
 
-    with self.assertRaisesRegexp(TypeError, "must be callable"):
+    with self.assertRaisesRegex(TypeError, "must be callable"):
       linear_operator_algebra.RegisterMatmul(CustomLinOp, CustomLinOp)("blah")
 
     # First registration is OK
@@ -169,7 +169,7 @@ class MatmulTest(test.TestCase):
         CustomLinOp, CustomLinOp)(lambda a: None)
 
     # Second registration fails
-    with self.assertRaisesRegexp(ValueError, "has already been registered"):
+    with self.assertRaisesRegex(ValueError, "has already been registered"):
       linear_operator_algebra.RegisterMatmul(
           CustomLinOp, CustomLinOp)(lambda a: None)
 
@@ -210,7 +210,7 @@ class SolveTest(test.TestCase):
     class CustomLinOp(linear_operator.LinearOperator):
       pass
 
-    with self.assertRaisesRegexp(TypeError, "must be callable"):
+    with self.assertRaisesRegex(TypeError, "must be callable"):
       linear_operator_algebra.RegisterSolve(CustomLinOp, CustomLinOp)("blah")
 
     # First registration is OK
@@ -218,7 +218,7 @@ class SolveTest(test.TestCase):
         CustomLinOp, CustomLinOp)(lambda a: None)
 
     # Second registration fails
-    with self.assertRaisesRegexp(ValueError, "has already been registered"):
+    with self.assertRaisesRegex(ValueError, "has already been registered"):
       linear_operator_algebra.RegisterSolve(
           CustomLinOp, CustomLinOp)(lambda a: None)
 
@@ -247,7 +247,7 @@ class InverseTest(test.TestCase):
     def _inverse(a):  # pylint: disable=unused-argument,unused-variable
       return "OK"
 
-    with self.assertRaisesRegexp(ValueError, "singular"):
+    with self.assertRaisesRegex(ValueError, "singular"):
       CustomLinOp(dtype=None, is_non_singular=False).inverse()
 
     self.assertEqual("OK", CustomLinOp(
@@ -258,14 +258,14 @@ class InverseTest(test.TestCase):
     class CustomLinOp(linear_operator.LinearOperator):
       pass
 
-    with self.assertRaisesRegexp(TypeError, "must be callable"):
+    with self.assertRaisesRegex(TypeError, "must be callable"):
       linear_operator_algebra.RegisterInverse(CustomLinOp)("blah")
 
     # First registration is OK
     linear_operator_algebra.RegisterInverse(CustomLinOp)(lambda a: None)
 
     # Second registration fails
-    with self.assertRaisesRegexp(ValueError, "has already been registered"):
+    with self.assertRaisesRegex(ValueError, "has already been registered"):
       linear_operator_algebra.RegisterInverse(CustomLinOp)(lambda a: None)
 
   def testExactRegistrationsAllMatch(self):

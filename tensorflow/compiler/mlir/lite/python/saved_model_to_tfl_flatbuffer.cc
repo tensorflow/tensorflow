@@ -16,6 +16,7 @@ limitations under the License.
 
 #include <utility>
 
+#include "llvm/ADT/None.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
@@ -74,7 +75,8 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   }
   auto input_names = input_attr.cast<mlir::StringAttr>().getValue();
   input_names.split(function_input_names, ",");
-  if (function_input_names.size() != model_flags.input_arrays().size()) {
+  const int function_input_names_size = function_input_names.size();
+  if (function_input_names_size != model_flags.input_arrays().size()) {
     return errors::InvalidArgument(
         "input array size mismatch: got ", function_input_names.size(),
         ", expected: ", model_flags.input_arrays().size());
@@ -98,7 +100,8 @@ Status HandleInputOutputArraysWithModule(const toco::ModelFlags& model_flags,
   }
   auto output_names = output_attr.cast<mlir::StringAttr>().getValue();
   output_names.split(function_output_names, ",");
-  if (function_output_names.size() != model_flags.output_arrays().size()) {
+  const int function_output_names_size = function_output_names.size();
+  if (function_output_names_size != model_flags.output_arrays().size()) {
     return errors::InvalidArgument(
         "output array size mismatch: got ", function_output_names.size(),
         ", expected: ", model_flags.output_arrays().size());
@@ -150,10 +153,13 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
     return errors::Unimplemented("Only support a single exported name.");
   }
 
+  tensorflow::GraphImportConfig specs;
+  specs.upgrade_legacy = true;
+
   TF_ASSIGN_OR_RETURN(auto module,
                       ImportSavedModel(model_flags.saved_model_dir(),
                                        model_flags.saved_model_version(), tags,
-                                       exported_names, &context));
+                                       exported_names, specs, &context));
 
   if (!model_flags.input_arrays().empty() ||
       !model_flags.output_arrays().empty()) {
@@ -165,8 +171,10 @@ Status ConvertSavedModelToTFLiteFlatBuffer(
   pass_config.emit_builtin_tflite_ops = emit_builtin_tflite_ops;
   pass_config.lower_tensor_list_ops = true;
 
+  // TODO(b/153507667): Pass the session object when importing logic is removed.
   auto status = internal::ConvertMLIRToTFLiteFlatBuffer(
-      toco_flags, std::move(module), pass_config, result);
+      toco_flags, std::move(module), pass_config, result,
+      /*session=*/llvm::None);
   return status;
 }
 

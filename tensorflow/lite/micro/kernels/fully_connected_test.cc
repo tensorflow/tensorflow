@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
+#include "tensorflow/lite/micro/kernels/micro_ops.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/micro/test_helpers.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
@@ -44,57 +46,34 @@ TfLiteStatus TestFullyConnectedFloat(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateFloatTensor(input_data, input_dims, "input_tensor"),
-      CreateFloatTensor(weights_data, weights_dims, "weights_tensor"),
-      CreateFloatTensor(bias_data, bias_dims, "bias_tensor"),
-      CreateFloatTensor(output_data, output_dims, "output_tensor"),
+      CreateFloatTensor(input_data, input_dims),
+      CreateFloatTensor(weights_data, weights_dims),
+      CreateFloatTensor(bias_data, bias_dims),
+      CreateFloatTensor(output_data, output_dims),
   };
-
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteFullyConnectedParams builtin_data = {
-      activation,
-      kTfLiteFullyConnectedWeightsFormatDefault,
-  };
-  const char* init_data = reinterpret_cast<const char*>(&builtin_data);
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
+      activation, kTfLiteFullyConnectedWeightsFormatDefault, false, false};
+
   int inputs_array_data[] = {3, 0, 1, 2};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
-  if (registration->prepare) {
-    TF_LITE_ENSURE_OK(&context, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TfLiteStatus invoke_status = registration->invoke(&context, &node);
+  const TfLiteRegistration registration =
+      ops::micro::Register_FULLY_CONNECTED();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
 
-  if (registration->free) {
-    registration->free(&context, user_data);
+  TfLiteStatus status = runner.InitAndPrepare();
+  if (status != kTfLiteOk) {
+    return status;
   }
-  if (invoke_status != kTfLiteOk) {
-    return invoke_status;
+
+  status = runner.Invoke();
+  if (status != kTfLiteOk) {
+    return status;
   }
   for (int i = 0; i < output_dims_count; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i], 1e-5f);
@@ -121,61 +100,35 @@ TfLiteStatus TestFullyConnectedQuantized(
   constexpr int outputs_size = 1;
   constexpr int tensors_size = inputs_size + outputs_size;
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(input_data, input_dims, "input_tensor", input_min,
-                            input_max),
-      CreateQuantizedTensor(weights_data, weights_dims, "weights_tensor",
-                            weights_min, weights_max),
-      CreateQuantized32Tensor(bias_data, bias_dims, "bias_tensor", bias_scale),
-      CreateQuantizedTensor(output_data, output_dims, "output_tensor",
-                            output_min, output_max),
+      CreateQuantizedTensor(input_data, input_dims, input_min, input_max),
+      CreateQuantizedTensor(weights_data, weights_dims, weights_min,
+                            weights_max),
+      CreateQuantized32Tensor(bias_data, bias_dims, bias_scale),
+      CreateQuantizedTensor(output_data, output_dims, output_min, output_max),
   };
-
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_FULLY_CONNECTED);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
 
   TfLiteFullyConnectedParams builtin_data = {
-      activation,
-      kTfLiteFullyConnectedWeightsFormatDefault,
-  };
-  const char* init_data = reinterpret_cast<const char*>(&builtin_data);
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
+      activation, kTfLiteFullyConnectedWeightsFormatDefault, false, false};
 
   int inputs_array_data[] = {3, 0, 1, 2};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 3};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  int temporaries_array_data[] = {0};
-  TfLiteIntArray* temporaries_array = IntArrayFromInts(temporaries_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
-  node.user_data = user_data;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
+  const TfLiteRegistration registration =
+      ops::micro::Register_FULLY_CONNECTED();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
 
-  if (registration->prepare) {
-    TF_LITE_ENSURE_OK(&context, registration->prepare(&context, &node));
+  TfLiteStatus status = runner.InitAndPrepare();
+  if (status != kTfLiteOk) {
+    return status;
   }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TfLiteStatus invoke_status = registration->invoke(&context, &node);
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
-  if (invoke_status != kTfLiteOk) {
-    return invoke_status;
+
+  status = runner.Invoke();
+  if (status != kTfLiteOk) {
+    return status;
   }
   for (int i = 0; i < output_dims_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);

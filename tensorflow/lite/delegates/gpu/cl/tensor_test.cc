@@ -47,8 +47,7 @@ absl::Status TensorGenericTest(const BHWC& shape,
   }
 
   Tensor tensor;
-  RETURN_IF_ERROR(
-      CreateTensor(env->context(), env->device(), shape, descriptor, &tensor));
+  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
 
@@ -77,8 +76,7 @@ absl::Status Tensor5DGenericTest(const BHWDC& shape,
   }
 
   Tensor tensor;
-  RETURN_IF_ERROR(
-      CreateTensor(env->context(), env->device(), shape, descriptor, &tensor));
+  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
 

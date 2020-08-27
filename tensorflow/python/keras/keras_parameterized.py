@@ -303,7 +303,8 @@ def _test_sequential_model_type(f, test_or_class, *args, **kwargs):
 def run_all_keras_modes(test_or_class=None,
                         config=None,
                         always_skip_v1=False,
-                        always_skip_eager=False):
+                        always_skip_eager=False,
+                        **kwargs):
   """Execute the decorated test with all keras execution modes.
 
   This decorator is intended to be applied either to individual test methods in
@@ -361,6 +362,9 @@ def run_all_keras_modes(test_or_class=None,
       when Tensorflow v2 behavior is not enabled.
     always_skip_eager: If True, does not execute the decorated test
       with eager execution modes.
+    **kwargs: Additional kwargs for configuring tests for
+     in-progress Keras behaviors/ refactorings that we haven't fully
+     rolled out yet
 
   Returns:
     Returns a decorator that will run the decorated test method multiple times.
@@ -369,8 +373,14 @@ def run_all_keras_modes(test_or_class=None,
     ImportError: If abseil parameterized is not installed or not included as
       a target dependency.
   """
+  skip_keras_tensors = kwargs.pop('skip_keras_tensors', False)
+  if kwargs:
+    raise ValueError('Unrecognized keyword args: {}'.format(kwargs))
 
   params = [('_v2_function', 'v2_function')]
+  if not skip_keras_tensors:
+    params.append(('_v2_function_use_keras_tensors',
+                   'v2_function_use_keras_tensors'))
   if not always_skip_eager:
     params.append(('_v2_eager', 'v2_eager'))
   if not (always_skip_v1 or tf2.enabled()):
@@ -390,6 +400,8 @@ def run_all_keras_modes(test_or_class=None,
         _v2_eager_test(f, self, *args, **kwargs)
       elif run_mode == 'v2_function':
         _v2_function_test(f, self, *args, **kwargs)
+      elif run_mode == 'v2_function_use_keras_tensors':
+        _v2_function_and_kerastensors_test(f, self, *args, **kwargs)
       else:
         return ValueError('Unknown run mode %s' % run_mode)
 
@@ -415,6 +427,13 @@ def _v2_function_test(f, test_or_class, *args, **kwargs):
   with context.eager_mode():
     with testing_utils.run_eagerly_scope(False):
       f(test_or_class, *args, **kwargs)
+
+
+def _v2_function_and_kerastensors_test(f, test_or_class, *args, **kwargs):
+  with context.eager_mode():
+    with testing_utils.run_eagerly_scope(False):
+      with testing_utils.use_keras_tensors_scope(True):
+        f(test_or_class, *args, **kwargs)
 
 
 def _test_or_class_decorator(test_or_class, single_method_decorator):

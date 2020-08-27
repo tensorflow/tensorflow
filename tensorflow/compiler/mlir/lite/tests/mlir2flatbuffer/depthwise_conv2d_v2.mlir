@@ -1,4 +1,4 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 func @main(tensor<1x224x224x3xf32>) -> tensor<1x112x112x32xf32> {
 ^bb0(%arg0: tensor<1x224x224x3xf32>):

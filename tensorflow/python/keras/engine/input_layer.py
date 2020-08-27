@@ -26,6 +26,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.distribute import distributed_training_utils
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import node as node_module
 from tensorflow.python.keras.saving.saved_model import layer_serialization
 from tensorflow.python.keras.utils import tf_utils
@@ -75,8 +76,9 @@ class InputLayer(base_layer.Layer):
       batch_size: Optional input batch size (integer or None).
       dtype: Optional datatype of the input. When not provided, the Keras
           default float type will be used.
-      input_tensor: Optional tensor to use as layer input
-          instead of creating a placeholder.
+      input_tensor: Optional tensor to use as layer input. If set, the layer
+          will use the `tf.TypeSpec` of this tensor rather
+          than creating a new placeholder tensor.
       sparse: Boolean, whether the placeholder created is meant to be sparse.
           Default to False.
       ragged: Boolean, whether the placeholder created is meant to be ragged.
@@ -115,6 +117,10 @@ class InputLayer(base_layer.Layer):
       input_shape = batch_input_shape[1:]
     if kwargs:
       raise ValueError('Unrecognized keyword arguments:', kwargs.keys())
+
+    if sparse and ragged:
+      raise ValueError(
+          'Cannot set both sparse and ragged to True in a Keras input.')
 
     if not name:
       prefix = 'input'
@@ -157,11 +163,15 @@ class InputLayer(base_layer.Layer):
       self.is_placeholder = True
       self._batch_input_shape = batch_input_shape
     else:
-      if not tf_utils.is_symbolic_tensor(input_tensor):
-        raise ValueError('You should not pass an EagerTensor to `Input`. '
-                         'For example, instead of creating an '
-                         'InputLayer, you should instantiate your model and '
-                         'directly call it on your input.')
+      if keras_tensor.keras_tensors_enabled():
+        if not isinstance(input_tensor, keras_tensor.KerasTensor):
+          input_tensor = keras_tensor.keras_tensor_from_tensor(input_tensor)
+      else:
+        if not tf_utils.is_symbolic_tensor(input_tensor):
+          raise ValueError('You should not pass an EagerTensor to `Input`. '
+                           'For example, instead of creating an '
+                           'InputLayer, you should instantiate your model and '
+                           'directly call it on your input.')
       self.is_placeholder = False
       try:
         self._batch_input_shape = tuple(input_tensor.shape.as_list())
@@ -173,7 +183,8 @@ class InputLayer(base_layer.Layer):
     node_module.Node(layer=self, outputs=input_tensor)
 
     # Store type spec
-    if isinstance(input_tensor, composite_tensor.CompositeTensor):
+    if isinstance(input_tensor, (
+        composite_tensor.CompositeTensor, keras_tensor.KerasTensor)):
       self._type_spec = input_tensor._type_spec  # pylint: disable=protected-access
     else:
       self._type_spec = tensor_spec.TensorSpec(
@@ -231,7 +242,8 @@ def Input(  # pylint: disable=invalid-name
           if `sparse` is False, sparse tensors can still be passed into the
           input - they will be densified with a default value of 0.
       tensor: Optional existing tensor to wrap into the `Input` layer.
-          If set, the layer will not create a placeholder tensor.
+          If set, the layer will use the `tf.TypeSpec` of this tensor rather
+          than creating a new placeholder tensor.
       ragged: A boolean specifying whether the placeholder to be created is
           ragged. Only one of 'ragged' and 'sparse' can be True. In this case,
           values of 'None' in the 'shape' argument represent ragged dimensions.

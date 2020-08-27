@@ -89,6 +89,11 @@ REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceArgOp).Device(DEVICE_CPU), ArgOp);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_CPU), RetvalOp);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceRetOp).Device(DEVICE_CPU), RetvalOp);
 
+// TPU ops are only registered when they are required as part of the larger
+// TPU runtime, and does not need to be registered when selective registration
+// is turned on.
+REGISTER_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_TPU_SYSTEM), RetvalOp);
+
 #if TENSORFLOW_USE_SYCL
 #define REGISTER(type)     \
   REGISTER_KERNEL_BUILDER( \
@@ -267,11 +272,11 @@ class SymbolicGradientOp : public AsyncOpKernel {
     FunctionLibraryRuntime::Options opts;
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
+    opts.collective_executor = ctx->collective_executor();
     opts.runner = ctx->runner();
     opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
     opts.stats_collector = ctx->stats_collector();
     opts.step_container = ctx->step_container();
-    opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
@@ -436,13 +441,18 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       });
 }
 
-string RemoteCallOp::TraceString(OpKernelContext* ctx, bool verbose) {
-  string trace_string =
-      strings::StrCat(name_view(), "__", func_.name(), ":", type_string_view());
-  if (!verbose) return trace_string;
-  string trace_args = GetTraceArgument(ctx);
-  if (trace_args.empty()) return trace_string;
-  return strings::StrCat(trace_string, "#", trace_args, "#");
+string RemoteCallOp::TraceString(const OpKernelContext& ctx,
+                                 bool verbose) const {
+  string trace_string = profiler::TraceMeOp(
+      strings::StrCat(name_view(), "__", func_.name()), type_string_view());
+  if (verbose) {
+    string shape = ShapeTraceString(ctx);
+    if (!shape.empty()) {
+      trace_string =
+          profiler::TraceMeEncode(std::move(trace_string), {{"shape", shape}});
+    }
+  }
+  return trace_string;
 }
 
 REGISTER_KERNEL_BUILDER(

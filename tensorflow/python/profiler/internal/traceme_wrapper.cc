@@ -26,5 +26,5 @@ PYBIND11_MODULE(_pywrap_traceme, m) {
   py::class_<TraceMeWrapper>(m, "TraceMe", py::module_local())
       .def(py::init<const py::str&, const py::kwargs&>())
       .def("SetMetadata", &TraceMeWrapper::SetMetadata)
-      .def_static("IsEnabled", &TraceMeWrapper::IsEnabled);
+      .def("Stop", &TraceMeWrapper::Stop);
 };

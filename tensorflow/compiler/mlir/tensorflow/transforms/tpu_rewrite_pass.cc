@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -69,6 +70,7 @@ constexpr char kPaddingMapAttr[] = "padding_map";
 constexpr char kDeviceAttr[] = "device";
 constexpr char kDevicesAttr[] = "devices";
 constexpr char kVersionsAttr[] = "tf.versions";
+constexpr char kUseXlaSpmdAttr[] = "use_spmd_for_xla_partitioning";
 
 constexpr char kBadStringArrayElementMsg[] =
     "bad '{0}' attribute at index {1}, not a string";
@@ -146,6 +148,9 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
       // We can simply change name of TPU program's main function because there
       // should be no other reference to it.
       clone.setName("main");
+      clone.setVisibility(FuncOp::Visibility::Public);
+    } else {
+      clone.setVisibility(FuncOp::Visibility::Private);
     }
     symbol_table.insert(clone);
   }
@@ -153,7 +158,9 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
   // Serialize module and return.
   {
     llvm::raw_string_ostream os(*serialized_func_module);
-    module_for_func.get().print(os);
+    OpPrintingFlags print_flags;
+    print_flags.enableDebugInfo();
+    module_for_func.get().print(os, print_flags);
   }
   return success();
 }
@@ -328,6 +335,10 @@ LogicalResult SetMetadataProtoFromClusterFuncOp(
   if (xla_device_assignment.hasValue())
     *metadata->mutable_device_assignment() =
         std::move(xla_device_assignment.getValue());
+  auto use_spmd_attr = op.getAttrOfType<BoolAttr>(kUseXlaSpmdAttr);
+  if (!use_spmd_attr)
+    return op.emitOpError(CreateMissingAttributeMsg(kUseXlaSpmdAttr));
+  metadata->set_use_spmd_for_xla_partitioning(use_spmd_attr.getValue());
 
   if (failed(SetMetadataProtoArgs(op, metadata))) return failure();
 
@@ -401,12 +412,15 @@ Operation* BuildCompileOp(
   std::string txt_module;
   if (failed(EncapsulateFuncAndSerialize(func, &txt_module))) return nullptr;
 
-  auto result_type =
+  auto compilation_status_type =
       RankedTensorType::get({}, builder->getType<TF::StringType>());
+  auto program_type =
+      RankedTensorType::get({2}, builder->getType<TF::StringType>());
 
   auto compile_op = builder->create<TF::_TPUCompileMlirOp>(
-      cluster_func.getLoc(), /*compilation_status=*/result_type, /*program=*/
-      llvm::SmallVector<Type, 8>(num_cores_per_replica, result_type),
+      cluster_func.getLoc(),
+      /*compilation_status=*/compilation_status_type, /*program=*/
+      llvm::SmallVector<Type, 8>(num_cores_per_replica, program_type),
       compile_op_operands, txt_module, txt_metadata);
 
   return WrapOpInLaunch(builder, compile_op.getLoc(), compile_op,
@@ -465,9 +479,8 @@ LogicalResult BuildExecuteOp(
   if (failed(result)) return failure();
 
   // TPUExecute has same output types as cluster_func.
-  *execute_op = builder->create<TF::TPUExecuteOp>(
-      cluster_func.getLoc(), output_types, inputs,
-      llvm::ArrayRef<NamedAttribute>{});
+  *execute_op = builder->create<TF::TPUExecuteOp>(cluster_func.getLoc(),
+                                                  output_types, inputs);
   return success();
 }
 
@@ -591,9 +604,9 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 // func @main(%arg0: tensor<i1>) {
 //   %0 = "tf.Shape"(%arg0) : (tensor<i1>) -> tensor<?xi32>
 //   %1:2 = "tf._TPUCompileMlir"(%0) {device = "/CPU:0"} :
-//            (tensor<?xi32>) -> (tensor<!tf.string>, tensor<!tf.string>)
+//            (tensor<?xi32>) -> (tensor<!tf.string>, tensor<2x!tf.string>)
 //   %2 = "tf.TPUExecute"(%arg0, %1#0) {device = "/TPU:0"} :
-//            (tensor<i1>, tensor<!tf.string>) -> tensor<i1>
+//            (tensor<i1>, tensor<2x!tf.string>) -> tensor<i1>
 //   return
 // }
 //
@@ -617,9 +630,9 @@ void BuildTPUCompileSucceededAssertOp(Operation* compile_op,
 //                              {n = 2 : i32, devices = ["/TPU:0", "/TPU:1"]} {
 //     %1 = "tf.Shape"(%ri) : (tensor<i1>) -> tensor<?xi32>
 //     %2:2 = "tf._TPUCompileMlir"(%1) {device = "/CPU:0"} :
-//              (tensor<?xi32>) -> (tensor<!tf.string>, tensor<!tf.string>)
+//              (tensor<?xi32>) -> (tensor<!tf.string>, tensor<2x!tf.string>)
 //     %3 = "tf.TPUExecute"(%ri, %2#0) :
-//            (tensor<i1>, tensor<!tf.string>) -> tensor<i1>
+//            (tensor<i1>, tensor<2x!tf.string>) -> tensor<i1>
 //     tf_device.return %3 : tensor<i1>
 //   }
 //   return
@@ -636,10 +649,7 @@ LogicalResult Rewrite(
   // Collect `num_replicas` and `num_cores_per_replica` attributes.
   int num_replicas = 1;
   tf_device::ReplicateOp replicate =
-      cluster_func.getParentOp()
-          ? llvm::dyn_cast_or_null<tf_device::ReplicateOp>(
-                cluster_func.getParentOp())
-          : nullptr;
+      cluster_func.getParentOfType<tf_device::ReplicateOp>();
   if (replicate) num_replicas = replicate.n().getLimitedValue();
 
   auto num_cores_per_replica_attr = cluster_func.getAttrOfType<IntegerAttr>(
@@ -708,9 +718,9 @@ LogicalResult Rewrite(
   // structured lowering.
   if (auto parallel_op = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
           cluster_func.getParentOp())) {
-    parallel_op.walk([&](TF::_TPUCompileMlirOp parallel_compile_op) {
-      parallel_compile_op.replaceAllUsesWith(compile_op);
-      parallel_compile_op.erase();
+    parallel_op.walk([&](TF::_TPUCompileMlirPlaceholderProgramKeyOp key_op) {
+      key_op.replaceAllUsesWith(compile_op->getResult(1));
+      key_op.erase();
     });
   }
 

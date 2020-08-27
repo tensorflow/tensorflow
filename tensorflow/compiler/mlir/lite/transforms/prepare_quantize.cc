@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/CommandLine.h"
 #include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
@@ -35,9 +36,9 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 
 // NOLINTNEXTLINE
-static llvm::cl::list<std::string> quantize_whitelist(
-    "tfl-test-quantize-whitelist", llvm::cl::value_desc("list"),
-    llvm::cl::desc("comma separated list of whitelisted functions to be "
+static llvm::cl::list<std::string> quantize_allowlist(
+    "tfl-test-quantize-allowlist", llvm::cl::value_desc("list"),
+    llvm::cl::desc("comma separated list of allowlisted functions to be "
                    "quantized. Only used in tests"),
     llvm::cl::CommaSeparated);
 
@@ -68,6 +69,11 @@ namespace {
 // training quantization simpler.
 class PrepareQuantizePass
     : public PassWrapper<PrepareQuantizePass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<TFL::TensorFlowLiteDialect,
+                    ::mlir::quant::QuantizationDialect>();
+  }
+
  public:
   // Constructor used by the PassRegistration and enforce uint8 quantization.
   // This is only used by test.
@@ -108,7 +114,7 @@ class PrepareQuantizePass
 
   // Get the min and max values from the quantization specification for the
   // current function function and argument index. Uses default values if
-  // the function is specified in the `quantize_whitelist`.
+  // the function is specified in the `quantize_allowlist`.
   std::pair<llvm::Optional<double>, llvm::Optional<double>>
   GetMinMaxValuesForArgument(llvm::StringRef func_name, int index) {
     if (func_name == quant_specs_.target_func) {
@@ -122,6 +128,10 @@ class PrepareQuantizePass
   // the best quantization practise. This also fixes some simple violations.
   void SanityCheckAndAdjustment(FuncOp func);
 
+  // Whether the func contains Quantize ops. This is used to determine whether
+  // to use the quantization parameters from the fixed output range property.
+  bool ContainsQuantizeOps(FuncOp func);
+
   QuantizationSpecs quant_specs_;
 };
 
@@ -132,7 +142,7 @@ bool PrepareQuantizePass::SetInputNodesQuantizationParams(FuncOp func) {
   // Skip this function because it isn't the target function from the spec or
   // in the function while list.
   if (target_func != func_name &&
-      !llvm::is_contained(quantize_whitelist, func_name)) {
+      !llvm::is_contained(quantize_allowlist, func_name)) {
     return false;
   }
 
@@ -285,6 +295,13 @@ void PrepareQuantizePass::SanityCheckAndAdjustment(FuncOp func) {
   });
 }
 
+bool PrepareQuantizePass::ContainsQuantizeOps(FuncOp func) {
+  for (const auto& op : func.getOps()) {
+    if (llvm::isa<quant::DequantizeCastOp>(op)) return true;
+  }
+  return false;
+}
+
 using PrepareQuantStats =
     quant::ConvertStatsToQDQs<quant::QuantizeCastOp, quant::DequantizeCastOp>;
 
@@ -309,6 +326,7 @@ void PrepareQuantizePass::runOnFunction() {
   OwningRewritePatternList patterns;
   bool is_signed = quant_specs_.IsSignedInferenceType();
   int bit_width = quant_specs_.GetQuantizationTypeWidth();
+  bool enforce_fixed_output_range = ContainsQuantizeOps(func);
   if (is_signed) {
     patterns.insert<quant::ConvertUnsignedToSigned<quant::QuantizeCastOp>>(ctx);
     // Convert quant stats to int8 quantization parameters.
@@ -327,7 +345,8 @@ void PrepareQuantizePass::runOnFunction() {
   // values (tensors).
   ApplyQuantizationParamsPropagation(
       func, is_signed, disable_per_channel || quant_specs_.disable_per_channel,
-      GetOpQuantSpec);
+      GetOpQuantSpec,
+      enforce_fixed_output_range || quant_specs_.post_training_quantization);
 
   ConvertMlirQuantOpsToTFLQuantOps(func);
 }

@@ -240,7 +240,7 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     two_tags_no_seps = "{{node One}}{{node Three}}"
     interpolated_string = error_interpolation.interpolate(
         two_tags_no_seps, self.graph)
-    self.assertRegexpMatches(
+    self.assertRegex(
         interpolated_string, r"error_interpolation_test\.py:[0-9]+."
         r"*error_interpolation_test\.py:[0-9]+")
 
@@ -250,13 +250,13 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
         two_tags_with_seps, self.graph)
     expected_regex = (r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
                       r",,,.*error_interpolation_test\.py:[0-9]+\) ;;;$")
-    self.assertRegexpMatches(interpolated_string, expected_regex)
+    self.assertRegex(interpolated_string, expected_regex)
 
   def testNewLine(self):
     newline = "\n\n{{node One}}"
     interpolated_string = error_interpolation.interpolate(newline, self.graph)
-    self.assertRegexpMatches(interpolated_string,
-                             r"error_interpolation_test\.py:[0-9]+.*")
+    self.assertRegex(interpolated_string,
+                     r"error_interpolation_test\.py:[0-9]+.*")
 
 
 @test_util.run_deprecated_v1
@@ -279,7 +279,7 @@ class InputNodesTest(test.TestCase):
         two_tags_with_seps, self.graph)
     expected_regex = (r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
                       r",,,.*error_interpolation_test\.py:[0-9]+\) ;;;$")
-    self.assertRegexpMatches(interpolated_string, expected_regex)
+    self.assertRegex(interpolated_string, expected_regex)
 
   def testBasicInputs(self):
     tag = ";;;{{node Three}};;;"
@@ -287,7 +287,7 @@ class InputNodesTest(test.TestCase):
     expected_regex = re.compile(
         r"^;;;.*error_interpolation_test\.py:[0-9]+\) "
         r";;;.*Input.*error_interpolation_test\.py:[0-9]+\)", re.DOTALL)
-    self.assertRegexpMatches(interpolated_string, expected_regex)
+    self.assertRegex(interpolated_string, expected_regex)
 
 
 @test_util.run_deprecated_v1
@@ -332,7 +332,7 @@ class InterpolateDeviceSummaryTest(test.TestCase):
     self.assertEqual(2, num_devices)
     name_re = r"_fancy_device_function<.*error_interpolation_test.py, [0-9]+>"
     expected_re = r"with tf.device\(.*%s\)" % name_re
-    self.assertRegexpMatches(result, expected_re)
+    self.assertRegex(result, expected_re)
 
 
 @test_util.run_deprecated_v1

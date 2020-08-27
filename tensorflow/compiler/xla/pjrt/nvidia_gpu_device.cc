@@ -169,7 +169,7 @@ class NcclIdStore {
   const std::shared_ptr<DistributedRuntimeClient> client_;
 
   absl::Mutex mu_;
-  absl::flat_hash_map<std::string, std::string> cache_ GUARDED_BY(mu_);
+  absl::flat_hash_map<std::string, std::string> cache_ ABSL_GUARDED_BY(mu_);
 };
 
 StatusOr<std::string> NcclIdStore::GetNcclUniqueId(const NcclCliqueKey& key) {
@@ -207,9 +207,9 @@ StatusOr<std::string> NcclIdStore::GetNcclUniqueId(const NcclCliqueKey& key) {
   return cache_.emplace(key_string, result.ValueOrDie()).first->second;
 }
 
-std::vector<std::unique_ptr<Device>> BuildLocalDevices(
+std::vector<std::unique_ptr<PjRtDevice>> BuildLocalDevices(
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states) {
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<std::unique_ptr<PjRtDevice>> devices;
   for (auto& local_device : local_device_states) {
     int device_ordinal = local_device->device_ordinal();
     const se::DeviceDescription& description =
@@ -225,7 +225,7 @@ std::vector<std::unique_ptr<Device>> BuildLocalDevices(
 Status BuildDistributedDevices(
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
-    std::vector<std::unique_ptr<Device>>* devices,
+    std::vector<std::unique_ptr<PjRtDevice>>* devices,
     GpuExecutableRunOptions* gpu_executable_run_options) {
   LocalTopologyProto local_topology;
   local_topology.set_node_id(node_id);
@@ -286,8 +286,8 @@ Status BuildDistributedDevices(
 GpuDevice::GpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state,
                      std::string device_kind, int node_id)
-    : Device(id, std::move(local_device_state), kGpuPlatformName,
-             std::move(device_kind), node_id) {}
+    : PjRtDevice(id, std::move(local_device_state), kGpuPlatformName,
+                 std::move(device_kind), node_id) {}
 
 StatusOr<std::shared_ptr<PjRtClient>> GetNvidiaGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -302,7 +302,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetNvidiaGpuClient(
   auto host_memory_allocator =
       GetGpuHostAllocator(local_device_states.front()->executor());
 
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<std::unique_ptr<PjRtDevice>> devices;
   auto gpu_run_options = absl::make_unique<GpuExecutableRunOptions>();
   if (distributed_client) {
     TF_RETURN_IF_ERROR(BuildDistributedDevices(
@@ -316,6 +316,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetNvidiaGpuClient(
       "gpu", xla_client, std::move(devices),
       /*node_id=*/node_id, std::move(allocator),
       std::move(host_memory_allocator),
+      /*should_stage_host_to_device_transfers=*/true,
       /*gpu_run_options=*/std::move(gpu_run_options));
   return pyclient;
 }

@@ -117,6 +117,8 @@ bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
 
+bool IsBroadcastTo(const NodeDef& node) { return node.op() == "BroadcastTo"; }
+
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
 
 bool IsCastLike(const NodeDef& node) {
@@ -183,6 +185,14 @@ bool IsConv2DBackpropInput(const NodeDef& node) {
 }
 
 bool IsConv3D(const NodeDef& node) { return node.op() == "Conv3D"; }
+
+bool IsConv3DBackpropFilterV2(const NodeDef& node) {
+  return node.op() == "Conv3DBackpropFilterV2";
+}
+
+bool IsConv3DBackpropInputV2(const NodeDef& node) {
+  return node.op() == "Conv3DBackpropInputV2";
+}
 
 bool IsDepthwiseConv2dNative(const NodeDef& node) {
   return node.op() == "DepthwiseConv2dNative";
@@ -425,6 +435,10 @@ bool IsRank(const NodeDef& node) { return node.op() == "Rank"; }
 
 bool IsReadVariableOp(const NodeDef& node) {
   return node.op() == "ReadVariableOp";
+}
+
+bool IsReadVariablesOp(const NodeDef& node) {
+  return node.op() == "_ReadVariablesOp";
 }
 
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }

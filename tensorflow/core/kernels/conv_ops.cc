@@ -374,8 +374,8 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
   const int64 stride_w = GetTensorDim(strides, data_format, 'W');
   TF_REQUIRES(
       stride_n == 1 && stride_c == 1,
-      errors::InvalidArgument("Current implementation does not yet support "
-                              "strides in the batch and depth dimensions."));
+      errors::Unimplemented("Current implementation does not yet support "
+                            "strides in the batch and depth dimensions."));
   TF_REQUIRES(stride_h > 0 && stride_w > 0,
               errors::InvalidArgument(
                   "Row and column strides should be larger than 0."));
@@ -386,8 +386,8 @@ Status InitConv2DParameters(const OpKernelConstruction* context,
   const int64 dilation_w = GetTensorDim(dilations, data_format, 'W');
   TF_REQUIRES(
       dilation_n == 1 && dilation_c == 1,
-      errors::InvalidArgument("Current implementation does not yet support "
-                              "dilations in the batch and depth dimensions."));
+      errors::Unimplemented("Current implementation does not yet support "
+                            "dilations in the batch and depth dimensions."));
   TF_REQUIRES(
       dilation_h > 0 && dilation_w > 0,
       errors::InvalidArgument("Dilated rates should be larger than 0."));
@@ -512,7 +512,6 @@ class Conv2DOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, InitConv2DParameters(context, &params_));
 
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
-    use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
 
@@ -1184,7 +1183,8 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
       const std::array<int, 2>& padding_left,                               \
       const std::array<int, 2>& padding_right,                              \
-      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format);    \
+      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format,     \
+      T padding_value);                                                     \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
 DECLARE_GPU_SPEC(float);

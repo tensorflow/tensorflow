@@ -51,3 +51,20 @@ def if_nnapi(supported, not_supported = [], supported_android = None):
 def tflite_hexagon_mobile_test(name):
     """This is a no-op outside of Google."""
     pass
+
+def tflite_hexagon_nn_skel_libraries():
+    """This is a no-op outside of Google due to license agreement process.
+
+    Developers who want to use hexagon nn skel libraries can download
+    and install the libraries as the guided in
+    https://www.tensorflow.org/lite/performance/hexagon_delegate#step_2_add_hexagon_libraries_to_your_android_app.
+    For example, if you installed the libraries at third_party/hexagon_nn_skel
+    and created third_party/hexagon_nn_skel/BUILD with a build target,
+    filegroup(
+        name = "libhexagon_nn_skel",
+        srcs = glob(["*.so"]),
+    )
+    you need to modify this macro to specifiy the build target.
+    return ["//third_party/hexagon_nn_skel:libhexagon_nn_skel"]
+    """
+    return []

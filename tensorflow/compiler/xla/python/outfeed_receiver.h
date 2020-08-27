@@ -31,10 +31,9 @@ class OutfeedReceiverImpl;
 // Implements a multithreaded receiver of outfeeds from devices.
 class OutfeedReceiver {
  public:
-  // A callback takes: device, client (for the device), consumer id, received.
-  // The client pointer should be alive while the device is used.
-  using Callback = std::function<void(Device*, std::shared_ptr<PjRtClient>,
-                                      uint32_t, std::shared_ptr<Literal>)>;
+  // A callback takes: device, consumer id, received.
+  using Callback =
+      std::function<void(PjRtDevice*, uint32_t, std::shared_ptr<Literal>)>;
 
   // Constructs the receiver for the given clients and callback function.
   //
@@ -45,8 +44,7 @@ class OutfeedReceiver {
   //   max_callback_queue_size_bytes: the maximum number of bytes for all
   //     received outfeeds queued to be processed. When this limit is reached
   //     we pause receiving outfeeds from devices.
-  OutfeedReceiver(Callback callback,
-                  std::vector<std::shared_ptr<PjRtClient>> clients,
+  OutfeedReceiver(Callback callback, absl::Span<PjRtClient* const> clients,
                   ssize_t max_callback_queue_size_bytes);
 
   OutfeedReceiver(const OutfeedReceiver&) = delete;

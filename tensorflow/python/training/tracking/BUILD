@@ -6,7 +6,6 @@ load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
 )
-load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 package(
     default_visibility = [
@@ -98,8 +97,6 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/layers",
     ],
 )
 
@@ -149,7 +146,7 @@ py_library(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
-        "//tensorflow/python/keras:backend",
+        "//tensorflow/python/saved_model:utils",
         "//tensorflow/python/training/saving:checkpoint_options",
         "//tensorflow/python/training/saving:functional_saver",
         "//tensorflow/python/training/saving:saveable_object_util",
@@ -188,38 +185,10 @@ tf_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:backend",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/optimizer_v2",
+        "//tensorflow/python/saved_model:save",
         "//tensorflow/python/training/saving:checkpoint_options",
         "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
-    ],
-)
-
-tf_xla_py_test(
-    name = "util_xla_test",
-    srcs = ["util_xla_test.py"],
-    python_version = "PY3",
-    tags = [
-        "no_pip",
-        "no_windows",
-        "nomac",
-        "notsan",  # b/74395663
-    ],
-    deps = [
-        ":tracking",
-        ":util",
-        "//tensorflow/compiler/tests:xla_test",
-        "//tensorflow/python:checkpoint_management",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python/eager:backprop",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/layers",
-        "//tensorflow/python/keras/optimizer_v2",
     ],
 )
 
@@ -230,34 +199,19 @@ tf_py_test(
         "notsan",  # b/74395663
     ],
     deps = [
-        ":base",
-        ":graph_view",
         ":tracking",
         ":util",
-        "//tensorflow/python:checkpoint_management",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
-        "//tensorflow/python:pywrap_tensorflow",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:saver",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:training",
-        "//tensorflow/python:training_util",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras:engine",
-        "//tensorflow/python/keras/layers",
-        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )

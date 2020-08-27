@@ -155,6 +155,14 @@ def LowerFillOp : Pat<(TF_FillOp $dims, $value),
                       (TF_BroadcastToOp $value, $dims)>;
 
 //===----------------------------------------------------------------------===//
+// NaN op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerIsNanOp : Pat<(TF_IsNanOp $x),
+                     (TF_EqualOp $x, (TF_ConstOp:$nan (GetScalarNanOfType $x)),
+                      /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
 // L2Loss op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -187,8 +195,7 @@ def : Pat<(TF_PadOp TensorOf<[AnySignlessInteger, AnyFloat]>:$input, $paddings),
 // Reciprocal op patterns.
 //===----------------------------------------------------------------------===//
 
-// TODO(hinsu): Support complex and unsigned input types.
-def LowerReciprocal : Pat<(TF_ReciprocalOp TF_SintOrFpTensor:$x),
+def LowerReciprocal : Pat<(TF_ReciprocalOp $x),
                           (TF_DivOp (TF_ConstOp (GetScalarOfType<1> $x)), $x)>;
 
 //===----------------------------------------------------------------------===//

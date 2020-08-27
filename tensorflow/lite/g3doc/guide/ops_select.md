@@ -21,6 +21,10 @@ TensorFlow ops when TFLite builtin ops are not sufficient.
 
 Models converted with TensorFlow ops will require a TensorFlow Lite interpreter
 that has a larger binary size than the interpreter with only TFLite builtin ops.
+For Android, It is possible to reduce binary size by selectively linking only
+required Tensorflow ops. For the details, please see the
+[Reduce TensorFlow Lite binary size](../guide/reduce_binary_size.md) section.
+
 Additionally, performance optimizations will not be available for any TensorFlow
 ops in the TensorFlow Lite model.
 
@@ -39,8 +43,8 @@ for `target_spec.supported_ops`:
 
 *   `TFLITE_BUILTINS` - Converts models using TensorFlow Lite builtin ops.
 *   `SELECT_TF_OPS` - Converts models using TensorFlow ops. The exact subset of
-    supported ops can be found in the whitelist at
-    `lite/delegates/flex/whitelisted_flex_ops.cc`.
+    supported ops can be found in the allowlist at
+    `lite/delegates/flex/allowlisted_flex_ops.cc`.
 
 Note: `target_spec.supported_ops` was previously `target_ops` in the Python API.
 
@@ -53,7 +57,7 @@ partially supported by TensorFlow Lite, and one would like to avoid those
 limitations.
 
 The following example shows how to use this feature in the
-[`TFLiteConverter`](./convert/python_api.md) Python API.
+[`TFLiteConverter`](../convert/python_api.md) Python API.
 
 ```python
 import tensorflow as tf
@@ -66,7 +70,7 @@ open("converted_model.tflite", "wb").write(tflite_model)
 ```
 
 The following example shows how to use this feature in the
-[`tflite_convert`](../convert/cmdline_examples.md) command line tool using the
+[`tflite_convert`](../convert/cmdline.md) command line tool using the
 command line flag `target_ops`.
 
 ```sh
@@ -98,8 +102,10 @@ includes the necessary library of TensorFlow ops.
 
 ### Android AAR
 
-For Android, we recommend using the prebuilt [AAR with TensorFlow ops hosted at
-JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-select-tf-ops).
+To reduce the binary size, please build your own custom AAR files as guided in
+the [next section](#building-the-android-aar). If the binary size is not a
+considerable concern, we recommend using the prebuilt
+[AAR with TensorFlow ops hosted at JCenter](https://bintray.com/google/tensorflow/tensorflow-lite-select-tf-ops).
 
 You can specify this in your `build.gradle` dependencies by adding it alongside
 the standard TensorFlow Lite AAR as follows:
@@ -112,9 +118,9 @@ dependencies {
 }
 ```
 
-Once you've added the dependency, the necessary delegate for handling
-the graph's TensorFlow ops should be automatically installed for
-graphs that require them.
+Once you've added the dependency, the necessary delegate for handling the
+graph's TensorFlow ops should be automatically installed for graphs that require
+them.
 
 *Note*: The TensorFlow ops dependency is relatively large, so you'll probably
 want to filter out unnecessary x86 ABIs in your `.gradle` file by setting up
@@ -132,23 +138,32 @@ android {
 
 #### Building the Android AAR
 
-For more advanced cases, you can also build the library manually. Assuming a
-<a href="android.md">working TensorFlow Lite build environment</a>, build the
-Android AAR with select TensorFlow ops as follows:
+For reducing the binary size or other advanced cases, you can also build the
+library manually. Assuming a <a href="android.md">working TensorFlow Lite build
+environment</a>, build the Android AAR with select TensorFlow ops as follows:
 
 ```sh
-bazel build --cxxopt='--std=c++14' -c opt   \
-  --config=android_arm --config=monolithic  \
-  //tensorflow/lite/java:tensorflow-lite-select-tf-ops
+sh tensorflow/lite/tools/build_aar.sh \
+  --input_models=/a/b/model_one.tflite,/c/d/model_two.tflite \
+  --target_archs=x86,x86_64,arm64-v8a,armeabi-v7a
 ```
 
-This will generate an AAR file in `bazel-bin/tensorflow/lite/java/`. From there,
-you can either import the AAR directly into your project, or publish the custom
-AAR to your local Maven repository:
+This will generate the AAR file `bazel-bin/tmp/tensorflow-lite.aar` for
+TensorFlow Lite built-in and custom ops; and generate the AAR file
+`bazel-bin/tmp/tensorflow-lite-select-tf-ops.aar` for TensorFlow ops. If you
+don't have a working build environment, You can also
+[build above files with docker](../guide/reduce_binary_size.md#selectively_build_tensorflow_lite_with_docker).
+
+From there, you can either import the AAR files directly into your project, or
+publish the custom AAR files to your local Maven repository:
 
 ```sh
 mvn install:install-file \
-  -Dfile=bazel-bin/tensorflow/lite/java/tensorflow-lite-select-tf-ops.aar \
+  -Dfile=bazel-bin/tmp/tensorflow-lite.aar \
+  -DgroupId=org.tensorflow \
+  -DartifactId=tensorflow-lite -Dversion=0.1.100 -Dpackaging=aar
+mvn install:install-file \
+  -Dfile=bazel-bin/tmp/tensorflow-lite-select-tf-ops.aar \
   -DgroupId=org.tensorflow \
   -DartifactId=tensorflow-lite-select-tf-ops -Dversion=0.1.100 -Dpackaging=aar
 ```
@@ -166,44 +181,73 @@ allprojects {
 }
 
 dependencies {
-    implementation 'org.tensorflow:tensorflow-lite-with-select-tf-ops:0.1.100'
+    implementation 'org.tensorflow:tensorflow-lite:0.1.100'
+    implementation 'org.tensorflow:tensorflow-lite-select-tf-ops:0.1.100'
 }
 ```
 
 ### iOS
 
-With XCode Command Line Tools installed, TensorFlow Lite with select TensorFlow
-ops support can be built with the following command:
+#### Using CocoaPods
 
-```sh
-tensorflow/contrib/makefile/build_all_ios_with_tflite.sh
+We provide nightly prebuilt select TF ops CocoaPods, which you can depend on
+alongside the `TensorFlowLiteSwift` or `TensorFlowLiteObjC` CocoaPods.
+
+```ruby
+# In your Podfile target:
+  pod 'TensorFlowLiteSwift'   # or 'TensorFlowLiteObjC'
+  pod 'TensorFlowLiteSelectTfOps', '~> 0.0.1-nightly'
 ```
 
-This will generate the required static linking libraries in the
-`tensorflow/contrib/makefile/gen/lib/` directory.
+After running `pod install`, you need to provide an additional linker flag to
+force load the select TF ops framework into your project. In your Xcode project,
+go to `Build Settings` -> `Other Linker Flags`, and add:
 
-The TensorFlow Lite camera example app can be used to test this. A new
-TensorFlow Lite XCode project with support for select TensorFlow ops has been
-added to
-`tensorflow/lite/examples/ios/camera/tflite_camera_example_with_select_tf_ops.xcodeproj`.
+```text
+-force_load $(SRCROOT)/Pods/TensorFlowLiteSelectTfOps/Frameworks/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps
+```
 
-To use this feature in your own project, either clone the example project or set
-the project settings for a new or existing project to the following:
+You should then be able to run any models converted with the `SELECT_TF_OPS` in
+your iOS app. For example, you can modify the
+[Image Classification iOS app](https://github.com/tensorflow/examples/tree/master/lite/examples/image_classification/ios)
+to test the select TF ops feature.
 
-*   In Build Phases -> Link Binary With Libraries, add the static libraries
-    under `tensorflow/contrib/makefile/gen/lib/` directory:
-    *   `libtensorflow-lite.a`
-    *   `libprotobuf.a`
-    *   `nsync.a`
-*   In Build Settings -> Header Search Paths, add the following directories:
-    *   `tensorflow/lite/`
-    *   `tensorflow/contrib/makefile/downloads/flatbuffer/include`
-    *   `tensorflow/contrib/makefile/downloads/eigen`
-*   In Build Settings -> Other Linker Flags, add `-force_load
-    tensorflow/contrib/makefile/gen/lib/libtensorflow-lite.a`.
+*   Replace the model file with the one converted with `SELECT_TF_OPS` enabled.
+*   Add `TensorFlowLiteSelectTfOps` dependency to the `Podfile` as instructed.
+*   Add the additional linker flag as above.
+*   Run the example app and see if the model works correctly.
 
-A CocoaPod with support for select TensorFlow ops will also be released in the
-future.
+#### Using Bazel + Xcode
+
+TensorFlow Lite with select TensorFlow ops for iOS can be built using Bazel.
+First, follow the [iOS build instructions](build_ios.md) to configure your Bazel
+workspace and `.bazelrc` file correctly.
+
+Once you have configured the workspace with iOS support enabled, you can use the
+following command to build the select TF ops addon framework, which can be added
+on top of the regular `TensorFlowLiteC.framework`. Note that the select TF ops
+framework cannot be built for `i386` architecture, so you need to explicitly
+provide the list of target architectures excluding `i386`.
+
+```sh
+bazel build -c opt --config=ios --ios_multi_cpus=armv7,arm64,x86_64 \
+  //tensorflow/lite/experimental/ios:TensorFlowLiteSelectTfOps_framework
+```
+
+This will generate the framework under
+`bazel-bin/tensorflow/lite/experimental/ios/` directory. You can add this new
+framework to your Xcode project by following similar steps described under the
+[Xcode project settings](./build_ios.md#modify_xcode_project_settings_directly)
+section in the iOS build guide.
+
+After adding the framework into your app project, an additional linker flag
+should be specified in your app project to force load the select TF ops
+framework. In your Xcode project, go to `Build Settings` -> `Other Linker
+Flags`, and add:
+
+```text
+-force_load <path/to/your/TensorFlowLiteSelectTfOps.framework/TensorFlowLiteSelectTfOps>
+```
 
 ### C++
 
@@ -222,7 +266,18 @@ as is typically required with other delegate types.
 
 ### Python pip package
 
-Python support is actively under development.
+Flex ops are included in the nightly build of the TensorFlow Python package. You
+can use TFLite models containing Flex ops by the same Python API as normal
+TFLite models. The nightly TensorFlow build can be installed with this command:
+
+```sh
+pip install tf-nightly
+```
+
+Flex ops will be added to the TensorFlow Python package's and the
+`tflite_runtime`
+[package](https://www.tensorflow.org/lite/guide/python#install_just_the_tensorflow_lite_interpreter)
+from version 2.3 for Linux and 2.4 for other environments.
 
 ## Metrics
 
@@ -246,10 +301,16 @@ Using only TF ops (`SELECT_TF_OPS`)  | 264.5
 The following table describes the binary size of TensorFlow Lite for each build.
 These targets were built for Android using `--config=android_arm -c opt`.
 
-Build                 | C++ Binary Size | Android APK Size
---------------------- | --------------- | ----------------
-Only built-in ops     | 796 KB          | 561 KB
-Built-in ops + TF ops | 23.0 MB         | 8.0 MB
+Build                     | C++ Binary Size | Android APK Size
+------------------------- | --------------- | ----------------
+Only built-in ops         | 796 KB          | 561 KB
+Built-in ops + TF ops     | 23.0 MB         | 8.0 MB
+Built-in ops + TF ops (1) | 4.1 MB          | 1.8 MB
+
+(1) These libraries are selectively built for
+[i3d-kinetics-400 model](https://tfhub.dev/deepmind/i3d-kinetics-400/1) with 8
+TFLite builtin ops and 3 Tensorflow ops. For more details, please see the
+[Reduce TensorFlow Lite binary size](../guide/reduce_binary_size.md) section.
 
 ## Known limitations
 
@@ -270,11 +331,6 @@ The following is a list of some of the known limitations:
 
 The following is a list of improvements to this pipeline that are in progress:
 
-*   *Selective registration* - There is work being done to make it simple to
-    generate TFLite interpreter binaries that only contain the TensorFlow ops
-    required for a particular set of models.
-*   *Improved usability* - The conversion process will be simplified to only
-    require a single pass through the converter. Additionally, pre-built Android
-    AAR and iOS CocoaPod binaries will be provided.
 *   *Improved performance* - Work is being done to ensure TensorFlow Lite with
-    TensorFlow ops has performance parity to TensorFlow Mobile.
+    TensorFlow ops nicely cooperates with hardware accelerated delegates, for
+    example, NNAPI and GPU delegates.

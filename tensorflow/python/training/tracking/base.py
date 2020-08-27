@@ -190,6 +190,8 @@ class PythonStringStateSaveable(PythonStateSaveable):
 class CheckpointPosition(object):
   """Indicates a position within a `_CheckpointRestoreCoordinator`."""
 
+  __slots__ = ["_checkpoint", "_proto_id"]
+
   def __init__(self, checkpoint, proto_id):
     """Specify an object within a checkpoint.
 
@@ -249,7 +251,12 @@ class CheckpointPosition(object):
                       original_variable=trackable,
                       slot_variable_id=slot_restoration.slot_variable_id,
                       slot_name=slot_restoration.slot_name))
-        else:
+
+        # `optimizer_object` can be a `Checkpoint` when user only needs the
+        # attributes the optimizer holds, such as `iterations`. In those cases,
+        # it would not have the optimizer's `_create_or_restore_slot_variable`
+        # method.
+        elif hasattr(optimizer_object, "_create_or_restore_slot_variable"):
           optimizer_object._create_or_restore_slot_variable(  # pylint: disable=protected-access
               slot_variable_position=CheckpointPosition(
                   checkpoint=checkpoint,
@@ -293,9 +300,10 @@ class CheckpointPosition(object):
       checkpoint_key = serialized_tensor.checkpoint_key
       dtype = self._checkpoint.dtype_map[checkpoint_key]
       base_type = dtype.base_dtype
+      io_device = self._checkpoint.options.experimental_io_device or "cpu:0"
       with ops.init_scope():
-        with ops.device("/cpu:0"):
-          # Run the restore itself on the CPU.
+        with ops.device(io_device):
+          # Run the restore itself on the io_device(CPU or specified).
           value, = io_ops.restore_v2(
               prefix=self._checkpoint.save_path_tensor,
               tensor_names=[checkpoint_key],
@@ -610,6 +618,12 @@ class Trackable(object):
     # restore-on-create when executing eagerly, and so is unused when graph
     # building.
     self._self_name_based_restores = set()
+
+    # Dictionary of SaveableObjects factories. This dictionary is defined when
+    # the object is loaded from the SavedModel. When writing a custom class,
+    # prefer overriding "_gather_saveables_from_checkpoint" to using this
+    # attribute.
+    self._self_saveable_object_factories = {}
 
   @property
   def _object_identifier(self):
@@ -972,7 +986,7 @@ class Trackable(object):
        lambda name="global_name_for_this_object":
        SaveableObject(name=name, ...)}
     """
-    return {}
+    return self._self_saveable_object_factories
 
   def _list_extra_dependencies_for_serialization(self, serialization_cache):
     """Lists extra dependencies to serialize.
@@ -1021,3 +1035,24 @@ class Trackable(object):
     """
     del serialization_cache
     return dict()
+
+  def _map_resources(self, save_options):  # pylint: disable=unused-argument
+    """Makes new resource handle ops corresponding to existing resource tensors.
+
+    Internal sub-classes can override this to inform model saving how to add new
+    resource handle ops to the main GraphDef of a SavedModel (TF 1.x style
+    graph), which allows session based APIs (e.g, C++ loader API) to interact
+    with resources owned by this object.
+
+    Args:
+      save_options: A tf.saved_model.SaveOptions instance.
+
+    Returns:
+      A tuple of (object_map, resource_map):
+        object_map: A dictionary mapping from objects that hold existing
+          resource tensors to replacement objects created to hold the new
+          resource tensors.
+        resource_map: A dictionary mapping from existing resource tensors to
+          newly created resource tensors.
+    """
+    return {}, {}

@@ -33,11 +33,11 @@ from tensorflow.python.keras.saving.saved_model import model_serialization
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops.numpy_ops import np_arrays
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -115,6 +115,7 @@ class Sequential(functional.Functional):
     # Skip the init in FunctionalModel since model doesn't have input/output yet
     super(functional.Functional, self).__init__(  # pylint: disable=bad-super-call
         name=name, autocast=False)
+    base_layer.keras_api_gauge.get_cell('Sequential').set(True)
     self.supports_masking = True
     self._compute_output_and_mask_jointly = True
     self._auto_track_sub_layers = False
@@ -352,7 +353,8 @@ class Sequential(functional.Functional):
   def call(self, inputs, training=None, mask=None):  # pylint: disable=redefined-outer-name
     # If applicable, update the static input shape of the model.
     if not self._has_explicit_input_shape:
-      if not tensor_util.is_tensor(inputs):
+      if not tensor_util.is_tensor(inputs) and not isinstance(
+          inputs, np_arrays.ndarray):
         # This is a Sequential with mutiple inputs. This is technically an
         # invalid use case of Sequential, but we tolerate it for backwards
         # compatibility.
@@ -405,7 +407,6 @@ class Sequential(functional.Functional):
     outputs = self.call(inputs, mask=mask)
     return getattr(outputs, '_keras_mask', None)
 
-  @deprecated('2021-01-01', 'Please use `model.predict()` instead.')
   def predict_proba(self, x, batch_size=32, verbose=0):
     """Generates class probability predictions for the input samples.
 
@@ -420,6 +421,9 @@ class Sequential(functional.Functional):
     Returns:
         A Numpy array of probability predictions.
     """
+    logging.warning('`model.predict_proba()` is deprecated and '
+                    'will be removed after 2021-01-01. '
+                    'Please use `model.predict()` instead.')
     preds = self.predict(x, batch_size, verbose)
     if preds.min() < 0. or preds.max() > 1.:
       logging.warning('Network returning invalid probability values. '
@@ -428,14 +432,6 @@ class Sequential(functional.Functional):
                       '(like softmax or sigmoid would).')
     return preds
 
-  @deprecated('2021-01-01',
-              'Please use instead:'
-              '* `np.argmax(model.predict(x), axis=-1)`, '
-              '  if your model does multi-class classification '
-              '  (e.g. if it uses a `softmax` last-layer activation).'
-              '* `(model.predict(x) > 0.5).astype("int32")`, '
-              '  if your model does binary classification '
-              '  (e.g. if it uses a `sigmoid` last-layer activation).')
   def predict_classes(self, x, batch_size=32, verbose=0):
     """Generate class predictions for the input samples.
 
@@ -450,6 +446,15 @@ class Sequential(functional.Functional):
     Returns:
         A numpy array of class predictions.
     """
+    logging.warning('`model.predict_classes()` is deprecated and '
+                    'will be removed after 2021-01-01. '
+                    'Please use instead:'
+                    '* `np.argmax(model.predict(x), axis=-1)`, '
+                    '  if your model does multi-class classification '
+                    '  (e.g. if it uses a `softmax` last-layer activation).'
+                    '* `(model.predict(x) > 0.5).astype("int32")`, '
+                    '  if your model does binary classification '
+                    '  (e.g. if it uses a `sigmoid` last-layer activation).')
     proba = self.predict(x, batch_size=batch_size, verbose=verbose)
     if proba.shape[-1] > 1:
       return proba.argmax(axis=-1)
@@ -493,9 +498,15 @@ class Sequential(functional.Functional):
 
   @property
   def input_spec(self):
+    if hasattr(self, '_manual_input_spec'):
+      return self._manual_input_spec
     if self.layers and hasattr(self.layers[0], 'input_spec'):
       return self.layers[0].input_spec
     return None
+
+  @input_spec.setter
+  def input_spec(self, value):
+    self._manual_input_spec = value
 
   @property
   def _trackable_saved_model_saver(self):
@@ -518,6 +529,8 @@ class Sequential(functional.Functional):
 def _get_shape_tuple(t):
   if hasattr(t, 'shape'):
     shape = t.shape
+    if isinstance(shape, tuple):
+      return shape
     if shape.rank is not None:
       return tuple(shape.as_list())
     return None

@@ -15,14 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/kernels/internal/reference/strided_slice.h"
 
+#include <math.h>
+#include <stdint.h>
+
+#include <algorithm>
 #include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -139,9 +145,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
   // Only INT32 begin/end/strides are supported
   // TODO(soroosh) add support for INT64
-  TF_LITE_ENSURE_EQ(context, op_context.begin->type, kTfLiteInt32);
-  TF_LITE_ENSURE_EQ(context, op_context.end->type, kTfLiteInt32);
-  TF_LITE_ENSURE_EQ(context, op_context.strides->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.begin->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.end->type, kTfLiteInt32);
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.strides->type, kTfLiteInt32);
   TF_LITE_ENSURE_MSG(context, op_context.dims <= 5,
                      "StridedSlice op only supports 1D-5D input arrays.");
 
@@ -217,10 +223,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      context->ReportError(context,
-                           "Type %d is currently not supported "
-                           "by StridedSlice.",
-                           op_context.input->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %s is currently not supported "
+                         "by StridedSlice.",
+                         TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_STRIDED_SLICE

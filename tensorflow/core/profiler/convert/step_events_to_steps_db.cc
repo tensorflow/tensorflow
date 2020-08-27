@@ -119,10 +119,10 @@ StepDatabaseResult ConvertStepEventsToStepDb(
   }
   absl::c_sort(step_numbers);
   for (const auto& step : step_numbers) {
-    const auto* events = gtl::FindOrNull(nonoverlapped_step_events, step);
-    if (events == nullptr) continue;
+    const auto* step_details = gtl::FindOrNull(nonoverlapped_step_events, step);
+    if (step_details == nullptr) continue;
     StepInfoResult step_info =
-        ConvertStepDetailsToStepInfo(has_device, step, *events);
+        ConvertStepDetailsToStepInfo(has_device, step, *step_details);
     if (step_info.duration_ps() == 0)
       continue;  // Do not include non-well-formed steps.
     PerCoreStepInfo per_core_step_info;
@@ -137,6 +137,17 @@ StepDatabaseResult ConvertStepEventsToStepDb(
             << DebugStepInfo((
                    *per_core_step_info
                         .mutable_step_info_per_core())[kDefaultGpuLocalCoreId]);
+    // Populates the collective ops information.
+    auto& collectives = *per_core_step_info.mutable_all_reduce_db_per_core();
+    for (const auto& it : step_details->Collectives()) {
+      collectives[it.first] = it.second;
+    }
+    // Populates the device transfer stats for this step.
+    auto& device_memory_transfers =
+        *per_core_step_info.mutable_device_memory_transfers();
+    for (const auto& dma : step_details->DeviceMemoryTransfers()) {
+      *device_memory_transfers.Add() = dma;
+    }
     // The remaining fields in PerCoreStepInfo are not filled.
     *step_db.add_step_sequence() = per_core_step_info;
   }

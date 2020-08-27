@@ -1037,6 +1037,7 @@ class TextVectorizationOutputTest(
         split=None,
         output_mode=text_vectorization.BINARY,
         pad_to_max_tokens=False)
+    layer.adapt(vocab_data)
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "vocabulary cannot be changed"):
       layer.set_vocabulary(vocab_data)
@@ -1054,6 +1055,7 @@ class TextVectorizationOutputTest(
         split=None,
         output_mode=text_vectorization.BINARY,
         pad_to_max_tokens=False)
+    layer.adapt(vocab_data)
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "can't be adapted after being"):
       layer.adapt(vocab_data)
@@ -1070,6 +1072,7 @@ class TextVectorizationOutputTest(
         split=None,
         output_mode=text_vectorization.BINARY,
         pad_to_max_tokens=False)
+    layer.adapt(["earth", "wind"])
     _ = layer(input_data)
     with self.assertRaisesRegex(RuntimeError, "vocabulary cannot be changed"):
       layer._set_state_variables(state_variables)

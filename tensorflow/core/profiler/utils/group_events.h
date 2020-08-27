@@ -78,7 +78,7 @@ class EventNode {
 
   const XEventVisitor& GetEventVisitor() const { return visitor_; }
 
-  const XStat* GetContextStat(int64 stat_type) const;
+  absl::optional<XStatVisitor> GetContextStat(int64 stat_type) const;
 
   void AddStepName(absl::string_view step_name);
 
@@ -89,8 +89,8 @@ class EventNode {
 
   bool IsNestedIn(EventNode* parent);
 
-  // Returns the closest parent of the given event type.
-  EventNode* FindParent(int64 event_type);
+  // Returns the closest parent (including itself) of the given event type.
+  const EventNode* FindParent(int64 event_type) const;
 
   absl::optional<ContextInfo> GetProducerContext() const {
     return producer_context_;
@@ -100,9 +100,13 @@ class EventNode {
     return consumer_context_;
   }
 
+  void SetIsRoot(bool is_root) { is_root_ = is_root; }
+
   bool IsRoot() const { return is_root_; }
 
   bool IsAsync() const { return is_async_; }
+
+  bool StartsBefore(const EventNode& other) const;
 
  private:
   const XPlaneVisitor* plane_;
@@ -122,7 +126,12 @@ using EventNodeMap =
     absl::flat_hash_map<int64 /*event_type*/,
                         std::vector<std::unique_ptr<EventNode>>>;
 
-using EventGroupNameMap = absl::flat_hash_map<int64 /*group_id*/, std::string>;
+struct GroupMetadata {
+  std::string name;
+  std::string model_id;  // inference only.
+};
+
+using GroupMetadataMap = absl::flat_hash_map<int64 /*group_id*/, GroupMetadata>;
 
 using EventList = std::vector<EventNode*>;
 
@@ -147,11 +156,17 @@ class EventForest {
               const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
               XSpace* space);
 
+  EventForest(const std::function<XPlaneVisitor(const XPlane*)> visitor_factory,
+              XPlane* plane);
+
   const EventNodeMap& GetEventNodeMap() const { return event_node_map_; }
 
-  const EventGroupNameMap& GetEventGroupNameMap() const {
-    return event_group_name_map_;
+  const GroupMetadataMap& GetGroupMetadataMap() const {
+    return group_metadata_map_;
   }
+
+  // Connects tf.data events across threads.
+  void ProcessTfDataEvents();
 
  private:
   // Creates an EventNode for each event in event_node_map and connect events
@@ -163,11 +178,14 @@ class EventForest {
   void ConnectInterThread(
       const std::vector<InterThreadConnectInfo>& connect_info_list);
 
-  // Creates event groups and populates event_group_name_map_. For each event of
-  // each event type in root_event_types in order, if it was not grouped yet, a
-  // new group is created with all the events reachable from the root event.
-  void CreateEventGroup(
+  void ProcessLegacyRootEvents(
       const std::vector<int64 /*EventType*/>& root_event_types);
+
+  // Creates event groups and populates event_group_name_map_. If a TF loop is
+  // used, each TF loop iteration becomes a root. Otherwise, top root events
+  // (i.e., none of their ancestors is a root event) are used as roots. A new
+  // group is created with all events reachable from a root.
+  void CreateEventGroup();
 
   // Sets the is_eager stat to true for the eagerly executed GPU kernel events.
   void MarkEagerlyExecutedGpuKernels();
@@ -175,28 +193,30 @@ class EventForest {
   // Sets the is_eager stat to true for the eagerly executed CPU TF op events.
   void MarkEagerlyExecutedCpuTfOps();
 
-  // Create virtual events of HostEventType::kHostTrainingLoopIteration. A
-  // virtual event is created for each iteration of the host training loop and
-  // connected to the HostEventType::kExecutorStateProcess events of the
-  // iteration.
-  void CreateVirtualEventsForHostTrainingLoop();
+  // Processes the TF loops and registers the first TF executor event of each
+  // iteraton to `tf_loop_root_events_`.
+  void ProcessTensorFlowLoop();
 
-  // Create virutal events of HostEventType::kAsyncExecutorTraceContext. A
-  // virtual event is created for every FunctionRun and the following eager ops
-  // (e.g., for Keras callback).
-  void CreateVirtualEventsForAsyncExecutor();
+  // Processes the worker thread by grouping a FunctionRun with the following
+  // eager ops (e.g., for Keras callback).
+  void ProcessWorker();
+
+  // Adds model ids to group_metadata_map_ for inference profiles.
+  void ProcessModelIds();
 
   EventNodeMap event_node_map_;
   std::vector<XPlaneVisitor> visitors_;
-  EventGroupNameMap event_group_name_map_;
+  GroupMetadataMap group_metadata_map_;
   EventList root_events_;
+  EventList tf_loop_root_events_;
+  int64 next_group_id_ = 0;
 };
 
 std::vector<InterThreadConnectInfo> CreateInterThreadConnectInfoList();
 
 // Calls GroupEvents with connect_info_list and root_event_types specific to
 // TensorFlow.
-void GroupTfEvents(XSpace* space, EventGroupNameMap* event_group_name_map);
+void GroupTfEvents(XSpace* space, GroupMetadataMap* group_metadata_map);
 
 }  // namespace profiler
 }  // namespace tensorflow

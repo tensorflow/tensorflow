@@ -32,12 +32,23 @@ namespace profiler {
 // the tf-functions profiled.
 const double kTfFunctionReportThresholdInPercent = 20;
 
-void SetCommonRecommendation(absl::string_view input_classification,
-                             absl::string_view input_statement,
-                             absl::string_view output_statement,
-                             HardwareType hardware_type,
-                             absl::string_view tf_function_statement_html,
-                             OverviewPageRecommendation* re);
+// Reports eager-mode optimization opportunity in the Overview Page if the
+// percent of Op time on host (or device) that is spent on eager mode is over
+// this threshold.
+const double kEagerReportThresholdInPercent = 10;
+
+// Reports outside-compilation opportunity in the Overview Page if the
+// percent of Op time on device that is for outside compilation is over
+// this threshold.
+const double kOutsideCompilationThresholdInPercent = 5;
+
+void SetCommonRecommendation(
+    absl::string_view input_classification, absl::string_view input_statement,
+    absl::string_view output_statement, HardwareType hardware_type,
+    absl::string_view tf_function_statement_html,
+    absl::string_view eager_statement_html,
+    absl::string_view outside_compilation_statement_html,
+    OverviewPageRecommendation* re);
 
 OverviewPageRecommendation ComputeGenericRecommendation(
     const BottleneckAnalysis& bottleneck,
@@ -48,16 +59,18 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats);
 OverviewPageRunEnvironment ComputeRunEnvironment(
     const RunEnvironment& run_environment);
 
-void SetOverviewPageErrorMessage(const OpStats& op_stats,
-                                 OverviewPage* overview_page);
-
-OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats,
-                                          HardwareType hardware_type);
+OverviewPage ConvertOpStatsToOverviewPage(const OpStats& op_stats);
 
 // Returns a html which provides tf-function related recommendation.
 std::string TfFunctionRecommendationHtml(const TfFunctionDb& tf_function_db);
 
-void SetRemarks(const OpStats& op_stats, OverviewPageAnalysis* analysis);
+// Returns a html which provides eager-mode related recommendation.
+std::string EagerRecommendationHtml(double host_op_time_eager_percent,
+                                    double device_op_time_eager_percent);
+
+// Returns a html which provides outside-compilation related recommendation.
+std::string OutsideCompilationRecommendationHtml(
+    double device_op_time_outside_compilation_percent);
 
 }  // namespace profiler
 }  // namespace tensorflow

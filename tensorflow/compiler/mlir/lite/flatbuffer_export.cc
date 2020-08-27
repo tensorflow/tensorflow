@@ -61,6 +61,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/stateful_ops_utils.h"
 #include "tensorflow/compiler/mlir/op_or_arg_name_mapper.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
@@ -71,7 +72,7 @@ limitations under the License.
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/lite/delegates/flex/whitelisted_flex_ops.h"
+#include "tensorflow/lite/delegates/flex/allowlisted_flex_ops.h"
 #include "tensorflow/lite/kernels/internal/kernel_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
@@ -101,7 +102,7 @@ using mlir::Value;
 using tensorflow::OpOrArgLocNameMapper;
 using tensorflow::OpOrArgNameMapper;
 using tensorflow::Status;
-using tflite::flex::IsWhitelistedFlexOp;
+using tflite::flex::IsAllowlistedFlexOp;
 using xla::StatusOr;
 
 template <typename T>
@@ -133,66 +134,64 @@ static StatusOr<tflite::TensorType> GetTFLiteType(Type type,
     return Status(error::INVALID_ARGUMENT,
                   "'isSigned' can only be set for 8-bits integer type");
   }
-  switch (type.getKind()) {
-    case mlir::StandardTypes::F32:
-      return tflite::TensorType_FLOAT32;
-    case mlir::StandardTypes::F16:
-      return tflite::TensorType_FLOAT16;
-    case mlir::StandardTypes::F64:
-      return tflite::TensorType_FLOAT64;
-    case mlir::TF::TensorFlowTypes::STRING:
-      return tflite::TensorType_STRING;
-    case mlir::TF::TensorFlowTypes::QUINT8:
-      return tflite::TensorType_UINT8;
-    case mlir::StandardTypes::Complex: {
-      auto ftype = type.cast<mlir::ComplexType>().getElementType();
-      if (ftype && ftype.isF32()) {
-        return tflite::TensorType_COMPLEX64;
-      }
-      return Status(error::INVALID_ARGUMENT, "Unsupported type");
+
+  if (type.isF32()) {
+    return tflite::TensorType_FLOAT32;
+  } else if (type.isF16()) {
+    return tflite::TensorType_FLOAT16;
+  } else if (type.isF64()) {
+    return tflite::TensorType_FLOAT64;
+  } else if (type.isa<mlir::TF::StringType>()) {
+    return tflite::TensorType_STRING;
+  } else if (type.isa<mlir::TF::Quint8Type>()) {
+    return tflite::TensorType_UINT8;
+  } else if (auto complex_type = type.dyn_cast<mlir::ComplexType>()) {
+    auto ftype = complex_type.getElementType();
+    if (ftype.isF32()) {
+      return tflite::TensorType_COMPLEX64;
     }
-    case mlir::StandardTypes::Integer: {
-      const auto& itype = type.cast<mlir::IntegerType>();
-      switch (itype.getWidth()) {
-        case 1:
-          return tflite::TensorType_BOOL;
-        case 8:
-          return itype.isUnsigned() ? tflite::TensorType_UINT8
-                                    : tflite::TensorType_INT8;
-        case 16:
-          return tflite::TensorType_INT16;
-        case 32:
-          return tflite::TensorType_INT32;
-        case 64:
-          return tflite::TensorType_INT64;
-      }
+    if (ftype.isF64()) {
+      return tflite::TensorType_COMPLEX128;
     }
-    case mlir::quant::QuantizationTypes::UniformQuantized: {
-      auto qtype = type.cast<mlir::quant::UniformQuantizedType>();
-      return GetTFLiteType(qtype.getStorageType(), qtype.isSigned());
+    return Status(error::INVALID_ARGUMENT, "Unsupported type");
+  } else if (auto itype = type.dyn_cast<mlir::IntegerType>()) {
+    switch (itype.getWidth()) {
+      case 1:
+        return tflite::TensorType_BOOL;
+      case 8:
+        return itype.isUnsigned() ? tflite::TensorType_UINT8
+                                  : tflite::TensorType_INT8;
+      case 16:
+        return tflite::TensorType_INT16;
+      case 32:
+        return tflite::TensorType_INT32;
+      case 64:
+        return tflite::TensorType_INT64;
     }
-    case mlir::quant::QuantizationTypes::UniformQuantizedPerAxis: {
-      auto qtype = type.cast<mlir::quant::UniformQuantizedPerAxisType>();
-      return GetTFLiteType(qtype.getStorageType(), qtype.isSigned());
-    }
-    case mlir::TF::TensorFlowTypes::RESOURCE: {
-      // Treat tf.resource values as integer values in flatbuffer.
-      // TODO(b/146131919): Maybe need to have a detailed design for supporting
-      // other resource types beyonds hash table resources and resource
-      // variables.
-      return tflite::TensorType_INT32;
-    }
-    default:
-      // TFLite export fills FLOAT32 for unknown data types. Returning an error
-      // for now for safety and this could be revisited when required.
-      return Status(error::INVALID_ARGUMENT, "Unsupported type");
+  } else if (auto q_uniform_type =
+                 type.dyn_cast<mlir::quant::UniformQuantizedType>()) {
+    return GetTFLiteType(q_uniform_type.getStorageType(),
+                         q_uniform_type.isSigned());
+
+  } else if (auto q_peraxis_type =
+                 type.dyn_cast<mlir::quant::UniformQuantizedPerAxisType>()) {
+    return GetTFLiteType(q_peraxis_type.getStorageType(),
+                         q_peraxis_type.isSigned());
+  } else if (type.isa<mlir::TF::ResourceType>()) {
+    // Treat tf.resource values as integer values in flatbuffer.
+    // TODO(b/146131919): Maybe need to have a detailed design for supporting
+    // other resource types beyonds hash table resources and resource
+    // variables.
+    return tflite::TensorType_INT32;
   }
+  // TFLite export fills FLOAT32 for unknown data types. Returning an error
+  // for now for safety and this could be revisited when required.
+  return Status(error::INVALID_ARGUMENT, "Unsupported type");
 }
 
 static bool IsConst(Operation* op) {
-  return isa<mlir::ConstantOp>(op) || isa<mlir::TF::ConstOp>(op) ||
-         isa<tfl::ConstOp>(op) || isa<tfl::QConstOp>(op) ||
-         isa<tfl::SparseConstOp>(op) || isa<tfl::SparseQConstOp>(op);
+  return isa<mlir::ConstantOp, mlir::TF::ConstOp, tfl::ConstOp, tfl::QConstOp,
+             tfl::SparseConstOp, tfl::SparseQConstOp>(op);
 }
 
 template <typename T>
@@ -240,10 +239,10 @@ static bool IsValidTFLiteMlirModule(ModuleOp module) {
   }
 
   for (auto fn : module.getOps<FuncOp>()) {
-    if (fn.getBlocks().size() != 1) {
+    if (!llvm::hasSingleElement(fn)) {
       return fn.emitError("should have exactly one basic block"), false;
     }
-    auto& bb = fn.getBlocks().front();
+    auto& bb = fn.front();
 
     for (auto arg : bb.getArguments()) {
       if (!HasValidTFLiteType(arg, fn))
@@ -356,8 +355,13 @@ class Translator {
     if (emit_custom_ops) {
       enabled_op_types_.emplace(OpType::kCustomOp);
     }
-    tf_dialect_ = module.getContext()->getRegisteredDialect("tf");
-    tfl_dialect_ = module.getContext()->getRegisteredDialect("tfl");
+    tf_dialect_ =
+        module.getContext()->getOrLoadDialect<mlir::TF::TensorFlowDialect>();
+    tfl_dialect_ = module.getContext()
+                       ->getOrLoadDialect<mlir::TFL::TensorFlowLiteDialect>();
+    // Right now the TF executor dialect is still needed to build NodeDef.
+    module.getContext()
+        ->getOrLoadDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
   }
 
   Optional<std::string> TranslateInternal();
@@ -973,7 +977,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     // model is of an open op system.
     //
     //  The following algorithm is followed:
-    //   if flex is enabled and the op is whitelisted as flex
+    //   if flex is enabled and the op is allowlisted as flex
     //     we emit op as flex.
     //   if custom is enabled
     //    we emit the op as custom.
@@ -983,11 +987,11 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
     }
 
     // Flex op case
-    // Eventually, the whitelist will go away and we will rely on some TF op
+    // Eventually, the allowlist will go away and we will rely on some TF op
     // trait (e.g. No side effect) to determine if it is a supported "Flex"
     // op or not.
     if (enabled_op_types_.contains(OpType::kSelectTf) &&
-        IsWhitelistedFlexOp(node_def->op())) {
+        IsAllowlistedFlexOp(node_def->op())) {
       // Construct ops as flex op encoding TensorFlow node definition
       // as custom options.
       // Flex ops are named with the kFlexOpNamePrefix prefix to the actual
@@ -1038,7 +1042,7 @@ Optional<BufferOffset<tflite::Operator>> Translator::BuildOperator(
       }
 
       // Insert failed op to `flex_ops` or `custom_ops`.
-      if (IsWhitelistedFlexOp(node_def->op())) {
+      if (IsAllowlistedFlexOp(node_def->op())) {
         failed_flex_ops_.insert(os.str());
       } else {
         failed_custom_ops_.insert(os.str());
@@ -1089,7 +1093,7 @@ void Translator::InitializeNamesFromAttribute(FuncOp fn, bool* has_input_attr) {
           dict_attr.get("outputs").dyn_cast_or_null<mlir::StringAttr>()) {
     str.getValue().split(output_names, ',', /*MaxSplit=*/-1,
                          /*KeepEmpty=*/false);
-    auto term = fn.getBlocks().back().getTerminator();
+    auto term = fn.back().getTerminator();
     if (output_names.size() != term->getNumOperands()) {
       fn.emitWarning() << "output names (" << output_names.size()
                        << ") != terminator operands (" << term->getNumOperands()
@@ -1194,22 +1198,35 @@ Optional<BufferOffset<tflite::SubGraph>> Translator::BuildSubGraph(
     if (IsConst(&inst)) continue;
 
     // Fetch operand and result tensor indices.
-    std::vector<int32_t> operands;
-    operands.reserve(inst.getNumOperands());
-    for (auto operand : inst.getOperands()) {
-      if (operand.getType().isa<NoneType>())
-        operands.push_back(kTfLiteOptionalTensor);
-      else
-        operands.push_back(tensor_index_map.lookup(operand));
-    }
     std::vector<int32_t> results;
     results.reserve(inst.getNumOperands());
     for (auto result : inst.getResults()) {
       results.push_back(tensor_index_map.lookup(result));
     }
+    Operation* real_inst = &inst;
+    // CustomTfOp is just a wrapper around a TF op, we export the custom Op
+    // not the wrapper, so we fetch the op from the region.
+    if (auto custom_op = dyn_cast<mlir::TFL::CustomTfOp>(inst)) {
+      // If we have custom op with a region, then use the first op in the
+      // region, if it exists, otherwise just use params for custom op.
+      if (!custom_op.body().empty()) {
+        real_inst = &custom_op.body().front().front();
+      } else {
+        module_.emitError(
+            "Invalid CustomTfOp: Custom TF Op have empty region.");
+      }
+    }
+    std::vector<int32_t> operands;
+    operands.reserve(real_inst->getNumOperands());
+    for (auto operand : real_inst->getOperands()) {
+      if (operand.getType().isa<NoneType>())
+        operands.push_back(kTfLiteOptionalTensor);
+      else
+        operands.push_back(tensor_index_map.lookup(operand));
+    }
 
     if (auto tfl_operator =
-            BuildOperator(&inst, operands, results, intermediates))
+            BuildOperator(real_inst, operands, results, intermediates))
       operators.push_back(*tfl_operator);
     else
       failed_once = true;
@@ -1403,25 +1420,70 @@ BufferOffset<tflite::SparsityParameters> Translator::BuildSparsityParameters(
     } else {
       auto segments = dim_metadata.segments();
       std::vector<int> vector_segments(segments.size(), 0);
-      for (int j = 0; j < segments.size(); j++) {
+      for (int j = 0, end = segments.size(); j < end; j++) {
         vector_segments[j] = segments[j].dyn_cast<mlir::IntegerAttr>().getInt();
       }
-      auto array_segments =
-          tflite::CreateInt32Vector(builder_,
-                                    builder_.CreateVector(vector_segments))
-              .Union();
+      tflite::SparseIndexVector segments_type;
+      BufferOffset<void> array_segments;
+      // The segment array is sorted.
+      // TODO(b/147449640): Clean this up with util functions.
+      int max_of_segments = vector_segments[segments.size() - 1];
+      if (max_of_segments <= UINT8_MAX) {
+        segments_type = tflite::SparseIndexVector_Uint8Vector;
+        std::vector<uint8_t> uint8_vector(vector_segments.begin(),
+                                          vector_segments.end());
+        array_segments = tflite::CreateUint8Vector(
+                             builder_, builder_.CreateVector(uint8_vector))
+                             .Union();
+      } else if (max_of_segments <= UINT16_MAX) {
+        segments_type = tflite::SparseIndexVector_Uint16Vector;
+        std::vector<uint16_t> uint16_vector(vector_segments.begin(),
+                                            vector_segments.end());
+        array_segments = tflite::CreateUint16Vector(
+                             builder_, builder_.CreateVector(uint16_vector))
+                             .Union();
+      } else {
+        segments_type = tflite::SparseIndexVector_Int32Vector;
+        array_segments = tflite::CreateInt32Vector(
+                             builder_, builder_.CreateVector(vector_segments))
+                             .Union();
+      }
+
       auto indices = dim_metadata.indices();
       std::vector<int> vector_indices(indices.size(), 0);
-      for (int j = 0; j < indices.size(); j++) {
+      int max_of_indices = 0;
+      for (int j = 0, end = indices.size(); j < end; j++) {
         vector_indices[j] = indices[j].dyn_cast<mlir::IntegerAttr>().getInt();
+        if (vector_indices[j] > max_of_indices) {
+          max_of_indices = vector_indices[j];
+        }
       }
-      auto array_indices = tflite::CreateInt32Vector(
-                               builder_, builder_.CreateVector(vector_indices))
-                               .Union();
+      tflite::SparseIndexVector indices_type;
+      BufferOffset<void> array_indices;
+      if (max_of_indices <= UINT8_MAX) {
+        indices_type = tflite::SparseIndexVector_Uint8Vector;
+        std::vector<uint8_t> uint8_vector(vector_indices.begin(),
+                                          vector_indices.end());
+        array_indices = tflite::CreateUint8Vector(
+                            builder_, builder_.CreateVector(uint8_vector))
+                            .Union();
+      } else if (max_of_indices <= UINT16_MAX) {
+        indices_type = tflite::SparseIndexVector_Uint16Vector;
+        std::vector<uint16_t> uint16_vector(vector_indices.begin(),
+                                            vector_indices.end());
+        array_indices = tflite::CreateUint16Vector(
+                            builder_, builder_.CreateVector(uint16_vector))
+                            .Union();
+      } else {
+        indices_type = tflite::SparseIndexVector_Int32Vector;
+        array_indices = tflite::CreateInt32Vector(
+                            builder_, builder_.CreateVector(vector_indices))
+                            .Union();
+      }
+
       fb_dim_metadata[i] = tflite::CreateDimensionMetadata(
-          builder_, tflite::DimensionType_SPARSE_CSR, 0,
-          tflite::SparseIndexVector_Int32Vector, array_segments,
-          tflite::SparseIndexVector_Int32Vector, array_indices);
+          builder_, tflite::DimensionType_SPARSE_CSR, 0, segments_type,
+          array_segments, indices_type, array_indices);
     }
   }
 

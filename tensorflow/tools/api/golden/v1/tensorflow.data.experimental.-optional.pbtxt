@@ -4,11 +4,15 @@ tf_class {
   is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
   is_instance: "<type \'object\'>"
   member {
-    name: "value_structure"
+    name: "element_spec"
     mtype: "<class \'abc.abstractproperty\'>"
   }
   member_method {
     name: "__init__"
+  }
+  member_method {
+    name: "empty"
+    argspec: "args=[\'element_spec\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "from_value"
@@ -21,9 +25,5 @@ tf_class {
   member_method {
     name: "has_value"
     argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
-    name: "none_from_structure"
-    argspec: "args=[\'value_structure\'], varargs=None, keywords=None, defaults=None"
   }
 }

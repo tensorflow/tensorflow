@@ -77,6 +77,8 @@ class ComputationLayout {
   // Sets layouts of all parameters and the result to the default layout.
   void SetToDefaultLayout();
 
+  void SetToDefaultLayoutIfEmpty();
+
   // Returns true if all layouts (parameters and result) have been set.
   bool LayoutIsSet() const;
 

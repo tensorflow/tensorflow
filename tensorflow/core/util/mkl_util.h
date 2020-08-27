@@ -1029,6 +1029,21 @@ inline void ForwardMklMetaDataInToOut(OpKernelContext* context,
 }
 
 // -------------------------------------------------------------------
+//          Common utility functions used by MKL unit tests
+
+inline Tensor GetMklMetaTensor() {
+  MklDnnShape non_mkl_shape;
+  non_mkl_shape.SetMklTensor(false);
+
+  auto size = static_cast<int64>(non_mkl_shape.GetSerializeBufferSize());
+  Tensor tensor(DT_UINT8, {size});
+
+  non_mkl_shape.SerializeMklDnnShape(tensor.flat<uint8>().data(),
+                                     size * sizeof(uint8));
+  return tensor;
+}
+
+// -------------------------------------------------------------------
 
 /// Return MKL-DNN data type (memory::data_type) for input type T
 ///
@@ -1282,8 +1297,8 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
   DCHECK_EQ(dim.size(), strides.size());
 #ifdef ENABLE_MKLDNN_V1
   const int kNumDims = dim.size();
-  mkldnn_dim_t input_dims[kNumDims];
-  mkldnn_dim_t input_strides[kNumDims];
+  mkldnn_dim_t* input_dims = new mkldnn_dim_t[kNumDims];
+  mkldnn_dim_t* input_strides = new mkldnn_dim_t[kNumDims];
   for (int i = 0; i < kNumDims; ++i) {
     input_dims[i] = dim[i];
     input_strides[i] = strides[i];
@@ -1292,7 +1307,11 @@ inline Status CreateBlockedMemDescHelper(const memory::dims& dim,
     mkldnn_memory_desc_init_by_strides(blocked_md, kNumDims, input_dims,
                                        memory::convert_to_c(dtype),
                                        input_strides);
+    delete[] input_dims;
+    delete[] input_strides;
   } catch (mkldnn::error& e) {
+    delete[] input_dims;
+    delete[] input_strides;
     return Status(error::Code::INTERNAL,
                   tensorflow::strings::StrCat(
                       "Failed to create blocked memory descriptor.",
@@ -1524,17 +1543,21 @@ class MklDnnData {
   }
 
   /// Set function for data buffer of user memory primitive.
-  inline void SetUsrMemDataHandle(void* data_buffer) {
+  inline void SetUsrMemDataHandle(void* data_buffer,
+                                  std::shared_ptr<stream> t_stream = nullptr) {
     CHECK_NOTNULL(user_memory_);
     CHECK_NOTNULL(data_buffer);
+#ifdef ENABLE_MKLDNN_THREADPOOL
+    user_memory_->set_data_handle(data_buffer, *t_stream);
+#else
     user_memory_->set_data_handle(data_buffer);
+#endif  // ENABLE_MKLDNN_THREADPOOL
   }
 
   /// Set function for data buffer of user memory primitive.
-  inline void SetUsrMemDataHandle(const Tensor* tensor) {
-    CHECK_NOTNULL(user_memory_);
-    CHECK_NOTNULL(tensor);
-    user_memory_->set_data_handle(GetTensorBuffer(tensor));
+  inline void SetUsrMemDataHandle(const Tensor* tensor,
+                                  std::shared_ptr<stream> t_stream = nullptr) {
+    SetUsrMemDataHandle(GetTensorBuffer(tensor), t_stream);
   }
 
   /// allocate function for data buffer
@@ -2258,5 +2281,23 @@ inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
 }
 
 }  // namespace tensorflow
+
+/////////////////////////////////////////////////////////////////////
+// Macros for handling registeration for various types
+/////////////////////////////////////////////////////////////////////
+
+#define REGISTER_TEST_FLOAT32(TEST) REGISTER_TEST(TEST, DT_FLOAT, Float32Input);
+
+#ifdef ENABLE_INTEL_MKL_BFLOAT16
+#define REGISTER_TEST_BFLOAT16(TEST) \
+  REGISTER_TEST(TEST, DT_BFLOAT16, BFloat16Input);
+
+#define REGISTER_TEST_ALL_TYPES(TEST) \
+  REGISTER_TEST_FLOAT32(TEST);        \
+  REGISTER_TEST_BFLOAT16(TEST);
+#else
+#define REGISTER_TEST_ALL_TYPES(TEST) REGISTER_TEST_FLOAT32(TEST);
+#endif  // ENABLE_INTEL_MKL_BFLOAT16
+
 #endif  // INTEL_MKL
 #endif  // TENSORFLOW_CORE_UTIL_MKL_UTIL_H_

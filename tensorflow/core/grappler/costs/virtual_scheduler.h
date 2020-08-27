@@ -195,7 +195,7 @@ class LIFOManager : public ReadyNodeManager {
  public:
   LIFOManager() : ReadyNodeManager() {}
   ~LIFOManager() override {}
-  void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
+  void AddNode(const NodeDef* node) override;
   const NodeDef* GetCurrNode() override;
   void RemoveCurrNode() override;
   bool Empty() const override { return nodes_.empty(); }

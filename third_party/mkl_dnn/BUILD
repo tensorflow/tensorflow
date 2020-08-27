@@ -19,6 +19,16 @@ config_setting(
 )
 
 config_setting(
+    name = "build_with_mkl_opensource",
+    define_values = {
+        "build_with_mkl": "true",
+        "build_with_mkl_dnn_v1_only": "true",
+        "build_with_mkl_opensource": "true",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "build_with_mkl_dnn_v1_only",
     define_values = {
         "build_with_mkl": "true",
@@ -31,6 +41,8 @@ config_setting(
     name = "build_with_mkldnn_threadpool",
     define_values = {
         "build_with_mkl": "true",
+        "build_with_mkl_dnn_v1_only": "true",
+        "build_with_mkl_opensource": "true",
         "build_with_mkldnn_threadpool": "true",
     },
     visibility = ["//visibility:public"],

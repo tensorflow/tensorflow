@@ -157,7 +157,7 @@ TEST(PARALLEL_DEVICE, TestExplicitCopies) {
   // Copies off of parallel devices must be explicit.
   TensorHandlePtr copy_back(TFE_TensorHandleCopyToDevice(
       device_value.get(), context.get(), first_device_name, status.get()));
-  ASSERT_EQ(TF_GetCode(status.get()), TF_INTERNAL);
+  ASSERT_EQ(TF_GetCode(status.get()), TF_UNIMPLEMENTED);
 }
 
 TEST(PARALLEL_DEVICE, TestDifferentShapes) {
@@ -407,11 +407,12 @@ TensorHandlePtr CollectiveSum(TFE_Context* context, TFE_TensorHandle* input,
   return TensorHandlePtr(result_handle);
 }
 
-TEST(PARALLEL_DEVICE, TestCollective) {
+void TestCollective(bool async) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   std::unique_ptr<TFE_ContextOptions, decltype(&TFE_DeleteContextOptions)> opts(
       TFE_NewContextOptions(), TFE_DeleteContextOptions);
+  TFE_ContextOptionsSetAsync(opts.get(), async);
   std::unique_ptr<TF_Buffer, decltype(&TF_DeleteBuffer)> config(
       TF_CreateConfig(
           /*xla*/ false,
@@ -453,6 +454,12 @@ TEST(PARALLEL_DEVICE, TestCollective) {
   ExpectScalarEq<float>(result_components[0].get(), 3.);
   ExpectScalarEq<float>(result_components[1].get(), 3.);
 }
+
+TEST(PARALLEL_DEVICE, TestCollectiveSync) { TestCollective(/*async=*/false); }
+
+// Note that ops on the parallel device currently don't execute
+// asynchronously. The test is just that we don't get deadlocks.
+TEST(PARALLEL_DEVICE, TestCollectiveAsync) { TestCollective(/*async=*/true); }
 
 void RegisterCollectiveMulFunction(TFE_Context* context,
                                    const char* function_name, int group_size,

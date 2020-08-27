@@ -18,6 +18,9 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/memory_helpers.h"
+#include "tensorflow/lite/micro/micro_utils.h"
 
 namespace tflite {
 namespace ops {
@@ -61,7 +64,7 @@ TfLiteStatus ReshapeOutput(TfLiteContext* context, TfLiteNode* node) {
     num_output_elements *= output_shape->data[stretch_dim];
   }
 
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TF_LITE_ENSURE_EQ(context, num_input_elements, num_output_elements);
   return kTfLiteOk;
 }
@@ -74,13 +77,21 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+
+  // TODO(b/162522304): storing input bytes in OpData increases some models
+  // significantly, possibly due to alignment issues.
+  size_t input_bytes;
+  TF_LITE_ENSURE_STATUS(TfLiteTypeSizeOf(input->type, &input_bytes));
+  input_bytes *= ElementCount(*input->dims);
 
   // Do nothing for in-place reshape.
   if (input->data.raw != output->data.raw) {
     // Otherwise perform reshape with copy.
-    for (size_t i = 0; i < input->bytes; ++i) {
+    for (size_t i = 0; i < input_bytes; ++i) {
       output->data.raw[i] = input->data.raw[i];
     }
   }
@@ -89,16 +100,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace reshape
 
-TfLiteRegistration* Register_RESHAPE() {
-  static TfLiteRegistration r = {/*init=*/nullptr,
-                                 /*free=*/nullptr,
-                                 /*prepare=*/reshape::Prepare,
-                                 /*invoke=*/reshape::Eval,
-                                 /*profiling_string=*/nullptr,
-                                 /*builtin_code=*/0,
-                                 /*custom_name=*/nullptr,
-                                 /*version=*/0};
-  return &r;
+TfLiteRegistration Register_RESHAPE() {
+  return {/*init=*/nullptr,
+          /*free=*/nullptr,
+          /*prepare=*/reshape::Prepare,
+          /*invoke=*/reshape::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

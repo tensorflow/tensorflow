@@ -39,6 +39,7 @@ py_library(
         ":kernelized",
         ":local",
         ":merge",
+        ":multi_head_attention",
         ":noise",
         ":normalization",
         ":normalization_v2",
@@ -139,8 +140,10 @@ py_library(
         "//tensorflow/python/keras:base_layer",
         "//tensorflow/python/keras:constraints",
         "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:losses",
         "//tensorflow/python/keras:regularizers",
         "//tensorflow/python/keras/engine:input_spec",
+        "//tensorflow/python/keras/engine:keras_tensor",
         "//tensorflow/python/keras/layers/ops:core",
         "//tensorflow/python/keras/utils:engine_utils",
         "//tensorflow/python/keras/utils:generic_utils",
@@ -192,6 +195,22 @@ py_library(
 py_library(
     name = "einsum_dense",
     srcs = ["einsum_dense.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:special_math_ops",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:util",
+        "//tensorflow/python/keras:activations",
+        "//tensorflow/python/keras:base_layer",
+        "//tensorflow/python/keras:constraints",
+        "//tensorflow/python/keras:initializers",
+        "//tensorflow/python/keras:regularizers",
+    ],
+)
+
+py_library(
+    name = "multi_head_attention",
+    srcs = ["multi_head_attention.py"],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:special_math_ops",
@@ -356,7 +375,6 @@ py_library(
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:control_flow_util",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
@@ -517,6 +535,7 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 4,
     tags = [
+        "no_cuda11",
         "no_windows_gpu",
     ],
     deps = [
@@ -584,6 +603,18 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "multi_head_attention_test",
+    srcs = ["multi_head_attention_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":multi_head_attention",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -782,6 +813,10 @@ cuda_py_test(
     srcs = ["lstm_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = [
+        "no_oss",
+    ],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -796,6 +831,11 @@ cuda_py_test(
     srcs = ["gru_v2_test.py"],
     python_version = "PY3",
     shard_count = 12,
+    tags = [
+        "no_cuda11",
+        "no_oss",
+    ],
+    xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
@@ -882,5 +922,17 @@ tf_py_test(
         "//tensorflow/python/keras:combinations",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "layers_test",
+    size = "small",
+    srcs = ["layers_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":layers",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:tf2",
     ],
 )

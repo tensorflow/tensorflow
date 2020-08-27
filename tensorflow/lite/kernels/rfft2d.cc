@@ -13,13 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <math.h>
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include <algorithm>
+#include <complex>
+
 #include "third_party/fft2d/fft2d.h"
 #include "ruy/profiler/instrumentation.h"  // from @ruy
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -240,13 +248,15 @@ void Rfft2dReorder(int fft_height, int fft_width, double** fft_input_output) {
     fft_input_output[i][0] = fft_input_output[fft_height - i][0];
     fft_input_output[i][1] = -fft_input_output[fft_height - i][1];
   }
-  fft_input_output[0][fft_width] = fft_input_output[0][1];
+
+  double temp = fft_input_output[0][1];
   fft_input_output[0][fft_width + 1] = 0;
   fft_input_output[0][1] = 0;
   fft_input_output[fft_height_half][fft_width] =
       fft_input_output[fft_height_half][1];
   fft_input_output[fft_height_half][fft_width + 1] = 0;
   fft_input_output[fft_height_half][1] = 0;
+  fft_input_output[0][fft_width] = temp;
 
   // Reorder the frequency matrix from
   //    [[F(0, 0),  F(0, -1/4),   F(0, -2/4)],

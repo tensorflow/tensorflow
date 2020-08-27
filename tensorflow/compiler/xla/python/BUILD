@@ -124,9 +124,9 @@ cc_library(
 )
 
 cc_library(
-    name = "traceback_manager",
-    srcs = ["traceback_manager.cc"],
-    hdrs = ["traceback_manager.h"],
+    name = "traceback",
+    srcs = ["traceback.cc"],
+    hdrs = ["traceback.h"],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -135,10 +135,9 @@ cc_library(
     deps = [
         ":python_ref_manager",
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/container:node_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
 )
@@ -156,7 +155,7 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core/lib/bfloat16",
+        "//tensorflow/core/platform:bfloat16",
         "//tensorflow/core/platform:logging",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",  # buildcleaner: keep
@@ -180,9 +179,17 @@ py_test(
 )
 
 cc_library(
-    name = "py_buffer",
-    srcs = ["py_buffer.cc"],
-    hdrs = ["py_buffer.h"],
+    name = "py_client",
+    srcs = [
+        "py_buffer.cc",
+        "py_client.cc",
+        "py_executable.cc",
+    ],
+    hdrs = [
+        "py_buffer.h",
+        "py_client.h",
+        "py_executable.h",
+    ],
     copts = [
         "-fexceptions",
         "-fno-strict-aliasing",
@@ -190,34 +197,18 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":python_ref_manager",
-        ":traceback_manager",
+        ":traceback",
         ":types",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
-        "@com_google_absl//absl/types:optional",
-    ],
-)
-
-cc_library(
-    name = "py_executable",
-    srcs = ["py_executable.cc"],
-    hdrs = ["py_executable.h"],
-    copts = [
-        "-fexceptions",
-        "-fno-strict-aliasing",
-    ],
-    features = ["-use_header_modules"],
-    deps = [
-        ":py_buffer",
-        ":traceback_manager",
-        ":types",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core/platform:fingerprint",
+        "//tensorflow/core/profiler:protos_all_cc",
         "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
+        "@pybind11",
     ],
 )
 
@@ -231,8 +222,8 @@ cc_library(
     ],
     features = ["-use_header_modules"],
     deps = [
-        ":py_buffer",
-        ":traceback_manager",
+        ":py_client",
+        ":traceback",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
@@ -247,6 +238,33 @@ cc_library(
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
         "@dlpack",
+        "@pybind11",
+    ],
+)
+
+cc_library(
+    name = "jax_jit",
+    srcs = ["jax_jit.cc"],
+    hdrs = ["jax_jit.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    visibility = ["//visibility:private"],
+    deps = [
+        ":py_client",
+        ":pytree",
+        ":types",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto_cc",
+        "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/types:optional",
         "@pybind11",
     ],
 )
@@ -297,7 +315,7 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "cpu_outfeed_receiver_test",
+    name = "outfeed_receiver_test_cpu",
     size = "small",
     srcs = ["outfeed_receiver_test.cc"],
     deps = [
@@ -325,11 +343,34 @@ cc_library(
     features = ["-use_header_modules"],
     deps = [
         ":outfeed_receiver",
+        ":py_client",
         ":types",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/pjrt:pjrt_client",
+        "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/synchronization",
+        "@pybind11",
+    ],
+)
+
+# TODO(phawkins): this library is really part of JAX. Find a better home for it.
+cc_library(
+    name = "pytree",
+    srcs = ["pytree.cc"],
+    hdrs = ["pytree.h"],
+    copts = [
+        "-fexceptions",
+        "-fno-strict-aliasing",
+    ],
+    features = ["-use_header_modules"],
+    deps = [
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/hash",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@pybind11",
     ],
 )
@@ -353,12 +394,13 @@ pybind_extension(
     deps = [
         ":bfloat16",
         ":dlpack",
+        ":jax_jit",
         ":ops",
-        ":py_buffer",
-        ":py_executable",
+        ":py_client",
+        ":pytree",
         ":python_ref_manager",
         ":outfeed_receiver_py",
-        ":traceback_manager",
+        ":traceback",
         ":types",
         "@com_google_absl//absl/base",
         "@com_google_absl//absl/hash",
@@ -409,7 +451,7 @@ pybind_extension(
         "//tensorflow/core:lib_internal_impl",  # buildcleaner: keep
         "//tensorflow/core/profiler/lib:profiler_backends",
         "//tensorflow/core/profiler/lib:profiler_session",
-        "//tensorflow/core/profiler/rpc:profiler_server",
+        "//tensorflow/core/profiler/rpc:profiler_server_impl",
         "//tensorflow/python/profiler/internal:traceme_wrapper",
         "//tensorflow/stream_executor:device_memory_allocator",
         "//tensorflow/stream_executor:platform",

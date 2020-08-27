@@ -1,5 +1,6 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
 
 package(
     default_visibility = [
@@ -8,7 +9,9 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-exports_files(["logging.h"])
+exports_files([
+    "logging.h",
+])
 
 common_copts = ["-Wall"]
 
@@ -264,14 +267,14 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
-        "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
 # This tool list flex ops and kernels inside a TFLite file.
 # It is used to generate header file for selective registration.
-cc_binary(
+tf_cc_binary(
     name = "list_flex_ops_main",
     srcs = ["list_flex_ops_main.cc"],
     visibility = ["//visibility:public"],
@@ -282,7 +285,39 @@ cc_binary(
     ],
 )
 
-cc_test(
+cc_library(
+    name = "list_flex_ops_main_lib",
+    srcs = ["list_flex_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_flex_ops",
+        "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "list_flex_ops_no_kernel",
+    srcs = ["list_flex_ops_no_kernel.cc"],
+    hdrs = ["list_flex_ops.h"],
+    deps = [
+        "//tensorflow/lite:framework",
+        "@jsoncpp_git//:jsoncpp",
+    ],
+)
+
+tf_cc_binary(
+    name = "list_flex_ops_no_kernel_main",
+    srcs = ["list_flex_ops_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":list_flex_ops_no_kernel",
+        "//tensorflow/lite/tools:command_line_flags",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_test(
     name = "list_flex_ops_test",
     srcs = ["list_flex_ops_test.cc"],
     data = [
@@ -293,7 +328,6 @@ cc_test(
         "//tensorflow/lite:testdata/test_model_broken.bin",
     ],
     tags = [
-        "no_oss",  # Currently requires --config=monolithic, b/118895218.
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
@@ -301,6 +335,7 @@ cc_test(
         ":list_flex_ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:protobuf",
+        "//tensorflow/core/platform:resource_loader",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
         "@flatbuffers",

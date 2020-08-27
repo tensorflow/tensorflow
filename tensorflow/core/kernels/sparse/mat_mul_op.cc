@@ -37,8 +37,8 @@ limitations under the License.
 #include "tensorflow/core/platform/threadpool.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-#include "tensorflow/core/kernels/cuda_solvers.h"
-#include "tensorflow/core/kernels/cuda_sparse.h"
+#include "tensorflow/core/util/cuda_solvers.h"
+#include "tensorflow/core/util/cuda_sparse.h"
 #endif
 
 namespace tensorflow {
@@ -886,11 +886,11 @@ class CSRSparseMatrixMatMul<GPUDevice, T> {
       const gpusparseOperation_t transB = HIPSPARSE_OPERATION_TRANSPOSE;
 
       gpusparseMatDescr_t descrA;
-      TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateMatDescr(&descrA));
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
+          wrap::hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
+          wrap::hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
 #endif  // GOOGLE_CUDA
 
       TF_RETURN_IF_ERROR(
@@ -940,11 +940,11 @@ class CSRSparseMatrixMatVec<GPUDevice, T> {
           cusparseSetMatIndexBase(descrA, CUSPARSE_INDEX_BASE_ZERO));
 #elif TENSORFLOW_USE_ROCM
       gpusparseMatDescr_t descrA;
-      TF_RETURN_IF_GPUSPARSE_ERROR(hipsparseCreateMatDescr(&descrA));
+      TF_RETURN_IF_GPUSPARSE_ERROR(wrap::hipsparseCreateMatDescr(&descrA));
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
+          wrap::hipsparseSetMatType(descrA, HIPSPARSE_MATRIX_TYPE_GENERAL));
       TF_RETURN_IF_GPUSPARSE_ERROR(
-          hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
+          wrap::hipsparseSetMatIndexBase(descrA, HIPSPARSE_INDEX_BASE_ZERO));
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
       const int m = a.dense_shape_host(0);

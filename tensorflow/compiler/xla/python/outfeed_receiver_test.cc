@@ -75,12 +75,12 @@ class Accumulator {
 TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
                           GetCpuClient(true));
-  std::vector<std::shared_ptr<PjRtClient>> clients{cpu_client};
+  std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = absl::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
-      [&receiver](Device* device, std::shared_ptr<PjRtClient> client,
-                  uint32_t consumer_id, std::shared_ptr<Literal> data) {
+      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+                  std::shared_ptr<Literal> data) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
@@ -108,12 +108,12 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedSimple) {
 TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
                           GetCpuClient(true));
-  std::vector<std::shared_ptr<PjRtClient>> clients{cpu_client};
+  std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = absl::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
-      [&receiver](Device* device, std::shared_ptr<PjRtClient> client,
-                  uint32_t consumer_id, std::shared_ptr<Literal> data) {
+      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+                  std::shared_ptr<Literal> data) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
@@ -153,12 +153,12 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoComputations) {
 TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
                           GetCpuClient(true));
-  std::vector<std::shared_ptr<PjRtClient>> clients{cpu_client};
+  std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = absl::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
-      [&receiver](Device* device, std::shared_ptr<PjRtClient> client,
-                  uint32_t consumer_id, std::shared_ptr<Literal> data) {
+      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+                  std::shared_ptr<Literal> data) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
@@ -196,12 +196,12 @@ TEST(OutfeedReceiverTest, ReceiveOutfeedTwoOutfeed) {
 TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
                           GetCpuClient(true));
-  std::vector<std::shared_ptr<PjRtClient>> clients{cpu_client};
+  std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = absl::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
-      [&receiver](Device* device, std::shared_ptr<PjRtClient> client,
-                  uint32_t consumer_id, std::shared_ptr<Literal> data) {
+      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+                  std::shared_ptr<Literal> data) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =
@@ -230,12 +230,12 @@ TEST(OutfeedReceiverTest, DifferentShapeForConsumerIdError) {
 TEST(OutfeedReceiverTest, InvalidConsumerIdError) {
   TF_ASSERT_OK_AND_ASSIGN(std::shared_ptr<PjRtClient> cpu_client,
                           GetCpuClient(true));
-  std::vector<std::shared_ptr<PjRtClient>> clients{cpu_client};
+  std::vector<PjRtClient*> clients{cpu_client.get()};
 
   auto receiver = absl::make_unique<Accumulator>();
   OutfeedReceiver::Callback callback =
-      [&receiver](Device* device, std::shared_ptr<PjRtClient> client,
-                  uint32_t consumer_id, std::shared_ptr<Literal> data) {
+      [&receiver](PjRtDevice* device, uint32_t consumer_id,
+                  std::shared_ptr<Literal> data) {
         receiver->Receive(consumer_id, data);
       };
   auto outfeed_receiver =

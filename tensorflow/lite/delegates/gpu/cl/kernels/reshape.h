@@ -25,30 +25,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Reshape : public GPUOperation {
- public:
-  explicit Reshape(const OperationDef& definition)
-      : GPUOperation(definition), work_group_size_(8, 4, 1) {}
-  absl::Status AddToQueue(CLCommandQueue* queue) override;
-  absl::Status Tune(const TuningParameters& params) override;
-
-  absl::Status Compile(const CreationContext& creation_context) override;
-
-  // Move only
-  Reshape(Reshape&& operation);
-  Reshape& operator=(Reshape&& operation);
-  Reshape(const Reshape&) = delete;
-  Reshape& operator=(const Reshape&) = delete;
-
- private:
-  absl::Status BindArguments();
-  int3 GetGridSize() const;
-
-  CLKernel kernel_;
-  int3 work_group_size_;
-};
-
-Reshape CreateReshape(const OperationDef& definition);
+GPUOperation CreateReshape(const OperationDef& definition);
 
 }  // namespace cl
 }  // namespace gpu

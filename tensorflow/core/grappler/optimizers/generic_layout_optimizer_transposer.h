@@ -41,6 +41,7 @@ constexpr char kAttrSrcFormat[] = "src_format";
 constexpr char kAttrDstFormat[] = "dst_format";
 constexpr char kAttrOutputShape[] = "_output_shapes";
 constexpr char kGPU[] = "GPU";
+constexpr char kCPU[] = "CPU";
 
 // TransposeContext owns all data members. Must initialize GraphProperties,
 // FrameView, GraphDef and MutableGraphView with the same graph. NodeDef
@@ -234,6 +235,30 @@ class Conv2DBackpropFilterTransposer : public LayoutSensitiveOpTransposer {
 class Conv2DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
  public:
   explicit Conv2DBackpropInputTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class Conv3DTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit Conv3DTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class Conv3DBackpropFilterTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit Conv3DBackpropFilterTransposer() : LayoutSensitiveOpTransposer() {}
+
+  Status TransposeNode(TransposeContext* context,
+                       utils::MutableNodeView* node) override;
+};
+
+class Conv3DBackpropInputTransposer : public LayoutSensitiveOpTransposer {
+ public:
+  explicit Conv3DBackpropInputTransposer() : LayoutSensitiveOpTransposer() {}
 
   Status TransposeNode(TransposeContext* context,
                        utils::MutableNodeView* node) override;
@@ -528,11 +553,12 @@ template <typename T>
 Status PermuteSingle(absl::string_view location,
                      absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
-  if (values->size() != permutation.size()) {
+  int permutation_size = permutation.size();
+  if (values->size() != permutation_size) {
     return Status(tensorflow::error::Code::INVALID_ARGUMENT,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match size of permutation ",
-                               permutation.size(), " @ ", location));
+                               permutation_size, " @ ", location));
   }
   typedef typename T::value_type V;
   std::vector<V> elements(values->begin(), values->end());
@@ -549,11 +575,12 @@ template <typename T>
 Status PermuteDouble(absl::string_view location,
                      absl::Span<const int> permutation, T* values) {
   DCHECK(values != nullptr);
-  if (values->size() != permutation.size() * 2) {
+  int permutation_size = permutation.size();
+  if (values->size() != permutation_size * 2) {
     return Status(tensorflow::error::Code::INVALID_ARGUMENT,
                   absl::StrCat("Size of values ", values->size(),
                                " does not match twice the size of permutation ",
-                               permutation.size(), " @ ", location));
+                               permutation_size, " @ ", location));
   }
   typedef typename T::value_type V;
   std::vector<V> elements(values->begin(), values->end());

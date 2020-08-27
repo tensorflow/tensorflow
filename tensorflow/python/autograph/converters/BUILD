@@ -77,12 +77,6 @@ py_test(
     srcs = ["call_trees_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_oss_py2",
-        "no_pip",
-        "no_windows",
-        "nopip",
-    ],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",
@@ -119,12 +113,6 @@ py_test(
     srcs = ["control_flow_test.py"],
     python_version = "PY3",
     srcs_version = "PY3",
-    tags = [
-        "no_oss_py2",
-        "no_pip",
-        "no_windows",
-        "nopip",
-    ],
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",
@@ -188,6 +176,7 @@ py_test(
     srcs = ["logical_expressions_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["notsan"],  # b/163218460
     deps = [
         ":converters",
         "//tensorflow/python:client_testlib",

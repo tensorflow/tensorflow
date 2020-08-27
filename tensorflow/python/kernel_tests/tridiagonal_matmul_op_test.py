@@ -221,7 +221,7 @@ class TridiagonalMulOpTest(test.TestCase):
                                               vec,
                                               diagonals_format='sequence')
 
-          variables.global_variables_initializer().run()
+          self.evaluate(variables.global_variables_initializer())
           self.run_op_benchmark(
               sess,
               control_flow_ops.group(x1),

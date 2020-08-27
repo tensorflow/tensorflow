@@ -33,7 +33,7 @@ namespace TFDevice {
 
 namespace {
 
-constexpr char kReplicationAttr[] = "tf_device.is_same_data_across_replicas";
+constexpr char kReplicationAttr[] = "mhlo.is_same_data_across_replicas";
 constexpr char kMirroredVariableIndicesAttr[] = "_mirrored_variable_indices";
 
 // Analyzes the inputs to ClusterFuncOps in the module, and annotates their
@@ -48,7 +48,7 @@ struct AnnotateParameterReplication
 // tf.IdentityOp or a tf.ReadVariableOp.
 Value SkipIdentityAndReadVariable(Value v) {
   while (auto op = v.getDefiningOp()) {
-    if (!(isa<TF::IdentityOp>(op) || isa<TF::ReadVariableOp>(op))) break;
+    if (!isa<TF::IdentityOp, TF::ReadVariableOp>(op)) break;
     v = op->getOperand(0);
   }
   return v;
@@ -83,8 +83,7 @@ void AnnotateParameterReplication::runOnOperation() {
         // Not a replication-invariant operand.
         continue;
       }
-      func.setArgAttr(entry.index(), kReplicationAttr,
-                      builder.getBoolAttr(true));
+      func.setArgAttr(entry.index(), kReplicationAttr, builder.getUnitAttr());
     }
   });
 }

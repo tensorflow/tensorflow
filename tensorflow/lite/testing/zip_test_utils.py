@@ -162,7 +162,8 @@ def format_result(t):
     values = ["{:.9f}".format(value) for value in list(t.flatten())]
     return ",".join(values)
   else:
-    return _pywrap_string_util.SerializeAsHexString(t.flatten())
+    # SerializeAsHexString returns bytes in PY3, so decode if appropriate.
+    return _pywrap_string_util.SerializeAsHexString(t.flatten()).decode("utf-8")
 
 
 def write_examples(fp, examples):
@@ -328,11 +329,13 @@ def make_zip_of_tests(options,
     # Only count parameters when fully_quantize is True.
     parameter_count = 0
     for parameters in test_parameters:
-      if True in parameters.get("fully_quantize", []):
+      if True in parameters.get("fully_quantize",
+                                []) and False in parameters.get(
+                                    "quant_16x8", [False]):
         parameter_count += functools.reduce(operator.mul, [
             len(values)
             for key, values in parameters.items()
-            if key != "fully_quantize"
+            if key != "fully_quantize" and key != "quant_16x8"
         ])
 
   label_base_path = zip_path
@@ -354,8 +357,8 @@ def make_zip_of_tests(options,
 
       param_dict = dict(zip(keys, curr))
 
-      if options.make_edgetpu_tests and not param_dict.get(
-          "fully_quantize", False):
+      if options.make_edgetpu_tests and (not param_dict.get(
+          "fully_quantize", False) or param_dict.get("quant_16x8", False)):
         continue
 
       def generate_inputs_outputs(tflite_model_binary,

@@ -29,6 +29,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "mobilenet_v3"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "nasnet"
     mtype: "<type \'module\'>"
   }
@@ -115,6 +119,14 @@ tf_module {
   member_method {
     name: "MobileNetV2"
     argspec: "args=[\'input_shape\', \'alpha\', \'include_top\', \'weights\', \'input_tensor\', \'pooling\', \'classes\', \'classifier_activation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'1.0\', \'True\', \'imagenet\', \'None\', \'None\', \'1000\', \'softmax\'], "
+  }
+  member_method {
+    name: "MobileNetV3Large"
+    argspec: "args=[\'input_shape\', \'alpha\', \'minimalistic\', \'include_top\', \'weights\', \'input_tensor\', \'classes\', \'pooling\', \'dropout_rate\', \'classifier_activation\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'False\', \'True\', \'imagenet\', \'None\', \'1000\', \'None\', \'0.2\', \'softmax\'], "
+  }
+  member_method {
+    name: "MobileNetV3Small"
+    argspec: "args=[\'input_shape\', \'alpha\', \'minimalistic\', \'include_top\', \'weights\', \'input_tensor\', \'classes\', \'pooling\', \'dropout_rate\', \'classifier_activation\'], varargs=None, keywords=None, defaults=[\'None\', \'1.0\', \'False\', \'True\', \'imagenet\', \'None\', \'1000\', \'None\', \'0.2\', \'softmax\'], "
   }
   member_method {
     name: "NASNetLarge"

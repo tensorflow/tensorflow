@@ -23,11 +23,58 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/micro/all_ops_resolver.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace testing {
+
+constexpr int kOfflinePlannerHeaderSize = 3;
+
+struct NodeConnection_ {
+  std::initializer_list<int32_t> input;
+  std::initializer_list<int32_t> output;
+};
+typedef struct NodeConnection_ NodeConnection;
+
+// A simple operator that returns the median of the input with the number of
+// times the kernel was invoked. The implementation below is deliberately
+// complicated, just to demonstrate how kernel memory planning works.
+class SimpleStatefulOp {
+  static constexpr int kBufferNotAllocated = 0;
+  // Inputs:
+  static constexpr int kInputTensor = 0;
+  // Outputs:
+  static constexpr int kMedianTensor = 0;
+  static constexpr int kInvokeCount = 1;
+  struct OpData {
+    int invoke_count = 0;
+    int sorting_buffer = kBufferNotAllocated;
+  };
+
+ public:
+  static const TfLiteRegistration* getRegistration();
+  static TfLiteRegistration* GetMutableRegistration();
+  static void* Init(TfLiteContext* context, const char* buffer, size_t length);
+  static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
+  static TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node);
+};
+
+class MockCustom {
+ public:
+  static const TfLiteRegistration* getRegistration();
+  static TfLiteRegistration* GetMutableRegistration();
+  static void* Init(TfLiteContext* context, const char* buffer, size_t length);
+  static void Free(TfLiteContext* context, void* buffer);
+  static TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node);
+  static TfLiteStatus Invoke(TfLiteContext* context, TfLiteNode* node);
+
+  static bool freed_;
+};
+
+// Returns an Op Resolver that can be used in the testing code.
+AllOpsResolver GetOpResolver();
 
 // Returns a simple example flatbuffer TensorFlow Lite model. Contains 1 input,
 // 1 layer of weights, 1 output Tensor, and 1 operator.
@@ -39,6 +86,12 @@ const Model* GetComplexMockModel();
 
 // Returns a simple flatbuffer model with two branches.
 const Model* GetSimpleModelWithBranch();
+
+// Returns a simple flatbuffer model with offline planned tensors
+const Model* GetModelWithOfflinePlanning(int num_tensors,
+                                         const int32_t* metadata_buffer,
+                                         NodeConnection* node_conn,
+                                         int num_conns);
 
 // Returns a flatbuffer model with `simple_stateful_op`
 const Model* GetSimpleStatefulModel();
@@ -75,56 +128,57 @@ TfLiteIntArray* IntArrayFromInts(const int* int_array);
 TfLiteFloatArray* FloatArrayFromFloats(const float* floats);
 
 TfLiteTensor CreateFloatTensor(const float* data, TfLiteIntArray* dims,
-                               const char* name, bool is_variable = false);
+                               bool is_variable = false);
 
 void PopulateFloatTensor(TfLiteTensor* tensor, float* begin, float* end);
 
 TfLiteTensor CreateBoolTensor(const bool* data, TfLiteIntArray* dims,
-                              const char* name, bool is_variable = false);
+                              bool is_variable = false);
 
 TfLiteTensor CreateInt32Tensor(const int32_t*, TfLiteIntArray* dims,
-                               const char* name, bool is_variable = false);
+                               bool is_variable = false);
 
 TfLiteTensor CreateQuantizedTensor(const uint8_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
-                                   const char* name, bool is_variable = false);
+                                   bool is_variable = false);
 
 TfLiteTensor CreateQuantizedTensor(const int8_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
-                                   const char* name, bool is_variable = false);
+                                   bool is_variable = false);
 
 TfLiteTensor CreateQuantizedTensor(const int16_t* data, TfLiteIntArray* dims,
                                    float scale, int zero_point,
-                                   const char* name, bool is_variable = false);
+                                   bool is_variable = false);
 
 template <typename T>
 TfLiteTensor CreateQuantizedTensor(const float* input, T* quantized,
                                    TfLiteIntArray* dims, float scale,
-                                   int zero_point, const char* name,
-                                   bool is_variable = false) {
+                                   int zero_point, bool is_variable = false) {
   int input_size = ElementCount(*dims);
   tflite::AsymmetricQuantize(input, quantized, input_size, scale, zero_point);
-  return CreateQuantizedTensor(quantized, dims, scale, zero_point, name,
-                               is_variable);
+  return CreateQuantizedTensor(quantized, dims, scale, zero_point, is_variable);
 }
 
 TfLiteTensor CreateQuantizedBiasTensor(const float* data, int32_t* quantized,
                                        TfLiteIntArray* dims, float input_scale,
-                                       float weights_scale, const char* name,
+                                       float weights_scale,
                                        bool is_variable = false);
 
-// Quantizes int32 bias tensor with per-channel weights determined by input
+// Quantizes int32_t bias tensor with per-channel weights determined by input
 // scale multiplied by weight scale for each channel.
 TfLiteTensor CreatePerChannelQuantizedBiasTensor(
     const float* input, int32_t* quantized, TfLiteIntArray* dims,
     float input_scale, float* weight_scales, float* scales, int* zero_points,
     TfLiteAffineQuantization* affine_quant, int quantized_dimension,
-    const char* name, bool is_variable = false);
+    bool is_variable = false);
 
 TfLiteTensor CreateSymmetricPerChannelQuantizedTensor(
     const float* input, int8_t* quantized, TfLiteIntArray* dims, float* scales,
     int* zero_points, TfLiteAffineQuantization* affine_quant,
-    int quantized_dimension, const char* name, bool is_variable = false);
+    int quantized_dimension, bool is_variable = false);
+
+// Returns the number of tensors in the default subgraph for a tflite::Model.
+size_t GetModelTensorCount(const Model* model);
 
 }  // namespace testing
 }  // namespace tflite

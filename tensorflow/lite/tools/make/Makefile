@@ -148,6 +148,7 @@ endif
 CORE_CC_ALL_SRCS := $(sort $(CORE_CC_ALL_SRCS))
 CORE_CC_EXCLUDE_SRCS := \
 $(wildcard tensorflow/lite/*test.cc) \
+$(wildcard tensorflow/lite/*/*test.c) \
 $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/benchmark.cc) \
 $(wildcard tensorflow/lite/*/*/example*.cc) \
@@ -187,7 +188,7 @@ ifeq ($(TARGET_ARCH),aarch64)
 	BUILD_WITH_RUY=true
 endif
 ifeq ($(BUILD_WITH_RUY),true)
-  CXXFLAGS += -DTFLITE_WITH_RUY_ONLY
+  CXXFLAGS += -DTFLITE_WITH_RUY
 endif
 
 BUILD_WITH_RUY_PROFILER ?= false
@@ -314,9 +315,6 @@ $(OBJDIR)%.o: %.cc
 $(OBJDIR)%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) $(INCLUDES) -c $< -o $@
-$(OBJDIR)%.o: %.cpp
-	@mkdir -p $(dir $@)
-	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 # The target that's compiled if there's no command-line arguments.
 all: $(LIB_PATH)  $(MINIMAL_BINARY) $(BENCHMARK_BINARY) $(BENCHMARK_PERF_OPTIONS_BINARY)

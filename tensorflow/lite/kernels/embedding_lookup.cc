@@ -29,19 +29,13 @@ limitations under the License.
 //   When indices are out of bound, the ops will not succeed.
 //
 
-#include <cassert>
-#include <cmath>
-#include <cstdio>
-#include <cstdlib>
-#include <cstring>
-#include <iostream>
-#include <limits>
+#include <stdint.h>
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include <cstring>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {

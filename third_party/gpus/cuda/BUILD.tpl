@@ -176,6 +176,11 @@ cc_library(
     ],
 )
 
+alias(
+    name = "cub_headers",
+    actual = "%{cub_actual}"
+)
+
 cuda_header_library(
     name = "cupti_headers",
     hdrs = [":cuda-extras"],
@@ -218,4 +223,10 @@ bzl_library(
     ],
 )
 
+py_library(
+    name = "cuda_config_py",
+    srcs = ["cuda/cuda_config.py"]
+)
+
 %{copy_rules}
+

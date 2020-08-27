@@ -65,9 +65,9 @@ class BaseSparseCrossOpTest(test.TestCase):
         constant_op.constant(shape, dtypes.int64))
 
   def _assert_sparse_tensor_equals(self, sp1, sp2):
-    self.assertAllEqual(sp1.indices.eval(), sp2.indices)
-    self.assertAllEqual(sp1.values.eval(), sp2.values)
-    self.assertAllEqual(sp1.dense_shape.eval(), sp2.dense_shape)
+    self.assertAllEqual(sp1.indices, sp2.indices)
+    self.assertAllEqual(sp1.values, sp2.values)
+    self.assertAllEqual(sp1.dense_shape, sp2.dense_shape)
 
   def _assert_sparse_tensor_empty(self, sp):
     self.assertEqual(0, sp.indices.size)
@@ -418,15 +418,15 @@ class SparseCrossOpTest(test.TestCase):
       self.assertTrue(all_values_are_different)
 
   def _assert_sparse_tensor_empty(self, sp):
-    self.assertEquals(0, sp.indices.size)
-    self.assertEquals(0, sp.values.size)
+    self.assertEqual(0, sp.indices.size)
+    self.assertEqual(0, sp.values.size)
     # TODO(zakaria): check if we can ignore the first dim of the shape.
-    self.assertEquals(0, sp.dense_shape[1])
+    self.assertEqual(0, sp.dense_shape[1])
 
   def _assert_sparse_tensor_equals(self, sp1, sp2):
-    self.assertAllEqual(sp1.indices.eval(), sp2.indices)
-    self.assertAllEqual(sp1.values.eval(), sp2.values)
-    self.assertAllEqual(sp1.dense_shape.eval(), sp2.dense_shape)
+    self.assertAllEqual(sp1.indices, sp2.indices)
+    self.assertAllEqual(sp1.values, sp2.values)
+    self.assertAllEqual(sp1.dense_shape, sp2.dense_shape)
 
   def _sparse_tensor(self, data, batch_size=-1):
     """Generates a SparseTensor.
@@ -464,31 +464,31 @@ class SparseCrossOpTest(test.TestCase):
 
     st1 = sparse_tensor.SparseTensor([[0, 0]], [0], [2, 2])
     st1._indices = array_ops.zeros([], dtypes.int64)
-    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
-                                 'Input indices should be a matrix'):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                'Input indices should be a matrix'):
       self.evaluate(sparse_ops.sparse_cross([st1]))
 
     st2 = sparse_tensor.SparseTensor([[0, 0]], [0], [2, 2])
     st2._values = array_ops.zeros([], dtypes.int64)
-    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
-                                 'Input values should be a vector'):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                'Input values should be a vector'):
       self.evaluate(sparse_ops.sparse_cross([st2]))
 
     st3 = sparse_tensor.SparseTensor([[0, 0]], [0], [2, 2])
     st3._dense_shape = array_ops.zeros([], dtypes.int64)
-    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
-                                 'Input shapes should be a vector'):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                'Input shapes should be a vector'):
       self.evaluate(sparse_ops.sparse_cross([st3]))
 
   def test_bad_tensor_shapes(self):
     # All inputs must be 2D.
-    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
-                                 'Expected D2 of index to be 2'):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                'Expected D2 of index to be 2'):
       st = sparse_tensor.SparseTensor([[0]], [0], [10])  # 1D SparseTensor
       self.evaluate(sparse_ops.sparse_cross([st]))
 
-    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
-                                 'Dense inputs should be a matrix'):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                'Dense inputs should be a matrix'):
       dt = array_ops.zeros([0])  # 1D DenseTensor.
       self.evaluate(sparse_ops.sparse_cross([dt]))
 
@@ -496,11 +496,11 @@ class SparseCrossOpTest(test.TestCase):
     st1 = sparse_tensor.SparseTensor([[0, 0]], [0], [10, 10])  # batch size 10
     st2 = sparse_tensor.SparseTensor([[0, 0]], [0], [7, 10])  # batch size 7
     dt = array_ops.zeros([5, 0])  # batch size 5
-    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
-                                 'Expected batch size'):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                'Expected batch size'):
       self.evaluate(sparse_ops.sparse_cross([st1, dt]))
-    with self.assertRaisesRegexp((errors.InvalidArgumentError, ValueError),
-                                 'Expected batch size'):
+    with self.assertRaisesRegex((errors.InvalidArgumentError, ValueError),
+                                'Expected batch size'):
       self.evaluate(sparse_ops.sparse_cross([st1, st2]))
 
 

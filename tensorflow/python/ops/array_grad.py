@@ -314,6 +314,30 @@ def _StridedSliceGradGrad(op, grad):
       shrink_axis_mask=op.get_attr("shrink_axis_mask"))
 
 
+@ops.RegisterGradient("TensorStridedSliceUpdate")
+def _TensorStridedSliceUpdateGrad(op, grad):  # pylint:disable=missing-function-docstring
+  begin = op.inputs[1]
+  end = op.inputs[2]
+  strides = op.inputs[3]
+  begin_mask = op.get_attr("begin_mask")
+  end_mask = op.get_attr("end_mask")
+  ellipsis_mask = op.get_attr("ellipsis_mask")
+  new_axis_mask = op.get_attr("new_axis_mask")
+  shrink_axis_mask = op.get_attr("shrink_axis_mask")
+  def Apply(f, *args):
+    return f(*args,
+             begin_mask=begin_mask,
+             end_mask=end_mask,
+             shrink_axis_mask=shrink_axis_mask,
+             new_axis_mask=new_axis_mask,
+             ellipsis_mask=ellipsis_mask)
+  dy = Apply(array_ops.strided_slice,
+             grad, begin, end, strides)
+  dx = Apply(array_ops.tensor_strided_slice_update,
+             grad, begin, end, strides, array_ops.zeros_like(dy))
+  return dx, None, None, None, dy
+
+
 @ops.RegisterGradient("Split")
 def _SplitGrad(op, *grads):
   return None, array_ops.concat(list(grads), op.inputs[0])
@@ -847,7 +871,7 @@ def _PadGrad(op, grad):
                                array_ops.stack([array_ops.rank(x), 1]))
   # Make it a 1-D tensor.
   begin = array_ops.reshape(pad_before, [-1])
-  sizes = array_ops.shape(x)
+  sizes = array_ops.shape(x, out_type=begin.dtype)
   x_grad = array_ops.slice(grad, begin, sizes)
   if len(op.inputs) == 3:
     return x_grad, None, None

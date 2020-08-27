@@ -44,13 +44,14 @@ bazel --output_base=/tmp test --define=no_tensorflow_py_deps=true \
       --test_lang_filters=py \
       --build_tests_only \
       -k \
-      --test_tag_filters=-no_oss,-oss_serial,-no_pip,-nopip \
+      --test_tag_filters=-no_oss,-oss_serial,-no_pip,-nopip,-gpu,-tpu \
       --test_size_filters=small,medium \
       --test_timeout 300,450,1200,3600 \
       --test_output=errors \
       -- //${PIP_TEST_ROOT}/tensorflow/python/... \
+      -//${PIP_TEST_ROOT}/tensorflow/python/compiler/xla:xla_test \
+      -//${PIP_TEST_ROOT}/tensorflow/python/distribute:parameter_server_strategy_test \
       -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test \
-      -//${PIP_TEST_ROOT}/tensorflow/python:virtual_gpu_test_gpu \
-      -//${PIP_TEST_ROOT}/tensorflow/python:collective_ops_gpu_test \
-      -//${PIP_TEST_ROOT}/tensorflow/python:collective_ops_gpu_test_gpu
-
+      -//${PIP_TEST_ROOT}/tensorflow/python:collective_ops_gpu_test
+# The above tests are excluded because they seem to require a GPU.
+# TODO(yifeif): Investigate and potentially add an unconditional 'gpu' tag.

@@ -11,7 +11,7 @@ import "tensorflow/core/framework/versions.proto";
 import "tensorflow/core/protobuf/remote_tensor_handle.proto";
 import "tensorflow/core/protobuf/tensorflow_server.proto";
 
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // A proto representation of an eager operation.
 message Operation {
@@ -77,6 +77,8 @@ message QueueResponse {
   // `shape` and `tensor` cannot be set in the same response.
   // Shapes of output tensors for creating remote TensorHandles.
   repeated TensorShapeProto shape = 1;
+  // Optional. If set, represents the output devices of a function.
+  repeated string device = 3;
 
   // Output tensors of a remote function. Set when Operation.id is invalid.
   repeated TensorProto tensor = 2;
@@ -178,6 +180,9 @@ message RunComponentFunctionRequest {
   fixed64 context_id = 1;
 
   Operation operation = 2;
+
+  // The output indices of its parent function.
+  repeated int32 output_num = 3;
 }
 
 message RunComponentFunctionResponse {
@@ -258,6 +263,8 @@ message SendPackedHandleOp {
   }
 
   repeated Handle handles = 2;
+
+  string device_name = 3;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

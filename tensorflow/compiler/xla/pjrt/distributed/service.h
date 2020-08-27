@@ -50,19 +50,17 @@ class DistributedRuntimeServiceImpl final
                              KeyValueSetResponse* response) override;
 
  private:
-  const absl::Duration kConnectTimeout = absl::Seconds(120);
-
   absl::Mutex mu_;
   enum class State { kInitializing, kRunning };
-  State state_ GUARDED_BY(mu_) = State::kInitializing;
+  State state_ ABSL_GUARDED_BY(mu_) = State::kInitializing;
 
-  std::vector<LocalTopologyProto> local_topologies_ GUARDED_BY(mu_);
-  GlobalTopologyProto topology_ GUARDED_BY(mu_);
+  std::vector<LocalTopologyProto> local_topologies_ ABSL_GUARDED_BY(mu_);
+  GlobalTopologyProto topology_ ABSL_GUARDED_BY(mu_);
   struct Node {
     bool present = false;
   };
-  int num_nodes_present_ GUARDED_BY(mu_) = 0;
-  std::vector<Node> nodes_ GUARDED_BY(mu_);
+  int num_nodes_present_ ABSL_GUARDED_BY(mu_) = 0;
+  std::vector<Node> nodes_ ABSL_GUARDED_BY(mu_);
 
   KeyValueStore key_value_store_;
 };

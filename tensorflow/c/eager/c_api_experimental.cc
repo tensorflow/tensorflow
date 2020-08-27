@@ -38,7 +38,7 @@ using tensorflow::string;
 void TFE_OpReset(TFE_Op* op_to_reset, const char* op_or_function_name,
                  const char* raw_device_name, TF_Status* status) {
   if (op_to_reset) {
-    tensorflow::AbstractOperationInterface* op =
+    tensorflow::ImmediateExecutionOperation* op =
         tensorflow::unwrap(op_to_reset);
     op->Clear();
     status->status = op->Reset(op_or_function_name, raw_device_name);
@@ -58,6 +58,12 @@ void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
   tensorflow::EagerContext* context =
       tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
   context->SetShouldStoreGraphs(false);
+}
+
+uint64_t TFE_GetContextId(TFE_Context* ctx) {
+  tensorflow::EagerContext* context =
+      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
+  return context->GetContextId();
 }
 
 void TFE_MonitoringCounterCellIncrementBy(TFE_MonitoringCounterCell* cell,
@@ -478,29 +484,6 @@ TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
     TFE_MonitoringSampler2* sampler, const char* label1, const char* label2) {
   return static_cast<TFE_MonitoringSamplerCell*>(
       static_cast<void*>(sampler->sampler->GetCell(label1, label2)));
-}
-
-void TFE_ContextOptionsSetMirroringPolicy(TFE_ContextOptions* options,
-                                          TFE_ContextMirroringPolicy policy) {
-  options->mirroring_policy = policy;
-}
-
-void TFE_ContextSetThreadLocalMirroringPolicy(
-    TFE_Context* ctx, TFE_ContextMirroringPolicy policy) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  context->SetThreadLocalMirroringPolicy(
-      static_cast<tensorflow::ContextMirroringPolicy>(policy));
-}
-
-// Note: this function looks up a thread local policy. So it should be called in
-// the appropriate client thread. In particular, in async mode, it may not be
-// safe to call this function from the async EagerExecutor threads.
-extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
-    TFE_Context* ctx) {
-  tensorflow::EagerContext* context =
-      tensorflow::ContextFromInterface(tensorflow::unwrap(ctx));
-  return static_cast<TFE_ContextMirroringPolicy>(context->GetMirroringPolicy());
 }
 
 void TFE_ContextOptionsSetLazyRemoteInputsCopy(TFE_ContextOptions* options,

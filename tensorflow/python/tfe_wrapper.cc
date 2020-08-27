@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "Python.h"
+#include "absl/strings/str_format.h"
 #include "pybind11/chrono.h"
 #include "pybind11/complex.h"
 #include "pybind11/functional.h"
@@ -254,14 +255,10 @@ py::object TFE_Py_ExecuteCancelable_wrapper(
 }
 
 static py::object TF_ListPhysicalDevices() {
-  tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
   std::vector<string> devices;
   tensorflow::Status s =
       tensorflow::DeviceFactory::ListAllPhysicalDevices(&devices);
-  tensorflow::Set_TF_Status_from_Status(status.get(), s);
-  if (!s.ok()) {
-    return py::none();
-  }
+  MaybeRaiseRegisteredFromStatus(s);
   PyObject* result = PyList_New(devices.size());
   int i = 0;
   for (auto& dev : devices) {
@@ -270,6 +267,16 @@ static py::object TF_ListPhysicalDevices() {
     ++i;
   }
   return tensorflow::PyoOrThrow(result);
+}
+
+static std::unordered_map<string, string> TF_GetDeviceDetails(int index) {
+  tensorflow::Safe_TF_StatusPtr status = tensorflow::make_safe(TF_NewStatus());
+  std::unordered_map<string, string> device_details;
+  tensorflow::Status s =
+      tensorflow::DeviceFactory::GetAnyDeviceDetails(index, &device_details);
+  tensorflow::Set_TF_Status_from_Status(status.get(), s);
+  MaybeRaiseRegisteredFromTFStatus(status.get());
+  return device_details;
 }
 
 static py::object TFE_ClearScalarCache() {
@@ -345,6 +352,71 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         TFE_Py_RegisterFallbackExceptionClass(e.ptr()));
   });
 
+  m.def(
+      "TFE_GetTotalMemoryUsage", [](py::handle& ctx, const char* device_name) {
+        tensorflow::EagerContext* context = tensorflow::ContextFromInterface(
+            reinterpret_cast<tensorflow::ImmediateExecutionContext*>(
+                tensorflow::InputTFE_Context(ctx)));
+
+        tensorflow::DeviceNameUtils::ParsedName input_device_name;
+        if (!tensorflow::DeviceNameUtils::ParseFullName(device_name,
+                                                        &input_device_name) &&
+            !tensorflow::DeviceNameUtils::ParseLocalName(device_name,
+                                                         &input_device_name)) {
+          tensorflow::ThrowValueError(
+              absl::StrFormat("Failed parsing device name: '%s'", device_name)
+                  .c_str());
+        }
+
+        std::vector<tensorflow::Device*> devices =
+            context->local_device_mgr()->ListDevices();
+
+        tensorflow::Device* matched_device = nullptr;
+        for (int device_idx = 0; device_idx < devices.size(); device_idx++) {
+          tensorflow::Device* device = devices[device_idx];
+
+          if (tensorflow::DeviceNameUtils::AreCompatibleDevNames(
+                  input_device_name, device->parsed_name())) {
+            if (device->device_type() == tensorflow::DEVICE_CPU) {
+              tensorflow::ThrowValueError(
+                  "CPU does not support getting allocator information");
+            }
+
+            if (matched_device != nullptr) {
+              tensorflow::ThrowValueError(
+                  absl::StrFormat(
+                      "Multiple devices matching the provided string "
+                      "'%s': '%s' and "
+                      "'%s' ",
+                      device_name, matched_device->name(), device->name())
+                      .c_str());
+            }
+            matched_device = device;
+          }
+        }
+
+        if (matched_device == nullptr) {
+          tensorflow::ThrowValueError(
+              absl::StrFormat("No matching devices found for '%s'", device_name)
+                  .c_str());
+        }
+        CHECK(matched_device);
+
+        tensorflow::AllocatorAttributes attrs;
+        tensorflow::Allocator* allocator = matched_device->GetAllocator(attrs);
+
+        if (absl::optional<tensorflow::AllocatorStats> stats =
+                allocator->GetStats()) {
+          return stats->bytes_in_use;
+        }
+
+        tensorflow::ThrowTypeError(
+            absl::StrFormat("Allocator stats not available for device '%s'",
+                            matched_device->name())
+                .c_str());
+        LOG(FATAL) << "Unreachable";
+      });
+
   // XLA Eager Logic
   m.def("TF_SetXlaEnableLazyCompilation", &TF_SetXlaEnableLazyCompilation);
   m.def("TF_SetTfXlaCpuGlobalJit", &TF_SetTfXlaCpuGlobalJit);
@@ -352,7 +424,17 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TF_SetXlaConstantFoldingDisabled", &TF_SetXlaConstantFoldingDisabled);
   m.def("TF_GetXlaConstantFoldingDisabled", &TF_GetXlaConstantFoldingDisabled);
   m.def("TF_SetXlaMinClusterSize", &TF_SetXlaMinClusterSize);
-  m.def("TF_IsXlaEnabled", [] { return tensorflow::IsXlaEnabled(); });
+
+  // MLIR Logic
+  m.def("TF_IsMlirBridgeEnabled", [] {
+    return tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge;
+  });
+  m.def("TF_EnableMlirBridge", [](bool enabled) {
+    tensorflow::GetMlirCommonFlags()->tf_mlir_enable_mlir_bridge = enabled;
+  });
+  m.def("TF_EnableXlaDevices", [] {
+    tensorflow::GetXlaDeviceFlags()->tf_xla_enable_xla_devices = true;
+  });
 
   // // TFE_Context Logic
   m.def(
@@ -443,25 +525,20 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextClearCaches", [](py::handle& o) {
     TFE_ContextClearCaches(tensorflow::InputTFE_Context(o));
   });
+  m.def("TFE_GetContextId", [](py::handle& ctx) {
+    return TFE_GetContextId(tensorflow::InputTFE_Context(ctx));
+  });
   m.def("TFE_ContextGetDevicePlacementPolicy", [](py::handle& ctx) {
     return TFE_ContextGetDevicePlacementPolicy(
         tensorflow::InputTFE_Context(ctx));
-  });
-  m.def("TFE_ContextGetMirroringPolicy", [](py::handle& ctx) {
-    return TFE_ContextGetMirroringPolicy(tensorflow::InputTFE_Context(ctx));
   });
   m.def("TFE_ContextSetThreadLocalDevicePlacementPolicy",
         [](py::handle& ctx, TFE_ContextDevicePlacementPolicy policy) {
           TFE_ContextSetThreadLocalDevicePlacementPolicy(
               tensorflow::InputTFE_Context(ctx), policy);
         });
-  m.def("TFE_ContextSetThreadLocalMirroringPolicy",
-        [](py::handle& ctx, TFE_ContextMirroringPolicy policy) {
-          TFE_ContextSetThreadLocalMirroringPolicy(
-              tensorflow::InputTFE_Context(ctx), policy);
-        });
   m.def("TFE_ContextSetServerDef", [](py::handle& ctx, int keep_alive_secs,
-                                      py::str proto) {
+                                      py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
@@ -471,7 +548,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
   m.def("TFE_ContextUpdateServerDef", [](py::handle& ctx, int keep_alive_secs,
-                                         py::str proto) {
+                                         py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
@@ -713,8 +790,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
         });
 
   // TFE_Py_ForwardAccumulator logic.
-  m.def("TFE_Py_ForwardAccumulatorNew", []() {
-    return tensorflow::PyoOrThrow(TFE_Py_ForwardAccumulatorNew());
+  m.def("TFE_Py_ForwardAccumulatorNew", [](bool use_batch) {
+    return tensorflow::PyoOrThrow(TFE_Py_ForwardAccumulatorNew(use_batch));
   });
 
   m.def("TFE_Py_ForwardAccumulatorSetAdd", [](const py::handle& accumulator) {
@@ -751,7 +828,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_NewContextOptions", &TFE_NewContextOptions,
         py::return_value_policy::reference);
   m.def("TFE_ContextOptionsSetConfig", [](TFE_ContextOptions* options,
-                                          py::str proto) {
+                                          py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
@@ -765,8 +842,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
   m.def("TFE_ContextOptionsSetLazyRemoteInputsCopy",
         &TFE_ContextOptionsSetLazyRemoteInputsCopy);
   m.def("TFE_ContextOptionsSetTfrt", &TFE_ContextOptionsSetTfrt);
-  m.def("TFE_ContextOptionsSetMirroringPolicy",
-        &TFE_ContextOptionsSetMirroringPolicy);
   m.def("TFE_ContextOptionsSetAsync", &TFE_ContextOptionsSetAsync);
   m.def("TFE_DeleteContextOptions", &TFE_DeleteContextOptions,
         py::return_value_policy::reference);
@@ -802,7 +877,7 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
           return tensorflow::PyoOrThrow(
               TFE_Py_EncodeArg(o.ptr(), include_tensor_ranks_only));
         });
-  m.def("TFE_EnableCollectiveOps", [](const py::handle& ctx, py::str proto) {
+  m.def("TFE_EnableCollectiveOps", [](const py::handle& ctx, py::bytes proto) {
     tensorflow::Safe_TF_StatusPtr status =
         tensorflow::make_safe(TF_NewStatus());
     tensorflow::Safe_TF_BufferPtr buf =
@@ -811,7 +886,15 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                             buf.get()->length, status.get());
     tensorflow::MaybeRaiseRegisteredFromTFStatus(status.get());
   });
+  m.def("TFE_AbortCollectiveOps", [](const py::handle& ctx, int code,
+                                     const char* message) {
+    tensorflow::Safe_TF_StatusPtr status =
+        tensorflow::make_safe(TF_NewStatus());
+    TF_SetStatus(status.get(), static_cast<TF_Code>(code), message);
+    TFE_AbortCollectiveOps(tensorflow::InputTFE_Context(ctx), status.get());
+  });
   m.def("TF_ListPhysicalDevices", &tensorflow::TF_ListPhysicalDevices);
+  m.def("TF_GetDeviceDetails", &tensorflow::TF_GetDeviceDetails);
   m.def("TF_DeleteDeviceList", &TF_DeleteDeviceList,
         py::return_value_policy::reference);
   m.def("TF_DeviceListCount", &TF_DeviceListCount);
@@ -1147,7 +1230,9 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
 
     PyCapsule_SetName(pycapsule.ptr(), "used_dltensor");
     PyCapsule_SetDestructor(pycapsule.ptr(), nullptr);
-    return py::handle(EagerTensorFromHandle(thandle));
+
+    PyObject* pyhandle = EagerTensorFromHandle(thandle);
+    return tensorflow::PyoOrThrow(pyhandle);
   });
 
   m.def("TFE_Py_RegisterCustomDevice", [](const py::handle& context,
@@ -1204,10 +1289,5 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
       .value("TF_ATTR_TENSOR", TF_ATTR_TENSOR)
       .value("TF_ATTR_PLACEHOLDER", TF_ATTR_PLACEHOLDER)
       .value("TF_ATTR_FUNC", TF_ATTR_FUNC)
-      .export_values();
-
-  py::enum_<TFE_ContextMirroringPolicy>(m, "TFE_ContextMirroringPolicy")
-      .value("TFE_MIRRORING_NONE", TFE_MIRRORING_NONE)
-      .value("TFE_MIRRORING_ALL", TFE_MIRRORING_ALL)
       .export_values();
 };

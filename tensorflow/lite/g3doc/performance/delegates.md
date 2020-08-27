@@ -85,6 +85,8 @@ To see it in code, let's define a delegate and call it `MyDelegate`, which can
 execute Conv2D and Mean operations faster.
 
 ```c++
+#include "tensorflow/lite/util.h"
+
 // This is where the execution of the operations or whole graph happens.
 // The class below has an empty implementation just as a guideline
 // on the structure.
@@ -156,8 +158,7 @@ TfLiteRegistration GetMyDelegateNodeRegistration() {
 TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
   // Claim all nodes that can be evaluated by the delegate and ask the
   // framework to update the graph with delegate kernel instead.
-  // Reserve 1 element, since we need first element to be size.
-  std::vector<int> supported_nodes(1);
+  std::vector<int> supported_nodes;
   TfLiteIntArray* plan;
   TF_LITE_ENSURE_STATUS(context->GetExecutionPlan(context, &plan));
   TfLiteNode* node;
@@ -169,17 +170,19 @@ TfLiteStatus DelegatePrepare(TfLiteContext* context, TfLiteDelegate* delegate) {
       supported_nodes.push_back(node_index);
     }
   }
-  // Set first element to the number of nodes to replace.
-  supported_nodes[0] = supported_nodes.size() - 1;
   TfLiteRegistration my_delegate_kernel_registration =
       GetMyDelegateNodeRegistration();
 
   // This call split the graphs into subgraphs, for subgraphs that can be
   // handled by the delegate, it will replace it with a
   // 'my_delegate_kernel_registration'
-  return context->ReplaceNodeSubsetsWithDelegateKernels(
+  TfLiteIntArray* supported_nodes_int_array =
+      ::tflite::ConvertVectorToTfLiteIntArray(supported_nodes);
+  auto status = context->ReplaceNodeSubsetsWithDelegateKernels(
       context, my_delegate_kernel_registration,
-      reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()), delegate);
+      supported_nodes_int_array, delegate);
+  TfLiteIntArrayFree(supported_nodes_int_array);
+  return status
 }
 
 void FreeBufferHandle(TfLiteContext* context, TfLiteDelegate* delegate,

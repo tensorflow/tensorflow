@@ -12,6 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -86,6 +88,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   if (IsDynamicTensor(output)) {
     TF_LITE_ENSURE_OK(context,
                       ResizeOutputTensor(context, cond_tensor, output));
+  }
+
+  TfLiteIntArray* dims = cond_tensor->dims;
+  if (dims->size == 0) {
+    // Scalar tensors are not supported.
+    TF_LITE_KERNEL_LOG(context, "Where op requires condition w/ rank > 0");
+    return kTfLiteError;
   }
 
   reference_ops::SelectTrueCoords(GetTensorShape(cond_tensor),

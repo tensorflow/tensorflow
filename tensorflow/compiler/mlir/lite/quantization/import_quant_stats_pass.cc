@@ -62,6 +62,10 @@ class ImportQuantStatsPass
 
   void runOnFunction() override;
 
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<quant::QuantizationDialect>();
+  }
+
   // Parses the serialized quant stats protobuf and initialize the internal
   // data structure. This method must be called after the pass is created.
   bool ParseQuantStats(const std::string &stats_str);
@@ -76,7 +80,8 @@ class ImportQuantStatsPass
   // If the index is out of range, this method returns false. Otherwise it
   // returns true if the value is a float tensor.
   bool IsQuantizableResult(Operation *op, int index) {
-    if (index < 0 || index >= op->getNumResults()) return false;
+    if (index < 0 || index >= static_cast<int>(op->getNumResults()))
+      return false;
     Value res = op->getResult(index);
     return res.getType().isa<ShapedType>() &&
            res.getType().cast<ShapedType>().getElementType().isa<FloatType>();
@@ -158,7 +163,7 @@ void ImportQuantStatsPass::ImportAsStatsOps(OpBuilder b, Operation *op,
     InsertStatsOpAtResult(b, op->getResult(index), layer_stats, axis_stats,
                           axis);
   } else {
-    for (int i = 0; i < op->getNumResults(); ++i) {
+    for (int i = 0, e = op->getNumResults(); i < e; ++i) {
       if (IsQuantizableResult(op, i)) {
         InsertStatsOpAtResult(b, op->getResult(i), layer_stats, axis_stats,
                               axis);

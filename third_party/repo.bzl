@@ -60,12 +60,9 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
 def _repos_are_siblings():
     return Label("@foo//bar").workspace_root.startswith("../")
 
-# Apply a patch_file to the repository root directory
-# Runs 'patch -p1' on both Windows and Unix.
+# Apply a patch_file to the repository root directory.
 def _apply_patch(ctx, patch_file):
-    patch_command = ["patch", "-p1", "-d", ctx.path("."), "-i", ctx.path(patch_file)]
-    cmd = _wrap_bash_cmd(ctx, patch_command)
-    _execute_and_check_ret_code(ctx, cmd)
+    ctx.patch(patch_file, strip = 1)
 
 def _apply_delete(ctx, paths):
     for path in paths:

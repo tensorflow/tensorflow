@@ -33,8 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+#if GOOGLE_CUDA && GOOGLE_TENSORRT
 #include "third_party/tensorrt/NvInfer.h"
 
 namespace tensorflow {
@@ -686,12 +685,14 @@ Status GetTrtBroadcastShape(const TRT_TensorOrWeights& operand_l,
 const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
 // Map of all supported ActivationTypes
 const std::unordered_map<string, nvinfer1::ActivationType>* ActivationTypeMap();
+// Map of all supported BinaryOperations
+const std::unordered_map<string, nvinfer1::ElementWiseOperation>*
+BinaryOperationMap();
 
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA && GOOGLE_TENSORRT
 
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_CONVERT_NODES_H_

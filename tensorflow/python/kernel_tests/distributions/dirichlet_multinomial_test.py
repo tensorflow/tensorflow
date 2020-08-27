@@ -43,7 +43,7 @@ class DirichletMultinomialTest(test.TestCase):
       alpha = np.random.rand(3)
       dist = ds.DirichletMultinomial(1., alpha)
       self.assertEqual(3, dist.event_shape_tensor().eval())
-      self.assertAllEqual([], dist.batch_shape_tensor().eval())
+      self.assertAllEqual([], dist.batch_shape_tensor())
       self.assertEqual(tensor_shape.TensorShape([3]), dist.event_shape)
       self.assertEqual(tensor_shape.TensorShape([]), dist.batch_shape)
 
@@ -54,7 +54,7 @@ class DirichletMultinomialTest(test.TestCase):
       n = [[3., 2], [4, 5], [6, 7]]
       dist = ds.DirichletMultinomial(n, alpha)
       self.assertEqual(2, dist.event_shape_tensor().eval())
-      self.assertAllEqual([3, 2], dist.batch_shape_tensor().eval())
+      self.assertAllEqual([3, 2], dist.batch_shape_tensor())
       self.assertEqual(tensor_shape.TensorShape([2]), dist.event_shape)
       self.assertEqual(tensor_shape.TensorShape([3, 2]), dist.batch_shape)
 
@@ -65,7 +65,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.cached_session():
       dist = ds.DirichletMultinomial(n, alpha)
       self.assertEqual([1, 1], dist.total_count.get_shape())
-      self.assertAllClose(n, dist.total_count.eval())
+      self.assertAllClose(n, dist.total_count)
 
   @test_util.run_deprecated_v1
   def testAlphaProperty(self):
@@ -73,7 +73,7 @@ class DirichletMultinomialTest(test.TestCase):
     with self.cached_session():
       dist = ds.DirichletMultinomial(1, alpha)
       self.assertEqual([1, 3], dist.concentration.get_shape())
-      self.assertAllClose(alpha, dist.concentration.eval())
+      self.assertAllClose(alpha, dist.concentration)
 
   @test_util.run_deprecated_v1
   def testPmfNandCountsAgree(self):
@@ -268,6 +268,8 @@ class DirichletMultinomialTest(test.TestCase):
       self.assertAllClose(sample_var_, analytic_var, atol=0.05, rtol=0.)
       self.assertAllClose(sample_stddev_, analytic_stddev, atol=0.02, rtol=0.)
 
+  @test_util.run_without_tensor_float_32(
+      "Tests DirichletMultinomial.covariance, which calls matmul")
   def testCovariance(self):
     # Shape [2]
     alpha = [1., 2]

@@ -24,6 +24,7 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.eager import context
 from tensorflow.python.keras import backend as K
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.platform import test
@@ -47,6 +48,8 @@ def is_default_strategy(strategy):
     return not distribution_strategy_context.has_strategy()
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class TestDistributionStrategyDnnCorrectness(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 
@@ -240,6 +243,8 @@ class SubclassedModel(keras.Model):
     return self.dense4(x)
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
     TestDistributionStrategyDnnCorrectness):
 
@@ -262,13 +267,13 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
     if (context.executing_eagerly()) or is_default_strategy(distribution):
       self.run_correctness_test(distribution, use_numpy, use_validation_data)
     elif K.is_tpu_strategy(distribution) and not context.executing_eagerly():
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'Expected `model` argument to be a functional `Model` instance, '
           'but got a subclass model instead.'):
         self.run_correctness_test(distribution, use_numpy, use_validation_data)
     else:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'We currently do not support distribution strategy with a '
           '`Sequential` model that is created without `input_shape`/'
@@ -281,13 +286,13 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
         is_default_strategy(distribution)):
       self.run_dynamic_lr_test(distribution)
     elif K.is_tpu_strategy(distribution):
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'Expected `model` argument to be a functional `Model` instance, '
           'but got a subclass model instead.'):
         self.run_dynamic_lr_test(distribution)
     else:
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           'We currently do not support distribution strategy with a '
           '`Sequential` model that is created without `input_shape`/'
@@ -299,7 +304,7 @@ class TestDistributionStrategyDnnCorrectnessWithSubclassedModel(
   def test_dnn_correctness_with_partial_last_batch_eval(self, distribution,
                                                         use_numpy,
                                                         use_validation_data):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         'Expected `model` argument to be a functional `Model` instance, '
         'but got a subclass model instead.'):

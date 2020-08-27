@@ -70,6 +70,7 @@ class MatMulTest(test_lib.TestCase):
 
 def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
+  @test_util.run_without_tensor_float_32("Tests matmul")
   def Test(self):
     np_val = np.matrix(a_np_) * np.matrix(b_np_)
 
@@ -195,14 +196,14 @@ except AttributeError:
 class MatMulInfixOperatorTest(test_lib.TestCase):
 
   def testMismatchedShape(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         Exception, "(Shape must be rank 2 but is rank 1|is not a matrix)"):
       infix_matmul(
           ops.convert_to_tensor([10.0, 20.0, 30.0]),
           ops.convert_to_tensor([[40.0, 50.0], [60.0, 70.0]]))
 
   def testMismatchedDimensions(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         Exception, "(Dimensions must be equal|Matrix size-incompatible)"):
       infix_matmul(
           ops.convert_to_tensor([[10.0, 20.0, 30.0]]),

@@ -13,7 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/lite/c/builtin_op_data.h"
+#include <math.h>
+#include <stdint.h>
+#include <stdlib.h>
+
+#include <functional>
+#include <type_traits>
+
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
@@ -35,8 +41,8 @@ template <typename T>
 TfLiteStatus GetSize(TfLiteContext* context, T start, T limit, T delta,
                      int* size) {
   TF_LITE_ENSURE(context, !std::equal_to<T>()(delta, 0));
-  TF_LITE_ENSURE(context,
-                 (start > limit && delta < 0) || (start < limit && delta > 0));
+  TF_LITE_ENSURE(
+      context, (start >= limit && delta < 0) || (start <= limit && delta > 0));
   *size =
       (std::is_integral<T>::value
            ? ((std::abs(limit - start) + std::abs(delta) - 1) / std::abs(delta))
@@ -94,8 +100,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     return kTfLiteError;
   }
 
-  TF_LITE_ENSURE_EQ(context, limit->type, dtype);
-  TF_LITE_ENSURE_EQ(context, delta->type, dtype);
+  TF_LITE_ENSURE_TYPES_EQ(context, limit->type, dtype);
+  TF_LITE_ENSURE_TYPES_EQ(context, delta->type, dtype);
 
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   output->type = dtype;

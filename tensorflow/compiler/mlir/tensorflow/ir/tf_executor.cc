@@ -54,9 +54,6 @@ namespace tf_executor {
 
 namespace {
 
-using TF::DropRefType;
-using TF::DropTypeSubTypes;
-
 struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
   using DialectInlinerInterface::DialectInlinerInterface;
 
@@ -71,13 +68,12 @@ struct TensorFlowExecutorInlinerInterface : public DialectInlinerInterface {
     // Allow inlining into tf.island regions if the incoming region has a single
     // block.
     return llvm::isa<tf_executor::IslandOp>(dest->getParentOp()) &&
-           std::next(src->begin()) == src->end();
+           llvm::hasSingleElement(*src);
   }
 };
 
-struct TensorFlowExecutorOpFolderDialectInterface
-    : public OpFolderDialectInterface {
-  using OpFolderDialectInterface::OpFolderDialectInterface;
+struct TensorFlowExecutorDialectFoldInterface : public DialectFoldInterface {
+  using DialectFoldInterface::DialectFoldInterface;
 
   // Registered hook to check if the given region, which is attached to an
   // operation that is *not* isolated from above (i.e. no internal regions
@@ -92,14 +88,15 @@ struct TensorFlowExecutorOpFolderDialectInterface
 }  // namespace
 
 TensorFlowExecutorDialect::TensorFlowExecutorDialect(MLIRContext *context)
-    : Dialect(/*name=*/"tf_executor", context) {
+    : Dialect(/*name=*/"tf_executor", context,
+              TypeID::get<TensorFlowExecutorDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.cc.inc"
       >();
 
   addInterfaces<TensorFlowExecutorInlinerInterface,
-                TensorFlowExecutorOpFolderDialectInterface>();
+                TensorFlowExecutorDialectFoldInterface>();
 
   addTypes<ControlType, TokenType>();
 }
@@ -190,14 +187,15 @@ LogicalResult Verify(GraphOp graph) {
   for (int i : llvm::seq<int>(0, fetch.getNumOperands())) {
     Value operand = fetch.getOperand(i);
     // Break out of the loop at the first control operand encountered.
+    const int64_t num_results = graph.getNumResults();
     if (operand.getType().isa<ControlType>()) {
-      if (i != graph.getNumResults())
+      if (i != num_results)
         return fetch.emitOpError()
                << "operand #" << i
                << " is a control type, can't be bound to a graph result";
       break;
     }
-    if (i >= graph.getNumResults())
+    if (i >= num_results)
       return fetch.emitOpError()
              << "operand #" << i << " does not have a graph results to bind";
     if (graph.getResult(i).getType() != operand.getType())
@@ -220,12 +218,12 @@ ParseResult ParseGraphOp(OpAsmParser &parser, OperationState &result) {
   Region &body = *result.addRegion();
   if (parser.parseRegion(body, llvm::None, llvm::None)) return failure();
 
-  if (body.getBlocks().size() > 1)
-    return parser.emitError(loc) << "expects a single block region";
-
   // Ensure that the region is well formed: it contains at least a block with
   // a FetchOp terminator.
   GraphOp::ensureTerminator(body, parser.getBuilder(), result.location);
+
+  if (!llvm::hasSingleElement(body))
+    return parser.emitError(loc) << "expects a single block region";
 
   // Get the results type from the terminator type inside the graph.
   Operation &fetch = body.back().back();
@@ -301,8 +299,8 @@ bool IslandOp::WrapsSingleOp() {
 namespace {
 
 LogicalResult Verify(IslandOp island) {
-  if (island.GetBody().empty())
-    return island.emitOpError() << "expects a non-empty body";
+  if (!island.GetBody().args_empty())
+    return island.emitOpError() << "expects body without any arguments";
 
   Operation &yield = island.GetBody().back();
   if (!isa<YieldOp>(yield))
@@ -311,7 +309,8 @@ LogicalResult Verify(IslandOp island) {
 
   // Ensure that the yield terminator operands matches the island results type.
   int result_count = island.getNumResults() - 1;  // -1 for the control token
-  if (yield.getNumOperands() != result_count)
+  const int num_operands = yield.getNumOperands();
+  if (num_operands != result_count)
     return yield.emitOpError()
            << "has " << yield.getNumOperands()
            << " operand, but island returns " << result_count;
@@ -548,8 +547,8 @@ LogicalResult Verify(SwitchNOp switchn) {
              << operand0_tensor_type << " vs " << output_tensor_type;
     }
     Type broadcasted_type = OpTrait::util::getBroadcastedType(
-        DropRefType(DropTypeSubTypes(operand0_tensor_type)),
-        DropRefType(DropTypeSubTypes(output_tensor_type)));
+        TF::DropRefAndSubTypes(operand0_tensor_type),
+        TF::DropRefAndSubTypes(output_tensor_type));
     if (!broadcasted_type) {
       return switchn.emitOpError()
              << "expects data operand to be broadcastable with all output types"
@@ -665,8 +664,8 @@ LogicalResult Verify(MergeOp merge) {
              << operand_tensor_ty << " vs " << output_tensor_ty;
     }
     Type broadcasted_type = OpTrait::util::getBroadcastedType(
-        DropRefType(DropTypeSubTypes(output_tensor_ty)),
-        DropRefType(DropTypeSubTypes(operand_tensor_ty)));
+        TF::DropRefAndSubTypes(output_tensor_ty),
+        TF::DropRefAndSubTypes(operand_tensor_ty));
     if (!broadcasted_type)
       return merge.emitOpError()
              << "expects all operands to be broadcastable with output type"
@@ -811,11 +810,13 @@ ParseResult ParseEnterOp(OpAsmParser &parser, OperationState &result) {
   // fully qualified) or a short form with a single type (in which case the data
   // input and the outputs are all using this type).
   if (FunctionType type = types.front().dyn_cast<FunctionType>()) {
-    if (type.getNumInputs() != 1)
-      return parser.emitError(parser.getNameLoc())
-             << " expects a single data type";
-    result.types.assign(type.getResults().begin(), type.getResults().end());
-    types.assign(type.getInputs().begin(), type.getInputs().end());
+    // One data input, and any number of control inputs.
+    if (type.getNumInputs() >= 1) {
+      result.types.assign(type.getResults().begin(), type.getResults().end());
+      types.assign(type.getInputs().begin(), type.getInputs().end());
+    } else {
+      return parser.emitError(parser.getNameLoc()) << " expects a data input";
+    }
   } else {
     Type control_type = ControlType::get(context);
     types.append(op_infos.size() - 1, control_type);

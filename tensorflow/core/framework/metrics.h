@@ -56,8 +56,17 @@ monitoring::CounterCell* GetTFDataElementsCounter(const string& name);
 // Records the number of bytes fetched from tf.data.Dataset iterator.
 void RecordTFDataBytesFetched(int64 num_bytes);
 
+// Records the number of times tf.data experiment is applied to input pipelines.
+void RecordTFDataExperiment(const string& name);
+
 // Records the time spent in ItertatorResource::GetNext() in microseconds.
 void RecordTFDataGetNextDuration(uint64 duration_us);
+
+// Records the time spent between IteratorResource::GetNext() calls
+// in microseconds. Time is measured from the point of returning data from
+// GetNext() to the point of new data being requested.
+// This elapsed time corresponds to time spent outside the GetNext() function.
+void RecordTFDataGetNextTimeBetween(uint64 duration_us);
 
 // Records the number of times each tf.data fingerprint is used
 // to measure duplicate pre-processing.
@@ -113,6 +122,9 @@ void UpdateGrapplerPassTime(const string& pass_name,
 
 // Updates the metrics stored about time XLA spents compiling graphs.
 void UpdateXlaCompilationTime(const uint64 compilation_time_usecs);
+
+// Updates the metrics stored about time BFC allocator spents during delay.
+void UpdateBfcAllocatorDelayTime(const uint64 delay_usecs);
 
 // Increment the number of jobs that failed during import to mlir.
 void IncrementMLIRImportFailureCount();

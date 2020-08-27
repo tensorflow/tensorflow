@@ -18,8 +18,8 @@ limitations under the License.
 include "mlir/IR/OpBase.td"
 include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
-include "tensorflow/compiler/mlir/xla/ir/chlo_ops.td"
-include "tensorflow/compiler/mlir/xla/ir/hlo_ops.td"
+include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.td"
+include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.td"
 
 // Check that two values can be broadcasted together
 // TODO(jpienaar): Move somewhere more general
@@ -111,6 +111,7 @@ foreach Mapping = [[HLO_AbsOp, TF_AbsOp],
                    [HLO_IsFiniteOp, TF_IsFiniteOp],
                    [HLO_LogOp, TF_LogOp],
                    [HLO_Log1pOp, TF_Log1pOp],
+                   [HLO_LogisticOp, TF_SigmoidOp],
                    [HLO_NotOp, TF_LogicalNotOp],
                    [HLO_NegOp, TF_NegOp],
                    [HLO_RealOp, TF_RealOp],
@@ -184,3 +185,10 @@ def ConvertDotOp : NativeCodeCall<"ConvertDotOp($_builder, "
 def : Pat<(HLO_DotOp:$old_value AnyStaticShapeTensor:$lhs,
                AnyStaticShapeTensor:$rhs, $precision_config),
           (ConvertDotOp $old_value)>;
+
+def ConvertDotGeneralOp : NativeCodeCall<"ConvertDotGeneralOp($_builder, "
+                                               "$0.getDefiningOp())">;
+def : Pat<(HLO_DotGeneralOp:$old_value AnyStaticShapeTensor:$lhs,
+               AnyStaticShapeTensor:$rhs, $dot_dimension_numbers,
+               $precision_config),
+          (ConvertDotGeneralOp $old_value)>;
