@@ -260,7 +260,6 @@ struct CropAndResize<CPUDevice, T> {
             continue;
           }
           if (method_name == "bilinear") {
-
             const int top_y_index = floorf(in_y);
             const int bottom_y_index = ceilf(in_y);
             const float y_lerp = in_y - top_y_index;
