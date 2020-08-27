@@ -700,6 +700,23 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
   def run_eagerly(self, value):
     self._run_eagerly = value
 
+  def _get_compiled_epoch_function(self, step_function, callbacks, steps):
+    """Creates a tf.function iterating over all steps per epoch if allowed."""
+    if (not self.run_eagerly
+        and not callbacks._should_call_train_batch_hooks  # pylint: disable=protected-access
+        and steps is not None
+        and steps > 1
+        and self._steps_per_execution.numpy().item() == 1):
+
+      @def_function.function(experimental_relax_shapes=True)
+      def epoch_function(iterator):
+        for _ in math_ops.range(steps):
+          logs = step_function(iterator)
+        return logs
+
+      return epoch_function
+    return None
+
   def train_step(self, data):
     """The logic for one training step.
 
@@ -1059,25 +1076,30 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       # happen after `callbacks.on_train_begin`.
       data_handler._initial_epoch = (  # pylint: disable=protected-access
           self._maybe_load_initial_epoch_from_ckpt(initial_epoch))
+      epoch_train_function = self._get_compiled_epoch_function(
+          self.train_function, callbacks, data_handler.inferred_steps)
       logs = None
       for epoch, iterator in data_handler.enumerate_epochs():
         self.reset_metrics()
         callbacks.on_epoch_begin(epoch)
-        with data_handler.catch_stop_iteration():
-          for step in data_handler.steps():
-            with trace.Trace(
-                'train',
-                epoch_num=epoch,
-                step_num=step,
-                batch_size=batch_size,
-                _r=1):
-              callbacks.on_train_batch_begin(step)
-              tmp_logs = self.train_function(iterator)
-              if data_handler.should_sync:
-                context.async_wait()
-              logs = tmp_logs  # No error, now safe to assign to logs.
-              end_step = step + data_handler.step_increment
-              callbacks.on_train_batch_end(end_step, logs)
+        if epoch_train_function is not None:
+          logs = epoch_train_function(iterator)
+        else:
+          with data_handler.catch_stop_iteration():
+            for step in data_handler.steps():
+              with trace.Trace(
+                  'train',
+                  epoch_num=epoch,
+                  step_num=step,
+                  batch_size=batch_size,
+                  _r=1):
+                callbacks.on_train_batch_begin(step)
+                tmp_logs = self.train_function(iterator)
+                if data_handler.should_sync:
+                  context.async_wait()
+                logs = tmp_logs  # No error, now safe to assign to logs.
+                end_step = step + data_handler.step_increment
+                callbacks.on_train_batch_end(end_step, logs)
 
         if logs is None:
           raise ValueError('Expect x to be a non-empty array or dataset.')
@@ -1347,19 +1369,24 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       logs = {}
       self.test_function = self.make_test_function()
       self._test_counter.assign(0)
+      epoch_test_function = self._get_compiled_epoch_function(
+          self.test_function, callbacks, data_handler.inferred_steps)
       callbacks.on_test_begin()
       for _, iterator in data_handler.enumerate_epochs():  # Single epoch.
         self.reset_metrics()
-        with data_handler.catch_stop_iteration():
-          for step in data_handler.steps():
-            with trace.Trace('test', step_num=step, _r=1):
-              callbacks.on_test_batch_begin(step)
-              tmp_logs = self.test_function(iterator)
-              if data_handler.should_sync:
-                context.async_wait()
-              logs = tmp_logs  # No error, now safe to assign to logs.
-              end_step = step + data_handler.step_increment
-              callbacks.on_test_batch_end(end_step, logs)
+        if epoch_test_function is not None:
+          logs = epoch_test_function(iterator)
+        else:
+          with data_handler.catch_stop_iteration():
+            for step in data_handler.steps():
+              with trace.Trace('test', step_num=step, _r=1):
+                callbacks.on_test_batch_begin(step)
+                tmp_logs = self.test_function(iterator)
+                if data_handler.should_sync:
+                  context.async_wait()
+                logs = tmp_logs  # No error, now safe to assign to logs.
+                end_step = step + data_handler.step_increment
+                callbacks.on_test_batch_end(end_step, logs)
       logs = tf_utils.to_numpy_or_python_type(logs)
       callbacks.on_test_end(logs=logs)
 
