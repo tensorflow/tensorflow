@@ -40,13 +40,6 @@ Timespan XEventTimespan(const XEvent& event) {
   return Timespan(event.offset_ps(), event.duration_ps());
 }
 
-// Functor that compares XEvents of the same XLine for sorting by timespan.
-struct XEventsComparator {
-  bool operator()(const XEvent* a, const XEvent* b) const {
-    return XEventTimespan(*a) < XEventTimespan(*b);
-  }
-};
-
 }  // namespace
 
 const XPlane* FindPlaneWithName(const XSpace& space, absl::string_view name) {
@@ -142,6 +135,10 @@ void RemoveEmptyLines(XPlane* plane) {
                    lines->begin(), lines->end(),
                    [&](const XLine& line) { return line.events_size() == 0; }),
                lines->end());
+}
+
+bool XEventsComparator::operator()(const XEvent* a, const XEvent* b) const {
+  return XEventTimespan(*a) < XEventTimespan(*b);
 }
 
 void SortXPlane(XPlane* plane) {

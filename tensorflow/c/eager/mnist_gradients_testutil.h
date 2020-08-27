@@ -27,13 +27,13 @@ limitations under the License.
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
-
-using namespace tensorflow;
-using namespace tensorflow::gradients;
-using namespace tensorflow::gradients::internal;
+#include "tensorflow/core/platform/status.h"
 
 // ========================== Tape Ops ==============================
 
+namespace tensorflow {
+namespace gradients {
+namespace internal {
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,
            absl::Span<AbstractTensorHandle* const> inputs,
@@ -144,3 +144,7 @@ Status RunModel(Model model, AbstractContext* ctx,
                 const GradientRegistry& registry);
 
 Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx);
+
+}  // namespace internal
+}  // namespace gradients
+}  // namespace tensorflow

@@ -23,7 +23,6 @@ limitations under the License.
 #include "mlir/IR/Identifier.h"  // from @llvm-project
 
 namespace mlir {
-namespace tensorflow {
 
 namespace {
 // Checks if a character is legal for a TensorFlow node name, with special
@@ -45,21 +44,13 @@ bool IsLegalChar(char c, bool first_char) {
 }
 }  // anonymous namespace
 
-std::string LegalizeNodeName(llvm::StringRef name) {
-  assert(!name.empty() && "expected non-empty name");
+void LegalizeNodeName(std::string& name) {
+  if (name.empty()) return;
 
-  std::string legalized_name;
-  bool first = true;
-  for (auto c : name) {
-    if (IsLegalChar(c, first)) {
-      legalized_name += c;
-    } else {
-      legalized_name += '.';
-    }
-    first = false;
-  }
+  if (!IsLegalChar(name[0], /*first_char=*/true)) name[0] = '.';
 
-  return legalized_name;
+  for (char& c : llvm::drop_begin(name, 1))
+    if (!IsLegalChar(c, /*first_char=*/false)) c = '.';
 }
 
 std::string GetNameFromLoc(Location loc) {
@@ -105,5 +96,4 @@ std::string GetNameFromLoc(Location loc) {
   return "";
 }
 
-}  // namespace tensorflow
 }  // namespace mlir

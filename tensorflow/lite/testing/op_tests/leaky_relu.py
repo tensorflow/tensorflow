@@ -28,12 +28,13 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 def make_leaky_relu_tests(options):
   """Make a set of tests to do LeakyRelu."""
 
-  test_parameters = [
-      {
-          "input_shape": [[], [1], [5], [1, 10, 10, 3], [3, 3, 3, 3]],
-          "alpha": [0.1, 1.0, 2.0, -0.1, -1.0, -2.0],
-      },
-  ]
+  test_parameters = [{
+      "input_shape": [[], [1], [5], [1, 10, 10, 3], [3, 3, 3, 3]],
+      "alpha": [0.1, 1.0, 2.0, -0.1, -1.0, -2.0],
+      "fully_quantize": [False, True],
+      "input_range": [(-3, 10)],
+      "quant_16x8": [False, True],
+  }]
 
   def build_graph(parameters):
     """Build the graph for the test case."""

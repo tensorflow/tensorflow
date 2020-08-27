@@ -1197,12 +1197,9 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    DeviceType jit_device_type(registration->compilation_device_name);
-
-    RecursiveCompilabilityChecker::OperationFilter op_filter =
-        CreateOperationFilter(*registration);
-
-    if (!RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
+    if (!RecursiveCompilabilityChecker{
+            CreateOperationFilter(*registration),
+            DeviceType{registration->compilation_device_name}}
              .IsCompilableNode(*node, lib_runtime)) {
       continue;
     }
@@ -1719,7 +1716,6 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
   const XlaOpRegistry::DeviceRegistration* registration;
   CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
                                             &registration));
-  DeviceType jit_device_type(registration->compilation_device_name);
 
   // We can always *compile* resource operations, stateful RNGs and dummy ops,
   // even if we are sometimes unable to auto-cluster them.
@@ -1734,7 +1730,8 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
   op_filter.allow_slow_ops = true;
   op_filter.allow_inaccurate_ops = true;
 
-  RecursiveCompilabilityChecker checker{&op_filter, &jit_device_type};
+  RecursiveCompilabilityChecker checker{
+      op_filter, DeviceType{registration->compilation_device_name}};
   if (!uncompilable_node_info) {
     // We do not need uncompilable node info. Just return the result.
     return checker.IsCompilableCall(ndef, flr);

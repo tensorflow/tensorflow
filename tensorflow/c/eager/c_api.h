@@ -264,13 +264,6 @@ TF_CAPI_EXPORT extern void TFE_OpSetDevice(TFE_Op* op, const char* device_name,
 TF_CAPI_EXPORT extern const char* TFE_OpGetDevice(const TFE_Op* op,
                                                   TF_Status* status);
 
-// When 'enable' is set to 1, and if TensorFlow library is built with XLA
-// support, a subsequent TFE_Execute() call on `op` will run the op via XLA.
-//
-// If the library is not built with XLA support, this call would be a no-op.
-TF_CAPI_EXPORT extern void TFE_OpSetXLACompilation(TFE_Op* op,
-                                                   unsigned char enable);
-
 TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input,
                                           TF_Status* status);
 

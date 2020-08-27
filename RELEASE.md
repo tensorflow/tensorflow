@@ -157,6 +157,8 @@
     * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
       * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
     * Add NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
+    * TFLite Profiler for Android is available. See the detailed
+      [guide](https://www.tensorflow.org/lite/performance/measurement#trace_tensorflow_lite_internals_in_android).
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>
@@ -181,11 +183,13 @@
       checkpoint saved in the `variables/` folder in the SavedModel.
     * When restoring, `save_path` can be a path to a SavedModel. The function
       will automatically find the checkpoint in the SavedModel.
+*   `tf.nn`:
+    * `tf.nn.max_pool2d` now supports explicit padding.
 *   Other:
     * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
   and "denylist" where possible. Please see 
   https://developers.google.com/style/word-list#blacklist for more context.
-    * <ADD RELEASE NOTES HERE>
+  <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors
 

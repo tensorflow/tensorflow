@@ -352,12 +352,6 @@ def tf_copts(
 def tf_openmp_copts():
     return (if_mkl_lnx_x64(["-fopenmp"]) + if_mkldnn_threadpool(["-fno-openmp"]))
 
-def tfe_xla_copts():
-    return select({
-        "//tensorflow:with_xla_support": ["-DTENSORFLOW_EAGER_USE_XLA"],
-        "//conditions:default": [],
-    })
-
 def tf_opts_nortti():
     return [
         "-fno-rtti",

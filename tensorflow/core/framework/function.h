@@ -403,6 +403,9 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // are no longer in use.
   Status RemoveFunction(const std::string& func) TF_LOCKS_EXCLUDED(mu_);
 
+  // Removes all the functions and gradient functions.
+  void Clear() TF_LOCKS_EXCLUDED(mu_);
+
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.

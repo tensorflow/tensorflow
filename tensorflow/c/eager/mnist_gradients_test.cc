@@ -762,6 +762,7 @@ TEST_P(CppGradients, TestMNIST_Training) {
   mnist_outputs[2]->Unref();  // release loss
 }
 
+// TODO(b/166648529): Enable for mlir.
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,

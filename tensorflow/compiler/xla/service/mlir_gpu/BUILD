@@ -41,9 +41,12 @@ cc_library(
     srcs = ["emission_context.cc"],
     hdrs = ["emission_context.h"],
     deps = [
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/xla/service:hlo",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
     ],
 )
 
