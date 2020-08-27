@@ -600,7 +600,8 @@ class AvgPoolingGradOpCustomGPUKernel : public OpKernel {
                                 context->eigen_gpu_device());   // d
     } else {
       DnnPoolingGradOp<T>::Compute(context, se::dnn::PoolingMode::kAverage,
-                                   ksize_, stride_, padding_, data_format_,
+                                   ksize_, stride_, padding_,
+                                   /*explicit_paddings=*/{}, data_format_,
                                    nullptr, nullptr, out_backprop, output_shape,
                                    /*propagate_nans=*/false);
     }
