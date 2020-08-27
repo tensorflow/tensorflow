@@ -77,6 +77,13 @@ struct Parameter {
   Parameter(const string& name, std::shared_ptr<SharedState> state, double min,
             double max)
       : name(name),
+        // Sometimes non-autotune nodes (with `autotune_=false`) may contain
+        // parameters (for example inputs of parallel interleave dataset which
+        // are not in the current cycle). To avoid unrealistic situation
+        // (say `buffer_size=-1` or `parallelism=-1`) in the optimization
+        // computation, if the state value is `kAutotune=-1` (just to indicate
+        // the `SharedState` is tunable), we initialize the parameter value to
+        // be the minimal value of the state.
         value(state->value == kAutotune ? min : state->value),
         min(min),
         max(max),
