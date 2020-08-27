@@ -435,7 +435,11 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
-#define TFE_CUSTOM_DEVICE_VERSION 2
+// TODO(b/166642410): It would be nice, for custom devices and for other users,
+// to have a non-string representation of devices (TF_Device) extracted from
+// tensors/ops/etc. and usable in APIs like OpSetDevice/ResetOp/etc.
+
+#define TFE_CUSTOM_DEVICE_VERSION 3
 
 // Struct to be filled in
 typedef struct TFE_CustomDevice {
@@ -454,9 +458,16 @@ typedef struct TFE_CustomDevice {
                                                void* device_info);
 
   // Method to execute an operation.
-  void (*execute)(TFE_Context* context, int num_inputs,
-                  TFE_TensorHandle** inputs, const char* operation_name,
-                  const TFE_OpAttrs* attributes, int* num_outputs,
+  //
+  // Arguments provide enough information to reconstruct the original `TFE_Op`,
+  // or construct a transformed version, by inspecting the passed `op`.
+  //
+  // TFE_OpGetDevice(op) records the original placement of the operation. It may
+  // be an empty string if no device was explicitly requested, but will
+  // otherwise be the name of this custom device. Ops are placed onto a custom
+  // device if any of their inputs are on that custom device, but custom devices
+  // are free to set a bad status in order to require explicit placement.
+  void (*execute)(const TFE_Op* op, int* num_outputs,
                   TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
 
   // Method to delete a device.

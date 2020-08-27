@@ -1614,19 +1614,12 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  tensorflow::Status Execute(tensorflow::EagerOperation* op,
+  tensorflow::Status Execute(const tensorflow::EagerOperation* op,
                              tensorflow::TensorHandle** retvals,
                              int* num_retvals) override {
-    std::vector<TFE_TensorHandle*> inputs;
-    inputs.reserve(op->Inputs().size());
-    for (int i = 0; i < op->Inputs().size(); ++i) {
-      op->Inputs()[i]->Ref();
-      inputs.push_back(tensorflow::wrap(op->Inputs()[i]));
-    }
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
     TF_Status status;
-    device_.execute(context_, inputs.size(), inputs.data(), op->Name().c_str(),
-                    wrap(&op->Attrs()), num_retvals, outputs.data(), &status,
+    device_.execute(tensorflow::wrap(op), num_retvals, outputs.data(), &status,
                     info_);
     if (status.status.ok()) {
       for (int i = 0; i < *num_retvals; ++i) {
@@ -1635,10 +1628,6 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
         retvals[i]->Ref();
         TFE_DeleteTensorHandle(outputs[i]);
       }
-    }
-
-    for (auto inp : inputs) {
-      TFE_DeleteTensorHandle(inp);
     }
     return status.status;
   }
