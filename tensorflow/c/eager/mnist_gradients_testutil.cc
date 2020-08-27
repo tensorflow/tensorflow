@@ -31,10 +31,14 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 
-using std::vector;
-using tracing::TracingOperation;
-
 // ========================== Tape Ops ==============================
+
+namespace tensorflow {
+namespace gradients {
+namespace internal {
+
+using std::vector;
+using tensorflow::tracing::TracingOperation;
 
 // Computes `inputs[0] + inputs[1]` and records it on the tape.
 Status Add(AbstractContext* ctx, Tape* tape,
@@ -272,6 +276,7 @@ Status MNISTForwardModel(AbstractContext* ctx,
 
   AbstractTensorHandle* scores = temp_outputs[0];
 
+  temp_outputs.resize(2);
   TF_RETURN_IF_ERROR(SparseSoftmaxCrossEntropyLoss(
       ctx, tape, {scores, y_labels}, absl::MakeSpan(temp_outputs),
       "softmax_loss", registry));  // Compute Softmax(Scores,labels)
@@ -592,3 +597,7 @@ Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx) {
   TFE_DeleteContextOptions(opts);
   return Status::OK();
 }
+
+}  // namespace internal
+}  // namespace gradients
+}  // namespace tensorflow
