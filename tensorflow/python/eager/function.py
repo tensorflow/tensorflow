@@ -27,7 +27,6 @@ import threading
 import types as types_lib
 import weakref
 
-import numpy as np
 import six
 from six.moves import map
 
@@ -46,7 +45,6 @@ from tensorflow.python.eager import tape
 from tensorflow.python.eager.graph_only_ops import graph_placeholder
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import composite_tensor
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import error_interpolation
@@ -2689,9 +2687,9 @@ class FunctionSpec(object):
       return inputs, {}, flat_inputs, filtered_flat_inputs
 
 
-_as_ndarray = _concrete_function._as_ndarray
-_is_ndarray = _concrete_function._is_ndarray
-_convert_numpy_inputs = _concrete_function._convert_numpy_inputs
+_as_ndarray = _concrete_function._as_ndarray  # pylint: disable=protected-access
+_is_ndarray = _concrete_function._is_ndarray  # pylint: disable=protected-access
+_convert_numpy_inputs = _concrete_function._convert_numpy_inputs  # pylint: disable=protected-access
 
 
 def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
