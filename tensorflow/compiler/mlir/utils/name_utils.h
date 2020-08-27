@@ -22,16 +22,14 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 
 namespace mlir {
-namespace tensorflow {
 
 // Converts characters in name that are considered illegal in TensorFlow Node
 // name to '.'.
-std::string LegalizeNodeName(llvm::StringRef name);
+void LegalizeNodeName(std::string& name);
 
 // Creates a TensorFlow node name from a location.
 std::string GetNameFromLoc(Location loc);
 
-}  // namespace tensorflow
 }  // namespace mlir
 
 #endif  // TENSORFLOW_COMPILER_MLIR_UTILS_NAME_UTILS_H_

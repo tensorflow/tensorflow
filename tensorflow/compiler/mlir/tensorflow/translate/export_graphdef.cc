@@ -85,8 +85,10 @@ constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
  private:
   std::string GetName(OpOrVal op_or_val) override {
-    return mlir::tensorflow::LegalizeNodeName(
-        OpOrArgLocNameMapper::GetName(op_or_val));
+    std::string name = OpOrArgLocNameMapper::GetName(op_or_val);
+    assert(!name.empty() && "expected non-empty name");
+    mlir::LegalizeNodeName(name);
+    return name;
   }
 };
 
@@ -490,13 +492,14 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       if (index >= num_data_results) break;
       // TODO(jpienaar): If there is a result index specified, ensure only one
       // and that it matches the result index of the op.
-      std::string orig_name(output_names[index]);
-      auto tensor_id = ParseTensorName(orig_name);
-      auto name = mlir::tensorflow::LegalizeNodeName(
-          llvm::StringRef(tensor_id.node().data(), tensor_id.node().size()));
+      std::string name(output_names[index]);
+      auto tensor_id = ParseTensorName(name);
+      std::string tensor_id_node(tensor_id.node());
+      assert(!tensor_id_node.empty() && "expected non-empty name");
+      mlir::LegalizeNodeName(tensor_id_node);
 
       // Ensure name does not get reused.
-      (void)exporter.op_to_name_.GetUniqueName(name);
+      (void)exporter.op_to_name_.GetUniqueName(tensor_id_node);
     }
   }
 
@@ -504,8 +507,9 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     TF_RET_CHECK(input_names.size() == block.getNumArguments());
     for (const auto& it : llvm::enumerate(function.getArguments())) {
       // TODO(lyandy): Update when changing feed/fetch import.
-      std::string orig_name(input_names[it.index()]);
-      std::string name = mlir::tensorflow::LegalizeNodeName(orig_name);
+      std::string name(input_names[it.index()]);
+      assert(!name.empty() && "expected non-empty name");
+      mlir::LegalizeNodeName(name);
       auto tensor_id = ParseTensorName(name);
       TF_RET_CHECK(tensor_id.index() == 0)
           << "input port designation not supported";
