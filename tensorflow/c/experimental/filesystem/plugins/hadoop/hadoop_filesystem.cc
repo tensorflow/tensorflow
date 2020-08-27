@@ -431,6 +431,23 @@ void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
   std::string scheme, namenode, hdfs_path;
   ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
 
+  auto handle = libhdfs->hdfsOpenFile(fs, hdfs_path.c_str(), O_WRONLY, 0, 0, 0);
+  if (handle == nullptr) return TF_SetStatusFromIOError(status, errno, path);
+
+  file->plugin_file =
+      new tf_writable_file::HDFSFile(hdfs_path, fs, libhdfs, handle);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_WritableFile* file, TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
   auto handle = libhdfs->hdfsOpenFile(fs, hdfs_path.c_str(),
                                       O_WRONLY | O_APPEND, 0, 0, 0);
   if (handle == nullptr) return TF_SetStatusFromIOError(status, errno, path);

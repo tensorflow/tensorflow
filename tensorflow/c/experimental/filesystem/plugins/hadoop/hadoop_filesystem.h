@@ -47,6 +47,8 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
                          TF_RandomAccessFile* file, TF_Status* status);
 void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
                      TF_WritableFile* file, TF_Status* status);
+void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_WritableFile* file, TF_Status* status);
 void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
                                      const char* path,
                                      TF_ReadOnlyMemoryRegion* region,
