@@ -42,10 +42,10 @@ std::string GetOneInputCode(const OperationType& op_type,
       result = "\n";
       break;
     case OperationType::ELU:
-      result = "$0.x = $0.x < (FLT)(0.0f) ? exp($0.x) - (FLT)(1.0f) : $0.x;\n";
-      result += "$0.y = $0.y < (FLT)(0.0f) ? exp($0.y) - (FLT)(1.0f) : $0.y;\n";
-      result += "$0.z = $0.z < (FLT)(0.0f) ? exp($0.z) - (FLT)(1.0f) : $0.z;\n";
-      result += "$0.w = $0.w < (FLT)(0.0f) ? exp($0.w) - (FLT)(1.0f) : $0.w;\n";
+      result = "$0.x = $0.x < (FLT)(0.0f) ? expm1($0.x) : $0.x;\n";
+      result += "$0.y = $0.y < (FLT)(0.0f) ? expm1($0.y) : $0.y;\n";
+      result += "$0.z = $0.z < (FLT)(0.0f) ? expm1($0.z) : $0.z;\n";
+      result += "$0.w = $0.w < (FLT)(0.0f) ? expm1($0.w) : $0.w;\n";
       break;
     case OperationType::EXP:
       result = "$0 = exp($0);\n";
