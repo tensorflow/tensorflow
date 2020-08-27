@@ -2034,7 +2034,7 @@ def adjust_brightness(image, delta):
   The value `delta` is added to all components of the tensor `image`. `image` is
   converted to `float` and scaled appropriately if it is in fixed-point
   representation, and `delta` is converted to the same data type. For regular
-  images, `delta` should be in the range `[0,1)`, as it is added to the image in
+  images, `delta` should be in the range `(-1,1)`, as it is added to the image in
   floating point representation, where pixel values are in the `[0,1)` range.
 
   Usage Example:
