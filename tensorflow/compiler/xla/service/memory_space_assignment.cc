@@ -1273,10 +1273,13 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
         }
       }
 
-      // Bitcasts don't define buffers and don't directly consume buffers.  Skip
-      // allocating buffers for bitcast uses. The uses that feed from bitcasts
-      // will be handled specially.
-      if (hlo_use.instruction->opcode() != HloOpcode::kBitcast) {
+      // Bitcasts don't define buffers and don't directly consume buffers. Skip
+      // allocating buffers for bitcast uses (unless they are the root
+      // instruction). The uses that feed from bitcasts will be handled
+      // specially.
+      if (hlo_use.instruction->opcode() != HloOpcode::kBitcast ||
+          hlo_use.instruction ==
+              hlo_use.instruction->parent()->root_instruction()) {
         AllocationRequest request;
         // Rarely, (e.g., when conditional true and false parameters are the
         // same), definition time can be the time of the conditional and use
