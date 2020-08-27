@@ -25,7 +25,7 @@ limitations under the License.
 #include "tensorflow/c/eager/immediate_execution_context.h"
 #include "tensorflow/c/eager/immediate_execution_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
-#include "tensorflow/c/experimental/saved_model/core/revived_types/tensorhandle_convertible.h"
+#include "tensorflow/c/experimental/saved_model/core/revived_types/flat_tensor_function.h"
 #include "tensorflow/c/experimental/saved_model/core/signature_def_function.h"
 #include "tensorflow/c/experimental/saved_model/core/signature_def_function_metadata.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -67,22 +67,17 @@ class TFSignatureDefFunction : public SignatureDefFunction {
 
   const SignatureDefFunctionMetadata& GetFunctionMetadata() const override;
 
-  ~TFSignatureDefFunction() override;
+  ~TFSignatureDefFunction() override = default;
 
  private:
-  TFSignatureDefFunction(const std::string& name,
-                         std::vector<ImmediateExecutionTensorHandle*> captures,
-                         SignatureDefFunctionMetadata metadata,
-                         ImmediateExecutionContext* ctx);
+  TFSignatureDefFunction(std::unique_ptr<FlatTensorFunction> func,
+                         SignatureDefFunctionMetadata metadata);
 
   TFSignatureDefFunction(const TFSignatureDefFunction&) = delete;
   TFSignatureDefFunction& operator=(const TFSignatureDefFunction&) = delete;
 
-  // Name of the FunctionDef corresponding to this TFSignatureDefFunction
-  std::string name_;
-  std::vector<ImmediateExecutionTensorHandle*> captures_;
+  std::unique_ptr<FlatTensorFunction> func_;
   SignatureDefFunctionMetadata metadata_;
-  ImmediateExecutionContext* ctx_;
 };
 
 }  // namespace tensorflow

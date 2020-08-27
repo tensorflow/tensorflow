@@ -111,7 +111,7 @@ cc_library(
         "tf_signature_def_function.h",
     ],
     deps = [
-        ":tensorhandle_convertible",
+        ":flat_tensor_function",
         "//tensorflow/c/eager:abstract_tensor_handle",
         "//tensorflow/c/eager:immediate_execution_context",
         "//tensorflow/c/eager:immediate_execution_operation",
