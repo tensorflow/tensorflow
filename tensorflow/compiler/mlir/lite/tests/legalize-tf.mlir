@@ -683,8 +683,7 @@ func @addN(%arg0: tensor<2x3xi32>, %arg1: tensor<2x3xi32>, %arg2: tensor<2x3xi32
   return %0 : tensor<2x3xi32>
 
 // CHECK-LABEL: addN
-// CHECK:  %0 = tfl.add %arg0, %arg1 {fused_activation_function = "NONE"} : tensor<2x3xi32>
-// CHECK:  %1 = tfl.add %0, %arg2 {fused_activation_function = "NONE"} : tensor<2x3xi32>
+// CHECK:  "tfl.add_n"(%arg0, %arg1, %arg2) : (tensor<2x3xi32>, tensor<2x3xi32>, tensor<2x3xi32>) -> tensor<2x3xi32>
 // CHECK:  return
 }
 
