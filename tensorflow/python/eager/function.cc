@@ -20,6 +20,8 @@ limitations under the License.
 
 namespace py = pybind11;
 
+static const py::module* nest = new py::module(
+    py::module::import("tensorflow.python.util.nest"));
 static const py::object Tensor =
     py::module::import("tensorflow.python.framework.ops").attr("Tensor");
 static const py::object BaseResourceVariable =
@@ -29,6 +31,9 @@ static const py::module* np = new py::module(py::module::import("numpy"));
 static const py::object CompositeTensor =
     py::module::import("tensorflow.python.framework.composite_tensor")
         .attr("CompositeTensor");
+static const py::object* create_constant_tensor = new py::object(
+    py::module::import("tensorflow.python.framework.constant_op")
+        .attr("constant"));
 
 namespace tensorflow {
 
@@ -44,8 +49,6 @@ struct PyConcreteFunction {
 py::object PyConcreteFunction::BuildCallOutputs(
     py::object result, py::object structured_outputs, bool _ndarrays_list,
     bool _ndarray_singleton) {
-  static const py::module* nest =
-      new py::module(py::module::import("tensorflow.python.util.nest"));
   // TODO(jlchu): Look into lazy loading of np_arrays module
   static const py::module* np_arrays = new py::module(
       py::module::import("tensorflow.python.ops.numpy_ops.np_arrays"));
@@ -103,6 +106,57 @@ bool IsNdarray(py::object value) {
       || PyObject_IsInstance(value_ptr, CompositeTensor.ptr()));
 }
 
+py::tuple ConvertNumpyInputs(py::object inputs) {
+  // We assume that any CompositeTensors have already converted their components
+  // from numpy arrays to Tensors, so we don't need to expand composites here for
+  // the numpy array conversion. Instead, we do so because the flattened inputs
+  // are eventually passed to ConcreteFunction()._call_flat, which requires
+  // expanded composites.
+  // TODO(jlchu): Use C++ version of Flatten directly
+  py::list flat_inputs = nest->attr("flatten")(inputs, true);
+
+  // Check for NumPy arrays in arguments and convert them to Tensors.
+  // TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
+  // finding a way to store them directly in the cache key (currently not
+  // possible since ndarrays are not hashable).
+  bool need_packing = false;
+  py::list filtered_flat_inputs = py::list();
+
+  for (int i = 0; i < flat_inputs.size(); ++i) {
+    PyObject* value_ptr = flat_inputs[i].ptr();
+    if (PyObject_IsInstance(value_ptr, Tensor.ptr()) ||
+        PyObject_IsInstance(value_ptr, BaseResourceVariable.ptr())) {
+      filtered_flat_inputs.append(flat_inputs[i]);
+    } else if (PyObject_HasAttr(
+        value_ptr, PyUnicode_DecodeUTF8("__array__", 9, "strict")) && !(
+            PyObject_HasAttr(value_ptr, PyUnicode_DecodeUTF8(
+                "_should_act_as_resource_variable", 32, "strict"))
+            || PyObject_IsInstance(value_ptr, np->attr("str_").ptr())
+            || PyObject_IsInstance(value_ptr, (PyObject*) &PyType_Type)
+            || PyObject_IsInstance(value_ptr, CompositeTensor.ptr()))) {
+      // This case is equivalent to _is_ndarray(value) == True
+      py::object a = AsNdarray(flat_inputs[i]);
+      if (!PyObject_IsInstance(a.ptr(), np->attr("ndarray").ptr())) {
+        throw py::type_error(
+            std::string("The output of __array__ must be an np.ndarray (got ") +
+            a.ptr()->ob_type->tp_name + " from " +
+            value_ptr->ob_type->tp_name + ").");
+      }
+      flat_inputs[i] = (*create_constant_tensor)(a);
+      filtered_flat_inputs.append(flat_inputs[i]);
+      need_packing = true;
+    }
+  }
+
+  if (need_packing) {
+    return py::make_tuple(
+        nest->attr("pack_sequence_as")(inputs, flat_inputs, true),
+        flat_inputs, filtered_flat_inputs);
+  } else {
+    return py::make_tuple(inputs, flat_inputs, filtered_flat_inputs);
+  }
+}
+
 PYBIND11_MODULE(_concrete_function, m) {
   py::class_<PyConcreteFunction>(m, "ConcreteFunction")
       .def(py::init<>())
@@ -112,6 +166,8 @@ PYBIND11_MODULE(_concrete_function, m) {
   m.def(
       "_is_ndarray", &IsNdarray,
       "Tests whether the given value is an ndarray (and not a TF tensor/var).");
+  m.def("_convert_numpy_inputs", &ConvertNumpyInputs,
+        "Convert numpy array inputs to tensors.");
 }
 
 }  // namespace tensorflow
