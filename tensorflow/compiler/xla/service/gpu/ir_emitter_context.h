@@ -17,10 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 
 #include "llvm/IR/Module.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
@@ -47,11 +44,7 @@ class IrEmitterContext {
         cuda_compute_capability_(cuda_compute_capability),
         profile_index_map_(profile_index_map),
         mlir_context_(mlir_context),
-        llvm_module_(llvm_module) {
-    mlir_context_
-        ->loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
-                      mlir::StandardOpsDialect>();
-  }
+        llvm_module_(llvm_module) {}
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
   IrEmitterContext& operator=(const IrEmitterContext&) = delete;
