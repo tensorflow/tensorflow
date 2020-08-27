@@ -132,6 +132,23 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "summary_op_benchmark_test",
+    size = "small",
+    srcs = ["summary_op_benchmark_test.cc"],
+    deps = [
+        ":summary_op",
+        "//tensorflow/c:kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 cc_library(
     name = "tensor_shape_utils",
     srcs = ["tensor_shape_utils.cc"],
