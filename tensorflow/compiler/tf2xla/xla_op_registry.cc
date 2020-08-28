@@ -365,19 +365,6 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   return ops;
 }
 
-/*static*/ const std::unordered_set<std::string>*
-XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
-  XlaOpRegistry& registry = Instance();
-  mutex_lock lock(registry.mutex_);
-  auto it = registry.ops_.find(op);
-  static auto empty_set = new std::unordered_set<std::string>;
-  if (it == registry.ops_.end() || it->second.empty()) {
-    return empty_set;
-  } else {
-    return &it->second.front()->compile_time_constant_inputs;
-  }
-}
-
 /* static */ Status XlaOpRegistry::CompileTimeConstantInputs(
     const NodeDef& node_def, const OpKernel* op_kernel, const OpDef* op_def,
     std::vector<int>* result) {
@@ -398,10 +385,21 @@ XlaOpRegistry::CompileTimeConstantInputArgNames(const string& op) {
                                compile_time_constant_inputs_from_attr.end()));
     compile_time_constant_inputs = &compile_time_constant_inputs_from_attr;
   } else {
-    compile_time_constant_inputs =
-        CompileTimeConstantInputArgNames(node_def.op());
-    if (compile_time_constant_inputs->empty()) {
+    const string& op = node_def.op();
+
+    XlaOpRegistry& registry = Instance();
+    mutex_lock lock(registry.mutex_);
+    auto it = registry.ops_.find(op);
+    if (it == registry.ops_.end() || it->second.empty()) {
       return Status::OK();
+    } else {
+      // The test in IsCompatible ensures that if there are multiple matching
+      // registrations for this op name, they all have the same value of
+      // compile_time_constant_inputs, so only the first match is returned.
+      //
+      // TODO(sanjoy): This can probably be a std::vector<string>.
+      compile_time_constant_inputs =
+          &it->second.front()->compile_time_constant_inputs;
     }
   }
 

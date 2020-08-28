@@ -123,11 +123,30 @@ Status XlaCompileOnDemandOp::Compile(
 
     if (!constant_arguments.count(i)) {
       if (absl::c_binary_search(constant_input_indices, i)) {
-        if (ctx->input_memory_type(i) != HOST_MEMORY) {
-          return errors::Internal(
-              "Expected constant argument not in host memory");
+        if (ctx->input_memory_type(i) != HOST_MEMORY &&
+            ctx->op_device_context()) {
+          // Slow path; the argument is not available as a host constant so we
+          // must fetch it synchronously.
+          Tensor host_tensor;
+          AllocatorAttributes attrs;
+          attrs.set_on_host(true);
+          TF_RETURN_IF_ERROR(ctx->allocate_temp(device_tensor.dtype(),
+                                                device_tensor.shape(),
+                                                &host_tensor, attrs));
+          Status status = ctx->op_device_context()->CopyDeviceTensorToCPUSync(
+              &device_tensor, "ConstantArgument",
+              reinterpret_cast<Device*>(ctx->device()), &host_tensor);
+          if (!status.ok()) {
+            LOG(ERROR) << "Copying tensor of shape "
+                       << device_tensor.shape().DebugString() << " from "
+                       << ctx->device()->name() << "to CPU failed with "
+                       << status.ToString();
+            return status;
+          }
+          constant_arguments[i] = host_tensor;
+        } else {
+          constant_arguments[i] = device_tensor;
         }
-        constant_arguments[i] = device_tensor;
       }
     }
   }
