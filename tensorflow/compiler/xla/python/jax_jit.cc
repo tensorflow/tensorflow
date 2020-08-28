@@ -32,6 +32,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/inlined_vector.h"
+#include "absl/synchronization/notification.h"
 #include "absl/types/optional.h"
 #include "pybind11/cast.h"
 #include "pybind11/numpy.h"
@@ -229,14 +230,18 @@ struct CacheEntry {
   // We need py::object to maintain the objects alive.
   std::vector<py::object> out_avals;
   std::vector<py::object> out_lazy_exprs;
+  // Ensures a single thread performs the compilation for a given executable.
+  //
+  // The first thread (holding the GIL) will create the CacheEntry associated to
+  // a signature and if the object has been insterted already, other threads
+  // will wait for the notification.
+  absl::Notification compilation_complete;
+  absl::optional<std::exception> compilation_error = absl::nullopt;
 };
 
 // A `CompiledFunction` is associated to a `jax.jit(f)` and takes care of the
 // bookkeeping of the different signatures used and the dispatch of calls to
-// the correct underlying `PyExecutable`.
-// TODO(jblespiau): This class is thread-unsafe. Note that using a mutex for the
-// full `Call` will lead to a deadlock because it goes back to Python which will
-// release the GIL.
+// the correct underlying `PyExecutable`. This class is thread-safe.
 class CompiledFunction {
  public:
   CompiledFunction(py::function fun, py::function cache_miss_fun,
@@ -293,6 +298,18 @@ class CompiledFunction {
   // to `Call`.
   std::shared_ptr<xla::PyClient> pyclient_ = nullptr;
   xla::PjRtDevice* default_device_ = nullptr;
+
+  // IMPORTANT: The GIL is not always held, because we call back to Python and
+  // Python will release the GIL.
+  // Thus, we protect the critical section modifying the `executables_` map
+  // and more generally the compilation with some `absl::Notification`.
+  // The first thread reaching such point will be responsible to create the
+  // notification for the executable and others will wait until notified.
+  // It's safe because the first thread will be holding the GIL while
+  // initializing the `Notification`.
+  absl::optional<absl::Notification> first_compilation_complete_ =
+      absl::nullopt;
+  absl::optional<std::exception> first_compilation_error_ = absl::nullopt;
 };
 
 CompiledFunction::CompiledFunction(py::function fun,
@@ -617,6 +634,13 @@ CacheEntry& CompiledFunction::GetCacheEntry(
     absl::optional<py::tuple> cache_miss_return) {
   auto found_iterator = executables_.find(signature);
   if (found_iterator != executables_.end()) {  // Cache hit!
+    if (!found_iterator->second->compilation_complete.HasBeenNotified()) {
+      py::gil_scoped_release gil_release;
+      found_iterator->second->compilation_complete.WaitForNotification();
+      if (found_iterator->second->compilation_error) {
+        throw found_iterator->second->compilation_error.value();
+      }
+    }
     return *(found_iterator->second);
   }
   return SetAndReturnCacheEntry(args, kwargs, signature, cache_miss_return);
@@ -628,7 +652,7 @@ CacheEntry& CompiledFunction::SetAndReturnCacheEntry(
   // We need to insert the element.
   auto result = executables_.emplace(signature, std::make_unique<CacheEntry>());
   auto it = result.first;
-
+  CacheEntry& cache_entry = *(it->second.get());
   // CallSignatures in the cache own their keyword argument reference.
   result.first->first.IncRef();
 
@@ -637,34 +661,40 @@ CacheEntry& CompiledFunction::SetAndReturnCacheEntry(
   if (cache_miss_return) {
     executable_and_pytree = cache_miss_return.value();
   } else {
-    executable_and_pytree = cache_miss_fun_(*args, **kwargs);
+    try {
+      executable_and_pytree = cache_miss_fun_(*args, **kwargs);
+    } catch (const std::exception& e) {
+      cache_entry.compilation_error = e;
+      cache_entry.compilation_complete.Notify();
+      throw;
+    }
   }
   if (executable_and_pytree.size() != 4) {
     throw std::runtime_error(
         "AssertionError: The cache miss function should return 4 "
         "arguments.");
   }
-  it->second->executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+  cache_entry.executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
       std::move(executable_and_pytree[0]));
   int num_devices =
-      it->second->executable->pjrt_executable().local_devices().size();
+      cache_entry.executable->pjrt_executable().local_devices().size();
   if (num_devices != 1) {
     throw std::runtime_error(absl::StrCat(
         "Running on more than a single device is not currently supported."
         "The underlying PjRtExecutable has ",
         num_devices));
   }
-  it->second->device =
-      it->second->executable->pjrt_executable().local_devices()[0];
-  it->second->out_pytree_def = py::cast<PyTreeDef>(executable_and_pytree[1]);
+  cache_entry.device =
+      cache_entry.executable->pjrt_executable().local_devices()[0];
+  cache_entry.out_pytree_def = py::cast<PyTreeDef>(executable_and_pytree[1]);
 
   py::list shaped_arrays =
       py::reinterpret_borrow<py::object>(executable_and_pytree[2]);
   py::list lazy_expressions =
       py::reinterpret_borrow<py::object>(executable_and_pytree[3]);
 
-  it->second->out_avals.reserve(shaped_arrays.size());
-  it->second->out_lazy_exprs.reserve(lazy_expressions.size());
+  cache_entry.out_avals.reserve(shaped_arrays.size());
+  cache_entry.out_lazy_exprs.reserve(lazy_expressions.size());
 
   int num_outputs = shaped_arrays.size();
   for (int i = 0; i < num_outputs; ++i) {
@@ -673,11 +703,12 @@ CacheEntry& CompiledFunction::SetAndReturnCacheEntry(
     py::object lazy_expr =
         py::reinterpret_borrow<py::object>(lazy_expressions[i]);
 
-    it->second->out_avals.push_back(shaped_array);
-    it->second->out_lazy_exprs.push_back(lazy_expr);
+    cache_entry.out_avals.push_back(shaped_array);
+    cache_entry.out_lazy_exprs.push_back(lazy_expr);
   }
 
-  return *(it->second);
+  cache_entry.compilation_complete.Notify();
+  return cache_entry;
 }
 
 py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
@@ -687,14 +718,36 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
   ParsedArgumentsAsBuffers arguments;
   FlattenArguments(args, kwargs, static_argnums_, arguments);
 
+  // TODO(jblespiau): It would be preferable to have a single location for
+  // locking code.
   absl::optional<py::tuple> cache_miss_result = absl::nullopt;
   if (!default_device_) {
-    cache_miss_result = cache_miss_fun_(*args, **kwargs);
-    auto executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
-        cache_miss_result.value()[0]);
+    // TODO(jblespiau): This code will deadlock if a jitted function
+    // recursively calls itself.
+    if (first_compilation_complete_) {
+      if (!first_compilation_complete_->HasBeenNotified()) {
+        py::gil_scoped_release gil_release;
+        first_compilation_complete_->WaitForNotification();
+        if (first_compilation_error_) {
+          throw first_compilation_error_.value();
+        }
+      }
+    } else {
+      first_compilation_complete_.emplace();
+      try {
+        cache_miss_result = cache_miss_fun_(*args, **kwargs);
+      } catch (const std::exception& e) {
+        first_compilation_error_ = e;
+        first_compilation_complete_->Notify();
+        throw;
+      }
+      auto executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
+          cache_miss_result.value()[0]);
 
-    pyclient_ = executable->client();
-    default_device_ = executable->LocalDevices()[0].contents;
+      pyclient_ = executable->client();
+      default_device_ = executable->LocalDevices()[0].contents;
+      first_compilation_complete_->Notify();
+    }
   }
 
   // The C++ jit do not support Tracers arguments yet. The Python-based jit
