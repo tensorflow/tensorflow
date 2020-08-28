@@ -395,19 +395,26 @@ void WithBroadcast() {
   float kQuantizedTolerance = GetTolerance(-3.0, 3.0);
   std::vector<std::vector<int>> test_shapes = {
       {6}, {2, 3}, {2, 1, 3}, {1, 3, 1, 2}};
+  // Test with a smaller than 1 and greater than 1 quantization multiplier
+  std::vector<std::pair<float, float>> test_input_range = {{-3.0, 3.0},
+                                                           {-6.0, 6.0}};
   for (int i = 0; i < test_shapes.size(); ++i) {
-    QuantizedMulOpModel m({tensor_type, test_shapes[i], -3.0, 3.0},
-                          {tensor_type, {}, -3.0, 3.0},  // always a scalar
-                          {tensor_type, {}, -3.0, 3.0},
-                          ActivationFunctionType_NONE);
-    m.QuantizeAndPopulate<integer_dtype>(m.input1(),
-                                         {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
-    m.QuantizeAndPopulate<integer_dtype>(m.input2(), {0.1});
-    m.Invoke();
-    EXPECT_THAT(m.GetDequantizedOutput<integer_dtype>(),
-                ElementsAreArray(ArrayFloatNear(
-                    {-0.2, 0.02, 0.07, 0.08, 0.11, 0.2}, kQuantizedTolerance)))
-        << "With shape number " << i;
+    for (int j = 0; j < test_input_range.size(); ++j) {
+      const std::pair<float, float>& input_range = test_input_range[j];
+      QuantizedMulOpModel m(
+          {tensor_type, test_shapes[i], input_range.first, input_range.second},
+          {tensor_type, {}, input_range.first, input_range.second},
+          {tensor_type, {}, -0.2, 0.2}, ActivationFunctionType_NONE);
+      m.QuantizeAndPopulate<integer_dtype>(m.input1(),
+                                           {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0});
+      m.QuantizeAndPopulate<integer_dtype>(m.input2(), {0.1});
+      m.Invoke();
+      EXPECT_THAT(
+          m.GetDequantizedOutput<integer_dtype>(),
+          ElementsAreArray(ArrayFloatNear({-0.2, 0.02, 0.07, 0.08, 0.11, 0.2},
+                                          kQuantizedTolerance)))
+          << "With shape number " << i << " and range number " << j;
+    }
   }
 }
 
