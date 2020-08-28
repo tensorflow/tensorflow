@@ -47,7 +47,6 @@ from tensorflow.python.keras.mixed_precision.experimental import get_layer_polic
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
-from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
@@ -1079,7 +1078,7 @@ class KerasModelTest(keras_parameterized.TestCase):
 
       loss_scale = loss_scale_module.DynamicLossScale(
           initial_loss_scale=1., increment_period=2., multiplier=2.)
-      opt = gradient_descent.Adam(1.)
+      opt = gradient_descent.SGD(1.)
       opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
       model.compile(
           optimizer=opt,
