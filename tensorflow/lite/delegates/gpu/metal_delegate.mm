@@ -184,7 +184,6 @@ class Delegate {
       options_.wait_type = TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypePassive;
     }
     metal_device_ = MTLCreateSystemDefaultDevice();
-    external_command_encoder_ = nil;
     command_queue_ = [metal_device_ newCommandQueue];
     if (options_.wait_type == TFLGpuDelegateWaitType::TFLGpuDelegateWaitTypeAggressive) {
       gpu_alarm_clock_ = std::unique_ptr<GpuAlarmClock>(new GpuAlarmClock(command_queue_));
@@ -633,7 +632,7 @@ class Delegate {
   std::vector<BufferDescriptor> graph_inputs_;
   std::vector<BufferDescriptor> graph_outputs_;
 
-  id<MTLComputeCommandEncoder> external_command_encoder_;
+  id<MTLComputeCommandEncoder> external_command_encoder_ = nil;
   std::function<id<MTLComputeCommandEncoder>(bool is_last)> control_encoder_;
   id<MTLCommandQueue> command_queue_;
   std::unique_ptr<GpuAlarmClock> gpu_alarm_clock_;
