@@ -157,7 +157,8 @@ Status XlaCompileOnDemandOp::Compile(
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaCompilationCache>(
       rm->default_container(), "xla_cache", cache,
       [&](XlaCompilationCache** write_into_cache) {
-        return BuildXlaCompilationCache(ctx, platform_info_, write_into_cache);
+        return BuildXlaCompilationCache(ctx->device(), platform_info_,
+                                        write_into_cache);
       }));
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
