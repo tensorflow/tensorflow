@@ -254,6 +254,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   if (input1->type == kTfLiteInt16 && input2->type == kTfLiteInt16 &&
       output->type == kTfLiteInt16) {
+    TF_LITE_ENSURE_EQ(context, input1->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, input2->params.zero_point, 0);
+    TF_LITE_ENSURE_EQ(context, output->params.zero_point, 0);
+
     general_scale_int16 = !params || !params->pot_scale_int16;
 
     if (!general_scale_int16) {
@@ -268,9 +272,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
           CheckedLog2(output->params.scale, &output_scale_log2_rounded);
 
       general_scale_int16 =
-          !input1_scale_is_pot || !input2_scale_is_pot ||
-          !output_scale_is_pot || input1->params.zero_point != 0 ||
-          input2->params.zero_point != 0 || output->params.zero_point != 0;
+          !input1_scale_is_pot || !input2_scale_is_pot || !output_scale_is_pot;
     }
   }
 
@@ -393,7 +395,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     }
   } else if (!data->pot_scale_int16) {
     if (need_broadcast) {
-      TF_LITE_SUB(reference_ops, BroadcastSubSlow, int16_t);
+      TF_LITE_SUB(reference_ops, BroadcastAdd4DSlow, int16_t);
     } else {
       reference_ops::Add(op_params, GetTensorShape(input1),
                          GetTensorData<int16_t>(input1), GetTensorShape(input2),
@@ -418,15 +420,17 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       }
     }
   } else {
+    // In the case of 16-bit sub with POT scaling, we use the sub kernels as
+    // there is no multiplier to negate to reuse the add kernels.
     if (kernel_type == kReference) {
       if (need_broadcast) {
-        TF_LITE_SUB(reference_ops, BroadcastSubSlow, int16_t);
+        TF_LITE_SUB(reference_ops, BroadcastSub16POTSlow, int16_t);
       } else {
         TF_LITE_SUB(reference_ops, Sub16, int16_t);
       }
     } else {
       if (need_broadcast) {
-        TF_LITE_SUB(optimized_ops, BroadcastSubSlow, int16_t);
+        TF_LITE_SUB(optimized_ops, BroadcastSub16POTSlow, int16_t);
       } else {
         TF_LITE_SUB(optimized_ops, Sub16, int16_t);
       }
