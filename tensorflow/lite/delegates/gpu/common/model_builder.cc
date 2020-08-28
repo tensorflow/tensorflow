@@ -798,6 +798,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::ABS:
       case OperationType::COPY:
       case OperationType::COS:
+      case OperationType::ELU:
       case OperationType::EXP:
       case OperationType::LOG:
       case OperationType::RSQRT:
@@ -815,6 +816,8 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsTwoArgumentOperation() const {
     switch (operation_type_) {
       case OperationType::DIV:
+      case OperationType::MAXIMUM:
+      case OperationType::MINIMUM:
       case OperationType::POW:
       case OperationType::SQUARED_DIFF:
       case OperationType::SUB:
@@ -826,8 +829,11 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
 
   bool IsTwoArgumentOperationWithConst() const {
     switch (operation_type_) {
-      case OperationType::MINIMUM:
+      case OperationType::DIV:
       case OperationType::MAXIMUM:
+      case OperationType::MINIMUM:
+      case OperationType::POW:
+      case OperationType::SQUARED_DIFF:
       case OperationType::SUB:
         return true;
       default:
