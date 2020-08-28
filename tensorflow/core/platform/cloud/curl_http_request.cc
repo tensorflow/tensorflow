@@ -494,13 +494,16 @@ Status CurlHttpRequest::Send() {
 
     // INVALID_ARGUMENT indicates a problem with how the request is constructed.
     case 400:  // Bad Request
+    case 406:  // Not Acceptable
     case 411:  // Length Required
+    case 414:  // URI Too Long
       result = errors::InvalidArgument(get_error_message());
       break;
 
     // PERMISSION_DENIED indicates an authentication or an authorization issue.
     case 401:  // Unauthorized
     case 403:  // Forbidden
+    case 407:  // Proxy Authorization Required
       result = errors::PermissionDenied(get_error_message());
       break;
 
