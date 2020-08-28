@@ -70,7 +70,7 @@ const DeviceAttributes& DeviceBase::attributes() const {
 
 const string& DeviceBase::name() const {
   LOG(FATAL) << "Device does not implement name()";
-  return "";
+  std::abort();
 }
 
 void DeviceBase::set_eigen_cpu_device(Eigen::ThreadPoolDevice* d) {
