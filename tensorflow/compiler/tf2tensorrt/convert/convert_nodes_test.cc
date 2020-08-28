@@ -4233,8 +4233,6 @@ TEST_P(OpConverterTest1, ConvertConv2D) {
 
   // Ok.
   std::vector<TestParams> ok_params = {
-// TODO(b/162447069): Enable the test parameters for TRT 7.1.3.x.
-#if !IS_TRT_VERSION_GE(7, 1, 3, 0)
     // Basic
     TestParams{/*input_dims=*/{1, 1, 2, 3},
                /*input=*/{0, 1, 2, 3, 3, 4},
@@ -4246,9 +4244,6 @@ TEST_P(OpConverterTest1, ConvertConv2D) {
                /*dilations=*/{1, 1, 1, 1},
                /*expected_output_dims=*/{1, 1, 2, 2},
                /*expected_output=*/{1, 1, 0, 1}},
-#endif
-// TODO(b/162448349): Enable the test parameters for TRT 7.1.3.x.
-#if !IS_TRT_VERSION_GE(7, 1, 3, 0)
     // SAME padding (Asymmetric)
     TestParams{/*input_dims=*/{1, 1, 2, 3},
                /*input=*/{0, 1, 2, 3, 3, 4},
@@ -4271,9 +4266,6 @@ TEST_P(OpConverterTest1, ConvertConv2D) {
                /*dilations=*/{1, 1, 1, 1},
                /*expected_output_dims=*/{1, 1, 2, 3},
                /*expected_output=*/{1, 2, -1, 3, 1, -3}},
-#endif
-// TODO(b/162447069): Enable the test parameters for TRT 7.1.3.x.
-#if !IS_TRT_VERSION_GE(7, 1, 3, 0)
     // NHWC
     TestParams{/*input_dims=*/{1, 2, 3, 1},
                /*input=*/{0, 1, 2, 3, 3, 4},
@@ -4307,7 +4299,6 @@ TEST_P(OpConverterTest1, ConvertConv2D) {
                /*dilations=*/{1, 1, 1, 1},
                /*expected_output_dims=*/{1, 1, 2, 2},
                /*expected_output=*/{1, 0, 1, 3}},
-#endif
   };
 
   for (int i = 0; i < ok_params.size(); i++) {
