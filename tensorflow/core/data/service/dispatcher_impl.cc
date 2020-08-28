@@ -117,7 +117,7 @@ Status DataServiceDispatcherImpl::Start() {
   Update update;
   bool end_of_journal = false;
   FileJournalReader reader(Env::Default(), JournalDir(config_.work_dir()));
-  Status s = reader.Read(&update, &end_of_journal);
+  Status s = reader.Read(update, end_of_journal);
   if (errors::IsNotFound(s)) {
     LOG(INFO) << "No journal found. Starting dispatcher from new state.";
   } else if (!s.ok()) {
@@ -125,7 +125,7 @@ Status DataServiceDispatcherImpl::Start() {
   } else {
     while (!end_of_journal) {
       TF_RETURN_IF_ERROR(ApplyWithoutJournaling(update));
-      TF_RETURN_IF_ERROR(reader.Read(&update, &end_of_journal));
+      TF_RETURN_IF_ERROR(reader.Read(update, end_of_journal));
     }
   }
   // Initialize the journal writer in `Start` so that we fail fast in case it
