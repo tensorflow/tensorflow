@@ -124,10 +124,10 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
   def testGetScaledLoss(self):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2.)
-    loss = ops.convert_to_tensor_v2(5.)
+    loss = ops.convert_to_tensor_v2_with_dispatch(5.)
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
-    loss = ops.convert_to_tensor_v2(5., dtype='float16')
+    loss = ops.convert_to_tensor_v2_with_dispatch(5., dtype='float16')
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(loss)))
     self.assertEqual(10., self.evaluate(opt.get_scaled_loss(lambda: loss)()))
 
@@ -135,8 +135,8 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
     scaled_grads = [
-        ops.convert_to_tensor_v2(3.), None,
-        ops.convert_to_tensor_v2(-4., dtype='float16')
+        ops.convert_to_tensor_v2_with_dispatch(3.), None,
+        ops.convert_to_tensor_v2_with_dispatch(-4., dtype='float16')
     ]
     grads = opt.get_unscaled_gradients(scaled_grads)
     grads = [self.evaluate(g) if g is not None else g for g in grads]
@@ -146,9 +146,10 @@ class LossScaleOptimizerTest(test.TestCase, parameterized.TestCase):
     opt = gradient_descent.SGD(2.0)
     opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale=2)
     sparse_scaled_grad = ops.IndexedSlices(
-        ops.convert_to_tensor_v2([[4., 2.], [8., 5.]]),
-        ops.convert_to_tensor_v2([1, 3], dtype='int32'),
-        dense_shape=ops.convert_to_tensor_v2([5, 2], dtype='int32'))
+        ops.convert_to_tensor_v2_with_dispatch([[4., 2.], [8., 5.]]),
+        ops.convert_to_tensor_v2_with_dispatch([1, 3], dtype='int32'),
+        dense_shape=ops.convert_to_tensor_v2_with_dispatch([5, 2],
+                                                           dtype='int32'))
     sparse_grad = opt.get_unscaled_gradients([sparse_scaled_grad])[0]
     self.assertIsInstance(sparse_grad, ops.IndexedSlices)
     self.assertAllEqual([[2., 1.], [4., 2.5]],

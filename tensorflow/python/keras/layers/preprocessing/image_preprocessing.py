@@ -681,7 +681,7 @@ def transform(images,
         if output_shape_value is not None:
           output_shape = output_shape_value
 
-    output_shape = ops.convert_to_tensor_v2(
+    output_shape = ops.convert_to_tensor_v2_with_dispatch(
         output_shape, dtypes.int32, name='output_shape')
 
     if not output_shape.get_shape().is_compatible_with([2]):

@@ -490,7 +490,8 @@ class BatchNormalizationBase(Layer):
   def _assign_moving_average(self, variable, value, momentum, inputs_size):
     with K.name_scope('AssignMovingAvg') as scope:
       with ops.colocate_with(variable):
-        decay = ops.convert_to_tensor_v2(1.0 - momentum, name='decay')
+        decay = ops.convert_to_tensor_v2_with_dispatch(
+            1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
           decay = math_ops.cast(decay, variable.dtype.base_dtype)
         update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
@@ -595,7 +596,7 @@ class BatchNormalizationBase(Layer):
                                                   lambda: self.momentum,
                                                   lambda: 1.0)
         else:
-          momentum = ops.convert_to_tensor_v2(self.momentum)
+          momentum = ops.convert_to_tensor_v2_with_dispatch(self.momentum)
 
       def mean_update():
         """Update self.moving_mean with the most recent data point."""
@@ -797,10 +798,11 @@ class BatchNormalizationBase(Layer):
       moving_variance = self.moving_variance
 
       mean = control_flow_util.smart_cond(
-          training, lambda: mean, lambda: ops.convert_to_tensor_v2(moving_mean))
+          training, lambda: mean,
+          lambda: ops.convert_to_tensor_v2_with_dispatch(moving_mean))
       variance = control_flow_util.smart_cond(
           training, lambda: variance,
-          lambda: ops.convert_to_tensor_v2(moving_variance))
+          lambda: ops.convert_to_tensor_v2_with_dispatch(moving_variance))
 
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are
