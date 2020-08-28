@@ -1740,6 +1740,24 @@ def TF_ConcatV2Op : TF_Op<"ConcatV2", [NoSideEffect]> {
   let hasCanonicalizer = 1;
 }
 
+def TF_ConfigureDistributedTPUOp : TF_Op<"ConfigureDistributedTPU", []> {
+  let summary = [{
+Sets up the centralized structures for a distributed TPU system.
+  }];
+
+  let arguments = (ins
+    StrAttr:$embedding_config,
+    StrAttr:$tpu_embedding_config,
+    DefaultValuedAttr<BoolAttr, "false">:$is_global_init,
+    DefaultValuedAttr<BoolAttr, "false">:$enable_whole_mesh_compilations,
+    DefaultValuedAttr<BoolAttr, "true">:$compilation_failure_closes_chips
+  );
+
+  let results = (outs
+    TF_StrTensor:$topology
+  );
+}
+
 def TF_ConjOp : TF_Op<"Conj", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Returns the complex conjugate of a complex number.";
 
@@ -9401,6 +9419,18 @@ Generate a sharded filename. The filename is printf formatted as
   let results = (outs
     TF_StrTensor:$filename
   );
+}
+
+def TF_ShutdownDistributedTPUOp : TF_Op<"ShutdownDistributedTPU", []> {
+  let summary = "Shuts down a running distributed TPU system.";
+
+  let description = [{
+The op returns an error if no system is running.
+  }];
+
+  let arguments = (ins);
+
+  let results = (outs);
 }
 
 def TF_SigmoidOp : TF_Op<"Sigmoid", [NoSideEffect, SameOperandsAndResultType]> {
