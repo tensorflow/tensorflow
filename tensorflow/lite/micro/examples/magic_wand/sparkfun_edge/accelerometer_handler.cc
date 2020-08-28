@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -72,9 +72,9 @@ int initAccelerometer(void) {
 
   // Configure the IOM pins.
   am_hal_gpio_pinconfig(AM_BSP_ACCELEROMETER_I2C_SDA_PIN,
-                        g_AM_BSP_ACCELEROMETER_I2C_SDA_PIN);
+                        g_AM_BSP_ACCELEROMETER_I2C_SDA);
   am_hal_gpio_pinconfig(AM_BSP_ACCELEROMETER_I2C_SCL_PIN,
-                        g_AM_BSP_ACCELEROMETER_I2C_SDA_PIN);
+                        g_AM_BSP_ACCELEROMETER_I2C_SDA);
 
   // Enable the IOM.
   retVal32 = am_hal_iom_enable((dev_if.iomHandle));
