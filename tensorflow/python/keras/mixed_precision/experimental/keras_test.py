@@ -1103,10 +1103,10 @@ class KerasModelTest(keras_parameterized.TestCase):
     self.assertEqual(backend.get_value(loss_scale._num_good_steps), 0)
 
     # Load model weights and ensure loss scale weights are restored.
-    model = save.load_model(
+    loaded_model = save.load_model(
         save_path, custom_objects={'MultiplyLayer': mp_test_util.MultiplyLayer})
-    loss_scale = model.optimizer.loss_scale
-    (weight,) = model.trainable_weights
+    loss_scale = loaded_model.optimizer.loss_scale
+    (weight,) = loaded_model.trainable_weights
     loaded_weight = backend.get_value(weight)
     self.assertEqual(loaded_weight, orig_weight)
     # Currently the loss scale isn't always saved when the model is saved with
@@ -1115,6 +1115,11 @@ class KerasModelTest(keras_parameterized.TestCase):
     # TODO(reedwm): Always save/restore the loss scale with Model.save().
     self.assertIn(backend.get_value(loss_scale()), (1, 2))
     self.assertIn(backend.get_value(loss_scale._num_good_steps), (0, 1))
+    
+    # Run model again for 1 step (2 examples with a batch size of 2)
+    loaded_model.fit(np.ones((2, 2)), np.zeros((2, 2)), batch_size=2)
+    loaded_weight = backend.get_value(weight)
+    self.assertEqual(loaded_weight, new_weight)
 
 
 if __name__ == '__main__':
