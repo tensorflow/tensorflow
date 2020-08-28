@@ -81,7 +81,7 @@ def reduce_non_distributed_value(
     reduce_op, value, destinations, num_replicas_in_graph):
   """Reduce a non-DistributedValue `value` to `destinations`."""
   if isinstance(value, value_lib.DistributedValues):
-    raise ValueError("You are passing a `DistributedValue` to "
+    raise ValueError("You are passing a `DistributedValues` to "
                      "`reduce_non_distributed_value`, which is not allowed.")
 
   # If the same value is present on all replicas then the PerReplica value will
@@ -216,7 +216,18 @@ def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
 
 @tf_export("distribute.CrossDeviceOps")
 class CrossDeviceOps(object):
-  """Base class for cross-device reduction and broadcasting algorithms."""
+  """Base class for cross-device reduction and broadcasting algorithms.
+
+  The main purpose of this class is to be passed to
+  `tf.distribute.MirroredStrategy` in order to choose among different cross
+  device communication implementations. Prefer using the methods of
+  `tf.distribute.Strategy` instead of the ones of this class.
+
+  Implementations:
+  * `tf.distribute.ReductionToOneDevice`
+  * `tf.distribute.NcclAllReduce`
+  * `tf.distribute.HierarchicalCopyAllReduce`
+  """
 
   def __init__(self):
     pass
@@ -233,24 +244,30 @@ class CrossDeviceOps(object):
              experimental_hints=None):
     """Reduce `per_replica_value` to `destinations`.
 
-    It runs the reduction operation defined by `reduce_op` and put the
-    result on `destinations`.
+    See `tf.distribute.StrategyExtended.reduce_to`. This can only be called in
+    the cross-replica context.
 
     Args:
-      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
-        per_replica_value will be reduced.
-      per_replica_value: A `tf.distribute.DistributedValues` object or a tensor
-        with device set.
-      destinations: the reduction destinations.
-      experimental_hints: A `tf.distrbute.experimental.CollectiveHints`. Hints
-        to perform collective operations.
+      reduce_op: a `tf.distribute.ReduceOp` specifying how values should be
+        combined.
+      per_replica_value: a `tf.distribute.DistributedValues`, or a `tf.Tensor`
+        like object.
+      destinations: a `tf.distribute.DistributedValues`, a `tf.Variable`, a
+        `tf.Tensor` alike object, or a device string. It specifies the devices
+        to reduce to. To perform an all-reduce, pass the same to `value` and
+        `destinations`. Note that if it's a `tf.Variable`, the value is reduced
+        to the devices of that variable, and this method doesn't update the
+        variable.
+      experimental_hints: a `tf.distribute.experimental.CollectiveHints`. See
+        `tf.distribute.experimental.CollectiveHints` for details.
 
     Returns:
-      a Mirrored object.
+      A `tf.Tensor` or `tf.distribute.DistributedValues`.
 
     Raises:
-      ValueError: if per_replica_value can't be converted to a PerReplica
-        object or if destinations aren't strings, Variables or DistributedValues
+      ValueError: if per_replica_value can't be converted to a
+        `tf.distribute.DistributedValues` or if destinations is not a string,
+        `tf.Variable` or `tf.distribute.DistributedValues`.
     """
     if not isinstance(per_replica_value, value_lib.DistributedValues):
       per_replica_value = _make_tensor_into_per_replica(per_replica_value)
@@ -274,28 +291,26 @@ class CrossDeviceOps(object):
                    reduce_op,
                    value_destination_pairs,
                    experimental_hints=None):
-    """Reduce PerReplica objects in a batch.
+    """Reduce values to destinations in batches.
 
-    Reduce each first element in `value_destination_pairs` to each second
-    element which indicates the destinations.
-
-    This can be faster than multiple individual `reduce`s because we can
-    fuse several tensors into one or multiple packs before reduction.
+    See `tf.distribute.StrategyExtended.batch_reduce_to`. This can only be
+    called in the cross-replica context.
 
     Args:
-      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how the
-        `per_replica_value` will be reduced.
-      value_destination_pairs: A list or a tuple of PerReplica objects (or
-        tensors with device set if there is one device) and destinations.
-      experimental_hints: A `tf.distrbute.experimental.CollectiveHints`. Hints
-        to perform collective operations.
+      reduce_op: a `tf.distribute.ReduceOp` specifying how values should be
+        combined.
+      value_destination_pairs: a sequence of (value, destinations) pairs. See
+        `tf.distribute.CrossDeviceOps.reduce` for descriptions.
+      experimental_hints: a `tf.distribute.experimental.CollectiveHints`. See
+        `tf.distribute.experimental.CollectiveHints` for details.
 
     Returns:
-      a list of Mirrored objects.
+      A list of `tf.Tensor` or `tf.distribute.DistributedValues`, one per pair
+      in `value_destination_pairs`.
 
     Raises:
       ValueError: if `value_destination_pairs` is not an iterable of
-        tuples of PerReplica objects and destinations.
+        tuples of `tf.distribute.DistributedValues` and destinations.
     """
     # TODO(yuefengz): if destinations are different, split into several
     # `_batch_reduce` invocations.
@@ -323,14 +338,20 @@ class CrossDeviceOps(object):
                                             experimental_hints)
 
   def broadcast(self, tensor, destinations):
-    """Broadcast the `tensor` to destinations.
+    """Broadcast `tensor` to `destinations`.
+
+    This can only be called in the cross-replica context.
 
     Args:
-      tensor: the tensor to broadcast.
-      destinations: the broadcast destinations.
+      tensor: a `tf.Tensor` like object. The value to broadcast.
+      destinations: a `tf.distribute.DistributedValues`, a `tf.Variable`, a
+        `tf.Tensor` alike object, or a device string. It specifies the devices
+        to broadcast to. Note that if it's a `tf.Variable`, the value is
+        broadcasted to the devices of that variable, this method doesn't update
+        the variable.
 
     Returns:
-      a Mirrored object.
+      A `tf.Tensor` or `tf.distribute.DistributedValues`.
     """
     validate_destinations(destinations)
     return self.broadcast_implementation(tensor, destinations)
@@ -338,27 +359,31 @@ class CrossDeviceOps(object):
   @doc_controls.for_subclass_implementers
   def reduce_implementation(self, reduce_op, per_replica_value, destinations,
                             experimental_hints):
-    """The implementation of reduce of `per_replica_value` to `destinations`.
+    """Implementation of `reduce`.
 
     Overriding this method is useful for subclass implementers.
 
-    It runs the reduction operation defined by `reduce_op` and put the
-    result on `destinations`.
-
     Args:
-      reduce_op: An instance `tf.distribute.ReduceOp` that indicates of how
-        per_replica_value will be reduced.
-      per_replica_value: A PerReplica object or a tensor with device set.
-      destinations: the reduction destinations.
-      experimental_hints: A `tf.distrbute.experimental.CollectiveHints`. Hints
-        to perform collective operations.
+      reduce_op: a `tf.distribute.ReduceOp` specifying how values should be
+        combined.
+      per_replica_value: a `tf.distribute.DistributedValues`, or a `tf.Tensor`
+        like object.
+      destinations: a `tf.distribute.DistributedValues`, a `tf.Variable`, a
+        `tf.Tensor` alike object, or a device string. It specifies the devices
+        to reduce to. To perform an all-reduce, pass the same to `value` and
+        `destinations`. Note that if it's a `tf.Variable`, the value is reduced
+        to the devices of that variable, this method doesn't update the
+        variable.
+      experimental_hints: a `tf.distribute.experimental.CollectiveHints`. See
+        `tf.distribute.experimental.CollectiveHints` for details.
 
     Returns:
-      a Mirrored object.
+      A `tf.Tensor` or `tf.distribute.DistributedValues`.
 
     Raises:
-      ValueError: if per_replica_value can't be converted to a PerReplica
-        object.
+      ValueError: if per_replica_value can't be converted to a
+        `tf.distribute.DistributedValues` or if destinations is not a string,
+        `tf.Variable` or `tf.distribute.DistributedValues`.
     """
     raise NotImplementedError(
         "_reduce method must be implemented in descendants.")
@@ -366,27 +391,25 @@ class CrossDeviceOps(object):
   @doc_controls.for_subclass_implementers
   def batch_reduce_implementation(self, reduce_op, value_destination_pairs,
                                   experimental_hints):
-    """Implementation of reduce PerReplica objects in a batch.
+    """Implementation of `batch_reduce`.
 
     Overriding this method is useful for subclass implementers.
 
-    Reduce each first element in `value_destination_pairs` to each second
-    element which indicates the destinations.
-
     Args:
-      reduce_op: An instance of `tf.distribute.ReduceOp` that indicates how
-        per_replica_value will be reduced.
-      value_destination_pairs: An iterable of tuples of PerReplica objects
-        (or tensors with device set if there is one device) and destinations.
-      experimental_hints: A `tf.distrbute.experimental.CollectiveHints`. Hints
+      reduce_op: a `tf.distribute.ReduceOp` specifying how values should be
+        combined.
+      value_destination_pairs: a sequence of (value, destinations) pairs. See
+        `reduce` for descriptions.
+      experimental_hints: a `tf.distribute.experimental.CollectiveHints`. Hints
         to perform collective operations.
 
     Returns:
-      a list of Mirrored objects.
+      A list of `tf.Tensor` or `tf.distribute.DistributedValues`, one per pair
+      in `value_destination_pairs`.
 
     Raises:
       ValueError: if `value_destination_pairs` is not an iterable of
-        tuples of PerReplica objects and destinations
+        tuples of `tf.distribute.DistributedValues` and destinations.
     """
     raise NotImplementedError(
         "batch_reduce_implementation method must be implemented in descendants."
@@ -394,26 +417,36 @@ class CrossDeviceOps(object):
 
   @doc_controls.for_subclass_implementers
   def broadcast_implementation(self, tensor, destinations):
-    """Implementation of broadcast the `tensor` to destinations.
+    """Implementation of `broadcast`.
 
     Args:
-      tensor: the tensor to broadcast.
-      destinations: the broadcast destinations.
+      tensor: a `tf.Tensor` like object. The value to broadcast.
+      destinations: a `tf.distribute.DistributedValues`, a `tf.Variable`, a
+        `tf.Tensor` alike object, or a device string. It specifies the devices
+        to broadcast to.
+        `destinations`. Note that if it's a `tf.Variable`, the value is
+        broadcasted to the devices of that variable, this method doesn't update
+        the variable.
 
     Returns:
-      a Mirrored object.
+      A `tf.Tensor` or `tf.distribute.DistributedValues`.
     """
     return simple_broadcast(tensor, destinations, always_mirrored=True)
 
 
 @tf_export("distribute.ReductionToOneDevice")
 class ReductionToOneDevice(CrossDeviceOps):
-  """Always do reduction to one device first and then do broadcasting.
+  """A CrossDeviceOps implementation that copies values to one device to reduce.
 
-  Batch reduction is done by reduction on each element one by one.
+  This implementation always copies values to one device to reduce them, then
+  broadcast reduced values to the destinations. It doesn't support efficient
+  batching.
+
+  Here is how you can use `ReductionToOneDevice` in
+  `tf.distribute.MirroredStrategy`:
 
   ```
-    mirrored_strategy = tf.distribute.MirroredStrategy(
+    strategy = tf.distribute.MirroredStrategy(
       cross_device_ops=tf.distribute.ReductionToOneDevice())
   ```
   """
@@ -423,8 +456,8 @@ class ReductionToOneDevice(CrossDeviceOps):
 
     Args:
       reduce_to_device: the intermediate device to reduce to. If None, reduce
-        to the first device in `destinations` of the `reduce()` method.
-      accumulation_fn: a function that does accumulation.  If None, then
+        to the first device in `destinations` of the `reduce` method.
+      accumulation_fn: a function that does accumulation.  If None,
         `tf.math.add_n` is used.
     """
     self.reduce_to_device = reduce_to_device
@@ -641,18 +674,24 @@ def _unpack_tensors(reduced, tensor_packer=None):
 
 
 class AllReduceCrossDeviceOps(CrossDeviceOps):
-  """Reduction using all-reduce."""
+  """All-reduce implementation of CrossDeviceOps.
+
+  It performs all-reduce when applicable using NCCL or hierarchical copy. For
+  the batch API, tensors will be repacked or aggregated for more efficient
+  cross-device transportation.
+
+  For reduces that are not all-reduce, it falls back to
+  `tf.distribute.ReductionToOneDevice`.
+  """
 
   def __init__(self, all_reduce_alg="nccl", num_packs=1):
-    """All-reduce implementation of CrossDeviceOps.
-
-    Before performing all-reduce, tensors will be packed for more efficient
-    cross-device transportation.
+    """Initializes the object.
 
     Args:
       all_reduce_alg: the all-reduce algorithm to use, currently only "nccl" or
         "hierarchical_copy" are supported.
-      num_packs: If non-zero, pack values into `num_packs` splits.
+      num_packs: a non-negative integer. The number of packs to split values
+        into. If zero, no packing will be done.
     """
     self._all_reduce_alg = all_reduce_alg
     self._num_packs = num_packs
@@ -746,21 +785,32 @@ AllReduceSpecTuple = collections.namedtuple("AllReduceSpecTuple",
 
 @tf_export("distribute.NcclAllReduce")
 class NcclAllReduce(AllReduceCrossDeviceOps):
-  """Reduction using NCCL all-reduce."""
+  """NCCL all-reduce implementation of CrossDeviceOps.
+
+  It uses Nvidia NCCL for all-reduce. For the batch API, tensors will be
+  repacked or aggregated for more efficient cross-device transportation.
+
+  For reduces that are not all-reduce, it falls back to
+  `tf.distribute.ReductionToOneDevice`.
+
+  Here is how you can use `NcclAllReduce` in `tf.distribute.MirroredStrategy`:
+
+
+  ```
+    strategy = tf.distribute.MirroredStrategy(
+      cross_device_ops=tf.distribute.NcclAllReduce())
+  ```
+  """
 
   def __init__(self, num_packs=1):
-    """NCCL all-reduce implementation of CrossDeviceOps.
-
-    It uses Nvidia NCCL for all-reduce. Before performing all-reduce, tensors
-    will be repacked or aggregated for more efficient cross-device
-    transportation.
+    """Initializes the object.
 
     Args:
-      num_packs: values will be packed in this many splits.  `num_packs` should
-        be greater than or equals 0. When it is zero, no packing will be done.
+      num_packs: a non-negative integer. The number of packs to split values
+        into. If zero, no packing will be done.
 
     Raises:
-      ValueError if `num_packs` is negative.
+      ValueError: if `num_packs` is negative.
     """
     if num_packs < 0:
       raise ValueError(
@@ -772,23 +822,34 @@ class NcclAllReduce(AllReduceCrossDeviceOps):
 
 @tf_export("distribute.HierarchicalCopyAllReduce")
 class HierarchicalCopyAllReduce(AllReduceCrossDeviceOps):
-  """Reduction using hierarchical copy all-reduce.
+  """Hierarchical copy all-reduce implementation of CrossDeviceOps.
 
   It reduces to one GPU along edges in some hierarchy and broadcasts back to
-  each GPU along the same path. Before performing all-reduce, tensors will be
-  repacked or aggregated for more efficient cross-device transportation.
+  each GPU along the same path. For the batch API, tensors will be repacked or
+  aggregated for more efficient cross-device transportation.
 
   This is a reduction created for Nvidia DGX-1 which assumes GPUs connects like
   that on DGX-1 machine. If you have different GPU inter-connections, it is
   likely that it would be slower than `tf.distribute.ReductionToOneDevice`.
+
+  For reduces that are not all-reduce, it falls back to
+  `tf.distribute.ReductionToOneDevice`.
+
+  Here is how you can use `HierarchicalCopyAllReduce` in
+  `tf.distribute.MirroredStrategy`:
+
+  ```
+    strategy = tf.distribute.MirroredStrategy(
+      cross_device_ops=tf.distribute.HierarchicalCopyAllReduce())
+  ```
   """
 
   def __init__(self, num_packs=1):
     """Initializes the object.
 
     Args:
-      num_packs: values will be packed in this many splits.  `num_packs` should
-        be greater than or equals 0. When it is zero, no packing will be done.
+      num_packs: a non-negative integer. The number of packs to split values
+        into. If zero, no packing will be done.
 
     Raises:
       ValueError if `num_packs` is negative.
