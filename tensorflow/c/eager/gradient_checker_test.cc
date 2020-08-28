@@ -10,6 +10,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradient_checker.h"
+// #include "tensorflow/c/eager/gradients_testutil.h"
 
 #include <memory>
 
@@ -52,85 +53,6 @@ Status RegisterGradients(GradientRegistry* registry) {
   return Status::OK();
 }
 
-// ========================= Test Util Functions ==============================
-
-// Get a scalar TensorHandle with given value
-Status TestScalarTensorHandle(AbstractContext* ctx, float value,
-                              AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, value);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-// Get a TensorHandle with given float values and dimensions
-Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
-                                     int64_t dims[], int num_dims,
-                                     AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsFloat(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-// Get a TensorHandle with given int values and dimensions
-Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int data[],
-                                   int64_t dims[], int num_dims,
-                                   AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsInt(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_TensorHandle* result_t =
-      TF_AbstractTensorGetEagerTensor(wrap(t), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  *result_tensor = TFE_TensorHandleResolve(result_t, status.get());
-  return Status::OK();
-}
-
-AbstractTensorHandlePtr GetTensorHandleUtilFloat(AbstractContext* ctx,
-                                                 float vals[], int64_t dims[],
-                                                 int num_dims) {
-  AbstractTensorHandlePtr A;
-  AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestTensorHandleWithDimsFloat(ctx, vals, dims, num_dims, &a_raw);
-  A.reset(a_raw);
-  return A;
-}
-
-AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
-                                               int64_t dims[], int num_dims) {
-  AbstractTensorHandlePtr A;
-  AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestTensorHandleWithDimsInt(ctx, vals, dims, num_dims, &a_raw);
-  A.reset(a_raw);
-  return A;
-}
-
-// =========================== Start Tests ================================
-
 TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
@@ -159,9 +81,9 @@ TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   inputs.push_back(B.get());
 
   float dapprox[4] = {0};
-  Status s =
-      GradientCheck(ctx.get(), MatMulModel, inputs, dapprox, /*gradIndex=*/0,
-                    /*use_function=*/!std::get<2>(GetParam()));
+  Status s = CalcNumericalGrad(ctx.get(), MatMulModel, inputs, dapprox,
+                               /*input_index=*/0,
+                               /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   float expected_dA[4] = {-.5f, 2.0f, -.5f, 2.0f};
@@ -171,21 +93,66 @@ TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   }
 }
 
+TEST_P(GradientCheckerTest, TestGradCheckMul) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+
+  AbstractTensorHandlePtr x;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    x.reset(x_raw);
+  }
+
+  AbstractTensorHandlePtr y;
+  {
+    AbstractTensorHandle* y_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx.get(), 7.0f, &y_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    y.reset(y_raw);
+  }
+
+  // Will perform z = x*y.
+  // dz/dx = y
+
+  std::vector<AbstractTensorHandle*> inputs;
+  inputs.push_back(x.get());
+  inputs.push_back(y.get());
+  float dapprox[1] = {0};
+  Status s =
+      CalcNumericalGrad(ctx.get(), MulModel, inputs, dapprox, /*input_index=*/0,
+                        /*use_function=*/!std::get<2>(GetParam()),
+                        /*is_scalar_out=*/true);
+
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_NEAR(dapprox[0], 7.0f, /*tolerance=*/1e-3);
+}
+
 TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
 
   /** Test to show how to use this API with analytical gradients:
-    *
-    *  We have `SoftmaxLossGradModel`, which is a wrapper for the
-    *  Softmax analytical gradient found in c/experimental/nn_grads.
-    *
-    *  We will use the GradientChecker by applying finite differences
-    *  to the forward pass wrapped in `SoftmaxModel` and verify that
-    *  both the analytical and numerical gradients are relatively
-    *  close.
-    *
-    */
+   *
+   *  We have `SoftmaxLossGradModel`, which is a wrapper for the
+   *  Softmax analytical gradient found in c/experimental/nn_grads.
+   *
+   *  We will use the GradientChecker by applying finite differences
+   *  to the forward pass wrapped in `SoftmaxModel` and verify that
+   *  both the analytical and numerical gradients are relatively
+   *  close.
+   *
+   */
 
   AbstractContextPtr ctx;
   {
@@ -235,8 +202,9 @@ TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
 
   // Run numerical gradient approximation using the GradientChecker API.
   float dapprox[9] = {0};  // Will contain numerical approximation data.
-  s = GradientCheck(ctx.get(), SoftmaxModel, inputs, dapprox, /*gradIndex=*/0,
-                    /*use_function=*/!std::get<2>(GetParam()));
+  s = CalcNumericalGrad(ctx.get(), SoftmaxModel, inputs, dapprox,
+                        /*input_index=*/0,
+                        /*use_function=*/!std::get<2>(GetParam()));
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   // Now compare the two implementations:
@@ -249,8 +217,6 @@ TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
   TF_DeleteTensor(dX_tensor);
 }
 
-// TODO(b/160888630): Enable this test with mlir after AddInputList is
-// supported. It is needed for AddN op which is used for gradient aggregation.
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, GradientCheckerTest,

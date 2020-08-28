@@ -36,82 +36,7 @@ limitations under the License.
 
 using namespace std;
 
-// ================== TensorHandle generating functions =================
-
-// Get a scalar TensorHandle with given value
-Status TestScalarTensorHandle(AbstractContext* ctx, float value,
-                              AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager = TestScalarTensorHandle(eager_ctx, value);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-// Get a TensorHandle with given float values and dimensions
-Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
-                                     int64_t dims[], int num_dims,
-                                     AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsFloat(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-// Get a TensorHandle with given int values and dimensions
-Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int data[],
-                                   int64_t dims[], int num_dims,
-                                   AbstractTensorHandle** tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_Context* eager_ctx =
-      TF_ExecutionContextGetTFEContext(wrap(ctx), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  TFE_TensorHandle* input_eager =
-      TestTensorHandleWithDimsInt(eager_ctx, data, dims, num_dims);
-  *tensor =
-      unwrap(TF_CreateAbstractTensorFromEagerTensor(input_eager, status.get()));
-  return Status::OK();
-}
-
-Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
-  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
-      TF_NewStatus(), TF_DeleteStatus);
-  TFE_TensorHandle* result_t =
-      TF_AbstractTensorGetEagerTensor(wrap(t), status.get());
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
-  *result_tensor = TFE_TensorHandleResolve(result_t, status.get());
-  return Status::OK();
-}
-
-AbstractTensorHandlePtr GetTensorHandleUtilFloat(AbstractContext* ctx,
-                                                 float vals[], int64_t dims[],
-                                                 int num_dims) {
-  AbstractTensorHandlePtr A;
-  AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestTensorHandleWithDimsFloat(ctx, vals, dims, num_dims, &a_raw);
-  A.reset(a_raw);
-  return A;
-}
-
-AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
-                                               int64_t dims[], int num_dims) {
-  AbstractTensorHandlePtr A;
-  AbstractTensorHandle* a_raw = nullptr;
-  Status s = TestTensorHandleWithDimsInt(ctx, vals, dims, num_dims, &a_raw);
-  A.reset(a_raw);
-  return A;
-}
+// ================== Helper functions =================
 
 // Fills data with values [start,end) with given step size.
 void Range(int data[], int start, int end, int step = 1) {
@@ -146,12 +71,13 @@ Status RunModelAndSum(AbstractContext* ctx, Model forward,
   std::vector<AbstractTensorHandle*> model_outputs(1);
 
   // Run the model.
-  Status s = RunModel(forward, ctx, inputs, absl::MakeSpan(model_outputs),
-                      use_function, registry);
+  TF_RETURN_IF_ERROR(RunModel(forward, ctx, inputs,
+                              absl::MakeSpan(model_outputs), use_function,
+                              registry));
   AbstractTensorHandle* f_toSum = model_outputs[0];
 
   TF_Tensor* model_out_tensor;
-  s = GetValue(f_toSum, &model_out_tensor);
+  TF_RETURN_IF_ERROR(GetValue(f_toSum, &model_out_tensor));
   int num_dims_out = TF_NumDims(model_out_tensor);
 
   // Will sum all dimensions, so get a Tensor containing [0,...,num_dims_out-1].
@@ -163,8 +89,8 @@ Status RunModelAndSum(AbstractContext* ctx, Model forward,
   sum_inputs[0] = f_toSum;
   sum_inputs[1] = sum_dims.get();
 
-  s = ops::Sum(ctx, absl::MakeSpan(sum_inputs), absl::MakeSpan(model_outputs),
-               "sum_output");
+  TF_RETURN_IF_ERROR(ops::Sum(ctx, absl::MakeSpan(sum_inputs),
+                              absl::MakeSpan(model_outputs), "sum_output"));
   outputs[0] = model_outputs[0];
   return Status::OK();
 }
@@ -182,21 +108,20 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
   } else {
     s = RunModelAndSum(ctx, forward, inputs, outputs, use_function);
   }
-  return Status::OK();
+  return s;
 }
-// ========================= End Util Functions==============================
+// ========================= End Helper Functions==============================
 
-Status GradientCheck(AbstractContext* ctx, Model forward,
-                     std::vector<AbstractTensorHandle*> inputs,
-                     float* dtheta_approx, int gradIndex, bool use_function,
-                     bool is_scalar_out) {
-  Status s;
+Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
+                         std::vector<AbstractTensorHandle*> inputs,
+                         float* dtheta_approx, int input_index,
+                         bool use_function, bool is_scalar_out) {
   AbstractTensorHandle* theta =
-      inputs[gradIndex];  // parameter we are grad checking
+      inputs[input_index];  // parameter we are grad checking
 
   // Convert from AbstractTensor to TF_Tensor.
   TF_Tensor* theta_tensor;
-  s = GetValue(theta, &theta_tensor);
+  TF_RETURN_IF_ERROR(GetValue(theta, &theta_tensor));
 
   // Get number of elements and fill data.
   int num_elems = TF_TensorElementCount(theta_tensor);
@@ -219,6 +144,8 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
     // Get relative epsilon value
     float epsilon =
         std::abs(theta_data[i] * 1e-4 + 1e-4);  // add 1e-4 to prevent div by 0
+    AbstractTensorHandlePtr two_eps =
+        GetScalarTensorHandleUtil(ctx, 2 * epsilon);
 
     // Initialize theta[i] + epsilon.
     memcpy(&thetaPlus_data[0], TF_TensorData(theta_tensor),
@@ -235,32 +162,38 @@ Status GradientCheck(AbstractContext* ctx, Model forward,
         GetTensorHandleUtilFloat(ctx, thetaMinus_data, theta_dims, num_dims);
 
     // Get f(theta + eps):
-    inputs[gradIndex] = thetaPlus.get();
-    s = RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs),
-                       absl::MakeSpan(f_outputs), use_function, is_scalar_out);
+    inputs[input_index] = thetaPlus.get();
+    TF_RETURN_IF_ERROR(RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs),
+                                      absl::MakeSpan(f_outputs), use_function,
+                                      is_scalar_out));
     AbstractTensorHandle* fPlus = f_outputs[0];
 
     // Get f(theta - eps):
-    inputs[gradIndex] = thetaMinus.get();
-    s = RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs),
-                       absl::MakeSpan(f_outputs), use_function, is_scalar_out);
+    inputs[input_index] = thetaMinus.get();
+    TF_RETURN_IF_ERROR(RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs),
+                                      absl::MakeSpan(f_outputs), use_function,
+                                      is_scalar_out));
     AbstractTensorHandle* fMinus = f_outputs[0];
 
     // Take Difference of both estimates: (f(x + eps) - f(x - eps)).
-    s = ops::Sub(ctx, {fPlus, fMinus}, absl::MakeSpan(f_outputs), "sub_top");
+    TF_RETURN_IF_ERROR(
+        ops::Sub(ctx, {fPlus, fMinus}, absl::MakeSpan(f_outputs), "sub_top"));
     AbstractTensorHandle* fDiff = f_outputs[0];
-
-    // Get difference value for calculation.
-    TF_Tensor* fDiff_tensor;
-    s = GetValue(fDiff, &fDiff_tensor);
-    float fDiff_data[1];
-    memcpy(&fDiff_data[0], TF_TensorData(fDiff_tensor),
-           TF_TensorByteSize(fDiff_tensor));
 
     // Calculate using the difference quotient definition:
     // (f(x + eps) - f(x - eps)) / (2 * eps).
-    float grad_approx = fDiff_data[0] / (2.0 * epsilon);
-    dtheta_approx[i] = grad_approx;
+    TF_RETURN_IF_ERROR(ops::DivNoNan(ctx, {fDiff, two_eps.get()},
+                                     absl::MakeSpan(f_outputs),
+                                     "diff_quotient"));
+    AbstractTensorHandle* diff_quotient = f_outputs[0];
+
+    TF_Tensor* grad_tensor;
+    TF_RETURN_IF_ERROR(GetValue(diff_quotient, &grad_tensor));
+    float grad_data[1];
+    memcpy(&grad_data[0], TF_TensorData(grad_tensor),
+           TF_TensorByteSize(grad_tensor));
+
+    dtheta_approx[i] = grad_data[0];
   }
 
   return Status::OK();
