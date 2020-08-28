@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/jit/defs.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -34,9 +35,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-const char* const EncapsulateXlaComputationsPass::kXlaClusterAttr =
-    "_xla_compile_id";
-
 namespace {
 
 const char* const kXlaClusterOutput = "XlaClusterOutput";
@@ -45,10 +43,7 @@ bool IsCpuGpuCompile(const Graph* graph) {
   for (Node* n : graph->nodes()) {
     string name;
     // Only consider nodes being compiled.
-    if (!GetNodeAttr(n->attrs(),
-                     EncapsulateXlaComputationsPass::kXlaClusterAttr, &name)
-             .ok())
-      continue;
+    if (!GetNodeAttr(n->attrs(), kXlaClusterIdAttr, &name).ok()) continue;
     // Early return for any node with a device that is not a CPU or GPU.
     DeviceNameUtils::ParsedName parsed;
     if (DeviceNameUtils::ParseFullName(n->requested_device(), &parsed)) {
@@ -180,8 +175,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
     retvals[i]->AddAttr("index", i);
   }
 
-  AddNodeAttr(EncapsulateXlaComputationsPass::kXlaClusterAttr, call_def->name(),
-              call_def);
+  AddNodeAttr(kXlaClusterIdAttr, call_def->name(), call_def);
   AddNodeAttr("_variable_start_index", variable_start_index, call_def);
 
   // Uniquify the function name.
@@ -216,8 +210,8 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   // O(n) pass over the edges.
   for (const Edge* e : (*graph)->edges()) {
     if (!e->IsControlEdge() &&
-        e->src()->attrs().Find(kXlaClusterAttr) != nullptr &&
-        e->dst()->attrs().Find(kXlaClusterAttr) == nullptr &&
+        e->src()->attrs().Find(kXlaClusterIdAttr) != nullptr &&
+        e->dst()->attrs().Find(kXlaClusterIdAttr) == nullptr &&
         e->dst()->type_string() != kXlaClusterOutput) {
       return errors::InvalidArgument(
           "Undeclared output of XLA computation. Some common causes of this "
@@ -232,9 +226,9 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
 
   auto output = absl::make_unique<Graph>((*graph)->op_registry());
   TF_RETURN_WITH_CONTEXT_IF_ERROR(
-      EncapsulateSubgraphsInFunctions(kXlaClusterAttr, **graph, RewriteSubgraph,
-                                      /*reuse_existing_functions=*/true,
-                                      &output, flib_def),
+      EncapsulateSubgraphsInFunctions(
+          kXlaClusterIdAttr, **graph, RewriteSubgraph,
+          /*reuse_existing_functions=*/true, &output, flib_def),
       "EncapsulateXlaComputationsPass failed");
   graph->swap(output);
   return Status::OK();
@@ -246,7 +240,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   // while iterating.
   std::vector<Node*> launch_nodes;
   for (Node* n : graph->nodes()) {
-    const string& name = GetNodeAttrString(n->attrs(), kXlaClusterAttr);
+    const string& name = GetNodeAttrString(n->attrs(), kXlaClusterIdAttr);
     if (!name.empty()) {
       launch_nodes.push_back(n);
     }

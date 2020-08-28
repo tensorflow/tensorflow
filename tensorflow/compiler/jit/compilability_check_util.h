@@ -283,6 +283,9 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
 // set.
 bool CanCreateXlaKernel(const NodeDef& node_def);
 
+// Check whether graph can trigger XLA compilation.
+bool CanTriggerXlaCompilation(const GraphDef& graph);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_COMPILABILITY_CHECK_UTIL_H_
