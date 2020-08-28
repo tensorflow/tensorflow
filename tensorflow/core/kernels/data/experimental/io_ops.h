@@ -26,23 +26,28 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+constexpr const char* const kCompression = "compression";
+constexpr const char* const kPath = "path";
+constexpr const char* const kShardFunc = "shard_func";
+constexpr const char* const kShardFuncOtherArgs = "shard_func_other_args";
+constexpr const char* const kUseShardFunc = "use_shard_func";
+constexpr const char* const kDatasetType = "Load";
+constexpr const char* const kOutputTypes = "output_types";
+constexpr const char* const kOutputShapes = "output_shapes";
+constexpr const char* const kReaderFunc = "reader_func";
+constexpr const char* const kReaderFuncOtherArgs = "reader_func_other_args";
+constexpr const char* const kReaderFuncTarguments = "Treader_func_args";
+
+constexpr const int kFileFormatVersion = 2;
+
 // An operation that can save a dataset to one or more files.
 class SaveDatasetOp : public HybridAsyncOpKernel {
  public:
-  static constexpr const char* const kCompression = "compression";
-  static constexpr const char* const kPath = "path";
-  static constexpr const char* const kShardFunc = "shard_func";
-  static constexpr const char* const kShardFuncOtherArgs =
-      "shard_func_other_args";
-  static constexpr const char* const kUseShardFunc = "use_shard_func";
-
   explicit SaveDatasetOp(OpKernelConstruction* ctx);
 
   Status DoCompute(OpKernelContext* ctx) override;
 
  private:
-  static constexpr const int kFileFormatVersion = 2;
-
   Status ConsumeElement();
 
   Status GetShardIndex(IteratorContext* ctx,
@@ -65,17 +70,6 @@ class SaveDatasetOp : public HybridAsyncOpKernel {
 // An operation that can load a dataset from one or more files.
 class LoadDatasetOp : public DatasetOpKernel {
  public:
-  static constexpr const char* const kCompression = "compression";
-  static constexpr const char* const kDatasetType = "Load";
-  static constexpr const char* const kOutputTypes = "output_types";
-  static constexpr const char* const kOutputShapes = "output_shapes";
-  static constexpr const char* const kPath = "path";
-  static constexpr const char* const kReaderFunc = "reader_func";
-  static constexpr const char* const kReaderFuncOtherArgs =
-      "reader_func_other_args";
-  static constexpr const char* const kReaderFuncTarguments =
-      "Treader_func_args";
-
   explicit LoadDatasetOp(OpKernelConstruction* ctx);
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override;

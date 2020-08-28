@@ -38,22 +38,21 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+constexpr const char* const kDatasetType = "Snapshot";
+constexpr const char* const kOutputTypes = "output_types";
+constexpr const char* const kOutputShapes = "output_shapes";
+constexpr const char* const kCompression = "compression";
+constexpr const char* const kReaderFunc = "reader_func";
+constexpr const char* const kShardFunc = "shard_func";
+constexpr const char* const kReaderFuncOtherArgs = "reader_func_other_args";
+constexpr const char* const kShardFuncOtherArgs = "shard_func_other_args";
+constexpr const char* const kReaderFuncTarguments = "Treader_func_args";
+constexpr const char* const kShardFuncTarguments = "Tshard_func_args";
+
+constexpr const int kFileFormatVersion = 2;
+
 class SnapshotDatasetV2Op : public UnaryDatasetOpKernel {
  public:
-  static constexpr const char* const kDatasetType = "Snapshot";
-  static constexpr const char* const kOutputTypes = "output_types";
-  static constexpr const char* const kOutputShapes = "output_shapes";
-  static constexpr const char* const kCompression = "compression";
-  static constexpr const char* const kReaderFunc = "reader_func";
-  static constexpr const char* const kShardFunc = "shard_func";
-  static constexpr const char* const kReaderFuncOtherArgs =
-      "reader_func_other_args";
-  static constexpr const char* const kShardFuncOtherArgs =
-      "shard_func_other_args";
-  static constexpr const char* const kReaderFuncTarguments =
-      "Treader_func_args";
-  static constexpr const char* const kShardFuncTarguments = "Tshard_func_args";
-
   explicit SnapshotDatasetV2Op(OpKernelConstruction* ctx);
 
  protected:
@@ -61,8 +60,6 @@ class SnapshotDatasetV2Op : public UnaryDatasetOpKernel {
                    DatasetBase** output) override;
 
  private:
-  static constexpr const int kFileFormatVersion = 2;
-
   class Dataset;
 
   const int graph_def_version_;
