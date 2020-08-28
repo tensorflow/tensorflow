@@ -762,17 +762,16 @@ TEST_P(CppGradients, TestMNIST_Training) {
   mnist_outputs[2]->Unref();  // release loss
 }
 
-// TODO(b/166648529): Enable for mlir.
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,
-    ::testing::Combine(::testing::Values("graphdef"),
+    ::testing::Combine(::testing::Values("graphdef", "mlir"),
                        /*tfrt*/ ::testing::Values(false),
                        /*executing_eagerly*/ ::testing::Values(true, false)));
 #else
 INSTANTIATE_TEST_SUITE_P(
     UnifiedCAPI, CppGradients,
-    ::testing::Combine(::testing::Values("graphdef"),
+    ::testing::Combine(::testing::Values("graphdef", "mlir"),
                        /*tfrt*/ ::testing::Values(false),
                        /*executing_eagerly*/ ::testing::Values(true, false)));
 #endif
