@@ -75,21 +75,21 @@ Status BuildXlaCompilationCache(DeviceBase* device,
   return Status::OK();
 }
 
-XlaPlatformInfo XlaPlatformInfoFromContext(OpKernelConstruction* ctx) {
-  DeviceType device_type = ctx->device_type();
+XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
+  auto device = static_cast<Device*>(device_base);
   se::Platform::Id platform_id = nullptr;
   const XlaDevice::Metadata* xla_device_metadata = nullptr;
   se::DeviceMemoryAllocator* custom_allocator = nullptr;
 
-  if (ctx->device_type() == DeviceType(DEVICE_CPU)) {
+  if (device->device_type() == DEVICE_CPU) {
     platform_id = se::host::kHostPlatformId;
-  } else if (ctx->device_type() == DeviceType(DEVICE_GPU)) {
-    platform_id = ctx->device()
-                      ->tensorflow_gpu_device_info()
+  } else if (device->device_type() == DEVICE_GPU) {
+    platform_id = device->tensorflow_gpu_device_info()
                       ->stream->parent()
                       ->platform()
                       ->id();
-  } else if (XlaDevice::GetMetadata(ctx, &xla_device_metadata).ok()) {
+  } else if (XlaDevice::GetMetadataFromDevice(device, &xla_device_metadata)
+                 .ok()) {
     // If we are on an XlaDevice, use the underlying XLA platform's allocator
     // directly. We could use the StreamExecutor's allocator which may
     // theoretically be more correct, but XLA returns a nice OOM message in a
@@ -104,8 +104,8 @@ XlaPlatformInfo XlaPlatformInfoFromContext(OpKernelConstruction* ctx) {
         xla_device_metadata->client()->backend().memory_allocator();
   }
 
-  return XlaPlatformInfo(device_type, platform_id, xla_device_metadata,
-                         custom_allocator);
+  return XlaPlatformInfo(DeviceType(device->device_type()), platform_id,
+                         xla_device_metadata, custom_allocator);
 }
 
 se::DeviceMemoryAllocator* GetAllocator(

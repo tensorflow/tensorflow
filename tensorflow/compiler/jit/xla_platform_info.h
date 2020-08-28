@@ -85,7 +85,7 @@ Status BuildXlaCompilationCache(DeviceBase* dev,
                                 XlaCompilationCache** cache);
 
 // Returns information about the platform from kernel context.
-XlaPlatformInfo XlaPlatformInfoFromContext(OpKernelConstruction* ctx);
+XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device);
 
 // Returns allocator from platform info if non-null, or populate and return a
 // pointer to the allocator adapter with allocator from context.

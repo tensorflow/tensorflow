@@ -158,7 +158,7 @@ XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
       constants_(constants),
       resources_(resources),
       function_(function),
-      platform_info_(XlaPlatformInfoFromContext(ctx)),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
       has_ref_vars_(has_ref_vars) {}
 
 static Status CompileToLocalExecutable(
@@ -373,7 +373,7 @@ XlaCompileOp::XlaCompileOp(OpKernelConstruction* ctx)
       constants_(ConstantsVector(ctx)),
       resources_(ResourcesVector(ctx)),
       function_(FunctionAttr(ctx)),
-      platform_info_(XlaPlatformInfoFromContext(ctx)),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
       must_compile_(MustCompileAttr(ctx)),
       has_ref_vars_(HasRefVars(ctx)) {}
 
@@ -461,7 +461,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
 }
 
 XlaRunOp::XlaRunOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), platform_info_(XlaPlatformInfoFromContext(ctx)) {}
+    : OpKernel(ctx), platform_info_(XlaPlatformInfoFromDevice(ctx->device())) {}
 
 void XlaRunOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaRunOp " << def().name();
