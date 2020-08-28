@@ -417,12 +417,14 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
 }
 
 // A Gpu custom kernel that convert input to output, given proper padding on
-// the left and the top.
+// the left and the top. The padded value is zero.
 template <typename T, int NDIMS>
-__global__ void PadInputCustomKernelNHWC(
-    int nthreads, const T* __restrict__ input, Dimension<NDIMS> input_dims,
-    T* __restrict__ output, Dimension<NDIMS> output_dims,
-    Dimension<NDIMS - 2> padding_left, T padding_value) {
+__global__ void PadInputCustomKernelNHWC(int nthreads,
+                                         const T* __restrict__ input,
+                                         Dimension<NDIMS> input_dims,
+                                         T* __restrict__ output,
+                                         Dimension<NDIMS> output_dims,
+                                         Dimension<NDIMS - 2> padding_left) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int output_index = index;
     Index<NDIMS> output_tensor_index =
@@ -442,16 +444,18 @@ __global__ void PadInputCustomKernelNHWC(
       const int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
       output[output_index] = input[input_index];
     } else {
-      output[output_index] = padding_value;
+      output[output_index] = T(0);
     }
   }
 }
 
 template <typename T, int NDIMS>
-__global__ void PadInputCustomKernelNCHW(
-    int nthreads, const T* __restrict__ input, Dimension<NDIMS> input_dims,
-    T* __restrict__ output, Dimension<NDIMS> output_dims,
-    Dimension<NDIMS - 2> padding_left, T padding_value) {
+__global__ void PadInputCustomKernelNCHW(int nthreads,
+                                         const T* __restrict__ input,
+                                         Dimension<NDIMS> input_dims,
+                                         T* __restrict__ output,
+                                         Dimension<NDIMS> output_dims,
+                                         Dimension<NDIMS - 2> padding_left) {
   GPU_1D_KERNEL_LOOP(index, nthreads) {
     int output_index = index;
     Index<NDIMS> output_tensor_index =
@@ -471,7 +475,7 @@ __global__ void PadInputCustomKernelNCHW(
       const int input_index = TensorIndexToFlat(input_tensor_index, input_dims);
       output[output_index] = input[input_index];
     } else {
-      output[output_index] = padding_value;
+      output[output_index] = T(0);
     }
   }
 }
@@ -568,7 +572,7 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
                   const std::array<int, NDIMS - 2>& padding_left,
                   const std::array<int, NDIMS - 2>& padding_right,
                   typename TTypes<T, NDIMS, int>::Tensor out,
-                  TensorFormat format, T padding_value = T{}) {
+                  TensorFormat format) {
     GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
     Dimension<NDIMS> input_dims;
     for (int i = 0; i < NDIMS; ++i) {
@@ -585,14 +589,12 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
       TF_CHECK_OK(GpuLaunchKernel(
           PadInputCustomKernelNHWC<T, NDIMS>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
-          in.data(), input_dims, out.data(), output_dims, padding_left_dim,
-          padding_value));
+          in.data(), input_dims, out.data(), output_dims, padding_left_dim));
     } else if (format == FORMAT_NCHW) {
       TF_CHECK_OK(GpuLaunchKernel(
           PadInputCustomKernelNCHW<T, NDIMS>, config.block_count,
           config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
-          in.data(), input_dims, out.data(), output_dims, padding_left_dim,
-          padding_value));
+          in.data(), input_dims, out.data(), output_dims, padding_left_dim));
     } else {
       LOG(FATAL) << "Invalid data format: " << format;
     }

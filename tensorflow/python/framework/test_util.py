@@ -337,13 +337,13 @@ def NHWCToNCHW(input_tensor):
   """Converts the input from the NHWC format to NCHW.
 
   Args:
-    input_tensor: a 3-, 4-, or 5-D tensor, or an array representing shape
+    input_tensor: a 4- or 5-D tensor, or an array representing shape
 
   Returns:
     converted tensor or shape array
   """
   # tensor dim -> new axis order
-  new_axes = {3: [0, 2, 1], 4: [0, 3, 1, 2], 5: [0, 4, 1, 2, 3]}
+  new_axes = {4: [0, 3, 1, 2], 5: [0, 4, 1, 2, 3]}
   if isinstance(input_tensor, ops.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])

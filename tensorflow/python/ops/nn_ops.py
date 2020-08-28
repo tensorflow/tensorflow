@@ -1752,14 +1752,12 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       name=name)
 
 
-def convert_padding(padding, expected_length=4):
+def convert_padding(padding):
   """Converts Python padding to C++ padding for ops which take EXPLICIT padding.
 
   Args:
     padding: the `padding` argument for a Python op which supports EXPLICIT
       padding.
-    expected_length: Expected number of entries in the padding list when
-      explicit padding is used.
 
   Returns:
     (padding, explicit_paddings) pair, which should be passed as attributes to a
@@ -1785,9 +1783,9 @@ def convert_padding(padding, expected_length=4):
                          "be a list/tuple of size 2. Element with index %d of "
                          "padding has size %d" % (i, len(dim_paddings)))
       explicit_paddings.extend(dim_paddings)
-    if len(padding) != expected_length:
-      raise ValueError("When padding is a list, it must be of size %d. Got "
-                       "padding of size: %d" % (expected_length, len(padding)))
+    if len(padding) != 4:
+      raise ValueError("When padding is a list, it must be of size 4. Got "
+                       "padding of size: %d" % len(padding))
     padding = "EXPLICIT"
   return padding, explicit_paddings
 
@@ -4483,15 +4481,8 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
       of the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `N` or `N+2`. The
       stride of the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
-      padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
-      [pad_top, pad_bottom], [pad_left, pad_right]]`. When using explicit
-      padding, the size of the paddings cannot be greater than the sliding
-      window size.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. Specifies the channel dimension. For N=1 it can be
       either "NWC" (default) or "NCW", for N=2 it can be either "NHWC" (default)
       or "NCHW" and for N=3 either "NDHWC" (default) or "NCDHW".
@@ -4517,20 +4508,12 @@ def max_pool_v2(input, ksize, strides, padding, data_format=None, name=None):
   else:
     channel_index = 1 if data_format.startswith("NC") else n + 1
 
-  if isinstance(padding, (list, tuple)) and data_format == "NCHW_VECT_C":
-    raise ValueError("Data formats NCHW_VECT_C is not yet supported with "
-                     "explicit padding")
-
   ksize = _get_sequence(ksize, n, channel_index, "ksize")
   strides = _get_sequence(strides, n, channel_index, "strides")
 
-  if (isinstance(padding, (list, tuple)) and n == 3):
-    raise ValueError("Explicit padding is not yet supported with an input "
-                     "tensor of rank 5")
-
   max_pooling_ops = {
       1: max_pool1d,
-      2: max_pool2d,
+      2: gen_nn_ops.max_pool,
       3: gen_nn_ops.max_pool3d
   }
 
@@ -4562,15 +4545,8 @@ def max_pool(value,
       The size of the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`.
       The stride of the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
-      padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
-      [pad_top, pad_bottom], [pad_left, pad_right]]`. When using explicit
-      padding, the size of the paddings cannot be greater than the sliding
-      window size.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm.
+      See the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
     name: Optional name for the operation.
     input: Alias for value.
@@ -4587,10 +4563,6 @@ def max_pool(value,
 
     ksize = _get_sequence(ksize, 2, channel_index, "ksize")
     strides = _get_sequence(strides, 2, channel_index, "strides")
-    if isinstance(padding, (list, tuple)) and data_format == "NCHW_VECT_C":
-      raise ValueError("Data formats NCHW_VECT_C is not yet supported with "
-                       "explicit padding")
-    padding, explicit_paddings = convert_padding(padding)
     if ((np.isscalar(ksize) and ksize == 0) or
         (isinstance(ksize,
                     (list, tuple, np.ndarray)) and any(v == 0 for v in ksize))):
@@ -4601,7 +4573,6 @@ def max_pool(value,
         ksize=ksize,
         strides=strides,
         padding=padding,
-        explicit_paddings=explicit_paddings,
         data_format=data_format,
         name=name)
 
@@ -4620,14 +4591,8 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
       window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1` or `3`. The stride of
       the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
-      padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NWC"`, this should be in the form `[[0, 0], [pad_left,
-      pad_right], [0, 0]]`. When explicit padding used and data_format is
-      `"NCW"`, this should be in the form `[[0, 0], [0, 0], [pad_left,
-      pad_right]]`. When using explicit padding, the size of the paddings cannot
-      be greater than the sliding window size.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
     data_format: An optional string from: "NWC", "NCW". Defaults to "NWC".
     name: A name for the operation (optional).
 
@@ -4636,17 +4601,11 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
     The max pooled output tensor.
   """
   with ops.name_scope(name, "MaxPool1d", [input]) as name:
-    if isinstance(padding, (list, tuple)) and data_format == "NCHW_VECT_C":
-      raise ValueError("Data formats NCHW_VECT_C is not yet supported with "
-                       "explicit padding")
     if data_format is None:
       data_format = "NWC"
     channel_index = 1 if data_format.startswith("NC") else 2
     ksize = [1] + _get_sequence(ksize, 1, channel_index, "ksize")
     strides = [1] + _get_sequence(strides, 1, channel_index, "strides")
-    padding, explicit_paddings = convert_padding(padding, 3)
-    if padding == "EXPLICIT":
-      explicit_paddings = [0, 0] + explicit_paddings
 
     expanding_dim = 1 if data_format == "NWC" else 2
     data_format = "NHWC" if data_format == "NWC" else "NCHW"
@@ -4657,7 +4616,6 @@ def max_pool1d(input, ksize, strides, padding, data_format="NWC", name=None):
         ksize=ksize,
         strides=strides,
         padding=padding,
-        explicit_paddings=explicit_paddings,
         data_format=data_format,
         name=name)
     return array_ops.squeeze(result, expanding_dim)
@@ -4676,15 +4634,8 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
       the window for each dimension of the input tensor.
     strides: An int or list of `ints` that has length `1`, `2` or `4`. The
       stride of the sliding window for each dimension of the input tensor.
-    padding: Either the `string `"SAME"` or `"VALID"` indicating the type of
-      padding algorithm to use, or a list indicating the explicit paddings at
-      the start and end of each dimension. When explicit padding is used and
-      data_format is `"NHWC"`, this should be in the form `[[0, 0], [pad_top,
-      pad_bottom], [pad_left, pad_right], [0, 0]]`. When explicit padding used
-      and data_format is `"NCHW"`, this should be in the form `[[0, 0], [0, 0],
-      [pad_top, pad_bottom], [pad_left, pad_right]]`. When using explicit
-      padding, the size of the paddings cannot be greater than the sliding
-      window size.
+    padding: A string, either `'VALID'` or `'SAME'`. The padding algorithm. See
+      the "returns" section of `tf.nn.convolution` for details.
     data_format: A string. 'NHWC', 'NCHW' and 'NCHW_VECT_C' are supported.
     name: Optional name for the operation.
 
@@ -4699,17 +4650,12 @@ def max_pool2d(input, ksize, strides, padding, data_format="NHWC", name=None):
 
     ksize = _get_sequence(ksize, 2, channel_index, "ksize")
     strides = _get_sequence(strides, 2, channel_index, "strides")
-    if isinstance(padding, (list, tuple)) and data_format == "NCHW_VECT_C":
-      raise ValueError("Data formats NCHW_VECT_C is not yet supported with "
-                       "explicit padding")
-    padding, explicit_paddings = convert_padding(padding)
 
     return gen_nn_ops.max_pool(
         input,
         ksize=ksize,
         strides=strides,
         padding=padding,
-        explicit_paddings=explicit_paddings,
         data_format=data_format,
         name=name)
 # pylint: enable=redefined-builtin
