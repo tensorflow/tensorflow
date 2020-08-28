@@ -110,41 +110,40 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device_base) {
 
 se::DeviceMemoryAllocator* GetAllocator(
     absl::optional<se::TfAllocatorAdapter>* tf_allocator_adapter,
-    OpKernelContext* ctx, const XlaPlatformInfo& platform_info) {
+    DeviceBase* device, se::Stream* stream,
+    const XlaPlatformInfo& platform_info) {
   if (platform_info.custom_allocator()) {
     return platform_info.custom_allocator();
   }
-  if (!ctx->op_device_context()) {
+  if (!stream) {
     // Stream is not set for the host platform.
     se::Platform* platform =
         se::MultiPlatformManager::PlatformWithId(platform_info.platform_id())
             .ValueOrDie();
-    tf_allocator_adapter->emplace(ctx->device()->GetAllocator({}), platform);
+    tf_allocator_adapter->emplace(device->GetAllocator({}), platform);
     return &tf_allocator_adapter->value();
   }
-  tf_allocator_adapter->emplace(ctx->device()->GetAllocator({}),
-                                ctx->op_device_context()->stream());
+  tf_allocator_adapter->emplace(device->GetAllocator({}), stream);
   return &tf_allocator_adapter->value();
 }
 
 XlaCompiler::Options GenerateCompilerOptions(
-    const XlaCompilationCache& cache, OpKernelContext* ctx,
-    const XlaPlatformInfo& platform_info, bool has_ref_vars,
+    const XlaCompilationCache& cache,
+    const FunctionLibraryRuntime& function_library, DeviceBase* device,
+    se::Stream* stream, const XlaPlatformInfo& platform_info, bool has_ref_vars,
     absl::optional<se::TfAllocatorAdapter>* tf_allocator_adapter) {
-  CHECK(ctx->function_library());
   XlaCompiler::Options options;
   options.client = static_cast<xla::LocalClient*>(cache.client());
-  if (ctx->op_device_context() != nullptr) {
-    options.device_ordinal =
-        ctx->op_device_context()->stream()->parent()->device_ordinal();
+  if (stream != nullptr) {
+    options.device_ordinal = stream->parent()->device_ordinal();
   }
   options.device_type = cache.device_type();
-  options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
-  options.graph_def_version = ctx->function_library()->graph_def_version();
+  options.flib_def = function_library.GetFunctionLibraryDefinition();
+  options.graph_def_version = function_library.graph_def_version();
   options.allow_cpu_custom_calls =
       (platform_info.platform_id() == se::host::kHostPlatformId);
   options.device_allocator =
-      GetAllocator(tf_allocator_adapter, ctx, platform_info);
+      GetAllocator(tf_allocator_adapter, device, stream, platform_info);
   if (platform_info.xla_device_metadata()) {
     options.shape_representation_fn =
         platform_info.xla_device_metadata()->shape_representation_fn();

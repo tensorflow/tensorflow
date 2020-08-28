@@ -92,15 +92,19 @@ XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device);
 //
 // This is necessary because for XLA devices the underlying TF allocator returns
 // dummy tensors.
+//
+// `stream` parameter is nullable when running on host.
 se::DeviceMemoryAllocator* GetAllocator(
     absl::optional<se::TfAllocatorAdapter>* tf_allocator_adapter,
-    OpKernelContext* ctx, const XlaPlatformInfo& platform_info);
+    DeviceBase* device, se::Stream* stream,
+    const XlaPlatformInfo& platform_info);
 
 // Returns created options for the XLA compiler, and writes the used allocator
 // into `tf_allocator_adapter`.
 XlaCompiler::Options GenerateCompilerOptions(
-    const XlaCompilationCache& cache, OpKernelContext* ctx,
-    const XlaPlatformInfo& platform_info, bool has_ref_vars,
+    const XlaCompilationCache& cache,
+    const FunctionLibraryRuntime& function_library, DeviceBase* device,
+    se::Stream* stream, const XlaPlatformInfo& platform_info, bool has_ref_vars,
     absl::optional<se::TfAllocatorAdapter>* tf_allocator_adapter);
 
 }  // namespace tensorflow
