@@ -15,9 +15,19 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 
+#include <stdint.h>
+#include <string.h>
+
+#include <string>
+#include <vector>
+
 #include <fp16.h>
 #include "absl/strings/str_cat.h"
+#include "absl/types/span.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/common/util.h"
 

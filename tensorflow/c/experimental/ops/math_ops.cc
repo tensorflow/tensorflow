@@ -51,5 +51,60 @@ Status Conj(AbstractContext* ctx,
   return Status::OK();
 }
 
+Status Add(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr add_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(add_op->Reset("AddV2", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(add_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(add_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(add_op->AddInput(inputs[0]));
+  TF_RETURN_IF_ERROR(add_op->AddInput(inputs[1]));
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(add_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+Status MatMul(AbstractContext* ctx,
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name,
+              bool transpose_a = false, bool transpose_b = false) {
+  AbstractOperationPtr matmul_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(matmul_op->Reset("MatMul", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(matmul_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(matmul_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(matmul_op->AddInput(inputs[0]));
+  TF_RETURN_IF_ERROR(matmul_op->AddInput(inputs[1]));
+
+  TF_RETURN_IF_ERROR(matmul_op->SetAttrBool("transpose_a", transpose_a));
+  TF_RETURN_IF_ERROR(matmul_op->SetAttrBool("transpose_b", transpose_b));
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(matmul_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+Status Neg(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr neg_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(neg_op->Reset("Neg", /*raw_device_name=*/nullptr));
+  if (isa<TracingOperation>(neg_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<TracingOperation>(neg_op.get())->SetOpName(name));
+  }
+  TF_RETURN_IF_ERROR(neg_op->AddInput(inputs[0]));
+
+  int num_retvals = 1;
+  return neg_op->Execute(outputs, &num_retvals);
+}
+
 }  // namespace ops
 }  // namespace tensorflow

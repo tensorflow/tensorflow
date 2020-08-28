@@ -451,6 +451,25 @@ help notice where the inference call is made.
 
 ```
 
+### Enable TensorFlow Lite tracing
+
+To enable TensorFlow Lite tracing, set the Android system property
+`debug.tflite.tracing` to 1 before starting the Android app.
+
+```shell
+adb shell setprop debug.tflite.trace 1
+```
+
+If this property has been set when TensorFlow Lite interpreter is initialized,
+key events (e.g., operator invocation) from the interpreter will be traced.
+
+After you captured all the traces, disable tracing by setting the property value
+to 0.
+
+```shell
+adb shell setprop debug.tflite.trace 0
+```
+
 ### Android Studio CPU Profiler
 
 Capture traces with the

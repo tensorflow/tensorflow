@@ -40,6 +40,8 @@ class CPlatform : public Platform {
  public:
   explicit CPlatform(SP_Platform platform,
                      void (*destroy_platform)(SP_Platform*),
+                     SP_PlatformFns platform_fns,
+                     void (*destroy_platform_fns)(SP_PlatformFns*),
                      SP_StreamExecutor stream_executor, SP_TimerFns timer_fns);
   ~CPlatform() override;
 
@@ -69,6 +71,8 @@ class CPlatform : public Platform {
  private:
   SP_Platform platform_;
   void (*destroy_platform_)(SP_Platform*);
+  SP_PlatformFns platform_fns_;
+  void (*destroy_platform_fns_)(SP_PlatformFns*);
   SP_StreamExecutor stream_executor_;
   SP_TimerFns timer_fns_;
   const std::string name_;

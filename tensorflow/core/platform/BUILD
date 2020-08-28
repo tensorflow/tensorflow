@@ -54,6 +54,9 @@ load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
+
 package(
     default_visibility = ["//tensorflow:__subpackages__"],
     licenses = ["notice"],  # Apache 2.0
@@ -127,6 +130,7 @@ cc_library(
 cc_library(
     name = "bfloat16",
     hdrs = ["bfloat16.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":byte_order",
         "//third_party/eigen3",
@@ -145,6 +149,7 @@ cc_library(
 cc_library(
     name = "byte_order",
     hdrs = ["byte_order.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -168,6 +173,7 @@ cc_library(
 cc_library(
     name = "cord",
     hdrs = ["cord.h"],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":platform",
     ] + tf_platform_deps("cord"),
@@ -440,6 +446,7 @@ cc_library(
 cc_library(
     name = "platform",
     hdrs = ["platform.h"],
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -772,6 +779,7 @@ cc_library(
         "ctstring_internal.h",
         "tstring.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         ":cord",
         "@com_google_absl//absl/strings",
@@ -789,6 +797,7 @@ filegroup(
 cc_library(
     name = "types",
     hdrs = ["types.h"],
+    compatible_with = get_compatible_with_portable(),
     # TODO(b/161569340): Short-term fix. Remove this visibility rule.
     visibility = [
         "//tensorflow:__subpackages__",

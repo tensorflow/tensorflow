@@ -40,6 +40,7 @@ limitations under the License.
 #include "llvm/Support/Debug.h"
 #include "mlir/Analysis/LoopAnalysis.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/FakeQuantSupport.h"  // from @llvm-project
+#include "mlir/Dialect/Quant/QuantOps.h"  // from @llvm-project
 #include "mlir/Dialect/Quant/UniformSupport.h"  // from @llvm-project
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -79,13 +80,23 @@ namespace {
 // Prepare TF operations in functions for subsequent legalization.
 class PrepareTFPass : public PassWrapper<PrepareTFPass, FunctionPass> {
  public:
-  explicit PrepareTFPass() : unfold_batch_matmul_(true) {}
-  explicit PrepareTFPass(bool unfold_batch_matmul)
-      : unfold_batch_matmul_(unfold_batch_matmul) {}
+  PrepareTFPass() = default;
+  PrepareTFPass(const PrepareTFPass &) {}
+  explicit PrepareTFPass(bool unfold_batch_matmul) {
+    unfold_batch_matmul_ = unfold_batch_matmul;
+  }
   void runOnFunction() override;
 
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mhlo::MhloDialect, quant::QuantizationDialect,
+                    TFL::TensorFlowLiteDialect>();
+  }
+
  private:
-  bool unfold_batch_matmul_;
+  Option<bool> unfold_batch_matmul_{
+      *this, "tfl-unfold-batch-matmul",
+      llvm::cl::desc("Unfold BatchMatMul into individual MatMul ops."),
+      llvm::cl::init(true)};
 };
 
 template <class TFFakeQuantOp>

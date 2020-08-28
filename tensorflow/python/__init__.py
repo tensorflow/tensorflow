@@ -36,6 +36,7 @@ import traceback
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,g-bad-import-order,g-import-not-at-top
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 
 from tensorflow.python.eager import context
 

@@ -3468,3 +3468,53 @@ func @testCumprod(%arg: tensor<8x16xf32>) -> tensor<8x16xf32> {
   %0 = "tf.Cumprod"(%arg, %axis) : (tensor<8x16xf32>, tensor<i32>) -> tensor<8x16xf32>
   return %0 : tensor<8x16xf32>
 }
+
+// -----
+
+func @testTile(%arg0: tensor<2x3x?xf32>) {
+  %cst = constant dense <[2, 3, 4]> : tensor<3xi32>
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3x?xf32>, tensor<3xi32>) -> tensor<4x9x?xf32>
+  return
+}
+
+// -----
+
+func @testTileMultipleNotRank1(%arg0: tensor<2x3xf32>, %arg1: tensor<1x1xi32>) {
+  // expected-error @+1 {{expected multiples to be rank 1, got rank = 2}}
+  %0 = "tf.Tile"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<1x1xi32>) -> tensor<2x3xf32>
+  return
+}
+
+// -----
+
+func @testTileInputRankNotEqualToMultiplesSize(%arg0: tensor<2x3xf32>, %arg1: tensor<3xi32>) {
+  // expected-error @+1 {{expected size of multiples equal to rank of input, got multiples of size 3, and input of rank 2}}
+  %0 = "tf.Tile"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<3xi32>) -> tensor<2x3xf32>
+  return
+}
+
+// -----
+
+func @testTileInputRankNotEqualToOutputRank(%arg0: tensor<2x3xf32>, %arg1: tensor<2xi32>) {
+  // expected-error @+1 {{expected rank of input to equal to rank of output, got input of rank 2, and output of rank 3}}
+  %0 = "tf.Tile"(%arg0, %arg1) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3x1xf32>
+  return
+}
+
+// -----
+
+func @testTileNegativeMultiples(%arg0: tensor<2x3xf32>) {
+  %cst = constant dense <[-1, 1]> : tensor<2xi32>
+  // expected-error @+1 {{expected multiples to be non-negative, got multiples[0] = -1}}
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
+  return
+}
+
+// -----
+
+func @testTileInvalidOutputShape(%arg0: tensor<2x3xf32>) {
+  %cst = constant dense <[2, 3]> : tensor<2xi32>
+  // expected-error @+1 {{requires input.shape[1] (3) * 3 to be equal to output.shape[1] (6)}}
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<4x6xf32>
+  return
+}

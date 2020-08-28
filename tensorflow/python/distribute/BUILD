@@ -869,6 +869,7 @@ py_library(
     srcs = ["multi_worker_test_base.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":multi_process_runner",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:distributed_framework_test_lib",
@@ -878,9 +879,19 @@ py_library(
         "//tensorflow/python:session",
         "//tensorflow/python:training_lib",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:remote",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "multi_worker_test_base_test",
+    srcs = ["multi_worker_test_base_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":multi_worker_test_base",
     ],
 )
 
@@ -1780,16 +1791,15 @@ py_library(
     srcs = ["parameter_server_strategy_v2.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":distribute_lib",
         ":parameter_server_strategy",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
+        ":sharded_variable",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:sharded_variable",
-        "//tensorflow/python/distribute:values",
+        "//tensorflow/python:partitioned_variables",
+        "//tensorflow/python:tensor_shape",
+        "//tensorflow/python:tf_decorator",
+        "//tensorflow/python:variable_scope",
+        "@absl_py//absl/logging",
     ],
 )
 
@@ -1801,9 +1811,17 @@ tf_py_test(
     deps = [
         ":multi_worker_test_base",
         ":parameter_server_strategy_v2",
+        ":sharded_variable",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:init_ops_v2",
+        "//tensorflow/python:linalg_ops_impl",
+        "//tensorflow/python:partitioned_variables",
         "//tensorflow/python:training_server_lib",
         "//tensorflow/python:variables",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:remote",
         "//tensorflow/python/eager:test",
     ],
 )

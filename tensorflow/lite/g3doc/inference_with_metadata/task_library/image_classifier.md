@@ -40,7 +40,7 @@ API.
     [pretrained image classification models from TensorFlow Lite Hosted Models](https://www.tensorflow.org/lite/guide/hosted_models#image_classification).
 
 *   The
-    [pretrained image classification models on TensorFlow Hub](https://tfhub.dev/s?deployment-format=lite&module-type=image-classification).
+    [pretrained image classification models on TensorFlow Hub](https://tfhub.dev/tensorflow/collections/lite/task-library/image-classifier/1).
 
 *   Models created by
     [AutoML Vision Edge Image Classification](https://cloud.google.com/vision/automl/docs/edge-quickstart).

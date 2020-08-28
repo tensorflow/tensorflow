@@ -70,6 +70,7 @@ class MatMulTest(test_lib.TestCase):
 
 def _GetMatMulTest(a_np_, b_np_, use_static_shape_, **kwargs_):
 
+  @test_util.run_without_tensor_float_32("Tests matmul")
   def Test(self):
     np_val = np.matrix(a_np_) * np.matrix(b_np_)
 

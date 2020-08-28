@@ -41,6 +41,9 @@ REGISTER_KERNEL_BUILDER(Name("TensorMapErase").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("TensorMapHasKey").Device(DEVICE_CPU),
                         TensorMapHasKey);
 
+REGISTER_KERNEL_BUILDER(Name("TensorMapStackKeys").Device(DEVICE_CPU),
+                        TensorMapStackKeys);
+
 #undef REGISTER_TENSOR_MAP_OPS_CPU
 
 #define REGISTER_TENSOR_MAP_OPS_CPU(T)

@@ -19,7 +19,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-Status BuildXlaCompilationCache(OpKernelContext* ctx,
+Status BuildXlaCompilationCache(DeviceBase* device,
                                 const XlaPlatformInfo& platform_info,
                                 XlaCompilationCache** cache) {
   if (platform_info.xla_device_metadata()) {
@@ -59,7 +59,7 @@ Status BuildXlaCompilationCache(OpKernelContext* ctx,
   xla::LocalClientOptions client_options;
   client_options.set_platform(platform.ValueOrDie());
   client_options.set_intra_op_parallelism_threads(
-      ctx->device()->tensorflow_cpu_worker_threads()->num_threads);
+      device->tensorflow_cpu_worker_threads()->num_threads);
   auto client = xla::ClientLibrary::GetOrCreateLocalClient(client_options);
   if (!client.ok()) {
     return client.status();

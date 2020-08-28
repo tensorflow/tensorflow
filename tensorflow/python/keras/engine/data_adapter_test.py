@@ -446,7 +446,7 @@ class GenericArrayLikeDataAdapterTest(DataAdapterTestBase):
   def test_training(self):
     # First verify that DummyArrayLike can't be converted to a Tensor
     with self.assertRaises(TypeError):
-      ops.convert_to_tensor_v2(self.arraylike_input)
+      ops.convert_to_tensor_v2_with_dispatch(self.arraylike_input)
 
     # Then train on the array like.
     # It should not be converted to a tensor directly (which would force it into
@@ -914,7 +914,7 @@ class DataHandlerTest(keras_parameterized.TestCase):
     def generator():
       for _ in range(2):
         for step in range(3):
-          yield (ops.convert_to_tensor_v2([step]),)
+          yield (ops.convert_to_tensor_v2_with_dispatch([step]),)
 
     data_handler = data_adapter.DataHandler(
         generator(), epochs=2, steps_per_epoch=3)
@@ -1007,20 +1007,20 @@ class TestValidationSplit(keras_parameterized.TestCase):
       y = np.array([0, 2, 4, 6, 8])
       sw = np.array([0, 4, 8, 12, 16])
     else:
-      x = ops.convert_to_tensor_v2([0, 1, 2, 3, 4])
-      y = ops.convert_to_tensor_v2([0, 2, 4, 6, 8])
-      sw = ops.convert_to_tensor_v2([0, 4, 8, 12, 16])
+      x = ops.convert_to_tensor_v2_with_dispatch([0, 1, 2, 3, 4])
+      y = ops.convert_to_tensor_v2_with_dispatch([0, 2, 4, 6, 8])
+      sw = ops.convert_to_tensor_v2_with_dispatch([0, 4, 8, 12, 16])
 
     (train_x, train_y, train_sw), (val_x, val_y, val_sw) = (
         data_adapter.train_validation_split((x, y, sw), validation_split=0.2))
 
     if use_numpy:
-      train_x = ops.convert_to_tensor_v2(train_x)
-      train_y = ops.convert_to_tensor_v2(train_y)
-      train_sw = ops.convert_to_tensor_v2(train_sw)
-      val_x = ops.convert_to_tensor_v2(val_x)
-      val_y = ops.convert_to_tensor_v2(val_y)
-      val_sw = ops.convert_to_tensor_v2(val_sw)
+      train_x = ops.convert_to_tensor_v2_with_dispatch(train_x)
+      train_y = ops.convert_to_tensor_v2_with_dispatch(train_y)
+      train_sw = ops.convert_to_tensor_v2_with_dispatch(train_sw)
+      val_x = ops.convert_to_tensor_v2_with_dispatch(val_x)
+      val_y = ops.convert_to_tensor_v2_with_dispatch(val_y)
+      val_sw = ops.convert_to_tensor_v2_with_dispatch(val_sw)
 
     self.assertEqual(train_x.numpy().tolist(), [0, 1, 2, 3])
     self.assertEqual(train_y.numpy().tolist(), [0, 2, 4, 6])

@@ -60,6 +60,7 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
 
   // Output fusions are not currently supported on GPUs.
   if (producer->opcode() == HloOpcode::kFusion) {
+    VLOG(4) << "Producer " << producer->name() << " is a fusion op";
     return false;
   }
   // Cost condition: not fuse (simple, expensive producers) and (consumers who
@@ -67,11 +68,15 @@ bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
   if (producer->opcode() != HloOpcode::kFusion &&
       consumer->ReusesOperandElements(operand_index) &&
       is_expensive(*producer)) {
+    VLOG(4) << "Do not fuse simple, expensive producer " << producer->name()
+            << " and consumer which reuses operand elements.";
     return false;
   }
 
   if (!IsProducerConsumerFusible(*producer, *consumer) ||
       !InstructionFusion::ShouldFuse(consumer, operand_index)) {
+    VLOG(4) << "Producer " << producer->name()
+            << " is not fusible or should not be fused.";
     return false;
   }
   return true;
@@ -107,8 +112,13 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     fusion_node_evaluations_.emplace(consumer,
                                      FusionNodeIndexingEvaluation(consumer));
   }
-  return !fusion_node_evaluations_.at(consumer).AverageCodeDuplicationTooHigh(
-      producer);
+  if (fusion_node_evaluations_.at(consumer).AverageCodeDuplicationTooHigh(
+          producer)) {
+    VLOG(5) << "Fusion of " << producer->name() << " into " << consumer->name()
+            << " would result in overly large code duplication.";
+    return false;
+  }
+  return true;
 }
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,

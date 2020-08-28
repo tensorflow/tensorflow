@@ -59,34 +59,30 @@ class ConvolutionTransposed3D : public GPUOperation {
                           const ConvolutionTransposed3DAttributes& attr,
                           const DeviceInfo& device_info);
   template <DataType T>
-  void UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights);
+  void UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
+                     bool weights_are_buffer);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
-                            absl::Span<T> dst);
+                            absl::Span<T> dst, bool weights_are_buffer);
 
   std::string GenerateConvolutionTransposed3DCode(const OperationDef& op_def,
                                                   bool weights_are_buffer,
                                                   const int4& block_size);
 
-  bool weights_are_buffer_;
-
-  int3 kernel_size_;
   int3 stride_;
-  int3 padding_;
-
   int4 block_size_ = int4(1, 1, 1, 1);  // WHDS
 };
 
 template <DataType T>
 void ConvolutionTransposed3D::UploadWeights(
-    const tflite::gpu::Tensor<OHWDI, T>& weights) {
+    const tflite::gpu::Tensor<OHWDI, T>& weights, bool weights_are_buffer) {
   const int dst_depth =
       AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.z);
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int kernel_x = kernel_size_.x;
-  const int kernel_y = kernel_size_.y;
-  const int kernel_z = kernel_size_.z;
+  const int kernel_x = weights.shape.w;
+  const int kernel_y = weights.shape.h;
+  const int kernel_z = weights.shape.d;
   int texture_width = dst_depth;
   int texture_height = src_depth * kernel_x * kernel_y * kernel_z;
 
@@ -99,13 +95,15 @@ void ConvolutionTransposed3D::UploadWeights(
 
   if (f32_weights) {
     float4* ptr = reinterpret_cast<float4*>(data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count),
+                         weights_are_buffer);
   } else {
     half4* ptr = reinterpret_cast<half4*>(data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
+    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count),
+                         weights_are_buffer);
   }
 
-  if (weights_are_buffer_) {
+  if (weights_are_buffer) {
     BufferDescriptor desc;
     desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
     desc.element_size = 16;
@@ -151,13 +149,14 @@ void ConvolutionTransposed3D::UploadWeights(
 
 template <DataType S, typename T>
 void ConvolutionTransposed3D::RearrangeWeightsData(
-    const tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst) {
+    const tflite::gpu::Tensor<OHWDI, S>& weights, absl::Span<T> dst,
+    bool weights_are_buffer) {
   const int dst_depth =
       AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.w);
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int kernel_x = kernel_size_.x;
-  const int kernel_y = kernel_size_.y;
-  const int kernel_z = kernel_size_.z;
+  const int kernel_x = weights.shape.w;
+  const int kernel_y = weights.shape.h;
+  const int kernel_z = weights.shape.d;
   int texture_width = dst_depth;
   int texture_height = src_depth * kernel_x * kernel_y * kernel_z;
 
@@ -182,7 +181,7 @@ void ConvolutionTransposed3D::RearrangeWeightsData(
                   }
                 }
               }
-              if (weights_are_buffer_) {
+              if (weights_are_buffer) {
                 dst[counter++] = filters[0];
                 dst[counter++] = filters[1];
                 dst[counter++] = filters[2];

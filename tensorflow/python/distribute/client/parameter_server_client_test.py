@@ -26,7 +26,6 @@ from absl import logging
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.client import client
 from tensorflow.python.distribute.client import parameter_server_client
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -37,7 +36,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -107,7 +105,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
 
   def testBasic(self):
     self.client._strategy.extended._variable_count = 0
-    with self.client.context():
+    with self.client.strategy.scope():
       v1 = variables.Variable(initial_value=0.0)
       v2 = variables.Variable(initial_value=1.0)
     self.assertEqual(self.client._strategy.extended._variable_count, 2)
@@ -141,7 +139,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
     def input_fn():
       return dataset_ops.DatasetV2.range(1, 2)
 
-    with self.client.context():
+    with self.client.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int64)
 
     @def_function.function
@@ -165,7 +163,7 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
     def input_fn():
       return dataset_ops.DatasetV2.from_tensor_slices([2] * 10)
 
-    with self.client.context():
+    with self.client.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int32)
 
     # TODO(yuefengz): the following tf.function has a return value which is None
@@ -232,89 +230,6 @@ class ParameterServerClientTest(TestCaseWithErrorReportingThread):
     with self.assertRaises(ValueError):
       self.client.create_per_worker_dataset(input_fn)
 
-
-class LimitedClosureQueueSizeBasicTest(ParameterServerClientTest):
-  """Test basic functionality works with explicit maximum closure queue size.
-
-  Execute the same set of test cases as in ParameterServerClientTest, with an
-  explicit size limit for the closure queue. Note that even when the queue size
-  is set to infinite, there is still a maximum practical size (depends on host
-  memory limit) that might cause the queue.put operations to be blocking when
-  scheduling a large number of closures on a big cluster. These tests make sure
-  that the client does not run into deadlocks in such scenario.
-  """
-
-  @classmethod
-  def setUpClass(cls):
-    super(LimitedClosureQueueSizeBasicTest, cls).setUpClass()
-    client._CLOSURE_QUEUE_MAX_SIZE = 2
-    cls.client = make_client(num_workers=3, num_ps=2)
-
-
-class VariablePartitioningScopeTest(test.TestCase):
-
-  @classmethod
-  def setUpClass(cls):
-    super(VariablePartitioningScopeTest, cls).setUpClass()
-    cls.client = make_client(num_workers=3, num_ps=2)
-
-  def testBasic(self):
-    with self.client.context():
-      with self.client.experimental_variable_partitioning_scope():
-        init1 = init_ops_v2.Constant([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-        v1 = variables.Variable(
-            initial_value=lambda: init1(shape=(5, 2), dtype=dtypes.int64),
-            shape=(5, 2),
-            dtype=dtypes.int64)
-
-        init2 = init_ops_v2.Constant([0, 1, 2, 3, 4, 5])
-        v2 = variables.Variable(
-            initial_value=lambda: init2(shape=(6, 1), dtype=dtypes.int64),
-            shape=(6, 1),
-            dtype=dtypes.int64)
-
-    self.assertIsInstance(v1, sharded_variable.ShardedVariable)
-    self.assertLen(v1.variables, 2)
-    self.assertRegex(v1.variables[0].device, "/job:ps/replica:0/task:0")
-    self.assertRegex(v1.variables[1].device, "/job:ps/replica:0/task:1")
-    self.assertAllEqual(v1.variables[0].read_value().numpy(),
-                        [[0, 1], [2, 3], [4, 5]])
-    self.assertAllEqual(v1.variables[1].read_value().numpy(), [[6, 7], [8, 9]])
-
-    self.assertIsInstance(v2, sharded_variable.ShardedVariable)
-    self.assertLen(v2.variables, 2)
-    self.assertRegex(v2.variables[0].device, "/job:ps/replica:0/task:0")
-    self.assertRegex(v2.variables[1].device, "/job:ps/replica:0/task:1")
-    self.assertAllEqual(v2.variables[0].read_value().numpy(), [[0], [1], [2]])
-    self.assertAllEqual(v2.variables[1].read_value().numpy(), [[3], [4], [5]])
-
-  def testSurplusPS(self):
-    with self.client.context():
-      with self.client.experimental_variable_partitioning_scope():
-        initializer = init_ops_v2.Constant([0])
-
-        v = variables.Variable(
-            initial_value=lambda: initializer(shape=(1,), dtype=dtypes.int64),
-            shape=(1,),
-            dtype=dtypes.int64)
-
-    self.assertIsInstance(v, sharded_variable.ShardedVariable)
-    self.assertLen(v.variables, 1)
-    self.assertRegex(v.variables[0].device, "/job:ps/replica:0/task:0")
-    self.assertAllEqual(v.variables[0].read_value().numpy(), [0])
-
-  def testInvalidArgument(self):
-    with self.assertRaisesRegex(ValueError, "initial_value"):
-      with self.client.experimental_variable_partitioning_scope():
-        variables.Variable(initial_value=[0, 1, 2], shape=(3,))
-
-    with self.assertRaisesRegex(ValueError, "shape"):
-      with self.client.experimental_variable_partitioning_scope():
-        initializer = init_ops_v2.Constant([0, 1, 2])
-        variables.Variable(
-            initial_value=lambda: initializer(shape=(3,), dtype=dtypes.int64),
-            dtype=dtypes.int64)
-
   def testPerWorkerValue(self):
     var_shape = tuple()
     var_dtype = dtypes.float32
@@ -350,6 +265,24 @@ class VariablePartitioningScopeTest(test.TestCase):
     self.assertEqual(var_sum, 10.0)
 
 
+class LimitedClosureQueueSizeBasicTest(ParameterServerClientTest):
+  """Test basic functionality works with explicit maximum closure queue size.
+
+  Execute the same set of test cases as in ParameterServerClientTest, with an
+  explicit size limit for the closure queue. Note that even when the queue size
+  is set to infinite, there is still a maximum practical size (depends on host
+  memory limit) that might cause the queue.put operations to be blocking when
+  scheduling a large number of closures on a big cluster. These tests make sure
+  that the client does not run into deadlocks in such scenario.
+  """
+
+  @classmethod
+  def setUpClass(cls):
+    super(LimitedClosureQueueSizeBasicTest, cls).setUpClass()
+    client._CLOSURE_QUEUE_MAX_SIZE = 2
+    cls.client = make_client(num_workers=3, num_ps=2)
+
+
 class ErrorReportingTest(TestCaseWithErrorReportingThread):
 
   @classmethod
@@ -357,7 +290,7 @@ class ErrorReportingTest(TestCaseWithErrorReportingThread):
     super(ErrorReportingTest, cls).setUpClass()
     cls.client = make_client(num_workers=3, num_ps=2)
 
-    with cls.client.context():
+    with cls.client.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
 
   @def_function.function
@@ -476,7 +409,7 @@ class LimitedClosureQueueErrorTest(ErrorReportingTest):
     client._CLOSURE_QUEUE_MAX_SIZE = 2
     cls.client = make_client(num_workers=3, num_ps=2)
 
-    with cls.client.context():
+    with cls.client.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
 
 

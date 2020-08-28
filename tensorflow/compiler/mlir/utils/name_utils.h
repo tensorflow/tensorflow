@@ -13,7 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/tfjs/ir/tfjs_ops.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_UTILS_NAME_UTILS_H_
+#define TENSORFLOW_COMPILER_MLIR_UTILS_NAME_UTILS_H_
 
-// Static initialization for TensorFlow.js op registration.
-static mlir::DialectRegistration<mlir::tfjs::TFJSDialect> tfjs_ops;
+#include <string>
+
+#include "llvm/ADT/StringRef.h"
+#include "mlir/IR/Location.h"  // from @llvm-project
+
+namespace mlir {
+
+// Converts characters in name that are considered illegal in TensorFlow Node
+// name to '.'.
+void LegalizeNodeName(std::string& name);
+
+// Creates a TensorFlow node name from a location.
+std::string GetNameFromLoc(Location loc);
+
+}  // namespace mlir
+
+#endif  // TENSORFLOW_COMPILER_MLIR_UTILS_NAME_UTILS_H_

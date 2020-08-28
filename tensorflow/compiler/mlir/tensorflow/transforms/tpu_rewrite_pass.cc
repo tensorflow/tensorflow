@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/OperationSupport.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
@@ -157,7 +158,9 @@ LogicalResult EncapsulateFuncAndSerialize(FuncOp entry_func,
   // Serialize module and return.
   {
     llvm::raw_string_ostream os(*serialized_func_module);
-    module_for_func.get().print(os);
+    OpPrintingFlags print_flags;
+    print_flags.enableDebugInfo();
+    module_for_func.get().print(os, print_flags);
   }
   return success();
 }

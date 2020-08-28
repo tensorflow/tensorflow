@@ -56,7 +56,6 @@ class EagerContextTest : public ::testing::Test {
     InitDeviceManager();
     context_ = new EagerContext(
         opts, policy,
-        /* default_mirroring_policy */ MIRRORING_NONE,
         /* async */ false,
         /* lazy_copy_function_remote_inputs */ false, device_manager_,
         /* device_mgr_owned */ false, /* rendezvous */ nullptr,

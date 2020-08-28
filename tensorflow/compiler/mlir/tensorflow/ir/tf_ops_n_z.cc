@@ -1144,6 +1144,13 @@ static LogicalResult Verify(SoftmaxCrossEntropyWithLogitsOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// SpaceToBatchNDOp
+//===----------------------------------------------------------------------===//
+
+// TODO(b/157475606): Add Verify(SpaceToBatchNDOp)
+// TODO(b/157475606): Add SpaceToBatchNDOp::inferReturnTypes
+
+//===----------------------------------------------------------------------===//
 // SparseSoftmaxCrossEntropyWithLogitsOp
 //===----------------------------------------------------------------------===//
 
@@ -1777,6 +1784,87 @@ static LogicalResult Verify(TensorScatterUpdateOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// TileOp
+//===----------------------------------------------------------------------===//
+
+// Verifies that,
+//
+// - input has at least rank 1
+// - multiples is rank 1
+// - multiples.size() == input.rank()
+// - input.rank() == output.rank()
+// - Elements in multiples are non-negative
+// - input.shape[i] * multiples[i] == output.shape[i]
+//   for i in [0, input.rank() - 1]
+
+static LogicalResult Verify(TileOp op) {
+  auto input_type = op.input().getType().dyn_cast<RankedTensorType>();
+  auto multiples_type = op.multiples().getType().dyn_cast<RankedTensorType>();
+  auto output_type = op.output().getType().dyn_cast<RankedTensorType>();
+
+  if (multiples_type && multiples_type.getRank() != 1) {
+    return op.emitOpError() << "expected multiples to be rank 1, got rank = "
+                            << multiples_type.getRank();
+  }
+
+  if (input_type && multiples_type && multiples_type.hasStaticShape() &&
+      (input_type.getRank() != multiples_type.getNumElements() ||
+       (input_type.getRank() == 0 && multiples_type.getNumElements() == 1))) {
+    return op.emitOpError()
+           << "expected size of multiples equal to rank of input"
+           << ", got multiples of size " << multiples_type.getNumElements()
+           << ", and input of rank " << input_type.getRank();
+  }
+
+  if (input_type && output_type) {
+    if (input_type.getRank() != output_type.getRank()) {
+      return op.emitOpError()
+             << "expected rank of input to equal to rank of output"
+             << ", got input of rank " << input_type.getRank()
+             << ", and output of rank " << output_type.getRank();
+    }
+
+    DenseIntElementsAttr multiples_attr;
+    if (matchPattern(op.multiples(), m_Constant(&multiples_attr))) {
+      for (int32_t i = 0, e = input_type.getRank(); i < e; ++i) {
+        const int64_t input_dim = input_type.getDimSize(i);
+        const int64_t output_dim = output_type.getDimSize(i);
+        const int64_t m = multiples_attr.getValue<APInt>(i).getSExtValue();
+
+        if (m < 0) {
+          return op.emitOpError()
+                 << "expected multiples to be non-negative, got "
+                 << "multiples[" << i << "] = " << m;
+        }
+
+        if (!ShapedType::isDynamic(input_dim) &&
+            !ShapedType::isDynamic(output_dim) && output_dim != input_dim * m) {
+          return op.emitOpError()
+                 << "requires input.shape[" << i << "] (" << input_dim << ")"
+                 << " * " << m << " to be equal to "
+                 << "output.shape[" << i << "] (" << output_dim << ")";
+        }
+      }
+    }
+  }
+
+  return success();
+}
+
+OpFoldResult TileOp::fold(ArrayRef<Attribute> operands) {
+  DenseIntElementsAttr multiples_attr;
+  if (matchPattern(multiples(), m_Constant(&multiples_attr))) {
+    // Return input directly when multiples are all ones,
+    // regardless what input is.
+    if (multiples_attr.isSplat() &&
+        multiples_attr.getSplatValue<APInt>().getSExtValue() == 1) {
+      return input();
+    }
+  }
+  return {};
+}
+
+//===----------------------------------------------------------------------===//
 // TopKV2Op
 //===----------------------------------------------------------------------===//
 
@@ -1939,11 +2027,9 @@ void TransposeOp::build(OpBuilder &builder, OperationState &result, Value x,
 namespace {
 
 OpFoldResult FoldIdentityTranspose(TransposeOp op) {
-  auto const_perm = dyn_cast_or_null<TF::ConstOp>(op.perm().getDefiningOp());
-  if (!const_perm) return {};
-
-  auto const_value = const_perm.value();
-  const auto elements = const_value.getValues<APInt>();
+  DenseIntElementsAttr perm;
+  if (!matchPattern(op.perm(), m_Constant(&perm))) return {};
+  const auto elements = perm.getValues<APInt>();
 
   for (auto it : llvm::enumerate(elements)) {
     if (it.index() != it.value()) return {};
@@ -1966,14 +2052,14 @@ OpFoldResult FoldCancellableTranspose(TransposeOp op) {
   if (!transpose) return {};
 
   // Permutations defined by constant operations.
-  auto perm0 = dyn_cast_or_null<TF::ConstOp>(op.perm().getDefiningOp());
-  auto perm1 = dyn_cast_or_null<TF::ConstOp>(transpose.perm().getDefiningOp());
-  if (!perm0 || !perm1) return {};
+  DenseIntElementsAttr perm0;
+  DenseIntElementsAttr perm1;
+  if (!matchPattern(op.perm(), m_Constant(&perm0)) ||
+      !matchPattern(transpose.perm(), m_Constant(&perm1)))
+    return {};
 
   // With permutation indices that cancel each other
-  auto perm0_value = perm0.value().cast<DenseIntElementsAttr>();
-  auto perm1_value = perm1.value().cast<DenseIntElementsAttr>();
-  if (!AreCancellablePermutations(perm0_value, perm1_value)) return {};
+  if (!AreCancellablePermutations(perm0, perm1)) return {};
 
   return transpose.x();
 }

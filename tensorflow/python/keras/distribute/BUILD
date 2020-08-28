@@ -245,7 +245,6 @@ distribute_py_test(
     main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_cuda11",
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.
@@ -465,6 +464,21 @@ distribute_py_test(
         "//tensorflow/python/distribute:strategy_combinations",
         "//tensorflow/python/eager:test",
         "//tensorflow/python/keras:metrics",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_models_test",
+    srcs = ["keras_models_test.py"],
+    main = "keras_models_test.py",
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    deps = [
+        "//tensorflow/python/distribute:combinations",
+        "//tensorflow/python/distribute:strategy_combinations",
+        "//tensorflow/python/eager:test",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -823,7 +837,6 @@ py_test(
     shard_count = 1,
     tags = [
         "no_oss",  # TODO(b/162119374): enable it in OSS.
-        "notap",  # TODO(b/165836402): enable after testing it isn't flaky.
     ],
     deps = [
         "//tensorflow/python:constant_op",

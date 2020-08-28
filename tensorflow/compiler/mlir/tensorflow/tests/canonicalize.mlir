@@ -568,6 +568,14 @@ func @testSelectElseUnranked(%arg0: tensor<3xi1>, %arg1: tensor<3x2xf16>, %arg2:
   return %0: tensor<*xf16>
 }
 
+// CHECK-LABEL: testTileMultiplesAllOnes
+func @testTileMultiplesAllOnes(%arg0: tensor<2x3xf32>) -> tensor<2x3xf32> {
+  %cst = constant dense <[1, 1]> : tensor<2xi32>
+  // CHECK: return %arg0
+  %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<2x3xf32>
+  return %0: tensor<2x3xf32>
+}
+
 // CHECK-LABEL: testLogicalNotOfEqual
 func @testLogicalNotOfEqual(%arg0: tensor<8x16xf32>, %arg1: tensor<8x16xf32>) -> tensor<8x16xi1> {
   %0 = "tf.Equal"(%arg0, %arg1) : (tensor<8x16xf32>, tensor<8x16xf32>) -> tensor<8x16xi1>
@@ -702,6 +710,15 @@ func @identityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x5x6xf32> {
   // CHECK: return %arg0
 }
 
+// CHECK-LABEL: @identityTransposeConst
+func @identityTransposeConst(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x5x6xf32> {
+  %0 = constant dense<[0, 1, 2, 3, 4]> : tensor<5xi32>
+  %1 = "tf.Transpose"(%arg0, %0) : (tensor<2x3x4x5x6xf32>, tensor<5xi32>) -> tensor<2x3x4x5x6xf32>
+
+  return %1 : tensor<2x3x4x5x6xf32>
+  // CHECK: return %arg0
+}
+
 // CHECK-LABEL: @nonIdentityTranspose
 func @nonIdentityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x6x5xf32> {
   %0 = "tf.Const"() {value = dense<[0, 1, 2, 4, 3]> : tensor<5xi32>} : () -> tensor<5xi32>
@@ -717,6 +734,17 @@ func @nonIdentityTranspose(%arg0: tensor<2x3x4x5x6xf32>) -> tensor<2x3x4x6x5xf32
 func @cancellableTranspose(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32> {
   %0 = "tf.Const"() {value = dense<[0, 3, 1, 2]> : tensor<4xi32>} : () -> tensor<4xi32>
   %1 = "tf.Const"() {value = dense<[0, 2, 3, 1]> : tensor<4xi32>} : () -> tensor<4xi32>
+  %2 = "tf.Transpose"(%arg0, %0) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
+  %3 = "tf.Transpose"(%2, %1) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x8xf32>
+
+  return %3 : tensor<1x4x4x8xf32>
+  // CHECK: return %arg0
+}
+
+// CHECK-LABEL: @cancellableTransposeConst
+func @cancellableTransposeConst(%arg0: tensor<1x4x4x8xf32>) -> tensor<1x4x4x8xf32> {
+  %0 = constant dense<[0, 3, 1, 2]> : tensor<4xi32>
+  %1 = constant dense<[0, 2, 3, 1]> : tensor<4xi32>
   %2 = "tf.Transpose"(%arg0, %0) : (tensor<1x4x4x8xf32>, tensor<4xi32>) -> tensor<1x8x4x4xf32>
   %3 = "tf.Transpose"(%2, %1) : (tensor<1x8x4x4xf32>, tensor<4xi32>) -> tensor<1x4x4x8xf32>
 
@@ -900,6 +928,51 @@ func @foldIf(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tens
 
   // CHECK: return %2
   return %4 : tensor<f32>
+}
+
+// CHECK-LABEL: foldIfRegion
+func @foldIfRegion(%arg0: tensor<f32>, %arg1: tensor<f32>, %arg2: tensor<i1>) -> (tensor<f32>, tensor<f32>) {
+  %false = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %true = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+
+  // CHECK: [[Val0:%.*]] = "tf.Mul"(%arg0, %arg1)
+  %0 = "tf.IfRegion"(%true) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%true_value) : (tensor<f32>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%false_value) : (tensor<f32>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
+
+  // CHECK: [[Val1:%.*]] = "tf.Sub"(%arg0, %arg1)
+  %1 = "tf.IfRegion"(%false) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%true_value) : (tensor<f32>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<f32>, tensor<f32>) -> tensor<f32>
+      "tf.Yield"(%false_value) : (tensor<f32>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> tensor<f32>
+
+  // CHECK: return [[Val0]], [[Val1]]
+  return %0, %1 : tensor<f32>, tensor<f32>
+}
+
+// CHECK-LABEL: foldIfRegionMismatchedTypes
+func @foldIfRegionMismatchedTypes(%arg0: tensor<?xf32>, %arg1: tensor<?xf32>, %arg2: tensor<i1>) -> tensor<1xf32> {
+  %false = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+  %true = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
+
+  // CHECK: [[Val0:%.*]] = "tf.Mul"(%arg0, %arg1)
+  // CHECK-NEXT: [[Cast:%.*]] = "tf.Cast"([[Val0]])
+  // CHECK-NEXT: return [[Cast]]
+  %0 = "tf.IfRegion"(%true) ({
+      %true_value = "tf.Mul"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+      "tf.Yield"(%true_value) : (tensor<?xf32>) -> ()
+    }, {
+      %false_value = "tf.Sub"(%arg0, %arg1) : (tensor<?xf32>, tensor<?xf32>) -> tensor<?xf32>
+      "tf.Yield"(%false_value) : (tensor<?xf32>) -> ()
+    }) { is_stateless = true}: (tensor<i1>) -> tensor<1xf32>
+  return %0 : tensor<1xf32>
 }
 
 // CHECK-LABEL: foldCase

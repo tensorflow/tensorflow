@@ -28,7 +28,6 @@ namespace {
 
 TEST(DumpMlirModuleTest, NoEnvPrefix) {
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   unsetenv("TF_DUMP_GRAPH_PREFIX");
@@ -39,7 +38,6 @@ TEST(DumpMlirModuleTest, NoEnvPrefix) {
 
 TEST(DumpMlirModuleTest, LogInfo) {
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   setenv("TF_DUMP_GRAPH_PREFIX", "-", 1);
@@ -50,7 +48,6 @@ TEST(DumpMlirModuleTest, LogInfo) {
 
 TEST(DumpMlirModuleTest, Valid) {
   mlir::MLIRContext context;
-  context.loadAllGloballyRegisteredDialects();
   mlir::OwningModuleRef module_ref =
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context));
   setenv("TF_DUMP_GRAPH_PREFIX", testing::TmpDir().c_str(), 1);

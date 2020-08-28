@@ -42,10 +42,6 @@ class DeviceResolverLocal : public DeviceResolverInterface {
   Status GetTaskCached(const string& task,
                        std::vector<DeviceAttributes>* attributes) override;
 
-  void ClearTask(const string& task) override {}
-
-  void ClearCache() override {}
-
  protected:
   const DeviceMgr* dev_mgr_;
 };

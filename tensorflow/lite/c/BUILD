@@ -3,6 +3,7 @@ load(
     "tflite_cc_shared_object",
     "tflite_copts",
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -123,6 +124,7 @@ cc_library(
         "builtin_op_data.h",
         "common.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     alwayslink = 1,
 )
 

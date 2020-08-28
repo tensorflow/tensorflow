@@ -499,8 +499,10 @@ def serialize(activation):
 def deserialize(name, custom_objects=None):
   """Returns activation function given a string identifier.
 
-  Arguments:
-      x : String identifier.
+  Args:
+    name: The name of the activation function.
+    custom_objects: Optional `{function_name: function_obj}`
+      dictionary listing user-provided activation functions.
 
   Returns:
       Corresponding activation function.
@@ -515,11 +517,6 @@ def deserialize(name, custom_objects=None):
   Traceback (most recent call last):
   ...
   ValueError: Unknown activation function:abcd
-
-  Args:
-    name: The name of the activation function.
-    custom_objects: Optional `{function_name: function_obj}`
-      dictionary listing user-provided activation functions.
 
   Raises:
       ValueError: `Unknown activation function` if the input string does not

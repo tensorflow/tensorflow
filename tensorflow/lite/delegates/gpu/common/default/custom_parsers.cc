@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/custom_parsers.h"
 
+#include <stdint.h>
+
 #include <string>
 
 #include "absl/strings/str_cat.h"

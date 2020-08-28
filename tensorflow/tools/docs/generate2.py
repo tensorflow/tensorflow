@@ -220,6 +220,9 @@ def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
 
   doc_generator.build(output_dir)
 
+  if gen_report:
+    return
+
   out_path = pathlib.Path(output_dir)
 
   expected_path_contents = {

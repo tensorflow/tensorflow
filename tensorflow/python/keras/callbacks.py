@@ -896,10 +896,15 @@ class TerminateOnNaN(Callback):
   """Callback that terminates training when a NaN loss is encountered.
   """
 
+  def __init__(self):
+    super(TerminateOnNaN, self).__init__()
+    self._supports_tf_logs = True
+
   def on_batch_end(self, batch, logs=None):
     logs = logs or {}
     loss = logs.get('loss')
     if loss is not None:
+      loss = tf_utils.to_numpy_or_python_type(loss)
       if np.isnan(loss) or np.isinf(loss):
         print('Batch %d: Invalid loss, terminating training' % (batch))
         self.model.stop_training = True
@@ -1157,7 +1162,7 @@ class ModelCheckpoint(Callback):
       save_freq: `'epoch'` or integer. When using `'epoch'`, the callback saves
         the model after each epoch. When using integer, the callback saves the
         model at end of this many batches. If the `Model` is compiled with
-        `experimental_steps_per_execution=N`, then the saving criteria will be
+        `steps_per_execution=N`, then the saving criteria will be
         checked every Nth batch. Note that if the saving isn't aligned to
         epochs, the monitored metric may potentially be less reliable (it
         could reflect as little as 1 batch, since the metrics get reset every
@@ -1260,16 +1265,6 @@ class ModelCheckpoint(Callback):
       self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
-    # pylint: disable=protected-access
-    if self.model._in_multi_worker_mode:
-      logging.warning(
-          'Automatic model reloading for interrupted job was removed from '
-          'the `ModelCheckpoint` callback in multi-worker mode, please use the '
-          '`keras.callbacks.experimental.BackupAndRestore` callback instead. '
-          'See this tutorial for details: '
-          'https://www.tensorflow.org/tutorials/distribute/'
-          'multi_worker_with_keras#backupandrestore_callback.'
-      )
     if self.load_weights_on_restart:
       filepath_to_load = (
           self._get_most_recently_modified_file_matching_pattern(self.filepath))
@@ -1400,9 +1395,10 @@ class ModelCheckpoint(Callback):
   def _checkpoint_exists(self, filepath):
     """Returns whether the checkpoint `filepath` refers to exists."""
     if filepath.endswith('.h5'):
-      return file_io.file_exists(filepath)
-    tf_saved_model_exists = file_io.file_exists(filepath)
-    tf_weights_only_checkpoint_exists = file_io.file_exists(filepath + '.index')
+      return file_io.file_exists_v2(filepath)
+    tf_saved_model_exists = file_io.file_exists_v2(filepath)
+    tf_weights_only_checkpoint_exists = file_io.file_exists_v2(
+        filepath + '.index')
     return tf_saved_model_exists or tf_weights_only_checkpoint_exists
 
   def _get_most_recently_modified_file_matching_pattern(self, pattern):
@@ -1467,7 +1463,7 @@ class ModelCheckpoint(Callback):
     n_file_with_latest_mod_time = 0
     file_path_with_largest_file_name = None
 
-    if file_io.file_exists(dir_name):
+    if file_io.file_exists_v2(dir_name):
       for file_name in os.listdir(dir_name):
         # Only consider if `file_name` matches the pattern.
         if re.match(base_name_regex, file_name):
@@ -2417,7 +2413,7 @@ class ReduceLROnPlateau(Callback):
     """Resets wait counter and cooldown counter.
     """
     if self.mode not in ['auto', 'min', 'max']:
-      logging.warning('Learning Rate Plateau Reducing mode %s is unknown, '
+      logging.warning('Learning rate reduction mode %s is unknown, '
                       'fallback to auto mode.', self.mode)
       self.mode = 'auto'
     if (self.mode == 'min' or
@@ -2438,7 +2434,7 @@ class ReduceLROnPlateau(Callback):
     logs['lr'] = K.get_value(self.model.optimizer.lr)
     current = logs.get(self.monitor)
     if current is None:
-      logging.warning('Reduce LR on plateau conditioned on metric `%s` '
+      logging.warning('Learning rate reduction is conditioned on metric `%s` '
                       'which is not available. Available metrics are: %s',
                       self.monitor, ','.join(list(logs.keys())))
 
@@ -2506,7 +2502,7 @@ class CSVLogger(Callback):
 
   def on_train_begin(self, logs=None):
     if self.append:
-      if file_io.file_exists(self.filename):
+      if file_io.file_exists_v2(self.filename):
         with open(self.filename, 'r' + self.file_flags) as f:
           self.append_header = not bool(len(f.readline()))
       mode = 'a'

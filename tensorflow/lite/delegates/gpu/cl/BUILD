@@ -76,7 +76,10 @@ cc_test(
     ],
     deps = [
         ":arguments",
+        ":buffer",
+        ":device_info",
         ":gpu_object",
+        ":tensor",
         ":tensor_type",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "@com_google_absl//absl/strings",
