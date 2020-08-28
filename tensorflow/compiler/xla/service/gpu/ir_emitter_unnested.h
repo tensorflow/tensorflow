@@ -372,6 +372,16 @@ class IrEmitterUnnested : public IrEmitter,
   // }
   // ```
   //
+  // Moreover, a heuristic is implemented to divide the reduce instructions
+  // into groups for parallelization (see `DivideOutputInstructionsIntoGroups`
+  // for details about the heuristic.) Reduce instructions in the same group
+  // will run sequentially while different groups will run in parallel.
+  //
+  // we use raw block_id_y to select the reduce groups for execution without
+  // complicating the index calculation in the code generation of the reduce
+  // instructions. In other words, a block_id_y is assigned to a group and so
+  // different groups can be run in parallel.
+  //
   // output_instructions: Output instructions in the computation: instruction
   // itself if it's not a fusion, fusion root if fusion is not multi-output, and
   // elements of the fusion multi-output tuple otherwise.

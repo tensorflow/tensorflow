@@ -3835,9 +3835,13 @@ bool IsBroadcastedConstantOrScalar(const HloInstruction& instr) {
               ShapeUtil::IsScalar(instr.operand(0)->shape()));
 }
 
-// Divides output_instructions into groups. Generally, we'd like to group output
-// instructions sharing same predecessors to avoid recomputation. Different
-// groups will be executed in parallel.
+// Divides output_instructions into groups. Different groups will be executed
+// in parallel. Generally speaking, we'd like to run the reduce instructions
+// in parallel without incurring too much recomputation overhead. The current
+// heuristic is to place reduce instructions who share nothing or only
+// (broadcasted) scalars/constants into different groups; otherwise, they are
+// placed in the same group. Non-reduce instructions always go with the reduce
+// instructions into the same group so long as they share any predecessors.
 std::vector<std::vector<HloInstruction*>> DivideOutputInstructionsIntoGroups(
     HloInstruction* unnested_hlo,
     absl::Span<HloInstruction* const> output_instructions) {
@@ -3944,7 +3948,7 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
     // code generation per reduction group. For now, let's always use the very
     // first reduce as representative to construct ReductionCodegenInfo, since
     // all the reductions are required to have the same shape and layout as
-    // verified by AreFusedReductionOutputsConsistent(). We can loosen the
+    // verified by `AreFusedReductionOutputsConsistent()`. We can loosen the
     // constraint later when the needs arise.
     ReductionCodegenInfo reduction_info =
         ComputeReductionCodegenInfo(unnested_hlo, first_reduce);
