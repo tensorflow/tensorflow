@@ -163,7 +163,8 @@ Status TransferManager::TransferArrayToDeviceAsync(
       << "On-device representation of "
       << ShapeUtil::HumanString(literal.shape())
       << " is not an array: " << ShapeUtil::HumanString(on_device_shape);
-  if (dest.size() < GetByteSizeRequirement(on_device_shape)) {
+  const int64 dest_size = dest.size();
+  if (dest_size < GetByteSizeRequirement(on_device_shape)) {
     return FailedPrecondition(
         "Allocation on device not large enough for array: "
         "%d < %d",
@@ -188,7 +189,8 @@ void TransferManager::TransferArrayFromDevice(
                         ShapeUtil::HumanString(HostShapeToDeviceShape(shape)));
     return done(FailedPrecondition("%s", error));
   }
-  if (source.size() < GetByteSizeRequirement(shape)) {
+  const int64 source_size = source.size();
+  if (source_size < GetByteSizeRequirement(shape)) {
     return done(
         FailedPrecondition("Allocation on device not large enough for array: "
                            "%d < %d",
@@ -311,8 +313,9 @@ Status TransferManager::WriteTupleIndexTablesAsync(
         if (device_subshape.IsTuple() &&
             ShapeUtil::TupleElementCount(device_subshape) > 0) {
           se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
+          const int64 device_memory_size = device_memory.size();
           TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
-                       device_memory.size());
+                       device_memory_size);
 
           std::vector<se::DeviceMemoryBase> elements;
           ShapeIndex element_index = index;
@@ -337,8 +340,9 @@ Status TransferManager::WriteRootTupleIndexTable(
     return Status::OK();
   }
   se::DeviceMemoryBase device_memory = device_buffer.buffer({});
+  const int64 device_memory_size = device_memory.size();
   TF_RET_CHECK(GetByteSizeRequirement(device_buffer.on_device_shape()) ==
-               device_memory.size());
+               device_memory_size);
 
   std::vector<se::DeviceMemoryBase> elements;
   for (int64 i = 0;
@@ -357,8 +361,9 @@ Status TransferManager::WriteRootTupleIndexTable(
   }
   se::DeviceMemoryBase device_memory =
       buffer_tree.element({}).AsDeviceMemoryBase();
+  const int64 device_memory_size = device_memory.size();
   TF_RET_CHECK(GetByteSizeRequirement(buffer_tree.shape()) ==
-               device_memory.size());
+               device_memory_size);
 
   std::vector<se::DeviceMemoryBase> elements;
   for (int64 i = 0; i < ShapeUtil::TupleElementCount(buffer_tree.shape());
@@ -372,7 +377,8 @@ Status TransferManager::WriteRootTupleIndexTable(
 Status TransferManager::TransferBufferFromDevice(
     se::Stream* stream, const se::DeviceMemoryBase& source, int64 size,
     void* destination) {
-  if (source.size() < size) {
+  const int64 source_size = source.size();
+  if (source_size < size) {
     return FailedPrecondition(
         "Source allocation on device not large enough for data transfer: "
         "%d < %d",
@@ -385,7 +391,8 @@ Status TransferManager::TransferBufferFromDevice(
 Status TransferManager::TransferBufferToDevice(
     se::Stream* stream, int64 size, const void* source,
     se::DeviceMemoryBase* destination) {
-  if (destination->size() < size) {
+  const int64 destination_size = destination->size();
+  if (destination_size < size) {
     return FailedPrecondition(
         "Destination allocation on device not large enough for data transfer: "
         "%d < %d",

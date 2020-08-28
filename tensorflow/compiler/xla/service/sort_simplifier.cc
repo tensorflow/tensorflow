@@ -61,7 +61,8 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
     }
   }
 
-  if (used_indices.size() == sort->operand_count()) {
+  const int64 used_indices_size = used_indices.size(); 
+  if (used_indices_size == sort->operand_count()) {
     // All operands are used.
     return false;
   }

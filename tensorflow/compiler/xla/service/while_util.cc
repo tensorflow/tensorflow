@@ -276,7 +276,7 @@ static Shape MakeLoopStateShapeWithLayout(
   std::vector<HloInstruction*> result;
   const HloInstruction::InstructionVector root_operands =
       while_body.root_instruction()->operands();
-  for (int i = 0; i < root_operands.size(); i++) {
+  for (int i = 0, end = root_operands.size(); i < end; i++) {
     HloInstruction* instr = root_operands[i];
     if (instr->opcode() == HloOpcode::kGetTupleElement &&
         instr->tuple_index() == i &&
