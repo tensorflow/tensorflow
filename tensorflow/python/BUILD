@@ -1646,6 +1646,40 @@ py_library(
 )
 
 cc_library(
+    name = "py_context_manager",
+    srcs = ["framework/py_context_manager.cc"],
+    hdrs = ["framework/py_context_manager.h"],
+    deps = [
+        ":safe_pyobject_ptr",
+        "//tensorflow/core:lib",  # for core/platform/logging.h
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+# Pybind extension used by py_context_manager_test.
+tf_python_pybind_extension(
+    name = "_py_context_manager",
+    srcs = ["framework/py_context_manager_pybind.cc"],
+    module_name = "_py_context_manager",
+    deps = [
+        ":py_context_manager",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "py_context_manager_test",
+    srcs = ["framework/py_context_manager_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    tfrt_enabled = True,
+    deps = [
+        ":_py_context_manager",
+    ],
+)
+
+cc_library(
     name = "op_def_util_cc",
     srcs = ["framework/op_def_util.cc"],
     hdrs = ["framework/op_def_util.h"],
