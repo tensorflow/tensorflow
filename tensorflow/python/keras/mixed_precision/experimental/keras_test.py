@@ -47,6 +47,7 @@ from tensorflow.python.keras.mixed_precision.experimental import get_layer_polic
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
+from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.keras.saving import save
 from tensorflow.python.keras.utils import generic_utils
