@@ -18,6 +18,9 @@ limitations under the License.
 #include "pybind11/pybind11.h"
 #include "pybind11/stl_bind.h"
 
+#include "tensorflow/python/lib/core/pybind11_lib.h"
+#include "tensorflow/python/util/util.h"
+
 namespace py = pybind11;
 
 static const py::module* nest = new py::module(
@@ -73,7 +76,8 @@ py::object PyConcreteFunction::BuildCallOutputs(
   }
 
   // Replace outputs with results, skipping over any 'None' values.
-  py::list outputs_list = nest->attr("flatten")(structured_outputs, true);
+  py::list outputs_list = PyoOrThrow(
+      swig::Flatten(structured_outputs.ptr(), true));
   int j = 0;
   for (int i = 0; i < outputs_list.size(); ++i) {
     if (!outputs_list[i].is_none()) {
@@ -112,8 +116,7 @@ py::tuple ConvertNumpyInputs(py::object inputs) {
   // the numpy array conversion. Instead, we do so because the flattened inputs
   // are eventually passed to ConcreteFunction()._call_flat, which requires
   // expanded composites.
-  // TODO(jlchu): Use C++ version of Flatten directly
-  py::list flat_inputs = nest->attr("flatten")(inputs, true);
+  py::list flat_inputs = PyoOrThrow(swig::Flatten(inputs.ptr(), true));
 
   // Check for NumPy arrays in arguments and convert them to Tensors.
   // TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps

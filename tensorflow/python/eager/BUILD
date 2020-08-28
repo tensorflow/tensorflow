@@ -5,9 +5,6 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
-
-# buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -584,11 +581,13 @@ py_library(
     ],
 )
 
-pybind_extension(
+tf_python_pybind_extension(
     name = "_concrete_function",
     srcs = ["function.cc"],
     module_name = "_concrete_function",
     deps = [
+        "//tensorflow/python:pybind11_lib",
+        "//tensorflow/python:util_header",
         "//third_party/python_runtime:headers",
         "@pybind11",
     ],

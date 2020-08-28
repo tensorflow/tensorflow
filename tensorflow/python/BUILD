@@ -954,6 +954,16 @@ cc_library(
 )
 
 cc_library(
+    name = "util_header",
+    textual_hdrs = [
+        "util/util.h",
+    ],
+    visibility = [
+        "//tensorflow/python/eager:__pkg__",
+    ],
+)
+
+cc_library(
     name = "py_func_lib",
     srcs = ["lib/core/py_func.cc"],
     hdrs = ["lib/core/py_func.h"],
