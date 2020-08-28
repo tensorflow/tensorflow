@@ -3518,3 +3518,35 @@ func @testTileInvalidOutputShape(%arg0: tensor<2x3xf32>) {
   %0 = "tf.Tile"(%arg0, %cst) : (tensor<2x3xf32>, tensor<2xi32>) -> tensor<4x6xf32>
   return
 }
+
+// -----
+
+// Test reference variable support for some ops (no errors expected)
+
+// CHECK-LABEL: @testMaximumWithRef
+func @testMaximumWithRef(%arg0: tensor<!tf.f32ref>, %arg1: tensor<f32>) -> tensor<f32> {
+  // CHECK: tf.Maximum
+  %0 = "tf.Maximum"(%arg0, %arg1) : (tensor<!tf.f32ref>, tensor<f32>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
+
+// CHECK-LABEL: @testAddV2WithRef
+func @testAddV2WithRef(%arg0: tensor<!tf.int16ref>, %arg1: tensor<i16>) -> tensor<i16> {
+  // CHECK: tf.AddV2
+  %0 = "tf.AddV2"(%arg0, %arg1) : (tensor<!tf.int16ref>, tensor<i16>) -> tensor<i16>
+  return %0 : tensor<i16>
+}
+
+// CHECK-LABEL: @testRealDivWithRef
+func @testRealDivWithRef(%arg0: tensor<f64>, %arg1: tensor<!tf.f64ref>) -> tensor<f64> {
+  // CHECK: tf.RealDivOp
+  %0 = "tf.RealDivOp"(%arg0, %arg1) : (tensor<f64>, tensor<!tf.f64ref>) -> tensor<f64>
+  return %0 : tensor<f64>
+}
+
+// CHECK-LABEL: @testDivNoNanWithRef
+func @testDivNoNanWithRef(%arg0: tensor<f32>, %arg1: tensor<!tf.f32ref>) -> tensor<f32> {
+  // CHECK: tf.DivNoNanOp
+  %0 = "tf.DivNoNanOp"(%arg0, %arg1) : (tensor<f32>, tensor<!tf.f32ref>) -> tensor<f32>
+  return %0 : tensor<f32>
+}
