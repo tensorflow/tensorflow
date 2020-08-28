@@ -121,7 +121,7 @@ example.
 
 ### AOT (Ahead-of-time) compilation for CPU with `tfcompile`
 
-You can also use a standalone [`tfcompile`](./tfcompile) tool,
+You can also use a standalone [`tfcompile`](./tfcompile.md) tool,
 which converts TensorFlow graph into executable code (for x86-64 CPU only).
 
 ## Inspect compiled programs
