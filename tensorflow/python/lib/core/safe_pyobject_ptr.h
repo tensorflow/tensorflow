@@ -13,24 +13,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#ifndef TENSORFLOW_PYTHON_LIB_CORE_SAFE_PYOBJECT_PTR_H_
+#define TENSORFLOW_PYTHON_LIB_CORE_SAFE_PYOBJECT_PTR_H_
+
+#include <Python.h>
+
+#include <memory>
 
 namespace tensorflow {
+namespace detail {
 
-Safe_TF_TensorPtr make_safe(TF_Tensor* tensor) {
-  return Safe_TF_TensorPtr(tensor);
-}
+struct PyDecrefDeleter {
+  void operator()(PyObject* p) const { Py_DECREF(p); }
+};
 
-Safe_TFE_TensorHandlePtr make_safe(TFE_TensorHandle* handle) {
-  return Safe_TFE_TensorHandlePtr(handle);
-}
+}  // namespace detail
 
-Safe_TF_StatusPtr make_safe(TF_Status* status) {
-  return Safe_TF_StatusPtr(status);
-}
-
-Safe_TF_BufferPtr make_safe(TF_Buffer* buffer) {
-  return Safe_TF_BufferPtr(buffer);
-}
+// Safe container for an owned PyObject. On destruction, the reference count of
+// the contained object will be decremented.
+using Safe_PyObjectPtr = std::unique_ptr<PyObject, detail::PyDecrefDeleter>;
+Safe_PyObjectPtr make_safe(PyObject* o);
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_PYTHON_LIB_CORE_SAFE_PYOBJECT_PTR_H_

@@ -13,24 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/python/lib/core/safe_ptr.h"
+#include "tensorflow/python/lib/core/safe_pyobject_ptr.h"
 
 namespace tensorflow {
 
-Safe_TF_TensorPtr make_safe(TF_Tensor* tensor) {
-  return Safe_TF_TensorPtr(tensor);
-}
-
-Safe_TFE_TensorHandlePtr make_safe(TFE_TensorHandle* handle) {
-  return Safe_TFE_TensorHandlePtr(handle);
-}
-
-Safe_TF_StatusPtr make_safe(TF_Status* status) {
-  return Safe_TF_StatusPtr(status);
-}
-
-Safe_TF_BufferPtr make_safe(TF_Buffer* buffer) {
-  return Safe_TF_BufferPtr(buffer);
+Safe_PyObjectPtr make_safe(PyObject* object) {
+  return Safe_PyObjectPtr(object);
 }
 
 }  // namespace tensorflow
