@@ -87,7 +87,6 @@ Status Sub(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
   return Status::OK();
 }
 
-
 Status MatMul(AbstractContext* ctx,
               absl::Span<AbstractTensorHandle* const> inputs,
               absl::Span<AbstractTensorHandle*> outputs, const char* name,
@@ -125,24 +124,6 @@ Status Neg(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
   return neg_op->Execute(outputs, &num_retvals);
 }
 
-Status Prod(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
-  AbstractOperationPtr prod_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(prod_op->Reset("Prod", /*raw_device_name=*/nullptr));
-
-  if (isa<tracing::TracingOperation>(prod_op.get())) {
-    TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(prod_op.get())->SetOpName(name));
-  }
-
-  TF_RETURN_IF_ERROR(prod_op->AddInput(inputs[0])); // input_vals
-  TF_RETURN_IF_ERROR(prod_op->AddInput(inputs[1])); // reduction_indices
-
-  int num_retvals = 1;
-  TF_RETURN_IF_ERROR(prod_op->Execute(outputs, &num_retvals));
-  return Status::OK();
-}
-
 Status Sum(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
            absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr sum_op(ctx->CreateOperation());
@@ -153,29 +134,31 @@ Status Sum(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
         dyn_cast<tracing::TracingOperation>(sum_op.get())->SetOpName(name));
   }
 
-  TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[0])); // input_vals
-  TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[1])); // reduction_indices
+  TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[0]));  // input_vals
+  TF_RETURN_IF_ERROR(sum_op->AddInput(inputs[1]));  // reduction_indices
 
   int num_retvals = 1;
   TF_RETURN_IF_ERROR(sum_op->Execute(outputs, &num_retvals));
   return Status::OK();
 }
 
-Status EuclideanNorm(AbstractContext* ctx, absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name) {
-  AbstractOperationPtr norm_op(ctx->CreateOperation());
-  TF_RETURN_IF_ERROR(norm_op->Reset("EuclideanNorm", /*raw_device_name=*/nullptr));
+Status DivNoNan(AbstractContext* ctx,
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+  AbstractOperationPtr div_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(div_op->Reset("DivNoNan", /*raw_device_name=*/nullptr));
 
-  if (isa<tracing::TracingOperation>(norm_op.get())) {
+  if (isa<tracing::TracingOperation>(div_op.get())) {
     TF_RETURN_IF_ERROR(
-        dyn_cast<tracing::TracingOperation>(norm_op.get())->SetOpName(name));
+        dyn_cast<tracing::TracingOperation>(div_op.get())->SetOpName(name));
   }
 
-  TF_RETURN_IF_ERROR(norm_op->AddInput(inputs[0])); // input_vals
-  TF_RETURN_IF_ERROR(norm_op->AddInput(inputs[1])); // reduction_indices
+  TF_RETURN_IF_ERROR(div_op->AddInput(inputs[0]));  // x
+  TF_RETURN_IF_ERROR(div_op->AddInput(inputs[1]));  // y
 
   int num_retvals = 1;
-  TF_RETURN_IF_ERROR(norm_op->Execute(outputs, &num_retvals));
+  TF_RETURN_IF_ERROR(div_op->Execute(
+      outputs, &num_retvals));  // z = x / y, (z_i = 0 if y_i = 0)
   return Status::OK();
 }
 

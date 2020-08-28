@@ -122,44 +122,16 @@ Status ScalarMulModel(AbstractContext* ctx,
                       const GradientRegistry& registry);
 
 Status MatMulModel(AbstractContext* ctx,
-                            absl::Span<AbstractTensorHandle* const> inputs,
-                            absl::Span<AbstractTensorHandle*> outputs,
-                            const GradientRegistry& registry);
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const GradientRegistry& registry);
 
 Status MulModel(AbstractContext* ctx,
-                            absl::Span<AbstractTensorHandle* const> inputs,
-                            absl::Span<AbstractTensorHandle*> outputs,
-                            const GradientRegistry& registry);
-
-Status SoftmaxModel(AbstractContext* ctx,
-                            absl::Span<AbstractTensorHandle* const> inputs,
-                            absl::Span<AbstractTensorHandle*> outputs,
-                            const GradientRegistry& registry);
-
-// Updates the weights for a neural network given incoming grads and learning
-// rate
-Status UpdateWeights(AbstractContext* ctx,
-                     std::vector<AbstractTensorHandle*>& grads,
-                     std::vector<AbstractTensorHandle*>& weights,
-                     AbstractTensorHandle* learning_rate);
-
-AbstractContext* BuildFunction(const char* fn_name);
-
-Status CreateParamsForInputs(AbstractContext* ctx,
-                             absl::Span<AbstractTensorHandle* const> inputs,
-                             std::vector<AbstractTensorHandle*>* params);
-
-using Model = std::function<Status(
-    AbstractContext*, absl::Span<AbstractTensorHandle* const>,
-    absl::Span<AbstractTensorHandle*>, const GradientRegistry&)>;
-
-Status RunModel(Model model, AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle* const> inputs,
-                absl::Span<AbstractTensorHandle*> outputs, bool use_function,
+                absl::Span<AbstractTensorHandle*> outputs,
                 const GradientRegistry& registry);
 
-Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx);
-
-}  // namespace internal
-}  // namespace gradients
-}  // namespace tensorflow
+Status SoftmaxModel(AbstractContext* ctx,
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
