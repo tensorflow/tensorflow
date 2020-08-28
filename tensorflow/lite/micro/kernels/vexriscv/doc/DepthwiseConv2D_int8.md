@@ -60,6 +60,8 @@ Rather than calculating the results in a row, this design rearranges the operati
 
 ![dconv_org_vis](https://user-images.githubusercontent.com/21079720/91612427-409eb180-e932-11ea-9c30-a205c8f3e461.png)
 
+The calculation for each element at the output is completed when it reaches the bold coordinates in the table. From the table, this scheme only gets partial results until it reaches the last location (i.e., `(#9, 0)` to `(#9, C-1)`). Ideally, we can use the output tensor directly as an accumulator, no extra space is needed at runtime. Yet, since the output tensor is limited (8 bits) in an integer model, accumulating intermediate values at the output tensor will cause overflow: the product of two `int8` values is in the range of `int16` and there are `H * W` values to be accumulated, the range of the value before quantization is `H * W * MAX_INT16`. Therefore, an `int32` accumulator is adequate as long as the number of accumulations `(H*W*C)` does not exceed `2^16`. To address overflow when accumulating at output tensor and provide better memory access pattern, an `int32` array of size equals to number of channels (`C`) as accumulators is enough, since those `C` calculations are done once a set of spatial locations (`#1` to `#9`) are convolved, we don't have to allocate an array with size equals to the output tensor to accumulate the values.
+
 |     Original    |    Optimized    |
 |:---------------:|:---------------:|
 |     (#1, 0)     |     (#1, 0)     |
@@ -71,8 +73,6 @@ Rather than calculating the results in a row, this design rearranges the operati
 |   **(#9, 1)**   |   **(#9, 0)**   |
 |      ...        |       ...       |
 | **(#9, C - 1)** | **(#9, C - 1)** |
-
-The calculation for each element at the output is completed when it reaches the bold coordinates in the table. From the table, this scheme only gets partial results until it reaches the last location (i.e., `(#9, 0)` to `(#9, C-1)`). Ideally, we can use the output tensor directly as an accumulator, no extra space is needed at runtime. Yet, since the output tensor is limited (8 bits) in an integer model, accumulating intermediate values at the output tensor will cause overflow: the product of two `int8` values is in the range of `int16` and there are `H * W` values to be accumulated, the range of the value before quantization is `H * W * MAX_INT16`. Therefore, an `int32` accumulator is adequate as long as the number of accumulations `(H*W*C)` does not exceed `2^16`. To address overflow when accumulating at output tensor and provide better memory access pattern, an `int32` array of size equals to number of channels (`C`) as accumulators is enough, since those `C` calculations are done once a set of spatial locations (`#1` to `#9`) are convolved, we don't have to allocate an array with size equals to the output tensor to accumulate the values.
 
 If we implement this idea, i.e. allocating a temporary array with size equals to `C`, we can follow the loop structure shown below, this would work just fine, but as we can see in the routine, it involves allocating an `int32` array of **size in proportional to the input channel**, which is not preferable in those resource limited devices because we cannot assure there will always be enough memory given any application or model.
 
@@ -98,7 +98,6 @@ for i-th input among N inputs
         // Add bias / activation / requantize
         value = postAccumulation(buffer[out_ch])
         output[indexOf(i, out_y, out_x, out_ch)] = value
-
 ```
 
 Instead, we can further breakdown the structure into chunks, namely, we can add an additional nested loop inside to iterate `K` channels a time until all channels are processed, the modified loop structure is depicted below and the visualization is shown in the figure below the loop.
@@ -125,7 +124,6 @@ for i-th input among N inputs
           // Add bias / activation / requantize
           value = postAccumulation(buffer[ch_offset])
           output[indexOf(i, out_y, out_x, out_ch)] = value
-
 ```
 
 ![dconv_design_vis](https://user-images.githubusercontent.com/21079720/91612374-2369e300-e932-11ea-90eb-898c0270794e.png)
