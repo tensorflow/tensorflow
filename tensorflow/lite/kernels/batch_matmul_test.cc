@@ -559,15 +559,16 @@ TEST_P(QuantizedBatchMatMulOpTest, SimpleTestQuantizedInt8) {
 }
 
 TEST_P(QuantizedBatchMatMulOpTest, SimpleTestQuantizedInt16) {
-  const float inputs_scale = 2.0 * 10 / std::numeric_limits<uint16_t>::max();
+  const float inputs_scale = 10.0 / std::numeric_limits<int16_t>::max();
   const float output_scale = 1.0;
+  const int32_t zero_point = 0;
 
   QuantizedBatchMatMulOpModel m(
       /*units=*/3, /*batches*/ 2,
       /*lhs=*/
-      {TensorType_INT16, {2, 10}, 0, 0, inputs_scale, 0},
+      {TensorType_INT16, {2, 10}, 0, 0, inputs_scale, zero_point},
       /*output=*/
-      {TensorType_INT16, {}, 0, 0, output_scale, 0});
+      {TensorType_INT16, {}, 0, 0, output_scale, zero_point});
 
   m.SetWeights<int16_t>({
       1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5,  5,  5,
