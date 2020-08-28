@@ -49,7 +49,6 @@
 #     rocm:         Build with AMD GPU support (rocm).
 #     mkl:          Enable full mkl support.
 #     tensorrt:     Enable Tensorrt support.
-#     ngraph:       Enable ngraph support.
 #     numa:         Enable numa using hwloc.
 #     noaws:        Disable AWS S3 storage support
 #     nogcp:        Disable GCS support.
@@ -218,7 +217,6 @@ build:rocm --define=using_rocm=true --define=using_rocm_hipcc=true
 build:rocm --action_env TF_NEED_ROCM=1
 
 # Options extracted from configure script
-build:ngraph --define=with_ngraph_support=true
 build:numa --define=with_numa_support=true
 
 # Options to disable default on features
