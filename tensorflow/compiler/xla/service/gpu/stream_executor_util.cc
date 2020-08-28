@@ -215,8 +215,8 @@ Status ExecuteKernelOnStream(const se::KernelBase& kernel,
   for (const se::DeviceMemoryBase& buf : args) {
     kernel_args->add_device_memory_argument(buf);
   }
-  auto thread_counts = dims.thread_counts_per_block();
-  auto block_counts = dims.block_counts();
+  LaunchDimensions::Dim3D thread_counts = dims.thread_counts_per_block();
+  LaunchDimensions::Dim3D block_counts = dims.block_counts();
   return stream->parent()->Launch(
       stream, se::ThreadDim(thread_counts.x, thread_counts.y, thread_counts.z),
       se::BlockDim(block_counts.x, block_counts.y, block_counts.z), kernel,

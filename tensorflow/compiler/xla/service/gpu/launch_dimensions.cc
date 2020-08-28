@@ -26,8 +26,8 @@ namespace gpu {
 
 std::ostream& operator<<(std::ostream& out,
                          const LaunchDimensions& launch_dims) {
-  auto block_counts = launch_dims.block_counts();
-  auto thread_counts = launch_dims.thread_counts_per_block();
+  LaunchDimensions::Dim3D block_counts = launch_dims.block_counts();
+  LaunchDimensions::Dim3D thread_counts = launch_dims.thread_counts_per_block();
   out << absl::StrFormat("[block: {%d, %d, %d}, thread: {%d, %d, %d}]",
                          block_counts.x, block_counts.y, block_counts.z,
                          thread_counts.x, thread_counts.y, thread_counts.z);

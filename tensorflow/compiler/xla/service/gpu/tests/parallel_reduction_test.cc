@@ -72,7 +72,7 @@ CHECK-NOT: reduce-group-2
 }
 
 TEST_F(ParallelReductionTest, ManyParallelReductions) {
-  auto module = CreateNewVerifiedModule();
+  std::unique_ptr<VerifiedHloModule> module = CreateNewVerifiedModule();
   // Simply use a number not too large to avoid long compilation time
   // and not too small for meaningful test.
   const size_t num_reduces = 32;
@@ -80,10 +80,12 @@ TEST_F(ParallelReductionTest, ManyParallelReductions) {
   HloComputation* reduce_computation;
   {
     auto embedded_builder = HloComputation::Builder("add");
-    auto lhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        0, ShapeUtil::MakeShape(F32, {}), "lhs"));
-    auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
-        1, ShapeUtil::MakeShape(F32, {}), "rhs"));
+    HloInstruction* lhs =
+        embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+            0, ShapeUtil::MakeShape(F32, {}), "lhs"));
+    HloInstruction* rhs =
+        embedded_builder.AddInstruction(HloInstruction::CreateParameter(
+            1, ShapeUtil::MakeShape(F32, {}), "rhs"));
     embedded_builder.AddInstruction(
         HloInstruction::CreateBinary(lhs->shape(), HloOpcode::kAdd, lhs, rhs));
     reduce_computation =
@@ -101,8 +103,9 @@ TEST_F(ParallelReductionTest, ManyParallelReductions) {
     for (size_t i = 0; i < num_reduces; ++i) {
       HloInstruction* param = fusion_builder.AddInstruction(
           HloInstruction::CreateParameter(i, input_shape, "param"));
-      auto output = fusion_builder.AddInstruction(HloInstruction::CreateReduce(
-          output_shape, param, constant, {0}, reduce_computation));
+      HloInstruction* output =
+          fusion_builder.AddInstruction(HloInstruction::CreateReduce(
+              output_shape, param, constant, {0}, reduce_computation));
       outputs.push_back(output);
     }
     fusion_builder.AddInstruction(HloInstruction::CreateTuple(outputs));

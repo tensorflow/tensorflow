@@ -3007,9 +3007,9 @@ ShapeIndex CreateShapeIndexForOutputInstruction(
       return ShapeIndex({i});
     }
   }
-  CHECK(false) << " Fusion root does not contain output instruction; "
-               << " fusion: " << unnested_hlo.ToString()
-               << ", output instruction: " << out_instr.ToString();
+  LOG(FATAL) << " Fusion root does not contain output instruction; "
+             << " fusion: " << unnested_hlo.ToString()
+             << ", output instruction: " << out_instr.ToString();
 }
 
 }  // namespace
@@ -3932,11 +3932,11 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
                                   << first_reduce->ToString();
 
   // Group output instructions. Each group will be executed in parallel.
-  auto instr_groups =
+  std::vector<std::vector<HloInstruction*>> instr_groups =
       DivideOutputInstructionsIntoGroups(unnested_hlo, output_instructions);
   VLOG(2) << StrCat("Generate in ", instr_groups.size(), " groups for ",
                     unnested_hlo->ToString());
-  auto kernel_thunk =
+  std::unique_ptr<KernelThunk> kernel_thunk =
       BuildKernelThunk(unnested_hlo, /*implements_whole_instruction=*/false);
   KernelSupportLibrary ksl(&b_, llvm_ir::UnrollMode::kDefaultUnroll);
   for (size_t i = 0; i < instr_groups.size(); ++i) {
@@ -3960,7 +3960,8 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
         gpu::TargetIntrinsicID::kBlockIdy, {}, {}, &b_);
     llvm_ir::AddRangeMetadata(0, instr_groups.size(),
                               llvm::cast<llvm::Instruction>(raw_block_id_y));
-    auto guarding_cond = b_.CreateICmpEQ(raw_block_id_y, b_.getInt32(i));
+    llvm::Value* guarding_cond =
+        b_.CreateICmpEQ(raw_block_id_y, b_.getInt32(i));
     ksl.If(StrCat("reduce-group-", i), guarding_cond, emit_reduction_func);
   }
   ReductionCodegenInfo reduction_info =
@@ -3980,8 +3981,9 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
                          ir_emitter_context_->llvm_module());
 
   thunks.push_back(std::move(kernel_thunk));
-  auto sequential_thunk = absl::make_unique<SequentialThunk>(
-      GetThunkInfo(unnested_hlo), std::move(thunks));
+  std::unique_ptr<SequentialThunk> sequential_thunk =
+      absl::make_unique<SequentialThunk>(GetThunkInfo(unnested_hlo),
+                                         std::move(thunks));
   AddThunkToThunkSequence(std::move(sequential_thunk));
 
   return Status::OK();
