@@ -13,7 +13,6 @@ exports_files(["LICENSE"])
 py_library(
     name = "distribute_test_lib_pip",
     deps = [
-        ":all_reduce",
         ":combinations",
         ":multi_worker_test_base",
         ":single_loss_example",
@@ -90,6 +89,7 @@ py_library(
     srcs = ["cross_device_utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":all_reduce",
         ":values",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:collective_ops",
