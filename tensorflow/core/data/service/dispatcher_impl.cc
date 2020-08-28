@@ -76,7 +76,7 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
   args.SetMaxReceiveMessageSize(-1);
   std::shared_ptr<::grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
-      CredentialsFactory::CreateClientCredentials(protocol, &credentials));
+      CredentialsFactory::CreateClientCredentials(protocol, credentials));
   auto channel = ::grpc::CreateCustomChannel(address, credentials, args);
   stub = WorkerService::NewStub(channel);
   return Status::OK();

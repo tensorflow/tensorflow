@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/credentials_factory.h"
 
 namespace tensorflow {
@@ -23,14 +24,14 @@ class LocalCredentialsFactory : public CredentialsFactory {
   std::string Protocol() override { return "grpc+local"; }
 
   Status CreateServerCredentials(
-      std::shared_ptr<::grpc::ServerCredentials>* out) override {
-    *out = grpc::experimental::LocalServerCredentials(LOCAL_TCP);
+      std::shared_ptr<::grpc::ServerCredentials>& out) override {
+    out = grpc::experimental::LocalServerCredentials(LOCAL_TCP);
     return Status::OK();
   }
 
   Status CreateClientCredentials(
-      std::shared_ptr<::grpc::ChannelCredentials>* out) override {
-    *out = grpc::experimental::LocalCredentials(LOCAL_TCP);
+      std::shared_ptr<::grpc::ChannelCredentials>& out) override {
+    out = grpc::experimental::LocalCredentials(LOCAL_TCP);
     return Status::OK();
   }
 };
@@ -38,8 +39,7 @@ class LocalCredentialsFactory : public CredentialsFactory {
 class LocalCredentialsRegistrar {
  public:
   LocalCredentialsRegistrar() {
-    auto factory = new LocalCredentialsFactory();
-    CredentialsFactory::Register(factory);
+    CredentialsFactory::Register(absl::make_unique<LocalCredentialsFactory>());
   }
 };
 static LocalCredentialsRegistrar registrar;

@@ -219,7 +219,7 @@ Status DataServiceDispatcherClient::EnsureInitialized() {
   }
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
-      CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
+      CredentialsFactory::CreateClientCredentials(protocol_, credentials));
   auto channel = grpc::CreateChannel(address_, credentials);
   stub_ = DispatcherService::NewStub(channel);
   return Status::OK();
@@ -251,7 +251,7 @@ Status DataServiceWorkerClient::EnsureInitialized() {
   }
   std::shared_ptr<grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
-      CredentialsFactory::CreateClientCredentials(protocol_, &credentials));
+      CredentialsFactory::CreateClientCredentials(protocol_, credentials));
   grpc::ChannelArguments args;
   args.SetMaxReceiveMessageSize(-1);
   auto channel = grpc::CreateCustomChannel(address_, credentials, args);

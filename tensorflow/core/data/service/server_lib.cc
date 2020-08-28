@@ -46,7 +46,7 @@ Status GrpcDataServerBase::Start() {
   ::grpc::ServerBuilder builder;
   std::shared_ptr<::grpc::ServerCredentials> credentials;
   TF_RETURN_IF_ERROR(
-      CredentialsFactory::CreateServerCredentials(protocol_, &credentials));
+      CredentialsFactory::CreateServerCredentials(protocol_, credentials));
   builder.AddListeningPort(strings::StrCat("0.0.0.0:", requested_port_),
                            credentials, &bound_port_);
   builder.SetMaxReceiveMessageSize(-1);
