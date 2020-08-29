@@ -446,12 +446,7 @@ class StridedSliceAssignOp : public XlaOpKernel {
 
     TensorShape lhs_shape;
     xla::XlaOp lhs;
-    if (ctx->input_type(0) == DT_RESOURCE) {
-      OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &lhs_shape, &lhs));
-    } else {
-      lhs_shape = ctx->InputShape(0);
-      lhs = ctx->Input(0);
-    }
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &lhs_shape, &lhs));
 
     const TensorShape rhs_shape = ctx->InputShape(4);
 
@@ -509,11 +504,7 @@ class StridedSliceAssignOp : public XlaOpKernel {
 
     lhs = xla::DynamicUpdateSlice(lhs, rhs, slice_begin);
 
-    if (ctx->input_type(0) == DT_RESOURCE) {
-      OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, lhs));
-    } else {
-      ctx->SetOutput(0, lhs);
-    }
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, lhs));
   }
 
  private:
@@ -524,12 +515,6 @@ class StridedSliceAssignOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("ResourceStridedSliceAssign")
-                    .CompileTimeConstantInput("begin")
-                    .CompileTimeConstantInput("end")
-                    .CompileTimeConstantInput("strides"),
-                StridedSliceAssignOp);
-
-REGISTER_XLA_OP(Name("TensorStridedSliceUpdate")
                     .CompileTimeConstantInput("begin")
                     .CompileTimeConstantInput("end")
                     .CompileTimeConstantInput("strides"),
