@@ -1062,6 +1062,41 @@ class BatchTests(test.TestCase, parameterized.TestCase):
       d2y_dx2 = [tape.gradient(dy_dx, x) for dy_dx in jvps]
     self.assertAllClose(expected, d2y_dx2)
 
+  def testBatchNestedForward(self):
+    primal = constant_op.constant(1.1)
+    tangents = random_ops.random_normal(shape=[10], seed=1)
+    with forwardprop.ForwardAccumulator._batch_accumulator(primal, tangents) as outer_acc:
+      with forwardprop.ForwardAccumulator._batch_accumulator(primal, tangents) as acc:
+        primal_out = primal ** 3.5
+    inner_jvp = acc.jvp(primal_out)
+    outer_jvp = outer_acc.jvp(inner_jvp)
+    self.assertAllClose(1.1 ** 3.5, primal_out)
+    self.assertAllClose([dy * 3.5 * 1.1 ** 2.5 for dy in tangents.numpy()], inner_jvp)
+    self.assertAllClose([dy * 3.5 * 2.5 * 1.1 ** 1.5 for dy in tangents.numpy()], outer_jvp)
+    self.assertIsNone(acc.jvp(outer_acc.jvp(primal_out)))
+
+  def testBachOnModel(self):
+    x = constant_op.constant(5.)
+    class _Model(module.Module):
+      def __init__(self):
+        super().__init__()
+        self.a_variable = variables.Variable(5.0)
+        self.non_trainable_variable = variables.Variable(5.0, trainable=False)
+      def __call__(self, x):
+        return self.a_variable * x + self.non_trainable_variable
+
+    model = _Model()
+    print(model.trainable_variables)
+    with forwardprop.ForwardAccumulator._batch_accumulator(
+      primals=model.trainable_variables,
+      tangents=(constant_op.constant([1., 0.]), )) as acc:
+      primal_out = model(5.)
+      jvps = acc.jvp(primal_out)
+    with backprop.GradientTape() as tape:
+      y = model(x)
+      grad = tape.gradient(y, model.trainable_variables)
+    self.assertAllClose(jvps, grad)
+
 
 if __name__ == "__main__":
   # TODO(allenl): Also test with 1.x-style graph mode.
