@@ -223,6 +223,16 @@ TEST_F(HadoopFileSystemTest, DeleteFile) {
   EXPECT_TF_OK(status_);
 }
 
+TEST_F(HadoopFileSystemTest, GetFileSize) {
+  const std::string path = TmpDir("GetFileSize");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+  auto file_size =
+      tf_hadoop_filesystem::GetFileSize(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(4, file_size);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
