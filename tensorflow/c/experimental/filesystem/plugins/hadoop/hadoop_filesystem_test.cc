@@ -243,6 +243,19 @@ TEST_F(HadoopFileSystemTest, CreateDirStat) {
   EXPECT_TRUE(stat.is_directory);
 }
 
+TEST_F(HadoopFileSystemTest, DeleteDir) {
+  const std::string path = TmpDir("DeleteDir");
+  tf_hadoop_filesystem::DeleteDir(filesystem_, path.c_str(), status_);
+  EXPECT_NE(TF_GetCode(status_), TF_OK);
+  tf_hadoop_filesystem::CreateDir(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  tf_hadoop_filesystem::DeleteDir(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  TF_FileStatistics stat;
+  tf_hadoop_filesystem::Stat(filesystem_, path.c_str(), &stat, status_);
+  EXPECT_NE(TF_GetCode(status_), TF_OK);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
