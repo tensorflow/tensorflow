@@ -186,6 +186,35 @@ TEST_F(HadoopFileSystemTest, PathExists) {
   EXPECT_TF_OK(status_);
 }
 
+TEST_F(HadoopFileSystemTest, GetChildren) {
+  const std::string base = TmpDir("GetChildren");
+  tf_hadoop_filesystem::CreateDir(filesystem_, base.c_str(), status_);
+  EXPECT_TF_OK(status_);
+
+  const std::string file = io::JoinPath(base, "TestFile.csv");
+  WriteString(file, "test");
+  EXPECT_TF_OK(status_);
+
+  const std::string subdir = io::JoinPath(base, "SubDir");
+  tf_hadoop_filesystem::CreateDir(filesystem_, subdir.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  const std::string subfile = io::JoinPath(subdir, "TestSubFile.csv");
+  WriteString(subfile, "test");
+  EXPECT_TF_OK(status_);
+
+  char** entries;
+  auto num_entries = tf_hadoop_filesystem::GetChildren(
+      filesystem_, base.c_str(), &entries, status_);
+  EXPECT_TF_OK(status_);
+
+  std::vector<std::string> childrens;
+  for (int i = 0; i < num_entries; ++i) {
+    childrens.push_back(entries[i]);
+  }
+  std::sort(childrens.begin(), childrens.end());
+  EXPECT_EQ(std::vector<string>({"SubDir", "TestFile.csv"}), childrens);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
