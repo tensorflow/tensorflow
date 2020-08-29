@@ -15,10 +15,24 @@
 # ==============================================================================
 
 set -e
+ubuntu_version=$(cat /etc/issue | grep -i ubuntu | awk '{print $2}' | \
+  awk -F'.' '{print $1}')
+
+if [[ "$1" != "" ]] && [[ "$1" != "--without_cmake" ]]; then
+  echo "Unknown argument '$1'"
+  exit 1
+fi
 
 # Get the latest version of pip so it recognize manylinux2010
-easy_install3 -U pip
-easy_install -U pip
+if [[ "$ubuntu_version" == "18" ]]; then
+  wget https://bootstrap.pypa.io/get-pip.py
+  python3 get-pip.py
+  python get-pip.py
+  rm -f get-pip.py
+else
+  easy_install3 -U pip
+  easy_install -U pip
+fi
 
 # Install pip packages from whl files to avoid the time-consuming process of
 # building from source.

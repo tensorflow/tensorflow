@@ -38,12 +38,16 @@ if [[ "$ubuntu_version" == "14" ]]; then
   apt-get dist-upgrade -y
 fi
 
+if [[ "$ubuntu_version" == "16" ]]; then
+  apt-get install -y --no-install-recommends \
+      clang-format-3.8
+fi
+
 ## TODO(yifeif) remove ffmpeg once ffmpeg is removed from contrib
 apt-get install -y --no-install-recommends \
     autoconf \
     automake \
     build-essential \
-    clang-format-3.8 \
     curl \
     ffmpeg \
     git \
