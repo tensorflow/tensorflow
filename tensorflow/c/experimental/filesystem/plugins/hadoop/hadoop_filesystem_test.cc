@@ -256,6 +256,20 @@ TEST_F(HadoopFileSystemTest, DeleteDir) {
   EXPECT_NE(TF_GetCode(status_), TF_OK);
 }
 
+TEST_F(HadoopFileSystemTest, RenameFile) {
+  const std::string src = TmpDir("RenameFileSrc");
+  const std::string dst = TmpDir("RenameFileDst");
+  WriteString(src, "test");
+  ASSERT_TF_OK(status_);
+
+  tf_hadoop_filesystem::RenameFile(filesystem_, src.c_str(), dst.c_str(),
+                                   status_);
+  EXPECT_TF_OK(status_);
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("test", result);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
