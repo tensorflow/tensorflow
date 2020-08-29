@@ -173,10 +173,6 @@ std::unique_ptr<OperationPass<FuncOp>> CreateDeviceIndexSelectorPass();
 // Creates function pass to replace InitializeTableFromTextFileV2Ops with
 // LookupTableImportV2Op ops.
 std::unique_ptr<OperationPass<FuncOp>> CreateInitTextFileToImportPass();
-
-// Creates a module pass that renames all the private functions to new
-// names that don't exist in the original module.
-std::unique_ptr<OperationPass<ModuleOp>> CreateRenamePrivateFunctionPass();
 }  // namespace TF
 
 namespace tf_executor {

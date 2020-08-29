@@ -54,11 +54,10 @@ versions {
 # Verify that functions from the library are properly imported.
 
 # CHECK-LABEL:  func @main() {
-# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = true, device = "", f = @foo}
-# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, device = "", f = @bar}
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = true, device = "", f = @foo0}
+# CHECK:    "tf.LegacyCall"() {_disable_call_shape_inference = false, device = "", f = @bar0}
 
-# CHECK-LABEL:  func @bar() attributes {sym_visibility = "private"}
+# CHECK-LABEL:  func @foo0() attributes {sym_visibility = "private"}
+# CHECK: "tf.LegacyCall"() {_disable_call_shape_inference = false, device = "", f = @bar0}
 
-# CHECK-LABEL:  func @foo() attributes {sym_visibility = "private"}
-# CHECK: "tf.LegacyCall"() {_disable_call_shape_inference = false, device = "", f = @bar}
-
+# CHECK-LABEL:  func @bar0() attributes {sym_visibility = "private"} 

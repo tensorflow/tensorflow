@@ -38,9 +38,8 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
 
 // Converts an MLIR module to TensorFlow graph and FunctionLibraryDefinition.
 // The "main" function of the module is stored in the graph and the rest of
-// functions are stored in the library. Note that existing functions in the
-// library will be deleted. Control ret nodes are stored separately in
-// `control_ret_nodes`.
+// functions are stored in the library. Control ret nodes are stored separately
+// in `control_ret_nodes`.
 stream_executor::port::Status ConvertMlirToGraph(
     mlir::ModuleOp module, const GraphExportConfig& configs,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
@@ -48,8 +47,7 @@ stream_executor::port::Status ConvertMlirToGraph(
 
 // Converts an MLIR module to TensorFlow graph and FunctionLibraryDefinition.
 // The "main" function of the module is stored in the graph and the rest of
-// functions are stored in the library. Note that existing functions in the
-// library will be deleted.
+// functions are stored in the library.
 stream_executor::port::Status ConvertMlirToGraph(
     mlir::ModuleOp module, const GraphExportConfig& configs,
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def);
