@@ -487,7 +487,7 @@ Status FileSystemCopyFile(FileSystem* src_fs, const string& src,
   io::ParseURI(src, &scheme, &host, &path);
   if ("hdfs" == scheme) {
     uint64 file_size;
-    Status s = src_fs->GetFileSize(src, &file_size);
+    s = src_fs->GetFileSize(src, &file_size);
     if (!s.ok()) {
       return s;
     }
