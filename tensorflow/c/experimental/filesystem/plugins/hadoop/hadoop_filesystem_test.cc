@@ -327,6 +327,19 @@ TEST_F(HadoopFileSystemTest, NoHarExtension) {
   EXPECT_EQ(TF_GetCode(status_), TF_INVALID_ARGUMENT) << TF_Message(status_);
 }
 
+TEST_F(HadoopFileSystemTest, HarRootPath) {
+  const std::string har_path = "har://hdfs-root/user/j.doe/my_archive.har";
+  std::string scheme, namenode, path;
+  ParseHadoopPath(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive.har", path);
+  SplitArchiveNameAndPath(&path, &namenode, status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("har://hdfs-root/user/j.doe/my_archive.har", namenode);
+  EXPECT_EQ("/", path);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
