@@ -233,6 +233,16 @@ TEST_F(HadoopFileSystemTest, GetFileSize) {
   EXPECT_EQ(4, file_size);
 }
 
+TEST_F(HadoopFileSystemTest, CreateDirStat) {
+  const std::string path = TmpDir("CreateDirStat");
+  tf_hadoop_filesystem::CreateDir(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  TF_FileStatistics stat;
+  tf_hadoop_filesystem::Stat(filesystem_, path.c_str(), &stat, status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_TRUE(stat.is_directory);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
