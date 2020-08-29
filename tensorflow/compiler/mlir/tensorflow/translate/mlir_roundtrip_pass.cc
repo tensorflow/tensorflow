@@ -18,6 +18,10 @@ limitations under the License.
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/Verifier.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_graphdef.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/mlir_roundtrip_flags.h"
@@ -52,12 +56,36 @@ static Status Export(mlir::OwningModuleRef module,
                      const GraphOptimizationPassOptions& options,
                      std::unique_ptr<Graph>* graph) {
   GraphExportConfig confs;
-  return ConvertMlirToGraph(*module, confs, graph, options.flib_def);
+  FunctionLibraryDefinition exported_function_library(OpRegistry::Global(), {});
+  TF_RETURN_IF_ERROR(
+      ConvertMlirToGraph(*module, confs, graph, &exported_function_library));
+  return options.flib_def->AddLibrary(exported_function_library);
 }
 
 static Status Roundtrip(const GraphOptimizationPassOptions& options,
                         std::unique_ptr<Graph>* graph, MLIRContext* context) {
   TF_ASSIGN_OR_RETURN(auto module, Import(options, **graph, context));
+
+  {
+    // The TF runtime doesn't like an optimization pipeline
+    // to change library functions in-place, i.e. create different functions
+    // that have the same names as the functions in the original function
+    // library. Some of this constraint come from the fact that Session can
+    // extend its function library with the output function library of the
+    // bridge and equality checks of FunctionDef's are based on exact contents
+    // which is not guaranteed by the TF importer/exporter.
+    //
+    // Therefore, we rename all these function to new names to avoid any
+    // failures in Session::Extend.
+    mlir::PassManager pm(context);
+    pm.addPass(mlir::createSymbolDCEPass());
+    pm.addPass(mlir::TF::CreateRenamePrivateFunctionPass());
+
+    mlir::StatusScopedDiagnosticHandler status_handler(context);
+    if (mlir::failed(pm.run(module.get()))) {
+      return status_handler.ConsumeStatus();
+    }
+  }
   return Export(std::move(module), options, graph);
 }
 

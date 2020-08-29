@@ -717,6 +717,8 @@ Status Exporter::Convert(mlir::ModuleOp module,
   TF_ASSIGN_OR_RETURN(
       *graph, Exporter::Convert(configs, tf_dialect, entry_func.value(), &flib,
                                 control_ret_nodes));
+
+  flib_def->Clear();
   for (auto& func_def : flib.function()) {
     TF_RETURN_IF_ERROR(flib_def->AddFunctionDef(func_def));
   }

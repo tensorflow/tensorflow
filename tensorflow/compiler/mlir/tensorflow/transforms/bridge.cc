@@ -122,6 +122,10 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
 }
 
 void CreateTPUBridgePipelineV1(OpPassManager &pm) {
+  // Function library in the V1 bridge is likely to contain many unused
+  // functions, so we remove them early to speed up the rest of the pipeline.
+  pm.addPass(createSymbolDCEPass());
+
   pm.addPass(TF::CreateTFShapeInferencePass());
   // For V1 compatibility, we process a module where the graph does not have
   // feeds and fetched. We extract first the TPU computation in a submodule,
@@ -132,6 +136,19 @@ void CreateTPUBridgePipelineV1(OpPassManager &pm) {
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandOutliningPass());
   OpPassManager &nested_module = pm.nest<ModuleOp>();
   CreateTPUBridgePipeline(nested_module);
+
+  // The TF runtime using the V1 bridge doesn't like an optimization pipeline to
+  // change library functions in-place, i.e. create different functions that
+  // have the same names as the functions in the original function library. Some
+  // of this constraint come from the fact that Session can extend its function
+  // library with the output function library of the bridge and equality checks
+  // of FunctionDef's are based on exact contents which is not guaranteed by the
+  // TF importer/exporter nor by the V1 bridge.
+  //
+  // Therefore, we rename all these function to new names to avoid any failures
+  // in Session::Extend.
+  pm.addPass(TF::CreateRenamePrivateFunctionPass());
+
   pm.addPass(tf_executor::CreateTFExecutorTPUV1IslandInliningPass());
 }
 
