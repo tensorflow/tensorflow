@@ -1079,7 +1079,7 @@ class KerasModelTest(keras_parameterized.TestCase):
 
       loss_scale = loss_scale_module.DynamicLossScale(
           initial_loss_scale=1., increment_period=2., multiplier=2.)
-      opt = gradient_descent.Adam(1.)
+      opt = adam.Adam(1.)
       opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
       model.compile(
           optimizer=opt,
