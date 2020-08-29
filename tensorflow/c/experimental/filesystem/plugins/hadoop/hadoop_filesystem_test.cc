@@ -215,6 +215,14 @@ TEST_F(HadoopFileSystemTest, GetChildren) {
   EXPECT_EQ(std::vector<string>({"SubDir", "TestFile.csv"}), childrens);
 }
 
+TEST_F(HadoopFileSystemTest, DeleteFile) {
+  const std::string path = TmpDir("DeleteFile");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+  tf_hadoop_filesystem::DeleteFile(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
