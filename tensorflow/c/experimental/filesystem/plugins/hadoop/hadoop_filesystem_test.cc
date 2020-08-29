@@ -175,6 +175,17 @@ TEST_F(HadoopFileSystemTest, WritableFile) {
   EXPECT_EQ("content1,content2", content);
 }
 
+TEST_F(HadoopFileSystemTest, PathExists) {
+  const std::string path = TmpDir("PathExists");
+  tf_hadoop_filesystem::PathExists(filesystem_, path.c_str(), status_);
+  EXPECT_EQ(TF_NOT_FOUND, TF_GetCode(status_)) << TF_Message(status_);
+  TF_SetStatus(status_, TF_OK, "");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+  tf_hadoop_filesystem::PathExists(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
