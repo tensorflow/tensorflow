@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stacktrace_handler.h"
 #include "tensorflow/core/platform/test.h"
+#include "third_party/hadoop/hdfs.h"
 
 #define ASSERT_TF_OK(x) ASSERT_EQ(TF_OK, TF_GetCode(x)) << TF_Message(x)
 #define EXPECT_TF_OK(x) EXPECT_EQ(TF_OK, TF_GetCode(x)) << TF_Message(x)
@@ -339,6 +340,23 @@ TEST_F(HadoopFileSystemTest, HarRootPath) {
   EXPECT_EQ("har://hdfs-root/user/j.doe/my_archive.har", namenode);
   EXPECT_EQ("/", path);
 }
+
+TEST_F(HadoopFileSystemTest, WriteLargeFile) {
+  if (std::getenv("HADOOP_TEST_LARGE_FILE") != "1") GTEST_SKIP();
+  const std::string path = TmpDir("WriteLargeFile");
+  const size_t file_size =
+      static_cast<size_t>(std::numeric_limits<tSize>::max()) + 1024;
+  // Fake a test string.
+  std::string source(file_size, {});
+  for (size_t i = 0; i < file_size; ++i) source[i] = (i % 128);
+  WriteString(path, source);
+  ASSERT_TF_OK(status_);
+  auto result = ReadAll(path);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(source, result);
+}
+// NewAppendableFile() is not testable. Local filesystem maps to
+// ChecksumFileSystem in Hadoop, where appending is an unsupported operation.
 
 }  // namespace
 }  // namespace tensorflow
