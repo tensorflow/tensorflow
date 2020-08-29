@@ -93,11 +93,8 @@ void PropagatorState::PropagateOutputs(const TaggedNode& tagged_node,
     // This is the case for most nodes.
     DCHECK_EQ(input_frame, output_frame);
     FrameState* frame = input_frame;
-    int activated =
-        frame->ActivateNodes(item, is_dead, output_iter, outputs, ready);
-    is_frame_done =
-        frame->AdjustOutstandingOps(input_iter, activated - 1, ready);
-
+    is_frame_done = frame->ActivateNodesAndAdjustOutstanding(
+        item, is_dead, output_iter, outputs, ready);
   } else if (item->is_enter) {
     FindOrCreateChildFrame(input_frame, input_iter, *item, &output_frame);
     {
@@ -564,23 +561,24 @@ int PropagatorState::FrameState::ActivateNodesSlowPath(
   return activated;
 }
 
-int PropagatorState::FrameState::ActivateNodes(const NodeItem* item,
-                                               const bool is_dead,
-                                               IterationState* iter_state,
-                                               EntryVector* outputs,
-                                               TaggedNodeSeq* ready) {
+bool PropagatorState::FrameState::ActivateNodesAndAdjustOutstanding(
+    const NodeItem* item, const bool is_dead, IterationState* iter_state,
+    EntryVector* outputs, TaggedNodeSeq* ready) {
   if (TF_PREDICT_FALSE(item->is_any_consumer_merge_or_control_trigger)) {
     mutex_lock l(mu);
-    return ActivateNodesSlowPath(item, is_dead, iter_state, outputs, ready);
-  } else {
-    // TODO(tlipcon): is a shared lock even necessary here? Given we know that
-    // this will only read from the state associated with the finishing 'item'
-    // and write to the state associated with its outputs, maybe it's not?
-    // That said, it doesn't seem to hurt performance that much.
-    tf_shared_lock l(mu);
-    return ActivateNodesFastPathShared(item, is_dead, iter_state, outputs,
-                                       ready);
+    int activated =
+        ActivateNodesSlowPath(item, is_dead, iter_state, outputs, ready);
+    return AdjustOutstandingOpsLocked(iter_state, activated - 1, ready);
   }
+  {
+    tf_shared_lock l(mu);
+    int activated =
+        ActivateNodesFastPathShared(item, is_dead, iter_state, outputs, ready);
+    bool iter_done = AdjustOutstandingOpsFastPath(iter_state, activated - 1);
+    if (!iter_done) return false;
+  }
+  mutex_lock l(mu);
+  return CleanupIterations(iter_state, ready);
 }
 
 int PropagatorState::FrameState::ActivateNodesLocked(const NodeItem* item,
@@ -752,13 +750,21 @@ bool PropagatorState::FrameState::AdjustOutstandingOps(
   if (delta == 0) {
     return false;
   }
-  DCHECK_GE(iter_state->outstanding_ops, -delta);
-  auto old_val = iter_state->outstanding_ops.fetch_add(delta);
-  if (old_val + delta != 0) {
-    return false;
+  {
+    tf_shared_lock sl(mu);
+    if (TF_PREDICT_TRUE(!AdjustOutstandingOpsFastPath(iter_state, delta))) {
+      return false;
+    }
   }
   mutex_lock l(mu);
+  DCHECK(IsIterationDone(iter_state));
   return CleanupIterations(iter_state, ready);
+}
+
+bool PropagatorState::FrameState::AdjustOutstandingOpsFastPath(
+    IterationState* iter_state, int delta) {
+  auto old_val = iter_state->outstanding_ops.fetch_add(delta);
+  return (old_val + delta == 0) && IsIterationDone(iter_state);
 }
 
 // Decrement the outstanding op count and clean up the iterations in the

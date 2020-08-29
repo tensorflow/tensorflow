@@ -287,7 +287,7 @@ class PropagatorState {
     void InitializeFrameInfo(const ImmutableExecutorState::FrameInfo& finfo);
 
     inline IterationState* GetIteration(int64 iter)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu) {
+        TF_SHARED_LOCKS_REQUIRED(mu) {
       if (TF_PREDICT_TRUE(iter == 0)) {
         return iterations_first;
       } else {
@@ -311,6 +311,9 @@ class PropagatorState {
                                     TaggedNodeSeq* ready)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
 
+    bool AdjustOutstandingOpsFastPath(IterationState* iter_state, int delta)
+        TF_SHARED_LOCKS_REQUIRED(mu);
+
     // Convenience methods for the above 'Adjust' calls where delta takes the common
     // value of -1.
     bool DecrementOutstandingOps(IterationState* iter_state,
@@ -325,7 +328,7 @@ class PropagatorState {
 
     // Returns true if the iteration of the frame is completed.
     bool IsIterationDone(IterationState* iter_state)
-        TF_EXCLUSIVE_LOCKS_REQUIRED(mu);
+        TF_SHARED_LOCKS_REQUIRED(mu);
 
     // Increments the iteration id. If this is a new iteration, initialize it.
     //
@@ -349,13 +352,16 @@ class PropagatorState {
     // Activate the successors of a node. Contents of *outputs are left in an
     // indeterminate state after returning from this method.
     //
-    // In the case that 'item' is a simple node (no merge/control outputs) this will
-    // acquire a shared lock and can run concurrently with other invocations.
+    // In the case that 'item' is a simple node (no merge/control outputs) this
+    // will acquire a shared lock and can run concurrently with other
+    // invocations.
     //
-    // Returns the number of newly activated nodes that have been added to '*ready'.
-    int ActivateNodes(const NodeItem* item, const bool is_dead,
-                      IterationState* iter_state, EntryVector* outputs,
-                      TaggedNodeSeq* ready);
+    // Return true if the frame is done after activation.
+    bool ActivateNodesAndAdjustOutstanding(const NodeItem* item,
+                                           const bool is_dead,
+                                           IterationState* iter_state,
+                                           EntryVector* outputs,
+                                           TaggedNodeSeq* ready);
 
     // Same as the above, but requires 'mu' already held in exclusive mode.
     int ActivateNodesLocked(const NodeItem* item, const bool is_dead,
