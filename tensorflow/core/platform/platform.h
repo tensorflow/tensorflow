@@ -47,10 +47,6 @@ limitations under the License.
 // EMSCRIPTEN builds are considered "mobile" for the sake of portability.
 #define IS_MOBILE_PLATFORM
 
-#elif defined(__arm__) || defined(__aarch64__)
-// If no platform specified, use:
-#define PLATFORM_POSIX
-
 #else
 // If no platform specified, use:
 #define PLATFORM_POSIX
