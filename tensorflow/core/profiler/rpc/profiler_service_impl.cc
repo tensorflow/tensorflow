@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 
 namespace tensorflow {
+namespace profiler {
 namespace {
 
 const absl::string_view kXPlanePb = "xplane.pb";
@@ -113,6 +114,12 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
 
 std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {
   return absl::make_unique<ProfilerServiceImpl>();
+}
+
+}  // namespace profiler
+
+std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {
+  return absl::make_unique<profiler::ProfilerServiceImpl>();
 }
 
 }  // namespace tensorflow
