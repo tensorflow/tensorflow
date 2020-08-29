@@ -20,18 +20,18 @@ from __future__ import print_function
 
 import numpy as np
 
-import tensorflow as tf
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import config
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.layers.preprocessing import image_preprocessing
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
 from tensorflow.python.platform import test
 
-tf.config.set_soft_device_placement(True)
+config.set_soft_device_placement(enabled=True)
 
 @combinations.generate(
     combinations.combine(
