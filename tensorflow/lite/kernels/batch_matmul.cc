@@ -407,7 +407,7 @@ TfLiteStatus TransposeRowsColumns(TfLiteContext* context,
     return kTfLiteOk;
   } else {
     TF_LITE_KERNEL_LOG(
-        context, "Can only transpose tensors with float, int8 and int16 type.");
+        context, "Can only transpose tensors with float, int8 or int16 type.");
     return kTfLiteError;
   }
 }
