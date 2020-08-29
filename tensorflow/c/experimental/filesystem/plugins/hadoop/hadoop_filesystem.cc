@@ -37,11 +37,17 @@ static void plugin_memory_free(void* ptr) { free(ptr); }
 void ParseHadoopPath(const std::string& fname, std::string* scheme,
                      std::string* namenode, std::string* path) {
   size_t scheme_end = fname.find("://") + 2;
-  *scheme = fname.substr(0, scheme_end + 1);
+  // We don't want `://` in scheme.
+  *scheme = fname.substr(0, scheme_end - 2);
   size_t nn_end = fname.find("/", scheme_end + 1);
-  if (nn_end == std::string::npos) return;
+  if (nn_end == std::string::npos) {
+    *namenode = fname.substr(scheme_end + 1);
+    *path = "";
+    return;
+  }
   *namenode = fname.substr(scheme_end + 1, nn_end - scheme_end - 1);
-  *path = fname.substr(nn_end + 1);
+  // We keep `/` in path.
+  *path = fname.substr(nn_end);
 }
 
 void SplitArchiveNameAndPath(std::string* path, std::string* nn,
@@ -54,7 +60,7 @@ void SplitArchiveNameAndPath(std::string* path, std::string* nn,
   }
   // Case of hadoop archive. Namenode is the path to the archive.
   std::ostringstream namenodestream;
-  namenodestream << "har://" << nn
+  namenodestream << "har://" << *nn
                  << path->substr(0, index_end_archive_name + 4);
   *nn = namenodestream.str();
   path->erase(0, index_end_archive_name + 4);

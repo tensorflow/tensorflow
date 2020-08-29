@@ -301,6 +301,20 @@ TEST_F(HadoopFileSystemTest, StatFile) {
   EXPECT_FALSE(stat.is_directory);
 }
 
+TEST_F(HadoopFileSystemTest, HarSplit) {
+  const std::string har_path =
+      "har://hdfs-root/user/j.doe/my_archive.har/dir0/dir1/file.txt";
+  std::string scheme, namenode, path;
+  ParseHadoopPath(har_path, &scheme, &namenode, &path);
+  EXPECT_EQ("har", scheme);
+  EXPECT_EQ("hdfs-root", namenode);
+  EXPECT_EQ("/user/j.doe/my_archive.har/dir0/dir1/file.txt", path);
+  SplitArchiveNameAndPath(&path, &namenode, status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("har://hdfs-root/user/j.doe/my_archive.har", namenode);
+  EXPECT_EQ("/dir0/dir1/file.txt", path);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
