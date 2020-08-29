@@ -252,7 +252,7 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
   char* dst = buffer;
   bool eof_retried = false;
   int64_t read = 0;
-  while (TF_GetCode(status) == TF_OK && !eof_retried) {
+  while (TF_GetCode(status) == TF_OK && n > 0) {
     // We lock inside the loop rather than outside so we don't block other
     // concurrent readers.
     absl::MutexLock l(&hdfs_file->mu);

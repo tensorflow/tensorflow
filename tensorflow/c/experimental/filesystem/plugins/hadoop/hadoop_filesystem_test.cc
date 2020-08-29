@@ -302,6 +302,56 @@ TEST_F(HadoopFileSystemTest, StatFile) {
   EXPECT_FALSE(stat.is_directory);
 }
 
+TEST_F(HadoopFileSystemTest, WriteWhileReading) {
+  const std::string path = TmpDir("WriteWhileReading");
+  // Skip the test if we're not testing on HDFS. Hadoop's local filesystem
+  // implementation makes no guarantees that writable files are readable while
+  // being written.
+  if (path.find_first_of("hdfs://") != 0) GTEST_SKIP();
+
+  auto writer = GetWriter();
+  tf_hadoop_filesystem::NewWritableFile(filesystem_, path.c_str(), writer.get(),
+                                        status_);
+  EXPECT_TF_OK(status_);
+
+  const std::string content1 = "content1";
+  tf_writable_file::Append(writer.get(), content1.c_str(), content1.size(),
+                           status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Flush(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+
+  auto reader = GetReader();
+  tf_hadoop_filesystem::NewRandomAccessFile(filesystem_, path.c_str(),
+                                            reader.get(), status_);
+  EXPECT_TF_OK(status_);
+
+  std::string result;
+  result.resize(content1.size());
+  auto read = tf_random_access_file::Read(reader.get(), 0, content1.size(),
+                                          &result[0], status_);
+  result.resize(read);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(content1, result);
+
+  const std::string content2 = "content2";
+  tf_writable_file::Append(writer.get(), content2.c_str(), content2.size(),
+                           status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Flush(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+
+  result.resize(content2.size());
+  read = tf_random_access_file::Read(reader.get(), content1.size(),
+                                     content2.size(), &result[0], status_);
+  result.resize(read);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(content2, result);
+
+  tf_writable_file::Close(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+}
+
 TEST_F(HadoopFileSystemTest, HarSplit) {
   const std::string har_path =
       "har://hdfs-root/user/j.doe/my_archive.har/dir0/dir1/file.txt";
