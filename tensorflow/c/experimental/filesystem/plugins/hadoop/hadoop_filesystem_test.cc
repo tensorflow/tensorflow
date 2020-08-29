@@ -147,6 +147,34 @@ TEST_F(HadoopFileSystemTest, RandomAccessFile) {
   EXPECT_EQ(content.substr(2, 4), result);
 }
 
+TEST_F(HadoopFileSystemTest, WritableFile) {
+  auto writer = GetWriter();
+  const std::string path = TmpDir("WritableFile");
+  tf_hadoop_filesystem::NewWritableFile(filesystem_, path.c_str(), writer.get(),
+                                        status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Append(writer.get(), "content1,", strlen("content1,"),
+                           status_);
+  EXPECT_TF_OK(status_);
+  auto pos = tf_writable_file::Tell(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ(pos, 9);
+
+  tf_writable_file::Append(writer.get(), "content2", strlen("content2"),
+                           status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Flush(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Sync(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+  tf_writable_file::Close(writer.get(), status_);
+  EXPECT_TF_OK(status_);
+
+  auto content = ReadAll(path);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("content1,content2", content);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
