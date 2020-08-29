@@ -172,7 +172,7 @@ Status DataServiceDispatcherImpl::RegisterWorker(
     }
     TaskDef* task_def = response->add_tasks();
     std::shared_ptr<const Dataset> dataset;
-    TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, &dataset));
+    TF_RETURN_IF_ERROR(state_.DatasetFromId(job->dataset_id, dataset));
     std::string dataset_key =
         DatasetKey(dataset->dataset_id, dataset->fingerprint);
     if (config_.work_dir().empty()) {
@@ -199,7 +199,7 @@ Status DataServiceDispatcherImpl::WorkerUpdate(
   for (auto& update : request->updates()) {
     int64 task_id = update.task_id();
     std::shared_ptr<const Task> task;
-    TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, &task));
+    TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
     if (update.completed()) {
       if (task->finished) {
         VLOG(1) << "Received completion update for already-finished task "
@@ -220,7 +220,7 @@ Status DataServiceDispatcherImpl::GetDatasetDef(
     const GetDatasetDefRequest* request, GetDatasetDefResponse* response) {
   mutex_lock l(mu_);
   std::shared_ptr<const Dataset> dataset;
-  TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), &dataset));
+  TF_RETURN_IF_ERROR(state_.DatasetFromId(request->dataset_id(), dataset));
   std::string key = DatasetKey(dataset->dataset_id, dataset->fingerprint);
   std::shared_ptr<const DatasetDef> dataset_def;
   TF_RETURN_IF_ERROR(dataset_store_->Get(key, dataset_def));
@@ -242,7 +242,7 @@ Status DataServiceDispatcherImpl::GetOrRegisterDataset(
   VLOG(4) << "Registering dataset graph: " << graph.DebugString();
 #endif
   std::shared_ptr<const Dataset> dataset;
-  Status s = state_.DatasetFromFingerprint(fingerprint, &dataset);
+  Status s = state_.DatasetFromFingerprint(fingerprint, dataset);
   if (s.ok()) {
     int64 id = dataset->dataset_id;
     VLOG(3) << "Received duplicate RegisterDataset request with fingerprint "
@@ -309,7 +309,7 @@ Status DataServiceDispatcherImpl::GetOrCreateJob(
   std::vector<std::shared_ptr<const Task>> tasks;
   {
     mutex_lock l(mu_);
-    Status s = state_.NamedJobByKey(key, &job);
+    Status s = state_.NamedJobByKey(key, job);
     if (s.ok()) {
       TF_RETURN_IF_ERROR(ValidateMatchingJob(job, requested_processing_mode,
                                              request->dataset_id()));
@@ -402,7 +402,7 @@ Status DataServiceDispatcherImpl::CreateJob(
     key->set_index(named_job_key->index);
   }
   TF_RETURN_IF_ERROR(Apply(update));
-  TF_RETURN_IF_ERROR(state_.JobFromId(job_id, &job));
+  TF_RETURN_IF_ERROR(state_.JobFromId(job_id, job));
   return Status::OK();
 }
 
@@ -446,7 +446,7 @@ Status DataServiceDispatcherImpl::CreateTask(std::shared_ptr<const Job> job,
   create_task->set_dataset_id(job->dataset_id);
   create_task->set_worker_address(worker_address);
   TF_RETURN_IF_ERROR(Apply(update));
-  TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, &task));
+  TF_RETURN_IF_ERROR(state_.TaskFromId(task_id, task));
   return Status::OK();
 }
 
@@ -495,7 +495,7 @@ Status DataServiceDispatcherImpl::AssignTask(std::shared_ptr<const Task> task)
   {
     mutex_lock l(mu_);
     std::shared_ptr<const Dataset> dataset;
-    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, &dataset));
+    TF_RETURN_IF_ERROR(state_.DatasetFromId(task->dataset_id, dataset));
     std::string dataset_key =
         DatasetKey(dataset->dataset_id, dataset->fingerprint);
     if (config_.work_dir().empty()) {
@@ -530,7 +530,7 @@ Status DataServiceDispatcherImpl::GetTasks(const GetTasksRequest* request,
   std::shared_ptr<const Job> job;
   TF_RETURN_IF_ERROR(state_.JobForJobClientId(request->job_client_id(), job));
   std::vector<std::shared_ptr<const Task>> tasks;
-  TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, &tasks));
+  TF_RETURN_IF_ERROR(state_.TasksForJob(job->job_id, tasks));
   for (const auto& task : tasks) {
     TaskInfo* task_info = response->mutable_task_info()->Add();
     task_info->set_worker_address(task->worker_address);
