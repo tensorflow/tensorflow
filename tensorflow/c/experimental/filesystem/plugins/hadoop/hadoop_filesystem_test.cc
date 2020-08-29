@@ -270,6 +270,26 @@ TEST_F(HadoopFileSystemTest, RenameFile) {
   EXPECT_EQ("test", result);
 }
 
+TEST_F(HadoopFileSystemTest, RenameFileOverwrite) {
+  const std::string src = TmpDir("RenameFileOverwriteSrc");
+  const std::string dst = TmpDir("RenameFileOverwriteDst");
+
+  WriteString(src, "test_old");
+  ASSERT_TF_OK(status_);
+  WriteString(dst, "test_new");
+  ASSERT_TF_OK(status_);
+
+  tf_hadoop_filesystem::PathExists(filesystem_, dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  tf_hadoop_filesystem::RenameFile(filesystem_, src.c_str(), dst.c_str(),
+                                   status_);
+  EXPECT_TF_OK(status_);
+
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("test_old", result);
+}
+
 }  // namespace
 }  // namespace tensorflow
 
