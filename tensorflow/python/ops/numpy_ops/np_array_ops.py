@@ -560,9 +560,13 @@ def _reduce(tf_fn,
       tf_fn(input_tensor=a.data, axis=axis, keepdims=keepdims))
 
 
+# TODO (DarrenZhang01): Add `axis` support to the `size` API.
 @utils.np_doc('size')
-def size(x):
-  x = x.numpy() if isinstance(x, tf.Tensor) else x
+def size(x, axis=None):
+  if axis is not None:
+    raise NotImplementedError("axis argument is not supported in the current `np.size` "
+                     "implementation")
+  x = asarray(x).data
   if isinstance(x, (int, float, onp.int32, onp.int64,
                     onp.float32, onp.float64)):
     return 1
