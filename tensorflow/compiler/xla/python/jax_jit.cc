@@ -307,8 +307,10 @@ class CompiledFunction {
   // notification for the executable and others will wait until notified.
   // It's safe because the first thread will be holding the GIL while
   // initializing the `Notification`.
-  absl::optional<absl::Notification> first_compilation_complete_ =
-      absl::nullopt;
+  //
+  // absl::optional<absl::Notification> is not supported
+  bool first_compilation_started_ = false;
+  absl::Notification first_compilation_complete_;
   absl::optional<std::exception> first_compilation_error_ = absl::nullopt;
 };
 
@@ -724,21 +726,21 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
   if (!default_device_) {
     // TODO(jblespiau): This code will deadlock if a jitted function
     // recursively calls itself.
-    if (first_compilation_complete_) {
-      if (!first_compilation_complete_->HasBeenNotified()) {
+    if (first_compilation_started_) {
+      if (!first_compilation_complete_.HasBeenNotified()) {
         py::gil_scoped_release gil_release;
-        first_compilation_complete_->WaitForNotification();
+        first_compilation_complete_.WaitForNotification();
         if (first_compilation_error_) {
           throw first_compilation_error_.value();
         }
       }
     } else {
-      first_compilation_complete_.emplace();
+      first_compilation_started_ = true;
       try {
         cache_miss_result = cache_miss_fun_(*args, **kwargs);
       } catch (const std::exception& e) {
         first_compilation_error_ = e;
-        first_compilation_complete_->Notify();
+        first_compilation_complete_.Notify();
         throw;
       }
       auto executable = py::cast<std::shared_ptr<xla::PyExecutable>>(
@@ -746,7 +748,7 @@ py::object CompiledFunction::Call(py::args args, py::kwargs kwargs) {
 
       pyclient_ = executable->client();
       default_device_ = executable->LocalDevices()[0].contents;
-      first_compilation_complete_->Notify();
+      first_compilation_complete_.Notify();
     }
   }
 

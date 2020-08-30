@@ -177,7 +177,7 @@ class RamFileSystem : public FileSystem {
               FileStatistics* stat) override {
     mutex_lock m(mu_);
     auto it = fs_.lower_bound(fname);
-    if (it == fs_.end()) {
+    if (it == fs_.end() || !absl::StartsWith(it->first, fname)) {
       return errors::NotFound("");
     }
 

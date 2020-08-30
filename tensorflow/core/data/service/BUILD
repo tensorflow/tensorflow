@@ -55,6 +55,7 @@ cc_library(
     hdrs = ["credentials_factory.h"],
     deps = [
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         tf_grpc_cc_dependency(),
     ],
@@ -313,6 +314,7 @@ cc_library(
     srcs = ["local_credentials_factory.cc"],
     deps = [
         ":credentials_factory",
+        "@com_google_absl//absl/memory",
         tf_grpc_cc_dependency(),
     ],
     alwayslink = 1,

@@ -25,18 +25,12 @@ namespace tensorflow {
 namespace data {
 
 // This class is a wrapper that handles communication for gRPC.
-//
-// Example usage:
-//
-// ::grpc::ServerBuilder builder;
-// // configure builder
-// GrpcDispatcherImpl data_service(&builder);
-// builder.BuildAndStart()
-//
 class GrpcDispatcherImpl : public DispatcherService::Service {
  public:
-  explicit GrpcDispatcherImpl(::grpc::ServerBuilder* server_builder,
-                              const experimental::DispatcherConfig& config);
+  // Constructs a GrpcDispatcherImpl with the given config, and registers it
+  // with `server_builder`.
+  explicit GrpcDispatcherImpl(const experimental::DispatcherConfig& config,
+                              ::grpc::ServerBuilder& server_builder);
   ~GrpcDispatcherImpl() override {}
 
   Status Start();

@@ -24,10 +24,10 @@ namespace data {
 using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 
-GrpcWorkerImpl::GrpcWorkerImpl(ServerBuilder* server_builder,
-                               const experimental::WorkerConfig& config)
+GrpcWorkerImpl::GrpcWorkerImpl(const experimental::WorkerConfig& config,
+                               ServerBuilder& server_builder)
     : impl_(config) {
-  server_builder->RegisterService(this);
+  server_builder.RegisterService(this);
   VLOG(1) << "Registered data service worker";
 }
 

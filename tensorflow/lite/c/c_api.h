@@ -188,7 +188,7 @@ TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorCount(
     const TfLiteInterpreter* interpreter);
 
 // Returns the tensor associated with the output index.
-// REQUIRES: 0 <= input_index < TfLiteInterpreterGetOutputTensorCount(tensor)
+// REQUIRES: 0 <= output_index < TfLiteInterpreterGetOutputTensorCount(tensor)
 //
 // NOTE: The shape and underlying data buffer for output tensors may be not
 // be available until after the output tensor has been both sized and allocated.

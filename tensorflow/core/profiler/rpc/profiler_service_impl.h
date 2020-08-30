@@ -23,6 +23,11 @@ namespace tensorflow {
 
 std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService();
 
+namespace profiler {
+
+std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService();
+
+}  // namespace profiler
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PROFILER_RPC_PROFILER_SERVICE_IMPL_H_

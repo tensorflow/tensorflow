@@ -186,11 +186,11 @@ inline bool Mean(const T* input_data, const int* input_dims,
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
-  U num_elements_in_axis = 1;
+  size_t num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
     // Overflow prevention.
-    if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
+    if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
       return false;
     }
     num_elements_in_axis *= current;
@@ -359,11 +359,11 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
-  U num_elements_in_axis = 1;
+  size_t num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
     // Overflow prevention.
-    if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
+    if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
       return false;
     }
     num_elements_in_axis *= current;
