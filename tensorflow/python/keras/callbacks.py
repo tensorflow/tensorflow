@@ -1688,6 +1688,7 @@ class EarlyStopping(Callback):
                verbose=0,
                mode='auto',
                baseline=None,
+               update_baseline=False,
                restore_best_weights=False):
     super(EarlyStopping, self).__init__()
 
@@ -1695,6 +1696,7 @@ class EarlyStopping(Callback):
     self.patience = patience
     self.verbose = verbose
     self.baseline = baseline
+    self.update_baseline = update_baseline
     self.min_delta = abs(min_delta)
     self.wait = 0
     self.stopped_epoch = 0
@@ -1737,6 +1739,8 @@ class EarlyStopping(Callback):
       return
     if self.monitor_op(current - self.min_delta, self.best):
       self.best = current
+      if self.update_baseline == True:
+        self.baseline = self.best
       self.wait = 0
       if self.restore_best_weights:
         self.best_weights = self.model.get_weights()
