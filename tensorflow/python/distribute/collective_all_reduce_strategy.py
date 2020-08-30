@@ -25,6 +25,7 @@ import weakref
 
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
@@ -39,7 +40,6 @@ from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -188,6 +188,9 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   _check_health_interval = 30
   # Timeout in seconds for the first check health. The first check health needs
   # to wait for cluster, which may make a longer time.
+  #
+  # TODO(b/151232436): now the inital barrier may hang in a rare case, so we
+  # need a finite timeout.
   _check_health_initial_timeout = 1200
 
   def __init__(self,
@@ -473,7 +476,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers_with_options(options),
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync,
+        split_batch_by=self._num_replicas_in_sync,
         input_context=input_context)
 
   def _experimental_distribute_datasets_from_function(self, dataset_fn,
@@ -503,7 +506,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         dataset,
         self._input_workers,
         self._container_strategy(),
-        num_replicas_in_sync=self._num_replicas_in_sync,
+        split_batch_by=self._num_replicas_in_sync,
         input_context=input_context)
 
   def _make_input_fn_iterator(
@@ -629,55 +632,20 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         destinations=destinations,
         experimental_hints=experimental_hints)
 
-  def _check_health(self, device, group_key, instance_key):
-    first = True
-    # We need to use a large enough value so that the all-reduce forms a
-    # complete RING. In RING implementation, when value is too small, the
-    # all-reduce may degrade into broadcasts. This means that some worker
-    # failure may not be detected.
-    value = array_ops.ones((32, 32), dtype=dtypes.float32)
+  def _check_health(self):
     while True:
       if self._check_health_thread_should_stop.is_set():
         return
-      timeout = None
-      if first:
-        # For the first check health we set timeout since it may need to do
-        # group resolution, which may hang if the cluster is never healthy.
-        timeout = self._check_health_initial_timeout
-        first = False
       try:
-        # We use an dummy all-reduce as a way to check the health of a cluster.
-        # For RING it should be able to detect failed workers in the cluster if
-        # the values are large enough.
-        #
-        # We're not using CrossDeviceOps because we need to run it with
-        # pre-allocated group and instance keys.
-        #
-        # TODO(b/151232436): Replace the reduce with a check health op once we
-        # add that.
-        with ops.device(device):
-          collective_ops.all_reduce(
-              value,
-              group_size=self._num_workers,
-              group_key=group_key,
-              instance_key=instance_key,
-              merge_op="Add",
-              final_op="Id",
-              subdiv_offsets=[0],
-              communication_hint="ring",
-              timeout=timeout)
-          if context.is_async():
-            context.async_wait()
-      except (errors.UnavailableError, errors.DeadlineExceededError,
-              errors.FailedPreconditionError, errors.CancelledError) as e:
+        for job in self._cluster_spec.jobs:
+          for task_id in range(self._cluster_spec.num_tasks(job)):
+            context.context().check_collective_ops_peer_health(
+                "/job:{}/replica:0/task:{}".format(job, task_id))
+      except (errors.UnavailableError, errors.FailedPreconditionError) as e:
         # TODO(b/151232436): Always raise UnavailableError when a peer fails.
         # Now there could be many kinds of errors:
         # - Unavailable: when the peer is not reachable, e.g. it's down.
         # - FailedPrecondition: when the peer has restarted.
-        # - DeadlineExceeded: when the first check health exceeds the deadline,
-        #   e.g. the peers take too long to be ready.
-        # - Cancelled: when failures in organic collectives aborts first,
-        #   outgoing RPCs may be aborted with Cancelled.
         logging.error("Cluster check alive failed, aborting collectives")
         context.context().abort_collective_ops(
             errors.UNAVAILABLE, "cluster check alive failed: %s" % e)
@@ -689,20 +657,32 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       time.sleep(self._check_health_interval)
 
   def _start_check_health_thread(self):
-    # Allocate group and instance key before starting the thread to avoid
-    # indeterminism. There can only be one thread that assigns group keys and
-    # instance keys, otherwise different workers may end up with unmatched keys
-    # since execution order between threads are arbitrary.
-    device = device_util.canonicalize(self._worker_device)
-    group_key = self._collective_keys.get_group_key([device])
-    instance_key = self._collective_keys.get_op_instance_key()
+    # Use a dummy all-reduce as a barrier to wait for all workers to be up,
+    # otherwise the check health may fail immediately.
+    #
+    # TODO(b/151232436): change to an explicit barrier if we have it.
+    dummy_value = ops.convert_to_tensor([])
+    logging.info("Waiting for the cluster, timeout = %d",
+                 self._check_health_initial_timeout)
+    try:
+      self._host_cross_device_ops.reduce(
+          reduce_util.ReduceOp.SUM,
+          dummy_value,
+          dummy_value,
+          experimental_hints=collective_util.Hints(
+              timeout_seconds=self._check_health_initial_timeout))
+      if context.is_async():
+        context.async_wait()
+    except errors.DeadlineExceededError:
+      raise RuntimeError(
+          "Timeout waiting for the cluster, timeout is %d seconds" %
+          self._check_health_initial_timeout)
     self._check_health_thread_should_stop = threading.Event()
     # Start the thread as daemon to avoid it blocking the program from exiting.
     # We try best to shutdown the thread but __del__ is not guaranteed to be
     # called when program exists.
     self._check_health_thread = threading.Thread(
         target=self._check_health,
-        args=(device, group_key, instance_key),
         daemon=True)
     self._check_health_thread.start()
 

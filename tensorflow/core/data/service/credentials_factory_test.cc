@@ -32,43 +32,44 @@ class TestCredentialsFactory : public CredentialsFactory {
   std::string Protocol() override { return "test"; }
 
   Status CreateServerCredentials(
-      std::shared_ptr<grpc::ServerCredentials>* out) override {
+      std::shared_ptr<grpc::ServerCredentials>& out) override {
     return errors::Internal(kFailedToCreateServerCredentials);
   }
 
   Status CreateClientCredentials(
-      std::shared_ptr<grpc::ChannelCredentials>* out) override {
+      std::shared_ptr<grpc::ChannelCredentials>& out) override {
     return errors::Internal(kFailedToCreateClientCredentials);
   }
 };
 }  // namespace
 
 TEST(CredentialsFactory, Register) {
-  TestCredentialsFactory test_factory;
-  CredentialsFactory::Register(&test_factory);
+  auto test_factory = absl::make_unique<TestCredentialsFactory>();
+  std::string protocol = test_factory->Protocol();
+  CredentialsFactory::Register(std::move(test_factory));
   std::shared_ptr<grpc::ServerCredentials> server_credentials;
   ASSERT_EQ(errors::Internal(kFailedToCreateServerCredentials),
-            CredentialsFactory::CreateServerCredentials(test_factory.Protocol(),
-                                                        &server_credentials));
+            CredentialsFactory::CreateServerCredentials(protocol,
+                                                        server_credentials));
   std::shared_ptr<grpc::ChannelCredentials> client_credentials;
   ASSERT_EQ(errors::Internal(kFailedToCreateClientCredentials),
-            CredentialsFactory::CreateClientCredentials(test_factory.Protocol(),
-                                                        &client_credentials));
+            CredentialsFactory::CreateClientCredentials(protocol,
+                                                        client_credentials));
 }
 
 TEST(CredentialsFactory, DefaultGrpcProtocol) {
   std::shared_ptr<grpc::ServerCredentials> server_credentials;
   TF_ASSERT_OK(
-      CredentialsFactory::CreateServerCredentials("grpc", &server_credentials));
+      CredentialsFactory::CreateServerCredentials("grpc", server_credentials));
   std::shared_ptr<grpc::ChannelCredentials> client_credentials;
   TF_ASSERT_OK(
-      CredentialsFactory::CreateClientCredentials("grpc", &client_credentials));
+      CredentialsFactory::CreateClientCredentials("grpc", client_credentials));
 }
 
 TEST(CredentialsFactory, MissingServerProtocol) {
   std::shared_ptr<grpc::ServerCredentials> server_credentials;
   Status s = CredentialsFactory::CreateServerCredentials("unknown_protocol",
-                                                         &server_credentials);
+                                                         server_credentials);
   ASSERT_EQ(error::Code::NOT_FOUND, s.code());
   ASSERT_TRUE(
       absl::StrContains(s.ToString(),
@@ -79,7 +80,7 @@ TEST(CredentialsFactory, MissingServerProtocol) {
 TEST(CredentialsFactory, MissingClientProtocol) {
   std::shared_ptr<grpc::ChannelCredentials> client_credentials;
   Status s = CredentialsFactory::CreateClientCredentials("unknown_protocol",
-                                                         &client_credentials);
+                                                         client_credentials);
   ASSERT_EQ(error::Code::NOT_FOUND, s.code());
   ASSERT_TRUE(
       absl::StrContains(s.ToString(),

@@ -1269,15 +1269,6 @@ func @maxpool_3d_same_padding(%arg0: tensor<2x8x13x25x7xf32>) -> tensor<2x8x4x7x
   return %0 : tensor<2x8x4x7x7xf32>
 }
 
-// CHECK-LABEL: maxpool_explicit_padding
-func @maxpool_explicit_padding(%arg0: tensor<2x12x20x7xi32>) -> tensor<2x3x5x7xi32> {
-  // CHECK: tf.MaxPool
-  // TODO(b/165938852): need to support explicit padding in max_pool.
-
-  %0 = "tf.MaxPool"(%arg0) {data_format = "NHWC", ksize = [1, 2, 2, 1], padding = "EXPLICIT", strides = [1, 4, 4, 1]} : (tensor<2x12x20x7xi32>) -> tensor<2x3x5x7xi32>
-  return %0 : tensor<2x3x5x7xi32>
-}
-
 //===----------------------------------------------------------------------===//
 // MaxPoolGrad op legalizations.
 //===----------------------------------------------------------------------===//

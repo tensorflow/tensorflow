@@ -170,12 +170,6 @@ class DeviceResolverInterface {
   // Returns the cached device attributes of a task.
   virtual Status GetTaskCached(const string& task,
                                std::vector<DeviceAttributes>* attributes) = 0;
-
-  // Clears the cache of device data belonging to the specified task.
-  virtual void ClearTask(const string& task) = 0;
-
-  // Clears the cache of all device data.
-  virtual void ClearCache() = 0;
 };
 
 // Interface that provides resolution of shared CollectiveParams fields.

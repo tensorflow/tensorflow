@@ -49,7 +49,7 @@ Status TestCluster::Initialize() {
   experimental::DispatcherConfig config;
   config.set_port(0);
   config.set_protocol(kProtocol);
-  TF_RETURN_IF_ERROR(NewDispatchServer(config, &dispatcher_));
+  TF_RETURN_IF_ERROR(NewDispatchServer(config, dispatcher_));
   TF_RETURN_IF_ERROR(dispatcher_->Start());
   dispatcher_address_ = absl::StrCat("localhost:", dispatcher_->BoundPort());
   workers_.reserve(num_workers_);
@@ -67,7 +67,7 @@ Status TestCluster::AddWorker() {
   config.set_protocol(kProtocol);
   config.set_dispatcher_address(dispatcher_address_);
   config.set_worker_address("localhost:%port%");
-  TF_RETURN_IF_ERROR(NewWorkerServer(config, &worker));
+  TF_RETURN_IF_ERROR(NewWorkerServer(config, worker));
   TF_RETURN_IF_ERROR(worker->Start());
   worker_addresses_.push_back(absl::StrCat("localhost:", worker->BoundPort()));
   workers_.push_back(std::move(worker));

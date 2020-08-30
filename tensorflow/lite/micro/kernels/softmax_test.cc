@@ -28,8 +28,13 @@ namespace {
 // quantization parameters.
 const float output_scale_int8 = 1.0f / 256.0f;
 const float output_scale_uint8 = 1.0f / 256.0f;
+const float output_scale_int16 = 1.0f / 32768.0f;
 const int output_zero_point_int8 = -128;
 const int output_zero_point_uint8 = 0;
+const int output_zero_point_int16 = 0;
+
+// Empirical tolerance in quantization space
+const float tolerance_int16 = 7.0;
 
 // 1-dimensional test data.
 const int flat_size_1d = 5;
@@ -291,7 +296,7 @@ void TestSoftmaxQuantized(const int* input_dims_data, const float* input_data,
                           int input_zero_point, const int* output_dims_data,
                           const float* golden, T* golden_quantized,
                           float output_scale, int output_zero_point,
-                          T* output_data) {
+                          T* output_data, float tolerance = 1.0) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
@@ -310,7 +315,7 @@ void TestSoftmaxQuantized(const int* input_dims_data, const float* input_data,
                      output_zero_point);
 
   ValidateSoftmaxGoldens(tensors, tensors_size, output_data, golden_quantized,
-                         output_dims_count, 1.0);
+                         output_dims_count, tolerance);
 }
 
 }  // namespace
@@ -356,6 +361,21 @@ TF_LITE_MICRO_TEST(Softmax1DQuantizedInt8ShouldMatchGolden) {
       tflite::testing::output_zero_point_int8, output_data);
 }
 
+TF_LITE_MICRO_TEST(Softmax1DQuantizedInt16ShouldMatchGolden) {
+  const float input_scale = 0.1f;
+  const int input_zero_point = 0;
+
+  int16_t input_quantized[tflite::testing::flat_size_1d];
+  int16_t golden_quantized[tflite::testing::flat_size_1d];
+  int16_t output_data[tflite::testing::flat_size_1d];
+  tflite::testing::TestSoftmaxQuantized(
+      tflite::testing::shape_1d, tflite::testing::input_data_1d,
+      input_quantized, input_scale, input_zero_point, tflite::testing::shape_1d,
+      tflite::testing::golden_1d, golden_quantized,
+      tflite::testing::output_scale_int16,
+      tflite::testing::output_zero_point_int16, output_data);
+}
+
 TF_LITE_MICRO_TEST(Softmax2DFloatShouldMatchGolden) {
   float output_data[tflite::testing::flat_size_2d];
   tflite::testing::TestSoftmaxFloat(
@@ -391,6 +411,21 @@ TF_LITE_MICRO_TEST(Softmax2DQuantizedInt8ShouldMatchGolden) {
       tflite::testing::golden_2d, golden_quantized,
       tflite::testing::output_scale_int8,
       tflite::testing::output_zero_point_int8, output_data);
+}
+
+TF_LITE_MICRO_TEST(Softmax2DQuantizedInt16ShouldMatchGolden) {
+  const float input_scale = 0.1f;
+  const int input_zero_point = 0;
+
+  int16_t input_quantized[tflite::testing::flat_size_2d];
+  int16_t golden_quantized[tflite::testing::flat_size_2d];
+  int16_t output_data[tflite::testing::flat_size_2d];
+  tflite::testing::TestSoftmaxQuantized(
+      tflite::testing::shape_2d, tflite::testing::input_data_2d,
+      input_quantized, input_scale, input_zero_point, tflite::testing::shape_2d,
+      tflite::testing::golden_2d, golden_quantized,
+      tflite::testing::output_scale_int16,
+      tflite::testing::output_zero_point_int16, output_data);
 }
 
 TF_LITE_MICRO_TEST(Softmax3DFloatShouldMatchGolden) {
@@ -430,6 +465,22 @@ TF_LITE_MICRO_TEST(Softmax3DQuantizedInt8ShouldMatchGolden) {
       tflite::testing::output_zero_point_int8, output_data);
 }
 
+TF_LITE_MICRO_TEST(Softmax3DQuantizedInt16ShouldMatchGolden) {
+  const float input_scale = 0.1f;
+  const int input_zero_point = 0;
+
+  int16_t input_quantized[tflite::testing::flat_size_3d];
+  int16_t golden_quantized[tflite::testing::flat_size_3d];
+  int16_t output_data[tflite::testing::flat_size_3d];
+  tflite::testing::TestSoftmaxQuantized(
+      tflite::testing::shape_3d, tflite::testing::input_data_3d,
+      input_quantized, input_scale, input_zero_point, tflite::testing::shape_3d,
+      tflite::testing::golden_3d, golden_quantized,
+      tflite::testing::output_scale_int16,
+      tflite::testing::output_zero_point_int16, output_data,
+      tflite::testing::tolerance_int16);
+}
+
 TF_LITE_MICRO_TEST(Softmax4DFloatShouldMatchGolden) {
   float output_data[tflite::testing::flat_size_4d];
   tflite::testing::TestSoftmaxFloat(
@@ -467,4 +518,19 @@ TF_LITE_MICRO_TEST(Softmax4DQuantizedInt8ShouldMatchGolden) {
       tflite::testing::output_zero_point_int8, output_data);
 }
 
+TF_LITE_MICRO_TEST(Softmax4DQuantizedInt16ShouldMatchGolden) {
+  const float input_scale = 0.1f;
+  const int input_zero_point = 0;
+
+  int16_t input_quantized[tflite::testing::flat_size_4d];
+  int16_t golden_quantized[tflite::testing::flat_size_4d];
+  int16_t output_data[tflite::testing::flat_size_4d];
+  tflite::testing::TestSoftmaxQuantized(
+      tflite::testing::shape_4d, tflite::testing::input_data_4d,
+      input_quantized, input_scale, input_zero_point, tflite::testing::shape_4d,
+      tflite::testing::golden_4d, golden_quantized,
+      tflite::testing::output_scale_int16,
+      tflite::testing::output_zero_point_int16, output_data,
+      tflite::testing::tolerance_int16);
+}
 TF_LITE_MICRO_TESTS_END

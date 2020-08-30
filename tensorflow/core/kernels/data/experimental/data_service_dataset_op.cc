@@ -225,7 +225,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             [&]() {
               return dispatcher_->CreateJob(dataset()->dataset_id_,
                                             dataset()->processing_mode_,
-                                            &job_client_id_);
+                                            job_client_id_);
             },
             "create job", deadline_micros));
       } else {
@@ -233,7 +233,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
             [&]() {
               return dispatcher_->GetOrCreateJob(
                   dataset()->dataset_id_, dataset()->processing_mode_,
-                  dataset()->job_name_, iterator_index_, &job_client_id_);
+                  dataset()->job_name_, iterator_index_, job_client_id_);
             },
             "get or create job", deadline_micros));
       }
@@ -347,7 +347,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       VLOG(3) << "Updating tasks";
       std::vector<TaskInfo> tasks;
       bool job_finished;
-      Status s = dispatcher_->GetTasks(job_client_id_, &tasks, &job_finished);
+      Status s = dispatcher_->GetTasks(job_client_id_, tasks, job_finished);
       if (!s.ok()) {
         LOG(WARNING) << "Failed to get task info for job client id "
                      << job_client_id_ << ": " << s;
@@ -382,7 +382,7 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
         TaskInfo& task_info = new_task_entry.second;
         std::unique_ptr<DataServiceWorkerClient> worker;
         Status s = CreateDataServiceWorkerClient(task_info.worker_address(),
-                                                 dataset()->protocol_, &worker);
+                                                 dataset()->protocol_, worker);
         if (!s.ok()) {
           status_ = s;
           get_next_cv_.notify_all();
@@ -489,8 +489,8 @@ class DataServiceDatasetOp::Dataset : public DatasetBase {
       CompressedElement compressed;
       bool end_of_sequence;
       for (int num_retries = 0;; ++num_retries) {
-        Status s = task->worker->GetElement(task->task_id, &compressed,
-                                            &end_of_sequence);
+        Status s = task->worker->GetElement(task->task_id, compressed,
+                                            end_of_sequence);
         if (s.ok()) {
           break;
         }
@@ -629,7 +629,7 @@ void DataServiceDatasetOp::MakeDataset(OpKernelContext* ctx,
       ctx, ParseScalarArgument(ctx, kProcessingMode, &processing_mode_str));
   ProcessingMode processing_mode;
   OP_REQUIRES_OK(ctx,
-                 ParseProcessingMode(processing_mode_str, &processing_mode));
+                 ParseProcessingMode(processing_mode_str, processing_mode));
 
   tstring address;
   OP_REQUIRES_OK(ctx, ParseScalarArgument(ctx, kAddress, &address));

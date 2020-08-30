@@ -145,7 +145,7 @@ class Normalization(base_preprocessing_layer.CombinerPreprocessingLayer):
     super(Normalization, self).build(input_shape)
 
   def call(self, inputs):
-    inputs = ops.convert_to_tensor_v2(inputs)
+    inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
     if inputs.shape.rank == 1:
       inputs = array_ops.expand_dims(inputs, 1)
     # If the inputs are not floats, cast them to floats. This avoids issues

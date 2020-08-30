@@ -36,6 +36,9 @@ void CopyOpMetricsMetadata(const OpMetrics& src, OpMetrics* dst) {
   DCHECK(dst != nullptr);
   DCHECK_EQ(src.hlo_module_id(), dst->hlo_module_id());
   DCHECK_EQ(src.name(), dst->name());
+  if (dst->long_name().empty()) {
+    dst->set_long_name(src.long_name());
+  }
   if (dst->category().empty()) {
     dst->set_category(src.category());
   }

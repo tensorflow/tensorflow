@@ -41,19 +41,19 @@ constexpr const char kProtocol[] = "grpc+local";
 
 TEST(DataService, ParseParallelEpochsProcessingMode) {
   ProcessingMode mode;
-  TF_ASSERT_OK(ParseProcessingMode("parallel_epochs", &mode));
+  TF_ASSERT_OK(ParseProcessingMode("parallel_epochs", mode));
   EXPECT_EQ(mode, ProcessingMode::PARALLEL_EPOCHS);
 }
 
 TEST(DataService, ParseOneEpochProcessingMode) {
   ProcessingMode mode;
-  TF_ASSERT_OK(ParseProcessingMode("one_epoch", &mode));
+  TF_ASSERT_OK(ParseProcessingMode("one_epoch", mode));
   EXPECT_EQ(mode, ProcessingMode::ONE_EPOCH);
 }
 
 TEST(DataService, ParseInvalidProcessingMode) {
   ProcessingMode mode;
-  Status s = ParseProcessingMode("invalid", &mode);
+  Status s = ParseProcessingMode("invalid", mode);
   EXPECT_EQ(s.code(), error::Code::INVALID_ARGUMENT);
 }
 
@@ -69,7 +69,7 @@ TEST(DataService, GetWorkers) {
   DataServiceDispatcherClient dispatcher(cluster.DispatcherAddress(),
                                          kProtocol);
   std::vector<WorkerInfo> workers;
-  TF_EXPECT_OK(dispatcher.GetWorkers(&workers));
+  TF_EXPECT_OK(dispatcher.GetWorkers(workers));
   EXPECT_EQ(1, workers.size());
 }
 

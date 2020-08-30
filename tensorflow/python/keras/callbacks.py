@@ -675,6 +675,10 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
+
     Arguments:
         batch: Integer, index of batch within the current epoch.
         logs: Dict, contains the return value of `model.train_step`. Typically,
@@ -690,6 +694,10 @@ class Callback(object):
     """Called at the end of a training batch in `fit` methods.
 
     Subclasses should override for any actions to run.
+
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
@@ -708,6 +716,10 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
+
     Arguments:
         batch: Integer, index of batch within the current epoch.
         logs: Dict, contains the return value of `model.test_step`. Typically,
@@ -725,6 +737,10 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
+
     Arguments:
         batch: Integer, index of batch within the current epoch.
         logs: Dict. Aggregated metric results up until this batch.
@@ -736,6 +752,10 @@ class Callback(object):
     """Called at the beginning of a batch in `predict` methods.
 
     Subclasses should override for any actions to run.
+
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
@@ -750,6 +770,10 @@ class Callback(object):
     """Called at the end of a batch in `predict` methods.
 
     Subclasses should override for any actions to run.
+
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
@@ -1264,16 +1288,6 @@ class ModelCheckpoint(Callback):
       self.save_weights_only = True
 
   def on_train_begin(self, logs=None):
-    # pylint: disable=protected-access
-    if self.model._in_multi_worker_mode:
-      logging.warning(
-          'Automatic model reloading for interrupted job was removed from '
-          'the `ModelCheckpoint` callback in multi-worker mode, please use the '
-          '`keras.callbacks.experimental.BackupAndRestore` callback instead. '
-          'See this tutorial for details: '
-          'https://www.tensorflow.org/tutorials/distribute/'
-          'multi_worker_with_keras#backupandrestore_callback.'
-      )
     if self.load_weights_on_restart:
       filepath_to_load = (
           self._get_most_recently_modified_file_matching_pattern(self.filepath))
@@ -2422,7 +2436,7 @@ class ReduceLROnPlateau(Callback):
     """Resets wait counter and cooldown counter.
     """
     if self.mode not in ['auto', 'min', 'max']:
-      logging.warning('Learning Rate Plateau Reducing mode %s is unknown, '
+      logging.warning('Learning rate reduction mode %s is unknown, '
                       'fallback to auto mode.', self.mode)
       self.mode = 'auto'
     if (self.mode == 'min' or
@@ -2443,7 +2457,7 @@ class ReduceLROnPlateau(Callback):
     logs['lr'] = K.get_value(self.model.optimizer.lr)
     current = logs.get(self.monitor)
     if current is None:
-      logging.warning('Reduce LR on plateau conditioned on metric `%s` '
+      logging.warning('Learning rate reduction is conditioned on metric `%s` '
                       'which is not available. Available metrics are: %s',
                       self.monitor, ','.join(list(logs.keys())))
 

@@ -129,25 +129,4 @@ Status DeviceResolverDistributed::GetTaskCached(
   return Status::OK();
 }
 
-void DeviceResolverDistributed::ClearTask(const string& task) {
-  mutex_lock l(mu_);
-  // First find all the keys belonging to the task.
-  std::unordered_set<string> task_keys;
-  for (const auto& it : attr_table_) {
-    const string& device_name = it.first;
-    if (DeviceNameUtils::IsSameAddressSpace(task, device_name)) {
-      task_keys.insert(device_name);
-    }
-  }
-  // Then delete them.
-  for (const string& key : task_keys) {
-    attr_table_.erase(key);
-  }
-}
-
-void DeviceResolverDistributed::ClearCache() {
-  mutex_lock l(mu_);
-  attr_table_.clear();
-}
-
 }  // namespace tensorflow

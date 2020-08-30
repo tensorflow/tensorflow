@@ -367,8 +367,14 @@ Java_org_tensorflow_lite_NativeInterpreterWrapper_useXNNPACK(
     }
     tflite_api_dispatcher::Interpreter::TfLiteDelegatePtr delegate(
         xnnpack_create(&options), xnnpack_delete);
-    if (interpreter->ModifyGraphWithDelegate(std::move(delegate)) !=
-        kTfLiteOk) {
+    auto delegation_status =
+        interpreter->ModifyGraphWithDelegate(std::move(delegate));
+    // kTfLiteApplicationError occurs in cases where delegation fails but
+    // the runtime is invokable (eg. another delegate has already been applied).
+    // We don't throw an Exception in that case.
+    // TODO(b/166483905): Add support for multiple delegates when model allows.
+    if (delegation_status != kTfLiteOk &&
+        delegation_status != kTfLiteApplicationError) {
       ThrowException(env, kIllegalArgumentException,
                      "Internal error: Failed to apply XNNPACK delegate: %s",
                      error_reporter->CachedErrorMessage());

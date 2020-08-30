@@ -595,6 +595,7 @@ cc_library(
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
         ":LinalgToStandard",
+        ":OpenMPToLLVM",
         ":SCFToGPUPass",
         ":SCFToStandard",
         ":SPIRVToLLVM",
@@ -2989,6 +2990,7 @@ cc_library(
         ":NVVMDialect",
         ":OpenACCDialect",
         ":OpenMPDialect",
+        ":OpenMPToLLVM",
         ":PDLDialect",
         ":PDLInterpDialect",
         ":QuantOps",
@@ -3411,6 +3413,30 @@ cc_library(
         ":IR",
         ":OpenMPOpsIncGen",
         ":StandardOps",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+cc_library(
+    name = "OpenMPToLLVM",
+    srcs = glob([
+        "lib/Conversion/OpenMPToLLVM/*.cpp",
+        "lib/Conversion/OpenMPToLLVM/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/OpenMPToLLVM/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":LLVMDialect",
+        ":OpenMPDialect",
+        ":Pass",
+        ":StandardOps",
+        ":StandardToLLVM",
+        ":Transforms",
+        "@llvm-project//llvm:Core",
         "@llvm-project//llvm:Support",
     ],
 )

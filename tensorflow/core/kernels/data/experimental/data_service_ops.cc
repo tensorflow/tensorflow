@@ -63,7 +63,7 @@ void RegisterDatasetOp::Compute(OpKernelContext* ctx) {
   int64 deadline_micros = EnvTime::NowMicros() + kRetryTimeoutMicros;
   OP_REQUIRES_OK(
       ctx, grpc_util::Retry(
-               [&]() { return client.RegisterDataset(graph_def, &dataset_id); },
+               [&]() { return client.RegisterDataset(graph_def, dataset_id); },
                /*description=*/"register dataset", deadline_micros));
 
   Tensor* output;

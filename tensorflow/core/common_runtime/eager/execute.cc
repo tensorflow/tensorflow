@@ -1070,11 +1070,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
       [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
 
-  if (VariantDeviceIsCustom(op->Device())) {
-    return absl::get<CustomDevice*>(op->Device())
-        ->Execute(op, retvals, num_retvals);
-  }
-
   if (!op->Executor().Async()) {
     // In sync mode, always clear error to maintain the same behavior as before.
     // TODO(b/141004939): Remove this.
