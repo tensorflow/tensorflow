@@ -561,7 +561,7 @@ def _reduce(tf_fn,
 
 
 # TODO (DarrenZhang01): Add `axis` support to the `size` API.
-@utils.np_doc('size')
+@np_utils.np_doc('size')
 def size(x, axis=None):   # pylint: disable=missing-docstring
   if axis is not None:
     raise NotImplementedError("axis argument is not supported in the current "
