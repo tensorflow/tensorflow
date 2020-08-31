@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 #define ASSERT_TF_OK(x) ASSERT_EQ(TF_OK, TF_GetCode(x)) << TF_Message(x)
+#define EXPECT_TF_OK(x) EXPECT_EQ(TF_OK, TF_GetCode(x)) << TF_Message(x)
 
 static const char* content = "abcdefghijklmnopqrstuvwxyz1234567890";
 // We will work with content_view instead of content.
@@ -92,6 +93,70 @@ class GCSFilesystemTest : public ::testing::Test {
     const std::string translated_name =
         tensorflow::io::JoinPath(root_dir_, path);
     return translated_name;
+  }
+
+  std::unique_ptr<TF_WritableFile, void (*)(TF_WritableFile* file)>
+  GetWriter() {
+    std::unique_ptr<TF_WritableFile, void (*)(TF_WritableFile * file)> writer(
+        new TF_WritableFile, [](TF_WritableFile* file) {
+          if (file != nullptr) {
+            if (file->plugin_file != nullptr) tf_writable_file::Cleanup(file);
+            delete file;
+          }
+        });
+    writer->plugin_file = nullptr;
+    return writer;
+  }
+
+  std::unique_ptr<TF_RandomAccessFile, void (*)(TF_RandomAccessFile* file)>
+  GetReader() {
+    std::unique_ptr<TF_RandomAccessFile, void (*)(TF_RandomAccessFile * file)>
+        reader(new TF_RandomAccessFile, [](TF_RandomAccessFile* file) {
+          if (file != nullptr) {
+            if (file->plugin_file != nullptr)
+              tf_random_access_file::Cleanup(file);
+            delete file;
+          }
+        });
+    reader->plugin_file = nullptr;
+    return reader;
+  }
+
+  void WriteString(const std::string& path, const std::string& content) {
+    auto writer = GetWriter();
+    tf_gcs_filesystem::NewWritableFile(filesystem_, path.c_str(), writer.get(),
+                                       status_);
+    if (TF_GetCode(status_) != TF_OK) return;
+    tf_writable_file::Append(writer.get(), content.c_str(), content.length(),
+                             status_);
+    if (TF_GetCode(status_) != TF_OK) return;
+    tf_writable_file::Close(writer.get(), status_);
+    if (TF_GetCode(status_) != TF_OK) return;
+  }
+
+  std::string ReadAll(const std::string& path) {
+    auto reader = GetReader();
+    tf_gcs_filesystem::NewRandomAccessFile(filesystem_, path.c_str(),
+                                           reader.get(), status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+
+    auto file_size =
+        tf_gcs_filesystem::GetFileSize(filesystem_, path.c_str(), status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+
+    std::string content;
+    content.resize(file_size);
+    auto read = tf_random_access_file::Read(reader.get(), 0, file_size,
+                                            &content[0], status_);
+    if (TF_GetCode(status_) != TF_OK) return "";
+    if (read >= 0) content.resize(read);
+    if (file_size != content.size())
+      TF_SetStatus(
+          status_, TF_DATA_LOSS,
+          std::string("expected " + std::to_string(file_size) + " got " +
+                      std::to_string(content.size()) + " bytes")
+              .c_str());
+    return content;
   }
 
  protected:
@@ -324,6 +389,19 @@ TEST_F(GCSFilesystemTest, ReadOnlyMemoryRegion) {
 
   tf_read_only_memory_region::Cleanup(region);
   delete region;
+}
+
+TEST_F(GCSFilesystemTest, PathExists) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_);
+  const std::string path = GetURIForPath("PathExists");
+  tf_gcs_filesystem::PathExists(filesystem_, path.c_str(), status_);
+  EXPECT_EQ(TF_NOT_FOUND, TF_GetCode(status_)) << TF_Message(status_);
+  TF_SetStatus(status_, TF_OK, "");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+  tf_gcs_filesystem::PathExists(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
 }
 
 // These tests below are ported from

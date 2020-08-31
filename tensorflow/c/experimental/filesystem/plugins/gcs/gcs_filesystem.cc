@@ -121,17 +121,15 @@ static int64_t LoadBufferFromGCS(const std::string& path, size_t offset,
     return -1;
   }
   int64_t read;
-  if (!absl::SimpleAtoi(stream.headers().find("content-length")->second,
-                        &read)) {
+  auto content_length = stream.headers().find("content-length");
+  if (content_length == stream.headers().end()) {
     // When we read a file with offset that is bigger than the actual file size.
     // GCS will return an empty header (e.g no `content-length` header). In this
     // case, we will set read to `0` and continue.
-    if (TF_GetCode(status) == TF_OUT_OF_RANGE) {
-      read = 0;
-    } else {
-      TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
-      return -1;
-    }
+    read = 0;
+  } else if (!absl::SimpleAtoi(content_length->second, &read)) {
+    TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
+    return -1;
   }
   // `TF_OUT_OF_RANGE` isn't considered as an error. So we clear it here.
   TF_SetStatus(status, TF_OK, "");
