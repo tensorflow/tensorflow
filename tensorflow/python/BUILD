@@ -678,7 +678,6 @@ tf_python_pybind_extension(
         "client/tf_session_helper.h",
         "lib/core/numpy.h",
         "lib/core/safe_ptr.h",
-        "lib/core/safe_pyobject_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
@@ -690,6 +689,7 @@ tf_python_pybind_extension(
     deps = [
         ":pybind11_lib",
         ":pybind11_status",
+        ":safe_pyobject_ptr",
         "//tensorflow/core/framework:pywrap_required_hdrs",
         "//third_party/py/numpy:headers",
         "//tensorflow/c:pywrap_required_hdrs",
@@ -881,7 +881,6 @@ tf_python_pybind_extension(
     hdrs = [
         "lib/core/ndarray_tensor.h",
         "lib/core/safe_ptr.h",
-        "lib/core/safe_pyobject_ptr.h",
         ":py_exception_registry_hdr",
         "//tensorflow/c:checkpoint_reader_hdrs",
         "//tensorflow/c:headers",
@@ -891,6 +890,7 @@ tf_python_pybind_extension(
     deps = [
         ":pybind11_lib",
         ":pybind11_status",
+        ":safe_pyobject_ptr",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:op_gen_lib",
         "//tensorflow/core:protos_all_cc",
@@ -1707,7 +1707,6 @@ tf_python_pybind_extension(
     hdrs = [
         "framework/op_def_util.h",
         "lib/core/safe_ptr.h",
-        "lib/core/safe_pyobject_ptr.h",
         "util/util.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
@@ -1715,6 +1714,7 @@ tf_python_pybind_extension(
     module_name = "_op_def_util",
     deps = [
         ":pybind11_status",
+        ":safe_pyobject_ptr",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//third_party/python_runtime:headers",
@@ -7412,7 +7412,6 @@ tf_python_pybind_extension(
     srcs = ["mlir_wrapper.cc"],
     hdrs = [
         "lib/core/safe_ptr.h",
-        "lib/core/safe_pyobject_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/compiler/mlir/python:pywrap_mlir_hdrs",
@@ -7421,6 +7420,7 @@ tf_python_pybind_extension(
     deps = [
         ":pybind11_lib",
         ":pybind11_status",
+        ":safe_pyobject_ptr",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/platform:status",
         "//third_party/python_runtime:headers",
@@ -7444,7 +7444,6 @@ tf_python_pybind_extension(
     srcs = ["tfe_wrapper.cc"],
     hdrs = [
         "lib/core/safe_ptr.h",
-        "lib/core/safe_pyobject_ptr.h",
         "util/util.h",
         ":py_exception_registry_hdr",
         "//tensorflow/c:headers",
@@ -7457,6 +7456,7 @@ tf_python_pybind_extension(
     ],
     module_name = "_pywrap_tfe",
     deps = [
+        ":safe_pyobject_ptr",
         ":pybind11_lib",
         ":pybind11_status",
         "//tensorflow/core/framework:pywrap_required_hdrs",
@@ -7516,7 +7516,6 @@ tf_python_pybind_extension(
     name = "_pywrap_parallel_device",
     srcs = [
         "lib/core/safe_ptr.h",
-        "lib/core/safe_pyobject_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager/parallel_device:headers",
@@ -7528,6 +7527,7 @@ tf_python_pybind_extension(
     deps = [
         ":pybind11_lib",
         ":pybind11_status",
+        ":safe_pyobject_ptr",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_headers_for_pybind",
         "//tensorflow/core:protos_all_cc",
