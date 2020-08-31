@@ -64,12 +64,8 @@ bool IsInputFusibleScatter(const HloInstruction& instr);
 // Determines whether the combination of `instr1` and `instr2` into a (possibly
 // multi-output) fusion would be "too large" -- i.e., have more operands and
 // outputs than is allowed or occupy too much shared memory.
-// If the fusion is a producer/consumer fusion and instr1 is the
-// consumer and instr2 is the producer, set consumer_producer_fusion
-// to true to enable more fusion.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
-                           const HloInstruction& instr2,
-                           bool is_consumer_producer_fusion = false);
+                           const HloInstruction& instr2);
 
 // Check if fusing producer and consumer will generate a nested loop, e.g. both
 // producer and consumer are `reduce-window` HLO instructions.

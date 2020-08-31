@@ -96,7 +96,16 @@ void FusionNodeIndexingEvaluation::UpdateIndexUsageCount(
     const HloInstruction* instruction) {
   int64 total = 0;
   for (const auto* user : indexing_users_[instruction]) {
-    total += index_usage_count_.at(user);
+    int64 weight = 1;
+    // Concatenate is special: the index differs for each operand, so
+    // in the worst case we have to deal with as many index values as
+    // the number of operands of Concatenate. By considering the worst
+    // case, we are more conservative than necessary regarding
+    // counting the index usage.
+    if (user->opcode() == HloOpcode::kConcatenate) {
+      weight = user->operand_count();
+    }
+    total += index_usage_count_.at(user) * weight;
   }
   CHECK(index_usage_count_.emplace(instruction, total).second);
   total_emitted_instructions_ += total;

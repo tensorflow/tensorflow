@@ -1300,15 +1300,7 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
       auto replacement =
           computation_->AddInstruction(concatenate->CloneWithNewOperands(
               concatenate->shape(), new_operands));
-
-      // Recurse to handle multiple disjoint sequence of inputs. The
-      // logic above merge only 1 sequential series of
-      // inputs. Otherwise, it can lead to the FixPass optimization
-      // hitting its threshold.
-      if (ReplaceInstructionIfSameShape(concatenate, replacement)) {
-        return HandleConcatenate(replacement);
-      }
-
+      ReplaceInstructionIfSameShape(concatenate, replacement);
       return Status::OK();
     }
   }
