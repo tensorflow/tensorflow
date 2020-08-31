@@ -706,7 +706,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     This method can be overridden to support custom training logic.
     This method is called by `Model.make_train_function`.
 
-    This method should contain the mathemetical logic for one step of training.
+    This method should contain the mathematical logic for one step of training.
     This typically includes the forward pass, loss calculation, backpropagation,
     and metric updates.
 
