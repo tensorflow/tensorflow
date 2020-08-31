@@ -447,6 +447,19 @@ TEST_F(GCSFilesystemTest, DeleteFile) {
   EXPECT_EQ(TF_GetCode(status_), TF_NOT_FOUND);
 }
 
+TEST_F(GCSFilesystemTest, CreateDir) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_);
+  const std::string dir = GetURIForPath("CreateDir");
+  tf_gcs_filesystem::CreateDir(filesystem_, dir.c_str(), status_);
+  EXPECT_TF_OK(status_);
+
+  TF_FileStatistics stat;
+  tf_gcs_filesystem::Stat(filesystem_, dir.c_str(), &stat, status_);
+  EXPECT_TF_OK(status_);
+  EXPECT_TRUE(stat.is_directory);
+}
+
 // These tests below are ported from
 // `//tensorflow/core/platform/cloud:gcs_file_system_test`
 TEST_F(GCSFilesystemTest, NewRandomAccessFile_NoBlockCache) {
