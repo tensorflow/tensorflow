@@ -537,7 +537,7 @@ def subtract(x, y, name=None):
 
   *Note*: Subtract supports broadcasting. More about broadcasting
   [here](https://numpy.org/doc/stable/user/basics.broadcasting.html)
-  
+
   Both input and output have a range `(-inf, inf)`.
 
   For example:
@@ -4985,7 +4985,7 @@ def add(x, y, name=None):
   Returns:
     A `Tensor`. Has the same type as x.
   """
-  return gen_math_ops.add(x,y,name)
+  return gen_math_ops.add(x, y, name)
 
 
 @tf_export("math.acos", v1=["math.acos", "acos"])
@@ -5016,7 +5016,7 @@ def acos(x, name=None):
   Returns:
     A `Tensor`. Has the same type as x.
   """
-  return gen_math_ops.acos(x,name)
+  return gen_math_ops.acos(x, name)
 
 
 @tf_export("math.floor", v1=["math.floor", "floor"])
@@ -5042,4 +5042,4 @@ def floor(x, name=None):
   Returns:
     A `Tensor`. Has the same type as x.
   """
-  return gen_math_ops.floor(x,name)
+  return gen_math_ops.floor(x, name)
