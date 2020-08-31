@@ -60,6 +60,7 @@ cc_library(
     deps = [
         ":cleanup",
         "//tensorflow/c:env",
+        "//tensorflow/c:logging",
         "//tensorflow/c:tf_status",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
