@@ -67,13 +67,13 @@ for i in $(seq 1000); do echo $i...; killall -INT riscv64-zephyr-elf-gdb; sleep 
 python log_parser.py [INPUT] --regex=gdb_regex.json --visualize --top=7 --source=gdb
 ```
 
-Since we are redirecting the gdb interrupt messages to the file `<path-you-run-gdb>/profile.txt` (see the gdb script,) we can now parse the log and visualize it.
+Since we are redirecting the gdb interrupt messages to the file `<path-you-run-gdb>/profile.txt` (see the gdb script,) we can now parse the log and visualize it. (set the image title with argument `--title`)
 
 ```
-python log_parser.py profile.txt --regex=gdb_regex.json --visualize --top=7
+python log_parser.py profile.txt --regex=gdb_regex.json --visualize --top=7 --title=magic_wand
 ```
 
-![image](https://user-images.githubusercontent.com/21079720/91755127-75537880-eb7f-11ea-89e3-fe6704c41c8a.png)
+![image](https://user-images.githubusercontent.com/21079720/91764987-198fec00-eb8d-11ea-8eb1-90355fe4f28c.png)
 
 #### Get the statistic of the function call hierarchy
 To get a more detail view of how the entire function call stack looks like and how many time the function is called with the exact same call stack, we can add another option `--full-trace` to the script and it will generate a `*.json` file for the complete call stack trace.
@@ -101,7 +101,7 @@ stack*
 
 ![image](https://user-images.githubusercontent.com/21079720/91755189-8bf9cf80-eb7f-11ea-884c-2354f3470271.png)
 
-#### Customizing `*.json` used in the script
+### Customizing `*.json` used in the script
 The regular expression used in this script is configured with a standard `*.json` file with the following content:
 
 * `base`: Base regular expression to clean up the log, this is set to clean up the ANSI color codes in GDB

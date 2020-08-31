@@ -20,6 +20,13 @@ Example usage:
 
 python log_parser.py profile.txt --regex=gdb_regex.json --visualize --top=7
 
+* To add a title in the graph, use the optional argument --title to set it
+
+Example usage:
+
+python log_parser.py profile.txt --regex=gdb_regex.json \
+--visualize --top=7 --title=magic_wand
+
 """
 import argparse
 import collections
