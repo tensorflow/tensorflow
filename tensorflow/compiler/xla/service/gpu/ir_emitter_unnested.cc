@@ -3004,7 +3004,7 @@ ShapeIndex CreateShapeIndexForOutputInstruction(
   const auto& all_outputs = unnested_hlo.fused_expression_root()->operands();
   for (size_t i = 0; i < all_outputs.size(); ++i) {
     if (all_outputs[i] == &out_instr) {
-      return ShapeIndex({i});
+      return ShapeIndex({static_cast<int64>(i)});
     }
   }
   LOG(FATAL) << " Fusion root does not contain output instruction; "
@@ -3975,7 +3975,8 @@ Status IrEmitterUnnested::EmitReductionFromOrToContiguousDimensions(
   // block_y_count is set to instr_groups.size(), so that each reduction group
   // can be run in parallel by a different BlockIdy.
   LaunchDimensions launch_dimensions(
-      {/*x=*/mapping_scheme.GetNumberOfBlocks(), /*y=*/instr_groups.size(),
+      {/*x=*/mapping_scheme.GetNumberOfBlocks(),
+       /*y=*/static_cast<int64>(instr_groups.size()),
        /*z=*/1},
       {/*x=*/mapping_scheme.GetThreadsPerBlock(), /*y=*/1, /*z=*/1});
   VLOG(3) << "Launch dimensions of " << unnested_hlo->name()
