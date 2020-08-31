@@ -2332,16 +2332,18 @@ class StrategyExtendedV2(object):
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
 
     Args:
-      reduce_op: a `tf.distribute.ReduceOp` or string. How to reduce the value.
-      value: a `tf.distribute.DistributedValue`, or a `tf.Tensor` like object.
-      destinations: a `tf.distribute.DistributedValue`, a `tf.Variable`, a
+      reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
+        be combined. Allows using string representation of the enum such as
+        "SUM", "MEAN".
+      value: a `tf.distribute.DistributedValues`, or a `tf.Tensor` like object.
+      destinations: a `tf.distribute.DistributedValues`, a `tf.Variable`, a
         `tf.Tensor` alike object, or a device string. It specifies the devices
         to reduce to. To perform an all-reduce, pass the same to `value` and
         `destinations`. Note that if it's a `tf.Variable`, the value is reduced
-        to the devices of that variable, this method doesn't update the variable.
-      experimental_hints: a `tf.distrbute.experimental.CollectiveHints`. Hints
-        to perform collective operations. See
-        `tf.distrbute.experimental.CollectiveHints` for details.
+        to the devices of that variable, and this method doesn't update the
+        variable.
+      experimental_hints: a `tf.distribute.experimental.CollectiveHints`. See
+        `tf.distribute.experimental.CollectiveHints` for details.
 
     Returns:
       A tensor or value reduced to `destinations`.
@@ -2413,11 +2415,13 @@ class StrategyExtendedV2(object):
     <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=1.0>
 
     Args:
-      reduce_op: a `tf.distribute.ReduceOp`. How to reduce the value.
+      reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
+        be combined. Allows using string representation of the enum such as
+        "SUM", "MEAN".
       value_destination_pairs: a sequence of (value, destinations) pairs. See
-        `reduce_to()` for descriptions.
-      experimental_hints: a `tf.distrbute.experimental.CollectiveHints`. Hints
-        to perform collective operations.
+        `tf.distribute.Strategy.reduce_to` for descriptions.
+      experimental_hints: a `tf.distribute.experimental.CollectiveHints`. See
+        `tf.distribute.experimental.CollectiveHints` for details.
 
     Returns:
       A list of reduced values, one per pair in `value_destination_pairs`.
@@ -3056,8 +3060,9 @@ class ReplicaContext(object):
       to the host in cross-replica context.
 
     Args:
-      reduce_op: a `tf.distribute.ReduceOp` enum or its string form, which
-        specifies how to reduce the value.
+      reduce_op: a `tf.distribute.ReduceOp` value specifying how values should
+        be combined. Allows using string representation of the enum such as
+        "SUM", "MEAN".
       value: a nested structure of `tf.Tensor` which `tf.nest.flatten` accepts.
         The structure and the shapes of the `tf.Tensor` need to be same on all
         replicas.

@@ -922,6 +922,7 @@ tf_cc_test(
         ":xla_cpu_jit",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/compiler/tf2xla:test_util",

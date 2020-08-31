@@ -16,6 +16,7 @@ limitations under the License.
 #include <memory>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "pybind11/pybind11.h"
 #include "pybind11/pytypes.h"
@@ -50,7 +51,7 @@ tensorflow::Status ValidateHostPortPair(const std::string& host_port) {
   // Must be host:port, port must be a number, host must not contain a '/',
   // host also must not be empty.
   if (parts.size() != 2 || !absl::SimpleAtoi(parts[1], &port) ||
-      parts[0].find("/") != std::string::npos || parts[0].empty()) {
+      absl::StrContains(parts[0], "/") || parts[0].empty()) {
     return tensorflow::errors::InvalidArgument(
         "Could not interpret \"", host_port, "\" as a host-port pair.");
   }
@@ -123,7 +124,8 @@ PYBIND11_MODULE(_pywrap_profiler, m) {
       .def("export_to_tb", &ProfilerSessionWrapper::ExportToTensorBoard);
 
   m.def("start_server", [](int port) {
-    auto profiler_server = absl::make_unique<tensorflow::ProfilerServer>();
+    auto profiler_server =
+        absl::make_unique<tensorflow::profiler::ProfilerServer>();
     profiler_server->StartProfilerServer(port);
     // Intentionally release profiler server. Should transfer ownership to
     // caller instead.

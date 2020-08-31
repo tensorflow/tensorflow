@@ -242,6 +242,7 @@ namespace internal {
 Status Reset(AbstractOperation* op_, const char* op,
              const char* raw_device_name, ForwardOperation* forward_op_) {
   forward_op_->op_name = op;
+  forward_op_->attrs.Reset(op);
   return op_->Reset(op, raw_device_name);
 }
 Status AddInput(AbstractOperation* op_, AbstractTensorHandle* input,
@@ -418,6 +419,11 @@ Status Execute(AbstractOperation* op_, AbstractContext* ctx,
     // TODO(srbs): Manage refcount of ForwardOperation's inputs/outputs.
     forward_op_->outputs.push_back(retvals[i]);
   }
+  // TODO(b/166669239): This is needed to support AttrBuilder::Get for string
+  // attributes. Number type attrs and DataType attrs work fine without this.
+  // Consider getting rid of this and making the behavior between number types
+  // and string consistent.
+  forward_op_->attrs.BuildNodeDef();
   std::vector<TapeTensor> tape_tensors;
   for (auto t : retvals) {
     tape_tensors.push_back(TapeTensor(t, ctx));

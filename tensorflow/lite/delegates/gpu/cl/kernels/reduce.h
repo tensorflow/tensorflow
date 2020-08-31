@@ -13,14 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/op.h"
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_REDUCE_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_REDUCE_H_
 
-// TODO(allenl): Figure out if we need this op, and if so whether we should move
-// it to core TF. Right now the eager C API does some checking of op
-// registrations before calling into custom devices, but we may be able to avoid
-// that.
-REGISTER_OP("DeviceID")
-    .Output("device_id: int64")
-    .SetIsStateful()
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+#include "tensorflow/lite/delegates/gpu/cl/kernels/gpu_operation.h"
+#include "tensorflow/lite/delegates/gpu/common/operations.h"
+
+namespace tflite {
+namespace gpu {
+namespace cl {
+
+GPUOperation CreateReduce(const OperationDef& definition,
+                          const OperationType& op_type);
+
+}  // namespace cl
+}  // namespace gpu
+}  // namespace tflite
+
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_REDUCE_H_

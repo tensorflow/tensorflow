@@ -52,6 +52,12 @@ an output element, this operation computes \\(y = |x|\\).
 def TF_AcosOp : TF_Op<"Acos", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes acos of x element-wise.";
 
+  let description = [{
+Provided an input tensor, the `tf.math.acos` operation returns the inverse cosine of each element of the tensor. If `y = tf.math.cos(x)` then, `x = tf.math.acos(y)`.
+
+  Input range is `[-1, 1]` and the output has a range of `[0, pi]`.
+  }];
+
   let arguments = (ins
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64]>:$x
   );
@@ -94,6 +100,10 @@ def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, TF_LayoutA
   let description = [{
 *NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+Given two input tensors, the `tf.add` operation computes the sum for every element in the tensor.
+
+Both input and output have a range `(-inf, inf)`.
   }];
 
   let arguments = (ins
@@ -132,31 +142,6 @@ Inputs must be of same size and shape.
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
-
-  let hasFolder = 1;
-}
-
-def TF_AddV2Op : TF_Op<"AddV2", [Commutative, NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef]>,
-                 WithBroadcastableBinOpBuilder {
-  let summary = "Returns x + y element-wise.";
-
-  let description = [{
-*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-  }];
-
-  let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint8]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint8]>:$y
-  );
-
-  let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint8]>:$z
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let hasCanonicalizer = 1;
 
   let hasFolder = 1;
 }
@@ -2802,27 +2787,6 @@ def TF_DivOp : TF_Op<"Div", [NoSideEffect, ResultsBroadcastableShape, TF_SameOpe
   let hasCanonicalizer = 1;
 
   let hasFolder = 1;
-}
-
-def TF_DivNoNanOp : TF_Op<"DivNoNan", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
-                    WithBroadcastableBinOpBuilder {
-  let summary = "Returns 0 if the denominator is zero.";
-
-  let description = [{
-*NOTE*: `DivNoNan` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-  }];
-
-  let arguments = (ins
-    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$x,
-    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$y
-  );
-
-  let results = (outs
-    TensorOf<[F16, F32, F64, TF_Complex128, TF_Complex64]>:$z
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
 def TF_DynamicStitchOp : TF_Op<"DynamicStitch", [NoSideEffect, SameVariadicOperandSize]> {
@@ -6320,14 +6284,14 @@ retained with length 1.
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -6431,27 +6395,6 @@ def TF_MaxPoolGradOp : TF_Op<"MaxPoolGrad", [NoSideEffect]> {
   }];
 }
 
-def TF_MaximumOp : TF_Op<"Maximum", [NoSideEffect, ResultsBroadcastableShape, TF_SameOperandsAndResultElementTypeResolveRef]>,
-                   WithBroadcastableBinOpBuilder {
-  let summary = "Returns the max of x and y (i.e. x > y ? x : y) element-wise.";
-
-  let description = [{
-*NOTE*: `Maximum` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-  }];
-
-  let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$y
-  );
-
-  let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, TF_Uint8]>:$z
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-}
-
 def TF_MeanOp : TF_Op<"Mean", [NoSideEffect, TF_FoldOperandsTransposeInterface]> {
   let summary = "Computes the mean of elements across dimensions of a tensor.";
 
@@ -6547,14 +6490,14 @@ retained with length 1.
   }];
 
   let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$input,
     TF_I32OrI64Tensor:$reduction_indices,
 
     DefaultValuedAttr<BoolAttr, "false">:$keep_dims
   );
 
   let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
+    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Qint16, TF_Qint32, TF_Qint8, TF_Quint16, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$output
   );
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
@@ -7983,33 +7926,6 @@ tf.real(input) ==> [-2.25, 3.25]
 
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
   TF_DerivedResultTypeAttr Tout = TF_DerivedResultTypeAttr<0>;
-}
-
-def TF_RealDivOp : TF_Op<"RealDiv", [NoSideEffect, ResultsBroadcastableShape, TF_CwiseBinary]>,
-                   WithBroadcastableBinOpBuilder {
-  let summary = "Returns x / y element-wise for real types.";
-
-  let description = [{
-If `x` and `y` are reals, this will return the floating-point division.
-
-*NOTE*: `Div` supports broadcasting. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-  }];
-
-  let arguments = (ins
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$x,
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$y
-  );
-
-  let results = (outs
-    TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Uint16, TF_Uint8]>:$z
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let hasCanonicalizer = 1;
-
-  let hasFolder = 1;
 }
 
 def TF_ReciprocalOp : TF_Op<"Reciprocal", [NoSideEffect, SameOperandsAndResultType]> {
@@ -11735,6 +11651,40 @@ On GPU, if an out of bound index is found, the index is ignored.
   ];
 }
 
+def TF_TensorStridedSliceUpdateOp : TF_Op<"TensorStridedSliceUpdate", [NoSideEffect]> {
+  let summary = "Assign `value` to the sliced l-value reference of `input`.";
+
+  let description = [{
+The values of `value` are assigned to the positions in the tensor `input` that
+are selected by the slice parameters. The slice parameters `begin` `end`
+`strides` etc. work exactly as in `StridedSlice`.
+
+NOTE this op currently does not support broadcasting and so `value`'s shape
+must be exactly the shape produced by the slice of `input`.
+  }];
+
+  let arguments = (ins
+    TF_Tensor:$input,
+    TF_I32OrI64Tensor:$begin,
+    TF_I32OrI64Tensor:$end,
+    TF_I32OrI64Tensor:$strides,
+    TF_Tensor:$value,
+
+    DefaultValuedAttr<I64Attr, "0">:$begin_mask,
+    DefaultValuedAttr<I64Attr, "0">:$end_mask,
+    DefaultValuedAttr<I64Attr, "0">:$ellipsis_mask,
+    DefaultValuedAttr<I64Attr, "0">:$new_axis_mask,
+    DefaultValuedAttr<I64Attr, "0">:$shrink_axis_mask
+  );
+
+  let results = (outs
+    TF_Tensor:$output
+  );
+
+  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
+  TF_DerivedOperandTypeAttr Index = TF_DerivedOperandTypeAttr<1>;
+}
+
 def TF_TileOp : TF_Op<"Tile", [NoSideEffect]> {
   let summary = "Constructs a tensor by tiling a given tensor.";
 
@@ -13047,7 +12997,8 @@ create these operators.
     DefaultValuedAttr<I64ArrayAttr, "{1, 1, 1, 1}">:$dilations,
     DefaultValuedAttr<BoolAttr, "true">:$use_cudnn_on_gpu,
     DefaultValuedAttr<StrArrayAttr, "{}">:$fused_ops,
-    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon
+    DefaultValuedAttr<F32Attr, "0.0001f">:$epsilon,
+    DefaultValuedAttr<F32Attr, "0.2f">:$leakyrelu_alpha
   );
 
   let results = (outs
