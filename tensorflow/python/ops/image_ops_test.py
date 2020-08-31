@@ -34,6 +34,7 @@ from tensorflow.python.client import session
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import get_single_element
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -2002,19 +2003,17 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
       offset_width = ops.convert_to_tensor(offset_width)
       target_height = ops.convert_to_tensor(target_height)
       target_width = ops.convert_to_tensor(target_width)
-      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
-      feed_dict = {x_tensor: x}
+      x_tensor = ops.convert_to_tensor(x)
     else:
       x_tensor = x
-      feed_dict = {}
 
-    y = image_ops.pad_to_bounding_box(x_tensor, offset_height, offset_width,
-                                      target_height, target_width)
-    if not use_tensor_inputs:
-      self.assertTrue(y.get_shape().is_fully_defined())
+    @def_function.function
+    def pad_bbox(*args):
+      return image_ops.pad_to_bounding_box(*args)
 
     with self.cached_session(use_gpu=True):
-      return y.eval(feed_dict=feed_dict)
+      return self.evaluate(pad_bbox(x_tensor, offset_height, offset_width,
+                                    target_height, target_width))
 
   def _assertReturns(self,
                      x,
@@ -2048,14 +2047,10 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     x = np.array(x).reshape(x_shape)
 
     for use_tensor_inputs in use_tensor_inputs_options:
-      try:
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         self._PadToBoundingBox(x, offset_height, offset_width, target_height,
                                target_width, use_tensor_inputs)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   def _assertShapeInference(self, pre_shape, height, width, post_shape):
     image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
@@ -2076,14 +2071,12 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     with self.cached_session(use_gpu=True):
       self.assertAllClose(y, self.evaluate(y_tf))
 
-  @test_util.run_deprecated_v1
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
     offset_height, offset_width = [0, 0]
     self._assertReturns(x, x_shape, offset_height, offset_width, x, x_shape)
 
-  @test_util.run_deprecated_v1
   def testPadding(self):
     x = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     x_shape = [3, 3, 1]
@@ -2108,21 +2101,21 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     y_shape = [3, 4, 1]
     self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-  @test_util.run_deprecated_v1
   def testShapeInference(self):
-    self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
-    self._assertShapeInference(None, 55, 66, [55, 66, None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+      self._assertShapeInference(None, 55, 66, [55, 66, None])
 
-  @test_util.run_deprecated_v1
   def testNon3DInput(self):
     # Input image is not 3D
     x = [0] * 15
@@ -2134,7 +2127,6 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
                          target_width,
                          "must have either 3 or 4 dimensions.")
 
-  @test_util.run_deprecated_v1
   def testZeroLengthInput(self):
     # Input image has 0-length dimension(s).
     # Each line is a test configuration:
@@ -2167,26 +2159,31 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
-  @test_util.run_deprecated_v1
   def testBadParams(self):
     x_shape = [3, 3, 1]
     x = np.zeros(x_shape)
 
     # Each line is a test configuration:
     #   offset_height, offset_width, target_height, target_width, err_msg
-    test_config = ((-1, 0, 4, 4, "offset_height must be >= 0"),
-                   (0, -1, 4, 4, "offset_width must be >= 0"),
-                   (2, 0, 4, 4, "height must be <= target - offset"),
-                   (0, 2, 4, 4, "width must be <= target - offset"))
+    test_config = (
+        (-1, 0, 4, 4,
+         "offset_height must be >= 0"),
+        (0, -1, 4, 4,
+         "offset_width must be >= 0"),
+        (2, 0, 4, 4,
+         "height must be <= target - offset"),
+        (0, 2, 4, 4,
+         "width must be <= target - offset"))
 
     for config_item in test_config:
       self._assertRaises(x, x_shape, *config_item)
 
-  @test_util.run_deprecated_v1
   def testNameScope(self):
-    image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
-    y = image_ops.pad_to_bounding_box(image, 0, 0, 55, 66)
-    self.assertTrue(y.op.name.startswith("pad_to_bounding_box"))
+    # Testing name scope requires a graph.
+    with ops.Graph().as_default():
+      image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
+      y = image_ops.pad_to_bounding_box(image, 0, 0, 55, 66)
+      self.assertTrue(y.op.name.startswith("pad_to_bounding_box"))
 
 
 class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
