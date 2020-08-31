@@ -54,8 +54,13 @@ class QuantizedAvgPoolingOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor_in = context->input(0);
-    PoolParameters params{context,  ksize_,      stride_,
-                          padding_, FORMAT_NHWC, tensor_in.shape()};
+    PoolParameters params{context,
+                          ksize_,
+                          stride_,
+                          padding_,
+                          /*explicit_paddings=*/{},
+                          FORMAT_NHWC,
+                          tensor_in.shape()};
     if (!context->status().ok()) {
       return;
     }
