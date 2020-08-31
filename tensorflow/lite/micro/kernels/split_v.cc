@@ -100,9 +100,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteFloat32: {
       return SplitImpl<float>(context, node, input, axis_value);
     }
-    case kTfLiteUInt8: {
-      return SplitImpl<uint8_t>(context, node, input, axis_value);
-    }
     case kTfLiteInt8: {
       return SplitImpl<int8_t>(context, node, input, axis_value);
     }
