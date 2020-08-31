@@ -83,6 +83,12 @@ Status Conv2DBackpropFilter(AbstractContext* ctx,
                             int64_t* strides, int num_dims, const char* padding,
                             const char* name);
 
+Status MaxPoolGrad(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs, int num_dims,
+                   int64_t* ksize, int64_t* strides, const char* padding,
+                   const char* data_format, const char* name);
+
 }  // namespace ops
 }  // namespace tensorflow
 

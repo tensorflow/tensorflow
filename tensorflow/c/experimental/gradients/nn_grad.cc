@@ -27,6 +27,7 @@ using tensorflow::ops::DivNoNan;
 using tensorflow::ops::FusedBatchNormGrad;
 using tensorflow::ops::FusedBatchNormGradV3;
 using tensorflow::ops::Identity;
+using tensorflow::ops::MaxPoolGrad;
 using tensorflow::ops::Mul;
 using tensorflow::ops::OnesLike;
 using tensorflow::ops::ReluGrad;
@@ -250,6 +251,58 @@ class FusedBatchNormV3GradientFunction : public GradientFunction {
   vector<AbstractTensorHandle*> forward_outputs;
 };
 
+class MaxPoolGradientFunction : public GradientFunction {
+ public:
+  explicit MaxPoolGradientFunction(vector<AbstractTensorHandle*> f_inputs,
+                                   vector<AbstractTensorHandle*> f_outputs,
+                                   AttrBuilder f_attrs)
+      : forward_inputs(f_inputs),
+        forward_outputs(f_outputs),
+        forward_attrs(f_attrs) {}
+
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    grad_outputs->resize(1);
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    AbstractTensorHandle* input = forward_inputs[0];
+    AbstractTensorHandle* maxpool_out = forward_outputs[0];
+
+    // Recover forward attributes.
+    string pad;
+    forward_attrs.Get("padding", &pad);
+
+    vector<int64> strides_vec;
+    forward_attrs.Get("strides", &strides_vec);
+    int num_dims = strides_vec.size();
+    int64_t* strides = (int64_t*)strides_vec.data();
+
+    vector<int64> ksize_vec;
+    forward_attrs.Get("ksize", &ksize_vec);
+    int64_t* ksize = (int64_t*)ksize_vec.data();
+
+    string data_format;
+    forward_attrs.Get("data_format", &data_format);
+
+    // Gradient for input.
+    vector<AbstractTensorHandle*> maxpool_grad_outputs(1);
+    std::string name = "mp_grad";
+    TF_RETURN_IF_ERROR(
+        MaxPoolGrad(ctx->ctx, {input, maxpool_out, upstream_grad},
+                    absl::MakeSpan(maxpool_grad_outputs), num_dims, ksize,
+                    strides, pad.c_str(), data_format.c_str(), name.c_str()));
+
+    (*grad_outputs)[0] = maxpool_grad_outputs[0];
+
+    return Status::OK();
+  }
+  ~MaxPoolGradientFunction() override {}
+
+ private:
+  vector<AbstractTensorHandle*> forward_inputs;
+  vector<AbstractTensorHandle*> forward_outputs;
+  AttrBuilder forward_attrs;
+};
+
 }  // namespace
 
 BackwardFunction* ReluRegisterer(const ForwardOperation& op) {
@@ -284,6 +337,13 @@ BackwardFunction* Conv2DRegisterer(const ForwardOperation& op) {
 BackwardFunction* FusedBatchNormV3Registerer(const ForwardOperation& op) {
   auto gradient_function =
       new FusedBatchNormV3GradientFunction(op.inputs, op.outputs);
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* MaxPoolRegisterer(const ForwardOperation& op) {
+  auto gradient_function =
+      new MaxPoolGradientFunction(op.inputs, op.outputs, op.attrs);
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }

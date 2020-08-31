@@ -335,5 +335,35 @@ Status Conv2DBackpropFilter(AbstractContext* ctx,
   return Status::OK();
 }
 
+Status MaxPoolGrad(AbstractContext* ctx,
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs, int num_dims,
+                   int64_t* ksize, int64_t* strides, const char* padding,
+                   const char* data_format, const char* name) {
+  AbstractOperationPtr mp_grad_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      mp_grad_op->Reset("MaxPoolGrad", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(mp_grad_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(mp_grad_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(mp_grad_op->SetAttrIntList("ksize", ksize, num_dims));
+  TF_RETURN_IF_ERROR(mp_grad_op->SetAttrIntList("strides", strides, num_dims));
+  TF_RETURN_IF_ERROR(
+      mp_grad_op->SetAttrString("padding", padding, strlen(padding)));
+  TF_RETURN_IF_ERROR(mp_grad_op->SetAttrString("data_format", data_format,
+                                               strlen(data_format)));
+
+  TF_RETURN_IF_ERROR(mp_grad_op->AddInput(inputs[0]));  // orig_input
+  TF_RETURN_IF_ERROR(mp_grad_op->AddInput(inputs[1]));  // orig_output
+  TF_RETURN_IF_ERROR(mp_grad_op->AddInput(inputs[2]));  // upstream_grad
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(mp_grad_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
 }  // namespace ops
 }  // namespace tensorflow

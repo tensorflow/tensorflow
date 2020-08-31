@@ -14,8 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include <memory>
 
-#include "tensorflow/c/eager/mnist_gradients_testutil.h"
-
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
@@ -23,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/mnist_gradients_testutil.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/experimental/ops/nn_ops.h"
@@ -36,25 +35,25 @@ using namespace tensorflow::gradients::internal;
 
 //======================== Tape Ops ===========================
 Status BiasAdd(AbstractContext* ctx, Tape* tape,
-   absl::Span<AbstractTensorHandle* const> inputs,
-   absl::Span<AbstractTensorHandle*> outputs, const char* name,
-   const GradientRegistry& registry);
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, const char* name,
+               const GradientRegistry& registry);
 
 Status Conv2D(AbstractContext* ctx, Tape* tape,
-   absl::Span<AbstractTensorHandle* const> inputs,
-   absl::Span<AbstractTensorHandle*> outputs,
-   int64_t* strides, int num_dims, const char* padding,
-   const char* name, const GradientRegistry& registry);
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, int64_t* strides,
+              int num_dims, const char* padding, const char* name,
+              const GradientRegistry& registry);
 
 Status Log1p(AbstractContext* ctx, Tape* tape,
-           absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name,
-           const GradientRegistry& registry);
+             absl::Span<AbstractTensorHandle* const> inputs,
+             absl::Span<AbstractTensorHandle*> outputs, const char* name,
+             const GradientRegistry& registry);
 
 Status Sqrt(AbstractContext* ctx, Tape* tape,
-           absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name,
-           const GradientRegistry& registry);
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs, const char* name,
+            const GradientRegistry& registry);
 
 Status Sub(AbstractContext* ctx, Tape* tape,
            absl::Span<AbstractTensorHandle* const> inputs,
@@ -67,58 +66,70 @@ Status Neg(AbstractContext* ctx, Tape* tape,
            const GradientRegistry& registry);
 
 Status DivNoNan(AbstractContext* ctx, Tape* tape,
-           absl::Span<AbstractTensorHandle* const> inputs,
-           absl::Span<AbstractTensorHandle*> outputs, const char* name,
-           const GradientRegistry& registry);           
+                absl::Span<AbstractTensorHandle* const> inputs,
+                absl::Span<AbstractTensorHandle*> outputs, const char* name,
+                const GradientRegistry& registry);
 
 Status FusedBatchNormV3(AbstractContext* ctx, Tape* tape,
-         absl::Span<AbstractTensorHandle* const> inputs,
-         absl::Span<AbstractTensorHandle*> outputs, const char* name,
-         bool is_training, const GradientRegistry& registry);
+                        absl::Span<AbstractTensorHandle* const> inputs,
+                        absl::Span<AbstractTensorHandle*> outputs,
+                        const char* name, bool is_training,
+                        const GradientRegistry& registry);
 
 Status FusedBatchNorm(AbstractContext* ctx, Tape* tape,
-   absl::Span<AbstractTensorHandle* const> inputs,
-   absl::Span<AbstractTensorHandle*> outputs, const char* name,
-   bool is_training, const GradientRegistry& registry);
+                      absl::Span<AbstractTensorHandle* const> inputs,
+                      absl::Span<AbstractTensorHandle*> outputs,
+                      const char* name, bool is_training,
+                      const GradientRegistry& registry);
+
+Status MaxPool(AbstractContext* ctx, Tape* tape,
+               absl::Span<AbstractTensorHandle* const> inputs,
+               absl::Span<AbstractTensorHandle*> outputs, int num_dims,
+               int64_t* strides, int64_t* ksize, const char* padding,
+               const char* name, const GradientRegistry& registry);
 
 // ====================== Models ==============================
-   
 Status BiasAddGradModel(AbstractContext* ctx,
+                        absl::Span<AbstractTensorHandle* const> inputs,
+                        absl::Span<AbstractTensorHandle*> outputs,
+                        const GradientRegistry& registry);
+
+Status Conv2DGradModel(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> inputs,
+                       absl::Span<AbstractTensorHandle*> outputs,
+                       const GradientRegistry& registry);
+
+Status SubGradModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
                     const GradientRegistry& registry);
 
-Status Conv2DGradModel(AbstractContext* ctx,
-                   absl::Span<AbstractTensorHandle* const> inputs,
-                   absl::Span<AbstractTensorHandle*> outputs,
-                   const GradientRegistry& registry);
-
-Status SubGradModel(AbstractContext* ctx,
-                   absl::Span<AbstractTensorHandle* const> inputs,
-                   absl::Span<AbstractTensorHandle*> outputs,
-                   const GradientRegistry& registry);
-
 Status MulGradModel(AbstractContext* ctx,
-                   absl::Span<AbstractTensorHandle* const> inputs,
-                   absl::Span<AbstractTensorHandle*> outputs,
-                   const GradientRegistry& registry);
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
 
 Status NegGradModel(AbstractContext* ctx,
-                   absl::Span<AbstractTensorHandle* const> inputs,
-                   absl::Span<AbstractTensorHandle*> outputs,
-                   const GradientRegistry& registry);
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
 
 Status DivGradModel(AbstractContext* ctx,
-                   absl::Span<AbstractTensorHandle* const> inputs,
-                   absl::Span<AbstractTensorHandle*> outputs,
-                   const GradientRegistry& registry);
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
 
 Status Log1pGradModel(AbstractContext* ctx,
-                   absl::Span<AbstractTensorHandle* const> inputs,
-                   absl::Span<AbstractTensorHandle*> outputs,
-                   const GradientRegistry& registry);
+                      absl::Span<AbstractTensorHandle* const> inputs,
+                      absl::Span<AbstractTensorHandle*> outputs,
+                      const GradientRegistry& registry);
 
 Status FBNGradModel(AbstractContext* ctx,
-                   absl::Span<AbstractTensorHandle* const> inputs,
-                   absl::Span<AbstractTensorHandle*> outputs,
-                   const GradientRegistry& registry);
+                    absl::Span<AbstractTensorHandle* const> inputs,
+                    absl::Span<AbstractTensorHandle*> outputs,
+                    const GradientRegistry& registry);
+
+Status MaxPoolGradModel(AbstractContext* ctx,
+                        absl::Span<AbstractTensorHandle* const> inputs,
+                        absl::Span<AbstractTensorHandle*> outputs,
+                        const GradientRegistry& registry);
