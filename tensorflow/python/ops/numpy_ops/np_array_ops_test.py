@@ -24,6 +24,7 @@ import numpy as np
 from six.moves import range
 from six.moves import zip
 
+import tensorflow as tf
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -807,19 +808,19 @@ class ArrayMethodsTest(test.TestCase):
   def testSize(self):
 
     def run_test(arr, axis=None):
-      onp_arr = np.array(arr).data
-      self.assertEqual(np_array_ops.size(arr, axis), onp.size(onp_arr, axis))
+      onp_arr = np.array(arr) if isinstance(arr, tf.Tensor) else arr
+      self.assertEqual(np_array_ops.size(arr, axis), np.size(onp_arr, axis))
 
-    run_test(np.array([1]))
-    run_test(np.array([1, 2, 3, 4, 5]))
-    run_test(np.ones((2, 3, 2)))
-    run_test(np.ones((3, 2)))
-    run_test(np.zeros((5, 6, 7)))
+    run_test(np_array_ops.array([1]))
+    run_test(np_array_ops.array([1, 2, 3, 4, 5]))
+    run_test(np_array_ops.ones((2, 3, 2)))
+    run_test(np_array_ops.ones((3, 2)))
+    run_test(np_array_ops.zeros((5, 6, 7)))
     run_test(1)
-    run_test(onp.ones((3, 2, 1)))
+    run_test(np_array_ops.ones((3, 2, 1)))
     run_test(tf.constant(5))
     run_test(tf.constant([1, 1, 1]))
-    self.assertRaises(ValueError, run_test, np.ones((2, 2)), 1)
+    self.assertRaises(NotImplementedError, size, np.ones((2, 2)), 1)
 
   def testRavel(self):
 

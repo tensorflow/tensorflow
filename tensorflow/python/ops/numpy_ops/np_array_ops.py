@@ -24,6 +24,7 @@ import numbers
 import numpy as np
 import six
 
+import tensorflow as tf
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -563,10 +564,10 @@ def _reduce(tf_fn,
 # TODO (DarrenZhang01): Add `axis` support to the `size` API.
 @np_utils.np_doc('size')
 def size(x, axis=None):   # pylint: disable=missing-docstring
+  x = np.asarray(x) if isinstance(x, tf.Tensor) else x
   if axis is not None:
     raise NotImplementedError("axis argument is not supported in the current "
                               "`np.size` implementation")
-  x = asarray(x).data
   if isinstance(x, (int, float, np.int32, np.int64,
                     np.float32, np.float64)):
     return 1
