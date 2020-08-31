@@ -41,9 +41,12 @@ cc_library(
     srcs = ["emission_context.cc"],
     hdrs = ["emission_context.h"],
     deps = [
+        "//tensorflow/compiler/mlir/hlo",
+        "//tensorflow/compiler/mlir/hlo:lhlo",
         "//tensorflow/compiler/xla/service:hlo",
         "@com_google_absl//absl/strings",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
     ],
 )
 
@@ -182,7 +185,6 @@ cc_library(
     deps = [
         ":passes",
         "//tensorflow/compiler/mlir/hlo",
-        "//tensorflow/compiler/mlir/hlo:hlo_dialect_force_registration",
         "//tensorflow/compiler/mlir/hlo:hlo_legalize_to_lhlo",
         "//tensorflow/compiler/mlir/hlo:legalize_tanh_to_approximation",
         "//tensorflow/compiler/mlir/hlo:legalize_to_linalg",

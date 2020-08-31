@@ -143,7 +143,7 @@ class CategoryCrossing(base_preprocessing_layer.PreprocessingLayer):
 
   def _preprocess_input(self, inp):
     if isinstance(inp, (list, tuple, np.ndarray)):
-      inp = ops.convert_to_tensor(inp)
+      inp = ops.convert_to_tensor_v2_with_dispatch(inp)
     if inp.shape.rank == 1:
       inp = array_ops.expand_dims(inp, axis=-1)
     return inp

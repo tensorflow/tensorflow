@@ -72,7 +72,13 @@ We strongly recommend that contributors:
         *   We will be adding internal checks that automate this requirement by
             matching the PR description to the regexp: `(Fixes|Issue) #`
 
-## Guidlines for Specific Contribution Categories
+1.  Unit tests are critical to a healthy codebase. PRs without tests should be
+    the exception rather than the norm. And contributions to improve, simplify,
+    or make the unit tests more exhaustive are welcome! Please refer to
+    [this guideline](https://google.github.io/eng-practices/review/developer/small-cls.html#test_code)
+    on how test code and writing small PRs should be reconciled.
+
+## Guidelines for Specific Contribution Categories
 
 We provide some additional guidelines for different categories of contributions.
 
@@ -86,6 +92,9 @@ fixing a bug needs a bigger architectural change.
     [TF Lite Micro Github issue](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
     to determine the scope of the bug fix.
 1.  Send a PR (if that is determined to be the best path forward).
+1.  Bugfix PRs should be accompanied by a test case that fails prior to the fix
+    and passes with the fix. This validates that the fix works as expected, and
+    helps prevent future regressions.
 
 ### Reference Kernel Implementations
 
@@ -123,8 +132,9 @@ October 2020 and will provide additional guidelines at that time.
 
 *   If you would like to have an exception to this pause, with the understanding
     that your optimized kernels will break as we improve the underlying
-    framework, then please contact the TFLM team and we can figure out some
-    middle ground.
+    framework, then please send an email to the [SIG Micro email
+    group](https://groups.google.com/a/tensorflow.org/g/micro) to figure out
+    a middle ground.
 
 *   Every optimized kernel directory must have a README.md with the github IDs
     of the maintainers and any other relevant documentation. PRs that add

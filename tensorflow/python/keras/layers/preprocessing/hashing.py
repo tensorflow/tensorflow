@@ -154,7 +154,7 @@ class Hashing(base_preprocessing_layer.PreprocessingLayer):
 
   def _preprocess_single_input(self, inp):
     if isinstance(inp, (list, tuple, np.ndarray)):
-      inp = ops.convert_to_tensor(inp)
+      inp = ops.convert_to_tensor_v2_with_dispatch(inp)
     return inp
 
   def _preprocess_inputs(self, inputs):

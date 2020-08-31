@@ -69,6 +69,11 @@ namespace {
 // training quantization simpler.
 class PrepareQuantizePass
     : public PassWrapper<PrepareQuantizePass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<TFL::TensorFlowLiteDialect,
+                    ::mlir::quant::QuantizationDialect>();
+  }
+
  public:
   // Constructor used by the PassRegistration and enforce uint8 quantization.
   // This is only used by test.

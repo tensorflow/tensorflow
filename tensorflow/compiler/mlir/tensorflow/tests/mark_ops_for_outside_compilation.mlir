@@ -137,7 +137,7 @@ func @if_region_captured_string(%arg0: tensor<i1>, %arg1: tensor<!tf.string>) ->
     // CHECK: "tf.IfRegion"
     // CHECK: "tf.StringToNumber"
     // CHECK-NOT: _xla_outside_compilation
-    // CHECK: _xla_outside_compilation = "auto", is_stateless = true
+    // CHECK: _xla_outside_compilation = "auto1", is_stateless = true
     %1 = "tf.Const"() {value = dense<1> : tensor<i32>} : () -> tensor<i32>
     %2 = "tf.IfRegion"(%arg0) ( {
       %3 = "tf.StringToNumber"(%arg1) {out_type = f32} : (tensor<!tf.string>) -> tensor<f32>
@@ -166,7 +166,7 @@ func @if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> tensor<f32
       %3 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
       "tf.Yield"(%3) : (tensor<f32>) -> ()
      },  {
-      // CHECK: "tf.Const"() {_xla_outside_compilation = "auto", value = dense<"1.0"> : tensor<!tf.string>}
+      // CHECK: "tf.Const"() {_xla_outside_compilation = "auto0", value = dense<"1.0"> : tensor<!tf.string>}
       // CHECK-NEXT: "tf.StringToNumber"
       // CHECK-SAME: _xla_outside_compilation
       %4 = "tf.Const"() {value = dense<"1.0"> : tensor<!tf.string>} : () -> tensor<!tf.string>
@@ -198,7 +198,7 @@ func @nested_if_region_string_op(%arg0: tensor<i1>, %arg1: tensor<?xi32>) -> ten
        // CHECK-NOT: _xla_outside_compilation
        %4 = "tf.Const"() {value = dense<true> : tensor<i1>} : () -> tensor<i1>
        %5 = "tf.IfRegion"(%4)({
-         // CHECK: "tf.Const"() {_xla_outside_compilation = "auto", value = dense<"1.0"> : tensor<!tf.string>}
+         // CHECK: "tf.Const"() {_xla_outside_compilation = "auto0", value = dense<"1.0"> : tensor<!tf.string>}
          // CHECK-NEXT: "tf.StringToNumber"
          // CHECK-SAME: _xla_outside_compilation
          %6 = "tf.Const"() {value = dense<"1.0"> : tensor<!tf.string>} : () -> tensor<!tf.string>
@@ -229,7 +229,7 @@ func @while_region_captured_string(%arg0: tensor<i32>, %arg1: tensor<!tf.string>
     // CHECK-NOT: _xla_outside_compilation
     // CHECK: "tf.WhileRegion"
     // CHECK: "tf.StringToNumber"
-    // CHECK: _xla_outside_compilation = "auto", is_stateless = true
+    // CHECK: _xla_outside_compilation = "auto1", is_stateless = true
     %1 = "tf.Const"() {value = dense<1.0> : tensor<f32>} : () -> tensor<f32>
     %2:2 = "tf.WhileRegion"(%1, %arg0) ( {
       ^bb0(%carg0: tensor<f32>, %carg1: tensor<i32>):

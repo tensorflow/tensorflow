@@ -204,6 +204,47 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
                                               fft_length_);
 }
 
+HloCopyStartInstruction::HloCopyStartInstruction(const Shape& shape,
+                                                 HloInstruction* operand,
+                                                 bool is_cross_program_prefetch)
+    : HloInstruction(HloOpcode::kCopyStart, shape),
+      is_cross_program_prefetch_(is_cross_program_prefetch) {
+  AppendOperand(operand);
+}
+
+HloInstructionProto HloCopyStartInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  proto.set_is_cross_program_prefetch(is_cross_program_prefetch_);
+  return proto;
+}
+
+std::vector<string> HloCopyStartInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  std::vector<string> result;
+  if (is_cross_program_prefetch()) {
+    result.push_back("is_cross_program_prefetch=true");
+  }
+  return result;
+}
+
+bool HloCopyStartInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloCopyStartInstruction&>(other);
+  return is_cross_program_prefetch() ==
+         casted_other.is_cross_program_prefetch();
+}
+
+std::unique_ptr<HloInstruction>
+HloCopyStartInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return absl::make_unique<HloCopyStartInstruction>(
+      shape, new_operands[0], is_cross_program_prefetch());
+}
+
 HloCompareInstruction::HloCompareInstruction(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     ComparisonDirection direction, absl::optional<Comparison::Type> type)

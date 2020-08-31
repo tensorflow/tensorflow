@@ -62,9 +62,9 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
-#include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/util/env_var.h"
 
 namespace xla {
@@ -618,7 +618,7 @@ bool HsacoCache::Find(const std::string& ir, uint64_t& hash, int gfx,
   g_hsacoCache.request_count++;
   if (hit) g_hsacoCache.hit_count++;
   if (!(g_hsacoCache.request_count % 50))
-    VLOG(0) << "HSACO cache: " << g_hsacoCache.request_count << " requests, "
+    VLOG(1) << "HSACO cache: " << g_hsacoCache.request_count << " requests, "
             << g_hsacoCache.hit_count << " hits";
   return hit;
 }
@@ -648,7 +648,7 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
   VLOG(1) << "Compile-time artifacts located at: " << tempdir_name;
 
   bool keep_tempfiles = false;
-  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ROCM_XLA_TEMPFILES",
+  TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar("TF_ROCM_KEEP_XLA_TEMPFILES",
                                              /*default_val=*/false,
                                              &keep_tempfiles));
   // Prepare filenames for all stages of compilation:
@@ -733,7 +733,8 @@ StatusOr<std::vector<uint8>> EmitModuleToHsaco(
       llvm::sys::ExecuteAndWait(*lld_program, llvm_ir::AsArrayRef(lld_args),
                                 llvm::None, {}, 0, 0, &error_message);
   if (lld_result) {
-    return xla::InternalError("ld.lld execute fail: %s, error code %d", error_message, lld_result);
+    return xla::InternalError("ld.lld execute fail: %s, error code %d",
+                              error_message, lld_result);
   }
 
   // Read HSACO.
@@ -813,10 +814,9 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
 
   std::vector<uint8> hsaco;
   std::unique_ptr<llvm::TargetMachine> target_machine;
-  std::string ir_str;
-  llvm::raw_string_ostream stream(ir_str);
+  std::string str;
+  llvm::raw_string_ostream stream(str);
   stream << *module;
-  std::string str = stream.str();
   // Delete the first two lines, since they usually vary even when the rest of
   // the code is the same (but verify that they are what we expect).
   if (str.size() >= 13 && str.substr(0, 13) == "; ModuleID = ") {
@@ -848,12 +848,11 @@ StatusOr<std::vector<uint8>> CompileToHsaco(
     bool dump_lls = false;
     if (dump_lls) {
       static int hsaco_count = 0;
-      char name[256];
-      sprintf(name, "/tmp/%d.ll", hsaco_count);
+      std::string name = "/tmp/" + std::to_string(hsaco_count) + ".ll";
       hsaco_count++;
-      FILE* f = fopen(name, "w");
-      fwrite(&str[0], str.size(), 1, f);
-      fclose(f);
+      std::ofstream ofs(name);
+      ofs << str;
+      ofs.close();
     }
 
     llvm::Triple default_target_triple("amdgcn--amdhsa-amdgiz");

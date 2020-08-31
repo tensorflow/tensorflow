@@ -750,18 +750,18 @@ class DeviceTest(test.TestCase):
 class TensorFloat32Test(test.TestCase):
 
   def setUp(self):
+    super(TensorFloat32Test, self).setUp()
     if not test_util.is_gpu_available(
         cuda_only=True, min_cuda_compute_capability=(8, 0)):
       self.skipTest('TensorFloat-32 requires an NVIDIA GPU with compute '
                     'capability of at least 8.0')
 
   def tearDown(self):
-    config.allow_tensor_float_32_execution(False)
+    super(TensorFloat32Test, self).tearDown()
+    config.enable_tensor_float_32_execution(True)
 
   def test_tf32_enabled(self):
-    self.assertFalse(config.tensor_float_32_execution_allowed())
-    config.allow_tensor_float_32_execution(True)
-    self.assertTrue(config.tensor_float_32_execution_allowed())
+    self.assertTrue(config.tensor_float_32_execution_enabled())
 
     x = array_ops.fill((8, 8), 1 + 2**-20)
     y = array_ops.ones((8, 8))
@@ -771,17 +771,14 @@ class TensorFloat32Test(test.TestCase):
     self.assertAllEqual(out, expected)
 
   def test_tf32_disabled(self):
+    self.assertTrue(config.tensor_float_32_execution_enabled())
+    config.enable_tensor_float_32_execution(False)
+    self.assertFalse(config.tensor_float_32_execution_enabled())
+
     x = array_ops.fill((8, 8), 1 + 2**-20)
     y = array_ops.ones((8, 8))
     out = math_ops.matmul(x, y)
     expected = array_ops.fill((8, 8), 8 * (1 + 2**-20))
-    self.assertAllEqual(out, expected)
-
-    # Test disabling tf32 after enabling it works correctly
-    config.allow_tensor_float_32_execution(True)
-    config.allow_tensor_float_32_execution(False)
-    self.assertFalse(config.tensor_float_32_execution_allowed())
-    out = math_ops.matmul(x, y)
     self.assertAllEqual(out, expected)
 
 

@@ -46,10 +46,6 @@ class DeviceResolverDistributed : public DeviceResolverInterface {
   Status GetTaskCached(const string& task,
                        std::vector<DeviceAttributes>* attributes) override;
 
-  void ClearTask(const string& task) override;
-
-  void ClearCache() override;
-
  protected:
   // Loads attr_table_ with device attributes retrieved from remote task.
   void RefreshRemoteAttributes(const string& device, const string& task,

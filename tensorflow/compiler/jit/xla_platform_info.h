@@ -80,7 +80,7 @@ class XlaPlatformInfo {
 };
 
 // Returns created XLA compilation cache.
-Status BuildXlaCompilationCache(OpKernelContext* ctx,
+Status BuildXlaCompilationCache(DeviceBase* dev,
                                 const XlaPlatformInfo& platform_info,
                                 XlaCompilationCache** cache);
 

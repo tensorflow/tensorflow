@@ -935,7 +935,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
                                            verbose=0)
 
     with context.eager_mode():
-      tensor = ops.convert_to_tensor(1.)
+      tensor = ops.convert_to_tensor_v2_with_dispatch(1.)
 
     def mock_numpy():
       raise RuntimeError(
@@ -975,7 +975,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
                                            verbose=2)
 
     with context.eager_mode():
-      tensor = ops.convert_to_tensor(1.)
+      tensor = ops.convert_to_tensor_v2_with_dispatch(1.)
 
     def mock_numpy():
       raise RuntimeError(
@@ -2193,7 +2193,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
                                            steps=100,
                                            verbose=0)
 
-    tensor = ops.convert_to_tensor(1.)
+    tensor = ops.convert_to_tensor_v2_with_dispatch(1.)
 
     def mock_numpy():
       raise RuntimeError(

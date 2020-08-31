@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -34,6 +35,8 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
@@ -133,6 +136,11 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
 // MLIR LHLO.
 class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
+                    mlir::lmhlo::LmhloDialect>();
+  }
+
  public:
   XlaHloToLhloPass() = default;
   XlaHloToLhloPass(const XlaHloToLhloPass&) {}
@@ -438,7 +446,7 @@ Status LhloDialectEmitter::Initialize() {
   builder_.setInsertionPointToEnd(block);
 
   auto return_op = builder_.create<ReturnOp>(builder_.getUnknownLoc());
-  builder_ = mlir::OpBuilder(return_op);
+  builder_ = OpBuilder(return_op);
 
   return Status::OK();
 }
@@ -449,6 +457,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
 
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
+  module.getContext()
+      ->loadDialect<StandardOpsDialect, mhlo::MhloDialect,
+                    lmhlo::LmhloDialect>();
   HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);
@@ -462,15 +473,14 @@ Status HloToLhloModule(const BufferAssignment& assignment,
   return computation->AcceptOrdered(&emitter, ordering);
 }
 
-mlir::OwningModuleRef HloTextToLhloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context) {
+OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
+                                               MLIRContext* context) {
   StatusOr<std::unique_ptr<HloModule>> maybe_module =
       xla::ParseAndReturnUnverifiedModule(
           absl::string_view(input.data(), input.size()));
   TF_CHECK_OK(maybe_module.status());
 
-  mlir::OwningModuleRef module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
 
   TF_CHECK_OK(
       ConvertModule(maybe_module.ConsumeValueOrDie(), module.get(), "Host"));

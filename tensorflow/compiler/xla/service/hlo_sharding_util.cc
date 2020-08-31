@@ -347,13 +347,21 @@ HloSharding GatherOutputSharding(const HloSharding& index_sharding,
       index_dim++;
     }
   }
+
+  if (index_sharding.ReplicateOnLastTileDim()) {
+    output_tile_assignment_dims.push_back(
+        index_sharding.tile_assignment().dimensions().back());
+  }
+
   Array<int64> new_tile_assignment = index_sharding.tile_assignment();
   if (new_tile_assignment.num_elements() !=
       Product(output_tile_assignment_dims)) {
     return HloSharding::Replicate();
   }
   new_tile_assignment.Reshape(output_tile_assignment_dims);
-  return HloSharding::Tile(new_tile_assignment);
+  return index_sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(new_tile_assignment)
+             : HloSharding::Tile(new_tile_assignment);
 }
 
 HloSharding GatherIndexSharding(const HloSharding& output_sharding,
@@ -379,13 +387,20 @@ HloSharding GatherIndexSharding(const HloSharding& output_sharding,
         index_tile_assignment_dims.begin() + dnums.index_vector_dim(), 1);
   }
 
+  if (output_sharding.ReplicateOnLastTileDim()) {
+    index_tile_assignment_dims.push_back(
+        output_sharding.tile_assignment().dimensions().back());
+  }
+
   Array<int64> new_tile_assignment = output_sharding.tile_assignment();
   if (new_tile_assignment.num_elements() !=
       Product(index_tile_assignment_dims)) {
     return HloSharding::Replicate();
   }
   new_tile_assignment.Reshape(index_tile_assignment_dims);
-  return HloSharding::Tile(new_tile_assignment);
+  return output_sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(new_tile_assignment)
+             : HloSharding::Tile(new_tile_assignment);
 }
 
 HloSharding GatherEffectiveOutputSharding(const HloInstruction& hlo) {
@@ -614,9 +629,15 @@ absl::optional<HloSharding> PassthroughOperandToGatherOutputOrScatterUpdate(
     }
     passthrough_tile[offset_dim] = dim_partitions;
   }
+  if (operand_sharding.ReplicateOnLastTileDim()) {
+    passthrough_tile.push_back(
+        operand_sharding.tile_assignment().dimensions().back());
+  }
   Array<int64> tile_assignment = operand_sharding.tile_assignment();
   tile_assignment.Reshape(passthrough_tile);
-  return HloSharding::Tile(tile_assignment);
+  return operand_sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(tile_assignment)
+             : HloSharding::Tile(tile_assignment);
 }
 
 // Inverse of PassthroughOperandToGatherOutputOrScatterUpdate.
@@ -650,12 +671,19 @@ absl::optional<HloSharding> PassthroughGatherOutputOrScatterUpdateToOperand(
     }
     passthrough_tile[i] = dim_partitions;
   }
+
+  if (update_or_gather_sharding.ReplicateOnLastTileDim()) {
+    passthrough_tile.push_back(
+        update_or_gather_sharding.tile_assignment().dimensions().back());
+  }
   Array<int64> tile_assignment = update_or_gather_sharding.tile_assignment();
   if (tile_assignment.num_elements() != Product(passthrough_tile)) {
     return absl::nullopt;
   }
   tile_assignment.Reshape(passthrough_tile);
-  return HloSharding::Tile(tile_assignment);
+  return update_or_gather_sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(tile_assignment)
+             : HloSharding::Tile(tile_assignment);
 }
 
 }  // namespace

@@ -126,7 +126,7 @@ class AutoCastVariable(variables.Variable, core.Tensor):
       raise ValueError(
           'Incompatible type conversion requested to type {!r} for variable '
           'of type {!r}'.format(dtype.name, self.dtype.name))
-    val = ops.convert_to_tensor_v2(
+    val = ops.convert_to_tensor_v2_with_dispatch(
         self._variable, dtype=self._variable.dtype, name=name)
     return math_ops.cast(val, self.dtype)
 

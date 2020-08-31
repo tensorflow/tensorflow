@@ -28,6 +28,7 @@ py_library(
     srcs = ["saved_model_benchmark_util.py"],
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -41,6 +42,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -54,6 +56,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -67,6 +70,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -80,6 +84,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -93,6 +98,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -106,6 +112,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -119,6 +126,7 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )
 
@@ -132,5 +140,6 @@ cuda_py_test(
     deps = [
         ":saved_model_benchmark_util",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python/keras/benchmarks:profiler_lib",
     ],
 )

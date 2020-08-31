@@ -29,6 +29,10 @@ namespace {
 
 struct TestChloLegalizeToHloPass
     : public PassWrapper<TestChloLegalizeToHloPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<mhlo::MhloDialect, shape::ShapeDialect, scf::SCFDialect>();
+  }
+
   void runOnFunction() override {
     ConversionTarget conversionTarget(getContext());
     OwningRewritePatternList conversionPatterns;

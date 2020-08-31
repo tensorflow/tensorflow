@@ -1774,6 +1774,28 @@ ENTRY entry {
               op::Sharding("{devices=[2,1]0,1}"));
 }
 
+TEST_F(ShardingPropagationTest, GatherFromIndex_PartialReplicate) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[2,9] parameter(0), sharding={replicated}
+  %indices = s32[3] parameter(1),
+   sharding={devices=[2,2]0,1,2,3 last_tile_dim_replicate}
+  %gather = f32[3,9] gather(%input, %indices), offset_dims={1},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
+    slice_sizes={1,9}
+  ROOT %copy = f32[3,9] copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          ShardingPropagation().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "gather"),
+              op::Sharding("{devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}"));
+}
+
 TEST_F(ShardingPropagationTest, GatherFromDataOperand) {
   const char* hlo_string = R"(
 HloModule module
@@ -1793,6 +1815,28 @@ ENTRY entry {
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module.get(), "gather"),
               op::Sharding("{devices=[1,2]0,1}"));
+}
+
+TEST_F(ShardingPropagationTest, GatherFromDataOperand_PartialReplicate) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[2,9] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[3] parameter(1), sharding={replicated}
+  %gather = f32[3,9] gather(%input, %indices), offset_dims={1},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
+    slice_sizes={1,9}
+  ROOT %copy = f32[3,9] copy(%gather)
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "gather"),
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}"));
 }
 
 TEST_F(ShardingPropagationTest, GatherToIndex) {
@@ -1816,6 +1860,28 @@ ENTRY entry {
               op::Sharding("{devices=[2]0,1}"));
 }
 
+TEST_F(ShardingPropagationTest, GatherToIndex_PartialReplicate) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[2,9] parameter(0), sharding={replicated}
+  %p1 = s32[3] parameter(1)
+  %indices = s32[3] copy(%p1)
+  ROOT %gather = f32[3,9] gather(%input, %indices), offset_dims={1},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
+    slice_sizes={1,9},
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          ShardingPropagation().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "indices"),
+              op::Sharding("{devices=[2,2]0,1,2,3 last_tile_dim_replicate}"));
+}
+
 TEST_F(ShardingPropagationTest, GatherToIndex2) {
   const char* hlo_string = R"(
 HloModule module
@@ -1837,6 +1903,30 @@ ENTRY entry {
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module.get(), "indices"),
               op::Sharding("{devices=[1,2,1]0,1}"));
+}
+
+TEST_F(ShardingPropagationTest, GatherToIndex2_PartialReplicate) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = bf16[2,4819,4] parameter(0), sharding={replicated}
+  %p1 = s32[2,1000,2] parameter(1)
+  %indices = s32[2,1000,2] copy(%p1)
+  ROOT %gather = bf16[2,1000,4]
+    gather(bf16[2,4819,4] %input, s32[2,1000,2] %indices),
+    offset_dims={2}, collapsed_slice_dims={0,1},
+    start_index_map={0,1}, index_vector_dim=2, slice_sizes={1,1,4},
+    sharding={devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          ShardingPropagation().Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(
+      FindInstruction(module.get(), "indices"),
+      op::Sharding("{devices=[1,2,1,2]0,1,2,3 last_tile_dim_replicate}"));
 }
 
 TEST_F(ShardingPropagationTest, GatherToIndex3) {
@@ -1881,6 +1971,27 @@ ENTRY entry {
   EXPECT_TRUE(changed);
   EXPECT_THAT(FindInstruction(module.get(), "input"),
               op::Sharding("{devices=[1,2]0,1}"));
+}
+
+TEST_F(ShardingPropagationTest, GatherToDataOperand_PartialReplicate) {
+  const char* hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %p0 = f32[2,9] parameter(0)
+  %input = f32[2,9] copy(%p0)
+  %indices = s32[3] parameter(1), sharding={replicated}
+  ROOT %gather = f32[3,9] gather(%input, %indices), offset_dims={1},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
+    slice_sizes={1,9}, sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, ShardingPropagation(/*is_spmd=*/true).Run(module.get()));
+  EXPECT_TRUE(changed);
+  EXPECT_THAT(FindInstruction(module.get(), "input"),
+              op::Sharding("{devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}"));
 }
 
 TEST_F(ShardingPropagationTest, DataOperandToScatter) {

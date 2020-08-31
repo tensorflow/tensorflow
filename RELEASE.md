@@ -37,6 +37,9 @@
 * XLA:CPU and XLA:GPU devices are no longer registered by default. Use
   `TF_XLA_FLAGS=--tf_xla_enable_xla_devices` if you really need them (to be
   removed).
+* `tf.raw_ops.Max` and `tf.raw_ops.Min` no longer accept inputs of type
+  `tf.complex64` or `tf.complex128`, because the behavior of these ops is not
+  well defined for complex types.
 
 ## Known Caveats
 
@@ -120,6 +123,13 @@
       customization of how gradients are aggregated across devices, as well as
       `gradients_transformers` to allow for custom gradient transformations
       (such as gradient clipping).
+    * The `steps_per_execution` argument in `compile()` is no longer
+      experimental; if you were passing `experimental_steps_per_execution`,
+      rename it to `steps_per_execution` in your code. This argument controls
+      the number of batches to run during each `tf.function` call when calling
+      `fit()`. Running multiple batches inside a single `tf.function` call can
+      greatly improve performance on TPUs or small models with a large Python
+      overhead.
 * `tf.function` / AutoGraph:
   * Added `experimental_follow_type_hints` argument for `tf.function`. When
     True, the function may use type annotations to optimize the tracing
@@ -147,6 +157,8 @@
     * Deprecate `Interpreter::UseNNAPI(bool)` C++ API
       * Prefer using `NnApiDelegate()` and related delegate configuration methods directly.
     * Add NNAPI Delegation support for requantization use cases by converting the operation into a dequantize-quantize pair.
+    * TFLite Profiler for Android is available. See the detailed
+      [guide](https://www.tensorflow.org/lite/performance/measurement#trace_tensorflow_lite_internals_in_android).
     * <ADD RELEASE NOTES HERE>
 *   `tf.random`:
     * <ADD RELEASE NOTES HERE>

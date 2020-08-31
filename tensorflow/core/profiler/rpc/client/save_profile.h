@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_SAVE_PROFILE_H_
 
 #include <ostream>
+#include <string>
 
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
@@ -25,27 +26,28 @@ limitations under the License.
 namespace tensorflow {
 namespace profiler {
 
-string GetCurrentTimeStampAsString();
+std::string GetCurrentTimeStampAsString();
 
 // Returns the profile plugin directory given a logdir to TensorBoard.
-string GetTensorBoardProfilePluginDir(const string& logdir);
+std::string GetTensorBoardProfilePluginDir(const std::string& logdir);
 
 // Creates an empty event file if not already exists, which indicates that we
 // have a plugins/profile/ directory in the current logdir.
-Status MaybeCreateEmptyEventFile(const string& logdir);
+Status MaybeCreateEmptyEventFile(const std::string& logdir);
 
 // Saves all profiling tool data in a profile to <repository_root>/<run>/.
 // This writes user-facing log messages to `os`.
 // Note: this function creates a directory even when all fields in
 // ProfileResponse are unset/empty.
-Status SaveProfile(const string& repository_root, const string& run,
-                   const string& host, const ProfileResponse& response,
+Status SaveProfile(const std::string& repository_root, const std::string& run,
+                   const std::string& host, const ProfileResponse& response,
                    std::ostream* os);
 
 // Gzip the data and save to <repository_root>/<run>/.
-Status SaveGzippedToolData(const string& repository_root, const string& run,
-                           const string& host, const string& tool_name,
-                           const string& data);
+Status SaveGzippedToolData(const std::string& repository_root,
+                           const std::string& run, const std::string& host,
+                           const std::string& tool_name,
+                           const std::string& data);
 
 }  // namespace profiler
 }  // namespace tensorflow

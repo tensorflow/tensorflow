@@ -530,6 +530,21 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
     return %3#0, %3#1 : tensor<*xf32>, tensor<*xf32>
   }
 
+  // CHECK-LABEL: infer_device_cluster
+  func @infer_device_cluster(%arg0: tensor<1x8x2xi32>) -> (tensor<*xf32>, tensor<*xf32>) {
+    %0 = "tf.Const"() {value = dense<-1> : tensor<i32>} : () -> tensor<i32>
+    %1 = "tf_device.cluster"() ({
+      %2 = "tf.Cast"(%arg0) {Truncate = false} : (tensor<1x8x2xi32>) -> tensor<1x8x2xf32>
+      tf_device.return %2 : tensor<1x8x2xf32>
+    // CHECK: () -> tensor<1x8x2xf32>
+    }) : () -> tensor<*xf32>
+    // CHECK: "tf.Cast"(%{{.*}}) {Truncate = false} : (tensor<1x8x2xf32>) -> tensor<*xf32>
+    // CHECK: (tensor<i32>, tensor<1x8x2xf32>) -> (tensor<1x8x1xf32>, tensor<1x8x1xf32>)
+    %3:2 = "tf.Split"(%0, %1) {device = ""} : (tensor<i32>, tensor<*xf32>) -> (tensor<*xf32>, tensor<*xf32>)
+    %4 = addf %1, %1 : tensor<*xf32>
+    return %3#0, %3#1 : tensor<*xf32>, tensor<*xf32>
+  }
+
   // CHECK-LABEL: func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<1xi32>
   func @tensor_cast(%arg0: tensor<1xi32>) -> tensor<*xi32> {
    // CHECK: %[[RESULT:.*]] = tensor_cast

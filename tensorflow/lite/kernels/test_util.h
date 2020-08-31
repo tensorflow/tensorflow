@@ -392,11 +392,15 @@ class SingleOpModel {
                    const std::vector<uint8_t>& custom_option,
                    const std::function<TfLiteRegistration*()>& registration);
 
+  // Allocate tensors and apply delegate.
+  // Note that this is called by default in BuiltInterpreter().
+  void AllocateAndDelegate(bool apply_delegate);
+
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads, bool allow_fp32_relax_to_fp16,
-                        bool apply_delegate);
+                        bool apply_delegate, bool allocate_and_delegate = true);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 

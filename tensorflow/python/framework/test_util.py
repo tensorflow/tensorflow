@@ -54,6 +54,7 @@ from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -70,6 +71,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
 from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
@@ -1906,6 +1908,75 @@ def xla_allow_fallback(description):  # pylint: disable=unused-argument
     return decorator
 
   return xla_allow_fallback_impl
+
+
+# The description is just for documentation purposes.
+def run_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute test with TensorFloat-32 disabled.
+
+  While almost every real-world deep learning model runs fine with
+  TensorFloat-32, many tests use assertAllClose or similar methods.
+  TensorFloat-32 matmuls typically will cause such methods to fail with the
+  default tolerances.
+
+  Args:
+    description: A description used for documentation purposes, describing why
+      the test requires TensorFloat-32 to be disabled.
+
+  Returns:
+    Decorator which runs a test with TensorFloat-32 disabled.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(self, *args, **kwargs):
+      allowed = config.tensor_float_32_execution_enabled()
+      try:
+        config.enable_tensor_float_32_execution(False)
+        f(self, *args, **kwargs)
+      finally:
+        config.enable_tensor_float_32_execution(allowed)
+
+    return decorated
+
+  return decorator
+
+
+# The description is just for documentation purposes.
+def run_all_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute all tests in a class with TensorFloat-32 disabled."""
+  return for_all_test_methods(run_without_tensor_float_32, description)
+
+
+def matmul_without_tf32(a, b, *args, **kwargs):
+  """Run matmul but cast float32 inputs to float64 if TensorFloat-32 is enabled.
+
+  This effectively runs matmul without TensorFloat-32. It should only be used in
+  tests when verifying some other op or functions works correctly, e.g. to test
+  `tf.linalg.sqrtm` by matrix multiplying the output of the op by itself. In
+  such cases, the matmul itself is not being tested so it's OK to run it with
+  higher precision.
+
+  If a matmul itself is being tested, or some other op which uses matmul, use
+  `run_without_tensor_float_32` instead.
+
+  Args:
+    a: First input to tf.linalg.matmul
+    b: Second input to tf.linalg.matmul
+    args: Other positional arguments to tf.linalg.matmul
+    **kwargs: Other keyword arguments to tf.linalg.matmul
+
+  Returns:
+    A tensor with the same type as `a`.
+  """
+  if config.tensor_float_32_execution_enabled() and a.dtype == "float32":
+    a = math_ops.cast(a, "float64")
+    b = math_ops.cast(b, "float64")
+    ret = math_ops.matmul(a, b, *args, **kwargs)
+    return math_ops.cast(ret, a.dtype)
+  else:
+    return math_ops.matmul(a, b, *args, **kwargs)
 
 
 class EagerSessionWarner(object):

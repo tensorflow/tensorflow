@@ -38,6 +38,8 @@ ABSL_CONST_INIT extern const absl::string_view kRocmTracerPlaneName;
 ABSL_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 // Name of XPlane that contains kpi related metrics.
 ABSL_CONST_INIT extern const absl::string_view kTFStreamzPlaneName;
+// Name of XPlane that contains events from python tracer.
+ABSL_CONST_INIT extern const absl::string_view kPythonTracerPlaneName;
 
 // Names of XLines that contain ML-level events.
 ABSL_CONST_INIT extern const absl::string_view kStepLineName;
