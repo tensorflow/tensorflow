@@ -92,25 +92,14 @@ bool inline DoesControlEdgeExist(const Node* src, const Node* dst) {
 // based on environment variable setting. User can set
 // TF_ENABLE_MKL_NATIVE_FORMAT=1 to enable the native format mode.
 bool inline NativeFormatEnabled() {
-  enum MklGraphMode {
-    MKL_DEFAULT = 0,
-    MKL_LAYOUT_DEPENDENT = 1,
-    MKL_NATIVE_FORMAT = 2
-  };
-  static MklGraphMode graph_mode = MKL_DEFAULT;
+  static bool native_fmt_enabled = false;
   static absl::once_flag once;
   absl::call_once(once, [&] {
-    bool native_fmt_enabled = false;
     TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_MKL_NATIVE_FORMAT",
                                    /*default_value*/ false,
                                    &native_fmt_enabled));
-    if (native_fmt_enabled) {
-      graph_mode = MKL_NATIVE_FORMAT;
-    } else {
-      graph_mode = MKL_LAYOUT_DEPENDENT;
-    }
   });
-  return graph_mode == MKL_NATIVE_FORMAT ? true : false;
+  return native_fmt_enabled;
 }
 
 namespace mkl_op_registry {
