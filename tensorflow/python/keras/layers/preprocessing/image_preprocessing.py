@@ -699,7 +699,7 @@ def transform(images,
                        'new_height, new_width, instead got '
                        '{}'.format(output_shape))
 
-    fill_value = ops.convert_to_tensor_v2(
+    fill_value = ops.convert_to_tensor_v2_with_dispatch(
         fill_value, dtypes.float32, name='fill_value')
 
     if compat.forward_compatible(2020, 8, 5):
