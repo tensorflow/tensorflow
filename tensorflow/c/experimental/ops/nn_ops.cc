@@ -62,259 +62,277 @@ Status ReluGrad(AbstractContext* ctx,
   TF_RETURN_IF_ERROR(relugrad_op->Execute(outputs, &num_retvals));
   return Status::OK();
 }
- 
+
 // Computes Bias Add gradient given upstream grads
 Status BiasAddGrad(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
- AbstractOperationPtr bias_add_grad_op(ctx->CreateOperation());
- TF_RETURN_IF_ERROR(
-     bias_add_grad_op->Reset("BiasAddGrad", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(bias_add_grad_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(bias_add_grad_op.get())
-                          ->SetOpName(name));
- }
- 
- TF_RETURN_IF_ERROR(bias_add_grad_op->AddInput(inputs[0]));  // upstream grads
+                   absl::Span<AbstractTensorHandle* const> inputs,
+                   absl::Span<AbstractTensorHandle*> outputs,
+                   const char* data_format, const char* name) {
+  AbstractOperationPtr bias_add_grad_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      bias_add_grad_op->Reset("BiasAddGrad", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(bias_add_grad_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(bias_add_grad_op.get())
+            ->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(bias_add_grad_op->SetAttrString("data_format", data_format,
+                                                     strlen(data_format)));
+  TF_RETURN_IF_ERROR(bias_add_grad_op->AddInput(inputs[0]));  // upstream grads
+
   int num_retvals = 1;
- TF_RETURN_IF_ERROR(bias_add_grad_op->Execute(outputs, &num_retvals));
- return Status::OK();
+  TF_RETURN_IF_ERROR(bias_add_grad_op->Execute(outputs, &num_retvals));
+  return Status::OK();
 }
- 
+
 // Computes Batchnorm gradients w.r.t to input x, scale, and offset
 Status FusedBatchNormV3(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
- AbstractOperationPtr fbn_op(ctx->CreateOperation());
- TF_RETURN_IF_ERROR(
-     fbn_op->Reset("FusedBatchNormV3", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(fbn_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(fbn_op.get())
-                          ->SetOpName(name));
- }
- 
- TF_RETURN_IF_ERROR(fbn_op->SetAttrBool("is_training", true));
- 
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[0])); // x = input to BN
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[1])); // scale
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[2])); // offset
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[3])); // means (optional)
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[4])); // vars (optional)
-  // Returns [y, batch_mean, batch_var, reserve_space_1, reserve_space_2, reserve_space_3]
- int num_retvals = 6;
- TF_RETURN_IF_ERROR(fbn_op->Execute(outputs, &num_retvals));
- return Status::OK();
+                        absl::Span<AbstractTensorHandle* const> inputs,
+                        absl::Span<AbstractTensorHandle*> outputs,
+                        const char* name) {
+  AbstractOperationPtr fbn_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      fbn_op->Reset("FusedBatchNormV3", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(fbn_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(fbn_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(fbn_op->SetAttrBool("is_training", true));
+
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[0]));  // x = input to BN
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[1]));  // scale
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[2]));  // offset
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[3]));  // means (optional)
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(
+      inputs[4]));  // vars (optional)
+                    // Returns [y, batch_mean, batch_var, reserve_space_1,
+                    // reserve_space_2, reserve_space_3]
+  int num_retvals = 6;
+  TF_RETURN_IF_ERROR(fbn_op->Execute(outputs, &num_retvals));
+  return Status::OK();
 }
- 
+
 // Computes Batchnorm gradients w.r.t to input x, scale, and offset
 Status FusedBatchNormGradV3(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
- AbstractOperationPtr fbn_grad_op(ctx->CreateOperation());
- TF_RETURN_IF_ERROR(
-     fbn_grad_op->Reset("FusedBatchNormGradV3", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(fbn_grad_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(fbn_grad_op.get())
-                          ->SetOpName(name));
- }
- 
- TF_RETURN_IF_ERROR(fbn_grad_op->SetAttrBool("is_training", true));
+                            absl::Span<AbstractTensorHandle* const> inputs,
+                            absl::Span<AbstractTensorHandle*> outputs,
+                            const char* name) {
+  AbstractOperationPtr fbn_grad_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      fbn_grad_op->Reset("FusedBatchNormGradV3", /*raw_device_name=*/nullptr));
 
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[0])); // upstream grads
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[1])); // x = input to BN
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[2])); // scale input to BN
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[3])); // reserve_space_1
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[4])); // reserve_space_2
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[5])); // reserve_space_3
- 
- // Returns [x_grad, scale_grad, offset_grad, reserve_space_4, reserve_space_5]
- // Last 2 outputs not used.
- 
- int num_retvals = 5;
- TF_RETURN_IF_ERROR(fbn_grad_op->Execute(outputs, &num_retvals));
- return Status::OK();
+  if (isa<tracing::TracingOperation>(fbn_grad_op.get())) {
+    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(fbn_grad_op.get())
+                           ->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(fbn_grad_op->SetAttrBool("is_training", true));
+
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[0]));  // upstream grads
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[1]));  // x = input to BN
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[2]));  // scale input to BN
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[3]));  // reserve_space_1
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[4]));  // reserve_space_2
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[5]));  // reserve_space_3
+
+  // Returns [x_grad, scale_grad, offset_grad, reserve_space_4, reserve_space_5]
+  // Last 2 outputs not used.
+
+  int num_retvals = 5;
+  TF_RETURN_IF_ERROR(fbn_grad_op->Execute(outputs, &num_retvals));
+  return Status::OK();
 }
- 
+
 // Computes Batchnorm gradients w.r.t to input x, scale, and offset
 Status FusedBatchNormV2(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
- AbstractOperationPtr fbn_op(ctx->CreateOperation());
- TF_RETURN_IF_ERROR(
-     fbn_op->Reset("FusedBatchNormV2", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(fbn_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(fbn_op.get())
-                          ->SetOpName(name));
- }
- 
- TF_RETURN_IF_ERROR(fbn_op->SetAttrBool("is_training", true));
- 
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[0])); // x = input to BN
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[1])); // scale
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[2])); // offset
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[3])); // means (optional)
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[4])); // vars (optional)
-  // Returns [y, batch_mean, batch_var, reserve_space_1, reserve_space_2]
- int num_retvals = 6;
- TF_RETURN_IF_ERROR(fbn_op->Execute(outputs, &num_retvals));
- return Status::OK();
+                        absl::Span<AbstractTensorHandle* const> inputs,
+                        absl::Span<AbstractTensorHandle*> outputs,
+                        const char* name) {
+  AbstractOperationPtr fbn_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      fbn_op->Reset("FusedBatchNormV2", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(fbn_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(fbn_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(fbn_op->SetAttrBool("is_training", true));
+
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[0]));  // x = input to BN
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[1]));  // scale
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[2]));  // offset
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[3]));  // means (optional)
+  TF_RETURN_IF_ERROR(
+      fbn_op->AddInput(inputs[4]));  // vars (optional)
+                                     // Returns [y, batch_mean, batch_var,
+                                     // reserve_space_1, reserve_space_2]
+  int num_retvals = 6;
+  TF_RETURN_IF_ERROR(fbn_op->Execute(outputs, &num_retvals));
+  return Status::OK();
 }
- 
+
 Status FusedBatchNormGradV2(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
- AbstractOperationPtr fbn_grad_op(ctx->CreateOperation());
- TF_RETURN_IF_ERROR(
-     fbn_grad_op->Reset("FusedBatchNormGradV2", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(fbn_grad_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(fbn_grad_op.get())
-                          ->SetOpName(name));
- }
- 
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[0])); // upstream grads
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[1])); // x = input to BN
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[2])); // scale input to BN
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[3])); // reserve_space_1
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[4])); // reserve_space_2
- // Returns [x_grad, scale_grad, offset_grad, reserve_space_3, reserve_space_4]
- // Last 2 outputs not used.
- 
- int num_retvals = 5;
- TF_RETURN_IF_ERROR(fbn_grad_op->Execute(outputs, &num_retvals));
- return Status::OK();
+                            absl::Span<AbstractTensorHandle* const> inputs,
+                            absl::Span<AbstractTensorHandle*> outputs,
+                            const char* name) {
+  AbstractOperationPtr fbn_grad_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      fbn_grad_op->Reset("FusedBatchNormGradV2", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(fbn_grad_op.get())) {
+    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(fbn_grad_op.get())
+                           ->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[0]));  // upstream grads
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[1]));  // x = input to BN
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[2]));  // scale input to BN
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[3]));  // reserve_space_1
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[4]));  // reserve_space_2
+  // Returns [x_grad, scale_grad, offset_grad, reserve_space_3, reserve_space_4]
+  // Last 2 outputs not used.
+
+  int num_retvals = 5;
+  TF_RETURN_IF_ERROR(fbn_grad_op->Execute(outputs, &num_retvals));
+  return Status::OK();
 }
 
 // Computes Batchnorm gradients w.r.t to input x, scale, and offset
 Status FusedBatchNorm(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
- AbstractOperationPtr fbn_op(ctx->CreateOperation());
- TF_RETURN_IF_ERROR(
-     fbn_op->Reset("FusedBatchNorm", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(fbn_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(fbn_op.get())
-                          ->SetOpName(name));
- }
- 
- TF_RETURN_IF_ERROR(fbn_op->SetAttrBool("is_training", true));
- 
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[0])); // x = input to BN
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[1])); // scale
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[2])); // offset
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[3])); // means (optional)
- TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[4])); // vars (optional)
-  // Returns [y, batch_mean, batch_var, reserve_space_1, reserve_space_2]
- int num_retvals = 5;
- TF_RETURN_IF_ERROR(fbn_op->Execute(outputs, &num_retvals));
- return Status::OK();
+                      absl::Span<AbstractTensorHandle* const> inputs,
+                      absl::Span<AbstractTensorHandle*> outputs,
+                      const char* name) {
+  AbstractOperationPtr fbn_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      fbn_op->Reset("FusedBatchNorm", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(fbn_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(fbn_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(fbn_op->SetAttrBool("is_training", true));
+
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[0]));  // x = input to BN
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[1]));  // scale
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[2]));  // offset
+  TF_RETURN_IF_ERROR(fbn_op->AddInput(inputs[3]));  // means (optional)
+  TF_RETURN_IF_ERROR(
+      fbn_op->AddInput(inputs[4]));  // vars (optional)
+                                     // Returns [y, batch_mean, batch_var,
+                                     // reserve_space_1, reserve_space_2]
+  int num_retvals = 5;
+  TF_RETURN_IF_ERROR(fbn_op->Execute(outputs, &num_retvals));
+  return Status::OK();
 }
- 
+
 Status FusedBatchNormGrad(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs, const char* name) {
- AbstractOperationPtr fbn_grad_op(ctx->CreateOperation());
- TF_RETURN_IF_ERROR(
-     fbn_grad_op->Reset("FusedBatchNormGrad", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(fbn_grad_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(fbn_grad_op.get())
-                          ->SetOpName(name));
- }
- 
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[0])); // upstream grads
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[1])); // x = input to BN
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[2])); // scale input to BN
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[3])); // reserve_space_1
- TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[4])); // reserve_space_2
- // Returns [x_grad, scale_grad, offset_grad, reserve_space_3, reserve_space_4]
- // Last 2 outputs not used.
- 
- int num_retvals = 5;
- TF_RETURN_IF_ERROR(fbn_grad_op->Execute(outputs, &num_retvals));
- return Status::OK();
+                          absl::Span<AbstractTensorHandle* const> inputs,
+                          absl::Span<AbstractTensorHandle*> outputs,
+                          const char* name) {
+  AbstractOperationPtr fbn_grad_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      fbn_grad_op->Reset("FusedBatchNormGrad", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(fbn_grad_op.get())) {
+    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(fbn_grad_op.get())
+                           ->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[0]));  // upstream grads
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[1]));  // x = input to BN
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[2]));  // scale input to BN
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[3]));  // reserve_space_1
+  TF_RETURN_IF_ERROR(fbn_grad_op->AddInput(inputs[4]));  // reserve_space_2
+  // Returns [x_grad, scale_grad, offset_grad, reserve_space_3, reserve_space_4]
+  // Last 2 outputs not used.
+
+  int num_retvals = 5;
+  TF_RETURN_IF_ERROR(fbn_grad_op->Execute(outputs, &num_retvals));
+  return Status::OK();
 }
- 
+
 Status Conv2D(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs,
-               int64_t* strides, int num_dims, const char* padding,
-               const char* name) {
- AbstractOperationPtr conv_op(ctx->CreateOperation());
- TF_RETURN_IF_ERROR(
-     conv_op->Reset("Conv2D", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(conv_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(conv_op.get())
-                          ->SetOpName(name));
- }
-  
- TF_RETURN_IF_ERROR(conv_op->SetAttrIntList("strides", strides, num_dims));
- TF_RETURN_IF_ERROR(conv_op->SetAttrString("padding", padding, strlen(padding)));
- 
- TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[0])); // input
- TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[1])); // filter
- 
- int num_retvals = 1;
- TF_RETURN_IF_ERROR(conv_op->Execute(outputs, &num_retvals));
- return Status::OK();
-}
- 
-Status Conv2DBackpropInput(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs,
-               int64_t* strides, int num_dims, const char* padding,
-               const char* name) {
- AbstractOperationPtr conv_op(ctx->CreateOperation());
- TF_RETURN_IF_ERROR(
-     conv_op->Reset("Conv2DBackpropInput", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(conv_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(conv_op.get())
-                          ->SetOpName(name));
- }
- 
- TF_RETURN_IF_ERROR(conv_op->SetAttrIntList("strides", strides, num_dims));
- TF_RETURN_IF_ERROR(conv_op->SetAttrString("padding", padding, strlen(padding)));
- 
- TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[0])); // input sizes
- TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[1])); // filter
- TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[2])); // upstream_grad
- 
- int num_retvals = 1;
- TF_RETURN_IF_ERROR(conv_op->Execute(outputs, &num_retvals));
- return Status::OK();
-}
- 
-Status Conv2DBackpropFilter(AbstractContext* ctx,
-               absl::Span<AbstractTensorHandle* const> inputs,
-               absl::Span<AbstractTensorHandle*> outputs,
-               int64_t* strides, int num_dims,
-               const char* padding, const char* name) {
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, int64_t* strides,
+              int num_dims, const char* padding, const char* name) {
   AbstractOperationPtr conv_op(ctx->CreateOperation());
- TF_RETURN_IF_ERROR(
-     conv_op->Reset("Conv2DBackpropFilter", /*raw_device_name=*/nullptr));
- 
- if (isa<tracing::TracingOperation>(conv_op.get())) {
-   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(conv_op.get())
-                          ->SetOpName(name));
- }
- 
- TF_RETURN_IF_ERROR(conv_op->SetAttrIntList("strides", strides, num_dims));
- TF_RETURN_IF_ERROR(conv_op->SetAttrString("padding", padding, strlen(padding)));
- 
- TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[0])); // input
- TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[1])); // filter sizes
- TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[2])); // upstream_grad
- 
- int num_retvals = 1;
- TF_RETURN_IF_ERROR(conv_op->Execute(outputs, &num_retvals));
- return Status::OK();
+  TF_RETURN_IF_ERROR(conv_op->Reset("Conv2D", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(conv_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(conv_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(conv_op->SetAttrIntList("strides", strides, num_dims));
+  TF_RETURN_IF_ERROR(
+      conv_op->SetAttrString("padding", padding, strlen(padding)));
+
+  TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[0]));  // input
+  TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[1]));  // filter
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(conv_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+Status Conv2DBackpropInput(AbstractContext* ctx,
+                           absl::Span<AbstractTensorHandle* const> inputs,
+                           absl::Span<AbstractTensorHandle*> outputs,
+                           int64_t* strides, int num_dims, const char* padding,
+                           const char* name) {
+  AbstractOperationPtr conv_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      conv_op->Reset("Conv2DBackpropInput", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(conv_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(conv_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(conv_op->SetAttrIntList("strides", strides, num_dims));
+  TF_RETURN_IF_ERROR(
+      conv_op->SetAttrString("padding", padding, strlen(padding)));
+
+  TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[0]));  // input sizes
+  TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[1]));  // filter
+  TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[2]));  // upstream_grad
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(conv_op->Execute(outputs, &num_retvals));
+  return Status::OK();
+}
+
+Status Conv2DBackpropFilter(AbstractContext* ctx,
+                            absl::Span<AbstractTensorHandle* const> inputs,
+                            absl::Span<AbstractTensorHandle*> outputs,
+                            int64_t* strides, int num_dims, const char* padding,
+                            const char* name) {
+  AbstractOperationPtr conv_op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(
+      conv_op->Reset("Conv2DBackpropFilter", /*raw_device_name=*/nullptr));
+
+  if (isa<tracing::TracingOperation>(conv_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<tracing::TracingOperation>(conv_op.get())->SetOpName(name));
+  }
+
+  TF_RETURN_IF_ERROR(conv_op->SetAttrIntList("strides", strides, num_dims));
+  TF_RETURN_IF_ERROR(
+      conv_op->SetAttrString("padding", padding, strlen(padding)));
+
+  TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[0]));  // input
+  TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[1]));  // filter sizes
+  TF_RETURN_IF_ERROR(conv_op->AddInput(inputs[2]));  // upstream_grad
+
+  int num_retvals = 1;
+  TF_RETURN_IF_ERROR(conv_op->Execute(outputs, &num_retvals));
+  return Status::OK();
 }
 
 }  // namespace ops

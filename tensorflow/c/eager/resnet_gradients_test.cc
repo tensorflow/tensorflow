@@ -57,7 +57,6 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("Sub", SubRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Neg", NegRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("FusedBatchNormV3", FusedBatchNormV3Registerer));
-  TF_RETURN_IF_ERROR(registry->Register("FusedBatchNorm", FusedBatchNormRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Mul", MulRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("Log1p", Log1pRegisterer));
   TF_RETURN_IF_ERROR(registry->Register("DivNoNan", DivNoNanRegisterer));
@@ -446,13 +445,13 @@ TEST_P(CppGradients, TestFusedBNGrad) {
  }
  
  
- float A_vals[] = {0.82093, 0.95624, 0.09674, 0.01547, 0.33959, 0.02956, 0.73922, 0.57694,
+ float X_vals[] = {0.82093, 0.95624, 0.09674, 0.01547, 0.33959, 0.02956, 0.73922, 0.57694,
                    0.17769, 0.69381, 0.42478, 0.55046, 0.37456, 0.61153, 0.63415, 0.29853};
- int64_t A_dims[] = {N, H, W, C}; // {4,2,1,2};
+ int64_t X_dims[] = {N, H, W, C}; // {4,2,1,2};
  int num_dims = 4;
  
- AbstractTensorHandlePtr A =
-     GetTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
+ AbstractTensorHandlePtr X =
+     GetTensorHandleUtilFloat(ctx.get(), X_vals, X_dims, num_dims);
  
  float gamma_vals[] = {0.5f, 0.7f};
  int64_t gamma_dims[] = {C};
@@ -468,19 +467,15 @@ TEST_P(CppGradients, TestFusedBNGrad) {
  AbstractTensorHandlePtr beta =
      GetTensorHandleUtilFloat(ctx.get(), beta_vals, beta_dims, num_dims);
  
- // TODO(amturati): need to pass in an "empty" 1-D Tensor with same dims
- // as the channels in data as a placeholder. Verify that this is expected, 
- // or if need to be able to pass in a tensor with dims = {} (no dims).
+ // BatchNorm expects inputs for means and variances,
+ // so create placeholders for them
  float z_vals[] = {};
  int64_t z_dims[] = {C};
  num_dims = 1;
 
- float means_vals[] = {0.4509, 0.4665};
-
  AbstractTensorHandlePtr means_ph =
      GetTensorHandleUtilFloat(ctx.get(), z_vals, z_dims, num_dims);
-
-  float vars_vals[] = {0.0590, 0.0942};   
+ 
   AbstractTensorHandlePtr vars_ph =
      GetTensorHandleUtilFloat(ctx.get(), z_vals, z_dims, num_dims);
  
@@ -491,34 +486,29 @@ TEST_P(CppGradients, TestFusedBNGrad) {
  // Outputs = [bn_out, dx, dscale, doffset]
  std::vector<AbstractTensorHandle*> outputs(4);
  s = RunModel(FBNGradModel, ctx.get(),
-                     {A.get(), gamma.get(), beta.get(), means_ph.get(), vars_ph.get()},
+                     {X.get(), gamma.get(), beta.get(), means_ph.get(), vars_ph.get()},
                      absl::MakeSpan(outputs),
                      /*use_function=*/!std::get<2>(GetParam()), registry);
- 
  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
  
- // Verify bn_out
+ // Verify bn_out.
  float expected_bn_out[] = {-0.239554, 3.11566, -1.72806, 0.97223, -1.22891, 1.00433, -0.407502, 2.25147,
                             -1.56168, 2.51774, -1.05381, 2.19114, -1.15703, 2.33028, -0.623464, 1.61715};
  VerifyResult(outputs[0], expected_bn_out, 16);
 
- // Verify dA
- float expected_dA[] = {1.92429, 2.13236, 1.92429, 2.13236, 1.92429, 2.13236, 1.92429, 2.13236,
-                        1.92429, 2.13236, 1.92429, 2.13236, 1.92429, 2.13236, 1.92429, 2.13236}; 
- VerifyResult(outputs[1], expected_dA, 16);
+ // Verify dX: all grads should be extremely small ~= 0.
+ float expected_dX[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; 
+ VerifyResult(outputs[1], expected_dX, 16);
  
- // Verify dscale
+ // Verify dscale.
  float expected_dscale[] =  {1.132e-06, -1.192e-06};
  VerifyResult(outputs[2], expected_dscale, 2);
  
- // Verify doffset
+ // Verify doffset.
  float expected_doffset[] = {8, 8};
  VerifyResult(outputs[3], expected_doffset, 2);
-
 }
 
-//  Add tests for
-//   - fix Conv2D attrs
 
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(

@@ -83,10 +83,6 @@ Status Conv2D(AbstractContext* ctx, Tape* tape,
        dyn_cast<tracing::TracingOperation>(conv_op.get())->SetOpName(name));
  }
  
-// Status SetAttrString(AbstractOperation* op_, const char* attr_name,
-//                      const char* data, size_t length,
-//                      ForwardOperation* forward_op_)
-
  bool gpu = true;
  TF_RETURN_IF_ERROR(tensorflow::gradients::internal::SetAttrIntList(
       conv_op.get(), "strides", strides, num_dims, &forward_op));
@@ -100,9 +96,8 @@ Status Conv2D(AbstractContext* ctx, Tape* tape,
  TF_RETURN_IF_ERROR(AddInput(conv_op.get(), filter, &forward_op));
  
  int num_retvals = 1;
- Status s = Execute(conv_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
-                    registry);
- return s;
+ return Execute(conv_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                registry);
 }
 
 Status Log1p(AbstractContext* ctx, Tape* tape,
@@ -561,6 +556,6 @@ Status FBNV1GradModel(AbstractContext* ctx,
   delete tape;
   return Status::OK();
 }
-// ====================== End Models ================================
+// ====================== End Models ==============================
 
 

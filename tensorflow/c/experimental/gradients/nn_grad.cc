@@ -19,21 +19,21 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 
 using std::vector;
-using tensorflow::ops::Conj;
-using tensorflow::ops::Identity;
-using tensorflow::ops::Mul;
-using tensorflow::ops::ReluGrad;
-using tensorflow::ops::SparseSoftmaxCrossEntropyLoss;
-using tensorflow::ops::ZerosLike;
-using tensorflow::ops::OnesLike;
 using tensorflow::ops::BiasAddGrad;
-using tensorflow::ops::Shape;
+using tensorflow::ops::Conj;
 using tensorflow::ops::Conv2DBackpropFilter;
 using tensorflow::ops::Conv2DBackpropInput;
-using tensorflow::ops::FusedBatchNormGradV3;
-using tensorflow::ops::FusedBatchNormGrad;
-using tensorflow::ops::Sqrt;
 using tensorflow::ops::DivNoNan;
+using tensorflow::ops::FusedBatchNormGrad;
+using tensorflow::ops::FusedBatchNormGradV3;
+using tensorflow::ops::Identity;
+using tensorflow::ops::Mul;
+using tensorflow::ops::OnesLike;
+using tensorflow::ops::ReluGrad;
+using tensorflow::ops::Shape;
+using tensorflow::ops::SparseSoftmaxCrossEntropyLoss;
+using tensorflow::ops::Sqrt;
+using tensorflow::ops::ZerosLike;
 
 namespace tensorflow {
 namespace gradients {
@@ -53,7 +53,6 @@ class ReluGradientFunction : public GradientFunction {
 
     // Calculate Grad
     std::string name = "relu_grad";
-
     TF_RETURN_IF_ERROR(ReluGrad(ctx->ctx, {upstream_grad, activations},
                                 absl::MakeSpan(relugrad_outputs),
                                 name.c_str()));
@@ -98,234 +97,159 @@ class SparseSoftmaxCrossEntropyLossGradientFunction : public GradientFunction {
 };
 
 class BiasAddGradientFunction : public GradientFunction {
-  public:
-    Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+ public:
+  explicit BiasAddGradientFunction(AttrBuilder f_attrs)
+      : forward_attrs(f_attrs) {}
+
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
     /* Given upstream grad U and a BiasAdd: A + bias, the gradients are:
-      *
-      *    dA = U
-      *    dbias = reduceSum(U, dims = last_dim)
-      *    |
-      *     -----> Assumes 'N...C' data format, so reduce along the
-      *            channel dimensions
-      */
-    
+     *
+     *    dA = U
+     *    dbias = reduceSum(U, dims = channel_dim)
+     */
+
     AbstractTensorHandle* upstream_grad = grad_inputs[0];
     grad_outputs->resize(2);
-    
+
+    // Recover data format from forward pass for gradient.
+    string data_format;
+    forward_attrs.Get("data_format", &data_format);
+
     // Calculate Grads
     // Grad for A
     vector<AbstractTensorHandle*> identity_outputs(1);
-    std::string name = "Identity_bias_add"; 
+    std::string name = "Identity_bias_add";
     TF_RETURN_IF_ERROR(ops::Identity(ctx->ctx, {upstream_grad},
-                                      absl::MakeSpan(identity_outputs),
-                                      name.c_str()));
-    
+                                     absl::MakeSpan(identity_outputs),
+                                     name.c_str()));
+
     (*grad_outputs)[0] = identity_outputs[0];
-  
+
     // Grad for bias
     vector<AbstractTensorHandle*> bias_add_grad_outputs(1);
     name = "bias_add_grad";
     TF_RETURN_IF_ERROR(BiasAddGrad(ctx->ctx, {upstream_grad},
-                                absl::MakeSpan(bias_add_grad_outputs),
-                                name.c_str()));
-    
+                                   absl::MakeSpan(bias_add_grad_outputs),
+                                   data_format.c_str(), name.c_str()));
+
     (*grad_outputs)[1] = bias_add_grad_outputs[0];
     return Status::OK();
   }
   ~BiasAddGradientFunction() override {}
+
+ private:
+  AttrBuilder forward_attrs;
 };
 
 class Conv2DGradientFunction : public GradientFunction {
-  public:
-    explicit Conv2DGradientFunction(vector<AbstractTensorHandle*> f_inputs,
-                                    AttrBuilder f_attrs)
+ public:
+  explicit Conv2DGradientFunction(vector<AbstractTensorHandle*> f_inputs,
+                                  AttrBuilder f_attrs)
       : forward_inputs(f_inputs), forward_attrs(f_attrs) {}
-    
-    Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                    vector<AbstractTensorHandle*>* grad_outputs) override {
-      
-      grad_outputs->resize(2);   
-      AbstractTensorHandle* upstream_grad = grad_inputs[0];
-      AbstractTensorHandle* input = forward_inputs[0];
-      AbstractTensorHandle* filter = forward_inputs[1];
 
-      // TODO(amturati): figure out why attrs like bools are getting registered 
-      // but not strings or lists
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    grad_outputs->resize(2);
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    AbstractTensorHandle* input = forward_inputs[0];
+    AbstractTensorHandle* filter = forward_inputs[1];
 
-      // std::string pad;
-      // TF_RETURN_IF_ERROR(forward_attrs.Get("padding", &pad));  // <--- Throws an error that "padding" is not an attr
+    // Recover forward attributes.
+    string pad;
+    forward_attrs.Get("padding", &pad);
 
-      // bool test_attr;
-      // TF_RETURN_IF_ERROR(forward_attrs.Get("use_cudnn_on_gpu", &test_attr)); // <-- Runs without failure
-      // std::cout << "test = " << test_attr <<std::endl;
-    
-      // temporarily set default strides and padding
-      int64_t strides[] = {1,1,1,1};
-      std::string padding = "SAME";
-     
-      // Get shapes for input and filter
-      vector<AbstractTensorHandle*> shape_outputs(1);
-      std::string name = "conv_shape_input";
-      TF_RETURN_IF_ERROR(Shape(ctx->ctx, {input}, absl::MakeSpan(shape_outputs), name.c_str()));
-      AbstractTensorHandle* input_dims = shape_outputs[0];
-    
-      name = "conv_shape_filter";
-      TF_RETURN_IF_ERROR(Shape(ctx->ctx, {filter}, absl::MakeSpan(shape_outputs), name.c_str()));
-      AbstractTensorHandle* filter_dims = shape_outputs[0]; 
-    
-      // Gradient for input
-      vector<AbstractTensorHandle*> conv_backprop_input_outputs(1);
-      name = "conv_bp_input";
-      TF_RETURN_IF_ERROR(Conv2DBackpropInput(ctx->ctx, {input_dims, filter, upstream_grad},
-                                absl::MakeSpan(conv_backprop_input_outputs), strides,
-                                /*num_dims=*/4, padding.c_str(), name.c_str()));
-    
-      (*grad_outputs)[0] = conv_backprop_input_outputs[0];
-    
-      // Gradient for filter
-      vector<AbstractTensorHandle*> conv_backprop_filter_outputs(1);
-      name = "conv_bp_filter";
-      TF_RETURN_IF_ERROR(Conv2DBackpropFilter(ctx->ctx, {input, filter_dims, upstream_grad},
-                                absl::MakeSpan(conv_backprop_filter_outputs), strides,
-                                /*num_dims=*/4, padding.c_str(), name.c_str()));
-      (*grad_outputs)[1] = conv_backprop_filter_outputs[0];
-    
-      return Status::OK();
+    vector<int64> strides_vec;
+    forward_attrs.Get("strides", &strides_vec);
+    int num_dims = strides_vec.size();
+    int64_t* strides = (int64_t*)strides_vec.data();
+
+    // Get shapes for input and filter.
+    vector<AbstractTensorHandle*> shape_outputs(1);
+    std::string name = "conv_shape_input";
+    TF_RETURN_IF_ERROR(
+        Shape(ctx->ctx, {input}, absl::MakeSpan(shape_outputs), name.c_str()));
+    AbstractTensorHandle* input_dims = shape_outputs[0];
+
+    name = "conv_shape_filter";
+    TF_RETURN_IF_ERROR(
+        Shape(ctx->ctx, {filter}, absl::MakeSpan(shape_outputs), name.c_str()));
+    AbstractTensorHandle* filter_dims = shape_outputs[0];
+
+    // Gradient for input.
+    vector<AbstractTensorHandle*> conv_backprop_input_outputs(1);
+    name = "conv_bp_input";
+    TF_RETURN_IF_ERROR(
+        Conv2DBackpropInput(ctx->ctx, {input_dims, filter, upstream_grad},
+                            absl::MakeSpan(conv_backprop_input_outputs),
+                            strides, num_dims, pad.c_str(), name.c_str()));
+
+    (*grad_outputs)[0] = conv_backprop_input_outputs[0];
+
+    // Gradient for filter.
+    vector<AbstractTensorHandle*> conv_backprop_filter_outputs(1);
+    name = "conv_bp_filter";
+    TF_RETURN_IF_ERROR(
+        Conv2DBackpropFilter(ctx->ctx, {input, filter_dims, upstream_grad},
+                             absl::MakeSpan(conv_backprop_filter_outputs),
+                             strides, num_dims, pad.c_str(), name.c_str()));
+    (*grad_outputs)[1] = conv_backprop_filter_outputs[0];
+
+    return Status::OK();
   }
   ~Conv2DGradientFunction() override {}
-  
-  private:
-    vector<AbstractTensorHandle*> forward_inputs;
-    AttrBuilder forward_attrs;
+
+ private:
+  vector<AbstractTensorHandle*> forward_inputs;
+  AttrBuilder forward_attrs;
 };
 
 class FusedBatchNormV3GradientFunction : public GradientFunction {
-  public:
-    explicit FusedBatchNormV3GradientFunction(
-        vector<AbstractTensorHandle*> f_inputs,
-        vector<AbstractTensorHandle*> f_outputs)
-        : forward_inputs(f_inputs), forward_outputs(f_outputs){}
-  
+ public:
+  explicit FusedBatchNormV3GradientFunction(
+      vector<AbstractTensorHandle*> f_inputs,
+      vector<AbstractTensorHandle*> f_outputs)
+      : forward_inputs(f_inputs), forward_outputs(f_outputs) {}
+
   Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                      vector<AbstractTensorHandle*>* grad_outputs) override  {
-    
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
     grad_outputs->resize(5);
-  
+
     AbstractTensorHandle* upstream_grad = grad_inputs[0];
     AbstractTensorHandle* x_input = forward_inputs[0];
     AbstractTensorHandle* scale = forward_inputs[1];
-      
+
     // Cached values from forward pass
     AbstractTensorHandle* batch_mean = forward_outputs[1];
     AbstractTensorHandle* batch_var = forward_outputs[2];
     AbstractTensorHandle* rs_1 = forward_outputs[3];
     AbstractTensorHandle* rs_2 = forward_outputs[4];
     AbstractTensorHandle* rs_3 = forward_outputs[5];
-      
+
     // Calculate Grad
     std::string name = "FBN_V3_grad";
     vector<AbstractTensorHandle*> fbn_grad_outputs(5);
 
-    // Returns[dX (don't use), dscale, doffset, rs_4, rs_5]
-    TF_RETURN_IF_ERROR(FusedBatchNormGradV3(ctx->ctx,
-                        {upstream_grad, x_input,
-                        scale, rs_1, rs_2, rs_3},
-                        absl::MakeSpan(fbn_grad_outputs),
-                        name.c_str()));
-    
-    
-    /* FusedBatchNormGradV3 gives strange outputs for dX.
-     * 
-     *  Calculate it ourselves analytically: 
-     *
-     *   BatchNorm Out = y =  scale*(X - mean) / sqrt(var) + offset
-     *
-     *   dy/dX = scale/sqrt(var) 
-     *
-     *    ----> dLoss/dX = upstream (dLoss/dy) * dy/dX 
-     *
-     */ 
+    // Returns[dX, dscale, doffset, rs_4, rs_5]
+    TF_RETURN_IF_ERROR(FusedBatchNormGradV3(
+        ctx->ctx, {upstream_grad, x_input, scale, rs_1, rs_2, rs_3},
+        absl::MakeSpan(fbn_grad_outputs), name.c_str()));
 
-    // Get sqrt of vars.
-    vector<AbstractTensorHandle*> temp_outputs(1);
-    name = "Sqrt_FBN";
-    TF_RETURN_IF_ERROR(Sqrt(ctx->ctx, {batch_var}, 
-                       absl::MakeSpan(temp_outputs), name.c_str()));
-    AbstractTensorHandle* std_devs = temp_outputs[0];
+    (*grad_outputs)[0] = fbn_grad_outputs[0];  // dX
+    (*grad_outputs)[1] = fbn_grad_outputs[1];  // dscale
+    (*grad_outputs)[2] = fbn_grad_outputs[2];  // doffset
+    (*grad_outputs)[3] = nullptr;  // Don't pass grads for reserve_spaces
+    (*grad_outputs)[4] = nullptr;  // Don't pass grads for reseve_spaces
 
-    // Calculate dy/dX = scale / sqrt(var)
-    name = "Div_FBN";
-    TF_RETURN_IF_ERROR(DivNoNan(ctx->ctx, {scale, std_devs}, 
-                       absl::MakeSpan(temp_outputs), name.c_str()));
-    AbstractTensorHandle* scale_div_std_devs = temp_outputs[0];
-
-    // Calculate Upstream * dy/dX
-    name = "Mul_FBN";
-    TF_RETURN_IF_ERROR(Mul(ctx->ctx, {scale_div_std_devs, upstream_grad}, 
-                       absl::MakeSpan(temp_outputs), name.c_str()));
-    AbstractTensorHandle* dX = temp_outputs[0];
-
-
-    (*grad_outputs)[0] = dX;
-    (*grad_outputs)[1] = fbn_grad_outputs[1]; // dscale
-    (*grad_outputs)[2] = fbn_grad_outputs[2]; // doffset
-    (*grad_outputs)[3] = nullptr; // Don't pass grads for reserve_spaces
-    (*grad_outputs)[4] = nullptr; // Don't pass grads for reseve_spaces
-    
     return Status::OK();
   }
   ~FusedBatchNormV3GradientFunction() override {}
-  
-private:
+
+ private:
   vector<AbstractTensorHandle*> forward_inputs;
   vector<AbstractTensorHandle*> forward_outputs;
 };
 
-class FusedBatchNormGradientFunction : public GradientFunction {
-  public:
-    explicit FusedBatchNormGradientFunction(
-        vector<AbstractTensorHandle*> f_inputs,
-        vector<AbstractTensorHandle*> f_outputs)
-        : forward_inputs(f_inputs), forward_outputs(f_outputs){}
-  
-  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
-                      vector<AbstractTensorHandle*>* grad_outputs) override  {
-    
-    grad_outputs->resize(5);
-  
-    AbstractTensorHandle* upstream_grad = grad_inputs[0];
-    AbstractTensorHandle* x_input = forward_inputs[0];
-    AbstractTensorHandle* scale = forward_inputs[1];
-      
-    // Cached values from forward pass
-    AbstractTensorHandle* rs_1 = forward_outputs[3];
-    AbstractTensorHandle* rs_2 = forward_outputs[4];
-      
-    // Calculate Grad
-    std::string name = "FBN_grad";
-    vector<AbstractTensorHandle*> fbn_grad_outputs(5);
-    TF_RETURN_IF_ERROR(FusedBatchNormGrad(ctx->ctx,
-                        {upstream_grad, x_input,
-                        scale, rs_1, rs_2},
-                        absl::MakeSpan(fbn_grad_outputs),
-                        name.c_str()));
-    
-    (*grad_outputs)[0] = fbn_grad_outputs[0]; // dx
-    (*grad_outputs)[1] = fbn_grad_outputs[1]; // dscale
-    (*grad_outputs)[2] = fbn_grad_outputs[2]; // doffset
-
-    // Possibly need to return nullptr for the other 2 grads?
-    
-    return Status::OK();
-  }
-  ~FusedBatchNormGradientFunction() override {}
-  
-private:
-  vector<AbstractTensorHandle*> forward_inputs;
-  vector<AbstractTensorHandle*> forward_outputs;
-};
- 
 }  // namespace
 
 BackwardFunction* ReluRegisterer(const ForwardOperation& op) {
@@ -346,7 +270,7 @@ BackwardFunction* SparseSoftmaxCrossEntropyLossRegisterer(
 }
 
 BackwardFunction* BiasAddRegisterer(const ForwardOperation& op) {
-  auto gradient_function = new BiasAddGradientFunction;
+  auto gradient_function = new BiasAddGradientFunction(op.attrs);
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }
@@ -358,13 +282,8 @@ BackwardFunction* Conv2DRegisterer(const ForwardOperation& op) {
 }
 
 BackwardFunction* FusedBatchNormV3Registerer(const ForwardOperation& op) {
-  auto gradient_function = new FusedBatchNormV3GradientFunction(op.inputs, op.outputs);
-  auto default_gradients = new PassThroughDefaultGradients(op);
-  return new BackwardFunction(gradient_function, default_gradients);
-}
-
-BackwardFunction* FusedBatchNormRegisterer(const ForwardOperation& op) {
-  auto gradient_function = new FusedBatchNormGradientFunction(op.inputs, op.outputs);
+  auto gradient_function =
+      new FusedBatchNormV3GradientFunction(op.inputs, op.outputs);
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }
