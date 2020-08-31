@@ -16,6 +16,7 @@
 set -e
 
 # Google internal setup. No-op in open source
+source learning/brain/testing/kokoro/common_google.sh
 setup_sanity_build
 
 # Install latest bazel
