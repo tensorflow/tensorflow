@@ -2232,19 +2232,17 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
         fraction_object_covered.append(float(np.sum(y_tf)) / bounding_box_area)
 
       # min_object_covered as tensor
-      min_object_covered_placeholder = array_ops.placeholder(dtypes.float32)
+      min_object_covered_t = ops.convert_to_tensor(min_object_covered)
       begin, size, _ = image_ops.sample_distorted_bounding_box(
           image_size=image_size_tf,
           bounding_boxes=bounding_box_tf,
-          min_object_covered=min_object_covered_placeholder,
+          min_object_covered=min_object_covered_t,
           aspect_ratio_range=aspect_ratio_range,
           area_range=area_range)
       y = array_ops.strided_slice(image_tf, begin, begin + size)
 
       for _ in xrange(num_iter):
-        y_tf = y.eval(feed_dict={
-            min_object_covered_placeholder: min_object_covered
-        })
+        y_tf = self.evaluate(y)
         crop_height = y_tf.shape[0]
         crop_width = y_tf.shape[1]
         aspect_ratio = float(crop_width) / float(crop_height)
@@ -2287,7 +2285,6 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
     # TODO(wicke, shlens, dga): Restore this test so that it is no longer flaky.
     # self.assertGreaterEqual(min(fraction_object_covered), min_object_covered)
 
-  @test_util.run_deprecated_v1
   def testWholeImageBoundingBox(self):
     height = 40
     width = 50
@@ -2302,7 +2299,6 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
         aspect_ratio_range=(0.75, 1.33),
         area_range=(0.05, 1.0))
 
-  @test_util.run_deprecated_v1
   def testWithBoundingBox(self):
     height = 40
     width = 50
@@ -2333,43 +2329,44 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
         aspect_ratio_range=(0.75, 1.33),
         area_range=(0.05, 1.0))
 
-  @test_util.run_deprecated_v1
   def testSampleDistortedBoundingBoxShape(self):
-    with self.cached_session(use_gpu=True):
-      image_size = constant_op.constant(
-          [40, 50, 1], shape=[3], dtype=dtypes.int32)
-      bounding_box = constant_op.constant(
-          [[[0.0, 0.0, 1.0, 1.0]]],
-          shape=[1, 1, 4],
-          dtype=dtypes.float32,
-      )
-      begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
-          image_size=image_size,
-          bounding_boxes=bounding_box,
-          min_object_covered=0.1,
-          aspect_ratio_range=(0.75, 1.33),
-          area_range=(0.05, 1.0))
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      with self.cached_session(use_gpu=True):
+        image_size = constant_op.constant(
+            [40, 50, 1], shape=[3], dtype=dtypes.int32)
+        bounding_box = constant_op.constant(
+            [[[0.0, 0.0, 1.0, 1.0]]],
+            shape=[1, 1, 4],
+            dtype=dtypes.float32,
+        )
+        begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
+            image_size=image_size,
+            bounding_boxes=bounding_box,
+            min_object_covered=0.1,
+            aspect_ratio_range=(0.75, 1.33),
+            area_range=(0.05, 1.0))
 
-      # Test that the shapes are correct.
-      self.assertAllEqual([3], begin.get_shape().as_list())
-      self.assertAllEqual([3], end.get_shape().as_list())
-      self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
-      # Actual run to make sure shape is correct inside Compute().
-      begin = self.evaluate(begin)
-      end = self.evaluate(end)
-      bbox_for_drawing = self.evaluate(bbox_for_drawing)
+        # Test that the shapes are correct.
+        self.assertAllEqual([3], begin.get_shape().as_list())
+        self.assertAllEqual([3], end.get_shape().as_list())
+        self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+        # Actual run to make sure shape is correct inside Compute().
+        begin = self.evaluate(begin)
+        end = self.evaluate(end)
+        bbox_for_drawing = self.evaluate(bbox_for_drawing)
 
-      begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
-          image_size=image_size,
-          bounding_boxes=bounding_box,
-          min_object_covered=array_ops.placeholder(dtypes.float32),
-          aspect_ratio_range=(0.75, 1.33),
-          area_range=(0.05, 1.0))
+        begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
+            image_size=image_size,
+            bounding_boxes=bounding_box,
+            min_object_covered=array_ops.placeholder(dtypes.float32),
+            aspect_ratio_range=(0.75, 1.33),
+            area_range=(0.05, 1.0))
 
-      # Test that the shapes are correct.
-      self.assertAllEqual([3], begin.get_shape().as_list())
-      self.assertAllEqual([3], end.get_shape().as_list())
-      self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+        # Test that the shapes are correct.
+        self.assertAllEqual([3], begin.get_shape().as_list())
+        self.assertAllEqual([3], end.get_shape().as_list())
+        self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
 
   def testDefaultMinObjectCovered(self):
     # By default min_object_covered=0.1 if not provided
