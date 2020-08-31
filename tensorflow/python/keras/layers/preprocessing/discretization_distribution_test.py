@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.framework import config
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras.layers.preprocessing import discretization
 from tensorflow.python.keras.layers.preprocessing import preprocessing_test_utils
@@ -31,7 +32,7 @@ from tensorflow.python.platform import test
 
 @combinations.generate(
     combinations.combine(
-        distribution=strategy_combinations.all_strategies,
+        distribution=strategy_combinations.strategies_minus_tpu,
         mode=["eager", "graph"]))
 class DiscretizationDistributionTest(
     keras_parameterized.TestCase,
@@ -40,11 +41,13 @@ class DiscretizationDistributionTest(
   def test_distribution(self, distribution):
     input_array = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
 
-    expected_output = [[0, 2, 3, 1], [1, 3, 2, 1]]
-    expected_output_shape = [None, None]
+    expected_output = [[0, 1, 3, 1], [0, 3, 2, 0]]
+    expected_output_shape = [None, 4]
+
+    config.set_soft_device_placement(True)
 
     with distribution.scope():
-      input_data = keras.Input(shape=(None,))
+      input_data = keras.Input(shape=(4,))
       layer = discretization.Discretization(bins=[0., 1., 2.])
       bucket_data = layer(input_data)
       self.assertAllEqual(expected_output_shape, bucket_data.shape.as_list())

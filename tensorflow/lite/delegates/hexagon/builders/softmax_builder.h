@@ -39,7 +39,6 @@ class SoftmaxOpBuilder : public OpBuilder {
  private:
   TensorID node_output_;
   float beta_value_ = 1.0f;
-  float input_min_, input_max_;
 };
 
 }  // namespace hexagon

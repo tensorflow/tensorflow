@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 
@@ -35,6 +36,7 @@ namespace tf_device {
 // XlaRun.
 class TensorFlowDeviceDialect : public Dialect {
  public:
+  static StringRef getDialectNamespace() { return "tf_device"; }
   // Constructing TensorFlowDevice dialect under an non-null MLIRContext.
   explicit TensorFlowDeviceDialect(MLIRContext* context);
 };

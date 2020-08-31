@@ -34,7 +34,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/op_resolver.h"
-#include "tensorflow/lite/profiling/platform_profiler.h"
 #include "tensorflow/lite/profiling/profile_summary_formatter.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/tools/benchmark/benchmark_utils.h"
@@ -60,20 +59,6 @@ constexpr int kOpProfilingEnabledDefault = true;
 #else
 constexpr int kOpProfilingEnabledDefault = false;
 #endif
-
-// Dumps platform-wide tracing files via a platform-based profiler that's built
-// upon platform tracing tools, like ATrace on Android etc.
-class PlatformProfilingListener : public BenchmarkListener {
- public:
-  explicit PlatformProfilingListener(Interpreter* interpreter) {
-    TFLITE_TOOLS_CHECK(interpreter);
-    platform_profiler_ = profiling::CreatePlatformProfiler();
-    interpreter->SetProfiler(platform_profiler_.get());
-  }
-
- private:
-  std::unique_ptr<tflite::Profiler> platform_profiler_;
-};
 
 // Dumps ruy profiling events if the ruy profiler is enabled.
 class RuyProfileListener : public BenchmarkListener {
@@ -259,8 +244,6 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("input_layer_value_files",
                           BenchmarkParam::Create<std::string>(""));
-  default_params.AddParam("use_legacy_nnapi",
-                          BenchmarkParam::Create<bool>(false));
   default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   default_params.AddParam("require_full_delegation",
                           BenchmarkParam::Create<bool>(false));
@@ -271,8 +254,6 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
                           BenchmarkParam::Create<int32_t>(1024));
   default_params.AddParam("profiling_output_csv_file",
                           BenchmarkParam::Create<std::string>(""));
-  default_params.AddParam("enable_platform_tracing",
-                          BenchmarkParam::Create<bool>(false));
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -324,7 +305,6 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
           "input_layer_value_range of the input_name will be ignored. The file "
           "format is binary and it should be array format or null separated "
           "strings format."),
-      CreateFlag<bool>("use_legacy_nnapi", &params_, "use legacy nnapi api"),
       CreateFlag<bool>("allow_fp16", &params_, "allow fp16"),
       CreateFlag<bool>("require_full_delegation", &params_,
                        "require delegate to run the entire graph"),
@@ -334,10 +314,7 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<std::string>(
           "profiling_output_csv_file", &params_,
           "File path to export profile data as CSV, if not set "
-          "prints to stdout."),
-      CreateFlag<bool>("enable_platform_tracing", &params_,
-                       "enable platform-wide tracing, only meaningful when "
-                       "--enable_op_profiling is set to true.")};
+          "prints to stdout.")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
 
@@ -363,9 +340,6 @@ void BenchmarkTfLiteModel::LogParams() {
   LOG_BENCHMARK_PARAM(std::string, "input_layer_value_files",
                       "Input value files", verbose);
 
-#if defined(__ANDROID__)
-  LOG_BENCHMARK_PARAM(bool, "use_legacy_nnapi", "Use legacy nnapi", verbose);
-#endif
   LOG_BENCHMARK_PARAM(bool, "allow_fp16", "Allow fp16", verbose);
   LOG_BENCHMARK_PARAM(bool, "require_full_delegation",
                       "Require full delegation", verbose);
@@ -375,8 +349,6 @@ void BenchmarkTfLiteModel::LogParams() {
                       "Max profiling buffer entries", verbose);
   LOG_BENCHMARK_PARAM(std::string, "profiling_output_csv_file",
                       "CSV File to export profiling data to", verbose);
-  LOG_BENCHMARK_PARAM(bool, "enable_platform_tracing",
-                      "Enable platform-wide tracing", verbose);
 
   for (const auto& delegate_provider :
        tools::GetRegisteredDelegateProviders()) {
@@ -635,7 +607,6 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
   profiling_listener_ = MayCreateProfilingListener();
   if (profiling_listener_) AddListener(profiling_listener_.get());
 
-  interpreter_->UseNNAPI(params_.Get<bool>("use_legacy_nnapi"));
   interpreter_->SetAllowFp16PrecisionForFp32(params_.Get<bool>("allow_fp16"));
 
   owned_delegates_.clear();
@@ -669,18 +640,21 @@ TfLiteStatus BenchmarkTfLiteModel::Init() {
         return kTfLiteError;
       }
       if (fully_delegated) {
-        TFLITE_LOG(INFO) << "Applied " << delegate_provider->GetName()
+        TFLITE_LOG(INFO) << "Explicitly applied "
+                         << delegate_provider->GetName()
                          << " delegate, and the model graph will be completely"
                          << " executed by the delegate.";
       } else if (num_delegated_kernels > 0) {
-        TFLITE_LOG(INFO) << "Applied " << delegate_provider->GetName()
+        TFLITE_LOG(INFO) << "Explicitly applied "
+                         << delegate_provider->GetName()
                          << " delegate, and the model graph will be partially"
                          << " executed by the delegate w/ "
                          << num_delegated_kernels << " delegate kernels.";
       } else {
-        TFLITE_LOG(INFO) << "Though " << delegate_provider->GetName()
-                         << " delegate is applied, the model graph will not be"
-                         << " executed by the delegate.";
+        TFLITE_LOG(INFO)
+            << "Though " << delegate_provider->GetName()
+            << " delegate is explicitly applied, the model graph will not be"
+            << " executed by the delegate.";
       }
     }
     owned_delegates_.emplace_back(std::move(delegate));
@@ -749,11 +723,6 @@ std::unique_ptr<tflite::OpResolver> BenchmarkTfLiteModel::GetOpResolver()
 std::unique_ptr<BenchmarkListener>
 BenchmarkTfLiteModel::MayCreateProfilingListener() const {
   if (!params_.Get<bool>("enable_op_profiling")) return nullptr;
-
-  if (params_.Get<bool>("enable_platform_tracing")) {
-    return std::unique_ptr<BenchmarkListener>(
-        new PlatformProfilingListener(interpreter_.get()));
-  }
 
   return std::unique_ptr<BenchmarkListener>(new ProfilingListener(
       interpreter_.get(), params_.Get<int32_t>("max_profiling_buffer_entries"),

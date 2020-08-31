@@ -15,6 +15,8 @@ limitations under the License.
 
 #include <utility>
 
+#include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
+#include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/gpu/tests/gpu_codegen_test.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -52,6 +54,37 @@ TEST_F(GpuFusionTest, FusedReshape) {
 ; CHECK: fadd
 ; CHECK: }
       )");
+}
+
+// Check that we limit the number of operands to fusions we create.
+TEST_F(GpuFusionTest, FusedBiggerThenThresholdButDoNotChangeTheFusionl) {
+  constexpr int64 kNumParams = kMaxOperandsAndOutputsPerFusion + 1;
+
+  // Compute
+  //   p0 + p1 + p2 + ... + pn,
+  // Use so many parameters that they do not fit into one fusion.
+  auto module = CreateNewVerifiedModule();
+  HloComputation::Builder b(TestName());
+  Shape input_shape = ShapeUtil::MakeShape(F32, {10, 100});
+  Shape slice_shape = ShapeUtil::MakeShape(F32, {10, 2});
+  Shape concat_shape = ShapeUtil::MakeShape(F32, {10, 2 * kNumParams});
+  HloInstruction* input =
+      b.AddInstruction(HloInstruction::CreateParameter(0, input_shape, "p"));
+
+  std::vector<HloInstruction*> slice_params;
+  for (int64 i = 0; i < kNumParams; ++i) {
+    slice_params.push_back(b.AddInstruction(HloInstruction::CreateSlice(
+        slice_shape, input, {0, 0}, {10, 2}, {1, 1})));
+  }
+  b.AddInstruction(
+      HloInstruction::CreateConcatenate(concat_shape, slice_params, 1));
+  module->AddEntryComputation(b.Build());
+  EXPECT_TRUE(GpuInstructionFusion(false).Run(module.get()).ValueOrDie());
+  EXPECT_TRUE(module->entry_computation()->root_instruction()->opcode() ==
+              HloOpcode::kFusion);
+  for (HloInstruction* instr : module->entry_computation()->instructions()) {
+    EXPECT_TRUE(instr->opcode() != HloOpcode::kSlice);
+  }
 }
 
 }  // namespace

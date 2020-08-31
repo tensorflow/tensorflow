@@ -114,7 +114,7 @@ class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
       with lsgt.LossScaleGradientTape(loss_scale) as g:
         y = x * x
       return g.gradient(y, x, output_gradients=constant_op.constant(2.0))
-    dy_dx_list = self._run_with_strategy(run_fn, strategy_fn(), use_tf_function)
+    dy_dx_list = self._run_with_strategy(run_fn, strategy, use_tf_function)
     self.assertEqual(loss_scale(), 32)
     for dy_dx in dy_dx_list:
       self.assertEqual(dy_dx, 12.0)
@@ -236,7 +236,7 @@ class LossScaleGradientTapeTest(test.TestCase, parameterized.TestCase):
       dy_dx = g.gradient(y, x)
       return dz_dx, dy_dx
 
-    dz_dx_list, dy_dx_list = self._run_with_strategy(run_fn, strategy_fn(),
+    dz_dx_list, dy_dx_list = self._run_with_strategy(run_fn, strategy,
                                                      use_tf_function)
     for dz_dx in dz_dx_list:
       self.assertEqual(dz_dx, 108.0)

@@ -86,7 +86,7 @@ def _cluster_spec_to_device_list(cluster_spec, num_gpus_per_worker):
   for task_type in ("chief", "worker"):
     for task_id in range(len(cluster_spec.as_dict().get(task_type, []))):
       if num_gpus_per_worker == 0:
-        devices.append("/job:%s/task:%d" % (task_type, task_id))
+        devices.append("/job:%s/task:%d/device:CPU:0" % (task_type, task_id))
       else:
         devices.extend([
             "/job:%s/task:%d/device:GPU:%i" % (task_type, task_id, gpu_id)
@@ -319,6 +319,9 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     if ops.executing_eagerly_outside_functions():
       self.experimental_enable_get_next_as_optional = True
 
+    # Flag to turn on VariablePolicy.
+    self._use_var_policy = False
+
   def _initialize_strategy(self, devices):
     # The _initialize_strategy method is intended to be used by distribute
     # coordinator as well.
@@ -375,8 +378,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     self._is_multi_worker_training = True
 
     if len(workers) > 1:
-      if not isinstance(self._cross_device_ops,
-                        cross_device_ops_lib.MultiWorkerAllReduce):
+      # Grandfather usage in the legacy tests if they're configured properly.
+      if (not isinstance(self._cross_device_ops,
+                         cross_device_ops_lib.ReductionToOneDevice) or
+          self._cross_device_ops._num_between_graph_workers > 1):  # pylint: disable=protected-access
         raise ValueError(
             "In-graph multi-worker training with `MirroredStrategy` is not "
             "supported.")
@@ -462,7 +467,8 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
     return distribute_utils.create_mirrored_variable(
         self._container_strategy(), _real_mirrored_creator,
-        values.MirroredVariable, values.SyncOnReadVariable, **kwargs)
+        distribute_utils.VARIABLE_CLASS_MAPPING,
+        distribute_utils.VARIABLE_POLICY_MAPPING, **kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     distribute_utils.validate_colocate_distributed_variable(
@@ -628,10 +634,10 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
     return self._cross_device_ops or self._inferred_cross_device_ops
 
   def _reduce_to(self, reduce_op, value, destinations, experimental_hints):
-    if (isinstance(value, values.Mirrored) and
+    if (distribute_utils.is_mirrored(value) and
         reduce_op == reduce_util.ReduceOp.MEAN):
       return value
-    assert not isinstance(value, values.Mirrored)
+    assert not distribute_utils.is_mirrored(value)
     if not isinstance(value, values.DistributedValues):
       # This function handles reducing values that are not PerReplica or
       # Mirrored values. For example, the same value could be present on all
@@ -686,10 +692,12 @@ class MirroredExtended(distribute_lib.StrategyExtendedV1):
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
-    if isinstance(replica_local_var, values.SyncOnReadVariable):
-      return replica_local_var._get_cross_replica()  # pylint: disable=protected-access
-    assert isinstance(replica_local_var, values.Mirrored)
-    return array_ops.identity(replica_local_var._get())  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if distribute_utils.is_sync_on_read(replica_local_var):
+      return replica_local_var._get_cross_replica()
+    assert distribute_utils.is_mirrored(replica_local_var)
+    return array_ops.identity(replica_local_var._get())
+    # pylint: enable=protected-access
 
   def _local_results(self, val):
     if isinstance(val, values.DistributedValues):

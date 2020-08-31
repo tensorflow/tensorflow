@@ -323,7 +323,7 @@ class RNN(Layer):
         This is the expected shape of your inputs
         *including the batch size*.
         It should be a tuple of integers, e.g. `(32, 10, 100)`.
-      - Specify `shuffle=False` when calling fit().
+      - Specify `shuffle=False` when calling `fit()`.
 
     To reset the states of your model, call `.reset_states()` on either
     a specific layer, or on your entire model.
@@ -925,10 +925,17 @@ class RNN(Layer):
                        '`batch_shape` argument to your Input layer.')
     # initialize state if None
     if nest.flatten(self.states)[0] is None:
-      def create_state_variable(state):
-        return K.zeros([batch_size] + tensor_shape.TensorShape(state).as_list())
-      self.states = nest.map_structure(
-          create_state_variable, self.cell.state_size)
+      if getattr(self.cell, 'get_initial_state', None):
+        flat_init_state_values = nest.flatten(self.cell.get_initial_state(
+            inputs=None, batch_size=batch_size,
+            dtype=self.dtype or K.floatx()))
+      else:
+        flat_init_state_values = nest.flatten(_generate_zero_filled_state(
+            batch_size, self.cell.state_size, self.dtype or K.floatx()))
+      flat_states_variables = nest.map_structure(
+          K.variable, flat_init_state_values)
+      self.states = nest.pack_sequence_as(self.cell.state_size,
+                                          flat_states_variables)
       if not nest.is_nested(self.states):
         self.states = [self.states]
     elif states is None:
@@ -1116,7 +1123,7 @@ class DropoutRNNCellMixin(object):
     is used every time.
 
     Also the caches are created without tracking. Since they are not picklable
-    by python when deepcopy, we don't want layer._obj_reference_counts_dict
+    by python when deepcopy, we don't want `layer._obj_reference_counts_dict`
     to track it by default.
     """
     self._dropout_mask_cache = K.ContextValueCache(self._create_dropout_mask)
@@ -1126,8 +1133,8 @@ class DropoutRNNCellMixin(object):
   def reset_dropout_mask(self):
     """Reset the cached dropout masks if any.
 
-    This is important for the RNN layer to invoke this in it call() method so
-    that the cached mask is cleared before calling the cell.call(). The mask
+    This is important for the RNN layer to invoke this in it `call()` method so
+    that the cached mask is cleared before calling the `cell.call()`. The mask
     should be cached across the timestep within the same batch, but shouldn't
     be cached between batches. Otherwise it will introduce unreasonable bias
     against certain index of data within the batch.
@@ -2677,7 +2684,7 @@ class LSTM(RNN):
       the `recurrent_kernel` weights matrix.
     bias_regularizer: Regularizer function applied to the bias vector.
     activity_regularizer: Regularizer function applied to
-      the output of the layer (its "activation")..
+      the output of the layer (its "activation").
     kernel_constraint: Constraint function applied to
       the `kernel` weights matrix.
     recurrent_constraint: Constraint function applied to

@@ -196,8 +196,8 @@ class DefaultTensorTie : public TensorTie {
             ToTensorStorageType(d.object_def.object_type,
                                 d.object_def.data_layout),
             Layout::BHWC};
-        RETURN_IF_ERROR(AllocateTensorMemory(env->context(), env->device(),
-                                             shape, desc, &cl_memory_));
+        RETURN_IF_ERROR(
+            AllocateTensorMemory(env->context(), shape, desc, &cl_memory_));
         if (d.object_def.object_type == ObjectType::OPENCL_TEXTURE) {
           external_obj_ = OpenClTexture{cl_memory_.memory()};
         } else {
@@ -491,14 +491,14 @@ class InferenceRunnerImpl : public InferenceRunner {
 
   absl::Status SetInputObject(int index, TensorObject object) override {
     if (index < 0 || index >= inputs_.size()) {
-      return absl::OutOfRangeError("Index is out of range");
+      return absl::OutOfRangeError("Input index is out of range");
     }
     return inputs_[index]->SetExternalObject(object);
   }
 
   absl::Status SetOutputObject(int index, TensorObject object) override {
     if (index < 0 || index >= outputs_.size()) {
-      return absl::OutOfRangeError("Index is out of range");
+      return absl::OutOfRangeError("Output index is out of range");
     }
     return outputs_[index]->SetExternalObject(object);
   }
@@ -623,13 +623,13 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
   absl::Status SetInputObjectDef(int index, ObjectDef new_def) override {
     if (index < 0 || index >= inputs_.size()) {
-      return absl::OutOfRangeError("Index is out of range");
+      return absl::OutOfRangeError("Input index is out of range");
     }
     auto def = inputs_[index];
     def.external_def.object_def = new_def;
     if (!tie_factory_->IsSupported(def)) {
       return absl::InvalidArgumentError(
-          "New object definition is not supported.");
+          "New input object definition is not supported.");
     }
     inputs_[index] = def;
     return absl::OkStatus();
@@ -637,13 +637,13 @@ class InferenceBuilderImpl : public InferenceBuilder {
 
   absl::Status SetOutputObjectDef(int index, ObjectDef new_def) override {
     if (index < 0 || index >= outputs_.size()) {
-      return absl::OutOfRangeError("Index is out of range");
+      return absl::OutOfRangeError("Output index is out of range");
     }
     auto def = outputs_[index];
     def.external_def.object_def = new_def;
     if (!tie_factory_->IsSupported(def)) {
       return absl::InvalidArgumentError(
-          "New object definition is not supported.");
+          "New output object definition is not supported.");
     }
     outputs_[index] = def;
     return absl::OkStatus();

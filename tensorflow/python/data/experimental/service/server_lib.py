@@ -19,9 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=invalid-import-order,g-bad-import-order, unused-import
+from tensorflow.core.protobuf.data.experimental import service_config_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.data.experimental.service import _pywrap_server_lib
 from tensorflow.python.util.tf_export import tf_export
+
+
+DEFAULT_PROTOCOL = "grpc"
 
 
 @tf_export("data.experimental.service.DispatchServer", v1=[])
@@ -49,15 +53,38 @@ class DispatchServer(object):
   dispatcher = tf.data.experimental.service.DispatchServer(port=5050)
   dispatcher.join()
   ```
+
+  To start a `DispatchServer` in fault-tolerant mode, set `work_dir` and
+  `fault_tolerant_mode` like below:
+
+  ```
+  dispatcher = tf.data.experimental.service.DispatchServer(
+      port=5050,
+      work_dir="gs://my-bucket/dispatcher/work_dir",
+      fault_tolerant_mode=True)
+  ```
   """
 
-  def __init__(self, port, protocol=None, start=True):
+  def __init__(self,
+               port,
+               protocol=None,
+               work_dir=None,
+               fault_tolerant_mode=None,
+               start=True):
     """Creates a new dispatch server.
 
     Args:
       port: Specifies the port to bind to.
       protocol: (Optional.) Specifies the protocol to be used by the server.
         Acceptable values include `"grpc", "grpc+local"`. Defaults to `"grpc"`.
+      work_dir: (Optional.) A directory to store dispatcher state in. This
+        argument is required for the dispatcher to be able to recover from
+        restarts.
+      fault_tolerant_mode: (Optional.) Whether the dispatcher should write
+        its state to a journal so that it can recover from restarts. Dispatcher
+        state, including registered datasets and created jobs, is synchronously
+        written to the journal before responding to RPCs. If `True`, `work_dir`
+        must also be specified. Defaults to `False`.
       start: (Optional.) Boolean, indicating whether to start the server after
         creating it. Defaults to `True`.
 
@@ -65,10 +92,20 @@ class DispatchServer(object):
       tf.errors.OpError: Or one of its subclasses if an error occurs while
         creating the TensorFlow server.
     """
-    if protocol is None:
-      protocol = "grpc"
-    self._protocol = protocol
-    self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(port, protocol)
+    self._protocol = DEFAULT_PROTOCOL if protocol is None else protocol
+    self._work_dir = "" if work_dir is None else work_dir
+    self._fault_tolerant_mode = (False if fault_tolerant_mode is None else
+                                 fault_tolerant_mode)
+    if self._fault_tolerant_mode and not self._work_dir:
+      raise ValueError(
+          "Cannot enable fault tolerant mode without configuring a work_dir")
+    config = service_config_pb2.DispatcherConfig(
+        port=port,
+        protocol=self._protocol,
+        work_dir=self._work_dir,
+        fault_tolerant_mode=self._fault_tolerant_mode)
+    self._server = _pywrap_server_lib.TF_DATA_NewDispatchServer(
+        config.SerializeToString())
     if start:
       self._server.start()
 
@@ -202,8 +239,13 @@ class WorkerServer(object):
       protocol = "grpc"
 
     self._protocol = protocol
+    config = service_config_pb2.WorkerConfig(
+        port=port,
+        protocol=protocol,
+        dispatcher_address=dispatcher_address,
+        worker_address=worker_address)
     self._server = _pywrap_server_lib.TF_DATA_NewWorkerServer(
-        port, protocol, dispatcher_address, worker_address)
+        config.SerializeToString())
     if start:
       self._server.start()
 

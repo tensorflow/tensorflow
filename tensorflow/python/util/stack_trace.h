@@ -50,7 +50,6 @@ class StackTrace final {
     int i = 0;
     for (; i < kMaxDepth && frame != nullptr; frame = frame->f_back, ++i) {
       PyCodeObject* code_obj = frame->f_code;
-      DCHECK(frame->f_trace == nullptr);
       DCHECK(code_obj != nullptr);
 
       Py_INCREF(code_obj);

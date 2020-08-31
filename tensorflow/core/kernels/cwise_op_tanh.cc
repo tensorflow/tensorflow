@@ -17,8 +17,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/cwise_ops_gradients.h"
 
 namespace tensorflow {
-REGISTER5(UnaryOp, CPU, "Tanh", functor::tanh, float, Eigen::half, double,
-          complex64, complex128);
+REGISTER6(UnaryOp, CPU, "Tanh", functor::tanh, float, Eigen::half, bfloat16,
+          double, complex64, complex128);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #ifndef MLIR_GENERATED_GPU_KERNELS_ENABLED
@@ -30,8 +30,8 @@ REGISTER3(UnaryOp, GPU, "Tanh", functor::tanh, float, Eigen::half, double);
 REGISTER2(UnaryOp, SYCL, "Tanh", functor::tanh, float, double);
 #endif  // TENSORFLOW_USE_SYCL
 
-REGISTER5(SimpleBinaryOp, CPU, "TanhGrad", functor::tanh_grad, float,
-          Eigen::half, double, complex64, complex128);
+REGISTER6(SimpleBinaryOp, CPU, "TanhGrad", functor::tanh_grad, float,
+          Eigen::half, bfloat16, double, complex64, complex128);
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 REGISTER3(SimpleBinaryOp, GPU, "TanhGrad", functor::tanh_grad, float,
           Eigen::half, double);

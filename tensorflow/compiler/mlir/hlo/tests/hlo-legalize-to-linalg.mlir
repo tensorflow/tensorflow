@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -hlo-legalize-to-linalg -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -hlo-legalize-to-linalg -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @float_add
@@ -373,6 +373,18 @@ func @reshape_2D_4D(%arg0: tensor<12x42xi32>) -> tensor<12x1x42x1xi32> {
 
 // -----
 
+// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape_3D_4D
+func @reshape_3D_4D(%arg0: tensor<1x49x16xf32>) -> tensor<1x784x1x1xf32> {
+  %0 = "mhlo.reshape"(%arg0) : (tensor<1x49x16xf32>) -> tensor<1x784x1x1xf32>
+  return %0 : tensor<1x784x1x1xf32>
+}
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP1]]]
+// CHECK: linalg.tensor_reshape %{{.*}} [#[[RESHAPE_MAP2]]]
+
+// -----
+
 // CHECK-LABEL: func @minf
 func @minf(%lhs: tensor<2x2xf32>, %rhs: tensor<2x2xf32>) -> tensor<2x2xf32> {
   %0 = "mhlo.minimum"(%lhs, %rhs)
@@ -557,3 +569,18 @@ func @reverse(%input: tensor<2x3xf32>) -> tensor<2x3xf32> {
 }
 // CHECK: linalg.generic
 // CHECK-SAME: indexing_maps = [#[[OPERAND_MAP]], #[[RESULT_MAP]]]
+
+// -----
+
+// CHECK: #[[RESULT_MAP:.*]] = affine_map<(d0, d1) -> (d0, d1)>
+// CHECK-LABEL: func @iota
+func @iota() -> tensor<7x10xf32> {
+  %result = "mhlo.iota"() {iota_dimension = 1 : i64} : () -> (tensor<7x10xf32>)
+  return %result : tensor<7x10xf32>
+}
+// CHECK: linalg.indexed_generic
+// CHECK-SAME: indexing_maps = [#[[RESULT_MAP]]]
+// CHECK-NEXT: ^bb0(%[[D0:.*]]: index, %[[D1:.*]]: index):
+// CHECK-NEXT:   %[[INT_CAST:.*]] = index_cast %[[D1]] : index to i32
+// CHECK-NEXT:   %[[FLOAT_CAST:.*]] = sitofp %[[INT_CAST]] : i32 to f32
+// CHECK-NEXT:   linalg.yield %[[FLOAT_CAST]] : f32

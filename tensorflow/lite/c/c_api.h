@@ -66,20 +66,6 @@ limitations under the License.
 /// TfLiteInterpreterOptionsDelete(options);
 /// TfLiteModelDelete(model);
 
-#ifdef SWIG
-#define TFL_CAPI_EXPORT
-#else
-#if defined(_WIN32)
-#ifdef TFL_COMPILE_LIBRARY
-#define TFL_CAPI_EXPORT __declspec(dllexport)
-#else
-#define TFL_CAPI_EXPORT __declspec(dllimport)
-#endif  // TFL_COMPILE_LIBRARY
-#else
-#define TFL_CAPI_EXPORT __attribute__((visibility("default")))
-#endif  // _WIN32
-#endif  // SWIG
-
 #ifdef __cplusplus
 extern "C" {
 #endif  // __cplusplus
@@ -202,7 +188,7 @@ TFL_CAPI_EXPORT extern int32_t TfLiteInterpreterGetOutputTensorCount(
     const TfLiteInterpreter* interpreter);
 
 // Returns the tensor associated with the output index.
-// REQUIRES: 0 <= input_index < TfLiteInterpreterGetOutputTensorCount(tensor)
+// REQUIRES: 0 <= output_index < TfLiteInterpreterGetOutputTensorCount(tensor)
 //
 // NOTE: The shape and underlying data buffer for output tensors may be not
 // be available until after the output tensor has been both sized and allocated.

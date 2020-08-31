@@ -134,11 +134,26 @@ class GrpcEagerClient : public EagerClient {
 
   CLIENT_METHOD(CreateContext);
   CLIENT_METHOD(UpdateContext);
-  CLIENT_METHOD(Enqueue);
   CLIENT_METHOD(WaitQueueDone);
   CLIENT_METHOD(KeepAlive);
 
 #undef CLIENT_METHOD
+
+#define CLIENT_CANCELABLE_METHOD(method)                                      \
+  void method##Async(CallOptions* call_opts, const method##Request* request,  \
+                     method##Response* response, StatusCallback done)         \
+      override {                                                              \
+    StatusCallback done_wrapped = callback_wrapper(std::move(done));          \
+    new RPCState<protobuf::Message>(                                          \
+        &stub_, cq_, "/tensorflow.eager.EagerService/" #method, *request,     \
+        response, std::move(done_wrapped), call_opts, /*threadpool=*/nullptr, \
+        /*max_retries=*/0, /*fail_fast=*/true, &target_);                     \
+  }
+
+  CLIENT_CANCELABLE_METHOD(Enqueue);
+  CLIENT_CANCELABLE_METHOD(RunComponentFunction);
+
+#undef CLIENT_CANCELABLE_METHOD
 
   void CloseContextAsync(const CloseContextRequest* request,
                          CloseContextResponse* response,
@@ -164,19 +179,8 @@ class GrpcEagerClient : public EagerClient {
     }
   }
 
-  void RunComponentFunctionAsync(CallOptions* call_opts,
-                                 const RunComponentFunctionRequest* request,
-                                 RunComponentFunctionResponse* response,
-                                 StatusCallback done) override {
-    StatusCallback done_wrapped = callback_wrapper(std::move(done));
-    new RPCState<protobuf::Message>(
-        &stub_, cq_, "/tensorflow.eager.EagerService/RunComponentFunction",
-        *request, response, std::move(done_wrapped), call_opts,
-        /*threadpool=*/nullptr, /*max_retries=*/0, /*fail_fast=*/true,
-        &target_);
-  }
-
-  void StreamingEnqueueAsync(const EnqueueRequest* request,
+  void StreamingEnqueueAsync(CallOptions* call_opts,
+                             const EnqueueRequest* request,
                              EnqueueResponse* response,
                              StatusCallback done) override {
     StatusCallback done_wrapped = callback_wrapper(std::move(done));
@@ -192,14 +196,16 @@ class GrpcEagerClient : public EagerClient {
                 "/tensorflow.eager.EagerService/StreamingEnqueue"));
         it = it_and_bool.first;
       }
+      // TODO(haoyuzhang): Consider supporting cancellation for streaming RPC?
       it->second.SendNextRequest(*request, response, std::move(done_wrapped));
     } else {
       Notification n;
       Status status;
-      EnqueueAsync(request, response, [&n, &status](const Status& s) {
-        status.Update(s);
-        n.Notify();
-      });
+      EnqueueAsync(call_opts, request, response,
+                   [&n, &status](const Status& s) {
+                     status.Update(s);
+                     n.Notify();
+                   });
       n.WaitForNotification();
       done_wrapped(status);
     }
@@ -231,7 +237,7 @@ class GrpcEagerClientCache : public EagerClientCache {
   explicit GrpcEagerClientCache(
       std::shared_ptr<tensorflow::GrpcChannelCache> cache)
       : next_round_robin_assignment_(0), cache_(cache), threads_(4) {
-    for (int i = 0; i < threads_.size(); i++) {
+    for (int i = 0, end = threads_.size(); i < end; i++) {
       threads_[i].reset(new GrpcEagerClientThread());
     }
   }

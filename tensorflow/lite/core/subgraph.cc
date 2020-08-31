@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/core/subgraph.h"
 
 #include <algorithm>
+#include <cstdint>
 
 #include "tensorflow/lite/arena_planner.h"
 #include "tensorflow/lite/c/common.h"
@@ -138,6 +139,17 @@ const char* GetTFLiteOpName(const TfLiteRegistration& op_reg) {
     return op_reg.custom_name;
   }
   return tflite::EnumNamesBuiltinOperator()[op_reg.builtin_code];
+}
+
+TfLiteStatus ValidateCustomAllocationForTensor(
+    TfLiteContext* context, const TfLiteTensor* tensor,
+    const TfLiteCustomAllocation& allocation) {
+  TF_LITE_ENSURE(context, allocation.data != nullptr);
+  TF_LITE_ENSURE(context, allocation.bytes >= tensor->bytes);
+  // Ensure provided memory is aligned to what TFLite requires.
+  const intptr_t data_ptr_value = reinterpret_cast<intptr_t>(allocation.data);
+  TF_LITE_ENSURE(context, data_ptr_value % kDefaultTensorAlignment == 0);
+  return kTfLiteOk;
 }
 
 }  // namespace
@@ -637,6 +649,7 @@ TfLiteStatus Subgraph::AllocateTensors() {
 
   next_execution_plan_index_to_prepare_ = 0;
   next_execution_plan_index_to_plan_allocation_ = 0;
+  next_original_execution_plan_index_to_prepare_ = 0;
   if (memory_planner_) {
     TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
   }
@@ -661,13 +674,17 @@ TfLiteStatus Subgraph::ResetVariableTensors() {
       continue;
     }
 
-    // Variable tensors have to be `kTfLiteArenaRwPersistent`, and must be
-    // allocated after the initial `PrepareOpsAndTensors()` is called.
-    TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type,
-                      kTfLiteArenaRwPersistent);
-    TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
-
-    tflite::ResetVariableTensor(&tensor);
+    if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
+      // If variable tensors allocation type is `kTfLiteArenaRwPersistent`, then
+      // they must be allocated after the initial `PrepareOpsAndTensors()` is
+      // called.
+      TF_LITE_ENSURE(&context_, tensor.data.raw != nullptr);
+      tflite::ResetVariableTensor(&tensor);
+    } else {
+      // If variable tensors allocation type is not `kTfLiteArenaRwPersistent`,
+      // then it can only be `kTfLiteCustom` in which case, we do not reset it.
+      TF_LITE_ENSURE_EQ(&context_, tensor.allocation_type, kTfLiteCustom);
+    }
   }
   return kTfLiteOk;
 }
@@ -829,13 +846,14 @@ TfLiteStatus Subgraph::OpPrepare(const TfLiteRegistration& op_reg,
 }
 
 TfLiteStatus Subgraph::PrepareOpsStartingAt(
-    int first_execution_plan_index, int* last_execution_plan_index_prepared) {
+    int first_execution_plan_index, const std::vector<int>& execution_plan,
+    int* last_execution_plan_index_prepared) {
   if (first_execution_plan_index == 0) {
     has_dynamic_tensors_ = false;
   }
   for (int execution_plan_index = first_execution_plan_index;
-       execution_plan_index < execution_plan_.size(); execution_plan_index++) {
-    int node_index = execution_plan_[execution_plan_index];
+       execution_plan_index < execution_plan.size(); execution_plan_index++) {
+    int node_index = execution_plan[execution_plan_index];
     TfLiteNode& node = nodes_and_registration_[node_index].first;
     const TfLiteRegistration& registration =
         nodes_and_registration_[node_index].second;
@@ -867,15 +885,53 @@ TfLiteStatus Subgraph::PrepareOpsAndTensors() {
     memory_planner_->PlanAllocations();
   }
 
-  int last_exec_plan_index_prepared = 0;
+  // Prepare original execution plan if any applied delegate wants it.
+  // If any of the delegates is immutable, this won't be triggered
+  // post-delegation (since we undo/redo delegation). For all other cases, other
+  // delegates that do shape propagation themselves would still be able to.
+  bool prepare_original_plan = false;
+  if (!pre_delegation_execution_plan_.empty()) {
+    for (int i = 0; i < delegates_applied_.size(); ++i) {
+      if ((delegates_applied_[i]->flags &
+           kTfLiteDelegateFlagsRequirePropagatedShapes)) {
+        prepare_original_plan = true;
+        break;
+      }
+    }
+  }
+  if (prepare_original_plan) {
+    int last_original_exec_plan_index_prepared = 0;
+    TF_LITE_ENSURE_STATUS(PrepareOpsStartingAt(
+        next_execution_plan_index_to_prepare_, pre_delegation_execution_plan_,
+        &last_original_exec_plan_index_prepared));
+    next_original_execution_plan_index_to_prepare_ =
+        last_original_exec_plan_index_prepared + 1;
+  }
 
-  TF_LITE_ENSURE_STATUS(PrepareOpsStartingAt(
-      next_execution_plan_index_to_prepare_, &last_exec_plan_index_prepared));
+  int last_exec_plan_index_prepared = 0;
+  TF_LITE_ENSURE_STATUS(
+      PrepareOpsStartingAt(next_execution_plan_index_to_prepare_,
+                           execution_plan_, &last_exec_plan_index_prepared));
   next_execution_plan_index_to_prepare_ = last_exec_plan_index_prepared + 1;
 
+  // Execute arena allocations.
   TF_LITE_ENSURE_STATUS(memory_planner_->ExecuteAllocations(
       next_execution_plan_index_to_plan_allocation_,
       last_exec_plan_index_prepared));
+
+  // Ensure custom allocations are still valid for applicable tensors.
+  // This causes some extra validations for cases with dynamic tensors, but the
+  // overhead should be minimal since the number of custom-allocated tensors
+  // will typically be low.
+  for (int i = 0; i < custom_allocations_.size(); ++i) {
+    auto idx_and_alloc = custom_allocations_[i];
+    auto& tensor = tensors()[idx_and_alloc.first];
+    const auto& alloc = idx_and_alloc.second;
+    TF_LITE_ENSURE(context(), tensor.allocation_type == kTfLiteCustom);
+    TF_LITE_ENSURE_STATUS(
+        ValidateCustomAllocationForTensor(context(), &tensor, alloc));
+  }
+
   next_execution_plan_index_to_plan_allocation_ =
       last_exec_plan_index_prepared + 1;
 
@@ -1193,7 +1249,8 @@ TfLiteStatus Subgraph::ResizeTensorImpl(TfLiteTensor* tensor,
   if (tensor->allocation_type == kTfLiteArenaRw ||
       tensor->allocation_type == kTfLiteDynamic ||
       tensor->allocation_type == kTfLiteArenaRwPersistent ||
-      tensor->allocation_type == kTfLitePersistentRo) {
+      tensor->allocation_type == kTfLitePersistentRo ||
+      tensor->allocation_type == kTfLiteCustom) {
     tensor_resized_since_op_invoke_ |=
         TfLiteIntArrayEqual(tensor->dims, new_size) == 0;
     if (tensor->type != kTfLiteString) {
@@ -1361,13 +1418,14 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   if (state_ == kStateInvokableAndImmutable) {
     ReportError(
         "ModifyGraphWithDelegate is disallowed when graph is immutable.");
-    return kTfLiteError;
+    return kTfLiteApplicationError;
   }
 
   if (!(delegate->flags & kTfLiteDelegateFlagsAllowDynamicTensors)) {
     int last_execution_plan_index_prepared;
-    TF_LITE_ENSURE_OK(&context_, PrepareOpsStartingAt(
-                                     0, &last_execution_plan_index_prepared));
+    TF_LITE_ENSURE_OK(
+        &context_, PrepareOpsStartingAt(0, execution_plan_,
+                                        &last_execution_plan_index_prepared));
     if (has_dynamic_tensors_) {
       // Make sure that we are in a defined ready state before returning.
       // Plan and allocate tensors before returning.
@@ -1427,6 +1485,35 @@ TfLiteStatus Subgraph::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
   delegates_applied_.push_back(delegate);
 
   return status;
+}
+
+TfLiteStatus Subgraph::SetCustomAllocationForTensor(
+    int tensor_index, const TfLiteCustomAllocation& allocation) {
+  TfLiteTensor* tensor = &context_.tensors[tensor_index];
+  TF_LITE_ENSURE(context(),
+                 (tensor->allocation_type == kTfLiteArenaRw ||
+                  tensor->allocation_type == kTfLiteArenaRwPersistent ||
+                  tensor->allocation_type == kTfLiteCustom));
+  TF_LITE_ENSURE_STATUS(
+      ValidateCustomAllocationForTensor(context(), tensor, allocation));
+
+  // If tensor already has a custom alloc, just reassign.
+  const auto alloc_it = std::find_if(
+      custom_allocations_.begin(), custom_allocations_.end(),
+      [tensor_index](
+          const std::pair<int, TfLiteCustomAllocation>& existing_alloc) {
+        return existing_alloc.first == tensor_index;
+      });
+  if (alloc_it == custom_allocations_.end()) {
+    custom_allocations_.emplace_back(tensor_index, allocation);
+  } else {
+    alloc_it->second = allocation;
+  }
+
+  tensor->allocation_type = kTfLiteCustom;
+  tensor->data.data = allocation.data;
+
+  return kTfLiteOk;
 }
 
 }  // namespace impl

@@ -181,7 +181,8 @@ class CsvExportingListener : public BenchmarkListener {
   std::string tag_;
 };
 
-std::string GetScenarioConfig(int scenario, std::vector<std::string>& args) {
+std::string GetScenarioConfig(const string& library_dir, int scenario,
+                              std::vector<std::string>& args) {
   // The number of scenarios should equal to the value specified in
   // AndroidManifest.xml file.
   std::unordered_map<int, std::pair<std::string, std::vector<std::string>>>
@@ -214,12 +215,17 @@ std::string GetScenarioConfig(int scenario, std::vector<std::string>& args) {
       args.push_back(arg);
     }
   }
+  if (scenario == 9) {
+    std::stringstream hexagon_lib_path;
+    hexagon_lib_path << "--hexagon_lib_path=" << library_dir;
+    args.push_back(hexagon_lib_path.str());
+  }
   return tag;
 }
 
-void RunScenario(int scenario, int report_fd) {
+void RunScenario(const string& library_dir, int scenario, int report_fd) {
   std::vector<std::string> args;
-  std::string tag = GetScenarioConfig(static_cast<int>(scenario), args);
+  std::string tag = GetScenarioConfig(library_dir, scenario, args);
   std::vector<char*> argv;
   argv.reserve(args.size());
   for (auto& arg : args) {
@@ -247,9 +253,14 @@ extern "C" {
 
 JNIEXPORT void JNICALL
 Java_org_tensorflow_lite_benchmark_firebase_BenchmarkModel_nativeRun(
-    JNIEnv* env, jclass clazz, jint scenario, jint report_fd) {
-  tflite::benchmark::RunScenario(static_cast<int>(scenario),
+    JNIEnv* env, jclass clazz, jstring library_dir, jint scenario,
+    jint report_fd) {
+  const char* lib_dir = env->GetStringUTFChars(library_dir, nullptr);
+
+  tflite::benchmark::RunScenario(lib_dir, static_cast<int>(scenario),
                                  static_cast<int>(report_fd));
+
+  env->ReleaseStringUTFChars(library_dir, lib_dir);
 }
 
 #ifdef __cplusplus

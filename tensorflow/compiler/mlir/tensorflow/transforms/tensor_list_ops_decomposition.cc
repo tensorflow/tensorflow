@@ -155,7 +155,7 @@ LogicalResult HandleWhileOp(
     llvm::StringMap<PartitionedCallDecompositionInfo>*
         decomposed_partitioned_call_callees) {
   // Rewrite body.
-  auto body = module.lookupSymbol<FuncOp>(while_op.body());
+  auto body = while_op.body_func();
   llvm::SmallDenseMap<Value, SizeInfo> body_map;
   auto find_arg_tensor_list_type = [&](int64_t index) -> llvm::Optional<Type> {
     auto it = buffer_to_size->find(while_op.getOperand(index));
@@ -176,7 +176,7 @@ LogicalResult HandleWhileOp(
   auto output_buffer_to_size = AddTensorListSizesToReturn(body, body_map);
 
   // Rewrite cond.
-  auto cond = module.lookupSymbol<FuncOp>(while_op.cond());
+  auto cond = while_op.cond_func();
   llvm::SmallDenseMap<Value, SizeInfo> cond_map;
   ModifyFunctionSignature(cond, cutil::GetSizeType(builder), &cond_map,
                           find_arg_tensor_list_type, arg_buffer_size_is_fixed);
@@ -190,22 +190,14 @@ LogicalResult HandleWhileOp(
   }
   // Create the new while op.
   auto new_while_operands = llvm::to_vector<8>(while_op.getOperands());
-  auto new_output_shapes =
-      llvm::to_vector<8>(while_op.output_shapes().getValue());
   for (int64_t i = 0; i < while_op.getNumResults(); ++i) {
     auto it = buffer_to_size->find(while_op.getOperand(i));
     if (it == buffer_to_size->end()) continue;
     new_while_operands.push_back(it->getSecond().size);
-    if (!new_output_shapes.empty()) {
-      // Size is a scalar shape.
-      new_output_shapes.push_back(
-          mlir::TF::ShapeAttr::get(builder.getContext(), ArrayRef<int64_t>()));
-    }
   }
   auto new_while =
       builder.create<TF::WhileOp>(while_op.getLoc(), body.getType().getInputs(),
                                   new_while_operands, while_op.getAttrs());
-  new_while.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   for (const auto& entry : output_buffer_to_size) {
     (*buffer_to_size)[new_while.getResult(std::get<0>(entry))] = {
         new_while.getResult(std::get<1>(entry)), std::get<2>(entry)};
@@ -709,11 +701,8 @@ LogicalResult DecomposeTensorListOpsInternal(
         return failure();
       }
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-      auto then_branch = module.lookupSymbol<FuncOp>(if_op.then_branch());
-      auto else_branch = module.lookupSymbol<FuncOp>(if_op.else_branch());
-
-      if (failed(HandleCaseOrIfOp(if_op, {then_branch, else_branch}, module,
-                                  buffer_to_size,
+      if (failed(HandleCaseOrIfOp(if_op, {if_op.then_func(), if_op.else_func()},
+                                  module, buffer_to_size,
                                   decomposed_partitioned_call_callees))) {
         return failure();
       }
@@ -728,21 +717,21 @@ LogicalResult DecomposeTensorListOpsInternal(
         return failure();
       }
     } else if (auto pcall = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
-      if (!pcall.f().isa<FlatSymbolRefAttr>()) {
+      if (!pcall.func())
         return pcall.emitOpError(
             "TensorList decomposition does not support call with nested "
             "references.");
-      }
+
       if (failed(HandlePartitionedCallOp(
-              pcall, module.lookupSymbol<FuncOp>(pcall.f().getRootReference()),
-              module, buffer_to_size, decomposed_partitioned_call_callees))) {
+              pcall, pcall.func(), module, buffer_to_size,
+              decomposed_partitioned_call_callees))) {
         return failure();
       }
     } else if (auto spcall =
                    llvm::dyn_cast<TF::StatefulPartitionedCallOp>(&op)) {
       if (failed(HandlePartitionedCallOp(
-              spcall, module.lookupSymbol<FuncOp>(spcall.f()), module,
-              buffer_to_size, decomposed_partitioned_call_callees))) {
+              spcall, spcall.func(), module, buffer_to_size,
+              decomposed_partitioned_call_callees))) {
         return failure();
       }
     }

@@ -259,7 +259,7 @@ TfLiteStatus AdjustWeightsForBiasScale(QuantizationParametersT* quant_params,
 
   // Per channel quantization
   if (channel_dim_size > 1) {
-    for (size_t i = 0; i < channel_dim_size; ++i) {
+    for (int i = 0; i < channel_dim_size; ++i) {
       // Current scale is not compatible with bias. Adjust max/min values.
       if (std::abs(bias_data[i]) >=
           0.5 * input_scale * weight_scales[i] * kScale) {
@@ -636,7 +636,7 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(ModelT* model, TensorT* tensor,
                                              ErrorReporter* error_reporter) {
   // Compute scales.
   std::vector<float> scales(number_of_dimension);
-  for (size_t i = 0; i < number_of_dimension; i++) {
+  for (int i = 0; i < number_of_dimension; i++) {
     scales[i] = input_scale * weight_scales[i];
   }
 
@@ -703,19 +703,19 @@ float GetEffectiveScale(ModelT* model, SubGraphT* subgraph, int op_idx,
                         std::vector<float> factors) {
   float scale = 1.0f;
   OperatorT* op = subgraph->operators[op_idx].get();
-  for (int i = 0; i < input_index.size(); ++i) {
+  for (int i = 0, end = input_index.size(); i < end; ++i) {
     const int index_local = input_index[i];
     const int index_global = op->inputs[index_local];
     const TensorT* tensor = subgraph->tensors[index_global].get();
     scale *= tensor->quantization->scale[0];
   }
-  for (int i = 0; i < intermediate_index.size(); ++i) {
+  for (int i = 0, end = intermediate_index.size(); i < end; ++i) {
     const int index_local = intermediate_index[i];
     const int index_global = op->intermediates[index_local];
     const TensorT* tensor = subgraph->tensors[index_global].get();
     scale *= tensor->quantization->scale[0];
   }
-  for (int i = 0; i < factors.size(); ++i) {
+  for (int i = 0, end = factors.size(); i < end; ++i) {
     scale *= factors[i];
   }
   return scale;

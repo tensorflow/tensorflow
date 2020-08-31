@@ -278,6 +278,23 @@ cc_library(
 )
 
 cc_library(
+    name = "hipsparse_wrapper",
+    srcs = if_rocm_is_configured(["hipsparse_wrapper.h"]),
+    hdrs = if_rocm_is_configured(["hipsparse_wrapper.h"]),
+    deps = if_rocm_is_configured([
+        ":rocm_gpu_executor",
+        ":rocm_platform_id",
+        "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ] + if_static([
+        "@local_config_rocm//rocm:hiprand",
+    ])),
+    alwayslink = True,
+)
+
+cc_library(
     name = "all_runtime",
     copts = tf_copts(),
     visibility = ["//visibility:public"],

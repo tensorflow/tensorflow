@@ -53,7 +53,7 @@ class DepthToSpaceTest(test.TestCase):
         with self.assertRaisesRegex(
             errors_impl.InvalidArgumentError,
             "No OpKernel was registered to support Op 'DepthToSpace'"):
-          output_nhwc.eval()
+          self.evaluate(output_nhwc)
 
     if test.is_gpu_available():
       with self.cached_session(use_gpu=True):

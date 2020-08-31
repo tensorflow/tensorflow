@@ -160,17 +160,15 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
   XlaCompiler* compiler = ctx->compiler();
 
   std::vector<XlaCompiler::CompilationResult> branch_results(num_branches);
-  std::vector<XlaCompiler::CompilationResult*> branch_results_p(num_branches);
   for (int j = 0; j < num_branches; ++j) {
     OP_REQUIRES_OK(ctx,
                    compiler->CompileFunction(options, branches[j], arguments,
                                              &branch_results[j]));
-    branch_results_p[j] = &branch_results[j];
   }
 
   bool has_tensor_array_gradients = false;
-  for (XlaCompiler::CompilationResult* result : branch_results_p) {
-    for (const XlaCompiler::ResourceUpdate& update : result->resource_updates) {
+  for (XlaCompiler::CompilationResult& result : branch_results) {
+    for (const XlaCompiler::ResourceUpdate& update : result.resource_updates) {
       XlaResource* resource;
       OP_REQUIRES_OK(ctx,
                      ctx->GetResourceInput(update.input_index + 1, &resource));
@@ -372,6 +370,8 @@ void XlaCaseOp::Compile(XlaOpKernelContext* ctx) {
 }
 
 REGISTER_XLA_OP(Name("Case").AllowResourceTypes().AllowVariantTypes(),
+                XlaCaseOp);
+REGISTER_XLA_OP(Name("StatelessCase").AllowResourceTypes().AllowVariantTypes(),
                 XlaCaseOp);
 
 }  // namespace tensorflow

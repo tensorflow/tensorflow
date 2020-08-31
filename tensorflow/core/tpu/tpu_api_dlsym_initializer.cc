@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/core/tpu/tpu_node_device.h"
 #include "tensorflow/core/tpu/tpu_system_device.h"
+#include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform.h"
 #endif
 
@@ -30,7 +31,7 @@ limitations under the License.
   Struct->FnName##Fn =                                                       \
       reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName));   \
   if (!(Struct->FnName##Fn)) {                                               \
-    LOG(ERROR) << #FnName " not available in this library.";                 \
+    LOG(FATAL) << #FnName " not available in this library.";                 \
     return errors::Unimplemented(#FnName " not available in this library."); \
   }
 
@@ -71,7 +72,7 @@ Status InitializeTpuLibrary(void* library_handle) {
 }
 
 bool FindAndLoadTpuLibrary() {
-  void* library = dlopen("libtftpu.so", RTLD_NOW);
+  void* library = dlopen("libtpu.so", RTLD_NOW);
   if (library) {
     InitializeTpuLibrary(library);
   }

@@ -81,7 +81,7 @@ DEPENDENCY_DENYLIST = [
     "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
     "//tensorflow/core:image_testdata",
-    "//tensorflow/core:lmdb_testdata",
+    "//tensorflow/core/lib/lmdb:lmdb_testdata",
     "//tensorflow/core/kernels/cloud:bigquery_reader_ops",
     "//tensorflow/python/debug:grpc_tensorflow_server.par",
     "//tensorflow/python/feature_column:vocabulary_testdata",
@@ -174,8 +174,7 @@ def main():
     raise RuntimeError("""
     One or more added test dependencies are not in the pip package.
 If these test dependencies need to be in TensorFlow pip package, please add them to //tensorflow/tools/pip_package/BUILD.
-Else either denylist the dependencies in //tensorflow/tools/pip_package/pip_smoke_test.py
-or add no_pip tag to the test.""")
+Else add no_pip tag to the test.""")
 
   else:
     print("TEST PASSED")

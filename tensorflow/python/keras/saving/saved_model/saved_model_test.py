@@ -51,8 +51,8 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.feature_column.dense_features import DenseFeatures
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.saving.saved_model import save_impl as keras_save
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import generic_utils
-from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -75,8 +75,8 @@ class LayerWithLearningPhase(keras.engine.base_layer.Layer):
   def call(self, x, training=None):
     if training is None:
       training = keras.backend.learning_phase()
-    output = tf_utils.smart_cond(
-        training, lambda: x * 0, lambda: array_ops.identity(x))
+    output = control_flow_util.smart_cond(training, lambda: x * 0,
+                                          lambda: array_ops.identity(x))
     if not context.executing_eagerly():
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
@@ -507,7 +507,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
 
     self.assertAllClose(
         model.predict(input_arr),
-        loaded.signatures['predict'](ops.convert_to_tensor_v2(
+        loaded.signatures['predict'](ops.convert_to_tensor_v2_with_dispatch(
             input_arr.astype('float32')))['predictions'])
 
     feature = {
@@ -517,7 +517,7 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     example = example_pb2.Example(
         features=feature_pb2.Features(feature=feature))
     outputs = loaded.signatures['parse_and_predict'](
-        ops.convert_to_tensor_v2([example.SerializeToString()]))
+        ops.convert_to_tensor_v2_with_dispatch([example.SerializeToString()]))
     self.assertAllClose(model.predict(input_arr), outputs['predictions'])
     self.assertAllClose(model.layers[0](input_arr), outputs['layer_1_outputs'])
 
@@ -530,14 +530,14 @@ class TestModelSavingAndLoadingV2(keras_parameterized.TestCase):
     class LayerWithTrainingRequiredArg(keras.engine.base_layer.Layer):
 
       def call(self, inputs, training):
-        return tf_utils.smart_cond(
-            training, lambda: inputs * 0, lambda: array_ops.identity(inputs))
+        return control_flow_util.smart_cond(training, lambda: inputs * 0,
+                                            lambda: array_ops.identity(inputs))
 
     class LayerWithTrainingDefaultTrue(keras.engine.base_layer.Layer):
 
       def call(self, inputs, training=True):
-        return tf_utils.smart_cond(
-            training, lambda: inputs * 0, lambda: array_ops.identity(inputs))
+        return control_flow_util.smart_cond(training, lambda: inputs * 0,
+                                            lambda: array_ops.identity(inputs))
 
     class Model(keras.models.Model):
 

@@ -55,19 +55,10 @@ Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
 Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
                                    std::vector<TensorShape>* shapes);
 
-// Given a tensor of `shape` and `type`, as what shape should it be stored on
-// the TPU device? This function tranposes or flattens the excessively-padded
-// tensors to rank 1, but leaves other tensor shapes alone.
-xla::StatusOr<xla::Shape> TpuShapeRepresentation(const TensorShape& shape,
-                                                 DataType type,
-                                                 bool use_fast_memory);
-
-// Given a tensor, returns the shape of its representation on device,
-// fully padded. Contents of `shape` are undefined on error.
-Status TpuPaddedShapeFn(const Tensor& tensor, xla::Shape* shape);
-
-// A callback called on exit.
-void LogAndExit(int code);
+// We only recycle ports which were given to us by the portserver. For ports
+// we obtained through local trial-and-error, there is no reason to expect the
+// port to remain available after it is unbound.
+void RecycleUnusedPort(int port);
 }  // namespace tpu
 }  // namespace tensorflow
 

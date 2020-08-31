@@ -15,10 +15,20 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/fuse_add_to_conv.h"
 
+#include <any>
+#include <memory>
+#include <string>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/status/status.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
+#include "tensorflow/lite/delegates/gpu/common/model.h"
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 using ::testing::FloatNear;
 using ::testing::Pointwise;
@@ -45,7 +55,7 @@ TEST(MergeConvolutionWithAddTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> add_tensor;
   add_tensor.shape = Linear(16);
   add_tensor.data.resize(16);
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   add_attr.param = add_tensor;
 
   auto conv_node = graph.NewNode();
@@ -88,7 +98,7 @@ TEST(FuseAddAfterConvolution2DTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> add_tensor;
   add_tensor.shape = Linear(2);
   add_tensor.data = {0.3f, 0.7f};
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   add_attr.param = add_tensor;
 
   FuseConvolution2DWithAdd(add_attr, &attr);
@@ -109,7 +119,7 @@ TEST(FuseAddAfterDepthwiseConvolution2DTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> add_tensor;
   add_tensor.shape = Linear(4);
   add_tensor.data = {0.3f, 0.7f, 0.5f, 0.1f};
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   add_attr.param = add_tensor;
 
   FuseDepthwiseConvolution2DWithAdd(add_attr, &attr);
@@ -131,7 +141,7 @@ TEST(FuseAddAfterConvolutionTransposedTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> add_tensor;
   add_tensor.shape = Linear(2);
   add_tensor.data = {0.3f, 0.7f};
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   add_attr.param = add_tensor;
 
   FuseConvolutionTransposedWithAdd(add_attr, &attr);
@@ -152,7 +162,7 @@ TEST(FuseAddAfterFullyConnectedTest, Smoke) {
   Tensor<Linear, DataType::FLOAT32> add_tensor;
   add_tensor.shape = Linear(2);
   add_tensor.data = {0.3f, 0.7f};
-  AddAttributes add_attr;
+  ElementwiseAttributes add_attr;
   add_attr.param = add_tensor;
 
   FuseFullyConnectedWithAdd(add_attr, &attr);

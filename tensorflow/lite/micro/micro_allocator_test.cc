@@ -243,17 +243,30 @@ TF_LITE_MICRO_TEST(TestFailsWhenModelStartsTwice) {
                                       &node_and_registration, &eval_tensors));
 }
 
-TF_LITE_MICRO_TEST(TestFailsWhenModelFinishesBeforeStart) {
+TF_LITE_MICRO_TEST(TestFailsWithWrongSequence) {
   const tflite::Model* model = tflite::testing::GetSimpleMockModel();
   TfLiteEvalTensor* eval_tensors = nullptr;
   tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
+  tflite::NodeAndRegistration* node_and_registration;
   constexpr size_t arena_size = 1024;
   uint8_t arena[arena_size];
   tflite::MicroAllocator* allocator =
       tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
   TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
+
+  // We can't finish allocation before it ever got started.
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteError, allocator->FinishModelAllocation(model, eval_tensors));
+
+  // Start twice is not allowed.
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      allocator->StartModelAllocation(model, op_resolver,
+                                      &node_and_registration, &eval_tensors));
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteError,
+      allocator->StartModelAllocation(model, op_resolver,
+                                      &node_and_registration, &eval_tensors));
 }
 
 TF_LITE_MICRO_TEST(TestMockModelAllocation) {
@@ -292,6 +305,46 @@ TF_LITE_MICRO_TEST(TestMockModelAllocation) {
   // SimpleMockModel has 2 operators:
   tflite::testing::VerifyRegistrationAndNodeAllocation(node_and_registration,
                                                        /*count=*/2);
+}
+
+TF_LITE_MICRO_TEST(TestMultiTenantAllocation) {
+  // The `OpResolver` is shared among different models in this test for
+  // simplicity but in practice you could have different `OpResolver`.
+  tflite::AllOpsResolver op_resolver = tflite::testing::GetOpResolver();
+
+  // Create a shared allocator.
+  constexpr size_t arena_size = 4096;
+  uint8_t arena[arena_size];
+  tflite::MicroAllocator* allocator =
+      tflite::MicroAllocator::Create(arena, arena_size, micro_test::reporter);
+  TF_LITE_MICRO_EXPECT_NE(nullptr, allocator);
+  TfLiteEvalTensor* eval_tensors = nullptr;
+
+  // Allocate for model 1. We use ComplexMockModel here to cover the code path
+  // allocatig variables.
+  const tflite::Model* model1 = tflite::testing::GetComplexMockModel();
+  tflite::NodeAndRegistration* node_and_registration1;
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      allocator->StartModelAllocation(model1, op_resolver,
+                                      &node_and_registration1, &eval_tensors));
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->FinishModelAllocation(model1, eval_tensors));
+  const size_t single_model_used_bytes = allocator->used_bytes();
+
+  // Allocate for model 2.
+  const tflite::Model* model2 = tflite::testing::GetComplexMockModel();
+  tflite::NodeAndRegistration* node_and_registration2;
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk,
+      allocator->StartModelAllocation(model2, op_resolver,
+                                      &node_and_registration2, &eval_tensors));
+  TF_LITE_MICRO_EXPECT_EQ(
+      kTfLiteOk, allocator->FinishModelAllocation(model2, eval_tensors));
+
+  // Allocation for two instances of the same model takes less memory as `head`
+  // of the arena is reused.
+  TF_LITE_MICRO_EXPECT_LE(allocator->used_bytes(), 2 * single_model_used_bytes);
 }
 
 TF_LITE_MICRO_TEST(TestAllocationForModelsWithBranches) {

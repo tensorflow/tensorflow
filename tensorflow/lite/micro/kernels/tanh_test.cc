@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -81,40 +81,19 @@ void TestTanhFloat(const int input_dims_data[], const float* input_data,
       CreateFloatTensor(output_data, output_dims),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_TANH);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  const TfLiteRegistration registration = tflite::ops::micro::Register_TANH();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, /*builtin_data=*/nullptr,
+                             micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_output_data[i], output_data[i],
                               tolerance);
@@ -147,40 +126,19 @@ void TestTanhQuantized(const int input_dims_data[], const float* input_data,
       CreateQuantizedTensor(output_quantized, output_dims, output_scale,
                             output_zero_point)};
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_TANH);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  const char* init_data = nullptr;
-  size_t init_data_size = 0;
-  void* user_data = nullptr;
-  if (registration->init) {
-    user_data = registration->init(&context, init_data, init_data_size);
-  }
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = user_data;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  if (registration->prepare) {
-    TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->prepare(&context, &node));
-  }
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
-  if (registration->free) {
-    registration->free(&context, user_data);
-  }
+  const TfLiteRegistration registration = tflite::ops::micro::Register_TANH();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, /*builtin_data=*/nullptr,
+                             micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
+
   for (int i = 0; i < output_elements_count; ++i) {
     TF_LITE_MICRO_EXPECT_NEAR(expected_output_quantized[i], output_quantized[i],
                               tolerance);

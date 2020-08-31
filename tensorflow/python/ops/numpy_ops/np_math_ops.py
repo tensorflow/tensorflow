@@ -217,6 +217,9 @@ def clip(a, a_min, a_max):  # pylint: disable=missing-docstring
             *np_utils.tf_broadcast(a.data, a_min.data, a_max.data)))
 
 
+setattr(np_arrays.ndarray, 'clip', clip)
+
+
 @np_utils.np_doc('matmul')
 def matmul(x1, x2):  # pylint: disable=missing-docstring
   def f(x1, x2):
@@ -565,7 +568,7 @@ def bitwise_xor(x1, x2):
   return _bitwise_binary_op(bitwise_ops.bitwise_xor, x1, x2)
 
 
-@np_utils.np_doc('bitwise_not')
+@np_utils.np_doc('bitwise_not', link=np_utils.AliasOf('invert'))
 def bitwise_not(x):
 
   def f(x):
@@ -612,7 +615,7 @@ def sqrt(x):
   return _scalar(math_ops.sqrt, x, True)
 
 
-@np_utils.np_doc('abs')
+@np_utils.np_doc('abs', link=np_utils.AliasOf('absolute'))
 def abs(x):  # pylint: disable=redefined-builtin
   return _scalar(math_ops.abs, x)
 
@@ -769,7 +772,7 @@ def cbrt(x):
   return _scalar(f, x, True)
 
 
-@np_utils.np_doc('conjugate')
+@np_utils.np_doc('conjugate', link=np_utils.AliasOf('conj'))
 def conjugate(x):
   return _scalar(math_ops.conj, x)
 

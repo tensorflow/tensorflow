@@ -26,16 +26,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-
-std::string GetSpaceToDepthCode(const OperationDef& op_def, Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
-  args->AddInt("block_size");
-
+std::string GetSpaceToDepthCode(const OperationDef& op_def) {
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
@@ -75,50 +66,17 @@ std::string GetSpaceToDepthCode(const OperationDef& op_def, Arguments* args) {
   c += "}\n";
   return c;
 }
-
 }  // namespace
 
-SpaceToDepth::SpaceToDepth(SpaceToDepth&& operation)
-    : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
-
-SpaceToDepth& SpaceToDepth::operator=(SpaceToDepth&& operation) {
-  if (this != &operation) {
-    attr_ = operation.attr_;
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status SpaceToDepth::Compile(const CreationContext& creation_context) {
-  std::string code = GetSpaceToDepthCode(definition_, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
-absl::Status SpaceToDepth::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(args_.SetInt("block_size", attr_.block_size));
-  return absl::OkStatus();
-}
-
-int3 SpaceToDepth::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Slices();
-  return int3(grid_x, grid_y, grid_z);
-}
-
-SpaceToDepth CreateSpaceToDepth(const OperationDef& op_def,
+GPUOperation CreateSpaceToDepth(const OperationDef& op_def,
                                 const SpaceToDepthAttributes& attr) {
-  return SpaceToDepth(op_def, attr);
+  GPUOperation op(op_def);
+  op.AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  op.AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+  op.args_.AddInt("block_size", attr.block_size);
+  op.code_ = GetSpaceToDepthCode(op_def);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  return op;
 }
 
 }  // namespace cl

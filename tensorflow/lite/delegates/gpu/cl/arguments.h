@@ -39,40 +39,22 @@ class Arguments {
   void AddFloat(const std::string& name, float value = 0.0f);
   void AddHalf(const std::string& name, half value = half(0.0f));
   void AddInt(const std::string& name, int value = 0);
-  void AddBuffer(const std::string& name, const GPUBufferDescriptor& desc);
-  void AddImage2D(const std::string& name, const GPUImage2DDescriptor& desc);
-  void AddImage2DArray(const std::string& name,
-                       const GPUImage2DArrayDescriptor& desc);
-  void AddImage3D(const std::string& name, const GPUImage3DDescriptor& desc);
-  void AddImageBuffer(const std::string& name,
-                      const GPUImageBufferDescriptor& desc);
-  void AddCustomMemory(const std::string& name,
-                       const GPUCustomMemoryDescriptor& desc);
-
   void AddObjectRef(const std::string& name, AccessType access_type,
                     GPUObjectDescriptorPtr&& descriptor_ptr);
-  void AddObject(const std::string& name, AccessType access_type,
-                 GPUObjectPtr&& object,
+  void AddObject(const std::string& name,
                  GPUObjectDescriptorPtr&& descriptor_ptr);
 
   absl::Status SetInt(const std::string& name, int value);
   absl::Status SetFloat(const std::string& name, float value);
   absl::Status SetHalf(const std::string& name, half value);
-  absl::Status SetImage2D(const std::string& name, cl_mem memory);
-  absl::Status SetBuffer(const std::string& name, cl_mem memory);
-  absl::Status SetImage2DArray(const std::string& name, cl_mem memory);
-  absl::Status SetImage3D(const std::string& name, cl_mem memory);
-  absl::Status SetImageBuffer(const std::string& name, cl_mem memory);
-  absl::Status SetCustomMemory(const std::string& name, cl_mem memory);
   absl::Status SetObjectRef(const std::string& name, const GPUObject* object);
-
-  std::string GetListOfArgs();
 
   absl::Status Bind(cl_kernel kernel, int offset = 0);
 
   void RenameArgs(const std::string& postfix, std::string* code) const;
   absl::Status Merge(Arguments&& args, const std::string& postfix);
 
+  absl::Status AllocateObjects(CLContext* context);
   absl::Status TransformToCLCode(
       const DeviceInfo& device_info,
       const std::map<std::string, std::string>& linkables, std::string* code);
@@ -84,6 +66,25 @@ class Arguments {
   Arguments& operator=(const Arguments&) = delete;
 
  private:
+  void AddBuffer(const std::string& name, const GPUBufferDescriptor& desc);
+  void AddImage2D(const std::string& name, const GPUImage2DDescriptor& desc);
+  void AddImage2DArray(const std::string& name,
+                       const GPUImage2DArrayDescriptor& desc);
+  void AddImage3D(const std::string& name, const GPUImage3DDescriptor& desc);
+  void AddImageBuffer(const std::string& name,
+                      const GPUImageBufferDescriptor& desc);
+  void AddCustomMemory(const std::string& name,
+                       const GPUCustomMemoryDescriptor& desc);
+
+  absl::Status SetImage2D(const std::string& name, cl_mem memory);
+  absl::Status SetBuffer(const std::string& name, cl_mem memory);
+  absl::Status SetImage2DArray(const std::string& name, cl_mem memory);
+  absl::Status SetImage3D(const std::string& name, cl_mem memory);
+  absl::Status SetImageBuffer(const std::string& name, cl_mem memory);
+  absl::Status SetCustomMemory(const std::string& name, cl_mem memory);
+
+  std::string GetListOfArgs();
+
   std::string AddActiveArgument(const std::string& arg_name,
                                 bool use_f32_for_halfs);
   void AddGPUResources(const std::string& name, const GPUResources& resources);

@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -33,12 +34,12 @@ struct OpData {
   uint16_t* exp_lut;
 };
 
-// Number of unique int8 and int16 values.  Used in exponent lookup table
+// Number of unique int8_t and int16_t values.  Used in exponent lookup table
 // conputation.
 constexpr int kInt8Range =
-    std::numeric_limits<int8_t>::max() - std::numeric_limits<int8>::min() + 1;
-constexpr int kInt16Range =
-    std::numeric_limits<int16_t>::max() - std::numeric_limits<int16>::min() + 1;
+    std::numeric_limits<int8_t>::max() - std::numeric_limits<int8_t>::min() + 1;
+constexpr int kInt16Range = std::numeric_limits<int16_t>::max() -
+                            std::numeric_limits<int16_t>::min() + 1;
 // Each 16-bit precalculated exponent is expressed as a Q0.16 fixedpoint
 // value. We special-case e^0 since 1.0 requires 1 integer bit to
 // express.
@@ -47,7 +48,7 @@ constexpr int kExpFractionalBits = 16;
 // specially.
 constexpr int kMaxExponentValue = (1 << kExpFractionalBits);
 
-// Quantized softmax with int8 input and int16 output.
+// Quantized softmax with int8_t input and int16_t output.
 // Passing OpData by value does not have much savings in this op, but following
 // that as a best practice, at least for the xtensa kernels. See b/155656675 for
 // more details.
@@ -97,7 +98,7 @@ TfLiteStatus Softmax(OpData op_data, const RuntimeShape& input_shape,
       }
       output_data[i * depth + c] = static_cast<int16_t>(std::max(
           std::min(full_range_output,
-                   static_cast<int32>(std::numeric_limits<int16_t>::max())),
+                   static_cast<int32_t>(std::numeric_limits<int16_t>::max())),
           static_cast<int32_t>(std::numeric_limits<int16_t>::min())));
     }
   }
@@ -118,7 +119,8 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
       if (output->type == kTfLiteInt16) {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point,
                           std::numeric_limits<int16_t>::min());
-        // NOTE: Current int16 softmax output does not require symmetric scaling
+        // NOTE: Current int16_t softmax output does not require symmetric
+        // scaling
         // - so no need to verify scale here.
       } else {
         TF_LITE_ENSURE_EQ(context, output->params.zero_point,
@@ -127,10 +129,10 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
       }
     }
 
-    // Precompute e^(-x * input_scale * beta) for every possible int8 input.
+    // Precompute e^(-x * input_scale * beta) for every possible int8_t input.
     // This computation is used for every iteration of Softmax.  We must compute
     // using pre-scaled inputs to avoid introducing additional error, while
-    // restricting our input range to the int8 range. This is valid since beta
+    // restricting our input range to the int8_t range. This is valid since beta
     // and input scale are constant for a given op in the graph. Skip index 0
     // since that is a special case which requires 1 integer bit instead of 0.
     for (int i = 1; i <= kInt8Range; i++) {
@@ -148,12 +150,7 @@ TfLiteStatus CalculateSoftmaxOpData(TfLiteContext* context,
 
 void* SoftmaxInit(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -168,14 +165,13 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* op_data = static_cast<OpData*>(node->user_data);
 
-  // Allocate an array to precompute exponents over all int8 inputs, applying
+  // Allocate an array to precompute exponents over all int8_t inputs, applying
   // the scale and beta before calculating exp. It is mandatory to apply beta
   // and scale here, since each softmax op may have different beta and scale
   // values. Beta and scale will remain constant for a given softmax op.
-  void* allocated_ptr;
-  TF_LITE_ENSURE_STATUS(context->AllocatePersistentBuffer(
-      context, kInt8Range * sizeof(int16_t), &allocated_ptr));
-  op_data->exp_lut = static_cast<uint16_t*>(allocated_ptr);
+  op_data->exp_lut = static_cast<uint16_t*>(context->AllocatePersistentBuffer(
+      context, kInt8Range * sizeof(uint16_t)));
+  TF_LITE_ENSURE(context, op_data->exp_lut != nullptr);
 
   TF_LITE_ENSURE_STATUS(
       CalculateSoftmaxOpData(context, input, output, params, op_data));
@@ -186,13 +182,14 @@ TfLiteStatus SoftmaxPrepare(TfLiteContext* context, TfLiteNode* node) {
 TfLiteStatus SoftmaxEval(TfLiteContext* context, TfLiteNode* node) {
   auto* op_data = static_cast<OpData*>(node->user_data);
 
-  const TfLiteTensor* input = GetInput(context, node, 0);
-  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
   if (input->type == kTfLiteInt8 && output->type == kTfLiteInt16) {
-    return Softmax(*op_data, GetTensorShape(input),
-                   GetTensorData<int8_t>(input), GetTensorShape(output),
-                   GetTensorData<int16_t>(output));
+    return Softmax(*op_data, tflite::micro::GetTensorShape(input),
+                   tflite::micro::GetTensorData<int8_t>(input),
+                   tflite::micro::GetTensorShape(output),
+                   tflite::micro::GetTensorData<int16_t>(output));
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
                        TfLiteTypeGetName(input->type), input->type);

@@ -61,8 +61,7 @@ def remove_squeezable_dimensions(
   Returns:
     Tuple of `labels` and `predictions`, possibly with last dim squeezed.
   """
-  with ops.name_scope(name, 'remove_squeezable_dimensions',
-                      [labels, predictions]):
+  with K.name_scope(name or 'remove_squeezable_dimensions'):
     predictions = ops.convert_to_tensor_v2_with_dispatch(predictions)
     labels = ops.convert_to_tensor_v2_with_dispatch(labels)
     predictions_shape = predictions.get_shape()
@@ -254,11 +253,11 @@ def compute_weighted_loss(losses,
     ops.get_default_graph()._last_loss_reduction = reduction  # pylint: disable=protected-access
 
     if not isinstance(losses, keras_tensor.KerasTensor):
-      losses = ops.convert_to_tensor_v2(losses)
+      losses = ops.convert_to_tensor_v2_with_dispatch(losses)
     input_dtype = losses.dtype
 
     if not isinstance(sample_weight, keras_tensor.KerasTensor):
-      sample_weight = ops.convert_to_tensor_v2(sample_weight)
+      sample_weight = ops.convert_to_tensor_v2_with_dispatch(sample_weight)
 
     # TODO(psv): Handle casting here in a better way, eg. if losses is float64
     # we do not want to lose precision.

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -617,7 +618,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(
           r"TensorArray foo_.*: Could not write to TensorArray index 2 because "
           r"it has already been written to."):
-        w1.flow.eval()
+        self.evaluate(w1.flow)
 
       # Using differing shapes causes an exception
       wb0_grad = ta_grad.write(1, c(1.0))
@@ -626,7 +627,7 @@ class TensorArrayTest(test.TestCase):
       with self.assertRaisesOpError(
           r"Could not aggregate to TensorArray index 1 because the "
           r"existing shape is \[\] but the new input shape is \[1\]"):
-        wb1_grad.flow.eval()
+        self.evaluate(wb1_grad.flow)
 
   @test_util.disable_control_flow_v2("v2 does not support TensorArray.grad.")
   @test_util.run_v1_only("v2 does not support TensorArray.grad.")
@@ -1565,6 +1566,9 @@ class TensorArrayTest(test.TestCase):
     ta_grad = ta.grad("grad")
     flows = [ta.flow, ta_grad.flow]
 
+    # Same goes for stack.
+    flows.append(ta.stack("stack"))
+
     # Similar tests for unpack and split
     with ops.device("/job:worker/task:0/cpu:0"):
       ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
@@ -1579,6 +1583,25 @@ class TensorArrayTest(test.TestCase):
     with ops.device("/job:worker/task:1/cpu:0"):
       ta = ta.split([1.0, 2.0], [1, 1])
     flows.append(ta.flow)
+
+    g = ops.get_default_graph()
+    dev_assignments = collections.defaultdict(list)
+    for op in g.get_operations():
+      dev_assignments[op.device].append(op.name)
+    # We have created 3 different TensorArray handles, only those and their
+    # "size" ops should be deviceless.
+    self.assertLen(dev_assignments[""], 6)
+    # We assigned two writes explicitly to device #2.
+    ops_assigned_to_task_2 = []
+    for device, ops_on_device in dev_assignments.items():
+      if "/task:2/" in device:
+        ops_assigned_to_task_2 = ops_on_device
+        break
+    self.assertLen(ops_assigned_to_task_2, 2)
+    # All other ops should colocate with the first write on device #1.
+    self.assertLen(dev_assignments, 3)
+    for device in dev_assignments:
+      self.assertNotIn("/task:0/", device)
 
     session = session_lib.Session(self._workers[0].target)
 

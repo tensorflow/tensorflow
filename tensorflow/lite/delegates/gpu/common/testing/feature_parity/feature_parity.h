@@ -16,9 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_FEATURE_PARITY_FEATURE_PARITY_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TESTING_FEATURE_PARITY_FEATURE_PARITY_H_
 
-#include <functional>
-#include <string>
-#include <utility>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/testing/feature_parity/generators/add.h"

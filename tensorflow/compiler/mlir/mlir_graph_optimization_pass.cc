@@ -91,16 +91,14 @@ MlirOptimizationPassRegistry& MlirOptimizationPassRegistry::Global() {
   return *global;
 }
 
-static void RegisterDialects() {
-  static bool init_once = []() {
-    mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    mlir::registerDialect<mlir::shape::ShapeDialect>();
-    mlir::registerDialect<mlir::tf_device::TensorFlowDeviceDialect>();
-    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
-    return true;
-  }();
-  (void)init_once;
+static void RegisterDialects(mlir::DialectRegistry& registry) {
+  // clang-format off
+  registry.insert<mlir::StandardOpsDialect,
+                  mlir::TF::TensorFlowDialect,
+                  mlir::shape::ShapeDialect,
+                  mlir::tf_device::TensorFlowDeviceDialect,
+                  mlir::tf_executor::TensorFlowExecutorDialect>();
+  // clang-format on
 }
 
 Status MlirFunctionOptimizationPass::Run(
@@ -126,12 +124,18 @@ Status MlirFunctionOptimizationPass::Run(
                           << " passes)";
 
   GraphDebugInfo debug_info;
-  RegisterDialects();
   mlir::MLIRContext context;
+  RegisterDialects(context.getDialectRegistry());
   GraphImportConfig import_config;
   import_config.graph_as_function = true;
   import_config.control_outputs = *control_ret_node_names;
   import_config.upgrade_legacy = true;
+  // Disable shape inference during import as some TensorFlow op fails during
+  // shape inference with dynamic shaped operands. This in turn causes the
+  // import to fail. Shape inference during import is going to be removed and
+  // the shape inference pass is run early in the pass pipeline, shape inference
+  // during import is not necessary.
+  import_config.enable_shape_inference = false;
   TF_ASSIGN_OR_RETURN(auto module_ref,
                       ConvertGraphToMlir(**graph, debug_info, *flib_def,
                                          import_config, &context));
@@ -200,8 +204,8 @@ Status MlirV1CompatGraphOptimizationPass::Run(
                           << " passes)";
 
   GraphDebugInfo debug_info;
-  RegisterDialects();
   mlir::MLIRContext context;
+  RegisterDialects(context.getDialectRegistry());
   GraphImportConfig import_config;
   import_config.upgrade_legacy = true;
   // Restrict functionalization to TPU nodes to avoid problems in v1 session

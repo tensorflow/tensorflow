@@ -45,7 +45,7 @@ from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.optimizer_v2 import rmsprop
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.layers import core as legacy_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -376,9 +376,9 @@ class BaseLayerTest(keras_parameterized.TestCase):
       def call(self, inputs, training=None):
         if training is None:
           training = backend.learning_phase()
-        return tf_utils.smart_cond(training,
-                                   lambda: array_ops.ones_like(inputs),
-                                   lambda: array_ops.zeros_like(inputs))
+        return control_flow_util.smart_cond(
+            training, lambda: array_ops.ones_like(inputs),
+            lambda: array_ops.zeros_like(inputs))
 
     return TrainingLayer()
 
@@ -1135,7 +1135,7 @@ class NameScopingTest(keras_parameterized.TestCase):
     self.assertEqual(sublayer.active_name_scope, 'MyName2/Sublayer')
 
   def test_name_scope_tf_tensor(self):
-    x = ops.convert_to_tensor_v2(np.ones((10, 10)))
+    x = ops.convert_to_tensor_v2_with_dispatch(np.ones((10, 10)))
     layer = layers.Dense(
         10, activation=layers.ReLU(name='MyAct'), name='MyName3')
     layer(x)

@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
 #define TENSORFLOW_COMPILER_MLIR_HLO_INCLUDE_MLIR_HLO_UTILS_HLO_UTILS_H_
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
 namespace hlo {
@@ -65,8 +65,23 @@ static ElementsAttr getSplat(Builder* b, Value val, T constant) {
 
 // Returns DenseElementsAttr of rank zero with the given element type and the
 // value.
-// Requires `ty` to be either FloatType of IntegerType.
+// Requires `ty` to be either FloatType, IntegerType, or ComplexType.
 DenseElementsAttr GetScalarOfType(Type ty, int64_t raw_value);
+
+// Enum type used to specify scalar argument to GetScalarLimitOfType.
+enum ScalarLimit {
+  kLowest,          // The scalar corresponding to numeric_limits<T>::lowest.
+  kInfinityLowest,  // Like kMax, but returns -infinity where available.
+  kMax,             // The scalar corresponding to numeric_limits<T>::max.
+  kInfinityMax,     // Like kMax, but returns infinity where available.
+};
+
+// Returns a scalar limit value for the given type.
+//
+// The argument 'limit' describes which scalar value to return.
+//
+// Requires `ty` to be either FloatType or IntegerType.
+DenseElementsAttr GetScalarLimitOfType(Type ty, ScalarLimit limit);
 
 }  // namespace hlo
 }  // namespace mlir

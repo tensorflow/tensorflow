@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.h"
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Diagnostics.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/utils/broadcast_utils.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/utils/broadcast_utils.h"
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
 
 namespace mlir {
 namespace chlo {
@@ -151,7 +153,7 @@ LogicalResult ReifyBroadcastBinaryOpReturnTypeShapes(
   }
 
   Value computed_shape = hlo::ComputeBinaryElementwiseBroadcastingResultExtents(
-      loc, lhs, rhs, builder);
+      loc, lhs, rhs, builder, /*unsafe_as_extent_tensor=*/false);
   if (!computed_shape) return failure();
   reifiedReturnShapes.push_back(computed_shape);
   return success();
@@ -259,18 +261,59 @@ BROADCAST_BINARY_OP_DEFS(BroadcastXorOp);
 #undef BROADCAST_INFER_SHAPE_TYPE_OP_DEFS
 #undef BROADCAST_BINARY_OP_DEFS
 
+static LogicalResult Verify(ConstantLikeOp op) {
+  if (op.value().getType() != op.getType().cast<ShapedType>().getElementType())
+    return op.emitOpError() << "value's type doesn't match element return type";
+  return success();
+}
+
+LogicalResult ConstantLikeOp::inferReturnTypeComponents(
+    MLIRContext* context, Optional<Location> location, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<ShapedTypeComponents>& inferedReturnShapes) {
+  ConstantLikeOp::Adaptor op(operands, attributes);
+  if (failed(op.verify(location.getValue()))) return failure();
+  Type element_type = op.value().getType();
+  Type operand_type = op.operand().getType();
+  if (operand_type.isa<UnrankedTensorType>()) {
+    inferedReturnShapes.emplace_back(element_type);
+  } else {
+    const auto& shape = operand_type.cast<RankedTensorType>().getShape();
+    inferedReturnShapes.emplace_back(shape, element_type);
+  }
+  return success();
+}
+
+struct ConstantLikeToConstant : public OpRewritePattern<ConstantLikeOp> {
+  using OpRewritePattern<ConstantLikeOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ConstantLikeOp op,
+                                PatternRewriter& rewriter) const override {
+    auto op_type = op.operand().getType().cast<ShapedType>();
+    if (!op_type.hasStaticShape()) return failure();
+    auto type = RankedTensorType::get(op_type.getShape(), op.value().getType());
+    ElementsAttr attr = DenseElementsAttr::get(type, op.value());
+    rewriter.replaceOpWithNewOp<mhlo::ConstOp>(op.getOperation(), attr);
+    return success();
+  }
+};
+
+void ConstantLikeOp::getCanonicalizationPatterns(
+    OwningRewritePatternList& results, MLIRContext* context) {
+  results.insert<ConstantLikeToConstant>(context);
+}
+
 #define GET_OP_CLASSES
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
 
 //===----------------------------------------------------------------------===//
 // chlo Dialect Constructor
 //===----------------------------------------------------------------------===//
 
-HloClientDialect::HloClientDialect(MLIRContext* context)
-    : Dialect(getDialectNamespace(), context) {
+void HloClientDialect::initialize() {
   addOperations<
 #define GET_OP_LIST
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
+#include "mlir-hlo/Dialect/mhlo/IR/chlo_ops.cc.inc"
       >();
 }
 

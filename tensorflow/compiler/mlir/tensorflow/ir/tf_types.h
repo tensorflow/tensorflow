@@ -22,6 +22,7 @@ limitations under the License.
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Operation.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/IR/Types.h"  // from @llvm-project
 
 namespace mlir {
@@ -66,26 +67,13 @@ using ResultShapeRange = iterator_range<ResultShapeIterator>;
 // TensorFlow types
 //===----------------------------------------------------------------------===//
 
-namespace TensorFlowTypes {
-// List of supported TensorFlowType kinds, necessary for isa/dyn_cast.
-enum Kind {
-  FIRST_USED_TENSORFLOW_TYPE = Type::FIRST_TENSORFLOW_TYPE,
-#define HANDLE_TF_TYPE(tftype, enumerant, name) enumerant,
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.def"
-  LAST_USED_TENSORFLOW_TYPE,
-};
-}  // namespace TensorFlowTypes
-
 // The base class in the TensorFlow type hierarchy.
 class TensorFlowType : public Type {
  public:
   using Type::Type;
 
   // Support method to enable LLVM-style type casting.
-  static bool classof(Type type) {
-    return type.getKind() >= Type::FIRST_TENSORFLOW_TYPE &&
-           type.getKind() <= TensorFlowTypes::LAST_USED_TENSORFLOW_TYPE;
-  }
+  static bool classof(Type type);
 };
 
 // Returns true if the specified type is a valid TensorFlow element type.
@@ -104,10 +92,7 @@ static inline bool IsValidTFTensorType(Type type) {
 
 namespace detail {
 // Common implementation of TensorFlow types. The template argument indicates
-// the concrete derived class per CRTP. Concrete classes must implement the
-// following:
-//   - `static unsigned getTypeKind()` that returns the (fixed) kind of the
-//     type.
+// the concrete derived class per CRTP.
 template <typename Derived>
 class TensorFlowTypeImpl
     : public Type::TypeBase<Derived, TensorFlowType, TypeStorage> {
@@ -115,14 +100,6 @@ class TensorFlowTypeImpl
   using Base = typename Type::TypeBase<Derived, TensorFlowType, TypeStorage>;
   using TFBase = TensorFlowTypeImpl<Derived>;
   using Base::Base;
-
-  // Get the unique'ed type in the given context.
-  static Derived get(MLIRContext* context) {
-    return Base::get(context, Derived::getTypeKind());
-  }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == Derived::getTypeKind(); }
 };
 }  // namespace detail
 
@@ -132,10 +109,7 @@ class TensorFlowRefType : public TensorFlowType {
   using TensorFlowType::TensorFlowType;
 
   // Checks if a type is TensorFlow Ref type.
-  static bool classof(Type type) {
-    return type.getKind() >= TensorFlowTypes::FLOAT_REF &&
-           type.getKind() <= TensorFlowTypes::LAST_USED_TENSORFLOW_TYPE;
-  }
+  static bool classof(Type type);
 
   // Converts a type to the corresponding TensorFlowRef type.
   static TensorFlowType get(Type type);
@@ -166,11 +140,21 @@ static inline Type GetDefaultTypeOf(TensorFlowRefType type) {
   return type.RemoveRef();
 }
 
+// Returns the element type if `type` is a `ShapedType` and the type itself
+// otherwise, converting `TensorFlowRef` type to corresponding `TensorFlow` or
+// standard type if necessary.
+static inline Type GetElementTypeOrSelfResolveRef(Type type) {
+  Type element_type = mlir::getElementTypeOrSelf(type);
+  if (auto ref_type = element_type.dyn_cast<mlir::TF::TensorFlowRefType>()) {
+    element_type = ref_type.RemoveRef();
+  }
+  return element_type;
+}
+
 #define HANDLE_TF_TYPE(tftype, enumerant, name)                          \
   class tftype##Type : public detail::TensorFlowTypeImpl<tftype##Type> { \
    public:                                                               \
     using TFBase::TFBase;                                                \
-    static unsigned getTypeKind() { return TensorFlowTypes::enumerant; } \
   };
 
 // Custom TensorFlow types are defined separately.
@@ -208,8 +192,6 @@ class TypeWithSubtypeStorage : public TypeStorage {
 // opaque and their interpretation depends on the actual underlying type.
 // The template argument indicates the concrete derived class per CRTP. Concrete
 // classes must implement the following:
-//   - `static unsigned getTypeKind()` that returns the (fixed) kind of the
-//     type.
 //   - `static std::string getTypeName()` that returns the name of the type for
 //     verification logging.
 template <typename Derived>
@@ -221,18 +203,15 @@ class TypeWithSubtypeImpl
   using Base::Base;
 
   static Derived get(ArrayRef<TensorType> subtypes, MLIRContext* context) {
-    return Base::get(context, Derived::getTypeKind(), subtypes);
+    return Base::get(context, subtypes);
   }
 
   static Derived getChecked(ArrayRef<TensorType> subtypes, MLIRContext* context,
                             Location loc) {
-    return Base::getChecked(loc, Derived::getTypeKind(), subtypes);
+    return Base::getChecked(loc, subtypes);
   }
 
   static Derived get(MLIRContext* context) { return get({}, context); }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == Derived::getTypeKind(); }
 
   static LogicalResult verifyConstructionInvariants(
       Location loc, ArrayRef<TensorType> subtypes) {
@@ -257,10 +236,7 @@ class TensorFlowTypeWithSubtype : public TensorFlowType {
   using TensorFlowType::TensorFlowType;
 
   // Checks if a type is TensorFlow type with subtypes.
-  static bool classof(Type type) {
-    return type.getKind() == TensorFlowTypes::VARIANT ||
-           type.getKind() == TensorFlowTypes::RESOURCE;
-  }
+  static bool classof(Type type);
 
   // Converts a TypeWithSubtype type to the same type but without its subtypes.
   Type RemoveSubtypes();
@@ -282,7 +258,6 @@ static inline Type GetDefaultTypeOf(TensorFlowTypeWithSubtype type) {
 class ResourceType : public detail::TypeWithSubtypeImpl<ResourceType> {
  public:
   using TFBase::TFBase;
-  static unsigned getTypeKind() { return TensorFlowTypes::RESOURCE; }
   static std::string getTypeName() { return "ResourceType"; }
 };
 
@@ -294,7 +269,6 @@ class ResourceType : public detail::TypeWithSubtypeImpl<ResourceType> {
 class VariantType : public detail::TypeWithSubtypeImpl<VariantType> {
  public:
   using TFBase::TFBase;
-  static unsigned getTypeKind() { return TensorFlowTypes::VARIANT; }
   static std::string getTypeName() { return "VariantType"; }
 };
 
@@ -319,15 +293,21 @@ bool HasCompatibleElementTypes(Type lhs, Type rhs,
 // compatible.
 bool AreCastCompatible(ArrayRef<Type> types);
 
-// If the given tensor has elements of type with subtypes, then returns a new
-// type after dropping subtypes info. Otherwise, returns the original type as
-// is.
-ShapedType DropTypeSubTypes(ShapedType ty);
+// If `ty` is a tensor type and its element type has subtypes, then returns a
+// new type of same shape but dropped subtypes for the element type.
+// Otherwise, if `ty` has subtypes, then returns corresponding type with dropped
+// subtypes.
+// Otherwise, returns the original type `ty`.
+Type DropSubTypes(Type ty);
 
-// If the given tensor has elements of type ref, then returns a new type
-// of the shape, but corresponding non-ref type as element type. Otherwise,
-// returns the original type as is.
-ShapedType DropRefType(ShapedType ty);
+// If `ty` is a tensor type and has elements of a ref type, then returns a new
+// type of same shape but corresponding non-ref type as element type.
+// Otherwise, if `ty` is a ref type, then returns corresponding non-ref type.
+// Otherwise, returns the original type `ty`.
+Type DropRefType(Type ty);
+
+// Convenience call for executing both `DropRefType` and `DropSubTypes`.
+Type DropRefAndSubTypes(Type ty);
 
 }  // end namespace TF
 }  // end namespace mlir

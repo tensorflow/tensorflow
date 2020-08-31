@@ -26,6 +26,80 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.saved_model import save_context
+from tensorflow.python.saved_model import save_options
+from tensorflow.python.training.saving import saveable_object
+
+
+def get_on_write_saveable(var, primary_var, name):
+  """Return saveable spec for AUTO and ON_WRITE variables."""
+  # We use a callable so that we don't have to evaluate this expression
+  # in the case where we are trying to restore instead of save.
+  def tensor():
+    strategy = var.distribute_strategy
+    return strategy.extended.read_var(var)
+
+  spec = saveable_object.SaveSpec(
+      tensor=tensor,
+      slice_spec="",
+      name=name,
+      dtype=var.dtype,
+      device=primary_var.device)
+
+  return tensor, [spec]
+
+
+def get_on_write_restore_ops(var, tensor):
+  """Return restore ops for AUTO and ON_WRITE variables."""
+  packed_var = var._packed_variable  # pylint: disable=protected-access
+  if packed_var is not None:
+    return control_flow_ops.group(
+        tuple(
+            assign_on_device(d, packed_var, tensor)
+            for d in packed_var.devices))
+  return control_flow_ops.group(
+      tuple(
+          assign_on_device(v.device, v, tensor)
+          for v in var.values))
+
+
+def get_on_read_saveable(var, primary_var, name):
+  """Return saveables for ON_READ variable."""
+
+  # We use a callable so that we don't have to evaluate this expression
+  # in the case where we are trying to restore instead of save.
+  def tensor():
+    return var._get_cross_replica()  # pylint: disable=protected-access
+
+  spec = saveable_object.SaveSpec(
+      tensor=tensor,
+      slice_spec="",
+      name=name,
+      dtype=var.dtype,
+      device=primary_var.device)
+
+  return tensor, [spec]
+
+
+def get_on_read_restore_ops(var, tensor, aggregation):
+  """Return restore ops for ON_READ variables."""
+  # To preserve the sum across save and restore, we have to divide the
+  # total across all devices when restoring a variable that was summed
+  # when saving.
+  if aggregation == vs.VariableAggregation.SUM:
+    strategy = var.distribute_strategy
+    tensor = math_ops.cast(tensor / strategy.num_replicas_in_sync,
+                           var.dtype)
+  return control_flow_ops.group(
+      tuple(
+          assign_on_device(v.device, v, tensor)
+          for v in var.values))
+
+
+# Utility function that indicates if you are in an UpdateContext when running
+# in a replica fn.
+def in_replica_update_context():
+  return distribute_lib.get_update_replica_id() is not None
 
 
 def on_write_assign(var, value, use_locking=False, name=None, read_value=True):
@@ -107,10 +181,10 @@ def on_read_assign_cross_replica(var, value, read_value=True):
       # total across all devices when restoring a variable that was summed
       # when saving.
       tensor = value
-      # TODO(anjs): Should this be over all the replicas in sync since we
-      # call `reduce` on the variable during read?
       if var.aggregation == vs.VariableAggregation.SUM:
-        tensor = math_ops.cast(tensor / len(var._devices), var.dtype)  # pylint: disable=protected-access
+        strategy = var._distribute_strategy  # pylint: disable=protected-access
+        tensor = math_ops.cast(tensor / strategy.num_replicas_in_sync,
+                               var.dtype)
       return assign_on_each_device(var, assign_on_device, tensor,
                                    read_value)
 
@@ -247,3 +321,20 @@ scatter_error_msg = ("{op_name} is only supported for mirrored "
                      "variable (variable created within certain "
                      "`tf.distribute.Strategy` scope) with NONE or "
                      "`ONLY_FIRST_REPLICA` aggregation, got: {aggregation}.")
+
+
+def is_saving_non_distributed():
+  """Returns whether we're saving a non-distributed version of the model.
+
+  It returns True iff we are in saving context and are saving a non-distributed
+  version of the model. That is, SaveOptions.experimental_variable_policy is
+  NONE.
+
+  Returns:
+    A boolean.
+  """
+  if not save_context.in_save_context():
+    return False
+  options = save_context.get_save_options()
+  return (options.experimental_variable_policy !=
+          save_options.VariablePolicy.EXPAND_DISTRIBUTED_VARIABLES)

@@ -38,13 +38,14 @@ class ImmediateExecutionOperation : public AbstractOperation {
  public:
   virtual void Clear() = 0;
 
+  // Returns the inputs of this op.
+  virtual absl::Span<ImmediateExecutionTensorHandle* const> GetInputs()
+      const = 0;
+
   virtual const tensorflow::OpDef* OpDef() const = 0;
 
   virtual Status InputLength(const char* input_name, int* length) = 0;
   virtual Status OutputLength(const char* output_name, int* length) = 0;
-
-  // Experimental
-  virtual Status SetUseXla(bool enable) = 0;
 
   // Set stack trace to be used for potential async error reporting.
   virtual void SetStackTrace(AbstractStackTrace stack_trace) = 0;

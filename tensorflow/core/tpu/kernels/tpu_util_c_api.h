@@ -19,14 +19,6 @@ limitations under the License.
 #include "tensorflow/core/tpu/libtftpu.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
-typedef struct SE_Status SE_Status;
-
-enum TpuCoreTypeEnum {
-  kTensorCore,
-  kEmbeddingV1,
-  kEmbeddingV2,
-};
-
 // Property for creating compilation cache key.
 struct CompilationCacheKeyProperty {
   const char* config_prefix;
@@ -54,12 +46,6 @@ extern "C" {
 // Checks if whether a TPU compilation is enabled.
 TFTPU_CAPI_EXPORT bool TpuCompile_IsTpuCompilationEnabled();
 
-// Converts an XLA `Shape` into its equivalent TPU `Shape` representation.
-TFTPU_CAPI_EXPORT void TpuCompile_ToTpuShapeRepresentation(
-    TpuSerializedProto serialized_xla_shape, int data_type,
-    bool use_fast_memory, TpuSerializedProto* serialized_tensor_shape,
-    SE_Status* status);
-
 // XLA compilation cannot be cancelled. To avoid hanging the TF worker will exit
 // when cancellation is requested for an XLA compile op. Some tests require this
 // behavior to be disabled, and we test for this condition with the following
@@ -69,6 +55,9 @@ TFTPU_CAPI_EXPORT bool TpuCompile_ShouldTpuCompileOpIgnoreCancellation();
 // Returns the number of available TPU core count.
 TFTPU_CAPI_EXPORT int TpuTopology_AvailableCoreCount(
     const XLA_TpuMeshState* mesh_state, TpuCoreTypeEnum tpu_core_type);
+
+// Recycle unused service port.
+TFTPU_CAPI_EXPORT void TpuNetUtil_RecycleUnusedPort(int port);
 
 // Creates a unique compilation cache `key` used for `put` and `get` operations.
 // Returned buffers are heap-allocated and must be owned.
@@ -92,8 +81,8 @@ TFTPU_CAPI_EXPORT uint64_t TpuCompile_CreateGuaranteedConstFingerprint(
 struct TfTpu_UtilApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_IsTpuCompilationEnabled);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
-  TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ToTpuShapeRepresentation);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_AvailableCoreCount);
+  TFTPU_ADD_FN_IN_STRUCT(TpuNetUtil_RecycleUnusedPort);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_DestroyCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateGuaranteedConstFingerprint);

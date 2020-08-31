@@ -126,12 +126,14 @@ ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
   *status = this->FindDeviceFromName(device_name, &device);
   if (!status->ok()) {
     tensorflow::CustomDevice* dev;
-    *status = this->FindCustomDeviceFromName(device_name, &dev);
-    if (status->ok()) {
+    if (this->FindCustomDeviceFromName(device_name, &dev)) {
       *status = dev->CopyTensorToDevice(input, &result);
       if (status->ok()) {
         return result;
       }
+    } else {
+      *status =
+          tensorflow::errors::InvalidArgument(device_name, " unknown device.");
     }
     return nullptr;
   }
@@ -141,8 +143,7 @@ ImmediateExecutionTensorHandle* EagerContext::CopyTensorHandleToDevice(
     return nullptr;
   }
   tensorflow::CustomDevice* dev;
-  *status = this->FindCustomDeviceFromName(handle_device_name, &dev);
-  if (status->ok()) {
+  if (this->FindCustomDeviceFromName(handle_device_name, &dev)) {
     *status = dev->CopyTensorFromDevice(input, device_name, &result);
     if (status->ok()) {
       return result;
@@ -190,30 +191,35 @@ Status EagerContext::RegisterFunction(AbstractFunction* f) {
 // eager_operation.cc we can avoid a circular dependency between them.
 Status EagerOperation::Execute(absl::Span<AbstractTensorHandle*> retvals,
                                int* num_retvals) {
+  for (int i = 0; i < Inputs().size(); ++i) {
+    TF_RETURN_IF_ERROR(Inputs()[i]->WaitUnknownDevice());
+  }
   // Run eager placement logic.
   VariantDevice device;
   TF_RETURN_IF_ERROR(eager::MaybePinToCustomDevice(&device, *this));
   if (device == kVariantDeviceNull) {
     TF_RETURN_IF_ERROR(eager::MaybePinToResourceDevice(&device, *this));
   }
-  if (device == kVariantDeviceNull) {
+  if (device == kVariantDeviceNull && ctx_.PinSmallOpsToCPU()) {
     bool pin_to_cpu;
     TF_RETURN_IF_ERROR(eager::MaybePinSmallOpsToCpu(
-        &pin_to_cpu, Name(),
-        absl::MakeSpan(
-            reinterpret_cast<ImmediateExecutionTensorHandle**>(inputs_.data()),
-            inputs_.size()),
-        ctx_));
+        &pin_to_cpu, Name(), GetInputs(), ctx_.HostCPU()->name()));
     if (pin_to_cpu) {
       device = ctx_.HostCPU();
     }
   }
+
+  tensorflow::TensorHandle** retval_array =
+      reinterpret_cast<tensorflow::TensorHandle**>(retvals.data());
+  if (VariantDeviceIsCustom(device)) {
+    return absl::get<CustomDevice*>(device)->Execute(this, retval_array,
+                                                     num_retvals);
+  }
+
   if (device != kVariantDeviceNull) {
     SetDevice(device);
   }
-  return EagerExecute(
-      this, reinterpret_cast<tensorflow::TensorHandle**>(retvals.data()),
-      num_retvals);
+  return EagerExecute(this, retval_array, num_retvals);
 }
 
 }  //  namespace tensorflow

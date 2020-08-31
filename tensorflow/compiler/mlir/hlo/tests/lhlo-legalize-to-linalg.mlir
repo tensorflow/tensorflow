@@ -1,4 +1,4 @@
-// RUN: mlir-hlo-opt %s -lhlo-legalize-to-linalg -split-input-file | FileCheck %s
+// RUN: mlir-hlo-opt %s -lhlo-legalize-to-linalg -split-input-file | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK: #map0 = affine_map<(d0, d1) -> (d0, d1)>
 // CHECK-LABEL: func @element_wise
@@ -685,6 +685,20 @@ func @reshape_2D_4D(%arg0: memref<12x42xi32>, %arg1 : memref<12x1x42x1xi32>) {
 }
 // CHECK: linalg.reshape %{{.*}} [#[[MAP1]], #[[MAP2]]]
 // CHECK-NEXT: linalg.copy
+
+// -----
+
+// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape_3D_4D
+func @reshape_3D_4D(%arg0: memref<1x49x16xf32>, %arg1: memref<1x784x1x1xf32>) {
+  "lmhlo.reshape"(%arg0, %arg1)
+   : (memref<1x49x16xf32>, memref<1x784x1x1xf32>) -> ()
+  return
+}
+// CHECK: linalg.reshape %{{.*}} [#[[RESHAPE_MAP1]]]
+// CHECK: linalg.reshape %{{.*}} [#[[RESHAPE_MAP2]]]
+// CHECK: linalg.copy
 
 // -----
 

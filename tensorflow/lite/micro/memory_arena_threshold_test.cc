@@ -50,7 +50,14 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
-
+#ifdef TF_LITE_STATIC_MEMORY
+constexpr int kTestConvModelTotalSize = 9552;
+constexpr int kTestConvModelTailSize = 1808;
+#else
+constexpr int kTestConvModelTotalSize = 9712;
+constexpr int kTestConvModelTailSize = 1968;
+#endif
+constexpr int kTestConvModelHeadSize = 7744;
 constexpr int kTestConvModelOpRuntimeDataSize = 136;
 
 struct ModelAllocationThresholds {

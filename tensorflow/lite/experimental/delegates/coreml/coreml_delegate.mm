@@ -107,7 +107,10 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
       return params != nullptr && params->activation == kTfLiteActNone;
     }
     case kTfLiteBuiltinMirrorPad: {
-      return true;  // TODO(b/153495339): will be updated in follow-up CL
+      return delegates::coreml::IsMirrorPadOpSupported(registration, node, context);
+    }
+    case kTfLiteBuiltinMean: {
+      return delegates::coreml::IsMeanOpSupported(registration, node, context);
     }
     case kTfLiteBuiltinMul: {
       return node->builtin_data != nullptr &&
@@ -115,7 +118,7 @@ bool IsNodeSupportedByDelegate(const TfLiteRegistration* registration, const TfL
     }
     case kTfLiteBuiltinPad:
     case kTfLiteBuiltinPadv2: {
-      return true;  // TODO(b/153495339): will be updated in follow-up CL
+      return delegates::coreml::IsPadOpSupported(registration, node, context);
     }
     case kTfLiteBuiltinRelu: {
       return true;

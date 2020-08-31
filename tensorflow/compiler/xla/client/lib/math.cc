@@ -511,7 +511,7 @@ XlaOp Lgamma(XlaOp input) {
     XlaOp z = Select(need_to_reflect, -input, input - one);
 
     XlaOp x = base_lanczos_coeff;
-    for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
       XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
       XlaOp index = ScalarLike(input, i);
       x = x + lanczos_coefficient / (z + index + one);
@@ -647,7 +647,7 @@ XlaOp Digamma(XlaOp input) {
 
     XlaOp num = zero;
     XlaOp denom = base_lanczos_coeff;
-    for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
       XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
       XlaOp index = ScalarLike(input, i);
       num = num - lanczos_coefficient / ((z + index + one) * (z + index + one));
@@ -1111,11 +1111,28 @@ XlaOp RoundToEven(XlaOp x) {
 
 // acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x)) if x != -1
 //           pi                                if x == -1
+// For complex:
+// acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
 XlaOp Acos(XlaOp x) {
-  return Select(Ne(x, FullLike(x, -1)),
-                ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
-                                           ScalarLike(x, 1.0) + x),
-                FullLike(x, M_PI));
+  XlaBuilder* b = x.builder();
+  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
+
+    if (primitive_util::IsComplexType(shape.element_type())) {
+      auto one = ScalarLike(x, 1);
+      auto imag_one = Complex(
+          Zero(b, primitive_util::ComplexComponentType(shape.element_type())),
+          One(b, primitive_util::ComplexComponentType(shape.element_type())));
+
+      auto result =
+          Neg(imag_one * Log(x + imag_one * Sqrt((one + x) * (one - x))));
+      return result;
+    }
+    return Select(Ne(x, FullLike(x, -1)),
+                  ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
+                                             ScalarLike(x, 1.0) + x),
+                  FullLike(x, M_PI));
+  });
 }
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))

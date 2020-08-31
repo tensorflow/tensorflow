@@ -27,8 +27,8 @@ from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import sequential
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.saving.saved_model import json_utils
 from tensorflow.python.platform import test
-from tensorflow.python.util import serialization
 
 
 @combinations.generate(combinations.combine(mode=["graph", "eager"]))
@@ -38,7 +38,7 @@ class SerializationTests(keras_parameterized.TestCase):
     dense = core.Dense(3)
     dense(constant_op.constant([[4.]]))
     round_trip = json.loads(json.dumps(
-        dense, default=serialization.get_json_type))
+        dense, default=json_utils.get_json_type))
     self.assertEqual(3, round_trip["config"]["units"])
 
   def test_serialize_sequential(self):
@@ -47,7 +47,7 @@ class SerializationTests(keras_parameterized.TestCase):
     model.add(core.Dense(5))
     model(constant_op.constant([[1.]]))
     sequential_round_trip = json.loads(
-        json.dumps(model, default=serialization.get_json_type))
+        json.dumps(model, default=json_utils.get_json_type))
     self.assertEqual(
         # Note that `config['layers'][0]` will be an InputLayer in V2
         # (but not in V1)
@@ -59,7 +59,7 @@ class SerializationTests(keras_parameterized.TestCase):
     model = training.Model(x, y)
     model(constant_op.constant([[1., 1., 1.]]))
     model_round_trip = json.loads(
-        json.dumps(model, default=serialization.get_json_type))
+        json.dumps(model, default=json_utils.get_json_type))
     self.assertEqual(
         10, model_round_trip["config"]["layers"][1]["config"]["units"])
 

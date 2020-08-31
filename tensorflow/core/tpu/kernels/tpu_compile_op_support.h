@@ -159,6 +159,14 @@ se::port::Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
                                               TPUCompileMetadataProto* metadata,
                                               NameAttrList* function_name,
                                               std::string* mlir_module);
+
+// Computes shapes for each argument. Uses both the static shape from the
+// metadata, and the dynamic shapes where the static shape is not
+// defined. There must be one dynamic_shape for each argument with a
+// partially defined shape, in index order.
+Status ComputeArgumentShapes(const TPUCompileMetadataProto& metadata,
+                             const std::vector<TensorShape>& dynamic_shapes,
+                             std::vector<TensorShape>* arg_shapes);
 }  // namespace tpu
 }  // namespace tensorflow
 

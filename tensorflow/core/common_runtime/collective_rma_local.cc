@@ -21,9 +21,6 @@ namespace tensorflow {
 
 void CollectiveRemoteAccessLocal::StartAbort(const Status& s) {
   buf_rendezvous_.StartAbort(s);
-  if (errors::IsFailedPrecondition(s)) {
-    dev_resolver_->ClearCache();
-  }
 }
 
 void CollectiveRemoteAccessLocal::RecvFromPeer(
@@ -106,6 +103,13 @@ void CollectiveRemoteAccessLocal::PostToPeer(
           << " step_id_=" << step_id_;
   buf_rendezvous_.ProvideBuf(key, from_device, from_device_ctx, from_tensor,
                              from_alloc_attr, done);
+}
+
+void CollectiveRemoteAccessLocal::CheckPeerHealth(const string& peer_task,
+                                                  const StatusCallback& done) {
+  // Assume local devices are always healthy.
+  done(errors::Internal(
+      "CheckPeerHealth is not supposed to be called for local collectives"));
 }
 
 /*static*/

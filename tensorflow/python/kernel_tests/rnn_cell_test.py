@@ -2197,7 +2197,7 @@ class RawRNNTest(test.TestCase):
 
       r = rnn.raw_rnn(cell, loop_fn)
       loop_state = r[-1]
-      self.assertEqual([10], loop_state.eval())
+      self.assertEqual([10], self.evaluate(loop_state))
 
   @test_util.run_v1_only("b/124229375")
   def testLoopStateWithTensorArray(self):
@@ -3062,6 +3062,8 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+@test_util.run_all_without_tensor_float_32(
+    "Uses an LSTMCell, which calls matmul")
 class DropoutWrapperTest(test.TestCase, parameterized.TestCase):
 
   def _testDropoutWrapper(self,

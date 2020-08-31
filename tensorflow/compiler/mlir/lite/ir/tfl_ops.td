@@ -19,6 +19,7 @@ limitations under the License.
 #define TFL_OPS
 
 include "mlir/IR/OpBase.td"
+include "mlir/Interfaces/InferTypeOpInterface.td"
 include "mlir/Interfaces/LoopLikeInterface.td"
 include "mlir/Interfaces/SideEffectInterfaces.td"
 include "tensorflow/compiler/mlir/lite/ir/tfl_op_interfaces.td"
@@ -107,7 +108,11 @@ def OpaqueBytesAttr : ElementsAttrBase<
           ".getElementType().isInteger(8)">,
   ]>,
   "opaque bytes attribute"
- >;
+ > {
+  let storageType = [{ OpaqueElementsAttr }];
+  let returnType = [{ OpaqueElementsAttr }];
+  let convertFromStorage = "$_self";
+}
 
 //===----------------------------------------------------------------------===//
 // Derived shape attribute class.
@@ -943,7 +948,10 @@ def TFL_BatchMatMulOp : TFL_Op<"batch_matmul", [
    NoSideEffect,
    TFL_OperandHasAtleastRank<0, 2>,
    TFL_OperandHasAtleastRank<1, 2>,
-   SameOperandsAndResultElementType]> {
+   PredOpTrait<"x and output must have same element type",
+       TFL_TCresVTEtIsSameAsOp<0, 0>>,
+   PredOpTrait<"y and output must have same element type",
+       TFL_TCresVTEtIsSameAsOp<0, 1>>]> {
 
   let summary = "Batch Matrix Multiply Operator";
 
@@ -3021,7 +3029,8 @@ def TFL_TransposeOp : TFL_Op<"transpose", [
 def TFL_UnpackOp : TFL_Op<"unpack", [
     NoSideEffect,
     SameOperandsAndResultElementType,
-    SameOperandsAndResultsScale]> {
+    SameOperandsAndResultsScale,
+    DeclareOpInterfaceMethods<InferTypeOpInterface>]> {
   let summary = "Unpacks a tensor along a dimension into multiple tensors";
 
   let description = [{
@@ -3044,15 +3053,13 @@ def TFL_UnpackOp : TFL_Op<"unpack", [
   let arguments = (ins
     TFL_TensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$input,
 
-    I32Attr:$num,
+    Confined<I32Attr, [IntNonNegative]>:$num,
     I32Attr:$axis
   );
 
   let results = (outs
     TFL_VariadicTensorOf<[F32, I1, I8, UI8, I32, QI8, QUI8, I16, QI16]>:$outputs
   );
-
-  let verifier = [{ return Verify(*this); }];
 
   let hasOptions = 1;
 }
@@ -4296,7 +4303,8 @@ def TFL_WhileOp : Op<TFL_Dialect, "while", [
   let hasCanonicalizer = 1;
 }
 
-def TFL_CustomOp : Op<TFL_Dialect, "custom", [NoSideEffect]> {
+def TFL_CustomOp : Op<TFL_Dialect, "custom", [
+  NoSideEffect, NoQuantizableResult]> {
   let summary = "Custom op";
 
   let description = [{
@@ -4317,6 +4325,31 @@ def TFL_CustomOp : Op<TFL_Dialect, "custom", [NoSideEffect]> {
   let results = (outs Variadic<AnyTensor>:$output);
 
   let verifier = [{ return Verify(*this); }];
+}
+
+def TFL_CustomTfOp : Op<TFL_Dialect, "custom_tf", [
+  // Currently the custom ops have no side effect
+  // TODO(karimnosseir): Revisit if this needs updating.
+  NoSideEffect,
+  NoQuantizableResult,
+  SingleBlockImplicitTerminator<"YieldOp">]> {
+  let summary = "Wrapper Op for TF custom ops.";
+
+  let description = [{
+    A wrapper op around any Custom TF op. These includes ops defined using
+    custom_opdefs or linked which are not defined in TF dialect.
+    This Op just wraps the custom op inside a region.
+    Note #1, this Op will not include TF Lite custom ops defined using CustomOp.
+    Note #2, this op is just internal representation inside the converter and
+    are not exposed/exported when the model is exported to Flatbuffer.
+  }];
+
+  let arguments = (ins
+    Variadic<TFL_TensorOfOrNone<[AnyType]>>:$input
+  );
+  let results = (outs Variadic<AnyTensor>:$output);
+
+  let regions = (region SizedRegion<1>:$body);
 }
 
 #endif // TFL_OPS

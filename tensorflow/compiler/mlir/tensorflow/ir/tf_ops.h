@@ -23,6 +23,7 @@ limitations under the License.
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
 #include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
@@ -61,6 +62,12 @@ class TensorFlowDialect : public Dialect {
   // This attribute marks if a function is stateful.
   // Returns the string description of stateful attribute.
   static StringRef GetStatefulAttrName() { return "tf.signature.is_stateful"; }
+
+  // Returns true if the op can be duplicated during transformations.
+  static bool CanDuplicate(Operation *op);
+
+  // Returns true if the op can have side effects.
+  static bool CanHaveSideEffects(Operation *op);
 
   Attribute parseAttribute(DialectAsmParser &parser, Type type) const override;
 
@@ -109,10 +116,35 @@ class TensorFlowDialect : public Dialect {
         0, (addOperation(AbstractOperation::get<Args>(*this)), 0)...};
   }
 
+  using ConstantFoldHook = LogicalResult (*)(Operation *, ArrayRef<Attribute>,
+                                             SmallVectorImpl<OpFoldResult> &);
+  static void RegisterConstantFoldHook(ConstantFoldHook fn) {
+    constant_fold_hook_ = std::move(fn);
+  }
+
+  static LogicalResult constantFold(Operation *op, ArrayRef<Attribute> operands,
+                                    SmallVectorImpl<OpFoldResult> &results) {
+    if (constant_fold_hook_) return constant_fold_hook_(op, operands, results);
+    return failure();
+  }
+
+  using DecodeConstantHook = LogicalResult (*)(OpaqueElementsAttr input,
+                                               ElementsAttr &output);
+  static void RegisterDecodeConstantHook(DecodeConstantHook fn) {
+    decode_constant_hook_ = std::move(fn);
+  }
+  static LogicalResult decode(OpaqueElementsAttr input, ElementsAttr &output) {
+    if (decode_constant_hook_) return decode_constant_hook_(input, output);
+    return failure();
+  }
+
  private:
   // Hook functions which may add additional operations to the dialect.
   // These are invoked at construction time.
   static std::vector<AdditionalOpFunction> *additional_operation_hooks_;
+
+  static ConstantFoldHook constant_fold_hook_;
+  static DecodeConstantHook decode_constant_hook_;
 };
 
 }  // namespace TF

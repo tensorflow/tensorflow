@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tflite_with_xnnpack_optional.h"
 
 namespace tflite {
 namespace ops {
@@ -33,7 +34,8 @@ TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 namespace builtin {
 
 BuiltinOpResolver::BuiltinOpResolver() {
-  AddBuiltin(BuiltinOperator_ABS, Register_ABS());
+  AddBuiltin(BuiltinOperator_ABS, Register_ABS(), /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
              /* max_version = */ 2);
@@ -89,8 +91,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version = */ 1,
              /* max_version = */ 3);
   AddBuiltin(BuiltinOperator_ADD, Register_ADD(),
-             /* min_version = */ 1,
-             /* max_version = */ 2);
+             /* min_version */ 1,
+             /* max_version */ 4);
   AddBuiltin(BuiltinOperator_SPACE_TO_BATCH_ND, Register_SPACE_TO_BATCH_ND(),
              /* min_version = */ 1,
              /* max_version = */ 3);
@@ -131,7 +133,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_DEPTH_TO_SPACE, Register_DEPTH_TO_SPACE());
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER(),
              /* min_version = */ 1,
-             /* max_version = */ 3);
+             /* max_version = */ 4);
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE(),
              /* min_version = */ 1,
              /* max_version = */ 4);
@@ -143,7 +145,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SUB, Register_SUB(),
              /* min_version = */ 1,
-             /* max_version = */ 4);
+             /* max_version = */ 5);
   AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(),
              /* min_version = */ 1,
              /* max_version = */ 4);
@@ -292,7 +294,6 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_BATCH_MATMUL, Register_BATCH_MATMUL(),
              /* min_version = */ 1,
              /* max_version = */ 2);
-  AddBuiltin(BuiltinOperator_BROADCAST_TO, Register_BROADCAST_TO());
   AddCustom("NumericVerify", tflite::ops::custom::Register_NUMERIC_VERIFY());
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
@@ -301,6 +302,21 @@ BuiltinOpResolver::BuiltinOpResolver() {
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
+}
+
+OpResolver::TfLiteDelegatePtrVector BuiltinOpResolver::GetDelegates(
+    int num_threads) const {
+  OpResolver::TfLiteDelegatePtrVector delegates;
+  auto xnnpack_delegate = tflite::MaybeCreateXNNPACKDelegate(num_threads);
+  if (xnnpack_delegate != nullptr) {
+    delegates.push_back(std::move(xnnpack_delegate));
+  }
+  return delegates;
+}
+
+OpResolver::TfLiteDelegatePtrVector
+BuiltinOpResolverWithoutDefaultDelegates::GetDelegates(int num_threads) const {
+  return OpResolver::TfLiteDelegatePtrVector();
 }
 
 }  // namespace builtin

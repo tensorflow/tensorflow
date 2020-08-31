@@ -28,6 +28,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -415,8 +416,11 @@ sharding = gen_xla_ops.xla_sharding
 
 @ops.RegisterGradient("XlaSharding")
 def _sharding_grad(op, grad):
-  del op  # Unused
-  return [grad]
+  grad_sharding = gen_xla_ops.xla_sharding(grad)
+  # pylint: disable=protected-access
+  grad_sharding.op._set_attr(
+      "_XlaSharding", attr_value_pb2.AttrValue(s=op.get_attr("_XlaSharding")))
+  return [grad_sharding]
 
 
 spmd_full_to_shard_shape = gen_xla_ops.xla_spmd_full_to_shard_shape

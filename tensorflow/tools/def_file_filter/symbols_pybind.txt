@@ -20,6 +20,7 @@ tensorflow::swig::AssertSameStructureForData
 tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
+tensorflow::swig::GetRegisteredPyObject
 
 [util_port] # util_port
 tensorflow::IsGoogleCudaEnabled
@@ -335,6 +336,15 @@ tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
 
+[profiler_server_impl] # profiler
+tensorflow::profiler::ProfilerServer::StartProfilerServer
+tensorflow::profiler::ProfilerServer::~ProfilerServer
+
+[profiler_client_impl] # profiler
+tensorflow::profiler::ProfileGrpc
+tensorflow::profiler::NewSessionGrpc
+tensorflow::profiler::MonitorGrpc
+
 [status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
 xla::status_macros::MakeErrorStream::Impl::~Impl
@@ -369,6 +379,7 @@ tensorflow::grappler::CostAnalyzer::GenerateReport
 [flags] # tfe
 tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
+tensorflow::GetXlaDeviceFlags
 
 [tf32_utils] # tf32
 tensorflow::allow_tf32_execution

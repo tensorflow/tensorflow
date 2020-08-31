@@ -20,6 +20,7 @@ limitations under the License.
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstdlib>
 
 #ifdef __ANDROID__
@@ -64,8 +65,21 @@ void* LoadFunction(void* handle, const char* name, bool optional) {
 
 #ifndef __ANDROID__
 // Add /dev/shm implementation of shared memory for non-Android platforms
-int ASharedMemory_create(const char* name, size_t size) {
-  int fd = shm_open(name, O_RDWR | O_CREAT, 0644);
+int ASharedMemory_create(const char* /* name */, size_t size) {
+  // Each call to ASharedMemory_create produces a unique memory space, hence
+  // name should not be used to create the shared memory file, otherwise
+  // two calls to create memory regions using the same 'name', will collide.
+  char shm_name_buffer[L_tmpnam];
+  if (tmpnam(shm_name_buffer) == nullptr) {
+    return -1;
+  }
+
+  // tmpnam will produce a string containing with slashes, but shm_open
+  // won't like that.
+  std::string shm_region_name = std::string(shm_name_buffer);
+  std::replace(shm_region_name.begin(), shm_region_name.end(), '/', '-');
+
+  int fd = shm_open(shm_region_name.c_str(), O_RDWR | O_CREAT, 0644);
   if (fd < 0) {
     return fd;
   }

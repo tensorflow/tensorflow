@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "mlir/IR/Attributes.h"  // from @llvm-project
-#include "mlir/IR/Identifier.h"  // from @llvm-project
-#include "mlir/IR/MLIRContext.h"  // from @llvm-project
-#include "mlir/IR/OperationSupport.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Interfaces/InferTypeOpInterface.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"
+#include "mlir/IR/Identifier.h"
+#include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/InferTypeOpInterface.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
-namespace hlo {
+namespace mhlo {
 namespace {
 
 struct InferReturnTypeComponentsPattern : public RewritePattern {
@@ -92,9 +92,10 @@ struct TestInferShapedTypeMethodsPass
 };
 
 }  // namespace
-}  // namespace hlo
-}  // namespace mlir
 
-static mlir::PassRegistration<mlir::hlo::TestInferShapedTypeMethodsPass> pass(
-    "mhlo-test-infer-shaped-type-methods",
-    "Uses test ops to invoke InferShapedTypeOpInterface methods");
+std::unique_ptr<FunctionPass> createTestInferShapedTypeMethodsPass() {
+  return std::make_unique<TestInferShapedTypeMethodsPass>();
+}
+
+}  // namespace mhlo
+}  // namespace mlir

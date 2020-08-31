@@ -43,7 +43,7 @@ port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
   auto filename = port::Env::Default()->FormatLibraryFileName(name, version);
   void* dso_handle;
   port::Status status =
-      port::Env::Default()->LoadLibrary(filename.c_str(), &dso_handle);
+      port::Env::Default()->LoadDynamicLibrary(filename.c_str(), &dso_handle);
   if (status.ok()) {
     LOG(INFO) << "Successfully opened dynamic library " << filename;
     return dso_handle;
@@ -136,6 +136,10 @@ port::StatusOr<void*> GetRocrandDsoHandle() {
   return GetDsoHandle("rocrand", "");
 }
 
+port::StatusOr<void*> GetHipsparseDsoHandle() {
+  return GetDsoHandle("hipsparse", "");
+}
+
 port::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("hip_hcc", ""); }
 
 }  // namespace DsoLoader
@@ -203,6 +207,11 @@ port::StatusOr<void*> GetRocfftDsoHandle() {
 
 port::StatusOr<void*> GetRocrandDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocrandDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetHipsparseDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());
   return *result;
 }
 

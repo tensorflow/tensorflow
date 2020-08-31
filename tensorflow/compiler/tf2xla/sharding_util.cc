@@ -80,6 +80,30 @@ xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromDevice(
   return ParseShardingFromDevice(device_name, num_cores_per_replica, sharding);
 }
 
+xla::StatusOr<absl::optional<xla::OpSharding>> ParseShardingFromEdgeSource(
+    const Edge& edge, int num_cores_per_replica) {
+  if (edge.src() == nullptr) {
+    return tensorflow::errors::InvalidArgument(
+        "Null src for ParseShardingFromEdgeSource edge=", edge.DebugString());
+  }
+  TF_ASSIGN_OR_RETURN(
+      absl::optional<xla::OpSharding> sharding,
+      ParseShardingFromDevice(*edge.src(), num_cores_per_replica));
+  if (sharding.has_value() &&
+      sharding.value().type() == xla::OpSharding::TUPLE) {
+    if (edge.src_output() < 0 ||
+        edge.src_output() >= sharding.value().tuple_shardings_size()) {
+      return tensorflow::errors::InvalidArgument(
+          "Tuple index out of bound: edge=", edge.DebugString(),
+          " sharding=", sharding->DebugString());
+    }
+    absl::optional<xla::OpSharding> subsharding =
+        sharding.value().tuple_shardings(edge.src_output());
+    return subsharding;
+  }
+  return sharding;
+}
+
 void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
   string device_name = src.assigned_device_name();
   if (device_name.empty()) {

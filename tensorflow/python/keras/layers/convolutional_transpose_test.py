@@ -207,3 +207,6 @@ class Conv3DTransposeTest(keras_parameterized.TestCase):
             },
             input_shape=(None, 3, None, None, None),
             input_data=input_data)
+
+if __name__ == '__main__':
+  test.main()

@@ -21,50 +21,35 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
+GPUOperation CreateReLU(const OperationDef& definition,
+                        const ReLUAttributes& attr) {
+  GPUOperation op(definition);
+  op.elementwise_ = true;
 
-ReLU::ReLU(const OperationDef& definition, const ReLUAttributes& attr,
-           CalculationsPrecision scalar_precision)
-    : ElementwiseOperation(definition) {
   std::string min_func;
   if (attr.alpha != 0.0f) {
     min_func = "min(in_out_value * args.alpha, (FLT)(0.0f))";
     if (definition.precision == CalculationsPrecision::F32) {
-      args_.AddFloat("alpha", attr.alpha);
+      op.args_.AddFloat("alpha", attr.alpha);
     } else {
-      args_.AddHalf("alpha", half(attr.alpha));
+      op.args_.AddHalf("alpha", half(attr.alpha));
     }
   } else {
     min_func = "(FLT)(0.0f)";
   }
   if (attr.clip != 0.0f) {
     if (definition.precision == CalculationsPrecision::F32) {
-      args_.AddFloat("clip", attr.clip);
+      op.args_.AddFloat("clip", attr.clip);
     } else {
-      args_.AddHalf("clip", half(attr.clip));
+      op.args_.AddHalf("clip", half(attr.clip));
     }
-    code_ = absl::StrCat("in_out_value = clamp(in_out_value, " + min_func +
-                         ", args.clip);");
+    op.code_ = absl::StrCat("in_out_value = clamp(in_out_value, " + min_func +
+                            ", args.clip);");
   } else {
-    code_ = absl::StrCat("in_out_value = max(in_out_value, ", min_func, ");");
+    op.code_ =
+        absl::StrCat("in_out_value = max(in_out_value, ", min_func, ");");
   }
-}
-
-ReLU::ReLU(ReLU&& operation) : ElementwiseOperation(std::move(operation)) {}
-
-ReLU& ReLU::operator=(ReLU&& operation) {
-  if (this != &operation) {
-    ElementwiseOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-ReLU CreateReLU(const CreationContext& creation_context,
-                const OperationDef& definition, const ReLUAttributes& attr) {
-  const auto scalar_precision = creation_context.device->IsPowerVR()
-                                    ? CalculationsPrecision::F32
-                                    : definition.precision;
-  ReLU operation(definition, attr, scalar_precision);
-  return operation;
+  return op;
 }
 
 }  // namespace cl

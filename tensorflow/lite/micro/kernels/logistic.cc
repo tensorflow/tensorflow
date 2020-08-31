@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -68,12 +69,7 @@ TfLiteStatus CalculateArithmeticOpData(TfLiteContext* context, TfLiteNode* node,
 
 void* LogisticInit(TfLiteContext* context, const char* buffer, size_t length) {
   TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
-  void* data = nullptr;
-  if (context->AllocatePersistentBuffer(context, sizeof(OpData), &data) ==
-      kTfLiteError) {
-    return nullptr;
-  }
-  return data;
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
 TfLiteStatus LogisticPrepare(TfLiteContext* context, TfLiteNode* node) {
@@ -84,8 +80,10 @@ TfLiteStatus LogisticPrepare(TfLiteContext* context, TfLiteNode* node) {
 }
 
 TfLiteStatus LogisticEval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   TFLITE_DCHECK(node->user_data != nullptr);
   OpData* data = static_cast<OpData*>(node->user_data);
@@ -93,9 +91,10 @@ TfLiteStatus LogisticEval(TfLiteContext* context, TfLiteNode* node) {
   if (input->type == kTfLiteFloat32) {
     switch (output->type) {
       case kTfLiteFloat32: {
-        reference_ops::Logistic(
-            GetTensorShape(input), GetTensorData<float>(input),
-            GetTensorShape(output), GetTensorData<float>(output));
+        reference_ops::Logistic(tflite::micro::GetTensorShape(input),
+                                tflite::micro::GetTensorData<float>(input),
+                                tflite::micro::GetTensorShape(output),
+                                tflite::micro::GetTensorData<float>(output));
         return kTfLiteOk;
       }
       default:
@@ -110,8 +109,9 @@ TfLiteStatus LogisticEval(TfLiteContext* context, TfLiteNode* node) {
         reference_integer_ops::Logistic(
             data->input_zero_point, data->input_range_radius,
             data->input_multiplier, data->input_left_shift,
-            NumElements(input->dims), GetTensorData<int8_t>(input),
-            GetTensorData<int8_t>(output));
+            NumElements(input->dims),
+            tflite::micro::GetTensorData<int8_t>(input),
+            tflite::micro::GetTensorData<int8_t>(output));
         return kTfLiteOk;
       }
       default:

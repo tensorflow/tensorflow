@@ -110,18 +110,6 @@ void DescribeArbitraryRankOutput(const std::vector<int>& dims, DataType dtype,
   }
 }
 
-// Returns an OpInfo for a BatchMatMul
-OpContext DescribeBatchMatMul(const std::vector<int>& dims_a,
-                              const std::vector<int>& dims_b) {
-  OpContext op_context;
-  SetCpuDevice(&op_context.op_info);
-  op_context.op_info.set_op("BatchMatMul");
-
-  DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_context.op_info);
-  DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
-  return op_context;
-}
-
 // Returns an OpInfo for a SparseTensorDenseMatMul
 OpContext DescribeSparseTensorDenseMatMul(const int nnz_a,
                                           const std::vector<int>& dims_b,
@@ -515,6 +503,8 @@ OpContext DescribeFusedBatchNorm(const bool is_training, const bool is_grad,
 
 class OpLevelCostEstimatorTest : public ::testing::Test {
  protected:
+  using BatchMatMulDimensions = OpLevelCostEstimator::BatchMatMulDimensions;
+
   Costs PredictCosts(const OpContext& op_context) const {
     return estimator_.PredictCosts(op_context);
   }
@@ -529,24 +519,11 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
     return estimator_.CountBatchMatMulOperations(op_info, found_unknown_shapes);
   }
 
-  int64 CountBatchMatMulDimProduct(const OpInfo& op_info,
+  int64 CountBatchMatMulOperations(const OpInfo& op_info,
+                                   BatchMatMulDimensions* batch_mat_mul,
                                    bool* found_unknown_shapes) const {
-    OpLevelCostEstimator::BatchMatMulDimensions batch_mat_mul;
-
-    batch_mat_mul.matmul_dims.n = 0;
-    batch_mat_mul.matmul_dims.m = 0;
-    batch_mat_mul.matmul_dims.k = 0;
-
-    estimator_.CountBatchMatMulOperations(op_info, &batch_mat_mul,
-                                          found_unknown_shapes);
-    int dimension_product = 1;
-    for (auto dim : batch_mat_mul.batch_dims) dimension_product *= dim;
-
-    dimension_product *= batch_mat_mul.matmul_dims.n;
-    dimension_product *= batch_mat_mul.matmul_dims.m;
-    dimension_product *= batch_mat_mul.matmul_dims.k;
-
-    return dimension_product;
+    return estimator_.CountBatchMatMulOperations(op_info, batch_mat_mul,
+                                                 found_unknown_shapes);
   }
 
   void SetComputeMemoryOverlap(bool value) {
@@ -600,6 +577,49 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
   OpLevelCostEstimator estimator_;
 };
 
+class OpLevelBatchMatMulCostEstimatorTest
+    : public OpLevelCostEstimatorTest,
+      public ::testing::WithParamInterface<const char*> {
+ protected:
+  // Returns an OpInfo for a BatchMatMul
+  OpContext DescribeBatchMatMul(const std::vector<int>& dims_a,
+                                const std::vector<int>& dims_b) {
+    OpContext op_context;
+    SetCpuDevice(&op_context.op_info);
+    op_context.op_info.set_op(GetParam());
+
+    DescribeArbitraryRankInput(dims_a, DT_FLOAT, &op_context.op_info);
+    DescribeArbitraryRankInput(dims_b, DT_FLOAT, &op_context.op_info);
+    return op_context;
+  }
+
+  int64 CountBatchMatMulOperations(const OpInfo& op_info,
+                                   bool* found_unknown_shapes) const {
+    return OpLevelCostEstimatorTest::CountBatchMatMulOperations(
+        op_info, found_unknown_shapes);
+  }
+
+  int64 CountBatchMatMulDimProduct(const OpInfo& op_info,
+                                   bool* found_unknown_shapes) const {
+    BatchMatMulDimensions batch_mat_mul;
+
+    batch_mat_mul.matmul_dims.n = 0;
+    batch_mat_mul.matmul_dims.m = 0;
+    batch_mat_mul.matmul_dims.k = 0;
+
+    OpLevelCostEstimatorTest::CountBatchMatMulOperations(
+        op_info, &batch_mat_mul, found_unknown_shapes);
+    int dimension_product = 1;
+    for (auto dim : batch_mat_mul.batch_dims) dimension_product *= dim;
+
+    dimension_product *= batch_mat_mul.matmul_dims.n;
+    dimension_product *= batch_mat_mul.matmul_dims.m;
+    dimension_product *= batch_mat_mul.matmul_dims.k;
+
+    return dimension_product;
+  }
+};
+
 TEST_F(OpLevelCostEstimatorTest, TestPersistentOpCosts) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);
@@ -621,22 +641,26 @@ TEST_F(OpLevelCostEstimatorTest, TestPersistentOpCosts) {
 }
 
 TEST_F(OpLevelCostEstimatorTest, TestGatherCosts) {
-  OpContext op_context;
-  SetCpuDevice(&op_context.op_info);
-  op_context.op_info.set_op("Gather");
+  std::vector<std::string> gather_ops = {"Gather", "GatherNd", "GatherV2"};
 
-  // Huge first input shouldn't affect Gather execution and memory costs.
-  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
-  DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
-  DescribeArbitraryRankOutput({16, 10}, DT_FLOAT, &op_context.op_info);
+  for (const auto& op : gather_ops) {
+    OpContext op_context;
+    SetCpuDevice(&op_context.op_info);
+    op_context.op_info.set_op(op);
 
-  auto cost = estimator_.PredictCosts(op_context);
-  EXPECT_EQ(Costs::Duration(130), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(16), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(146), cost.execution_time);
-  EXPECT_EQ(1, cost.num_ops_total);
-  EXPECT_FALSE(cost.inaccurate);
-  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+    // Huge first input shouldn't affect Gather execution and memory costs.
+    DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+    DescribeArbitraryRankInput({16}, DT_INT64, &op_context.op_info);
+    DescribeArbitraryRankOutput({16, 10}, DT_FLOAT, &op_context.op_info);
+
+    auto cost = estimator_.PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(130), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(16), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(146), cost.execution_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
 }
 
 TEST_F(OpLevelCostEstimatorTest, TestGatherCostsWithoutOutput) {
@@ -664,6 +688,27 @@ TEST_F(OpLevelCostEstimatorTest, TestSliceCosts) {
 
   // Huge first input shouldn't affect Slice execution and memory costs.
   DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
+  DescribeArbitraryRankOutput({10, 10}, DT_FLOAT, &op_context.op_info);
+
+  auto cost = estimator_.PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(81), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(10), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(91), cost.execution_time);
+  EXPECT_EQ(1, cost.num_ops_total);
+  EXPECT_FALSE(cost.inaccurate);
+  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+}
+
+TEST_F(OpLevelCostEstimatorTest, TestStridedSliceCosts) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("StridedSlice");
+
+  // Huge first input shouldn't affect StridedSlice execution and memory costs.
+  DescribeArbitraryRankInput({10000000, 10}, DT_FLOAT, &op_context.op_info);
+  DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
   DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
   DescribeArbitraryRankInput({2}, DT_INT64, &op_context.op_info);
   DescribeArbitraryRankOutput({10, 10}, DT_FLOAT, &op_context.op_info);
@@ -746,6 +791,39 @@ TEST_F(OpLevelCostEstimatorTest, Conv2DExecutionTime) {
   EXPECT_EQ(1, cost.num_ops_total);
   EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+}
+
+TEST_F(OpLevelCostEstimatorTest, InvalidConv2DConfig) {
+  // Convolution ops.
+  const std::vector<const std::string> conv_ops = {
+      "Conv2D",
+      "Conv2DBackpropFilter",
+      "Conv2DBackpropInput",
+      "DepthwiseConv2dNative",
+      "DepthwiseConv2dNativeBackpropFilter",
+      "DepthwiseConv2dNativeBackpropInput",
+  };
+  // A valid Conv2D config.
+  const std::vector<int> valid_conv_config = {16, 19, 19, 48, 48, 5, 5, 256};
+  for (const auto& op : conv_ops) {
+    // Test with setting one value in conv config to zero.
+    // PredictCosts() should return zero costs.
+    for (int i = 0; i < valid_conv_config.size(); ++i) {
+      std::vector<int> conv_config(valid_conv_config);
+      conv_config[i] = 0;
+      auto op_context = DescribeConvolution(
+          conv_config[0], conv_config[1], conv_config[2], conv_config[3],
+          conv_config[4], conv_config[5], conv_config[6], conv_config[7]);
+      op_context.op_info.set_op(op);
+      auto cost = PredictCosts(op_context);
+      EXPECT_EQ(Costs::Duration(0), cost.memory_time);
+      EXPECT_EQ(Costs::Duration(0), cost.compute_time);
+      EXPECT_EQ(Costs::Duration(0), cost.execution_time);
+      EXPECT_EQ(1, cost.num_ops_total);
+      EXPECT_TRUE(cost.inaccurate);
+      EXPECT_EQ(1, cost.num_ops_with_unknown_shapes);
+    }
+  }
 }
 
 TEST_F(OpLevelCostEstimatorTest, DepthwiseConv2dNativeExecutionTime) {
@@ -909,21 +987,88 @@ TEST_F(OpLevelCostEstimatorTest, ModExecutionTime) {
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
 }
 
-TEST_F(OpLevelCostEstimatorTest, ReluExecutionTime) {
-  auto cost = PredictCosts(DescribeUnaryOp("Relu", 1000));
-  EXPECT_EQ(Costs::Duration(800), cost.memory_time);
-  EXPECT_EQ(Costs::Duration(100), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(900), cost.execution_time);
-  EXPECT_EQ(1, cost.num_ops_total);
+TEST_F(OpLevelCostEstimatorTest, SquaredDifferenceExecutionTime) {
+  auto cost = PredictCosts(DescribeBinaryOp("SquaredDifference", 1000, 2));
+  EXPECT_EQ(cost.memory_time, Costs::Duration(3600));
+  EXPECT_EQ(cost.compute_time, Costs::Duration(800));
+  EXPECT_EQ(cost.execution_time, Costs::Duration(4400));
+  EXPECT_EQ(cost.num_ops_total, 1);
   EXPECT_FALSE(cost.inaccurate);
-  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
 }
 
-TEST_F(OpLevelCostEstimatorTest, CastExecutionTime) {
-  auto cost = PredictCosts(DescribeUnaryOp("Cast", 1000));
-  EXPECT_EQ(Costs::Duration(800), cost.memory_time);
+TEST_F(OpLevelCostEstimatorTest, UnaryOpExecutionTime) {
+  std::vector<std::pair<std::string, int>> unary_ops = {
+      {"All", 1},      {"ArgMax", 1}, {"Cast", 1},  {"Max", 1},
+      {"Min", 1},      {"Prod", 1},   {"Relu", 1},  {"Relu6", 1},
+      {"Softmax", 43}, {"Sum", 1},    {"TopKV2", 1}};
+
+  const int kTensorSize = 1000;
+  for (auto unary_op : unary_ops) {
+    OpContext op_context = DescribeUnaryOp(unary_op.first, kTensorSize);
+
+    const int kExpectedMemoryTime = 800;
+    int expected_compute_time = std::ceil(
+        unary_op.second * kTensorSize /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time))
+        << unary_op.first;
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(expected_compute_time + kExpectedMemoryTime));
+    EXPECT_EQ(cost.num_ops_total, 1);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+    EXPECT_FALSE(cost.inaccurate);
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, BinaryOpExecutionTime) {
+  std::vector<std::pair<std::string, int>> binary_ops = {
+      {"Select", 1},
+      {"SelectV2", 1},
+      {"SquaredDifference", 2},
+      {"Where", 1},
+  };
+
+  const int kTensorSize1 = 1000;
+  const int kTensorSize2 = 2;
+  for (auto binary_op : binary_ops) {
+    OpContext op_context =
+        DescribeBinaryOp(binary_op.first, kTensorSize1, kTensorSize2);
+
+    const int kExpectedMemoryTime = 3600;
+    int expected_compute_time = std::ceil(
+        binary_op.second * kTensorSize1 * kTensorSize2 * 2 /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    auto cost = PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(kExpectedMemoryTime), cost.memory_time)
+        << binary_op.first;
+    EXPECT_EQ(Costs::Duration(expected_compute_time), cost.compute_time)
+        << binary_op.first;
+    EXPECT_EQ(Costs::Duration(expected_compute_time + kExpectedMemoryTime),
+              cost.execution_time)
+        << binary_op.first;
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, BroadcastAddExecutionTime) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("Add");
+
+  DescribeTensor1D(100, op_context.op_info.add_inputs());
+  DescribeTensor4D(1, 10, 1, 1, op_context.op_info.add_inputs());
+
+  auto cost = PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(44), cost.memory_time);
   EXPECT_EQ(Costs::Duration(100), cost.compute_time);
-  EXPECT_EQ(Costs::Duration(900), cost.execution_time);
+  EXPECT_EQ(Costs::Duration(144), cost.execution_time);
   EXPECT_EQ(1, cost.num_ops_total);
   EXPECT_FALSE(cost.inaccurate);
   EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
@@ -964,7 +1109,7 @@ TEST_F(OpLevelCostEstimatorTest, UnknownOrPartialShape) {
   }
 }
 
-TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
+TEST_P(OpLevelBatchMatMulCostEstimatorTest, TestBatchMatMul) {
   {
     auto cost = PredictCosts(DescribeBatchMatMul({}, {}));
     EXPECT_EQ(1, cost.num_ops_total);
@@ -1042,6 +1187,8 @@ TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
                                     &batch_matmul_inaccurate);
   EXPECT_EQ(prod, 12);
 }
+INSTANTIATE_TEST_SUITE_P(TestBatchMatMul, OpLevelBatchMatMulCostEstimatorTest,
+                         ::testing::Values("BatchMatMul", "BatchMatMulV2"));
 
 TEST_F(OpLevelCostEstimatorTest, SparseTensorDenseMatMul) {
   // Unknown shape cases
@@ -1100,9 +1247,7 @@ void ExpectTensorShape(const std::vector<int64>& expected,
   TensorShape tensor_shape_expected(expected);
   TensorShape tensor_shape(tensor_shape_proto);
 
-  LOG(INFO) << "Expected: " << tensor_shape_expected.DebugString();
-  LOG(INFO) << "TensorShape: " << tensor_shape.DebugString();
-  EXPECT_TRUE(tensor_shape_expected == tensor_shape);
+  EXPECT_EQ(tensor_shape_expected, tensor_shape);
 }
 
 TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
@@ -1788,6 +1933,209 @@ TEST_F(OpLevelCostEstimatorTest, PredictResourceVariableOps) {
     EXPECT_EQ(Costs::Duration(100), cost.compute_time);
     EXPECT_EQ(Costs::Duration(400), cost.execution_time);
     EXPECT_FALSE(cost.inaccurate);
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, AddNExecutionTime) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("AddN");
+
+  DescribeTensor4D(1, 10, 10, 10, op_context.op_info.add_inputs());
+  DescribeTensor4D(1, 10, 10, 10, op_context.op_info.add_inputs());
+  DescribeTensor4D(1, 10, 10, 10, op_context.op_info.add_inputs());
+
+  auto cost = PredictCosts(op_context);
+  EXPECT_EQ(Costs::Duration(1200), cost.memory_time);
+  EXPECT_EQ(Costs::Duration(200), cost.compute_time);
+  EXPECT_EQ(Costs::Duration(1400), cost.execution_time);
+  EXPECT_EQ(1, cost.num_ops_total);
+  EXPECT_FALSE(cost.inaccurate);
+  EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+}
+
+TEST_F(OpLevelCostEstimatorTest, IdentityOpExecutionTime) {
+  std::vector<std::string> identity_ops = {
+      "_Recv",         "_Send",        "BitCast",         "Identity",
+      "Enter",         "Exit",         "IdentityN",       "Merge",
+      "NextIteration", "Placeholder",  "PreventGradient", "RefIdentity",
+      "Reshape",       "StopGradient", "Switch"};
+
+  const int kTensorSize = 1000;
+  for (auto identity_op : identity_ops) {
+    OpContext op_context = DescribeUnaryOp(identity_op, kTensorSize);
+
+    const int kExpectedMemoryTime = 0;
+    const int kExpectedComputeTime = 1;
+
+    auto cost = PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(kExpectedMemoryTime), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(kExpectedComputeTime), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(kExpectedComputeTime + kExpectedMemoryTime),
+              cost.execution_time);
+    EXPECT_EQ(cost.max_memory, kTensorSize * 4);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+}
+
+TEST_F(OpLevelCostEstimatorTest, PureMemoryOpExecutionTime) {
+  std::vector<std::string> reshape_ops = {
+      "ConcatV2",     "DataFormatVecPermute",
+      "DepthToSpace", "ExpandDims",
+      "Fill",         "OneHot",
+      "Pack",         "Range",
+      "SpaceToDepth", "Split",
+      "Squeeze",      "Transpose",
+      "Tile",         "Unpack"};
+
+  const int kTensorSize = 1000;
+  for (auto reshape_op : reshape_ops) {
+    OpContext op_context = DescribeUnaryOp(reshape_op, kTensorSize);
+
+    const int kExpectedMemoryTime = 800;
+    const int kExpectedComputeTime = 0;
+
+    auto cost = PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(kExpectedMemoryTime), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(kExpectedComputeTime), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(kExpectedComputeTime + kExpectedMemoryTime),
+              cost.execution_time);
+    EXPECT_EQ(cost.max_memory, kTensorSize * 4);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+}
+TEST_F(OpLevelCostEstimatorTest, ResizeBilinearExecutionTime) {
+  const int kImageDim = 255;
+  const int kChannelSize = 10;
+  const int kComputeLerpCost = 9;
+  {
+    // Test with size 0 output.
+    OpContext op_context;
+    SetCpuDevice(&op_context.op_info);
+    op_context.op_info.set_op("ResizeBilinear");
+
+    DescribeTensor4D(1, kImageDim, kImageDim, kChannelSize,
+                     op_context.op_info.add_inputs());
+    const int kExpectedMemoryTime = kImageDim * kImageDim * 4;
+    DescribeTensor4D(0, 0, 0, 0, op_context.op_info.add_outputs());
+
+    // As the half_pixel_centers attr was not set, cost should be inaccurate
+    // with 0 compute time.
+    auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(0));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_TRUE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+
+    AttrValue half_pixel_centers;
+    half_pixel_centers.set_b(false);
+    (*op_context.op_info.mutable_attr())["half_pixel_centers"] =
+        half_pixel_centers;
+    cost = PredictCosts(op_context);
+    // Compute time depends only on output size, so compute time is 0.
+    EXPECT_EQ(cost.compute_time, Costs::Duration(0));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
+
+  // Test with non-zero output size.
+  const int kOutputImageDim = 100;
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  op_context.op_info.set_op("ResizeBilinear");
+  DescribeTensor4D(1, kImageDim, kImageDim, kChannelSize,
+                   op_context.op_info.add_inputs());
+  DescribeTensor4D(1, kOutputImageDim, kOutputImageDim, kChannelSize,
+                   op_context.op_info.add_outputs());
+  const int kExpectedMemoryTime =
+      (kImageDim * kImageDim + kOutputImageDim * kOutputImageDim) * 4;
+
+  {
+    // Cost of calculating weights without using half_pixel_centers.
+    AttrValue half_pixel_centers;
+    half_pixel_centers.set_b(false);
+    (*op_context.op_info.mutable_attr())["half_pixel_centers"] =
+        half_pixel_centers;
+    const int kInterpWeightCost = 10;
+    const int num_ops =
+        kInterpWeightCost * (kOutputImageDim * 2) +
+        kComputeLerpCost * (kOutputImageDim * kOutputImageDim * kChannelSize);
+    const int expected_compute_time = std::ceil(
+        num_ops /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    const auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(kExpectedMemoryTime + expected_compute_time));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
+
+  {
+    // Cost of calculating weights using half_pixel_centers.
+    AttrValue half_pixel_centers;
+    half_pixel_centers.set_b(true);
+    (*op_context.op_info.mutable_attr())["half_pixel_centers"] =
+        half_pixel_centers;
+    const int kInterpWeightCost = 12;
+    const int num_ops =
+        kInterpWeightCost * (kOutputImageDim * 2) +
+        kComputeLerpCost * (kOutputImageDim * kOutputImageDim * kChannelSize);
+    const int expected_compute_time = std::ceil(
+        num_ops /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    const auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(kExpectedMemoryTime));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(kExpectedMemoryTime + expected_compute_time));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
+  }
+
+  {
+    // Cost with very large tensor.
+    op_context.op_info.clear_outputs();
+    // Number of elements in tensor exceeds 2^32.
+    constexpr int64 kLargeOutputImageDim = 40000;
+    DescribeTensor4D(1, kLargeOutputImageDim, kLargeOutputImageDim,
+                     kChannelSize, op_context.op_info.add_outputs());
+    const int64 kInterpWeightCost = 12;
+    // Using half_pixel_centers.
+    AttrValue half_pixel_centers;
+    half_pixel_centers.set_b(true);
+    (*op_context.op_info.mutable_attr())["half_pixel_centers"] =
+        half_pixel_centers;
+
+    const int64 num_ops =
+        kInterpWeightCost * (kLargeOutputImageDim * 2) +
+        kComputeLerpCost *
+            (kLargeOutputImageDim * kLargeOutputImageDim * kChannelSize);
+    const int64 expected_compute_time = std::ceil(
+        num_ops /
+        estimator_.GetDeviceInfo(op_context.op_info.device()).gigaops);
+
+    const int64 expected_memory_time =
+        (kImageDim * kImageDim + kLargeOutputImageDim * kLargeOutputImageDim) *
+        4;
+
+    const auto cost = PredictCosts(op_context);
+    EXPECT_EQ(cost.compute_time, Costs::Duration(expected_compute_time));
+    EXPECT_EQ(cost.memory_time, Costs::Duration(expected_memory_time));
+    EXPECT_EQ(cost.execution_time,
+              Costs::Duration(expected_memory_time + expected_compute_time));
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(cost.num_ops_with_unknown_shapes, 0);
   }
 }
 

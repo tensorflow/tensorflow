@@ -15,6 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
 
+#include <memory>
+
+#include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/add_quant_adjustments.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/fuse_add_to_conv.h"
 #include "tensorflow/lite/delegates/gpu/common/transformations/fuse_mul_to_conv.h"

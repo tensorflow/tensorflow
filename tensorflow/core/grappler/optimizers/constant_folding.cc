@@ -187,13 +187,19 @@ float QuantizedTypeMaxAsFloat(DataType data_type) {
 }  // namespace
 
 ConstantFolding::ConstantFolding(RewriterConfig::Toggle opt_level,
-                                 DeviceBase* cpu_device)
-    : opt_level_(opt_level), cpu_device_(cpu_device) {
+                                 DeviceBase* cpu_device,
+                                 bool disable_compressed_tensor_optimization)
+    : opt_level_(opt_level),
+      cpu_device_(cpu_device),
+      disable_compressed_tensor_optimization_(
+          disable_compressed_tensor_optimization) {
   resource_mgr_.reset(new ResourceMgr());
 }
 
-ConstantFolding::ConstantFolding(DeviceBase* cpu_device)
-    : ConstantFolding(RewriterConfig::ON, cpu_device) {}
+ConstantFolding::ConstantFolding(DeviceBase* cpu_device,
+                                 bool disable_compressed_tensor_optimization)
+    : ConstantFolding(RewriterConfig::ON, cpu_device,
+                      disable_compressed_tensor_optimization) {}
 
 // static
 string ConstantFolding::AddControlDependency(const string& input_name,
@@ -642,12 +648,12 @@ Status ConstantFolding::MaterializeBroadcastGradientArgs(
   // These extra dims could be equal to 1, in which case there is no
   // broadcasting. It could also be greater than 1, in which case there would
   // be broadcasting. Since we don't know, we'll just punt.
-  for (int i = common_dims, iter_limit = shape1.size(); i < iter_limit; ++i) {
+  for (int i = common_dims, end = shape1.size(); i < end; ++i) {
     if (shape1[i] < 0) {
       return Status::OK();
     }
   }
-  for (int i = common_dims, iter_limit = shape2.size(); i < iter_limit; ++i) {
+  for (int i = common_dims, end = shape2.size(); i < end; ++i) {
     if (shape2[i] < 0) {
       return Status::OK();
     }
@@ -813,6 +819,9 @@ Status ConstantFolding::MaterializeReductionIndices(
 
 Status ConstantFolding::MaterializeConstantValuedNode(
     NodeDef* node, const GraphProperties& properties) {
+  if (disable_compressed_tensor_optimization_) {
+    return Status::OK();
+  }
   // Nodes that generate constant-valued outputs can be represented compactly in
   // compressed format, regardless of their shape.
   const std::vector<OpInfo::TensorProperties>& output_props =
@@ -974,6 +983,9 @@ bool ConstantFolding::IsFoldableUncached(
     }
   }
   if (is_merge && !merge_has_constant_input) return false;
+  if (disable_compressed_tensor_optimization_ &&
+      (IsFill(node) || IsZerosLike(node) || IsOnesLike(node)))
+    return false;
 
   // If we know the output shapes, make sure that the outputs are small enough
   // to materialize.
@@ -1326,7 +1338,9 @@ Status ConstantFolding::EvaluateOneFoldable(const NodeDef& node,
     TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
     const TensorProto& raw_val = input_node->attr().at("value").tensor();
     Tensor* value = new Tensor(raw_val.dtype(), raw_val.tensor_shape());
-    CHECK(value->FromProto(raw_val));
+    CHECK(value->FromProto(raw_val))
+        << "Unable to make Tensor from proto for " << node.name()
+        << " with shape " << raw_val.tensor_shape().DebugString();
     inputs.emplace_back(value);
     total_inputs_size += value->TotalBytes();
   }
@@ -1463,7 +1477,7 @@ Status ConstantFolding::FoldNode(NodeDef* node, GraphDef* output_graph,
   VLOG(2) << "Folded node: " << SummarizeNodeDef(*node);
 
   NodeDef* constant_output = nullptr;
-  for (int i = 0, iter_limit = const_nodes.size(); i < iter_limit; i++) {
+  for (int i = 0, end = const_nodes.size(); i < end; i++) {
     NodeDef* const_node = &const_nodes[i];
     VLOG(3) << "Generated constant node: " << SummarizeNodeDef(*const_node);
     if (const_node->name().empty()) {

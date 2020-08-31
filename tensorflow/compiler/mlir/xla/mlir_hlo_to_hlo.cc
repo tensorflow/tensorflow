@@ -43,7 +43,6 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
-#include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/lib/quantize.h"
 #include "tensorflow/compiler/xla/client/lib/slicing.h"
@@ -88,6 +87,18 @@ T Unwrap(T t) {
 template <typename T>
 T* Unwrap(const std::unique_ptr<T>& t) {
   return t.get();
+}
+
+static mlir::LogicalResult GetXlaOp(
+    mlir::Value val, const llvm::DenseMap<mlir::Value, xla::XlaOp>& val_map,
+    xla::XlaOp* result, mlir::Operation* op) {
+  auto iter = val_map.find(val);
+  if (iter == val_map.end()) {
+    return op->emitOpError(
+        "requires all operands to be defined in the parent region for export");
+  }
+  *result = iter->second;
+  return mlir::success();
 }
 
 // Convert APInt into an int.
@@ -170,8 +181,8 @@ static std::vector<std::pair<int64, int64>> Convert_source_target_pairs(
 
 static std::vector<xla::ReplicaGroup> Convert_replica_groups(
     mlir::DenseIntElementsAttr groups) {
-  int64_t num_groups = groups.getType().getDimSize(0);
-  int64_t group_size = groups.getType().getDimSize(1);
+  uint64_t num_groups = groups.getType().getDimSize(0);
+  uint64_t group_size = groups.getType().getDimSize(1);
 
   std::vector<xla::ReplicaGroup> result;
   result.reserve(num_groups);
@@ -435,14 +446,14 @@ static void ExtractShardingsFromFunction(
     llvm::SmallVectorImpl<absl::optional<xla::OpSharding>>* ret_shardings) {
   arg_shardings->resize(function.getNumArguments(),
                         absl::optional<xla::OpSharding>());
-  for (int i = 0; i < function.getNumArguments(); ++i)
+  for (int i = 0, end = function.getNumArguments(); i < end; ++i)
     if (auto sharding =
             function.getArgAttrOfType<mlir::StringAttr>(i, kShardingAttr))
       (*arg_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
 
   ret_shardings->resize(function.getNumResults(),
                         absl::optional<xla::OpSharding>());
-  for (int i = 0; i < function.getNumResults(); ++i)
+  for (int i = 0, end = function.getNumResults(); i < end; ++i)
     if (auto sharding =
             function.getResultAttrOfType<mlir::StringAttr>(i, kShardingAttr))
       (*ret_shardings)[i] = CreateOpShardingFromStringRef(sharding.getValue());
@@ -463,7 +474,7 @@ class ConvertToHloModule {
   // single value.
   explicit ConvertToHloModule(
       mlir::ModuleOp module, bool use_tuple_args, bool return_tuple,
-      tensorflow::XlaCompiler::ShapeRepresentationFn shape_representation_fn)
+      tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn)
       : module_(module),
         module_builder_("main"),
         use_tuple_args_(use_tuple_args),
@@ -507,7 +518,7 @@ class ConvertToHloModule {
 
   // Lower function call to HLO call instruction
   LogicalResult LowerFunctionCall(
-      mlir::CallOp* call_op, xla::XlaBuilder* builder,
+      mlir::CallOp call_op, xla::XlaBuilder* builder,
       ConvertToHloModule::ValueLoweringMap* value_lowering);
 
  private:
@@ -545,7 +556,7 @@ class ConvertToHloModule {
 
   // Shape representation function to determine entry function argument and
   // result shapes.
-  tensorflow::XlaCompiler::ShapeRepresentationFn shape_representation_fn_;
+  tensorflow::XlaHelpers::ShapeRepresentationFn shape_representation_fn_;
 
   // Unique suffix to give to the name of the next lowered region.
   size_t region_id_ = 0;
@@ -585,23 +596,27 @@ LogicalResult ExportXlaOp(AllReduceOp op, OpLoweringContext ctx) {
     return failure();
   }
   auto replica_groups = Convert_replica_groups(op.replica_groups());
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+
   if (!op.channel_id().hasValue()) {
-    value_map[op] =
-        xla::AllReduce(value_map[op.operand()], computation, replica_groups,
-                       /*channel_id=*/absl::nullopt);
+    value_map[op] = xla::AllReduce(operand, computation, replica_groups,
+                                   /*channel_id=*/absl::nullopt);
     return success();
   }
   auto channel_id = Convert_channel_handle(op.channel_id().getValue());
-  value_map[op] = xla::AllReduce(value_map[op.operand()], computation,
-                                 replica_groups, channel_id);
+  value_map[op] =
+      xla::AllReduce(operand, computation, replica_groups, channel_id);
   return success();
 }
 
 LogicalResult ExportXlaOp(BitcastConvertOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+
   value_map[op] = xla::BitcastConvertType(
-      value_map[op.operand()],
-      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+      operand, xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
   return success();
 }
 
@@ -609,8 +624,11 @@ LogicalResult ExportXlaOp(BroadcastInDimOp op, OpLoweringContext ctx) {
   auto type = op.getType().dyn_cast<RankedTensorType>();
   if (!type) return failure();
   auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+
   value_map[op] =
-      BroadcastInDim(value_map[op.operand()], Convert_ArrayRef(type.getShape()),
+      BroadcastInDim(operand, Convert_ArrayRef(type.getShape()),
                      Convert_broadcast_dimensions(op.broadcast_dimensions()));
   return success();
 }
@@ -640,11 +658,15 @@ LogicalResult ExportXlaOp(IfOp op, OpLoweringContext ctx) {
                                                      &false_branch))) {
     return failure();
   }
+  xla::XlaOp pred, true_arg, false_arg;
+  if (failed(GetXlaOp(op.pred(), value_map, &pred, op))) return failure();
+  if (failed(GetXlaOp(op.true_arg(), value_map, &true_arg, op)))
+    return failure();
+  if (failed(GetXlaOp(op.false_arg(), value_map, &false_arg, op)))
+    return failure();
 
   value_map[op] =
-      xla::Conditional(value_map[op.pred()], value_map[op.true_arg()],
-                       true_branch, value_map[op.false_arg()], false_branch);
-
+      xla::Conditional(pred, true_arg, true_branch, false_arg, false_branch);
   return success();
 }
 
@@ -657,14 +679,19 @@ LogicalResult ExportXlaOp(CaseOp op, OpLoweringContext ctx) {
   std::vector<xla::XlaComputation*> computations_p(branches.size());
 
   for (unsigned i = 0; i < branches.size(); ++i) {
-    branch_operands[i] = value_map[operands[i]];
+    xla::XlaOp operand;
+    if (failed(GetXlaOp(operands[i], value_map, &operand, op)))
+      return failure();
+    branch_operands[i] = operand;
     computations_p[i] = &computations[i];
     if (failed(ctx.converter->LowerRegionAsComputation(&branches[i],
                                                        computations_p[i])))
       return failure();
   }
-  xla::XlaOp result =
-      xla::Conditional(value_map[op.index()], computations_p, branch_operands);
+  xla::XlaOp index;
+  if (failed(GetXlaOp(op.index(), value_map, &index, op))) return failure();
+
+  xla::XlaOp result = xla::Conditional(index, computations_p, branch_operands);
   if (op.getNumResults() == 1) {
     value_map[op.getResult(0)] = result;
   } else {
@@ -681,9 +708,11 @@ LogicalResult ExportXlaOp(ConstOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(ConvertOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+
   value_map[op] = xla::ConvertElementType(
-      value_map[op.operand()],
-      xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
+      operand, xla::TypeToPrimitiveType(getElementTypeOrSelf(op.getType())));
   return success();
 }
 
@@ -702,7 +731,10 @@ LogicalResult ExportXlaOp(DequantizeOp op, OpLoweringContext ctx) {
   xla::QuantizedRange range(ConvertAPFloat(op.min_range()),
                             ConvertAPFloat(op.max_range()));
   auto& value_map = *ctx.values;
-  auto casted = xla::ConvertElementType(value_map[op.input()], xla::U32);
+  xla::XlaOp input;
+  if (failed(GetXlaOp(op.input(), value_map, &input, op))) return failure();
+
+  auto casted = xla::ConvertElementType(input, xla::U32);
   if (op.is_16bits()) {
     value_map[op] = xla::Dequantize<uint16>(
         casted, range, ConvertStringRef(op.mode()), op.transpose_output());
@@ -715,12 +747,14 @@ LogicalResult ExportXlaOp(DequantizeOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
+  xla::XlaOp token;
+  if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
+
   // The shape argument expected by the xla client API is the type of the first
   // element in the result tuple.
   auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
-  value_map[op] =
-      xla::InfeedWithToken(value_map[op.token()], xla::TypeToShape(result_type),
-                           std::string(op.infeed_config()));
+  value_map[op] = xla::InfeedWithToken(token, xla::TypeToShape(result_type),
+                                       std::string(op.infeed_config()));
   return success();
 }
 
@@ -745,10 +779,13 @@ LogicalResult ExportXlaOp(MapOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(OutfeedOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  value_map[op] =
-      xla::OutfeedWithToken(value_map[op.operand()], value_map[op.token()],
-                            xla::TypeToShape(op.operand().getType()),
-                            std::string(op.outfeed_config()));
+  xla::XlaOp operand, token;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
+
+  value_map[op] = xla::OutfeedWithToken(
+      operand, token, xla::TypeToShape(op.operand().getType()),
+      std::string(op.outfeed_config()));
   return success();
 }
 
@@ -758,29 +795,34 @@ LogicalResult ExportXlaOp(PadOp op, OpLoweringContext ctx) {
   auto edge_padding_low = ConvertDenseIntAttr(op.edge_padding_low());
   auto edge_padding_high = ConvertDenseIntAttr(op.edge_padding_high());
   auto interior_padding = ConvertDenseIntAttr(op.interior_padding());
-  for (xla::int64 i = 0; i < edge_padding_low.size(); ++i) {
+  for (xla::int64 i = 0, end = edge_padding_low.size(); i < end; ++i) {
     auto* dims = padding_config.add_dimensions();
     dims->set_edge_padding_low(edge_padding_low[i]);
     dims->set_edge_padding_high(edge_padding_high[i]);
     dims->set_interior_padding(interior_padding[i]);
   }
-  value_map[op] = xla::Pad(value_map[op.getOperand(0)],
-                           value_map[op.getOperand(1)], padding_config);
+  xla::XlaOp operand, padding_value;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  if (failed(GetXlaOp(op.padding_value(), value_map, &padding_value, op)))
+    return failure();
+
+  value_map[op] = xla::Pad(operand, padding_value, padding_config);
   return success();
 }
 
 LogicalResult ExportXlaOp(RecvOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   auto result_type = op.getType().cast<mlir::TupleType>().getType(0);
+  xla::XlaOp token;
+  if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
+
   if (op.is_host_transfer()) {
-    value_map[op] =
-        xla::RecvFromHost(value_map[op.token()], xla::TypeToShape(result_type),
-                          Convert_channel_handle(op.channel_id()));
+    value_map[op] = xla::RecvFromHost(token, xla::TypeToShape(result_type),
+                                      Convert_channel_handle(op.channel_id()));
     return success();
   }
-  value_map[op] =
-      xla::RecvWithToken(value_map[op.token()], xla::TypeToShape(result_type),
-                         Convert_channel_handle(op.channel_id()));
+  value_map[op] = xla::RecvWithToken(token, xla::TypeToShape(result_type),
+                                     Convert_channel_handle(op.channel_id()));
   return success();
 }
 
@@ -810,9 +852,13 @@ LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
   if (failed(ctx.converter->LowerRegionAsComputation(&op.body(), &body))) {
     return failure();
   }
+  xla::XlaOp operand, init_value;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  if (failed(GetXlaOp(op.init_value(), value_map, &init_value, op)))
+    return failure();
+
   value_map[op] = xla::ReduceWindowWithGeneralPadding(
-      value_map[op.operand()], value_map[op.init_value()], body,
-      ConvertDenseIntAttr(op.window_dimensions()),
+      operand, init_value, body, ConvertDenseIntAttr(op.window_dimensions()),
       ConvertDenseIntAttr(op.window_strides()),
       ConvertDenseIntAttr(op.base_dilations()),
       ConvertDenseIntAttr(op.window_dilations()),
@@ -822,9 +868,11 @@ LogicalResult ExportXlaOp(ReduceWindowOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(ReshapeOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  value_map[op] = xla::Reshape(value_map[op.operand()],
-                               xla::TypeToShape(op.getType()).dimensions());
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
 
+  value_map[op] =
+      xla::Reshape(operand, xla::TypeToShape(op.getType()).dimensions());
   return success();
 }
 
@@ -834,17 +882,34 @@ LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  auto xla_arg_1 = value_map[*op.getODSOperands(0).begin()];
+  auto xla_result = xla::RngBitGenerator(
+      static_cast<xla::RandomAlgorithm>(op.rng_algorithm().getSExtValue()),
+      Unwrap(xla_arg_1), xla::TypeToShape(result.getType()).tuple_shapes(1));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  value_map[op] = xla::RngNormal(value_map[op.mu()], value_map[op.sigma()],
-                                 xla::TypeToShape(op.getType()));
+  xla::XlaOp mu, sigma;
+  if (failed(GetXlaOp(op.mu(), value_map, &mu, op))) return failure();
+  if (failed(GetXlaOp(op.sigma(), value_map, &sigma, op))) return failure();
+
+  value_map[op] = xla::RngNormal(mu, sigma, xla::TypeToShape(op.getType()));
   return success();
 }
 
 LogicalResult ExportXlaOp(RngUniformOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  value_map[op] = xla::RngUniform(value_map[op.a()], value_map[op.b()],
-                                  xla::TypeToShape(op.getType()));
+  xla::XlaOp a, b;
+  if (failed(GetXlaOp(op.a(), value_map, &a, op))) return failure();
+  if (failed(GetXlaOp(op.b(), value_map, &b, op))) return failure();
+
+  value_map[op] = xla::RngUniform(a, b, xla::TypeToShape(op.getType()));
   return success();
 }
 
@@ -857,10 +922,15 @@ LogicalResult ExportXlaOp(ScatterOp op, OpLoweringContext ctx) {
   }
   xla::ScatterDimensionNumbers dimension_numbers =
       Convert_scatter_dimension_numbers(op.scatter_dimension_numbers());
-  value_map[op] = xla::Scatter(
-      value_map[op.operand()], value_map[op.scatter_indices()],
-      value_map[op.updates()], update_computation, dimension_numbers,
-      op.indices_are_sorted(), op.unique_indices());
+  xla::XlaOp operand, scatter_indices, updates;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  if (failed(GetXlaOp(op.scatter_indices(), value_map, &scatter_indices, op)))
+    return failure();
+  if (failed(GetXlaOp(op.updates(), value_map, &updates, op))) return failure();
+
+  value_map[op] = xla::Scatter(operand, scatter_indices, updates,
+                               update_computation, dimension_numbers,
+                               op.indices_are_sorted(), op.unique_indices());
   return success();
 }
 
@@ -873,26 +943,33 @@ LogicalResult ExportXlaOp(SelectAndScatterOp op, OpLoweringContext ctx) {
           ctx.converter->LowerRegionAsComputation(&op.scatter(), &scatter))) {
     return failure();
   }
+  xla::XlaOp operand, source, init_value;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  if (failed(GetXlaOp(op.source(), value_map, &source, op))) return failure();
+  if (failed(GetXlaOp(op.init_value(), value_map, &init_value, op)))
+    return failure();
+
   value_map[op] = xla::SelectAndScatterWithGeneralPadding(
-      value_map[op.operand()], select,
-      ConvertDenseIntAttr(op.window_dimensions()),
+      operand, select, ConvertDenseIntAttr(op.window_dimensions()),
       ConvertDenseIntAttr(op.window_strides()), Convert_padding(op.padding()),
-      value_map[op.source()], value_map[op.init_value()], scatter);
+      source, init_value, scatter);
   return success();
 }
 
 LogicalResult ExportXlaOp(SendOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
+  xla::XlaOp operand, token;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  if (failed(GetXlaOp(op.token(), value_map, &token, op))) return failure();
+
   if (op.is_host_transfer()) {
-    value_map[op] =
-        xla::SendToHost(value_map[op.operand()], value_map[op.token()],
-                        xla::TypeToShape(op.operand().getType()),
-                        Convert_channel_handle(op.channel_id()));
+    value_map[op] = xla::SendToHost(operand, token,
+                                    xla::TypeToShape(op.operand().getType()),
+                                    Convert_channel_handle(op.channel_id()));
     return success();
   }
-  value_map[op] =
-      xla::SendWithToken(value_map[op.operand()], value_map[op.token()],
-                         Convert_channel_handle(op.channel_id()));
+  value_map[op] = xla::SendWithToken(operand, token,
+                                     Convert_channel_handle(op.channel_id()));
   return success();
 }
 
@@ -914,7 +991,9 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
 
 LogicalResult ExportXlaOp(TraceOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
-  xla::Trace(std::string(op.tag()), value_map[op.operand()]);
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.operand(), value_map, &operand, op))) return failure();
+  xla::Trace(std::string(op.tag()), operand);
   return success();
 }
 
@@ -933,13 +1012,40 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
     return failure();
   }
 
-  value_map[op] = xla::While(condition, body, value_map[op.getOperand()]);
+  xla::XlaOp operand;
+  if (failed(GetXlaOp(op.getOperand(), value_map, &operand, op)))
+    return failure();
+  value_map[op] = xla::While(condition, body, operand);
   return success();
 }
 
 LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
-  // TODO(whoever): currently not supported.
-  return failure();
+  if (!op.fusion_kind()) {
+    op.emitOpError() << "requires fusion kind for HLO translation";
+    return failure();
+  }
+
+  xla::XlaComputation fused_computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.fused_computation(),
+                                                     &fused_computation)))
+    return failure();
+
+  auto& values = *ctx.values;
+  llvm::SmallVector<xla::XlaOp, 4> operands;
+  for (auto operand : op.operands()) operands.push_back(values[operand]);
+
+  xla::XlaOp fusion = xla::internal::XlaBuilderBuildFusion(
+      ctx.builder, operands,
+      absl::string_view(op.fusion_kind()->data(), op.fusion_kind()->size()),
+      fused_computation);
+  if (op.getNumResults() == 1) {
+    values[op.getResult(0)] = fusion;
+  } else {
+    for (auto item : llvm::enumerate(op.getResults())) {
+      values[item.value()] = xla::GetTupleElement(fusion, item.index());
+    }
+  }
+  return success();
 }
 
 }  // namespace
@@ -1032,7 +1138,7 @@ LogicalResult ConvertToHloModule::Lower(
   ElementsAttr const_attr;
 
   if (auto call_op = dyn_cast<mlir::CallOp>(inst)) {
-    return LowerFunctionCall(&call_op, builder, &value_map);
+    return LowerFunctionCall(call_op, builder, &value_map);
   }
 
   if (auto op = dyn_cast<mlir::TensorCastOp>(inst)) {
@@ -1046,7 +1152,10 @@ LogicalResult ConvertToHloModule::Lower(
       return failure();
     }
 
-    value_map[op.getResult()] = value_map[operand];
+    xla::XlaOp xla_operand;
+    if (failed(GetXlaOp(operand, value_map, &xla_operand, op)))
+      return failure();
+    value_map[op.getResult()] = xla_operand;
     return success();
   }
 
@@ -1072,7 +1181,11 @@ LogicalResult ConvertToHloModule::Lower(
       std::vector<xla::XlaOp> returns(num_return_values);
       for (OpOperand& ret : inst->getOpOperands()) {
         unsigned index = ret.getOperandNumber();
-        returns[index] = value_map[ret.get()];
+        xla::XlaOp operand;
+        if (failed(GetXlaOp(ret.get(), value_map, &operand, inst)))
+          return failure();
+
+        returns[index] = operand;
         if (!is_entry_function || !has_ret_shardings) continue;
 
         xla::Shape return_shape = xla::TypeToShape(ret.get().getType());
@@ -1098,7 +1211,11 @@ LogicalResult ConvertToHloModule::Lower(
       return_value = xla::Tuple(builder, returns);
       builder->ClearSharding();
     } else if (num_return_values == 1) {
-      return_value = value_map[inst->getOperand(0)];
+      xla::XlaOp operand;
+      if (failed(GetXlaOp(inst->getOperand(0), value_map, &operand, inst)))
+        return failure();
+
+      return_value = operand;
     }
 
     // Build the XlaComputation and check for failures.
@@ -1117,14 +1234,17 @@ LogicalResult ConvertToHloModule::Lower(
 }
 
 LogicalResult ConvertToHloModule::LowerFunctionCall(
-    mlir::CallOp* call_op, xla::XlaBuilder* builder,
+    mlir::CallOp call_op, xla::XlaBuilder* builder,
     ConvertToHloModule::ValueLoweringMap* value_lowering) {
   auto& value_map = *value_lowering;
-  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op->callee());
+  mlir::FuncOp callee = module_.lookupSymbol<mlir::FuncOp>(call_op.callee());
   if (failed(RunOnFunction(callee))) return failure();
   std::vector<xla::XlaOp> operands;
-  for (auto operand : call_op->getOperands()) {
-    operands.push_back(value_map[operand]);
+  for (auto operand : call_op.getOperands()) {
+    xla::XlaOp xla_operand;
+    if (failed(GetXlaOp(operand, value_map, &xla_operand, call_op)))
+      return failure();
+    operands.push_back(xla_operand);
   }
   // Each call to xla::Call would insert a copy of the computation to
   // the HLO. Thus each callsite would have a unique callee in the
@@ -1135,13 +1255,13 @@ LogicalResult ConvertToHloModule::LowerFunctionCall(
   xla::XlaOp call_result =
       xla::Call(builder, lowered_computation_[callee], operands);
   // Use GetTupleElement for multiple outputs
-  unsigned num_results = call_op->getNumResults();
+  unsigned num_results = call_op.getNumResults();
   if (num_results > 1) {
     for (unsigned i = 0; i != num_results; ++i) {
-      value_map[call_op->getResult(i)] = xla::GetTupleElement(call_result, i);
+      value_map[call_op.getResult(i)] = xla::GetTupleElement(call_result, i);
     }
   } else if (num_results == 1) {
-    value_map[call_op->getResult(0)] = call_result;
+    value_map[call_op.getResult(0)] = call_result;
   }
   return success();
 }
@@ -1271,8 +1391,7 @@ LogicalResult ConvertToHloModule::LowerBasicBlockAsFunction(
     llvm::ArrayRef<absl::optional<xla::OpSharding>> arg_shardings,
     llvm::ArrayRef<absl::optional<xla::OpSharding>> ret_shardings,
     xla::XlaComputation* result) {
-  // Mapping from the Value to lowered XlaOp. The code below lowers in
-  // program order and will fail if an operand is unseen. This can be improved.
+  // Mapping from the Value to lowered XlaOp.
   ValueLoweringMap lowering;
 
   // If using tuples as input, then there is only one input parameter that is a
@@ -1498,9 +1617,19 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
 
 }  // namespace
 
+Status ConvertRegionToComputation(mlir::Region* region,
+                                  xla::XlaComputation* func) {
+  mlir::ModuleOp module;
+  ConvertToHloModule converter(module, true, true, {});
+  if (failed(converter.LowerRegionAsComputation(region, func)))
+    return tensorflow::errors::Internal(
+        "failed to convert region to computation");
+  return Status::OK();
+}
+
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
                            bool use_tuple_args, bool return_tuple,
-                           const tensorflow::XlaCompiler::ShapeRepresentationFn
+                           const tensorflow::XlaHelpers::ShapeRepresentationFn
                                shape_representation_fn) {
   mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
   ConvertToHloModule converter(module, use_tuple_args, return_tuple,

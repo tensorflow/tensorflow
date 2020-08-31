@@ -25,17 +25,17 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_preprocessing_layer import CombinerPreprocessingLayer
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.layers.preprocessing import category_encoding
 from tensorflow.python.keras.layers.preprocessing import string_lookup
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
 from tensorflow.python.ops.ragged import ragged_string_ops
-from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 LOWER_AND_STRIP_PUNCTUATION = "lower_and_strip_punctuation"
@@ -71,7 +71,7 @@ _ACCUMULATOR_NUM_DOCUMENTS = "num_documents"
 
 @keras_export(
     "keras.layers.experimental.preprocessing.TextVectorization", v1=[])
-class TextVectorization(CombinerPreprocessingLayer):
+class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
   """Text vectorization layer.
 
   This layer has basic options for managing text in a Keras model. It
@@ -291,6 +291,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     super(TextVectorization, self).__init__(
         combiner=None,
         **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("TextVectorization")
 
     mask_token = "" if output_mode in [None, INT] else None
     self._index_lookup_layer = self._get_index_lookup_class()(
@@ -366,7 +367,7 @@ class TextVectorization(CombinerPreprocessingLayer):
     # on an implicit call to `build` in the base layer's `adapt`, since
     # preprocessing changes the input shape.
     if isinstance(data, (list, tuple, np.ndarray)):
-      data = ops.convert_to_tensor(data)
+      data = ops.convert_to_tensor_v2_with_dispatch(data)
 
     if isinstance(data, ops.Tensor):
       if data.shape.rank == 1:
@@ -515,7 +516,7 @@ class TextVectorization(CombinerPreprocessingLayer):
 
   def _preprocess(self, inputs):
     if self._standardize == LOWER_AND_STRIP_PUNCTUATION:
-      if ragged_tensor.is_ragged(inputs):
+      if tf_utils.is_ragged(inputs):
         lowercase_inputs = ragged_functional_ops.map_flat_values(
             gen_string_ops.string_lower, inputs)
         # Depending on configuration, we may never touch the non-data tensor
@@ -565,7 +566,7 @@ class TextVectorization(CombinerPreprocessingLayer):
 
   def call(self, inputs):
     if isinstance(inputs, (list, tuple, np.ndarray)):
-      inputs = ops.convert_to_tensor(inputs)
+      inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
 
     self._called = True
     inputs = self._preprocess(inputs)
@@ -580,7 +581,7 @@ class TextVectorization(CombinerPreprocessingLayer):
       # choose whether to pad or trim it based on each tensor.
 
       # We need to convert to dense if we have a ragged tensor.
-      if ragged_tensor.is_ragged(indexed_data):
+      if tf_utils.is_ragged(indexed_data):
         dense_data = indexed_data.to_tensor(default_value=0)
       else:
         dense_data = indexed_data

@@ -16,9 +16,8 @@ limitations under the License.
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_COMPILATION_CACHE_LOCAL_LOOKUP_H_
 
 #include "tensorflow/core/platform/status.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_common.pb.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_entry.h"
-#include "tensorflow/core/tpu/kernels/tpu_compilation_cache_external.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_lookup.h"
 
@@ -28,24 +27,17 @@ namespace tpu {
 // Class for looking up TPU programs when the execute and compile Op are in the
 // same address space. The proto is simply looked up in the compilation cache,
 // without any serialization taking place.
-class TpuCompilationCacheLocalLookup
-    : public TpuCompilationCacheLookup<
-          CompilationCacheEntryRef<TpuCompilationCacheEntry>> {
+class TpuCompilationCacheLocalLookup : public TpuCompilationCacheLookup {
  public:
-  using TpuCompilationCacheEntryRef =
-      ::tensorflow::tpu::CompilationCacheEntryRef<TpuCompilationCacheEntry>;
-  using EntryRefImpl =
-      ::tensorflow::tpu::TpuCompilationCacheExternal::EntryRefImpl;
-
   explicit TpuCompilationCacheLocalLookup(TpuCompilationCacheInterface* cache);
   ~TpuCompilationCacheLocalLookup() override;
 
   Status Lookup(const string& proto_key,
-                std::unique_ptr<TpuCompilationCacheEntryRef>* entry,
+                std::unique_ptr<CompilationCacheEntryRef>* entry,
                 CompilationCacheFetchTarget fetch_target) override;
 
   Status Lookup(int64 uid, int proto_index,
-                std::unique_ptr<TpuCompilationCacheEntryRef>* entry,
+                std::unique_ptr<CompilationCacheEntryRef>* entry,
                 CompilationCacheFetchTarget fetch_target) override;
 
   string DebugString() const override;

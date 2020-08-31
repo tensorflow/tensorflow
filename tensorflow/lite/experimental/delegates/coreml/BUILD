@@ -59,6 +59,9 @@ objc_library(
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/delegates:utils",
         "//tensorflow/lite/experimental/delegates/coreml/builders:op_builder",
+        "//tensorflow/lite/experimental/delegates/coreml/builders:op_validator",
+        "//tensorflow/lite/experimental/delegates/coreml/builders:util",
+        "//tensorflow/lite/kernels:kernel_util",
     ],
 )
 

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 
 int main(int argc, char** argv) {
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
   tflite::MicroErrorReporter micro_error_reporter;
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
   TF_LITE_REPORT_ERROR(error_reporter, "Number: %d", 42);
@@ -38,4 +39,5 @@ int main(int argc, char** argv) {
 #else
   TF_LITE_REPORT_ERROR(error_reporter, "~~~%s~~~", "ALL TESTS PASSED");
 #endif
+#endif  // !defined(TF_LITE_STRIP_ERROR_STRINGS)
 }

@@ -142,7 +142,9 @@ function install_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install portpicker
   ${SUDO_CMD} ${PIP_CMD} install scipy
   ${SUDO_CMD} ${PIP_CMD} install scikit-learn
+  ${SUDO_CMD} ${PIP_CMD} install typing_extensions
   ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
+  ${PIP_CMD} install --user --upgrade flatbuffers
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
@@ -166,6 +168,7 @@ function install_ubuntu_16_pip_deps {
   # LINT.IfChange(ubuntu_16_pip_installations)
   "${PIP_CMD}" install astunparse==1.6.3 --user
   "${PIP_CMD}" install --user --upgrade attrs
+  "${PIP_CMD}" install --user --upgrade flatbuffers
   "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
   "${PIP_CMD}" install numpy==1.16.0 --user
   "${PIP_CMD}" install --user --upgrade "future>=0.17.1"
@@ -176,6 +179,7 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install portpicker --user
   "${PIP_CMD}" install scipy --user
   "${PIP_CMD}" install scikit-learn --user
+  "${PIP_CMD}" install typing_extensions --user
   "${PIP_CMD}" install PyYAML==3.13 --user
   # b/156523241
   "${PIP_CMD}" install --force-reinstall --user --upgrade tf-estimator-nightly
@@ -218,8 +222,10 @@ function install_macos_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install numpy==1.16.0
   ${SUDO_CMD} ${PIP_CMD} install gast==0.3.3
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.10.0
+  ${SUDO_CMD} ${PIP_CMD} install typing_extensions
   ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
   ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
+  ${PIP_CMD} install --user --upgrade flatbuffers
   ${PIP_CMD} install --user --upgrade attrs
   # b/156523241
   ${PIP_CMD} install --force-reinstall --user --upgrade tf-estimator-nightly

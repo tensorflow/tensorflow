@@ -84,7 +84,7 @@ platform specific wrapper code. The wrapper code removes the need to interact
 directly with `ByteBuffer` on Android. Instead, developers can interact with the
 TensorFlow Lite model with typed objects such as `Bitmap` and `Rect`. For more
 information, please refer to the
-[TensorFlow Lite Android wrapper code generator](codegen.md).
+[TensorFlow Lite Android wrapper code generator](../inference_with_metadata/codegen.md).
 
 ### iOS
 
