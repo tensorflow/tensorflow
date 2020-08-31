@@ -1081,7 +1081,7 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
     stats->mtime_nsec = 0;
     return TF_SetStatus(status, TF_OK, "");
   }
-  if (TF_GetCode(status) == TF_OK) {
+  if (TF_GetCode(status) == TF_FAILED_PRECONDITION) {
     auto metadata = gcs_file->gcs_client.GetObjectMetadata(bucket, object);
     if (metadata) {
       stats->is_directory = false;
