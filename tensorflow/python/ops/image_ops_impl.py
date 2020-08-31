@@ -5438,7 +5438,7 @@ def draw_bounding_boxes_v3(images, boxes, colors, thickness=1, name=None):
     colors: A `Tensor` of type `float32`. 2-D. A list of RGBA colors to cycle
       through for the boxes.
     thickness: A `Scalar`. Thickness to extend each line of the box. Thickness
-      will be extended towards the centre box
+      will be extended towards the centre of each box (optional, default 1).
     name: A name for the operation (optional).
 
   Returns:
@@ -5446,7 +5446,7 @@ def draw_bounding_boxes_v3(images, boxes, colors, thickness=1, name=None):
 
   Usage Example:
 
-  >>> # create an empty image
+  >>> # create an empty 3x3 3-channel image
   >>> img = tf.zeros([1, 3, 3, 3])
   >>> # draw a box around the image
   >>> box = np.array([0, 0, 1, 1])
@@ -5464,10 +5464,28 @@ def draw_bounding_boxes_v3(images, boxes, colors, thickness=1, name=None):
           [[1., 0., 0.],
           [1., 0., 0.],
           [1., 0., 0.]]]], dtype=float32)>
+
+
+  Usage of thickness parameter:
+
+  >>> # create an empty 5x5 1-channel image
+  >>> img = tf.zeros([1, 5, 5, 1])
+  >>> # draw a box around the image
+  >>> box = np.array([0, 0, 1, 1]).reshape([1, 1, 4])
+  >>> thickness = 2
+  >>> img_drawn = tf.image.draw_bounding_boxes(img, boxes, thickness=thickness)
+  >>> tf.reshape(img_drawn, (5, 5))
+  <tf.Tensor: shape=(5, 5), dtype=float32, numpy=
+  [[1. 1. 1. 1. 1.]
+   [1. 1. 1. 1. 1.]
+   [1. 1. 0. 1. 1.]
+   [1. 1. 1. 1. 1.]
+   [1. 1. 1. 1. 1.]], dtype=float32)>
+
   """
-  if colors is None:
-    return gen_image_ops.draw_bounding_boxes(images, boxes, name)
-  return gen_image_ops.draw_bounding_boxes_v3(images, boxes, colors, thickness, name)
+  if tf.compat.forward_compatible(2020,10,15):
+    return gen_image_ops.draw_bounding_boxes_v3(images, boxes, colors, thickness, name)
+  return draw_bounding_boxes_v2(images, boxes, colors, name)
 
 
 def draw_bounding_boxes_v2(images, boxes, colors, name=None):
@@ -5525,7 +5543,7 @@ def draw_bounding_boxes_v2(images, boxes, colors, name=None):
 
 @tf_export(v1=['image.draw_bounding_boxes'])
 @dispatch.add_dispatch_support
-def draw_bounding_boxes(images, boxes, name=None, colors=None):
+def draw_bounding_boxes(images, boxes, name=None, colors=None, thickness=1):
   """Draw bounding boxes on a batch of images.
 
   Outputs a copy of `images` but draws on top of the pixels zero or more
@@ -5548,6 +5566,8 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
     name: A name for the operation (optional).
     colors: A `Tensor` of type `float32`. 2-D. A list of RGBA colors to cycle
       through for the boxes.
+    thickness: A `Scalar`. Thickness to extend each line of the box. Thickness
+      will be extended towards the centre of each box (optional, default 1).
 
   Returns:
     A `Tensor`. Has the same type as `images`.
@@ -5573,7 +5593,7 @@ def draw_bounding_boxes(images, boxes, name=None, colors=None):
           [1., 0., 0.],
           [1., 0., 0.]]]], dtype=float32)>
   """
-  return draw_bounding_boxes_v2(images, boxes, colors, name)
+  return draw_bounding_boxes_v3(images, boxes, colors, thickness, name)
 
 
 @tf_export('image.generate_bounding_box_proposals')

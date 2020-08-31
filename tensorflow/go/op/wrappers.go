@@ -12396,6 +12396,45 @@ func SampleDistortedBoundingBox(scope *Scope, image_size tf.Output, bounding_box
 
 // Draw bounding boxes on a batch of images.
 //
+// Outputs a copy of `images` but draws on top of the pixels zero or more
+// bounding boxes specified by the locations in `boxes`. The coordinates of the
+// each bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`.
+// The bounding box coordinates are floats in `[0.0, 1.0]` relative to the width
+// and the height of the underlying image. The thickness will be added on the 
+// inside of each box from `boxes`.
+//
+// For example, if an image is 100 x 200 pixels (height x width) and the bounding
+// box is `[0.1, 0.2, 0.5, 0.9]`, the upper-left and bottom-right coordinates of
+// the bounding box will be `(40, 10)` to `(100, 50)` (in (x,y) coordinates).
+//
+// Parts of the bounding box may fall outside the image.
+//
+// Arguments:
+//	images: 4-D with shape `[batch, height, width, depth]`. A batch of images.
+//	boxes: 3-D with shape `[batch, num_bounding_boxes, 4]` containing bounding
+// boxes.
+//	colors: 2-D. A list of RGBA colors to cycle through for the boxes.
+//  thickness: A `Scalar`. Thickness to extend each line of the box. Thickness
+// will be extended towards the centre of each box (optional, default 1).
+//
+// Returns 4-D with the same shape as `images`. The batch of input images with
+// bounding boxes drawn on the images.
+func DrawBoundingBoxesV3(scope *Scope, images tf.Output, boxes tf.Output, colors tf.Output, thickness tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "DrawBoundingBoxesV3",
+		Input: []tf.Input{
+			images, boxes, colors, thickness
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Draw bounding boxes on a batch of images.
+//
 // Outputs a copy of `images` but draws on top of the pixels zero or more bounding
 // boxes specified by the locations in `boxes`. The coordinates of the each
 // bounding box in `boxes` are encoded as `[y_min, x_min, y_max, x_max]`. The

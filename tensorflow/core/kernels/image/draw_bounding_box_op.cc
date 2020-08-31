@@ -77,7 +77,9 @@ class DrawBoundingBoxesOp : public OpKernel {
     const int64 height = images.dim_size(1);
     const int64 width = images.dim_size(2);
     std::vector<std::vector<float>> color_table;
-    if (context->num_inputs() > 2) {  // If called from TF 2.x, not 1.x
+    int64 thickness = int64{1};
+    if (context->num_inputs() > 2) {  // Enters always in TF 2.x and in
+                                      // TF 1.x, iff colors passed
       const Tensor& colors_tensor = context->input(2);
       OP_REQUIRES(context, colors_tensor.shape().dims() == 2,
                   errors::InvalidArgument("colors must be a 2-D matrix",
@@ -103,14 +105,14 @@ class DrawBoundingBoxesOp : public OpKernel {
         }
       }
 
-      // Get the thickness parameter
-      const int64 thickness = context->input(3);
-      OP_REQUIRES(context, thickness > 0,
-                  errors::InvalidArgument("Thickness should be greater than 1"));
+      if (context->num_inputs() > 3) { // Get the thickness parameter
+        thickness = static_cast<int64>(context->input(3));
+        OP_REQUIRES(context, thickness > 0,
+                errors::InvalidArgument("Thickness should be greater than 1"));
+      }
     }
     if (color_table.empty()) {
       color_table = DefaultColorTable(depth);
-      const int64 thickness = int64{1};
     }
     Tensor* output;
     OP_REQUIRES_OK(
@@ -126,25 +128,21 @@ class DrawBoundingBoxesOp : public OpKernel {
       const auto tboxes = boxes.tensor<T, 3>();
       for (int64 bb = 0; bb < num_boxes; ++bb) {
         int64 color_index = bb % color_table.size();
+
+        // Every box has four lines, top, left, bottom and right
+        // And each line has a {_outer,_inner} to account for thickness
+        
+        // First extract the user-passed coordinates in image coordinates
         const int64 min_box_row =
             static_cast<float>(tboxes(b, bb, 0)) * (height - 1);
-        const int64 min_box_row_clamp = std::max<int64>(min_box_row, int64{0});
         const int64 max_box_row =
             static_cast<float>(tboxes(b, bb, 2)) * (height - 1);
-        const int64 max_box_row_clamp =
-            std::min<int64>(max_box_row, height - 1);
         const int64 min_box_col =
             static_cast<float>(tboxes(b, bb, 1)) * (width - 1);
-        const int64 min_box_col_clamp = std::max<int64>(min_box_col, int64{0});
         const int64 max_box_col =
             static_cast<float>(tboxes(b, bb, 3)) * (width - 1);
-        const int64 max_box_col_clamp = std::min<int64>(max_box_col, width - 1);
 
-        const std::pair<int64, int64> row_thickness_clamp = std::minmax<int64>(
-            min_box_row_clamp + thickness, max_box_row_clamp - thickness);
-        const std::pair<int64, int64> col_thickness_clamp = std::minmax<int64>(
-            min_box_col_clamp + thickness, max_box_col_clamp - thickness);
-
+        
         if (min_box_row > max_box_row || min_box_col > max_box_col) {
           LOG(WARNING) << "Bounding box (" << min_box_row << "," << min_box_col
                        << "," << max_box_row << "," << max_box_col
@@ -160,16 +158,43 @@ class DrawBoundingBoxesOp : public OpKernel {
           continue;
         }
 
+        // Define the outer limits of the box (without thickness)
+        const int64 top_outer = std::max<int64>(min_box_row, int64{0});
+        const int64 bottom_outer = std::min<int64>(max_box_row, height - 1);
+        const int64 left_outer = std::max<int64>(min_box_col, int64{0});
+        const int64 right_outer = std::min<int64>(max_box_col, width - 1);
+
+        // Sanity check for fitting the thickness in the box
+        // Define a variable `line_width` for THIS box specifically
+        const int64 half_dimension = std::min<int64>( 
+            (right_outer - left_outer)/2, (bottom_outer - top_outer)/2 );
+        if (thickness > half_dimension) {
+            LOG(WARNING) << "Bounding box (" << min_box_row << "," << min_box_col
+                       << "," << max_box_row << "," << max_box_col
+                       << ") cannot accomodate the full thickness, and is being "
+                       << "drawn with a thickness of 1";
+            const int64 line_width = 1;
+        }
+        else {
+            const int64 line_width = thickness;
+        }
+
+        // Define the inner limits of the box (with thickness)
+        const int64 top_inner = static_cast<int64>(top_outer + line_width);
+        const int64 bottom_inner = static_cast<int64>(bottom_outer - line_width);
+        const int64 left_inner = static_cast<int64>(left_outer + line_width);
+        const int64 right_inner = static_cast<int64>(right_outer - line_width);
+
         // At this point, {min,max}_box_{row,col}_clamp are inside the
         // image.
-        CHECK_GE(min_box_row_clamp, 0);
-        CHECK_GE(max_box_row_clamp, 0);
-        CHECK_LT(min_box_row_clamp, height);
-        CHECK_LT(max_box_row_clamp, height);
-        CHECK_GE(min_box_col_clamp, 0);
-        CHECK_GE(max_box_col_clamp, 0);
-        CHECK_LT(min_box_col_clamp, width);
-        CHECK_LT(max_box_col_clamp, width);
+        CHECK_GE(top_outer, 0);
+        CHECK_LT(top_outer, height);
+        CHECK_GE(bottom_outer, 0);
+        CHECK_LT(bottom_outer, height);
+        CHECK_GE(left_outer, 0);
+        CHECK_LT(left_outer, width);
+        CHECK_GE(right_outer, 0);
+        CHECK_LT(right_outer, width);
 
         // At this point, the min_box_row and min_box_col are either
         // in the image or above/left of it, and max_box_row and
@@ -180,36 +205,32 @@ class DrawBoundingBoxesOp : public OpKernel {
         CHECK_GE(max_box_col, 0);
 
         // Draw top line.
-        if (min_box_row >= 0)
-          for (int64 curr_row = min_box_row; curr_row < row_thickness_clamp.first; curr_row++ )
-            for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
-              for (int64 c = 0; c < depth; c++)
-                canvas(b, curr_row, j, c) =
-                    static_cast<T>(color_table[color_index][c]);
+        for (int64 curr_row = top_outer; curr_row < top_inner; curr_row++ )
+          for (int64 j = left_outer; j <= right_outer; ++j)
+            for (int64 c = 0; c < depth; c++)
+              canvas(b, curr_row, j, c) =
+                static_cast<T>(color_table[color_index][c]);
 
         // Draw bottom line.
-        if (max_box_row < height)
-          for (int64 curr_row = max_box_row; curr_row > row_thickness_clamp.second; curr_row-- )
-            for (int64 j = min_box_col_clamp; j <= max_box_col_clamp; ++j)
-              for (int64 c = 0; c < depth; c++)
-                canvas(b, curr_row, j, c) =
-                    static_cast<T>(color_table[color_index][c]);
+        for (int64 curr_row = bottom_outer; curr_row > bottom_inner; curr_row-- )
+          for (int64 j = left_outer; j <= right_outer; ++j)
+            for (int64 c = 0; c < depth; c++)
+              canvas(b, curr_row, j, c) =
+                static_cast<T>(color_table[color_index][c]);
 
         // Draw left line.
-        if (min_box_col >= 0)
-          for (int64 curr_col= min_box_col; curr_col < col_thickness_clamp.first; curr_col++ )
-            for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
-              for (int64 c = 0; c < depth; c++)
-                canvas(b, i, curr_col, c) =
-                    static_cast<T>(color_table[color_index][c]);
+        for (int64 curr_col= left_outer; curr_col < left_inner; curr_col++ )
+          for (int64 i = top_outer; i <= bottom_outer; ++i)
+            for (int64 c = 0; c < depth; c++)
+              canvas(b, i, curr_col, c) =
+                static_cast<T>(color_table[color_index][c]);
 
         // Draw right line.
-        if (max_box_col < width)
-          for (int64 curr_col = max_box_col; curr_col > col_thickness_clamp.second; curr_col-- )
-            for (int64 i = min_box_row_clamp; i <= max_box_row_clamp; ++i)
-              for (int64 c = 0; c < depth; c++)
-                canvas(b, i, curr_col, c) =
-                    static_cast<T>(color_table[color_index][c]);
+        for (int64 curr_col = right_outer; curr_col > right_inner; curr_col-- )
+          for (int64 i = top_outer; i <= bottom_outer; ++i)
+            for (int64 c = 0; c < depth; c++)
+              canvas(b, i, curr_col, c) =
+                static_cast<T>(color_table[color_index][c]);
       }
     }
   }
@@ -221,6 +242,9 @@ class DrawBoundingBoxesOp : public OpKernel {
       DrawBoundingBoxesOp<T>);                                               \
   REGISTER_KERNEL_BUILDER(                                                   \
       Name("DrawBoundingBoxesV2").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      DrawBoundingBoxesOp<T>);                                               \
+  REGISTER_KERNEL_BUILDER(                                                   \
+      Name("DrawBoundingBoxesV3").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       DrawBoundingBoxesOp<T>);
 TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
