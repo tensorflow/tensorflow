@@ -36,7 +36,6 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 256;
 
 // Conv is quantized along dimension 0:
 // https://www.tensorflow.org/lite/performance/quantization_spec
@@ -56,9 +55,8 @@ struct OpData {
   int output_shift;
 
   // Per channel output multiplier and shift.
-  // TODO(b/141139247): Allocate these dynamically when possible.
-  int32_t per_channel_output_multiplier[kMaxChannels];
-  int32_t per_channel_output_shift[kMaxChannels];
+  int32_t* per_channel_output_multiplier;
+  int32_t* per_channel_output_shift;
 
   // The range of the fused activation layer. For example for kNone and
   // uint8_t these would be 0 and 255.
@@ -158,6 +156,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   output_dims.h = output->dims->data[1];
   output_dims.w = output->dims->data[2];
   output_dims.c = output_shape.Dims(3);
+
+  // Dynamically allocate per-channel quantization parameters.
+  const int num_channels = filter->dims->data[kConvQuantizedDimension];
+
+  data->per_channel_output_multiplier =
+    reinterpret_cast<int32_t*>(
+      context->AllocatePersistentBuffer(
+        context, num_channels * sizeof(int32_t)));
+  data->per_channel_output_shift =
+    reinterpret_cast<int32_t*>(
+      context->AllocatePersistentBuffer(
+        context, num_channels * sizeof(int32_t)));
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(
       context, node, params, input_dims.w, input_dims.h, filter_dims.w,

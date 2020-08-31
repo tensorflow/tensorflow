@@ -37,7 +37,6 @@ constexpr int kInputTensor = 0;
 constexpr int kFilterTensor = 1;
 constexpr int kBiasTensor = 2;
 constexpr int kOutputTensor = 0;
-constexpr int kMaxChannels = 256;
 
 // Depthwise conv is quantized along dimension 3:
 // https://www.tensorflow.org/lite/performance/quantization_spec
@@ -57,9 +56,9 @@ struct OpData {
   int output_shift;
 
   // Per channel output multiplier and shift.
-  // TODO: Allocate dynamic buffers when b/158779832 is resolved
-  int32_t per_channel_output_multiplier[kMaxChannels];
-  int32_t per_channel_output_shift[kMaxChannels];
+  int32_t* per_channel_output_multiplier;
+  int32_t* per_channel_output_shift;
+
   // The range of the fused activation layer. For example for kNone and
   // uint8_t these would be 0 and 255.
   int32_t output_activation_min;
@@ -134,7 +133,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     // Allocate memory for per-channel quantization parameters
     const int num_channels =
         filter->dims->data[kDepthwiseConvQuantizedDimension];
-    TFLITE_DCHECK_LE(num_channels, kMaxChannels);
 
     TF_LITE_ENSURE_EQ(context, filter->quantization.type,
                       kTfLiteAffineQuantization);
@@ -153,6 +151,18 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size,
                       affine_quantization->zero_point->size);
   }
+
+  // Dynamically allocate per-channel quantization parameters.
+  const int num_channels = filter->dims->data[kDepthwiseConvQuantizedDimension];
+
+  data->per_channel_output_multiplier =
+    reinterpret_cast<int32_t*>(
+      context->AllocatePersistentBuffer(
+        context, num_channels * sizeof(int32_t)));
+  data->per_channel_output_shift =
+    reinterpret_cast<int32_t*>(
+      context->AllocatePersistentBuffer(
+        context, num_channels * sizeof(int32_t)));
 
   TF_LITE_ENSURE_STATUS(CalculateOpData(context, node, params, width, height,
                                         filter_width, filter_height, data_type,
