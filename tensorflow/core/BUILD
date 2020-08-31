@@ -3003,6 +3003,7 @@ filegroup(
 alias(
     name = "lmdb_testdata",
     actual = "//tensorflow/core/lib/lmdb:lmdb_testdata",
+    visibility = ["//visibility:public"],
 )
 
 alias(
