@@ -961,7 +961,6 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
       y_v[i][2] = b
     return y_v.reshape(x_np.shape)
 
-  @test_util.run_deprecated_v1
   def testAdjustRandomSaturation(self):
     x_shapes = [
         [2, 2, 3],
@@ -996,7 +995,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
           else:
             raise AssertionError("Invalid test style: %s" % (test_style))
           y_baseline = self._adjustSaturationNp(x_np, scale)
-          y_fused = image_ops.adjust_saturation(x_np, scale).eval()
+          y_fused = self.evaluate(image_ops.adjust_saturation(x_np, scale))
           self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
 
@@ -1021,7 +1020,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
-  @test_util.run_deprecated_v1
   def testLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1029,7 +1027,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(x_tf)
-      self.assertTrue(y.op.name.startswith("flip_left_right"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -1047,21 +1044,46 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
-  @test_util.run_deprecated_v1
+  def testRandomFlipLeftRightStateful(self):
+    # Test random flip with single seed (stateful).
+    with ops.Graph().as_default():
+      x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+      y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
+      seed = 42
+
+      with self.cached_session(use_gpu=True):
+        x_tf = constant_op.constant(x_np, shape=x_np.shape)
+        y = image_ops.random_flip_left_right(x_tf, seed=seed)
+        self.assertTrue(y.op.name.startswith("random_flip_left_right"))
+
+        count_flipped = 0
+        count_unflipped = 0
+        for _ in range(100):
+          y_tf = self.evaluate(y)
+          if y_tf[0][0] == 1:
+            self.assertAllEqual(y_tf, x_np)
+            count_unflipped += 1
+          else:
+            self.assertAllEqual(y_tf, y_np)
+            count_flipped += 1
+
+        # 100 trials
+        # Mean: 50
+        # Std Dev: ~5
+        # Six Sigma: 50 - (5 * 6) = 20
+        self.assertGreaterEqual(count_flipped, 20)
+        self.assertGreaterEqual(count_unflipped, 20)
+
   def testRandomFlipLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
-    seed = 42
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf, seed=seed)
-      self.assertTrue(y.op.name.startswith("random_flip_left_right"))
-
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(100):
-        y_tf = self.evaluate(y)
+      for seed in range(100):
+        y_tf = self.evaluate(image_ops.random_flip_left_right(x_tf, seed=seed))
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
           count_unflipped += 1
@@ -1069,12 +1091,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
           self.assertAllEqual(y_tf, y_np)
           count_flipped += 1
 
-      # 100 trials
-      # Mean: 50
-      # Std Dev: ~5
-      # Six Sigma: 50 - (5 * 6) = 20
-      self.assertGreaterEqual(count_flipped, 20)
-      self.assertGreaterEqual(count_unflipped, 20)
+      self.assertEqual(count_flipped, 45)
+      self.assertEqual(count_unflipped, 55)
 
   # TODO(b/162345082): stateless random op generates different random number
   # with xla_gpu. Update tests such that there is a single ground truth result
@@ -1179,7 +1197,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
         self.assertAllEqual(flip_counts[0], flip_counts[i])
         self.assertAllEqual(flip_sequences[0], flip_sequences[i])
 
-  @test_util.run_deprecated_v1
   def testRandomFlipLeftRightWithBatch(self):
     batch_size = 16
     seed = 42
@@ -1198,13 +1215,10 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf, seed=seed)
-      self.assertTrue(y.op.name.startswith("random_flip_left_right"))
-
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(100):
-        y_tf = self.evaluate(y)
+      for seed in range(100):
+        y_tf = self.evaluate(image_ops.random_flip_left_right(x_tf, seed=seed))
 
         # check every element of the batch
         for i in range(batch_size):
@@ -1215,14 +1229,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
             self.assertAllEqual(y_tf[i], y_np[i])
             count_flipped += 1
 
-      # 100 trials, each containing batch_size elements
-      # Mean: 50 * batch_size
-      # Std Dev: ~5 * sqrt(batch_size)
-      # Six Sigma: 50 * batch_size - (5 * 6 * sqrt(batch_size))
-      #          = 50 * batch_size - 30 * sqrt(batch_size) = 800 - 30 * 4 = 680
-      six_sigma = 50 * batch_size - 30 * np.sqrt(batch_size)
-      self.assertGreaterEqual(count_flipped, six_sigma)
-      self.assertGreaterEqual(count_unflipped, six_sigma)
+      self.assertEqual(count_flipped, 772)
+      self.assertEqual(count_unflipped, 828)
 
   def testInvolutionUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1244,7 +1252,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
-  @test_util.run_deprecated_v1
   def testUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1252,7 +1259,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(x_tf)
-      self.assertTrue(y.op.name.startswith("flip_up_down"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -1270,21 +1276,45 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
-  @test_util.run_deprecated_v1
+  def testRandomFlipUpDownStateful(self):
+    # Test random flip with single seed (stateful).
+    with ops.Graph().as_default():
+      x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
+      y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+      seed = 42
+
+      with self.cached_session(use_gpu=True):
+        x_tf = constant_op.constant(x_np, shape=x_np.shape)
+        y = image_ops.random_flip_up_down(x_tf, seed=seed)
+        self.assertTrue(y.op.name.startswith("random_flip_up_down"))
+        count_flipped = 0
+        count_unflipped = 0
+        for _ in range(100):
+          y_tf = self.evaluate(y)
+          if y_tf[0][0] == 1:
+            self.assertAllEqual(y_tf, x_np)
+            count_unflipped += 1
+          else:
+            self.assertAllEqual(y_tf, y_np)
+            count_flipped += 1
+
+        # 100 trials
+        # Mean: 50
+        # Std Dev: ~5
+        # Six Sigma: 50 - (5 * 6) = 20
+        self.assertGreaterEqual(count_flipped, 20)
+        self.assertGreaterEqual(count_unflipped, 20)
+
   def testRandomFlipUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
 
-    seed = 42
-
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf, seed=seed)
-      self.assertTrue(y.op.name.startswith("random_flip_up_down"))
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(100):
-        y_tf = self.evaluate(y)
+      for seed in range(100):
+        y_tf = self.evaluate(image_ops.random_flip_up_down(x_tf, seed=seed))
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
           count_unflipped += 1
@@ -1292,14 +1322,9 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
           self.assertAllEqual(y_tf, y_np)
           count_flipped += 1
 
-      # 100 trials
-      # Mean: 50
-      # Std Dev: ~5
-      # Six Sigma: 50 - (5 * 6) = 20
-      self.assertGreaterEqual(count_flipped, 20)
-      self.assertGreaterEqual(count_unflipped, 20)
+      self.assertEqual(count_flipped, 45)
+      self.assertEqual(count_unflipped, 55)
 
-  @test_util.run_deprecated_v1
   def testRandomFlipUpDownWithBatch(self):
     batch_size = 16
     seed = 42
@@ -1318,13 +1343,10 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf, seed=seed)
-      self.assertTrue(y.op.name.startswith("random_flip_up_down"))
-
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(100):
-        y_tf = self.evaluate(y)
+      for seed in range(100):
+        y_tf = self.evaluate(image_ops.random_flip_up_down(x_tf, seed=seed))
 
         # check every element of the batch
         for i in range(batch_size):
@@ -1335,14 +1357,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
             self.assertAllEqual(y_tf[i], y_np[i])
             count_flipped += 1
 
-      # 100 trials, each containing batch_size elements
-      # Mean: 50 * batch_size
-      # Std Dev: ~5 * sqrt(batch_size)
-      # Six Sigma: 50 * batch_size - (5 * 6 * sqrt(batch_size))
-      #          = 50 * batch_size - 30 * sqrt(batch_size) = 800 - 30 * 4 = 680
-      six_sigma = 50 * batch_size - 30 * np.sqrt(batch_size)
-      self.assertGreaterEqual(count_flipped, six_sigma)
-      self.assertGreaterEqual(count_unflipped, six_sigma)
+      self.assertEqual(count_flipped, 772)
+      self.assertEqual(count_unflipped, 828)
 
   def testInvolutionTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1364,7 +1380,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
-  @test_util.run_deprecated_v1
   def testTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[1, 4], [2, 5], [3, 6]], dtype=np.uint8).reshape([3, 2, 1])
@@ -1372,7 +1387,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose(x_tf)
-      self.assertTrue(y.op.name.startswith("transpose"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -1391,48 +1405,49 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
-  @test_util.run_deprecated_v1
   def testPartialShapes(self):
-    p_unknown_rank = array_ops.placeholder(dtypes.uint8)
-    p_unknown_dims_3 = array_ops.placeholder(
-        dtypes.uint8, shape=[None, None, None])
-    p_unknown_dims_4 = array_ops.placeholder(
-        dtypes.uint8, shape=[None, None, None, None])
-    p_unknown_width = array_ops.placeholder(dtypes.uint8, shape=[64, None, 3])
-    p_unknown_batch = array_ops.placeholder(
-        dtypes.uint8, shape=[None, 64, 64, 3])
-    p_wrong_rank = array_ops.placeholder(dtypes.uint8, shape=[None, None])
-    p_zero_dim = array_ops.placeholder(dtypes.uint8, shape=[64, 0, 3])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      p_unknown_rank = array_ops.placeholder(dtypes.uint8)
+      p_unknown_dims_3 = array_ops.placeholder(
+          dtypes.uint8, shape=[None, None, None])
+      p_unknown_dims_4 = array_ops.placeholder(
+          dtypes.uint8, shape=[None, None, None, None])
+      p_unknown_width = array_ops.placeholder(dtypes.uint8, shape=[64, None, 3])
+      p_unknown_batch = array_ops.placeholder(
+          dtypes.uint8, shape=[None, 64, 64, 3])
+      p_wrong_rank = array_ops.placeholder(dtypes.uint8, shape=[None, None])
+      p_zero_dim = array_ops.placeholder(dtypes.uint8, shape=[64, 0, 3])
 
-    #Ops that support 3D input
-    for op in [
-        image_ops.flip_left_right, image_ops.flip_up_down,
-        image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose, image_ops.rot90
-    ]:
-      transformed_unknown_rank = op(p_unknown_rank)
-      self.assertIsNone(transformed_unknown_rank.get_shape().ndims)
-      transformed_unknown_dims_3 = op(p_unknown_dims_3)
-      self.assertEqual(3, transformed_unknown_dims_3.get_shape().ndims)
-      transformed_unknown_width = op(p_unknown_width)
-      self.assertEqual(3, transformed_unknown_width.get_shape().ndims)
+      #Ops that support 3D input
+      for op in [
+          image_ops.flip_left_right, image_ops.flip_up_down,
+          image_ops.random_flip_left_right, image_ops.random_flip_up_down,
+          image_ops.transpose, image_ops.rot90
+      ]:
+        transformed_unknown_rank = op(p_unknown_rank)
+        self.assertIsNone(transformed_unknown_rank.get_shape().ndims)
+        transformed_unknown_dims_3 = op(p_unknown_dims_3)
+        self.assertEqual(3, transformed_unknown_dims_3.get_shape().ndims)
+        transformed_unknown_width = op(p_unknown_width)
+        self.assertEqual(3, transformed_unknown_width.get_shape().ndims)
 
-      with self.assertRaisesRegex(ValueError, "must be > 0"):
-        op(p_zero_dim)
+        with self.assertRaisesRegex(ValueError, "must be > 0"):
+          op(p_zero_dim)
 
-    #Ops that support 4D input
-    for op in [
-        image_ops.flip_left_right, image_ops.flip_up_down,
-        image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose, image_ops.rot90
-    ]:
-      transformed_unknown_dims_4 = op(p_unknown_dims_4)
-      self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
-      transformed_unknown_batch = op(p_unknown_batch)
-      self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
-      with self.assertRaisesRegex(ValueError,
-                                  "must be at least three-dimensional"):
-        op(p_wrong_rank)
+      #Ops that support 4D input
+      for op in [
+          image_ops.flip_left_right, image_ops.flip_up_down,
+          image_ops.random_flip_left_right, image_ops.random_flip_up_down,
+          image_ops.transpose, image_ops.rot90
+      ]:
+        transformed_unknown_dims_4 = op(p_unknown_dims_4)
+        self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
+        transformed_unknown_batch = op(p_unknown_batch)
+        self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
+        with self.assertRaisesRegex(ValueError,
+                                    "must be at least three-dimensional"):
+          op(p_wrong_rank)
 
   def testRot90GroupOrder(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
@@ -1450,25 +1465,21 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
         rotated = image_ops.rot90(rotated)
       self.assertAllEqual(image, self.evaluate(rotated))
 
-  @test_util.run_deprecated_v1
   def testRot90NumpyEquivalence(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
     with self.cached_session(use_gpu=True):
-      k_placeholder = array_ops.placeholder(dtypes.int32, shape=[])
-      y_tf = image_ops.rot90(image, k_placeholder)
       for k in xrange(4):
         y_np = np.rot90(image, k=k)
-        self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
+        self.assertAllEqual(
+            y_np, self.evaluate(image_ops.rot90(image, k)))
 
-  @test_util.run_deprecated_v1
   def testRot90NumpyEquivalenceWithBatch(self):
     image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
     with self.cached_session(use_gpu=True):
-      k_placeholder = array_ops.placeholder(dtypes.int32, shape=[])
-      y_tf = image_ops.rot90(image, k_placeholder)
       for k in xrange(4):
         y_np = np.rot90(image, k=k, axes=(1, 2))
-        self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
+        self.assertAllEqual(
+            y_np, self.evaluate(image_ops.rot90(image, k)))
 
   def testFlipImageUnknownShape(self):
     expected_output = constant_op.constant([[[[3, 4, 5], [0, 1, 2]],
