@@ -114,7 +114,8 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
     fingerprint_input = audio_ops.mfcc(
         spectrogram,
         sample_rate,
-        dct_coefficient_count=model_settings['fingerprint_width'])
+        # dct_coefficient_count=model_settings['fingerprint_width'])
+        dct_coefficient_count=40)
   elif preprocess == 'micro':
     if not frontend_op:
       raise Exception(
@@ -148,6 +149,10 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
   logits = models.create_model(
       reshaped_input, model_settings, model_architecture, is_training=False,
       runtime_settings=runtime_settings)
+  print()
+  print(model_settings)
+  print(">>>>", reshaped_input, logits, fingerprint_size, fingerprint_input)
+  print()
 
   # Create an output to use for inference.
   tf.nn.softmax(logits, name='labels_softmax')
@@ -174,7 +179,8 @@ def main(_):
   if FLAGS.quantize:
     tf.contrib.quantize.create_eval_graph()
   models.load_variables_from_checkpoint(sess, FLAGS.start_checkpoint)
-
+  for x in tf.all_variables():
+    print(x)
   # Turn all the variables into inline constants inside the graph and save it.
   frozen_graph_def = graph_util.convert_variables_to_constants(
       sess, sess.graph_def, ['labels_softmax'])
