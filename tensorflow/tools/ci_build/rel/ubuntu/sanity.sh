@@ -15,9 +15,6 @@
 # ==============================================================================
 set -e
 
-# Google internal setup. No-op in open source
-setup_sanity_build
-
 # Install latest bazel
 source tensorflow/tools/ci_build/release/common.sh
 update_bazel_linux
