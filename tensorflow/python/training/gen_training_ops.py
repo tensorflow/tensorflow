@@ -14,12 +14,15 @@
 # ==============================================================================
 
 """Python wrappers for training ops."""
+# NOTE(allenl): The generated op wrappers for training ops were originally in
+# training/gen_training_ops.py. They moved to ops/gen_training_ops.py when
+# training/ became a module, and this is an alias to avoid breaking existing
+# imports.
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.ops import gen_training_ops  # pylint: disable=unused-import
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_training_ops import *
