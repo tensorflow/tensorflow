@@ -21532,6 +21532,11 @@ func ResourceGather(scope *Scope, resource tf.Output, indices tf.Output, dtype t
 //
 // *NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
 // [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+//
+// Given two input tensors, the `tf.add` operation computes the sum for every element in the tensor.
+//
+// Both input and output have a range `(-inf, inf)`.
+//
 func Add(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -21609,6 +21614,12 @@ func Atan(scope *Scope, x tf.Output) (y tf.Output) {
 }
 
 // Computes acos of x element-wise.
+//
+//
+//   Provided an input tensor, the `tf.math.acos` operation returns the inverse cosine of each element of the tensor. If `y = tf.math.cos(x)` then, `x = tf.math.acos(y)`.
+//
+//   Input range is `[-1, 1]` and the output has a range of `[0, pi]`.
+//
 func Acos(scope *Scope, x tf.Output) (y tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -42490,7 +42501,7 @@ func ResourceApplyCenteredRMSPropUseLocking(value bool) ResourceApplyCenteredRMS
 //	mom: Should be from a Variable().
 //	lr: Scaling factor. Must be a scalar.
 //	rho: Decay rate. Must be a scalar.
-//
+//	momentum: Momentum Scale. Must be a scalar.
 //	epsilon: Ridge term. Must be a scalar.
 //	grad: The gradient.
 //

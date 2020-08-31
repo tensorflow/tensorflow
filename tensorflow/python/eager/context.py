@@ -769,6 +769,26 @@ class Context(object):
     self.ensure_initialized()
     pywrap_tfe.TFE_AbortCollectiveOps(self._handle, code, message)
 
+  def check_collective_ops_peer_health(self, task):
+    """Check collective peer health.
+
+    This probes each task to see if they're still alive. Note that restarted
+    tasks are considered a different one, and they're considered not healthy.
+
+    This should only be used in multi client multi worker training.
+
+    Args:
+      task: a task string, must be in the format of /job:xxx/replica:0/task:N.
+
+    Raises:
+      tf.errors.UnavailableError: when a peer is down.
+      tf.errors.FailedPreconditionError: when a peer is a different one from the
+        one this task has talked to, e.g. the peer has restarted.
+      tf.errors.InvalidArgumentError: when the task string is invalid.
+    """
+    self.ensure_initialized()
+    pywrap_tfe.TFE_CollectiveOpsCheckPeerHealth(self._handle, task)
+
   @property
   def _handle(self):
     if self._context_handle is None:

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/remapper.h"
 
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
@@ -541,7 +542,7 @@ TEST_F(RemapperTest, DISABLED_FuseConv2DWithBiasAndActivationOnGPU) {
 TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
   using ::tensorflow::ops::Placeholder;
 
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
     auto input_shape = Placeholder::Shape({8, 32, 32, 3});
@@ -567,6 +568,13 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
         return ops::Identity(fetch, ops::Relu6(activate, bias_add));
       } else if (activation == "Elu") {
         return ops::Identity(fetch, ops::Elu(activate, bias_add));
+        // Disable LeakyRelu temporarily before MKL PR is merged.
+#ifndef INTEL_MKL
+      } else if (activation == "LeakyRelu") {
+        auto attr = ops::internal::LeakyRelu::Alpha(0.5);
+        return ops::Identity(
+            fetch, ops::internal::LeakyRelu(activate, bias_add, attr));
+#endif  // !INTEL_MKL
       }
 
       return ops::Identity(fetch, bias);
@@ -605,6 +613,12 @@ TEST_F(RemapperTest, FuseConv2DWithBiasAndActivation) {
         ASSERT_EQ(fused_ops.size(), 2);
         EXPECT_EQ(fused_ops[0], "BiasAdd");
         EXPECT_EQ(fused_ops[1], activation);
+
+#ifndef INTEL_MKL
+        if (activation == "LeakyRelu") {
+          EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), 0.5);
+        }
+#endif  // !INTEL_MKL
         found++;
       }
     }
@@ -795,7 +809,7 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNorm) {
 TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
   using ops::Placeholder;
 
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
     auto input_shape = ops::Placeholder::Shape({8, 32, 32, 3});
@@ -828,6 +842,13 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
         return ops::Identity(fetch, ops::Relu6(activate, batch_norm.y));
       } else if (activation == "Elu") {
         return ops::Identity(fetch, ops::Elu(activate, batch_norm.y));
+        // Disable LeakyRelu temporarily before MKL PR is merged.
+#ifndef INTEL_MKL
+      } else if (activation == "LeakyRelu") {
+        auto attr = ops::internal::LeakyRelu::Alpha(0.5);
+        return ops::Identity(
+            fetch, ops::internal::LeakyRelu(activate, batch_norm.y, attr));
+#endif  // !INTEL_MKL
       }
 
       return ops::Identity(fetch, batch_norm.y);
@@ -874,6 +895,12 @@ TEST_F(RemapperTest, FuseConv2DWithBatchNormAndActivation) {
         ASSERT_EQ(fused_ops.size(), 2);
         EXPECT_EQ(fused_ops[0], "FusedBatchNorm");
         EXPECT_EQ(fused_ops[1], activation);
+
+#ifndef INTEL_MKL
+        if (activation == "LeakyRelu") {
+          EXPECT_EQ(node.attr().at("leakyrelu_alpha").f(), 0.5);
+        }
+#endif  // !INTEL_MKL
         found++;
       }
     }

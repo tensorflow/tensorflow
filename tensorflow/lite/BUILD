@@ -17,13 +17,6 @@ exports_files(glob([
 ]))
 
 config_setting(
-    name = "enable_default_profiler",
-    values = {
-        "copt": "-DTFLITE_ENABLE_DEFAULT_PROFILER",
-    },
-)
-
-config_setting(
     name = "gemmlowp_profiling",
     values = {
         "copt": "-DGEMMLOWP_PROFILING",
@@ -275,13 +268,9 @@ cc_library(
         "//tensorflow/lite/experimental/resource",
         "//tensorflow/lite/kernels/internal:compatibility",
         "//tensorflow/lite/nnapi:nnapi_implementation",
+        "//tensorflow/lite/profiling:platform_profiler",
         "//tensorflow/lite/schema:schema_fbs",
-    ] + select({
-        ":enable_default_profiler": [
-            "//tensorflow/lite/profiling:platform_profiler",
-        ],
-        "//conditions:default": [],
-    }),
+    ],
     alwayslink = 1,
 )
 

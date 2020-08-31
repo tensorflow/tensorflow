@@ -494,15 +494,15 @@ cc_library(
     hdrs = ["tpu_util.h"],
     deps = [
         ":tpu_compilation_cache_key",
-        ":tpu_program_group_interface",
+        ":tpu_util_c_api_hdrs",
         "//tensorflow/cc:ops",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:compile_only_client",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/tpu:tpu_api",
         "@com_google_absl//absl/strings",
-        "@com_google_absl//absl/time",
     ],
     alwayslink = 1,
 )
@@ -924,4 +924,20 @@ cc_library(
         "//tensorflow/core/tpu:tpu_configuration",
     ],
     alwayslink = True,
+)
+
+cc_library(
+    name = "tpu_pod_state",
+    srcs = ["tpu_pod_state.cc"],
+    hdrs = ["tpu_pod_state.h"],
+    copts = select({
+        WITH_TPU_SUPPORT: ["-DLIBTFTPU"],
+        DEFAULT: [],
+    }),
+    deps = [
+        ":tpu_compilation_cache_service",
+        ":tpu_util",
+        "//tensorflow/core:framework",
+        tf_grpc_cc_dependency(),
+    ],
 )

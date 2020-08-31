@@ -57,6 +57,7 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
 @REM handle this case.
 %PIP_EXE% install gast==0.3.3
 %PIP_EXE% install astunparse==1.6.3
+%PIP_EXE% install typing_extensions
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (

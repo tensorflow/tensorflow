@@ -1,4 +1,8 @@
+#if defined(PLATFORM_GOOGLE)
 #include "third_party/tensorflow/core/tpu/tpu_executor_init_fns.inc"
+#else
+#include "tensorflow/core/tpu/tpu_executor_init_fns.inc"
+#endif
 
 namespace {
 
@@ -88,6 +92,7 @@ tensorflow::Status SetTpuUtilStructFns(void* library_handle) {
   auto* util_fn = tensorflow::tpu::UtilApiFn();
 
   TFTPU_SET_FN(util_fn, TpuTopology_AvailableCoreCount);
+  TFTPU_SET_FN(util_fn, TpuNetUtil_RecycleUnusedPort);
   TFTPU_SET_FN(util_fn, TpuCompile_IsTpuCompilationEnabled);
   TFTPU_SET_FN(util_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
   TFTPU_SET_FN(util_fn, TpuCompile_CreateCompilationCacheKey);

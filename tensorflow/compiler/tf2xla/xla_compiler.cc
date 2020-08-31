@@ -1143,7 +1143,11 @@ Status ValidateGraph(const Graph* graph,
       return errors::InvalidArgument(absl::StrCat(
           "Detected unsupported operations when trying to compile graph ", name,
           " on ", device_type.type_string(), ": ", node->def().op(), " (",
-          s.error_message(), ")", FormatNodeForError(*node)));
+          s.error_message(), ")", FormatNodeForError(*node),
+          "One approach is to outside compile the unsupported ops to run on "
+          "CPUs by enabling soft placement "
+          "`tf.config.set_soft_device_placement(True)`."
+          " This has a potential performance penalty."));
     }
     return Status::OK();
   };

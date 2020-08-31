@@ -470,13 +470,19 @@ HloSharding ScatterIndexSharding(const HloSharding& data_sharding,
   if (index_tile_assignment_dims.size() < hlo->operand(1)->shape().rank()) {
     index_tile_assignment_dims.push_back(1);
   }
+  if (data_sharding.ReplicateOnLastTileDim()) {
+    index_tile_assignment_dims.push_back(
+        data_sharding.tile_assignment().dimensions().back());
+  }
   Array<int64> new_tile_assignment = data_sharding.tile_assignment();
   if (new_tile_assignment.num_elements() !=
       Product(index_tile_assignment_dims)) {
     return HloSharding::Replicate();
   }
   new_tile_assignment.Reshape(index_tile_assignment_dims);
-  return HloSharding::Tile(new_tile_assignment);
+  return data_sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(new_tile_assignment)
+             : HloSharding::Tile(new_tile_assignment);
 }
 
 HloSharding ScatterDataSharding(const HloSharding& index_sharding,
@@ -496,13 +502,19 @@ HloSharding ScatterDataSharding(const HloSharding& index_sharding,
       index_dim++;
     }
   }
+  if (index_sharding.ReplicateOnLastTileDim()) {
+    data_tile_assignment_dims.push_back(
+        index_sharding.tile_assignment().dimensions().back());
+  }
   Array<int64> new_tile_assignment = index_sharding.tile_assignment();
   if (new_tile_assignment.num_elements() !=
       Product(data_tile_assignment_dims)) {
     return HloSharding::Replicate();
   }
   new_tile_assignment.Reshape(data_tile_assignment_dims);
-  return HloSharding::Tile(new_tile_assignment);
+  return index_sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(new_tile_assignment)
+             : HloSharding::Tile(new_tile_assignment);
 }
 
 HloSharding ScatterEffectiveIndexSharding(const HloSharding& index_sharding,

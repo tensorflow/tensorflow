@@ -47,7 +47,7 @@ TF_CAPI_EXPORT extern TF_FunctionMetadata* TF_ConcreteFunctionGetMetadata(
 // high-level API here. A strawman for what this interface could look like:
 // TF_Value* TF_ExecuteFunction(TFE_Context*, TF_ConcreteFunction*, TF_Value*
 // inputs, int num_inputs, TF_Status* status);
-TF_CAPI_EXPORT extern TFE_Op* TF_ConcreteFunctionGetCallOp(
+TF_CAPI_EXPORT extern TFE_Op* TF_ConcreteFunctionMakeCallOp(
     TF_ConcreteFunction* func, TFE_TensorHandle** inputs, int num_inputs,
     TF_Status* status);
 

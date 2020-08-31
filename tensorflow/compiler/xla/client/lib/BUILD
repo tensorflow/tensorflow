@@ -305,6 +305,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:tf32_utils",
     ],
 )
 
@@ -345,6 +346,9 @@ cc_library(
     hdrs = ["sorting.h"],
     deps = [
         ":comparators",
+        ":constants",
+        ":loops",
+        ":slicing",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",

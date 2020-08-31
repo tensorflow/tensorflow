@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/random.h"
+#include "tensorflow/core/tpu/tpu_api.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -94,6 +95,10 @@ Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
     ++i;
   }
   return Status::OK();
+}
+
+void RecycleUnusedPort(int port) {
+  UtilApiFn()->TpuNetUtil_RecycleUnusedPortFn(port);
 }
 }  // namespace tpu
 }  // namespace tensorflow

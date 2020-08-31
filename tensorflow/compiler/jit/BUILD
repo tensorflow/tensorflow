@@ -329,6 +329,7 @@ cc_library(
     srcs = ["xla_compilation_cache.cc"],
     hdrs = ["xla_compilation_cache.h"],
     deps = [
+        ":flags",
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
@@ -361,8 +362,11 @@ tf_cc_test(
         "xla_compilation_cache_test.cc",
     ],
     deps = [
+        ":flags",
         ":xla_compilation_cache",
+        ":xla_cpu_jit",
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -918,6 +922,7 @@ tf_cc_test(
         ":xla_cpu_jit",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/compiler/tf2xla:test_util",

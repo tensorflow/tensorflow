@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
@@ -323,6 +324,10 @@ Status XlaCompilationCache::CompileImpl(
     absl::optional<int64> compile_threshold,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
+  if (FailOnXlaCompilation()) {
+    return errors::Internal("XLA compilation disabled");
+  }
+
   DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 

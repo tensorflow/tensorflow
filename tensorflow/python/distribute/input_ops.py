@@ -27,7 +27,7 @@ from tensorflow.python.framework import ops
 
 
 # pylint: disable=protected-access
-def auto_shard_dataset(dataset, num_shards, index, num_replicas_in_sync=None):
+def auto_shard_dataset(dataset, num_shards, index):
   """Shard the input pipeline by sharding the underlying list of files.
 
   Args:
@@ -37,8 +37,6 @@ def auto_shard_dataset(dataset, num_shards, index, num_replicas_in_sync=None):
         shards operating in parallel. Same usage as in `tf.data.Dataset.shard`.
     index: A `tf.int64` scalar `tf.Tensor`, representing the worker index.
       Same usage as in `tf.data.Dataset.shard`.
-    num_replicas_in_sync: An integer representing the total number of replicas
-      across all workers. This is used in the rewrite when sharding by data.
 
   Returns:
     A modified `Dataset` obtained by updating the pipeline sharded by the
@@ -47,14 +45,10 @@ def auto_shard_dataset(dataset, num_shards, index, num_replicas_in_sync=None):
   """
   if (dataset.options().experimental_distribute.auto_shard_policy !=
       AutoShardPolicy.OFF):
-    if num_replicas_in_sync is None:
-      num_replicas_in_sync = 1
     if isinstance(dataset, dataset_ops.DatasetV1):
-      return distribute._AutoShardDatasetV1(dataset, num_shards, index,
-                                            num_replicas_in_sync)
+      return distribute._AutoShardDatasetV1(dataset, num_shards, index)
     else:
-      return distribute._AutoShardDataset(dataset, num_shards, index,
-                                          num_replicas_in_sync)
+      return distribute._AutoShardDataset(dataset, num_shards, index)
   else:
     return dataset
 

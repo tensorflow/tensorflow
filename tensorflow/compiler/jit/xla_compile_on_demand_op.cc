@@ -49,8 +49,10 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-  se::DeviceMemoryAllocator* allocator =
-      GetAllocator(&tf_allocator_adapter, ctx, platform_info_);
+  se::DeviceMemoryAllocator* allocator = GetAllocator(
+      &tf_allocator_adapter, ctx->device(),
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
+      platform_info_);
   XlaComputationLaunchContext launch_context(
       client, allocator, client->default_device_ordinal(),
       /*allocate_xla_tensors=*/platform_info_.xla_device_metadata() != nullptr,
@@ -157,13 +159,16 @@ Status XlaCompileOnDemandOp::Compile(
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaCompilationCache>(
       rm->default_container(), "xla_cache", cache,
       [&](XlaCompilationCache** write_into_cache) {
-        return BuildXlaCompilationCache(ctx, platform_info_, write_into_cache);
+        return BuildXlaCompilationCache(ctx->device(), platform_info_,
+                                        write_into_cache);
       }));
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-  XlaCompiler::Options options =
-      GenerateCompilerOptions(**cache, ctx, platform_info_,
-                              /*has_ref_vars=*/true, &tf_allocator_adapter);
+  XlaCompiler::Options options = GenerateCompilerOptions(
+      **cache, *ctx->function_library(), ctx->device(),
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
+      platform_info_,
+      /*has_ref_vars=*/true, &tf_allocator_adapter);
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;

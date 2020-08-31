@@ -21,7 +21,7 @@ limitations under the License.
 namespace tensorflow {
 namespace tpu {
 std::shared_ptr<::grpc::ChannelCredentials> CreateChannelCredentials() {
-  return ::grpc::InsecureChannelCredentials();
+  return ::grpc::InsecureChannelCredentials();  // NOLINT
 }
 
 #if defined(LIBTFTPU)

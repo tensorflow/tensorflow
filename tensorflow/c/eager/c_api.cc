@@ -51,9 +51,6 @@ limitations under the License.
 #include "tensorflow/core/protobuf/device_filters.pb.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
-#ifdef TENSORFLOW_EAGER_USE_XLA
-#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#endif  // TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -1148,24 +1145,21 @@ void TFE_DeleteOp(TFE_Op* op) {
   tensorflow::unwrap(op)->Release();
 }
 
+const char* TFE_OpGetName(const TFE_Op* op, TF_Status* status) {
+  return tensorflow::unwrap(op)->Name().c_str();
+}
+
+TFE_Context* TFE_OpGetContext(const TFE_Op* op, TF_Status* status) {
+  return tensorflow::wrap(
+      &(OperationFromInterface(tensorflow::unwrap(op))->EagerContext()));
+}
+
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   status->status = tensorflow::unwrap(op)->SetDeviceName(device_name);
 }
 
-const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
+const char* TFE_OpGetDevice(const TFE_Op* op, TF_Status* status) {
   return tensorflow::unwrap(op)->DeviceName().c_str();
-}
-
-void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
-#ifdef TENSORFLOW_EAGER_USE_XLA
-  tensorflow::Status s = tensorflow::unwrap(op)->SetUseXla(enable);
-  if (!s.ok()) {
-    LOG(ERROR) << "Could not enable XLA compilation for op: " << s;
-  }
-#else
-  LOG(WARNING) << "This call is a no-op, as the TensorFlow library is not "
-                  "built with XLA support.";
-#endif  // TENSORFLOW_EAGER_USE_XLA
 }
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input, TF_Status* status) {
@@ -1178,6 +1172,15 @@ void TFE_OpAddInputList(TFE_Op* op, TFE_TensorHandle** inputs, int num_inputs,
       {reinterpret_cast<tensorflow::AbstractTensorHandle**>(
            tensorflow::unwrap(inputs)),
        static_cast<size_t>(num_inputs)});
+}
+
+extern int TFE_OpGetFlatInputCount(const TFE_Op* op, TF_Status* status) {
+  return tensorflow::unwrap(op)->GetInputs().size();
+}
+
+extern TFE_TensorHandle* TFE_OpGetFlatInput(const TFE_Op* op, int index,
+                                            TF_Status* status) {
+  return tensorflow::wrap(tensorflow::unwrap(op)->GetInputs()[index]);
 }
 
 TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
@@ -1485,7 +1488,7 @@ void TFE_ContextEndStep(TFE_Context* ctx) {
   tensorflow::unwrap(ctx)->EndStep();
 }
 
-const TFE_OpAttrs* TFE_OpGetAttrs(TFE_Op* op) {
+const TFE_OpAttrs* TFE_OpGetAttrs(const TFE_Op* op) {
   return tensorflow::wrap(
       &OperationFromInterface(tensorflow::unwrap(op))->Attrs());
 }
@@ -1611,19 +1614,12 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
     return status.status;
   }
 
-  tensorflow::Status Execute(tensorflow::EagerOperation* op,
+  tensorflow::Status Execute(const tensorflow::EagerOperation* op,
                              tensorflow::TensorHandle** retvals,
                              int* num_retvals) override {
-    std::vector<TFE_TensorHandle*> inputs;
-    inputs.reserve(op->Inputs().size());
-    for (int i = 0; i < op->Inputs().size(); ++i) {
-      op->Inputs()[i]->Ref();
-      inputs.push_back(tensorflow::wrap(op->Inputs()[i]));
-    }
     std::vector<TFE_TensorHandle*> outputs(*num_retvals);
     TF_Status status;
-    device_.execute(context_, inputs.size(), inputs.data(), op->Name().c_str(),
-                    wrap(&op->Attrs()), num_retvals, outputs.data(), &status,
+    device_.execute(tensorflow::wrap(op), num_retvals, outputs.data(), &status,
                     info_);
     if (status.status.ok()) {
       for (int i = 0; i < *num_retvals; ++i) {
@@ -1632,10 +1628,6 @@ class CustomDeviceAPI : public tensorflow::CustomDevice {
         retvals[i]->Ref();
         TFE_DeleteTensorHandle(outputs[i]);
       }
-    }
-
-    for (auto inp : inputs) {
-      TFE_DeleteTensorHandle(inp);
     }
     return status.status;
   }

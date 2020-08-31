@@ -387,6 +387,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
+        "//tensorflow/core/platform:blocking_counter",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,

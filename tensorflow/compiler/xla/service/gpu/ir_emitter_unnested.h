@@ -404,11 +404,10 @@ class IrEmitterUnnested : public IrEmitter,
   // the process. `scatter` may be fused, scatter indices are taken from
   // `scatter_indices_gen`, updates from`updates_gen`. The output buffer is
   // expected to have the operand values in it already. If unique_indices
-  // is false, we will use an atomic update. Using false for unique_indices
-  // is safe only when it is guaranteed that there are no duplicate
-  // indices.
-  // When using unique_indices=true, it is the caller's responsibility to
-  // ensure there is no overlap.
+  // is false, we will use an atomic update. Using true for unique_indices
+  // behaves properly only when it is guaranteed that the indices to be
+  // updated do not overlap. The caller is responsible for ensuring this is
+  // the case.
   Status EmitScatter(Thunk* thunk, HloInstruction* scatter,
                      const llvm_ir::ElementGenerator& scatter_indices_gen,
                      const llvm_ir::ElementGenerator& updates_gen);
