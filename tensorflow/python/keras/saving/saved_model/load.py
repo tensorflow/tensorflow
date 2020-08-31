@@ -129,6 +129,9 @@ def load(path, compile=True, options=None):  # pylint: disable=redefined-builtin
       model.compile(**saving_utils.compile_args_from_training_config(
           training_config))
       saving_utils.try_build_compiled_arguments(model)
+      if(model.optimizer.get_slot_names()):
+        model._saved_model_with_slot = True
+        
     else:
       logging.warning('No training configuration found in save file, so the '
                       'model was *not* compiled. Compile it manually.')
