@@ -807,7 +807,7 @@ class ArrayMethodsTest(test.TestCase):
   def testSize(self):
 
     def run_test(arr, axis=None):
-      onp_arr = arr.numpy() if isinstance(arr, tf.Tensor) else arr
+      onp_arr = np.array(arr).data
       self.assertEqual(np_array_ops.size(arr, axis), onp.size(onp_arr, axis))
 
     run_test(np.array([1]))
