@@ -16845,6 +16845,14 @@ func LookupTableFindV2(scope *Scope, table_handle tf.Output, keys tf.Output, def
 // MaxPoolGradAttr is an optional argument to MaxPoolGrad.
 type MaxPoolGradAttr func(optionalAttr)
 
+// MaxPoolGradExplicitPaddings sets the optional explicit_paddings attribute to value.
+// If not specified, defaults to <>
+func MaxPoolGradExplicitPaddings(value []int64) MaxPoolGradAttr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
+
 // MaxPoolGradDataFormat sets the optional data_format attribute to value.
 //
 // value: Specify the data format of the input and output data. With the
@@ -34878,6 +34886,14 @@ func OrderedMapClear(scope *Scope, dtypes []tf.DataType, optional ...OrderedMapC
 
 // MaxPoolAttr is an optional argument to MaxPool.
 type MaxPoolAttr func(optionalAttr)
+
+// MaxPoolExplicitPaddings sets the optional explicit_paddings attribute to value.
+// If not specified, defaults to <>
+func MaxPoolExplicitPaddings(value []int64) MaxPoolAttr {
+	return func(m optionalAttr) {
+		m["explicit_paddings"] = value
+	}
+}
 
 // MaxPoolDataFormat sets the optional data_format attribute to value.
 //
