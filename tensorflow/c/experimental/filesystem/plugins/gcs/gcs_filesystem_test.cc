@@ -435,6 +435,18 @@ TEST_F(GCSFilesystemTest, GetChildren) {
   EXPECT_EQ(std::vector<string>({"SubDir/", "TestFile.csv"}), childrens);
 }
 
+TEST_F(GCSFilesystemTest, DeleteFile) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_);
+  const std::string path = GetURIForPath("DeleteFile");
+  WriteString(path, "test");
+  ASSERT_TF_OK(status_);
+  tf_gcs_filesystem::DeleteFile(filesystem_, path.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  tf_gcs_filesystem::PathExists(filesystem_, path.c_str(), status_);
+  EXPECT_EQ(TF_GetCode(status_), TF_NOT_FOUND);
+}
+
 // These tests below are ported from
 // `//tensorflow/core/platform/cloud:gcs_file_system_test`
 TEST_F(GCSFilesystemTest, NewRandomAccessFile_NoBlockCache) {
