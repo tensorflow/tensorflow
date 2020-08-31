@@ -1834,7 +1834,9 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
       "ConcatOffset", "Const", "MirrorPad", "Pack", "Pad", "PadV2", "Reverse",
       "ReverseV2", "ReverseSequence", "Slice", "Split", "SplitV",
       "StridedSlice", "StridedSliceGrad", "ResourceStridedSliceAssign",
-      "Tile", "Transpose", "InvertPermutation", "Unpack", "DeviceIndex"}}};
+      "Tile", "Transpose", "InvertPermutation", "Unpack", "DeviceIndex",
+      "TensorStridedSliceUpdate",
+     }}};
   // clang-format on
   return result;
 }

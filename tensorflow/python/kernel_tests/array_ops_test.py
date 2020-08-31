@@ -1234,6 +1234,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       with self.assertRaises(ValueError):
         sess.run(v[:].assign(too_small_val))
 
+  @test_util.disable_xla("b/123559667")
   @test_util.run_in_graph_and_eager_modes
   def testTensorStridedSliceUpdateWithInputForward(self):
     """Tests tensor_strided_slice_update with input-forwarding taking effect."""
@@ -1243,6 +1244,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       return gen_array_ops.tensor_strided_slice_update(y, [0], [1], [1], [0])
     self.assertAllEqual([0, 1], self.evaluate(assign(array_ops.zeros([2]))))
 
+  @test_util.disable_xla("b/123559667")
   @test_util.run_in_graph_and_eager_modes
   def testTensorStridedSliceUpdateNoInputForward(self):
     """Tests tensor_strided_slice_update with no input-forwarding."""
@@ -1254,6 +1256,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     ans = y + z
     self.assertAllClose([1.6, 2.6], self.evaluate(ans))
 
+  @test_util.disable_xla("b/123559667")
   def testTensorStridedSliceUpdateGradSimple(self):
     original = constant_op.constant([0.2, 0.3])
     updates = constant_op.constant([0.4])
@@ -1272,6 +1275,7 @@ class SliceAssignTest(test_util.TensorFlowTestCase, parameterized.TestCase):
           ([4], [5], [3], [1], [3], 1, 0, 0, 0, 0),
           ([2, 2, 3, 2], [0, 0, 1], [1, 0, 2], [1, 0, 1], [2, 3], 0, 0, 2, 0, 5)
       ]))
+  @test_util.disable_xla("b/123559667")
   def testTensorStridedSliceUpdateGrad(
       self, shape, begin, end, strides, updates_shape, *args):
     with self.cached_session():
