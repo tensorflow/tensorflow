@@ -494,6 +494,42 @@ TEST_F(GCSFilesystemTest, StatFile) {
   EXPECT_FALSE(stat.is_directory);
 }
 
+TEST_F(GCSFilesystemTest, RenameFile) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_);
+  const std::string src = GetURIForPath("RenameFileSrc");
+  const std::string dst = GetURIForPath("RenameFileDst");
+  WriteString(src, "test");
+  ASSERT_TF_OK(status_);
+
+  tf_gcs_filesystem::RenameFile(filesystem_, src.c_str(), dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("test", result);
+}
+
+TEST_F(GCSFilesystemTest, RenameFileOverwrite) {
+  tf_gcs_filesystem::Init(filesystem_, status_);
+  ASSERT_TF_OK(status_);
+  const std::string src = GetURIForPath("RenameFileOverwriteSrc");
+  const std::string dst = GetURIForPath("RenameFileOverwriteDst");
+
+  WriteString(src, "test_old");
+  ASSERT_TF_OK(status_);
+  WriteString(dst, "test_new");
+  ASSERT_TF_OK(status_);
+
+  tf_gcs_filesystem::PathExists(filesystem_, dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+  tf_gcs_filesystem::RenameFile(filesystem_, src.c_str(), dst.c_str(), status_);
+  EXPECT_TF_OK(status_);
+
+  auto result = ReadAll(dst);
+  EXPECT_TF_OK(status_);
+  EXPECT_EQ("test_old", result);
+}
+
 // These tests below are ported from
 // `//tensorflow/core/platform/cloud:gcs_file_system_test`
 TEST_F(GCSFilesystemTest, NewRandomAccessFile_NoBlockCache) {

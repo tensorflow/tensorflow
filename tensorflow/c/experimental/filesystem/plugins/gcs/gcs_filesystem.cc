@@ -988,8 +988,10 @@ static void RenameObject(const TF_Filesystem* filesystem,
 void RenameFile(const TF_Filesystem* filesystem, const char* src,
                 const char* dst, TF_Status* status) {
   if (!IsDirectory(filesystem, src, status)) {
-    if (TF_GetCode(status) == TF_FAILED_PRECONDITION)
+    if (TF_GetCode(status) == TF_FAILED_PRECONDITION) {
+      TF_SetStatus(status, TF_OK, "");
       RenameObject(filesystem, src, dst, status);
+    }
     return;
   }
 
@@ -1093,6 +1095,18 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
     }
     TF_SetStatusFromGCSStatus(metadata.status(), status);
   }
+}
+
+int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
+                    TF_Status* status) {
+  // Only validate the name.
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+
+  TF_FileStatistics stat;
+  Stat(filesystem, path, &stat, status);
+  return stat.length;
 }
 
 static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {
