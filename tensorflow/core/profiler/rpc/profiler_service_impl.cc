@@ -118,8 +118,4 @@ std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {
 
 }  // namespace profiler
 
-std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {
-  return absl::make_unique<profiler::ProfilerServiceImpl>();
-}
-
 }  // namespace tensorflow
