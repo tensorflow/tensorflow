@@ -27,14 +27,18 @@ limitations under the License.
  * Tests to ensure arena memory allocation does not regress by more than 3%.
  */
 
-
 namespace {
 
 // Ensure memory doesn't expand more that 3%:
 constexpr float kAllocationThreshold = 0.03;
-const bool kIs64BitSystem = sizeof(void*) == 8;
 
-constexpr int kKeywordModelTensorArenaSize = 24 * 1024;
+// TODO(b/160617245): Record persistent allocations to provide a more accurate
+// number here.
+constexpr float kAllocationTailMiscCeiling = 2 * 1024;
+
+const bool kIs64BitSystem = (sizeof(void*) == 8);
+
+constexpr int kKeywordModelTensorArenaSize = 22 * 1024;
 uint8_t keyword_model_tensor_arena[kKeywordModelTensorArenaSize];
 
 constexpr int kKeywordModelNodeAndRegistrationCount = 15;
@@ -50,14 +54,7 @@ constexpr int kTestConvModelNodeAndRegistrationCount = 7;
 
 // NOTE: These values are measured on x86-64:
 // TODO(b/158651472): Consider auditing these values on non-64 bit systems.
-#ifdef TF_LITE_STATIC_MEMORY
-constexpr int kTestConvModelTotalSize = 9552;
-constexpr int kTestConvModelTailSize = 1808;
-#else
-constexpr int kTestConvModelTotalSize = 9712;
-constexpr int kTestConvModelTailSize = 1968;
-#endif
-constexpr int kTestConvModelHeadSize = 7744;
+
 constexpr int kTestConvModelOpRuntimeDataSize = 136;
 
 struct ModelAllocationThresholds {
@@ -91,7 +88,7 @@ void EnsureAllocatedSizeThreshold(const char* allocation_type, size_t actual,
 
 void ValidateModelAllocationThresholds(
     const tflite::RecordingMicroAllocator& allocator,
-    const ModelAllocationThresholds& thresholds, int additional_tail_allocations) {
+    const ModelAllocationThresholds& thresholds) {
   allocator.PrintAllocations();
 
   EnsureAllocatedSizeThreshold(
@@ -100,9 +97,8 @@ void ValidateModelAllocationThresholds(
   EnsureAllocatedSizeThreshold(
       "Head", allocator.GetSimpleMemoryAllocator()->GetHeadUsedBytes(),
       thresholds.head_alloc_size);
-  size_t tail_used_bytes = allocator.GetSimpleMemoryAllocator()->GetTailUsedBytes();
   EnsureAllocatedSizeThreshold(
-      "Tail", tail_used_bytes,
+      "Tail", allocator.GetSimpleMemoryAllocator()->GetTailUsedBytes(),
       thresholds.tail_alloc_size);
   EnsureAllocatedSizeThreshold(
       "TfLiteEvalTensor",
@@ -152,12 +148,8 @@ void ValidateModelAllocationThresholds(
                            sizeof(tflite::NodeAndRegistration) *
                                thresholds.node_and_registration_count +
                            thresholds.op_runtime_data_size;
-
-      TF_LITE_REPORT_ERROR(micro_test::reporter,
-                           "tail used %d tail est %d additional %d", 
-                           tail_used_bytes, tail_est_length, additional_tail_allocations);
-  TF_LITE_MICRO_EXPECT_LE((int)(tail_used_bytes - tail_est_length),
-                          additional_tail_allocations);
+  TF_LITE_MICRO_EXPECT_LE(thresholds.tail_alloc_size - tail_est_length,
+                          kAllocationTailMiscCeiling);
 }
 
 }  // namespace
@@ -185,9 +177,8 @@ TF_LITE_MICRO_TEST(TestKeywordModelMemoryThreshold) {
   thresholds.op_runtime_data_size = kKeywordModelOpRuntimeDataSize;
 
   ValidateModelAllocationThresholds(interpreter.GetMicroAllocator(),
-                                    thresholds, kKeywordModellAdditionalOpTailAllocations);
+                                    thresholds);
 }
-
 
 TF_LITE_MICRO_TEST(TestConvModelMemoryThreshold) {
   tflite::AllOpsResolver all_ops_resolver;
@@ -207,7 +198,7 @@ TF_LITE_MICRO_TEST(TestConvModelMemoryThreshold) {
   thresholds.op_runtime_data_size = kTestConvModelOpRuntimeDataSize;
 
   ValidateModelAllocationThresholds(interpreter.GetMicroAllocator(),
-                                    thresholds, kTestConvModelAdditionalOpTailAllocations);
+                                    thresholds);
 }
 
 TF_LITE_MICRO_TESTS_END
