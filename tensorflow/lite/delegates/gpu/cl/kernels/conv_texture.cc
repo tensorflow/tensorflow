@@ -420,38 +420,40 @@ int3 ConvTexture::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvTexture::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
+void ConvTexture::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
-absl::Status CreateConvTexture(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const Convolution2DAttributes& attr,
-                               ConvTexture* result) {
-  *result = ConvTexture(definition, attr);
-  result->GenerateCode(creation_context.device->GetInfo());
-  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const Convolution2DAttributes& attr) {
+  ConvTexture result(definition, attr);
+  result.GenerateCode(device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
-absl::Status CreateConvTexture(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const FullyConnectedAttributes& attr,
-                               ConvTexture* result) {
-  *result = ConvTexture(definition);
-  result->GenerateCode(creation_context.device->GetInfo());
-  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const FullyConnectedAttributes& attr) {
+  ConvTexture result(definition);
+  result.GenerateCode(device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
-absl::Status CreateConvTextureWino4x4To6x6(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const Convolution2DAttributes& attr, ConvTexture* result) {
-  *result = ConvTexture(definition);
-  result->different_weights_for_height_ = true;
-  result->block_size_ = {4, 1, 2};
-  result->GenerateCode(creation_context.device->GetInfo());
-  return result->UploadDataForWinograd4x4To6x6(
-      attr.weights, *creation_context.device, creation_context.context);
+ConvTexture CreateConvTextureWino4x4To6x6(const DeviceInfo& device_info,
+                                          const OperationDef& definition,
+                                          const Convolution2DAttributes& attr) {
+  ConvTexture result(definition);
+  result.different_weights_for_height_ = true;
+  result.block_size_ = {4, 1, 2};
+  result.GenerateCode(device_info);
+  result.UploadDataForWinograd4x4To6x6(attr.weights);
+  return result;
 }
 
 }  // namespace cl

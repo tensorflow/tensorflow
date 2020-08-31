@@ -307,6 +307,7 @@ py_library(
     deps = [
         ":backend",
         ":models",
+        "//tensorflow/python:config",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:tensor_spec",
@@ -522,7 +523,7 @@ tf_py_test(
     size = "medium",
     srcs = ["callbacks_test.py"],
     python_version = "PY3",
-    shard_count = 4,
+    shard_count = 6,
     tags = [
         "no_oss",
         "notsan",

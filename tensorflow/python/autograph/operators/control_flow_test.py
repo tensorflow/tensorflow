@@ -86,7 +86,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={'iterate_names': 'i'})
+
     self.assertEqual(s, (1234,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_range_tensor_explicit_limit_delta(self):
     def body(i):
@@ -106,7 +108,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={'iterate_names': 'i'})
+
     self.assertEqual(s, (-171207,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_range_tensor_explicit_limit_negative_delta(self):
     def body(i):
@@ -126,7 +130,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={'iterate_names': 'i'})
+
     self.assertEqual(s, (171207,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_range_tensor_random_delta(self):
     def body(i):
@@ -147,7 +153,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={'iterate_names': 'i'})
+
     self.assertEqual(s, (1234,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_range_tensor_random_negative_delta(self):
     def body(i):
@@ -168,7 +176,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={'iterate_names': 'i'})
+
     self.assertEqual(s, (171207,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_tensor_with_extra_test_object_vars(self):
     class MutableObject(object):
@@ -194,7 +204,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('state.field_1', 'state.field_2'),
         opts={})
+
     self.assertEqual((state.field_1, state.field_2), (6, 6))
+    self.assertOpCreated('StatelessWhile')
 
   def test_python(self):
     def body(i):
@@ -214,7 +226,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={})
+
     self.assertEqual(s, 1234)
+    self.assertNoOpsCreated()
 
   def test_python_generator_with_extra_test(self):
     def new_generator():
@@ -247,6 +261,8 @@ class ForLoopTest(testing.AutoGraphTestCase):
 
     self.assertEqual(next(gen), 4)
 
+    self.assertNoOpsCreated()
+
   def test_python_generator_with_extra_test_no_iterations(self):
     def new_generator():
       for i in range(5):
@@ -275,6 +291,8 @@ class ForLoopTest(testing.AutoGraphTestCase):
 
     self.assertEqual(next(gen), 0)
 
+    self.assertNoOpsCreated()
+
   def test_tf_dataset(self):
     def body(i):
       nonlocal s
@@ -293,7 +311,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={})
+
     self.assertEqual(s, (1234,))
+    self.assertOpCreated('ScanDataset')
 
   def test_dataset_with_extra_test(self):
     def body(i):
@@ -313,7 +333,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('s',),
         opts={})
+
     self.assertEqual(s, (12,))
+    self.assertOpCreated('ScanDataset')
 
   def test_dataset_with_extra_test_collection_vars(self):
     def body(i):
@@ -335,7 +357,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('l[0]', 's'),
         opts={})
+
     self.assertEqual((l[0], s), (3, 3))
+    self.assertOpCreated('ScanDataset')
 
   def test_dataset_with_extra_test_iteration_limiting(self):
     def body(it):
@@ -356,7 +380,9 @@ class ForLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('i',),
         opts={})
+
     self.assertEqual(i, (3,))
+    self.assertOpCreated('ScanDataset')
 
   def test_tf_dataset_no_loop_vars(self):
     def body(i):
@@ -374,6 +400,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
         opts={})
 
     self.assertEqual(v.read_value(), 1234)
+    self.assertOpCreated('ScanDataset')
 
   def test_tf_iterator(self):
     def body(i):
@@ -395,6 +422,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
         opts={})
 
     self.assertEqual(s, 1234)
+    self.assertOpCreated('IteratorGetNextAsOptional')
 
   def test_tf_iterator_shape_invariants(self):
     def body(i):
@@ -416,6 +444,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
         opts={'shape_invariants': [(s, tensor_shape.TensorShape([None]))]})
 
     self.assertAllEqual(s, [0, 1, 2, 3, 4])
+    self.assertOpCreated('IteratorGetNextAsOptional')
 
   def test_tf_iterator_no_loop_vars(self):
     def body(i):
@@ -433,6 +462,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
         opts={})
 
     self.assertEqual(v.read_value(), 1234)
+    self.assertOpCreated('IteratorGetNextAsOptional')
 
   def test_tf_ragged_tensor(self):
     def body(i):
@@ -454,6 +484,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
         opts={})
 
     self.assertEqual(s, (123,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_tf_ragged_tensor_higher_dimensional(self):
     def body(i):
@@ -479,6 +510,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
         opts={})
 
     self.assertEqual(s, (12,))
+    self.assertOpCreated('StatelessWhile')
 
   def test_tf_ragged_tensor_no_loop_vars(self):
     v = self.variable('v', 0, dtypes.int32)
@@ -497,6 +529,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
 
     # Note: 123 = ((0*10 + 1)*10+2)*10+3 (first element of each row).
     self.assertEqual(v.read_value(), 123)
+    self.assertOpCreated('While')
 
   def _basic_loop(self, init_value, body_fn):
     def body(i):
@@ -540,6 +573,7 @@ class ForLoopTest(testing.AutoGraphTestCase):
 class WhileLoopTest(testing.AutoGraphTestCase):
 
   def test_tensor(self):
+
     def body():
       nonlocal i, s
       s = s * 10 + i
@@ -559,8 +593,66 @@ class WhileLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('i', 's'),
         opts={})
+
     self.assertEqual(i, 5)
     self.assertEqual(s, 1234)
+    self.assertOpCreated('StatelessWhile')
+
+  def test_tensor_creating_variable(self):
+
+    def body():
+      nonlocal i, s
+      i = constant_op.constant(2)
+      s = i ** 5
+
+    def set_state(loop_vars):
+      nonlocal i, s
+      i, s = loop_vars
+
+    i = variable_operators.Undefined('i')
+    s = constant_op.constant(0)
+    control_flow.while_stmt(
+        test=lambda: math_ops.equal(s, 0),
+        body=body,
+        get_state=lambda: (i, s),
+        set_state=set_state,
+        symbol_names=('i', 's'),
+        opts={})
+
+    self.assertEqual(i, 2)
+    self.assertEqual(s, 32)
+    self.assertOpCreated('StatelessWhile')
+    # Check that the temporary staging of the body did not create extra ops.
+    # Node naming is inconsistent between V1 and V2.
+    self.assertGraphContains(r'(while/)?pow$', 1)
+
+  def test_tensor_creating_complex_variable(self):
+
+    def body():
+      nonlocal i, s
+      i = {'a': constant_op.constant(2), 'b': {'c': constant_op.constant(1)}}
+      s = i['a'] ** 5
+
+    def set_state(loop_vars):
+      nonlocal i, s
+      i, s = loop_vars
+
+    i = variable_operators.Undefined('i')
+    s = constant_op.constant(0)
+    control_flow.while_stmt(
+        test=lambda: math_ops.equal(s, 0),
+        body=body,
+        get_state=lambda: (i, s),
+        set_state=set_state,
+        symbol_names=('i', 's'),
+        opts={})
+
+    self.assertDictEqual(i, {'a': 2, 'b': {'c': 1}})
+    self.assertEqual(s, 32)
+    self.assertOpCreated('StatelessWhile')
+    # Check that the temporary staging of the body did not create extra ops.
+    # Node naming is inconsistent between V1 and V2.
+    self.assertGraphContains(r'(while/)?pow$', 1)
 
   def test_tensor_with_side_effecting_condition(self):
     v = self.variable('v', 0, dtypes.int32)
@@ -589,6 +681,7 @@ class WhileLoopTest(testing.AutoGraphTestCase):
 
     self.assertEqual(i, (5,))
     self.assertEqual(v, (12345,))
+    self.assertOpCreated('While')
 
   def test_tensor_with_python_state(self):
     class MutableObject(object):
@@ -613,8 +706,10 @@ class WhileLoopTest(testing.AutoGraphTestCase):
         set_state=set_state,
         symbol_names=('i', 'state.field'),
         opts={})
+
     self.assertEqual(i, 5)
     self.assertEqual(state.field, 1234)
+    self.assertOpCreated('StatelessWhile')
 
   def test_python(self):
     def body():
@@ -632,7 +727,9 @@ class WhileLoopTest(testing.AutoGraphTestCase):
         set_state=None,
         symbol_names=('i', 's'),
         opts={})
+
     self.assertEqual(s, 1234)
+    self.assertNoOpsCreated()
 
   def test_python_with_tensor_state(self):
     def body():
@@ -650,8 +747,10 @@ class WhileLoopTest(testing.AutoGraphTestCase):
         set_state=None,
         symbol_names=('i', 's'),
         opts={})
+
     self.assertEqual(i, 5)
     self.assertEqual(s, 1234)
+    self.assertOpsNotCreated(('While', 'StatelessWhile'))
 
   def test_python_while_infinite(self):
     if not __debug__:
@@ -732,6 +831,7 @@ class WhileLoopTest(testing.AutoGraphTestCase):
             r'.* Large unrolled loop.*Add.*', out_capturer.getvalue()))
 
   def _basic_loop(self, init_value, body_fn):
+
     def body():
       nonlocal i, s
       s = body_fn(i, s)
@@ -802,6 +902,7 @@ class IfStmtTest(testing.AutoGraphTestCase):
 
     self.assertEqual(test_fn(constant_op.constant(True)), 1)
     self.assertEqual(test_fn(constant_op.constant(False)), -1)
+    self.assertOpCreated('StatelessIf')
 
   def test_tensor_no_outputs(self):
 
@@ -831,6 +932,7 @@ class IfStmtTest(testing.AutoGraphTestCase):
 
     self.assertIsNone(test_fn(constant_op.constant(True)))
     self.assertIsNone(test_fn(constant_op.constant(False)))
+    self.assertOpCreated('StatelessIf')
 
   def test_tensor_multiple_returns(self):
 
@@ -862,6 +964,7 @@ class IfStmtTest(testing.AutoGraphTestCase):
 
     self.assertEqual(test_fn(constant_op.constant(True)), (1, 2))
     self.assertEqual(test_fn(constant_op.constant(False)), (-1, -2))
+    self.assertOpCreated('StatelessIf')
 
   def test_python(self):
 
@@ -887,6 +990,7 @@ class IfStmtTest(testing.AutoGraphTestCase):
 
     self.assertEqual(test_fn(True), 1)
     self.assertEqual(test_fn(False), -1)
+    self.assertNoOpsCreated()
 
   def test_python_multiple_returns(self):
 
@@ -914,6 +1018,7 @@ class IfStmtTest(testing.AutoGraphTestCase):
 
     self.assertEqual(test_fn(True), (1, 2))
     self.assertEqual(test_fn(False), (-1, -2))
+    self.assertNoOpsCreated()
 
   def _basic_cond(self, body_fn, else_fn):
     def body():

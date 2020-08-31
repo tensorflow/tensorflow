@@ -33,15 +33,22 @@ ConvolutionTransposed3D::ConvolutionTransposed3D(
     const ConvolutionTransposed3DAttributes& attr,
     const DeviceInfo& device_info)
     : GPUOperation(definition),
-      weights_are_buffer_(device_info.IsMali()),
-      kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
-                   attr.weights.shape.d),
       stride_(attr.stride.w, attr.stride.h, attr.stride.d),
-      padding_(attr.padding.prepended.w, attr.padding.prepended.h,
-               attr.padding.prepended.d),
       block_size_(2, 2, 1, 2) {
-  code_ = GenerateConvolutionTransposed3DCode(definition_, weights_are_buffer_,
+  bool weights_are_buffer = device_info.IsMali();
+  args_.AddInt("stride_x", stride_.x);
+  args_.AddInt("stride_y", stride_.y);
+  args_.AddInt("stride_z", stride_.z);
+  args_.AddInt("padding_x", attr.padding.prepended.w);
+  args_.AddInt("padding_y", attr.padding.prepended.h);
+  args_.AddInt("padding_z", attr.padding.prepended.d);
+  args_.AddInt("kernel_size_x", attr.weights.shape.w);
+  args_.AddInt("kernel_size_y", attr.weights.shape.h);
+  args_.AddInt("kernel_size_z", attr.weights.shape.d);
+  args_.AddInt("grid_size_s");
+  code_ = GenerateConvolutionTransposed3DCode(definition_, weights_are_buffer,
                                               block_size_);
+  UploadWeights(attr.weights, weights_are_buffer);
   if (device_info.IsPowerVR() && block_size_.y != 1) {
     bool is_texture3d = definition_.src_tensors[0].storage_type ==
                         TensorStorageType::TEXTURE_3D;
@@ -56,19 +63,13 @@ ConvolutionTransposed3D::ConvolutionTransposed3D(
 ConvolutionTransposed3D::ConvolutionTransposed3D(
     ConvolutionTransposed3D&& operation)
     : GPUOperation(std::move(operation)),
-      weights_are_buffer_(operation.weights_are_buffer_),
-      kernel_size_(operation.kernel_size_),
       stride_(operation.stride_),
-      padding_(operation.padding_),
       block_size_(operation.block_size_) {}
 
 ConvolutionTransposed3D& ConvolutionTransposed3D::operator=(
     ConvolutionTransposed3D&& operation) {
   if (this != &operation) {
-    std::swap(weights_are_buffer_, operation.weights_are_buffer_);
-    std::swap(kernel_size_, operation.kernel_size_);
     std::swap(stride_, operation.stride_);
-    std::swap(padding_, operation.padding_);
     std::swap(block_size_, operation.block_size_);
     GPUOperation::operator=(std::move(operation));
   }
@@ -83,17 +84,6 @@ std::string ConvolutionTransposed3D::GenerateConvolutionTransposed3DCode(
   AddSrcTensor("src_tensor", src_desc);
 
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-
-  args_.AddInt("stride_x");
-  args_.AddInt("stride_y");
-  args_.AddInt("stride_z");
-  args_.AddInt("padding_x");
-  args_.AddInt("padding_y");
-  args_.AddInt("padding_z");
-  args_.AddInt("kernel_size_x");
-  args_.AddInt("kernel_size_y");
-  args_.AddInt("kernel_size_z");
-  args_.AddInt("grid_size_s");
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   bool image_buffer = src_tensor_type == TensorStorageType::IMAGE_BUFFER;
@@ -370,15 +360,6 @@ std::string ConvolutionTransposed3D::GenerateConvolutionTransposed3DCode(
 }
 
 absl::Status ConvolutionTransposed3D::BindArguments() {
-  RETURN_IF_ERROR(args_.SetInt("stride_x", stride_.x));
-  RETURN_IF_ERROR(args_.SetInt("stride_y", stride_.y));
-  RETURN_IF_ERROR(args_.SetInt("stride_z", stride_.z));
-  RETURN_IF_ERROR(args_.SetInt("padding_x", padding_.x));
-  RETURN_IF_ERROR(args_.SetInt("padding_y", padding_.y));
-  RETURN_IF_ERROR(args_.SetInt("padding_z", padding_.z));
-  RETURN_IF_ERROR(args_.SetInt("kernel_size_x", kernel_size_.x));
-  RETURN_IF_ERROR(args_.SetInt("kernel_size_y", kernel_size_.y));
-  RETURN_IF_ERROR(args_.SetInt("kernel_size_z", kernel_size_.z));
   return args_.SetInt("grid_size_s",
                       DivideRoundUp(dst_[0]->Slices(), block_size_.w));
 }
@@ -394,32 +375,26 @@ int3 ConvolutionTransposed3D::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvolutionTransposed3D::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
+void ConvolutionTransposed3D::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
-absl::Status CreateConvolutionTransposed3D(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposed3DAttributes& attr,
-    ConvolutionTransposed3D* result) {
-  *result = ConvolutionTransposed3D(definition, attr,
-                                    creation_context.device->GetInfo());
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+ConvolutionTransposed3D CreateConvolutionTransposed3D(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposed3DAttributes& attr) {
+  ConvolutionTransposed3D result(definition, attr, device_info);
 
   TensorLinearDescriptor desc;
   desc.storage_type =
       DeduceLinearStorageType(definition.GetPrimaryStorageType());
   desc.element_type = definition.GetDataType();
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
-  return absl::OkStatus();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return result;
 }
 
 }  // namespace cl

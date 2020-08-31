@@ -94,18 +94,6 @@ enum ContextDevicePlacementPolicy {
 };
 // LINT.ThenChange(//tensorflow/c/eager/c_api.h)
 
-// LINT.IfChange
-// Note: Keep in sync with exported copy of enum in eager/c_api_experimental.h.
-enum ContextMirroringPolicy {
-  // Do not maintain mirrors in a TensorHandle, instead make new TensorHandle
-  // copies with their own lifetime.
-  MIRRORING_NONE = 0,
-  // Mirroring any remote tensor handles, associating them with the lifetime of
-  // the local TensorHandle.
-  MIRRORING_ALL = 1,
-};
-// LINT.ThenChange(//tensorflow/c/eager/c_api_experimental.h)
-
 class RunMetadataListener {
  public:
   virtual ~RunMetadataListener() {}
@@ -126,7 +114,7 @@ class CustomDevice {
                                       const string& target_device_name,
                                       TensorHandle** result) = 0;
 
-  virtual Status Execute(EagerOperation* op, TensorHandle** retvals,
+  virtual Status Execute(const EagerOperation* op, TensorHandle** retvals,
                          int* num_retvals) = 0;
 };
 
@@ -149,8 +137,7 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   EagerContext(const SessionOptions& opts,
                ContextDevicePlacementPolicy default_device_placement_policy,
-               ContextMirroringPolicy default_mirroring_policy, bool async,
-               const bool lazy_copy_function_remote_inputs,
+               bool async, const bool lazy_copy_function_remote_inputs,
                const DeviceMgr* device_mgr, bool device_mgr_owned,
                Rendezvous* rendezvous,
                const CustomKernelCreator* custom_kernel_creator,
@@ -174,7 +161,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       DataType dtype, absl::Span<const int64> dim_sizes) override;
   AbstractTensorInterface* CreateTensor(DataType dtype, const int64_t* dims,
                                         int num_dims, void* data, size_t len,
-                                        bool convert_string,
                                         MemoryReleaser memory_releaser,
                                         void* memory_releaser_arg) override;
 
@@ -234,14 +220,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
   // modified unless this method returns `Status::OK()`.
   Status SelectDevice(DeviceNameUtils::ParsedName preferred,
                       const NodeDef& ndef, Device** out) const;
-
-  // Sets the implicit copy policy for the current thread.
-  void SetThreadLocalMirroringPolicy(ContextMirroringPolicy);
-
-  // Returns the implicit copy policy for the current thread.
-  ContextMirroringPolicy GetMirroringPolicy() const;
-
-  bool MirrorTensors() const;
 
   bool LazyCopyFunctionRemoteInputs() const;
 
@@ -459,6 +437,11 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   tensorflow::ServerInterface* GetServer() { return server_.get(); }
 
+  // For LLVM style RTTI.
+  static bool classof(const AbstractContext* ptr) {
+    return ptr->getKind() == kEager;
+  }
+
 #endif  // IS_MOBILE_PLATFORM
 
   // Closes remote eager contexts, waits for all RPCs to finish, and
@@ -553,15 +536,12 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
 
   SessionOptions opts_;
   const ContextDevicePlacementPolicy default_device_placement_policy_;
-  const ContextMirroringPolicy default_mirroring_policy_;
 
   // Note: we cannot use C++11 thread_local here as there is no concept of a
   // thread-local-object-local variable in C++11.
   mutable mutex policy_map_mu_;
   std::unordered_map<std::thread::id, ContextDevicePlacementPolicy>
       device_placement_policy_ TF_GUARDED_BY(policy_map_mu_);
-  std::unordered_map<std::thread::id, ContextMirroringPolicy> mirroring_policy_
-      TF_GUARDED_BY(policy_map_mu_);
 
   OwnedOrUnownedHelper<const DeviceMgr> local_device_manager_;
   // Maintain copy of all previously created local device managers.
@@ -659,11 +639,6 @@ class EagerContext : public ImmediateExecutionContext, public core::RefCounted {
       DistributedFunctionLibraryRuntime* cluster_flr,
       std::unique_ptr<eager::RemoteMgr, std::function<void(eager::RemoteMgr*)>>
           remote_mgr);
-
-  // For LLVM style RTTI.
-  static bool classof(const AbstractContext* ptr) {
-    return ptr->getKind() == kEager;
-  }
 
   // The server_ is not const since we release it when the context is destroyed.
   // Therefore the server_ object is not marked as const (even though it should

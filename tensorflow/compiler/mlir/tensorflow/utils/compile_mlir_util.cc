@@ -36,7 +36,9 @@ limitations under the License.
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/register.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/dialect_registration.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -276,16 +278,9 @@ Status RefineShapes(llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
   return Status::OK();
 }
 
-static void RegisterDialects() {
-  static bool init_once = []() {
-    mlir::registerDialect<mlir::StandardOpsDialect>();
-    mlir::registerDialect<mlir::TF::TensorFlowDialect>();
-    mlir::registerDialect<mlir::shape::ShapeDialect>();
-    mlir::registerDialect<mlir::tf_executor::TensorFlowExecutorDialect>();
-    mlir::registerDialect<mlir::mhlo::MhloDialect>();
-    return true;
-  }();
-  (void)init_once;
+static void RegisterDialects(mlir::DialectRegistry& registry) {
+  mlir::RegisterAllTensorFlowDialects(registry);
+  mlir::mhlo::registerAllMhloDialects(registry);
 }
 
 }  //  namespace
@@ -312,29 +307,26 @@ Status ConvertMLIRToXlaComputation(
   // inside PromoteResourcesToArgs.
   tf2xla.addPass(mlir::mhlo::createLegalizeTFControlFlowPass());
 
-  tf2xla.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(true));
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+      /*allow_partial_conversion=*/true, /*legalize_chlo=*/true,
+      /*tf2xla_fallback_device_type=*/device_type));
   for (auto& target_pass : custom_legalization_passes) {
     tf2xla.addNestedPass<mlir::FuncOp>(std::move(target_pass));
   }
+  tf2xla.addPass(mlir::mhlo::CreateLegalizeTFCommunicationPass());
   tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-  tf2xla.addPass(mlir::TF::CreateTFShapeInferencePass());
-
-  // Leverage tf2xla kernels for ops that didn't get lowered in the previous
-  // legalization pass.
-  tf2xla.addPass(mlir::mhlo::createLegalizeTfWithTf2XlaPass(device_type));
-  tf2xla.addNestedPass<mlir::FuncOp>(mlir::createCanonicalizerPass());
-
   // Run shape inference pass to propagate shapes through tensor_cast operations
   // from static to dynamic shapes. This could be generated if the shape
   // inference was originally missing in a TF op but the corresponding HLO op
   // had static shape after lowering.
   tf2xla.addPass(mlir::TF::CreateTFShapeInferencePass());
-
   // Run LegalizeTFPass again because the previous legalization passes can
   // expose more graph pruning and canonicalization opportunities that are
   // necessary for the second LegalizeTFPass(allow_partial_conversion=false)
   // invocation.
-  tf2xla.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(false));
+  tf2xla.addNestedPass<mlir::FuncOp>(mlir::mhlo::createLegalizeTFPass(
+      /*allow_partial_conversion=*/false, /*legalize_chlo=*/true,
+      /*tf2xla_fallback_device_type=*/device_type));
   // In order to export to XLA, we must sink constants to control flow regions,
   // since XLA uses functional control flow.
   tf2xla.addNestedPass<mlir::FuncOp>(
@@ -421,8 +413,8 @@ Status CompileSerializedMlirToXlaHlo(
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
-  RegisterDialects();
   mlir::MLIRContext mlir_context;
+  RegisterDialects(mlir_context.getDialectRegistry());
   mlir::OwningModuleRef mlir_module;
 
   TF_RETURN_IF_ERROR(
@@ -509,11 +501,16 @@ Status CompileGraphToXlaHlo(
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
-  RegisterDialects();
-
   mlir::MLIRContext context;
+  RegisterDialects(context.getDialectRegistry());
   GraphImportConfig config;
   config.graph_as_function = true;
+  // Disable shape inference during import as some TensorFlow op fails during
+  // shape inference with dynamic shaped operands. This in turn causes the
+  // import to fail. Shape inference during import is going to be removed and
+  // the shape inference pass is run early in the pass pipeline, shape inference
+  // during import is not necessary.
+  config.enable_shape_inference = false;
   auto module_or =
       ConvertGraphToMlir(graph, debug_info, flib_def, config, &context);
   if (!module_or.ok()) return module_or.status();

@@ -102,6 +102,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReplicaId:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
     case HloOpcode::kSelect:
@@ -515,11 +516,12 @@ StatusOr<bool> InstructionFusion::Run(HloModule* module) {
         continue;
       }
 
-      VLOG(5) << "Considering fusion of: " << instruction->ToString();
       std::vector<int64>& sorted_operand_numbers = next_entry.second;
 
       for (int64 i : sorted_operand_numbers) {
         HloInstruction* operand = instruction->mutable_operand(i);
+        VLOG(5) << "Considering fusion of: " << instruction->ToString()
+                << " with operand " << operand->name();
 
         if (!operand->IsFusible()) {
           VLOG(3) << "Operand (" << operand->ToString() << ") is not fusible";

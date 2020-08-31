@@ -41,7 +41,11 @@ namespace transforms {
 
 // Pass to tranform shape computations in shape dialect to standard and scf
 // using memref descriptors.
-std::unique_ptr<Pass> CreateShapeToDescriptorsPass();
+std::unique_ptr<OperationPass<ModuleOp> > CreateShapeToDescriptorsPass();
+
+// Pass to tranform computations on values to their corresponding parts on
+// buffers.
+std::unique_ptr<OperationPass<ModuleOp> > CreateBufferizePass();
 
 }  // namespace transforms
 

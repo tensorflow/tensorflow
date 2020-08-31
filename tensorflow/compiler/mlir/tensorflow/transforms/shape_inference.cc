@@ -40,6 +40,7 @@ limitations under the License.
 #include "mlir/IR/SymbolTable.h"  // from @llvm-project
 #include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Interfaces/CallInterfaces.h"  // from @llvm-project
+#include "mlir/Interfaces/FoldInterfaces.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
@@ -53,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -115,12 +117,12 @@ Optional<SmallVector<Type, 4>> InferShapeForFunctionReturnType(FuncOp func) {
 
 // Returns if the shape inference pass supports an op outside the TF dialect.
 bool IsSupportedNonTFOp(Operation* op) {
-  return isa<ReturnOp, tf_device::ReturnOp, tf_executor::EnterOp,
-             tf_executor::ExitOp, tf_executor::FetchOp, tf_executor::GraphOp,
-             tf_executor::IslandOp, tf_executor::LoopCondOp,
-             tf_executor::MergeOp, tf_executor::NextIterationSinkOp,
-             tf_executor::SwitchNOp, tf_executor::SwitchOp,
-             tf_executor::YieldOp>(op);
+  return isa<ReturnOp, tf_device::ReturnOp, tf_device::ClusterOp,
+             tf_device::LaunchOp, tf_executor::EnterOp, tf_executor::ExitOp,
+             tf_executor::FetchOp, tf_executor::GraphOp, tf_executor::IslandOp,
+             tf_executor::LoopCondOp, tf_executor::MergeOp,
+             tf_executor::NextIterationSinkOp, tf_executor::SwitchNOp,
+             tf_executor::SwitchOp, tf_executor::YieldOp>(op);
 }
 
 // Returns whether a cast back would need to be inserted, e.g., whether the
@@ -596,7 +598,7 @@ ShapeInference::ShapeInference(int64_t graph_version, MLIRContext* context,
                                bool propagate_caller_callee_constants)
     : graph_version_(graph_version),
       propagate_caller_callee_constants_(propagate_caller_callee_constants) {
-  tf_dialect_ = context->getRegisteredDialect<TensorFlowDialect>();
+  tf_dialect_ = context->getLoadedDialect<TensorFlowDialect>();
 }
 
 ShapeHandle ShapeInference::ComputeOutputAsShape(OpResult result,
@@ -697,11 +699,8 @@ bool ShapeInference::RefineShapeForPassThroughOps(Operation* op) {
     // TODO(jpienaar): The tf.Cast op, which is uniformly inserted at the
     // moment, cannot handle arbirary types (e.g., it can't handle quantized
     // types). This restriction can be relaxed if not only tf.Cast is used.
-    auto kind = t.getKind();
-    return (kind >= Type::FIRST_STANDARD_TYPE &&
-            kind < Type::LAST_STANDARD_TYPE) ||
-           (kind >= Type::FIRST_TENSORFLOW_TYPE &&
-            kind < Type::LAST_TENSORFLOW_TYPE);
+    return t.getDialect().getNamespace().empty() ||
+           isa<TensorFlowDialect>(t.getDialect());
   };
 
   bool changed = false;
@@ -744,6 +743,11 @@ bool ShapeInference::InferShapeForNonTFDialectOperation(Operation* op) {
   }
   if (auto launch_op = dyn_cast<tf_device::LaunchOp>(op)) {
     auto terminator = launch_op.GetBody().getTerminator();
+    return RefineTypeForPassThroughOperands(op, terminator->getOperands(),
+                                            op->getResults());
+  }
+  if (auto cluster_op = dyn_cast<tf_device::ClusterOp>(op)) {
+    auto terminator = cluster_op.GetBody().getTerminator();
     return RefineTypeForPassThroughOperands(op, terminator->getOperands(),
                                             op->getResults());
   }
@@ -817,18 +821,16 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
     return false;
   }
 
-  // Convert the operation to a NodeDef to be able to use the InferenceContext
+  // Convert the operation attributes to be able to use the InferenceContext
   // and the TensorFlow shape function.
-  auto node_def_or = tensorflow::ConvertTFDialectOpToNodeDef(
-      op, node_name, /*ignore_unregistered_attrs=*/true);
-  if (!node_def_or.ok()) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "Error converting op '" << *op << "' to NodeDef: "
-               << node_def_or.status().error_message() << "\n");
+  tensorflow::AttrValueMap attrs;
+  auto attrs_status = tensorflow::GetAttrValuesFromOperation(
+      op, node_name, /*ignore_unregistered_attrs=*/true, &attrs);
+  if (!attrs_status.ok()) {
+    LLVM_DEBUG(llvm::dbgs() << "Error creating attribute map for '" << *op
+                            << "': " << attrs_status.error_message() << "\n");
     return false;
   }
-  std::unique_ptr<tensorflow::NodeDef> node_def =
-      std::move(node_def_or).ValueOrDie();
 
   // Collect an array with input values for constant operands and input shapes
   // for all the operands.
@@ -872,8 +874,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   // Perform the shape inference using an InferenceContext with the input
   // shapes. This object is abstracting the information that the ShapeInference
   // function operates on.
-  InferenceContext c(graph_version_, *node_def, op_reg_data->op_def,
-                     input_shapes, input_tensors,
+  InferenceContext c(graph_version_, tensorflow::AttrSlice(&attrs),
+                     op_reg_data->op_def, input_shapes, input_tensors,
                      /*input_tensors_as_shapes=*/{}, handle_shapes_and_types);
   auto status = c.Run(op_reg_data->shape_inference_fn);
   if (!status.ok()) {
@@ -1174,10 +1176,11 @@ LogicalResult ShapeInference::TryToFold(Operation* op) {
     if (!dialect) return failure();
     // Only attempt TF dialect fallback if there are no unknown operands.
     if (some_unknown && dialect == tf_dialect_) return failure();
-    SmallVector<Attribute, 8> constants;
-    if (failed(dialect->constantFoldHook(op, constant_operands, constants)))
+    auto* interface = dialect->getRegisteredInterface<DialectFoldInterface>();
+    if (!interface) return failure();
+
+    if (failed(interface->fold(op, constant_operands, fold_results)))
       return failure();
-    fold_results.assign(constants.begin(), constants.end());
   }
 
   for (auto result : zip(op->getResults(), fold_results)) {

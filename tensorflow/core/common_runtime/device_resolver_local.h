@@ -39,9 +39,8 @@ class DeviceResolverLocal : public DeviceResolverInterface {
                                 DeviceAttributes* attributes,
                                 const StatusCallback& done) override;
 
-  void ClearTask(const string& task) override {}
-
-  void ClearCache() override {}
+  Status GetTaskCached(const string& task,
+                       std::vector<DeviceAttributes>* attributes) override;
 
  protected:
   const DeviceMgr* dev_mgr_;

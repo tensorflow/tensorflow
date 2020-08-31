@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import types
 import unittest
 
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import op_callbacks
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -50,6 +52,10 @@ class AutoGraphTestCase(test.TestCase):
 
         baz_actual, value_actual = test_fn()
         self.assertEqual(baz_actual, value_actual)
+
+  Only assertions that require evaluation outside the function are lifted
+  outside the function scope. The rest execute inline, at function creation
+  time.
   """
 
   def __new__(cls, *args):
@@ -65,18 +71,31 @@ class AutoGraphTestCase(test.TestCase):
 
     return obj
 
+  def _op_callback(
+      self, op_type, inputs, attrs, outputs, op_name=None, graph=None):
+    self.trace_log.append(op_type)
+
   def _run_as_tf_function(self, fn):
 
     def wrapper(self):
       @def_function.function(autograph=False)  # Testing autograph itself.
       def fn_wrapper():
         self.assertions = []
+        self.graph_assertions = []
+        self.trace_log = []
         fn()
         targets = [args for _, args in self.assertions]
         return targets
-      actuals = self.evaluate(fn_wrapper())
-      for (_, args), value in zip(self.assertions, actuals):
-        args[:] = value
+
+      tensors = fn_wrapper()
+
+      for assertion in self.graph_assertions:
+        assertion(fn_wrapper.get_concrete_function().graph)
+
+      actuals = self.evaluate(tensors)
+      for (assertion, _), values in zip(self.assertions, actuals):
+        assertion(*values)
+
     return wrapper
 
   def variable(self, name, value, dtype):
@@ -89,11 +108,40 @@ class AutoGraphTestCase(test.TestCase):
   def setUp(self):
     super().setUp()
     self.variables = {}
+    self.trace_log = []
+    op_callbacks.add_op_callback(self._op_callback)
 
   def tearDown(self):
-    for fn, args in self.assertions:
-      fn(*args)
+    op_callbacks.remove_op_callback(self._op_callback)
+    self.trace_log = None
+    self.variables = None
     super().tearDown()
+
+  def assertGraphContains(self, op_regex, n):
+    def assertion(graph):
+      matches = []
+      for node in graph.as_graph_def().node:
+        if re.match(op_regex, node.name):
+          matches.append(node)
+      for fn in graph.as_graph_def().library.function:
+        for node_def in fn.node_def:
+          if re.match(op_regex, node_def.name):
+            matches.append(node_def)
+      self.assertLen(matches, n)
+
+    self.graph_assertions.append(assertion)
+
+  def assertOpCreated(self, op_type):
+    self.assertIn(op_type, self.trace_log)
+
+  def assertOpsNotCreated(self, op_types):
+    self.assertEmpty(set(op_types) & set(self.trace_log))
+
+  def assertNoOpsCreated(self):
+    self.assertEmpty(self.trace_log)
 
   def assertEqual(self, *args):
     self.assertions.append((super().assertEqual, list(args)))
+
+  def assertDictEqual(self, *args):
+    self.assertions.append((super().assertDictEqual, list(args)))

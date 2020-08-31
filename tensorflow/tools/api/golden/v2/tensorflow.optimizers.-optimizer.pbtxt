@@ -4,6 +4,18 @@ tf_class {
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "clipnorm"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "clipvalue"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "global_clipnorm"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "iterations"
     mtype: "<type \'property\'>"
   }
@@ -13,7 +25,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'name\', \'gradient_aggregator\', \'gradient_transformers\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "add_slot"

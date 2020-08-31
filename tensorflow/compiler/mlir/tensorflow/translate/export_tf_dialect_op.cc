@@ -25,8 +25,8 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
-#include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -34,7 +34,6 @@ limitations under the License.
 namespace tensorflow {
 
 namespace {
-using stream_executor::port::StatusOr;
 
 // Sets type list attribute with the given `name` to the given `types`. If the
 // attribute already exists with a different value, returns an error.
@@ -90,7 +89,7 @@ Status SetShapeAttribute(absl::string_view name, ContainerT shapes,
 // definitions and isn't a header file.
 #include "tensorflow/compiler/mlir/tensorflow/translate/derived_attr_populator.inc"
 
-// Collect all the unregistered attributes for an TF dialect operation.
+// Collects all the unregistered attributes for an TF dialect operation.
 // Attributes "name" and "device" are not included because they are not part
 // of an TF op attributes.
 Status GetUnregisteredAttrs(
@@ -123,17 +122,10 @@ Status GetUnregisteredAttrs(
   return Status::OK();
 }
 
-}  // namespace
-
-StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
-    mlir::Operation* inst, llvm::StringRef name,
-    bool ignore_unregistered_attrs) {
-  // Use auto generated function to populate derived attribute.
-  //
-  // Note: This only populates derived attributes for TensorFlow ops that are
-  // generated using the TableGen. Manually defined ops should have all the
-  // attributes present as native MLIR op attributes.
-
+// Collects all attribute names to ignore in an MLIR operation when exporting to
+// a TensorFlow NodeDef.
+StatusOr<absl::flat_hash_set<absl::string_view>> GetAttributesToIgnore(
+    mlir::Operation* inst, bool ignore_unregistered_attrs) {
   // The elements are owned by the MLIRContext.
   absl::flat_hash_set<absl::string_view> attrs_to_ignore;
   if (inst->isRegistered()) {
@@ -162,15 +154,25 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
     attrs_to_ignore.insert(attr_name.data());
   }
 
-  TF_ASSIGN_OR_RETURN(auto node_def,
-                      GetOperationNodeDef(attrs_to_ignore, inst, name));
+  return attrs_to_ignore;
+}
+
+// Populates all derived attributes of a MLIR operation in a proto
+// map<string, AttrValue>.
+Status PopulateDerivedAttributes(mlir::Operation* inst,
+                                 bool ignore_unregistered_attrs,
+                                 AttrValueMap* attributes) {
+  // Use auto generated function to populate derived attribute.
+  //
+  // Note: This only populates derived attributes for TensorFlow ops that are
+  // generated using the TableGen. Manually defined ops should have all the
+  // attributes present as native MLIR op attributes.
 
   // If the operation is not registered, we won't be able to infer any attribute
   if (inst->isRegistered()) {
-    TF_RETURN_WITH_CONTEXT_IF_ERROR(
-        PopulateDerivedAttrs(inst, node_def->mutable_attr()),
-        "When populating derived attrs for ",
-        inst->getName().getStringRef().str());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(PopulateDerivedAttrs(inst, attributes),
+                                    "When populating derived attrs for ",
+                                    inst->getName().getStringRef().str());
   }
 
   // Here we only add the shapes for the leading values with ShapedType,
@@ -185,10 +187,38 @@ StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
       mlir::TF::ResultShapeRange output_shapes = {
           mlir::TF::ResultShapeIterator(begin),
           mlir::TF::ResultShapeIterator(end)};
-      TF_RETURN_IF_ERROR(SetShapeAttribute("_output_shapes", output_shapes,
-                                           node_def->mutable_attr()));
+      TF_RETURN_IF_ERROR(
+          SetShapeAttribute("_output_shapes", output_shapes, attributes));
     }
   }
+
+  return Status::OK();
+}
+
+}  // namespace
+
+Status GetAttrValuesFromOperation(mlir::Operation* inst, llvm::StringRef name,
+                                  bool ignore_unregistered_attrs,
+                                  AttrValueMap* attributes) {
+  TF_ASSIGN_OR_RETURN(auto attrs_to_ignore,
+                      GetAttributesToIgnore(inst, ignore_unregistered_attrs));
+  TF_RETURN_WITH_CONTEXT_IF_ERROR(
+      ConvertAttributes(inst->getAttrs(), attrs_to_ignore, attributes),
+      "while converting attributes for node: ", name.str());
+  TF_RETURN_IF_ERROR(
+      PopulateDerivedAttributes(inst, ignore_unregistered_attrs, attributes));
+  return Status::OK();
+}
+
+StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
+    mlir::Operation* inst, llvm::StringRef name,
+    bool ignore_unregistered_attrs) {
+  TF_ASSIGN_OR_RETURN(auto attrs_to_ignore,
+                      GetAttributesToIgnore(inst, ignore_unregistered_attrs));
+  TF_ASSIGN_OR_RETURN(auto node_def,
+                      GetOperationNodeDef(attrs_to_ignore, inst, name));
+  TF_RETURN_IF_ERROR(PopulateDerivedAttributes(inst, ignore_unregistered_attrs,
+                                               node_def->mutable_attr()));
   return node_def;
 }
 

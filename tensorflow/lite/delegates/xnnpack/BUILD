@@ -1,4 +1,5 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -38,6 +39,7 @@ cc_library(
 cc_library(
     name = "xnnpack_delegate_hdrs_only",
     hdrs = ["xnnpack_delegate.h"],
+    compatible_with = get_compatible_with_portable(),
     visibility = ["//tensorflow/lite:__subpackages__"],
     deps = [
         "//tensorflow/lite/c:common",

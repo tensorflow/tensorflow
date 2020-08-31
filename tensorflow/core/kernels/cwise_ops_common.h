@@ -22,7 +22,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/kernels/cwise_ops_sycl_common.h"

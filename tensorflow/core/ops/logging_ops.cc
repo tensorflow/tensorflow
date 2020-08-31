@@ -87,13 +87,6 @@ REGISTER_OP("TensorSummary")
     .Attr("display_name: string = ''")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("HistogramSummary")
-    .Input("tag: string")
-    .Input("values: T")
-    .Output("summary: string")
-    .Attr("T: realnumbertype = DT_FLOAT")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("ImageSummary")
     .Input("tag: string")
     .Input("tensor: T")
@@ -122,12 +115,6 @@ REGISTER_OP("AudioSummary")
     .Attr("max_outputs: int >= 1 = 3")
     .SetShapeFn(shape_inference::ScalarShape)
     .Deprecated(15, "Use AudioSummaryV2.");
-
-REGISTER_OP("MergeSummary")
-    .Input("inputs: N * string")
-    .Output("summary: string")
-    .Attr("N : int >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("Timestamp")
     .Output("ts: float64")

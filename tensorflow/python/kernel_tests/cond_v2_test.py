@@ -20,7 +20,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.compat.compat import forward_compatibility_horizon
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
@@ -941,6 +940,7 @@ class CondV2Test(test.TestCase):
     self.assertEqual(fn_output[0].op.type, "StatefulPartitionedCall")
     self.assertAllEqual(self.evaluate(fn_output), [2.0, 4.0])
 
+  @test_util.disable_tfrt("GPU to host copy not implemented yet.")
   def testGradientTapeOfCondWithResourceVariableInFunction(self):
     with context.eager_mode():
       v = variables.Variable(2.)
@@ -1606,5 +1606,4 @@ def _has_node_with_op(run_metadata, op_type):
 
 
 if __name__ == "__main__":
-  with forward_compatibility_horizon(2020, 8, 21):
-    test.main()
+  test.main()

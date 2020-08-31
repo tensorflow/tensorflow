@@ -26,6 +26,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -349,10 +350,22 @@ def _pfor_impl(loop_fn,
       return nest.pack_sequence_as(loop_fn_outputs, nest.flatten(outputs))
 
 
+def _broadcasting_gather(x, i):
+  """Wrapper for gather that implicitly broadcasts unit dimensions."""
+  static_first_dim = tensor_shape.dimension_value(x.shape[0])
+  if static_first_dim == 1:
+    i = 0
+  elif static_first_dim is None:
+    i = array_ops.where_v2(array_ops.shape(x)[0] > 1, i, 0)
+  result = array_ops.gather(x, i)
+  if isinstance(x, np_arrays.ndarray):
+    result = np_arrays.ndarray.from_tensor(result)
+  return result
+
+
 @tf_export("vectorized_map")
 def vectorized_map(fn, elems, fallback_to_while_loop=True):
   """Parallel map on the list of tensors unpacked from `elems` on dimension 0.
-
 
   This method works similar to `tf.map_fn` but is optimized to run much faster,
   possibly with a much larger memory footprint. The speedups are obtained by
@@ -420,7 +433,10 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
       the structure of `elems`.
     elems: A tensor or (possibly nested) sequence of tensors, each of which will
       be unpacked along their first dimension. The nested sequence of the
-      resulting slices will be mapped over by `fn`.
+      resulting slices will be mapped over by `fn`. The first dimensions of all
+      elements must broadcast to a consistent value; equivalently, each
+      element tensor must have first dimension of either `B` or `1`, for some
+      common batch size `B >= 1`.
     fallback_to_while_loop: If true, on failing to vectorize an operation,
       the unsupported op is wrapped in a tf.while_loop to execute the map
       iterations. Note that this fallback only happens for unsupported ops and
@@ -437,14 +453,31 @@ def vectorized_map(fn, elems, fallback_to_while_loop=True):
   Raises:
     ValueError: If vectorization fails and fallback_to_while_loop is False.
   """
+  def _convert_to_tensor_or_ndarray(x):
+    if isinstance(x, np_arrays.ndarray):
+      return x
+    return ops.convert_to_tensor(x)
+  elems = nest.map_structure(_convert_to_tensor_or_ndarray, elems)
+
   def loop_fn(i):
-    gathered_elems = nest.map_structure(lambda x: array_ops.gather(x, i), elems)
+    gathered_elems = nest.map_structure(lambda x: _broadcasting_gather(x, i),
+                                        elems)
     return fn(gathered_elems)
-  batch_size = None
-  first_elem = ops.convert_to_tensor(nest.flatten(elems)[0])
-  if first_elem.shape.rank is not None:
-    batch_size = first_elem.shape.as_list()[0]
-  if batch_size is None:
-    batch_size = array_ops.shape(first_elem)[0]
+
+  # Extract batch size from the maximum first dimension of any element.
+  flat_elems = nest.flatten(elems)
+  def _get_shape(x):
+    if isinstance(x, np_arrays.ndarray):
+      x = x.data
+    if x.shape.rank is None:
+      return None
+    return x.shape.as_list()[0]
+  static_first_dims = [_get_shape(elem) for elem in flat_elems]
+  if any([s is None for s in static_first_dims]):
+    batch_size = math_ops.reduce_max(
+        [array_ops.shape(elem)[0] for elem in flat_elems])
+  else:
+    batch_size = max(static_first_dims)
+
   return pfor(loop_fn, batch_size,
               fallback_to_while_loop=fallback_to_while_loop)

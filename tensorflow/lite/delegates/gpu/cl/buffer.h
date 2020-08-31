@@ -35,6 +35,16 @@ struct BufferDescriptor : public GPUObjectDescriptor {
   MemoryType memory_type = MemoryType::GLOBAL;
   std::vector<std::string> attributes;
 
+  // optional
+  int size = 0;
+  std::vector<uint8_t> data;
+
+  BufferDescriptor() = default;
+  BufferDescriptor(const BufferDescriptor&) = default;
+  BufferDescriptor& operator=(const BufferDescriptor&) = default;
+  BufferDescriptor(BufferDescriptor&& desc);
+  BufferDescriptor& operator=(BufferDescriptor&& desc);
+
   absl::Status PerformSelector(const std::string& selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,
@@ -46,6 +56,10 @@ struct BufferDescriptor : public GPUObjectDescriptor {
   absl::Status PerformGetPtrSelector(
       const std::vector<std::string>& args,
       const std::vector<std::string>& template_args, std::string* result) const;
+
+  absl::Status CreateGPUObject(CLContext* context,
+                               GPUObjectPtr* result) const override;
+  void Release() override;
 };
 
 // Buffer represent linear GPU data storage with arbitrary data format.
@@ -61,7 +75,7 @@ class Buffer : public GPUObject {
   Buffer(const Buffer&) = delete;
   Buffer& operator=(const Buffer&) = delete;
 
-  ~Buffer();
+  virtual ~Buffer() { Release(); }
 
   // for profiling and memory statistics
   uint64_t GetMemorySizeInBytes() const { return size_; }
@@ -79,6 +93,9 @@ class Buffer : public GPUObject {
 
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;
+
+  absl::Status CreateFromBufferDescriptor(const BufferDescriptor& desc,
+                                          CLContext* context);
 
  private:
   void Release();

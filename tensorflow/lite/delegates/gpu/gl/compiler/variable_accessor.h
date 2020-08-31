@@ -16,11 +16,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_GL_COMPILER_VARIABLE_ACCESSOR_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_GL_COMPILER_VARIABLE_ACCESSOR_H_
 
-#include <string>
-#include <unordered_map>
 #include <set>
+#include <string>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/gl/compiler/preprocessor.h"
 #include "tensorflow/lite/delegates/gpu/gl/variable.h"
 
@@ -72,7 +72,7 @@ class VariableAccessor : public InlineRewrite {
  private:
   const bool inline_values_;
   const bool vulkan_support_;
-  std::unordered_map<std::string, Variable> name_to_variable_;
+  absl::flat_hash_map<std::string, Variable> name_to_variable_;
   std::set<std::string> shared_variables_;
   std::set<std::string> uniform_parameters_;
 };

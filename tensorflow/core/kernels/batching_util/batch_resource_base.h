@@ -116,9 +116,14 @@ class BatchResourceBase : public ResourceBase {
  private:
   // Implementation of calling the process batch function.
   virtual void ProcessFuncBatchImpl(
-      OpKernelContext* last_task_context, absl::Span<const Tensor> inputs,
-      std::vector<Tensor>* combined_outputs,
+      const BatchResourceBase::BatchTask& last_task,
+      absl::Span<const Tensor> inputs, std::vector<Tensor>* combined_outputs,
       std::function<void(const Status&)> done) const = 0;
+
+  // Factory method for creating a BatchTask, overridable by subclasses.
+  virtual Status CreateBatchTask(
+      OpKernelContext* context,
+      std::unique_ptr<BatchResourceBase::BatchTask>* output) const;
 
   // Validates that it's legal to combine the tasks in 'batch' into a batch.
   // Assumes the batch is non-empty.

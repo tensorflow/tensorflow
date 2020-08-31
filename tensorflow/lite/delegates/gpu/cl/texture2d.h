@@ -34,6 +34,16 @@ namespace cl {
 struct Texture2DDescriptor : public GPUObjectDescriptor {
   DataType element_type;  // FLOAT32 or FLOAT16
 
+  // optional
+  int2 size = int2(0, 0);
+  std::vector<uint8_t> data;
+
+  Texture2DDescriptor() = default;
+  Texture2DDescriptor(const Texture2DDescriptor&) = default;
+  Texture2DDescriptor& operator=(const Texture2DDescriptor&) = default;
+  Texture2DDescriptor(Texture2DDescriptor&& desc);
+  Texture2DDescriptor& operator=(Texture2DDescriptor&& desc);
+
   absl::Status PerformSelector(const std::string& selector,
                                const std::vector<std::string>& args,
                                const std::vector<std::string>& template_args,
@@ -42,6 +52,10 @@ struct Texture2DDescriptor : public GPUObjectDescriptor {
   GPUResources GetGPUResources() const override;
   absl::Status PerformReadSelector(const std::vector<std::string>& args,
                                    std::string* result) const;
+
+  absl::Status CreateGPUObject(CLContext* context,
+                               GPUObjectPtr* result) const override;
+  void Release() override;
 };
 
 // Texture2D represent formatted GPU data storage.
@@ -57,7 +71,7 @@ class Texture2D : public GPUObject {
   Texture2D(const Texture2D&) = delete;
   Texture2D& operator=(const Texture2D&) = delete;
 
-  ~Texture2D();
+  virtual ~Texture2D() { Release(); }
 
   cl_mem GetMemoryPtr() const { return texture_; }
 
@@ -72,6 +86,9 @@ class Texture2D : public GPUObject {
 
   absl::Status GetGPUResources(const GPUObjectDescriptor* obj_ptr,
                                GPUResourcesWithValue* resources) const override;
+
+  absl::Status CreateFromTexture2DDescriptor(const Texture2DDescriptor& desc,
+                                             CLContext* context);
 
  private:
   void Release();

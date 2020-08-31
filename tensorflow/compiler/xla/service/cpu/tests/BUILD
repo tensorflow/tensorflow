@@ -254,6 +254,22 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "cpu_topk_test",
+    srcs = ["cpu_topk_test.cc"],
+    deps = [
+        ":cpu_codegen_test",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:sorting",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service/cpu:cpu_compiler",
+        "//tensorflow/compiler/xla/service/cpu:test_header_helper",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
     name = "cpu_vectorization_test",
     srcs = ["cpu_vectorization_test.cc"],
     deps = [

@@ -132,18 +132,18 @@ class SpaceToDepthOp : public OpKernel {
         // NCHW_VECT_C with 4 x qint8 can be treated as NCHW int32.
         auto Tinput_v = input.template reinterpret_last_dimension<int32, 4>();
         auto Toutput_v = outputs_tensor->reinterpret_last_dimension<int32, 4>();
-        functor::SpaceToDepthOpFunctor<GPUDevice, int32, FORMAT_NCHW> functor;
-        functor(context->eigen_device<GPUDevice>(), Tinput_v, block_size_,
+        functor::SpaceToDepthOpFunctor<Device, int32, FORMAT_NCHW> functor;
+        functor(context->eigen_device<Device>(), Tinput_v, block_size_,
                 Toutput_v);
       } else if (data_format_ == FORMAT_NCHW) {
         CHECK((std::is_same<T, RT>::value));
-        functor::SpaceToDepthOpFunctor<GPUDevice, RT, FORMAT_NCHW> functor;
-        functor(context->eigen_device<GPUDevice>(), input.tensor<RT, 4>(),
+        functor::SpaceToDepthOpFunctor<Device, RT, FORMAT_NCHW> functor;
+        functor(context->eigen_device<Device>(), input.tensor<RT, 4>(),
                 block_size_, outputs_tensor->tensor<RT, 4>());
       } else {
         CHECK((std::is_same<T, RT>::value));
-        functor::SpaceToDepthOpFunctor<GPUDevice, RT, FORMAT_NHWC> functor;
-        functor(context->eigen_device<GPUDevice>(), input.tensor<RT, 4>(),
+        functor::SpaceToDepthOpFunctor<Device, RT, FORMAT_NHWC> functor;
+        functor(context->eigen_device<Device>(), input.tensor<RT, 4>(),
                 block_size_, outputs_tensor->tensor<RT, 4>());
       }
     } else {

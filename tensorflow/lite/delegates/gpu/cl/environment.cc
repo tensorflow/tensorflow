@@ -47,7 +47,7 @@ __kernel void main_function(__write_only image2d_array_t dst) {
 absl::Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
                                                       bool* result) {
   // No bug on Adreno 6xx
-  if (env->device().GetInfo().adreno_info.gpu_version >= 600) {
+  if (env->device().info_.adreno_info.gpu_version >= 600) {
     *result = true;
     return absl::OkStatus();
   }
@@ -59,7 +59,7 @@ absl::Status CheckKernelSupportOfOneLayerTextureArray(Environment* env,
   Tensor tensor;
   const BHWC shape(1, 4, 4, 4);
   RETURN_IF_ERROR(CreateTensor(
-      env->context(), env->device(), shape,
+      env->context(), shape,
       {DataType::FLOAT32, TensorStorageType::TEXTURE_ARRAY, Layout::HWC},
       &tensor));
   RETURN_IF_ERROR(kernel.SetMemory(0, tensor.GetMemoryPtr()));
@@ -242,7 +242,7 @@ TensorStorageType GetFastestStorageType(const CLDevice& gpu) {
   } else if (gpu.IsPowerVR()) {
     return TensorStorageType::TEXTURE_2D;
   } else if (gpu.IsMali()) {
-    const MaliInfo mali_info = gpu.GetInfo().mali_info;
+    const MaliInfo mali_info = gpu.info_.mali_info;
     if (mali_info.IsMaliT8xx() || mali_info.IsBifrostGen3() ||
         mali_info.IsValhall()) {
       return TensorStorageType::TEXTURE_2D;

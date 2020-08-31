@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import contextlib
 import threading
 
 from tensorflow.python import _pywrap_parallel_device
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute.parallel_device import gen_parallel_device_ops
 from tensorflow.python.distribute.parallel_device import saving
 from tensorflow.python.eager import context
@@ -53,19 +53,21 @@ class ParallelDevice(object):
       A string with the name of the newly created device.
     """
     global _next_device_number, _next_device_number_lock
-    self.components = tuple(components)
+    self.components = tuple(device_util.canonicalize(d) for d in components)
     ctx = context.context()
     with _next_device_number_lock:
       # TODO(allenl): Better names for parallel devices (right now "CUSTOM" is
       # special-cased).
-      self.name = "{}/device:CUSTOM:{}".format(
-          ctx.host_address_space(), _next_device_number)
+      self._name = "{}/device:CUSTOM:{}".format(ctx.host_address_space(),
+                                                _next_device_number)
       _next_device_number += 1
     device, device_info = _pywrap_parallel_device.GetParallelDeviceCapsules(
-        self.name, self.components)
-    context.register_custom_device(device, self.name, device_info)
-    with ops.device(self.name):
+        self._name, self.components)
+    context.register_custom_device(device, self._name, device_info)
+    with ops.device(self._name):
       self._device_ids = gen_parallel_device_ops.device_id()
+    self._device_scope = None
+    self._saving_scope = None
 
   def pack(self, tensors):
     """Create a tensor on the parallel device from a sequence of tensors.
@@ -74,21 +76,23 @@ class ParallelDevice(object):
       tensors: A flat list of tensors, one per device in `self.components`.
 
     Returns:
-      A single tensor placed on `self.name`.
+      A single tensor placed on the ParallelDevice.
     """
-    with ops.device(self.name):
+    self._assert_eager()
+    with ops.device(self._name):
       return tpu_ops.tpu_replicated_input(inputs=tensors)
 
   def unpack(self, parallel_tensor):
     """Unpack a parallel tensor into its components.
 
     Args:
-      parallel_tensor: A tensor placed on `self.name`.
+      parallel_tensor: A tensor placed on the ParallelDevice.
 
     Returns:
       A flat list of tensors, one per `self.components`.
     """
-    with ops.device(self.name):
+    self._assert_eager()
+    with ops.device(self._name):
       return tpu_ops.tpu_replicated_output(
           parallel_tensor, num_replicas=len(self.components))
 
@@ -104,12 +108,32 @@ class ParallelDevice(object):
     """
     return self._device_ids
 
-  # TODO(allenl): Fixing saving in Python is a bit odd. One alternative would be
-  # to provide a hook for the custom device to create save specs/etc., then call
-  # that hook from the default variable implementation if the variable is on a
-  # custom device. We'll likely want similar hooks for repr() and such.
-  @contextlib.contextmanager
-  def scope(self):
+  def _assert_eager(self):
+    """Verifies that tracing is not active."""
+    if not context.executing_eagerly():
+      raise NotImplementedError(
+          "ParallelDevice is currently not supported inside `tf.function`. It "
+          "can however run calls to a `tf.function` in parallel:\n\n"
+          "with ParallelDevice() as p:\n  f()")
+
+  def __enter__(self):
     """Runs ops in parallel, makes variables which save independent buffers."""
-    with ops.device(self.name), saving.independent_buffers(self):
-      yield
+    if (self._device_scope is not None or self._saving_scope is not None):
+      raise AssertionError(
+          "Re-entered a ParallelDevice scope without first exiting it.")
+    self._assert_eager()
+    self._device_scope = ops.device(self._name)
+    self._saving_scope = saving.independent_buffers(self)
+    self._device_scope.__enter__()
+    # TODO(allenl): Fixing saving in Python is a bit odd. One alternative would
+    # be to provide a hook for the custom device to create save specs/etc., then
+    # call that hook from the default variable implementation if the variable is
+    # on a custom device. We'll likely want similar hooks for repr() and such.
+    self._saving_scope.__enter__()
+    return self
+
+  def __exit__(self, typ, exc, tb):
+    self._device_scope.__exit__(typ, exc, tb)
+    self._saving_scope.__exit__(typ, exc, tb)
+    self._device_scope = None
+    self._saving_scope = None

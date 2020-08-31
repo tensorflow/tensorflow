@@ -28,11 +28,6 @@ export CONTAINER_TYPE="CPU"
 export TF_PYTHON_VERSION='python3.7'
 
 # Run configure.
-export TF_NEED_GCP=1
-export TF_NEED_HDFS=1
-export TF_NEED_S3=1
-export TF_NEED_CUDA=0
-export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which ${TF_PYTHON_VERSION})
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
@@ -40,7 +35,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Export optional variables for running pip.sh
-export TF_BUILD_FLAGS="--config=opt --config=v2 --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain"
+export TF_BUILD_FLAGS="--config=release_cpu_linux"
 export TF_TEST_FLAGS="--define=no_tensorflow_py_deps=true --test_lang_filters=py --test_output=errors --verbose_failures=true --keep_going --test_env=TF2_BEHAVIOR=1"
 export TF_TEST_TARGETS="${DEFAULT_BAZEL_TARGETS} -//tensorflow/lite/... "
 export TF_PIP_TESTS="test_pip_virtualenv_non_clean test_pip_virtualenv_clean"

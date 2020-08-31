@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/saved_model/core/revived_types/tf_concrete_function.h"
 #include "tensorflow/c/experimental/saved_model/core/revived_types/variable.h"
 #include "tensorflow/c/experimental/saved_model/core/saved_model_utils.h"
+#include "tensorflow/c/experimental/saved_model/core/signature_def_function.h"
 #include "tensorflow/cc/saved_model/bundle_v2.h"
 #include "tensorflow/cc/saved_model/constants.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
@@ -47,6 +48,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/stringpiece.h"
@@ -241,8 +243,11 @@ Status RestoreCheckpoint(SavedModelV2Bundle* bundle,
           // TODO(bmzhao): This requires using the newly added Save/Restore
           // functions from
           // https://github.com/tensorflow/tensorflow/commit/df6b21c13c82b5d0981642cfe18f10e60f78ea5c
-          return errors::Unimplemented(
-              "Restoring non-variable objects has not been implemented yet. ");
+          LOG(WARNING) << "Restoring non-variable objects has not been "
+                          "implemented yet. (Kind="
+                       << bundle->saved_object_graph().nodes(node).kind_case()
+                       << ")";
+          return Status::OK();
         }
 
         Variable* variable =
@@ -301,7 +306,7 @@ Status TFSavedModelAPI::GetFunction(const std::string& function_path,
 }
 
 Status TFSavedModelAPI::GetSignatureDefFunction(
-    const std::string& signature_def_key, ConcreteFunction** function) {
+    const std::string& signature_def_key, SignatureDefFunction** function) {
   // TODO(bmzhao): Add support for retrieving a signaturedef function.
   return errors::Unimplemented(
       "Retrieving SignatureDef functions is unimplemented currently");

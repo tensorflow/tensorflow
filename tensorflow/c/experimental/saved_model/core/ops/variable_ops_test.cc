@@ -55,7 +55,7 @@ TEST_F(VariableOpsTest, CreateVariableSuccessful) {
   // Create a DT_Resource TensorHandle that points to a scalar DT_FLOAT tensor
   ImmediateTensorHandlePtr handle;
   TF_EXPECT_OK(internal::CreateUninitializedResourceVariable(
-      context(), DT_FLOAT, {}, &handle));
+      context(), DT_FLOAT, {}, nullptr, &handle));
   // The created TensorHandle should be a DT_Resource
   EXPECT_EQ(handle->DataType(), DT_RESOURCE);
 }
@@ -65,7 +65,7 @@ TEST_F(VariableOpsTest, DestroyVariableSuccessful) {
   // Create a DT_Resource TensorHandle that points to a scalar DT_FLOAT tensor
   ImmediateTensorHandlePtr handle;
   TF_EXPECT_OK(internal::CreateUninitializedResourceVariable(
-      context(), DT_FLOAT, {}, &handle));
+      context(), DT_FLOAT, {}, nullptr, &handle));
 
   // Destroy the variable
   TF_EXPECT_OK(internal::DestroyResource(context(), handle.get()));
@@ -76,7 +76,7 @@ TEST_F(VariableOpsTest, AssignVariableAndReadSuccessful) {
   // Create a DT_Resource TensorHandle that points to a scalar DT_FLOAT tensor
   ImmediateTensorHandlePtr variable;
   TF_EXPECT_OK(internal::CreateUninitializedResourceVariable(
-      context(), DT_FLOAT, {}, &variable));
+      context(), DT_FLOAT, {}, nullptr, &variable));
 
   // Create a Scalar float TensorHandle with value 42, and assign it to
   // the variable.

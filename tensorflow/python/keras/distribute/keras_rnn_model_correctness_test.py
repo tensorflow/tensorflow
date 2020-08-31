@@ -69,6 +69,8 @@ class _DistributionStrategyRnnModelCorrectnessTest(
     return model
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class DistributionStrategyGruModelCorrectnessTest(
     _DistributionStrategyRnnModelCorrectnessTest):
 
@@ -88,6 +90,8 @@ class DistributionStrategyGruModelCorrectnessTest(
     self.run_correctness_test(distribution, use_numpy, use_validation_data)
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class DistributionStrategyLstmModelCorrectnessTest(
     _DistributionStrategyRnnModelCorrectnessTest):
 

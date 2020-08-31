@@ -244,28 +244,48 @@ DeviceInfo DeviceInfoFromDeviceID(cl_device_id id) {
   info.max_work_group_size_x = max_work_group_sizes.x;
   info.max_work_group_size_y = max_work_group_sizes.y;
   info.max_work_group_size_z = max_work_group_sizes.z;
+
+  if (info.IsIntel()) {
+    if (info.SupportsExtension("cl_intel_required_subgroup_size")) {
+      size_t sub_groups_count;
+      cl_int status =
+          clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/, 0,
+                          nullptr, &sub_groups_count);
+      if (status == CL_SUCCESS) {
+        std::vector<size_t> sub_group_sizes(sub_groups_count);
+        status = clGetDeviceInfo(id, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/,
+                                 sizeof(size_t) * sub_groups_count,
+                                 sub_group_sizes.data(), nullptr);
+        if (status == CL_SUCCESS) {
+          for (int i = 0; i < sub_groups_count; ++i) {
+            info.supported_subgroup_sizes.push_back(sub_group_sizes[i]);
+          }
+        }
+      }
+    }
+  }
   return info;
 }
 
 CLDevice::CLDevice(cl_device_id id, cl_platform_id platform_id)
-    : id_(id), platform_id_(platform_id), info_(DeviceInfoFromDeviceID(id)) {}
+    : info_(DeviceInfoFromDeviceID(id)), id_(id), platform_id_(platform_id) {}
 
 CLDevice::CLDevice(const CLDevice& device)
-    : id_(device.id_), platform_id_(device.platform_id_), info_(device.info_) {}
+    : info_(device.info_), id_(device.id_), platform_id_(device.platform_id_) {}
 
 CLDevice& CLDevice::operator=(const CLDevice& device) {
   if (this != &device) {
+    info_ = device.info_;
     id_ = device.id_;
     platform_id_ = device.platform_id_;
-    info_ = device.info_;
   }
   return *this;
 }
 
 CLDevice::CLDevice(CLDevice&& device)
-    : id_(device.id_),
-      platform_id_(device.platform_id_),
-      info_(std::move(device.info_)) {
+    : info_(std::move(device.info_)),
+      id_(device.id_),
+      platform_id_(device.platform_id_) {
   device.id_ = nullptr;
   device.platform_id_ = nullptr;
 }
@@ -274,9 +294,9 @@ CLDevice& CLDevice::operator=(CLDevice&& device) {
   if (this != &device) {
     id_ = nullptr;
     platform_id_ = nullptr;
+    info_ = std::move(device.info_);
     std::swap(id_, device.id_);
     std::swap(platform_id_, device.platform_id_);
-    info_ = std::move(device.info_);
   }
   return *this;
 }
@@ -284,12 +304,7 @@ CLDevice& CLDevice::operator=(CLDevice&& device) {
 bool CLDevice::SupportsFP16() const { return info_.supports_fp16; }
 
 bool CLDevice::SupportsExtension(const std::string& extension) const {
-  for (const auto& ext : info_.extensions) {
-    if (ext == extension) {
-      return true;
-    }
-  }
-  return false;
+  return info_.SupportsExtension(extension);
 }
 
 bool CLDevice::SupportsTextureArray() const {
@@ -310,37 +325,10 @@ std::string CLDevice::GetPlatformVersion() const {
   return GetPlatformInfo(platform_id_, CL_PLATFORM_VERSION);
 }
 
-bool CLDevice::IsCL20OrHigher() const {
-  return info_.cl_version != OpenCLVersion::CL_1_0 &&
-         info_.cl_version != OpenCLVersion::CL_1_1 &&
-         info_.cl_version != OpenCLVersion::CL_1_2;
-}
+bool CLDevice::IsCL20OrHigher() const { return info_.IsCL20OrHigher(); }
 
 bool CLDevice::SupportsSubGroupWithSize(int sub_group_size) const {
-  if (IsIntel()) {
-    if (SupportsExtension("cl_intel_required_subgroup_size")) {
-      size_t sub_groups_count;
-      cl_int error =
-          clGetDeviceInfo(id_, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/, 0,
-                          nullptr, &sub_groups_count);
-      if (error != CL_SUCCESS) {
-        return false;
-      }
-      std::vector<size_t> sub_group_sizes(sub_groups_count);
-      error = clGetDeviceInfo(id_, 0x4108 /*CL_DEVICE_SUB_GROUP_SIZES_INTEL*/,
-                              sizeof(size_t) * sub_groups_count,
-                              sub_group_sizes.data(), nullptr);
-      if (error != CL_SUCCESS) {
-        return false;
-      }
-      for (int i = 0; i < sub_groups_count; ++i) {
-        if (sub_group_sizes[i] == sub_group_size) {
-          return true;
-        }
-      }
-    }
-  }
-  return false;
+  return info_.SupportsSubGroupWithSize(sub_group_size);
 }
 
 bool CLDevice::IsAdreno() const { return info_.IsAdreno(); }
@@ -368,7 +356,7 @@ bool CLDevice::IsAMD() const { return info_.IsAMD(); }
 bool CLDevice::IsIntel() const { return info_.IsIntel(); }
 
 bool CLDevice::SupportsOneLayerTextureArray() const {
-  return !IsAdreno() || info_.adreno_info.support_one_layer_texture_array;
+  return info_.SupportsOneLayerTextureArray();
 }
 
 void CLDevice::DisableOneLayerTextureArray() {

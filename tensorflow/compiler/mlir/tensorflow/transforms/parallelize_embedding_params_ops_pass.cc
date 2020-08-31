@@ -39,6 +39,10 @@ namespace {
 
 struct ParallelizeEmbeddingParamsOpsPass
     : public PassWrapper<ParallelizeEmbeddingParamsOpsPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<tf_device::TensorFlowDeviceDialect>();
+  }
+
   void runOnFunction() override;
 };
 

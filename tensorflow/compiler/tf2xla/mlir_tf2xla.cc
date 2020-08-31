@@ -152,6 +152,7 @@ Status ConvertGraphDefToXlaViaMlir(
 
   RegisterDialects();
   mlir::MLIRContext context;
+  context.loadAllGloballyRegisteredDialects();
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));

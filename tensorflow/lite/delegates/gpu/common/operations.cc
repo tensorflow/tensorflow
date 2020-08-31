@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 
+#include <algorithm>
 #include <cstdint>
-#include <unordered_map>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -165,7 +171,7 @@ std::string ToString(enum OperationType op) {
 
 OperationType OperationTypeFromString(const std::string& name) {
   static const auto operations =
-      new std::unordered_map<std::string, OperationType>({
+      new absl::flat_hash_map<std::string, OperationType>({
           {"abs", OperationType::ABS},
           {"add", OperationType::ADD},
           {"batch_normalization", OperationType::BATCH_NORMALIZATION},

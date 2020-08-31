@@ -15,36 +15,34 @@ limitations under the License.
 
 #include "tensorflow/core/framework/bfloat16.h"
 
+#include "third_party/eigen3/Eigen/Core"
+
 namespace tensorflow {
 
+void RoundFloatToBFloat16(const float* src, bfloat16* dst, int64 size) {
+  Eigen::Map<const Eigen::ArrayXf> src_eigen(src, size);
+  Eigen::Map<Eigen::Array<bfloat16, Eigen::Dynamic, 1>> dst_eigen(dst, size);
+  dst_eigen = src_eigen.cast<bfloat16>();
+}
+
 void FloatToBFloat16(const float* src, bfloat16* dst, int64 size) {
-  const uint16_t* p = reinterpret_cast<const uint16_t*>(src);
-  uint16_t* q = reinterpret_cast<uint16_t*>(dst);
+  for (; size != 0; src++, dst++, size--) {
 #if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-  for (; size != 0; p += 2, q++, size--) {
-    *q = p[0];
-  }
+    memcpy(dst, src, sizeof(bfloat16));
 #else
-  for (; size != 0; p += 2, q++, size--) {
-    *q = p[1];
-  }
+    memcpy(
+        dst,
+        reinterpret_cast<const char*>(src) + sizeof(float) - sizeof(bfloat16),
+        sizeof(bfloat16));
 #endif
+  }
 }
 
 void BFloat16ToFloat(const bfloat16* src, float* dst, int64 size) {
-  const uint16_t* p = reinterpret_cast<const uint16_t*>(src);
-  uint16_t* q = reinterpret_cast<uint16_t*>(dst);
-#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
-  for (; size != 0; p++, q += 2, size--) {
-    q[0] = *p;
-    q[1] = 0;
-  }
-#else
-  for (; size != 0; p++, q += 2, size--) {
-    q[0] = 0;
-    q[1] = *p;
-  }
-#endif
+  Eigen::Map<const Eigen::Array<bfloat16, Eigen::Dynamic, 1>> src_eigen(src,
+                                                                        size);
+  Eigen::Map<Eigen::ArrayXf> dst_eigen(dst, size);
+  dst_eigen = src_eigen.cast<float>();
 }
 
 }  // end namespace tensorflow

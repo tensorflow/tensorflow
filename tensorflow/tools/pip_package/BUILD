@@ -152,6 +152,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/docs:py_guide_parser",
     "//tensorflow/python/distribute/client:client",
     "//tensorflow/python/distribute/client:parameter_server_client",
+    "//tensorflow/python/distribute/client:remote_eager_lib",
     "//tensorflow/python/distribute/client:metric_utils",
 ]
 
@@ -217,6 +218,7 @@ filegroup(
         "@sobol_data//:LICENSE",
         "@tblib_archive//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
+        "@typing_extensions_archive//:LICENSE",
         "@zlib//:zlib.h",
         "@clog//:LICENSE",
         "@cpuinfo//:LICENSE",

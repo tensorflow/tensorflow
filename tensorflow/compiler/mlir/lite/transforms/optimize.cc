@@ -27,6 +27,7 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -37,8 +38,10 @@ limitations under the License.
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
 #include "mlir/IR/StandardTypes.h"  // from @llvm-project
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -103,7 +106,8 @@ bool OperandsBroadcastToOutputType(Type a, Type b, Type expected_output) {
 bool IsTailOfShape(Type type1, Type type2) {
   auto tail_type = type1.dyn_cast<ShapedType>();
   auto full_type = type2.dyn_cast<ShapedType>();
-  if (!tail_type || !full_type || tail_type.getRank() > full_type.getRank())
+  if (!tail_type || !full_type || !tail_type.hasRank() ||
+      !full_type.hasRank() || tail_type.getRank() > full_type.getRank())
     return false;
   auto i1 = tail_type.getShape().rbegin(), e1 = tail_type.getShape().rend();
   auto i2 = full_type.getShape().rbegin();
@@ -158,6 +162,31 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
     }
   }
   return false;
+}
+
+// Retuns true if we can eliminate the GatherNdOp or ScatterNdOp. When the value
+// of `indices` are from 0 to n-1, the output tensor are identical to the
+// `params`.
+bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
+                                              DenseIntElementsAttr indices) {
+  auto params_type = params.getType().dyn_cast<RankedTensorType>();
+  auto indices_type = indices.getType().dyn_cast<RankedTensorType>();
+  // Checks the shape of `params` is [n, ...], shape of `indices` is [n, 1]. 2D
+  // `indices` means it gets the first row of `params`. As long as indices
+  // iterate the first row of `params`, the output is identical to input.
+  if (!params_type || !indices_type || indices_type.getRank() != 2 ||
+      indices_type.getDimSize(0) != params_type.getDimSize(0) ||
+      indices_type.getDimSize(1) != 1)
+    return false;
+
+  // Checks the value in `indices` is from 0 to n-1.
+  int cur_value = 0;
+  for (const auto &v : indices.getValues<APInt>()) {
+    if (v.getSExtValue() != cur_value) return false;
+    ++cur_value;
+  }
+
+  return true;
 }
 
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
@@ -217,6 +246,38 @@ static Type GetShapeStrippedType(TypeAttr type_attr) {
   } else {
     return type;
   }
+}
+
+// Returns `true` if reducing `axes` in `input` with `keep_dims=true` results in
+// the specified `shape` and `false` otherwise.
+static bool ShapeMatchesReduceWithKeepAxes(Value input,
+                                           const mlir::Attribute &axes,
+                                           const mlir::Attribute &shape) {
+  RankedTensorType type = input.getType().dyn_cast_or_null<RankedTensorType>();
+  if (!type) return false;
+
+  DenseIntElementsAttr axes_attr =
+      axes.dyn_cast_or_null<DenseIntElementsAttr>();
+  DenseIntElementsAttr shape_attr =
+      shape.dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!axes_attr || !shape_attr) return false;
+
+  if (shape_attr.getNumElements() != type.getRank()) return false;
+
+  llvm::SmallSet<uint64_t, 4> axes_set;
+  for (auto a : axes_attr.getIntValues()) {
+    axes_set.insert(a.getZExtValue());
+  }
+
+  auto type_shape = type.getShape();
+  for (uint64_t i = 0; i < type.getRank(); ++i) {
+    if (axes_set.contains(i)) {
+      if (shape_attr.getValue<APInt>({i}) != 1) return false;
+    } else {
+      if (shape_attr.getValue<APInt>({i}) != type_shape[i]) return false;
+    }
+  }
+  return true;
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"

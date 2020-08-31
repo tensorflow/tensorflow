@@ -35,7 +35,19 @@ exports_files([
     name = "zip_test_%s" % test_name,
     size = "medium",
     srcs = ["generated_examples_zip_test.cc"],
-    args = args + select({
+    additional_test_tags_args = {
+        "xnnpack": (
+            # TODO(b/162696268): remove 'notap' once the bug is fixed.
+            ["notap"],
+            ["--use_xnnpack=true"],
+        ),
+    },
+    conversion_mode = conversion_mode,
+    data = [
+        ":zip_%s" % test_name,
+    ],
+    shard_count = 20,
+    test_args = args + select({
         "//tensorflow:android": [],
         "//conditions:default": [
             "--zip_file_path=$(location :zip_%s)" % test_name,
@@ -44,18 +56,12 @@ exports_files([
             "--unzip_binary_path=/usr/bin/unzip",
         ],
     }),
-    conversion_mode = conversion_mode,
-    data = [
-        ":zip_%s" % test_name,
-    ],
-    shard_count = 20,
-    tags = tags + [
-        "gen_zip_test",
+    test_name = test_name,
+    test_tags = tags + [
         "no_gpu",  # Executing with TF GPU configurations is redundant.
         "no_oss",
         "tflite_not_portable_intentional",
     ],
-    test_name = test_name,
     deps = [
         ":parse_testdata_lib",
         ":tflite_driver",

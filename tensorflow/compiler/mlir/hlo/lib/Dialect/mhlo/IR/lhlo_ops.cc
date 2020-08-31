@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h.inc"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Dialect.h"
@@ -49,11 +50,43 @@ namespace mlir {
 namespace lmhlo {
 
 LmhloDialect::LmhloDialect(MLIRContext *context)
-    : Dialect(getDialectNamespace(), context) {
+    : Dialect(getDialectNamespace(), context, TypeID::get<LmhloDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.cc.inc"
       >();
+}
+
+//===----------------------------------------------------------------------===//
+// ConstOp.
+//===----------------------------------------------------------------------===//
+
+/// An lho.constant on an memref that is locally allocated and with no other
+/// users (other than dealloc's) can be erased.
+// TODO: This can be generalized to an arbitrary op by making use of memory
+// effects (write memory effect).
+struct EraseConstOp : public OpRewritePattern<ConstOp> {
+  using OpRewritePattern<ConstOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(ConstOp op,
+                                PatternRewriter& rewriter) const override {
+    Value memref = op.output();
+    if (!memref.getDefiningOp<AllocOp>()) {
+      return failure();
+    }
+
+    // Check that all uses of the memref are either DeallocOps or this op.
+    for (Operation* user : memref.getUsers())
+      if (user != op && !isa<DeallocOp>(user)) return failure();
+
+    rewriter.eraseOp(op);
+    return success();
+  }
+};
+
+void ConstOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
+                                          MLIRContext* context) {
+  results.insert<EraseConstOp>(context);
 }
 
 //===----------------------------------------------------------------------===//

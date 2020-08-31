@@ -169,10 +169,12 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
   @test_util.run_in_graph_and_eager_modes
   def testVariableShape(self):
     v = resource_variable_ops.ResourceVariable([1., 1.])
+    vshape = resource_variable_ops.variable_shape(v.handle)
     self.assertAllEqual(
-        tensor_util.constant_value(
-            resource_variable_ops.variable_shape(v.handle)),
+        tensor_util.constant_value(vshape),
         [2])
+    if not context.executing_eagerly():
+      self.assertEqual("Const", vshape.op.type)
 
   @test_util.run_deprecated_v1
   def testDifferentAssignGraph(self):
@@ -1006,7 +1008,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase,
         var = variable_scope.get_variable("x", shape=[1, 1],
                                           dtype=dtypes.float32)
         with self.assertRaisesRegex(ValueError,
-                                    "Shapes.*and.*are incompatible"):
+                                    "shape.*and.*are incompatible"):
           assign = var.assign(np.zeros(shape=[2, 2]))
           self.evaluate(assign)
 

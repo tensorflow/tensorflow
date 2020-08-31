@@ -32,6 +32,7 @@ OpBuilder* CreateFullyConnectedOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateHardSwishOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateLogisticOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateMaxPool2dOpBuilder(GraphBuilder* graph_builder);
+OpBuilder* CreateMeanOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateMirrorPadOpBuilder(GraphBuilder* graph_builder);
 OpBuilder* CreateMulOpBuilder(GraphBuilder* graph_builder);
 // PAD handles PAD and PADV2 together.

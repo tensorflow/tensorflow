@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "llvm/IR/LLVMContext.h"
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"  // from @llvm-project
@@ -103,7 +104,7 @@ class MlirCompilerImpl : public MlirCompiler {
                      const AotCompilationOptions& options) override;
 
   HloCostAnalysis::ShapeSizeFunction ShapeSizeBytesFunction() const override {
-    int64 pointer_size = pointer_size_;
+    int64 pointer_size = data_layout_.getPointerSize();
     return [pointer_size](const Shape& shape) {
       return ShapeUtil::ByteSizeOf(shape, pointer_size);
     };
@@ -292,10 +293,10 @@ Status InsertBufferLoadPreduleIntoKernel(
     BufferAssignment* assignment,
     const std::vector<const BufferAllocation*>& buffers) {
   mlir::OpBuilder builder(kernel.getBody());
-  auto llvm_dialect = kernel.getContext()->getRegisteredDialect<LLVMDialect>();
-  auto offset_type = LLVMType::getInt64Ty(llvm_dialect);
-  auto ptr_type = LLVMType::getInt8PtrTy(llvm_dialect);
-  auto void_type = LLVMType::getVoidTy(llvm_dialect);
+  auto* context = kernel.getContext();
+  auto offset_type = LLVMType::getInt64Ty(context);
+  auto ptr_type = LLVMType::getInt8PtrTy(context);
+  auto void_type = LLVMType::getVoidTy(context);
   auto loc = kernel.getLoc();
 
   auto num_original_args = kernel.getNumArguments();
@@ -461,9 +462,9 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   // must also be used to determine the thunk launch schedule.
   std::unique_ptr<StreamAssignment> stream_assignment =
       xla::gpu::AssignStreams(*module);
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<GpuHloSchedule> hlo_schedule,
-      GpuHloSchedule::Build(*module, *stream_assignment, pointer_size_));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<GpuHloSchedule> hlo_schedule,
+                      GpuHloSchedule::Build(*module, *stream_assignment,
+                                            data_layout_.getPointerSize()));
 
   // Run buffer analysis on the HLO graph. This analysis figures out which
   // temporary buffers are required to run the computation.
@@ -543,7 +544,11 @@ StatusOr<std::unique_ptr<Executable>> MlirCompilerImpl::RunBackend(
   TF_RETURN_IF_ERROR(
       module_hook_.invoke(IRHook::LoweringStage::KERNEL, *kernel_module));
 
-  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module);
+  // Translate to LLVM IR in a fresh context. The module is further translated
+  // to textual PTX and a CUBIN blob so there is no need for the context to live
+  // longer than this function.
+  llvm::LLVMContext llvmContext;
+  auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module, llvmContext);
 
   if (!llvmModule) {
     return InternalError("Translation to LLVM failed");

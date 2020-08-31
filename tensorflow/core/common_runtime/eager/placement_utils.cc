@@ -185,34 +185,35 @@ Status MaybePinToCustomDevice(VariantDevice* device, const EagerOperation& op) {
   if (VariantDeviceIsCustom(op.Device())) {
     *device = op.Device();
     return Status::OK();
+  } else if (!op.DeviceName().empty()) {
+    // Don't override explicit placements.
+    return Status::OK();
   }
 
+  // Ops are placed on a custom device if there's no other explicit requested
+  // placement and there is only one custom device in the op inputs.
   if (!op.Inputs().empty()) {
-    // We keep track of what we've seen with devices instead of booleans to be
-    // able to provide a meaningful error message below.
-    VariantDevice first = op.Inputs()[0]->device();
-    VariantDevice different = first;  // A different input device, if any.
-    VariantDevice custom = first;     // The first custom device seen, or an
-                                      // arbitrary non-custom device otherwise.
-    for (size_t i = 1; first == different && i < op.Inputs().size(); ++i) {
-      VariantDevice device = op.Inputs()[i]->device();
-      if (device != first) {
-        different = device;
-      }
-      if (!VariantDeviceIsCustom(custom) && VariantDeviceIsCustom(device)) {
-        custom = device;
-      }
-      if (different != first && VariantDeviceIsCustom(custom)) {
-        return errors::InvalidArgument(absl::StrCat(
-            "If an operation has one of its inputs in a custom device, then "
-            "all inputs should be on that same device. Operation ",
-            op.Name(), " has one input in custom device ",
-            VariantDeviceName(custom),
-            " and at least one input in a different device ",
-            VariantDeviceName(custom == first ? different : first)));
+    CustomDevice* first = nullptr;
+    for (const TensorHandle* input : op.Inputs()) {
+      if (VariantDeviceIsCustom(input->device())) {
+        CustomDevice* current = absl::get<CustomDevice*>(input->device());
+        if (first == nullptr) {
+          first = current;
+        } else if (first != current) {
+          return errors::InvalidArgument(absl::StrCat(
+              "If an operation has one of its inputs in a custom device, then "
+              "all inputs should be on that same custom device or another "
+              "physical device. Operation ",
+              op.Name(),
+              " has one input in custom "
+              "device ",
+              VariantDeviceName(first),
+              " and at least one input in a different custom device ",
+              VariantDeviceName(current)));
+        }
       }
     }
-    if (different == first && VariantDeviceIsCustom(custom)) {
+    if (first != nullptr) {
       *device = first;
       return Status::OK();
     }

@@ -157,20 +157,10 @@ class TF_TensorFlowType <string name, string description> :
          "TensorFlow " # description # " type">,
     BuildableType<"getType<mlir::TF::" # name # "Type>()">;
 
-// Any tensor element type allowed in TensorFlow ops
-def TF_ElementType : Type<Or<[AnyFloat.predicate,
-                              AnySignlessInteger.predicate,
-                              AnyUnsignedInteger.predicate,
-                              AnyComplex.predicate,
-                              TF_TFDialectType.predicate]>,
-                          "tf.dtype">;
-
-// Any TensorFlow tensor type
-def TF_Tensor : TensorOf<[TF_ElementType]>;
-
 //===----------------------------------------------------------------------===//
 // Integer types
 
+// TODO(mgester) shouldn't this be SignedIntOfWidths?
 def TF_I32Or64 : SignlessIntOfWidths<[32, 64]>;
 
 def TF_I32OrI64Tensor : TensorOf<[TF_I32Or64]>;
@@ -191,10 +181,11 @@ def TF_Uint64Tensor : TensorOf<[TF_Uint64]>;
 def TF_UInt : UnsignedIntOfWidths<[8, 16, 32, 64]>;
 
 // Any signed integer type
+// TODO(mgester) shouldn't this be SignedIntOfWidths?
 def TF_SInt : SignlessIntOfWidths<[8, 16, 32, 64]>;
 
 // Any integer type
-def TF_Int : AnyTypeOf<[TF_SInt, TF_UInt]>;
+def TF_Int : AnyTypeOf<[TF_SInt, TF_UInt], "integer">;
 
 // Any integer tensor types
 def TF_IntTensor : TensorOf<[TF_Int]>;
@@ -208,8 +199,8 @@ def TF_Quint8  : TF_TensorFlowType<"Quint8", "quint8">;
 def TF_Quint16 : TF_TensorFlowType<"Quint16", "quint16">;
 
 // Any quantized type
-def TF_AnyQuantized : AnyTypeOf<[TF_Qint8, TF_Qint16, TF_Qint32, TF_Quint8,
-                              TF_Quint16]>;
+def TF_Quantized : AnyTypeOf<[TF_Qint8, TF_Qint16, TF_Qint32, TF_Quint8,
+                              TF_Quint16], "quantized">;
 //===----------------------------------------------------------------------===//
 // Floating-point types
 
@@ -217,8 +208,10 @@ def TF_F32Or64 : FloatOfWidths<[32, 64]>;
 
 def TF_F32OrF64Tensor : TensorOf<[TF_F32Or64]>;
 
+def TF_Float : AnyTypeOf<[F16, F32, F64, BF16], "floating-point">;
+
 // Any floating-point tensor types
-def TF_FpTensor : TensorOf<[AnyFloat]>;
+def TF_FpTensor : TensorOf<[TF_Float]>;
 
 //===----------------------------------------------------------------------===//
 // Complex types
@@ -231,10 +224,9 @@ def TF_Complex64Tensor : TensorOf<[TF_Complex64]>;
 def TF_Complex128 : Complex<F<64>>;
 def TF_Complex128Tensor : TensorOf<[TF_Complex128]>;
 
-def TF_AnyComplex : AnyTypeOf<[TF_Complex64, TF_Complex128],
-                              "64/128-bit complex type">;
+def TF_Complex : AnyTypeOf<[TF_Complex64, TF_Complex128], "complex">;
 
-def TF_ComplexTensor : TensorOf<[TF_AnyComplex]>;
+def TF_ComplexTensor : TensorOf<[TF_Complex]>;
 
 //===----------------------------------------------------------------------===//
 // String/variant/resource types
@@ -249,26 +241,111 @@ def TF_Resource : TF_TensorFlowType<"Resource", "resource">;
 def TF_ResourceTensor : TensorOf<[TF_Resource]>;
 
 //===----------------------------------------------------------------------===//
+// Reference types
+
+// Float reference types
+def TF_F16Ref : TF_TensorFlowType<"HalfRef", "f16ref">;
+def TF_F32Ref : TF_TensorFlowType<"FloatRef", "f32ref">;
+def TF_F64Ref : TF_TensorFlowType<"DoubleRef", "f64ref">;
+def TF_Bfloat16Ref : TF_TensorFlowType<"Bfloat16Ref", "bf16ref">;
+
+// Any float reference type
+def TF_FloatRef : AnyTypeOf<[TF_F16Ref, TF_F32Ref, TF_F64Ref, TF_Bfloat16Ref],
+                            "floating-point reference">;
+
+// Complex reference types
+def TF_Complex64Ref : TF_TensorFlowType<"Complex64Ref", "complex64ref">;
+def TF_Complex128Ref : TF_TensorFlowType<"Complex128Ref", "complex128ref">;
+
+// Any complex reference type
+def TF_ComplexRef : AnyTypeOf<[TF_Complex64Ref, TF_Complex128Ref], "complex reference">;
+
+// Integer reference types
+def TF_Int8Ref : TF_TensorFlowType<"Int8Ref", "i8ref">;
+def TF_Int16Ref : TF_TensorFlowType<"Int16Ref", "i16ref">;
+def TF_Int32Ref : TF_TensorFlowType<"Int32Ref", "i32ref">;
+def TF_Int64Ref : TF_TensorFlowType<"Int64Ref", "i64ref">;
+
+def TF_Uint8Ref : TF_TensorFlowType<"Uint8Ref", "ui8ref">;
+def TF_Uint16Ref : TF_TensorFlowType<"Uint16Ref", "ui16ref">;
+def TF_Uint32Ref : TF_TensorFlowType<"Uint32Ref", "ui32ref">;
+def TF_Uint64Ref : TF_TensorFlowType<"Uint64Ref", "ui64ref">;
+
+// Any signed integer reference type
+def TF_SIntRef : AnyTypeOf<[TF_Int8Ref, TF_Int16Ref, TF_Int32Ref, TF_Int64Ref],
+                           "signed integer reference">;
+
+// Any unsigned integer reference type
+def TF_UIntRef : AnyTypeOf<[TF_Uint8Ref, TF_Uint16Ref, TF_Uint32Ref,
+                            TF_Uint64Ref], "unsigned integer reference">;
+
+// Any integer reference type
+def TF_IntRef : AnyTypeOf<[TF_SIntRef, TF_UIntRef], "integer reference">;
+
+// Quantized reference types
+def TF_Qint8Ref : TF_TensorFlowType<"Qint8Ref", "qint8ref">;
+def TF_Qint16Ref : TF_TensorFlowType<"Qint16Ref", "qint16ref">;
+def TF_Qint32Ref : TF_TensorFlowType<"Qint32Ref", "qint32ref">;
+def TF_Quint8Ref : TF_TensorFlowType<"Quint8Ref", "quint8ref">;
+def TF_Quint16Ref : TF_TensorFlowType<"Quint16Ref", "quint16ref">;
+
+// Any quantized reference type
+def TF_QuantizedRef : AnyTypeOf<[TF_Qint8Ref, TF_Qint16Ref, TF_Qint32Ref,
+                                 TF_Quint8Ref, TF_Quint16Ref], "quantized reference">;
+
+// Other reference types
+def TF_BoolRef : TF_TensorFlowType<"BoolRef", "boolref">;
+def TF_ResourceRef : TF_TensorFlowType<"ResourceRef", "resourceref">;
+def TF_StringRef : TF_TensorFlowType<"StringRef", "stringref">;
+def TF_VariantRef : TF_TensorFlowType<"VariantRef", "variantref">;
+
+// Reference tensor types
+def TF_FpRefTensor : TensorOf<[TF_FloatRef]>;
+def TF_I32OrI64RefTensor : TensorOf<[TF_Int32Ref, TF_Int64Ref]>;
+
+//===----------------------------------------------------------------------===//
 // Multi-category type constraints
 
 def TF_IntOrF32OrF64Tensor: TensorOf<[TF_Int, TF_F32Or64]>;
 
-def TF_FpOrI32OrI64Tensor : TensorOf<[AnyFloat, TF_I32Or64]>;
+def TF_FpOrI32OrI64Tensor : TensorOf<[TF_Float, TF_I32Or64]>;
 
 // Any integer or floating-point tensor types
-def TF_IntOrFpTensor : TensorOf<[TF_Int, AnyFloat]>;
+def TF_IntOrFpTensor : TensorOf<[TF_Int, TF_Float]>;
 
-def TF_SintOrFpTensor : TensorOf<[TF_SInt, AnyFloat]>;
+def TF_SintOrFpTensor : TensorOf<[TF_SInt, TF_Float]>;
 
-def TF_FpOrComplexTensor : TensorOf<[AnyFloat, TF_AnyComplex]>;
+def TF_FpOrComplexTensor : TensorOf<[TF_Float, TF_Complex]>;
 
-def TF_AnyNumber : AnyTypeOf<[TF_Int, AnyFloat, TF_AnyQuantized, TF_AnyComplex],
-                             "number">;
+def TF_Number : AnyTypeOf<[TF_Int, TF_Float, TF_Quantized, TF_Complex],
+                          "number">;
+def TF_NumberRef : AnyTypeOf<[TF_IntRef, TF_FloatRef, TF_QuantizedRef,
+                              TF_ComplexRef], "number reference">;
 
-def TF_NumberTensor : TensorOf<[TF_AnyNumber]>;
+def TF_NumberTensor : TensorOf<[TF_Number]>;
+def TF_NumberRefTensor : TensorOf<[TF_NumberRef]>;
 
-def TF_NumberOrStr : AnyTypeOf<[AnyFloat, TF_SInt, TF_AnyComplex, TF_Uint8, TF_Str]>;
+def TF_NumberOrStr : AnyTypeOf<[TF_Float, TF_SInt, TF_Complex, TF_Uint8,
+                                TF_Str]>;
 def TF_NumberOrStrTensor : TensorOf<[TF_NumberOrStr]>;
+
+//===----------------------------------------------------------------------===//
+// Tensor and tensor element types
+
+// Bool type
+def TF_Bool : I<1>;
+
+// Any tensor element type allowed in TensorFlow ops
+// (see https://www.tensorflow.org/api_docs/python/tf/dtypes/DType)
+def TF_ElementType : Type<Or<[TF_Float.predicate,
+                              TF_Complex.predicate,
+                              TF_Int.predicate,
+                              TF_Bool.predicate,
+                              TF_TFDialectType.predicate]>,
+                          "tf.dtype">;
+
+// Any TensorFlow tensor type
+def TF_Tensor : TensorOf<[TF_ElementType]>;
 
 //===----------------------------------------------------------------------===//
 // TensorFlow attribute definitions

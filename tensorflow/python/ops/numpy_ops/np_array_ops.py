@@ -172,11 +172,6 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
   else:
     result_t = val
 
-  if copy and isinstance(result_t, ops.Tensor):
-    # Note: In eager mode, a copy of `result_t` is made only if it is not on
-    # the context device.
-    result_t = array_ops.identity(result_t)
-
   if not isinstance(result_t, ops.Tensor):
     if not dtype:
       dtype = np_utils.result_type(result_t)
@@ -202,6 +197,9 @@ def _array_internal(val, dtype=None, copy=True, ndmin=0):  # pylint: disable=red
     result_t = math_ops.cast(result_t, dtype=dtype)
   elif dtype:
     result_t = math_ops.cast(result_t, dtype)
+
+  if copy:
+    result_t = array_ops.identity(result_t)
 
   if ndmin == 0:
     return np_arrays.tensor_to_ndarray(result_t)
@@ -832,6 +830,8 @@ def moveaxis(a, source, destination):  # pylint: disable=missing-docstring
     source = (source,)
   if isinstance(destination, int):
     destination = (destination,)
+  if len(source) != len(destination):
+    raise ValueError('The lengths of source and destination must equal')
 
   a_rank = np_utils._maybe_static(array_ops.rank(a))  # pylint: disable=protected-access
 
@@ -1510,8 +1510,39 @@ def _as_index(idx, need_scalar=True):
   return data, data.shape.rank == 0
 
 
-def _slice_helper(tensor, slice_spec):
-  """Helper function for __getitem__."""
+def _slice_helper(tensor, slice_spec, updates=None):
+  """Helper function for __getitem__ and _with_update.
+
+  This function collects the indices in `slice_spec` into two buckets, which we
+  can call "idx1" and "idx2" here. idx1 is intended for `strided_slice`, idx2
+  `gather`.  They also correspond to "basic indices" and "advanced indices" in
+  numpy.  This function supports both reading and writing at the indices. The
+  reading path can be summarized as `gather(stride_slice(tensor, idx1),
+  idx2)`. The writing path can be summarized as `strided_slice_update(tensor,
+  idx1, scatter(strided_slice(tensor, idx1), idx2, updates))`.  (`gather` here
+  means `tf.gather` or `tf.gather_nd`; `scatter` here means
+  `tf.tensor_scatter_update`.)  The writing path is inefficient because it needs
+  to first read out a portion (probably much larger than `updates`) of `tensor`
+  using `strided_slice`, update it, and then write the portion back. An
+  alternative approach is to only use `scatter`, which amounts to using the
+  indexing mechanism of gather/scatter to implement
+  strided_slice/strided_slice_update. This is feasible for XLA Gather/Scatter
+  because they support spans (e.g. `2:5`) in indices (as begin/end pairs), but
+  not TF gather/scatter because they don't support spans (except those that
+  cover entire dimensions, i.e. `:`).  If we materialize spans into individual
+  indices, the size of the index tensor would explode.  (Note that XLA
+  Gather/Scatter have a similar problem for stride > 1 because they don't
+  support strides.  Indices such as `1:2:8` will need to be materialized into
+  individual indices such as [1, 3, 5, 7].)
+
+  Args:
+    tensor: the tensor to be read from or write into.
+    slice_spec: the indices.
+    updates: the new values to write into `tensor`.
+
+  Returns:
+    The result of reading or the updated `tensor` after writing.
+  """
   begin, end, strides = [], [], []
   new_axis_mask, shrink_axis_mask = 0, 0
   begin_mask, end_mask = 0, 0
@@ -1581,19 +1612,37 @@ def _slice_helper(tensor, slice_spec):
     else:
       var_empty = constant_op.constant([], dtype=dtypes.int32)
       packed_begin = packed_end = packed_strides = var_empty
-    # TODO(agarwal): set_shape on tensor to set rank.
-    tensor = array_ops.strided_slice(
-        tensor,
-        packed_begin,
-        packed_end,
-        packed_strides,
-        begin_mask=begin_mask,
-        end_mask=end_mask,
-        shrink_axis_mask=shrink_axis_mask,
-        new_axis_mask=new_axis_mask,
-        ellipsis_mask=ellipsis_mask,
-        name=name)
-    if not advanced_indices:
+    if updates is not None and not advanced_indices:
+      return array_ops.tensor_strided_slice_update(
+          tensor,
+          packed_begin,
+          packed_end,
+          packed_strides,
+          updates,
+          begin_mask=begin_mask,
+          end_mask=end_mask,
+          shrink_axis_mask=shrink_axis_mask,
+          new_axis_mask=new_axis_mask,
+          ellipsis_mask=ellipsis_mask,
+          name=name)
+    else:
+      # TODO(b/164251540): Find a better way to support update that does not
+      #   involve one read + two writes.
+      if updates is not None:
+        original_tensor = tensor
+      # TODO(agarwal): set_shape on tensor to set rank.
+      tensor = array_ops.strided_slice(
+          tensor,
+          packed_begin,
+          packed_end,
+          packed_strides,
+          begin_mask=begin_mask,
+          end_mask=end_mask,
+          shrink_axis_mask=shrink_axis_mask,
+          new_axis_mask=new_axis_mask,
+          ellipsis_mask=ellipsis_mask,
+          name=name)
+    if updates is None and not advanced_indices:
       return tensor
     advanced_indices_map = {}
     for index, data, had_ellipsis in advanced_indices:
@@ -1618,14 +1667,49 @@ def _slice_helper(tensor, slice_spec):
     indices = [x.data for x in _promote_dtype(*indices)]
     indices = np_utils.tf_broadcast(*indices)
     stacked_indices = array_ops.stack(indices, axis=-1)
-    if not dims_contiguous:
-      tensor = moveaxis(tensor, dims, range(len(dims))).data
+    # Skip the contiguous-dims optimization for update because there is no
+    # tf.*scatter* op that supports the `axis` argument.
+    if not dims_contiguous or updates is not None:
+      if range(len(dims)) != dims:
+        tensor = moveaxis(tensor, dims, range(len(dims))).data
       tensor_shape_prefix = array_ops.shape(
           tensor, out_type=stacked_indices.dtype)[:len(dims)]
       stacked_indices = array_ops.where_v2(
           stacked_indices < 0, stacked_indices + tensor_shape_prefix,
           stacked_indices)
-      return array_ops.gather_nd(tensor, stacked_indices)
+      if updates is None:
+        return array_ops.gather_nd(tensor, stacked_indices)
+      else:
+        if dims_contiguous:
+          # TODO(wangpeng): Support unknown rank (e.g. by partially flattening
+          #   `updates`)
+          if stacked_indices.shape.rank is None:
+            raise NotImplementedError(
+                'Rank of the advanced indices must currently be known')
+          batch_size = stacked_indices.shape.rank - 1
+          batch_start = dims[0]
+          if batch_start < 0:
+            batch_start += len(dims) - batch_size
+          def range_(start, length):
+            return range(start, start + length)
+          updates = moveaxis(updates, range_(batch_start, batch_size),
+                             range(batch_size)).data
+        tensor = array_ops.tensor_scatter_update(
+            tensor, stacked_indices, updates)
+        if range(len(dims)) != dims:
+          tensor = moveaxis(tensor, range(len(dims)), dims).data
+        return array_ops.tensor_strided_slice_update(
+            original_tensor,
+            packed_begin,
+            packed_end,
+            packed_strides,
+            tensor,
+            begin_mask=begin_mask,
+            end_mask=end_mask,
+            shrink_axis_mask=shrink_axis_mask,
+            new_axis_mask=new_axis_mask,
+            ellipsis_mask=ellipsis_mask,
+            name=name + '_2')
     # Note that gather_nd does not support gathering from inside the array.
     # To avoid shuffling data back and forth, we transform the indices and
     # do a gather instead.
@@ -1685,4 +1769,21 @@ def _getitem(self, slice_spec):
   return np_utils.tensor_to_ndarray(result_t)
 
 
+def _with_update(a, slice_spec, updates):
+  """Implementation of ndarray._with_update."""
+  if (isinstance(slice_spec, bool) or (isinstance(slice_spec, ops.Tensor) and
+                                       slice_spec.dtype == dtypes.bool) or
+      (isinstance(slice_spec, (np.ndarray, np_arrays.ndarray)) and
+       slice_spec.dtype == np.bool)):
+    slice_spec = nonzero(slice_spec)
+
+  if not isinstance(slice_spec, tuple):
+    slice_spec = _as_spec_tuple(slice_spec)
+
+  updates = asarray(updates, a.dtype)
+  result_t = _slice_helper(a.data, slice_spec, updates.data)
+  return np_utils.tensor_to_ndarray(result_t)
+
+
 setattr(np_arrays.ndarray, '__getitem__', _getitem)
+setattr(np_arrays.ndarray, '_with_update', _with_update)
