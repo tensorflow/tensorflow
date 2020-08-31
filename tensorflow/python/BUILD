@@ -678,6 +678,7 @@ tf_python_pybind_extension(
         "client/tf_session_helper.h",
         "lib/core/numpy.h",
         "lib/core/safe_ptr.h",
+        "lib/core/safe_pyobject_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager:pywrap_required_hdrs",
@@ -880,6 +881,7 @@ tf_python_pybind_extension(
     hdrs = [
         "lib/core/ndarray_tensor.h",
         "lib/core/safe_ptr.h",
+        "lib/core/safe_pyobject_ptr.h",
         ":py_exception_registry_hdr",
         "//tensorflow/c:checkpoint_reader_hdrs",
         "//tensorflow/c:headers",
@@ -940,12 +942,17 @@ tf_python_pybind_extension(
     ],
 )
 
+# TODO(edloper): Remove unused dependency on safe_ptr.  (Blocker: there are
+# targets that depend are relying on cpp_python_util to pull in safe_ptr's
+# third_party/tensorflow/c:c_api_no_xla dependency, which registers
+# ops/gradients, rather than depending on it themselves.)
 cc_library(
     name = "cpp_python_util",
     srcs = ["util/util.cc"],
     hdrs = ["util/util.h"],
     deps = [
         ":safe_ptr",
+        ":safe_pyobject_ptr",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/python_runtime:headers",
@@ -1001,6 +1008,15 @@ tf_python_pybind_extension(
 )
 
 cc_library(
+    name = "safe_pyobject_ptr",
+    srcs = ["lib/core/safe_pyobject_ptr.cc"],
+    hdrs = ["lib/core/safe_pyobject_ptr.h"],
+    deps = [
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+cc_library(
     name = "safe_ptr",
     srcs = [
         "lib/core/safe_ptr.cc",
@@ -1008,6 +1024,7 @@ cc_library(
     ],
     hdrs = ["lib/core/safe_ptr.h"],
     deps = [
+        ":safe_pyobject_ptr",
         "//tensorflow/c:c_api_no_xla",
         "//third_party/python_runtime:headers",
     ],
@@ -1021,6 +1038,7 @@ cc_library(
         "lib/core/ndarray_tensor_bridge.h",
         "lib/core/numpy.h",
         "lib/core/safe_ptr.h",
+        "lib/core/safe_pyobject_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
     ],
@@ -1628,12 +1646,46 @@ py_library(
 )
 
 cc_library(
+    name = "py_context_manager",
+    srcs = ["framework/py_context_manager.cc"],
+    hdrs = ["framework/py_context_manager.h"],
+    deps = [
+        ":safe_pyobject_ptr",
+        "//tensorflow/core:lib",  # for core/platform/logging.h
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+# Pybind extension used by py_context_manager_test.
+tf_python_pybind_extension(
+    name = "_py_context_manager",
+    srcs = ["framework/py_context_manager_pybind.cc"],
+    module_name = "_py_context_manager",
+    deps = [
+        ":py_context_manager",
+        "//third_party/python_runtime:headers",
+        "@pybind11",
+    ],
+)
+
+tf_py_test(
+    name = "py_context_manager_test",
+    srcs = ["framework/py_context_manager_test.py"],
+    python_version = "PY3",
+    tags = ["no_pip"],
+    tfrt_enabled = True,
+    deps = [
+        ":_py_context_manager",
+    ],
+)
+
+cc_library(
     name = "op_def_util_cc",
     srcs = ["framework/op_def_util.cc"],
     hdrs = ["framework/op_def_util.h"],
     deps = [
         ":cpp_python_util",
-        ":safe_ptr",
+        ":safe_pyobject_ptr",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
     ],
@@ -1644,6 +1696,8 @@ cc_library(
 # depending on that target adds dependencies that register objects; and since the
 # extension is built as a shared object in some kokoro tests, this causes those objects
 # to get registered multiple times (which fails).
+# TODO(edloper): Simplify this, once cpp_python_util is changed to not depend on
+# safe_ptr (which transitively depends on third_party/tensorflow/c:c_api_no_xla).
 tf_python_pybind_extension(
     name = "_op_def_util",
     srcs = [
@@ -1653,6 +1707,7 @@ tf_python_pybind_extension(
     hdrs = [
         "framework/op_def_util.h",
         "lib/core/safe_ptr.h",
+        "lib/core/safe_pyobject_ptr.h",
         "util/util.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
@@ -3418,6 +3473,25 @@ tf_py_test(
         ":framework_for_generated_wrappers",
         ":kernels",
         "//third_party/py/numpy",
+    ],
+)
+
+tf_py_test(
+    name = "collective_ops_multi_worker_test",
+    size = "medium",
+    srcs = ["ops/collective_ops_multi_worker_test.py"],
+    python_version = "PY3",
+    tags = ["no_rocm"],
+    tfrt_enabled = False,
+    deps = [
+        ":collective_ops",
+        ":constant_op",
+        ":errors",
+        "//tensorflow/python/distribute:multi_process_runner",
+        "//tensorflow/python/distribute:multi_worker_test_base",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -8311,6 +8385,7 @@ tf_python_pybind_extension(
     srcs = ["mlir_wrapper.cc"],
     hdrs = [
         "lib/core/safe_ptr.h",
+        "lib/core/safe_pyobject_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/compiler/mlir/python:pywrap_mlir_hdrs",
@@ -8342,6 +8417,7 @@ tf_python_pybind_extension(
     srcs = ["tfe_wrapper.cc"],
     hdrs = [
         "lib/core/safe_ptr.h",
+        "lib/core/safe_pyobject_ptr.h",
         "util/util.h",
         ":py_exception_registry_hdr",
         "//tensorflow/c:headers",
@@ -8413,6 +8489,7 @@ tf_python_pybind_extension(
     name = "_pywrap_parallel_device",
     srcs = [
         "lib/core/safe_ptr.h",
+        "lib/core/safe_pyobject_ptr.h",
         "//tensorflow/c:headers",
         "//tensorflow/c/eager:headers",
         "//tensorflow/c/eager/parallel_device:headers",

@@ -245,7 +245,6 @@ distribute_py_test(
     main = "custom_training_loop_models_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_cuda11",
     ],
     tpu_tags = [
         "no_oss",  # b/153615544.

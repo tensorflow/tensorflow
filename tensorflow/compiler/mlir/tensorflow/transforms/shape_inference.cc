@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/translate/export_tf_dialect_op.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_tensor.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 #include "tensorflow/core/framework/types.pb.h"
@@ -820,18 +821,16 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
     return false;
   }
 
-  // Convert the operation to a NodeDef to be able to use the InferenceContext
+  // Convert the operation attributes to be able to use the InferenceContext
   // and the TensorFlow shape function.
-  auto node_def_or = tensorflow::ConvertTFDialectOpToNodeDef(
-      op, node_name, /*ignore_unregistered_attrs=*/true);
-  if (!node_def_or.ok()) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "Error converting op '" << *op << "' to NodeDef: "
-               << node_def_or.status().error_message() << "\n");
+  tensorflow::AttrValueMap attrs;
+  auto attrs_status = tensorflow::GetAttrValuesFromOperation(
+      op, node_name, /*ignore_unregistered_attrs=*/true, &attrs);
+  if (!attrs_status.ok()) {
+    LLVM_DEBUG(llvm::dbgs() << "Error creating attribute map for '" << *op
+                            << "': " << attrs_status.error_message() << "\n");
     return false;
   }
-  std::unique_ptr<tensorflow::NodeDef> node_def =
-      std::move(node_def_or).ValueOrDie();
 
   // Collect an array with input values for constant operands and input shapes
   // for all the operands.
@@ -875,8 +874,8 @@ bool ShapeInference::InferShapeForSingleOperation(Operation* op) {
   // Perform the shape inference using an InferenceContext with the input
   // shapes. This object is abstracting the information that the ShapeInference
   // function operates on.
-  InferenceContext c(graph_version_, *node_def, op_reg_data->op_def,
-                     input_shapes, input_tensors,
+  InferenceContext c(graph_version_, tensorflow::AttrSlice(&attrs),
+                     op_reg_data->op_def, input_shapes, input_tensors,
                      /*input_tensors_as_shapes=*/{}, handle_shapes_and_types);
   auto status = c.Run(op_reg_data->shape_inference_fn);
   if (!status.ok()) {

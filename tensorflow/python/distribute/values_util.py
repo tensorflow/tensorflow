@@ -69,8 +69,7 @@ def get_on_read_saveable(var, primary_var, name):
   # We use a callable so that we don't have to evaluate this expression
   # in the case where we are trying to restore instead of save.
   def tensor():
-    strategy = var.distribute_strategy
-    return strategy.extended.read_var(var)
+    return var._get_cross_replica()  # pylint: disable=protected-access
 
   spec = saveable_object.SaveSpec(
       tensor=tensor,

@@ -1568,7 +1568,8 @@ Status DistributedTPURewritePass::GetArgAndRetvalShapes(
     arg_shape.shape = TensorShape();  // Variables are always scalars.
     arg_shape.handle_shape = info->handle_shape;
     arg_shape.handle_type = info->handle_type;
-    TF_RET_CHECK(arg_shape.handle_type != DT_INVALID);
+    TF_RET_CHECK(arg_shape.handle_type != DT_INVALID)
+        << " input edge: " << input_edges[edge_pos]->DebugString();
     ++edge_pos;
   }
 

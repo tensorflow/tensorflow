@@ -798,6 +798,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::ABS:
       case OperationType::COPY:
       case OperationType::COS:
+      case OperationType::ELU:
       case OperationType::EXP:
       case OperationType::LOG:
       case OperationType::RSQRT:
@@ -815,6 +816,8 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
   bool IsTwoArgumentOperation() const {
     switch (operation_type_) {
       case OperationType::DIV:
+      case OperationType::MAXIMUM:
+      case OperationType::MINIMUM:
       case OperationType::POW:
       case OperationType::SQUARED_DIFF:
       case OperationType::SUB:
@@ -826,8 +829,11 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
 
   bool IsTwoArgumentOperationWithConst() const {
     switch (operation_type_) {
-      case OperationType::MINIMUM:
+      case OperationType::DIV:
       case OperationType::MAXIMUM:
+      case OperationType::MINIMUM:
+      case OperationType::POW:
+      case OperationType::SQUARED_DIFF:
       case OperationType::SUB:
         return true;
       default:
@@ -1125,6 +1131,17 @@ class MulOperationParser : public TFLiteOperationParser {
     // The "larger" input tensor must be bound to 1st input and the "smaller"
     // input tensor ("mask") must be bound to 2nd input.
     if (runtime_tensor0 && runtime_tensor1) {
+      if (input0 == input1) {
+        // replace MUL(A, A) with POW(A, 2.0)
+        // TODO(b/166831113): Support the same inputs for operations.
+        node->operation.type = ToString(OperationType::POW);
+        ElementwiseAttributes attr;
+        attr.param = 2.0f;
+        node->operation.attributes = std::move(attr);
+        RETURN_IF_ERROR(reader->AddInput(node, 0));
+        return reader->AddOutputs(node);
+      }
+
       BHWC shape0;
       RETURN_IF_ERROR(ExtractTensorShape(*input0, &shape0));
       BHWC shape1;
@@ -2390,6 +2407,7 @@ class Landmarks2TransformMatrixOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     return CheckInputsOutputs(context, tflite_node, /*runtime_inputs=*/1,
                               /*outputs=*/1);
   }
@@ -2402,37 +2420,6 @@ class Landmarks2TransformMatrixOperationParser : public TFLiteOperationParser {
     RETURN_IF_ERROR(reader->AddOutputs(node));   // transform matrix
 
     const std::string op_name = "landmarks_to_transform_matrix";
-    node->operation.type = op_name;
-    BHWC output_shape;
-    RETURN_IF_ERROR(ParseCustomAttributes(
-        op_name, registration->version, tflite_node->custom_initial_data,
-        tflite_node->custom_initial_data_size, &(node->operation.attributes),
-        &output_shape));
-
-    auto output_value = graph->FindOutputs(node->id)[0];
-    output_value->tensor.shape = output_shape;
-    return absl::OkStatus();
-  }
-};
-
-class Landmarks2TransformMatrixV2OperationParser
-    : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    return CheckInputsOutputs(context, tflite_node, /*runtime_inputs=*/1,
-                              /*outputs=*/1);
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    RETURN_IF_ERROR(reader->AddInput(node, 0));  // landmarks
-    RETURN_IF_ERROR(reader->AddOutputs(node));   // transform matrix
-
-    const std::string op_name = "landmarks_to_transform_matrix_v2";
     node->operation.type = op_name;
     BHWC output_shape;
     RETURN_IF_ERROR(ParseCustomAttributes(
@@ -2689,11 +2676,9 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       if (custom_name == "TransformLandmarksV2") {
         return std::make_unique<TransformLandmarksV2OperationParser>();
       }
-      if (custom_name == "Landmarks2TransformMatrix") {
+      if (custom_name == "Landmarks2TransformMatrix" ||
+          custom_name == "Landmarks2TransformMatrixV2") {
         return std::make_unique<Landmarks2TransformMatrixOperationParser>();
-      }
-      if (custom_name == "Landmarks2TransformMatrixV2") {
-        return std::make_unique<Landmarks2TransformMatrixV2OperationParser>();
       }
       if (custom_name == "AlignmentPointsToTransformMatrix") {
         return std::make_unique<

@@ -93,11 +93,13 @@ void HistogramSummaryOp_Compute(void* kernel, TF_OpKernelContext* ctx) {
       std::ostringstream err;
       err << "Nan in summary histogram for: " << k->op_node_name;
       TF_SetStatus(status.get(), TF_INVALID_ARGUMENT, err.str().c_str());
+      TF_OpKernelContext_Failure(ctx, status.get());
       return;
     } else if (Eigen::numext::isinf(double_val)) {
       std::ostringstream err;
       err << "Infinity in Histogram for: " << k->op_node_name;
       TF_SetStatus(status.get(), TF_INVALID_ARGUMENT, err.str().c_str());
+      TF_OpKernelContext_Failure(ctx, status.get());
       return;
     }
     histo.Add(double_val);

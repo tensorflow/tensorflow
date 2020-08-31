@@ -1148,9 +1148,9 @@ class MirroredStrategyDefunTest(test.TestCase):
                 # pylint: disable=g-long-lambda
                 lambda: mirrored_strategy.MirroredStrategy(
                     devices=mirrored_strategy.all_local_devices(),
-                    cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce([
-                        "/job:worker/task:0", "/job:worker/task:1"
-                    ], context.num_gpus())),
+                    cross_device_ops=cross_device_ops_lib.ReductionToOneDevice(
+                    ),
+                ),
                 required_gpus=1)
         ],
         mode=["graph"]))
@@ -1288,9 +1288,7 @@ class MultiWorkerMirroredStrategyTestWithChief(
     cls._default_target = "grpc://" + cls._cluster_spec["chief"][0]
 
   def _make_cross_device_ops(self):
-    return cross_device_ops_lib.MultiWorkerAllReduce(
-        ["/job:chief/task:0", "/job:worker/task:0", "/job:worker/task:1"],
-        context.num_gpus())
+    return cross_device_ops_lib.ReductionToOneDevice()
 
   def testMinimizeLossGraph(self):
     with context.graph_mode():

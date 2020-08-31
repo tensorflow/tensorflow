@@ -106,6 +106,21 @@ class LaunchFusedConv2DWithOutputKernel {
   template <typename OutputKernel>
   void operator()(const OutputKernel& output_kernel, OpKernelContext* ctx,
                   const Tensor& input, const Tensor& filter, Tensor* output) {
+    // Wrap output_kernel into type erased function to reduce the number of
+    // unique template instantiations for Eigen Tensor contraction expressions.
+    using OutputKernelFn =
+        std::function<void(const ContractionOutputMapper<T, Eigen::Index>&,
+                           const Eigen::TensorContractionParams&, Eigen::Index,
+                           Eigen::Index, Eigen::Index, Eigen::Index)>;
+
+    OutputKernelFn output_kernel_fn =
+        [&output_kernel](
+            const ContractionOutputMapper<T, Eigen::Index>& output_mapper,
+            const Eigen::TensorContractionParams& params, Eigen::Index i,
+            Eigen::Index j, Eigen::Index num_rows, Eigen::Index num_cols) {
+          output_kernel(output_mapper, params, i, j, num_rows, num_cols);
+        };
+
     if (filter.dim_size(0) == 1 && filter.dim_size(1) == 1 &&
         row_stride_ == 1 && col_stride_ == 1 && padding_ != EXPLICIT) {
       int conv_width = 1;  // Width for the convolution step.
@@ -115,12 +130,12 @@ class LaunchFusedConv2DWithOutputKernel {
 
       Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
       dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
-      functor::MatMulConvFunctor<CPUDevice, T, OutputKernel>()(
+      functor::MatMulConvFunctor<CPUDevice, T, OutputKernelFn>()(
           ctx->eigen_device<CPUDevice>(),
           output->shaped<T, 2>({conv_width, filter.dim_size(3)}),
           input.shaped<T, 2>({conv_width, filter.dim_size(2)}),
           filter.shaped<T, 2>({filter.dim_size(2), filter.dim_size(3)}),
-          dim_pair, output_kernel);
+          dim_pair, std::move(output_kernel_fn));
 
     } else if (filter.dim_size(0) == input.dim_size(1) &&
                filter.dim_size(1) == input.dim_size(2) && row_dilation_ == 1 &&
@@ -132,29 +147,30 @@ class LaunchFusedConv2DWithOutputKernel {
 
       Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1> dim_pair;
       dim_pair[0] = Eigen::IndexPair<Eigen::DenseIndex>(1, 0);
-      functor::MatMulConvFunctor<CPUDevice, T, OutputKernel>()(
+      functor::MatMulConvFunctor<CPUDevice, T, OutputKernelFn>()(
           ctx->eigen_device<CPUDevice>(),
           output->shaped<T, 2>({input.dim_size(0), filter.dim_size(3)}),
           input.shaped<T, 2>({input.dim_size(0), k}),
           filter.shaped<T, 2>({k, filter.dim_size(3)}), dim_pair,
-          output_kernel);
+          std::move(output_kernel_fn));
 
     } else {
       if (padding_ == EXPLICIT) {
-        functor::SpatialConvolution<CPUDevice, T, OutputKernel>()(
+        functor::SpatialConvolution<CPUDevice, T, OutputKernelFn>()(
             ctx->eigen_device<CPUDevice>(), output->tensor<T, 4>(),
             input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride_,
             col_stride_, row_dilation_, col_dilation_,
             static_cast<int>(explicit_paddings_[2]),
             static_cast<int>(explicit_paddings_[3]),
             static_cast<int>(explicit_paddings_[4]),
-            static_cast<int>(explicit_paddings_[5]), output_kernel);
+            static_cast<int>(explicit_paddings_[5]),
+            std::move(output_kernel_fn));
       } else {
-        functor::SpatialConvolution<CPUDevice, T, OutputKernel>()(
+        functor::SpatialConvolution<CPUDevice, T, OutputKernelFn>()(
             ctx->eigen_device<CPUDevice>(), output->tensor<T, 4>(),
             input.tensor<T, 4>(), filter.tensor<T, 4>(), row_stride_,
             col_stride_, row_dilation_, col_dilation_,
-            BrainPadding2EigenPadding(padding_), output_kernel);
+            BrainPadding2EigenPadding(padding_), std::move(output_kernel_fn));
       }
     }
   }
@@ -185,14 +201,26 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
 
     BiasAddArgs<T> bias_add_args;
     if (BiasAddArgs<T>::IsSupported(fusion)) {
-      OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args));
+      if (fusion == FusedComputationType::kBiasAddWithLeakyRelu) {
+        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args,
+                                                &fusion_args.leakyrelu_alpha));
+      } else {
+        OP_REQUIRES_OK(context, InitBiasAddArgs(context, &bias_add_args));
+      }
     }
 
     FusedBatchNormArgs<T> fused_batch_norm_args;
     if (FusedBatchNormArgs<T>::IsSupported(fusion)) {
-      OP_REQUIRES_OK(context,
-                     InitFusedBatchNormArgs(context, fusion_args.epsilon,
-                                            &fused_batch_norm_args));
+      if (fusion == FusedComputationType::kFusedBatchNormWithLeakyRelu) {
+        OP_REQUIRES_OK(context,
+                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
+                                              &fused_batch_norm_args,
+                                              &fusion_args.leakyrelu_alpha));
+      } else {
+        OP_REQUIRES_OK(context,
+                       InitFusedBatchNormArgs(context, fusion_args.epsilon,
+                                              &fused_batch_norm_args));
+      }
     }
 
     LaunchFusedConv2DWithOutputKernel<T> conv2d(
@@ -215,6 +243,10 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
         conv2d(WithBiasAddAndRelu6<T>(bias_add_args), context, input, filter,
                output);
         break;
+      case FusedComputationType::kBiasAddWithLeakyRelu:
+        conv2d(WithBiasAddAndLeakyRelu<T>(bias_add_args), context, input,
+               filter, output);
+        break;
       case FusedComputationType::kBiasAddWithElu:
         conv2d(WithBiasAddAndElu<T>(bias_add_args), context, input, filter,
                output);
@@ -232,6 +264,11 @@ struct LaunchFusedConv2DOp<CPUDevice, T> {
       case FusedComputationType::kFusedBatchNormWithRelu6:
         conv2d(WithFusedBatchNormAndRelu6<T>(fusion_args.epsilon,
                                              fused_batch_norm_args),
+               context, input, filter, output);
+        break;
+      case FusedComputationType::kFusedBatchNormWithLeakyRelu:
+        conv2d(WithFusedBatchNormAndLeakyRelu<T>(fusion_args.epsilon,
+                                                 fused_batch_norm_args),
                context, input, filter, output);
         break;
       case FusedComputationType::kFusedBatchNormWithElu:
@@ -681,10 +718,12 @@ class FusedConv2DOp : public OpKernel {
           {FCT::kBiasAddWithRelu, {"BiasAdd", "Relu"}},
           {FCT::kBiasAddWithRelu6, {"BiasAdd", "Relu6"}},
           {FCT::kBiasAddWithElu, {"BiasAdd", "Elu"}},
+          {FCT::kBiasAddWithLeakyRelu, {"BiasAdd", "LeakyRelu"}},
           {FCT::kFusedBatchNorm, {"FusedBatchNorm"}},
           {FCT::kFusedBatchNormWithRelu, {"FusedBatchNorm", "Relu"}},
           {FCT::kFusedBatchNormWithRelu6, {"FusedBatchNorm", "Relu6"}},
           {FCT::kFusedBatchNormWithElu, {"FusedBatchNorm", "Elu"}},
+          {FCT::kFusedBatchNormWithLeakyRelu, {"FusedBatchNorm", "LeakyRelu"}},
       };
     }
 

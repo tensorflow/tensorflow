@@ -178,55 +178,6 @@ class DeviceResDistTest : public ::testing::Test {
     wc_.AddWorker(worker_name, fw);
   }
 
-  void RestartWorker(const string& worker_name, const string& device_type,
-                     int num_devices, uint64 device_incarnation_base) {
-    for (auto it : resolvers_) {
-      it.second->ClearCache();
-    }
-    // `DefineWorker` creates a device resolver and a worker and adds them to
-    // resolvers_ and workers_.  Recreating the worker would overwrite these map
-    // entries.  We destroy the old device resolver here; all other objects are
-    // cleaned up in the destructor.
-    delete resolvers_[worker_name];
-    DefineWorker(worker_name, device_type, num_devices,
-                 device_incarnation_base);
-  }
-
-  void ResolveIncarnationsAndValidate(
-      const int num_workers, const int num_devices, const string& worker_prefix,
-      const string& device_type,
-      const std::vector<std::vector<uint64>>& expected_incarnations) {
-    for (int w = 0; w < num_workers; ++w) {
-      const string worker_name = absl::StrCat(worker_prefix, w);
-      auto* device_resolver = resolvers_[worker_name];
-      const string device_prefix =
-          absl::StrCat(worker_name, "/device:", device_type, ":");
-      for (int peer_w = 0; peer_w < num_workers; ++peer_w) {
-        const string peer_worker_name = absl::StrCat(worker_prefix, peer_w);
-        for (int d = 0; d < num_devices; ++d) {
-          const string device_name =
-              absl::StrCat(peer_worker_name, "/device:", device_type, ":", d);
-          DeviceNameUtils::ParsedName parsed;
-          ASSERT_TRUE(DeviceNameUtils::ParseFullName(device_name, &parsed));
-          // NOLINT prevents linter from suggesting absl::Notification as a
-          // replacement, which is not available in OSS.
-          Notification note;  // NOLINT
-          Status status;
-          DeviceAttributes attributes;
-          device_resolver->GetDeviceAttributesAsync(
-              device_name, peer_worker_name, &attributes,
-              [&note, &status](const Status& s) {
-                status = s;
-                note.Notify();
-              });
-          note.WaitForNotification();
-          TF_EXPECT_OK(status);
-          EXPECT_EQ(attributes.incarnation(), expected_incarnations[peer_w][d]);
-        }
-      }
-    }
-  }
-
   FakeCache wc_;
   std::vector<DeviceMgr*> device_mgrs_;
   std::unordered_map<string, TestableDeviceResolverDistributed*> resolvers_;
@@ -259,52 +210,6 @@ TEST_F(DeviceResDistTest, Workers3Devices4) {
       }
     }
   }
-  // Clear just task 0 from all.
-  const string w0_name = "/job:worker/replica:0/task:0";
-  for (auto it : resolvers_) {
-    if (it.first == w0_name) continue;
-    TestableDeviceResolverDistributed* dres = it.second;
-    EXPECT_EQ(8, it.second->attr_table().size());
-    dres->ClearTask("/job:worker/replica:0/task:0");
-    EXPECT_EQ(4, it.second->attr_table().size());
-  }
-}
-
-TEST_F(DeviceResDistTest, DeviceIncarnationChangesOnFailure) {
-  constexpr int num_workers = 3;
-  constexpr int num_devices = 4;
-  constexpr int failing_worker_index = 1;
-  const string device_type = "CPU";
-  constexpr uint64 device_incarnation_base = 100;
-  DefineWorkers(num_workers, num_devices, device_type, device_incarnation_base);
-  const string worker_prefix = "/job:worker/replica:0/task:";
-  const string failing_worker =
-      absl::StrCat(worker_prefix, failing_worker_index);
-
-  // Check device incarnations match expected.
-  std::vector<std::vector<uint64>> expected_incarnations(num_workers);
-  for (int w = 0; w < num_workers; ++w) {
-    expected_incarnations[w].resize(num_devices);
-    for (int d = 0; d < num_devices; ++d) {
-      expected_incarnations[w][d] =
-          w * num_devices + d + device_incarnation_base;
-    }
-  }
-  ResolveIncarnationsAndValidate(num_workers, num_devices, worker_prefix,
-                                 device_type, expected_incarnations);
-
-  // Restart worker `failing_worker`.
-  constexpr uint64 restart_incarnation_base = 200;
-  RestartWorker(failing_worker, device_type, num_devices,
-                restart_incarnation_base);
-  for (int d = 0; d < num_devices; ++d) {
-    expected_incarnations[failing_worker_index][d] =
-        d + restart_incarnation_base;
-  }
-
-  // Check incarnations have changed for `failing worker`.
-  ResolveIncarnationsAndValidate(num_workers, num_devices, worker_prefix,
-                                 device_type, expected_incarnations);
 }
 
 }  // namespace

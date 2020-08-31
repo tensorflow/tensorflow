@@ -237,7 +237,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testComputeGradientsWithTensors(self):
     with testing_utils.use_gpu():
-      x = ops.convert_to_tensor_v2(1.0)
+      x = ops.convert_to_tensor_v2_with_dispatch(1.0)
 
       def f():
         return x * x

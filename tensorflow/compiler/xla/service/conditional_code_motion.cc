@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
+#include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -114,6 +115,8 @@ int64 ReusesCarriedBy(HloInstruction* op, HloInstruction* user) {
     case HloOpcode::kConstant:
     case HloOpcode::kGetTupleElement:
       return 0;
+    case HloOpcode::kConditional:
+      return 10;
     default:
       // Assume fusion will not happen anyway if user count > 1)
       if (op->user_count() > 1) {
@@ -582,6 +585,7 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
       // to replace the conditional directly in the new computation.
       b_opd_use.mutable_operands().push_back(conditional);
     }
+
     HloInstruction* new_root =
         computation->AddInstruction(HloInstruction::CreateTuple(operands));
     VLOG(2) << "setting new root: " << new_root->ToString() << "\n";
@@ -591,6 +595,15 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
       TF_RETURN_IF_ERROR(computation->RemoveInstruction(old_root));
     }
     VLOG(2) << "new branch computation: " << computation->ToString() << "\n";
+  }
+  // Update get tuple element index of the conditional.
+  if (use_index != -1) {
+    for (auto* user : conditional->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement &&
+          user->tuple_index() > use_index) {
+        user->set_tuple_index(user->tuple_index() - 1);
+      }
+    }
   }
   hoisted_instructions[conditional] = b_old_root;
   int64 cp_start = 0;
@@ -677,7 +690,7 @@ class GroupConnectedBoundaries {
       : conditional_(conditional),
         conditional_parent_(conditional->parent()),
         is_layout_sensitive_(is_layout_sensitive) {}
-  // Returns true if `instruction` is worth hoisting out.
+  // Returns true if `instruction` is worth hoisting.
   bool WorthHoisting(HloInstruction* instruction) {
     // This is needed for the "moving-in" transformation, to prevent the root
     // of the parent computation (which contains the conditional) to be moved
@@ -708,6 +721,7 @@ class GroupConnectedBoundaries {
       case HloOpcode::kAllReduce:
       case HloOpcode::kAdd:
       case HloOpcode::kPower:
+      case HloOpcode::kCopy:
       case HloOpcode::kConstant:
       case HloOpcode::kSubtract:
       case HloOpcode::kMultiply:
@@ -1070,6 +1084,7 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     subpipeline.AddPass<HloDCE>();
     subpipeline.AddPass<TupleSimplifier>();
     subpipeline.AddPass<HloDCE>();
+    subpipeline.AddPass<HloVerifier>(false, true);
     TF_ASSIGN_OR_RETURN(bool cleanup_changed, subpipeline.Run(module));
     changed |= cleanup_changed;
   }

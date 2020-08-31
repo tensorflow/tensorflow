@@ -2343,6 +2343,7 @@ cc_library(
         ":hlo_dce",
         ":hlo_pass",
         ":hlo_pass_pipeline",
+        ":hlo_verifier",
         ":tuple_simplifier",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",

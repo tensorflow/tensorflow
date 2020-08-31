@@ -268,4 +268,10 @@ void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
   AppendMarkForCompilationPassFlagsInternal(flag_list);
 }
 
+static std::atomic<bool> xla_compilation_disabled(false);
+
+void DisableXlaCompilation() { xla_compilation_disabled = true; }
+
+bool FailOnXlaCompilation() { return xla_compilation_disabled; }
+
 }  // namespace tensorflow

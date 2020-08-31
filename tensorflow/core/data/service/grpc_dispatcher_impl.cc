@@ -26,9 +26,9 @@ using ::grpc::ServerBuilder;
 using ::grpc::ServerContext;
 
 GrpcDispatcherImpl::GrpcDispatcherImpl(
-    ServerBuilder* server_builder, const experimental::DispatcherConfig& config)
+    const experimental::DispatcherConfig& config, ServerBuilder& server_builder)
     : impl_(config) {
-  server_builder->RegisterService(this);
+  server_builder.RegisterService(this);
   VLOG(1) << "Registered data service dispatcher";
 }
 

@@ -37,7 +37,8 @@ namespace tensorflow {
 class XlaCompileOnDemandOp : public OpKernel {
  public:
   explicit XlaCompileOnDemandOp(OpKernelConstruction* ctx)
-      : OpKernel(ctx), platform_info_(XlaPlatformInfoFromContext(ctx)) {}
+      : OpKernel(ctx),
+        platform_info_(XlaPlatformInfoFromDevice(ctx->device())) {}
   void Compute(OpKernelContext* ctx) override;
 
  private:

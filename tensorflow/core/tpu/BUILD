@@ -157,6 +157,7 @@ cc_library(
         ":tpu_api",
         ":tpu_compilation_device",
         ":tpu_config_c_api",
+        ":tpu_executor_init_fns",
         ":tpu_library_init_fns",
         ":tpu_node_device",
         ":tpu_system_device",

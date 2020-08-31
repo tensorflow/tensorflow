@@ -281,6 +281,28 @@ cc_library(
 )
 
 cc_library(
+    name = "nms_utils",
+    srcs = [
+        "utils/nms_utils.cc",
+    ],
+    hdrs = [
+        "utils/nms_utils.h",
+    ],
+    copts = ["-std=c++14"],
+    deps = [
+        ":tensorflow_lite",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tensorflow:tensorflow_attributes",
+        "//tensorflow/core:framework",
+        "@flatbuffers",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+    ],
+)
+
+cc_library(
     name = "tftext_utils",
     srcs = [
         "utils/tftext_utils.cc",
@@ -373,6 +395,7 @@ cc_library(
     deps = [
         ":constant_utils",
         ":lstm_utils",
+        ":nms_utils",
         ":stateful_ops_utils",
         ":tensorflow_lite",
         ":tftext_utils",

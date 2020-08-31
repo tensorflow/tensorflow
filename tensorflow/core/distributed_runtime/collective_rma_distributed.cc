@@ -155,9 +155,6 @@ void CollectiveRemoteAccessDistributed::RecvFromPeer(
         PopulateTensorFromExtra(extra, to_tensor);
       }
     }
-    if (!s.ok() && errors::IsFailedPrecondition(s)) {
-      dev_resolver_->ClearTask(peer_task);
-    }
 
     delete state;
     done(s);

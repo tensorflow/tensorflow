@@ -1,5 +1,5 @@
 # Experimental hadoop filesystem plugin.
-load("//tensorflow:tensorflow.bzl", "get_win_copts", "tf_cc_shared_object")
+load("//tensorflow:tensorflow.bzl", "get_win_copts", "tf_cc_shared_object", "tf_cc_test")
 
 package(
     licenses = ["notice"],  # Apache 2.0
@@ -31,5 +31,22 @@ cc_library(
         "//third_party/hadoop:hdfs",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+tf_cc_test(
+    name = "hadoop_filesystem_test",
+    srcs = [
+        "hadoop_filesystem_test.cc",
+    ],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        ":hadoop_filesystem_impl",
+        "//tensorflow/core/platform:path",
+        "//tensorflow/core/platform:stacktrace_handler",
+        "//tensorflow/core/platform:test",
     ],
 )

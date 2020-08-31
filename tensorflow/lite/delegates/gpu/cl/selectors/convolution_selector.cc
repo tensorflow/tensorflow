@@ -35,8 +35,8 @@ std::unique_ptr<GPUOperation> SelectConvolutionAdreno(
     const DeviceInfo& device_info, const OperationDef& op_def,
     ModelHints hints) {
   if (IsConvConstantsSupported(device_info, op_def, attr)) {
-    ConvConstants conv = CreateConvConstants(device_info, op_def, attr);
-    return absl::make_unique<ConvConstants>(std::move(conv));
+    GPUOperation conv = CreateConvConstants(device_info, op_def, attr);
+    return absl::make_unique<GPUOperation>(std::move(conv));
   } else {
     ConvTexture conv = CreateConvTexture(device_info, op_def, attr);
     return absl::make_unique<ConvTexture>(std::move(conv));
@@ -66,8 +66,8 @@ std::unique_ptr<GPUOperation> SelectConvolutionNVidia(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
     const DeviceInfo& device_info, const OperationDef& op_def) {
   if (IsConvConstantsSupported(device_info, op_def, attr)) {
-    ConvConstants conv = CreateConvConstants(device_info, op_def, attr);
-    return absl::make_unique<ConvConstants>(std::move(conv));
+    GPUOperation conv = CreateConvConstants(device_info, op_def, attr);
+    return absl::make_unique<GPUOperation>(std::move(conv));
   } else {
     ConvPowerVR conv = CreateConvPowerVR(device_info, op_def, attr, &dst_shape);
     return absl::make_unique<ConvPowerVR>(std::move(conv));

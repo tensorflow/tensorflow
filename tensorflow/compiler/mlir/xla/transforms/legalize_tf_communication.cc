@@ -60,6 +60,10 @@ const char kXlaHostTransferOriginalTypeAttr[] =
 // ops other than certain control flow ops (`mhlo.if`, `mhlo.while`).
 class LegalizeTFCommunication
     : public PassWrapper<LegalizeTFCommunication, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mhlo::MhloDialect>();
+  }
+
  public:
   void runOnOperation() override;
 };
