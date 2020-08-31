@@ -2013,11 +2013,6 @@ alias(
 )
 
 alias(
-    name = "portable_png_internal",
-    actual = "//tensorflow/core/lib/png:png_io",
-)
-
-alias(
     name = "android_png_internal",
     actual = "//tensorflow/core/lib/png:png_io",
 )
@@ -2045,8 +2040,8 @@ cc_library(
 )
 
 cc_library(
-    name = "portable_jpeg_internal",
-    srcs = if_mobile([
+    name = "android_jpeg_internal",
+    srcs = if_android([
         "lib/jpeg/jpeg_handle.cc",
         "lib/jpeg/jpeg_mem.cc",
         "//tensorflow/core/platform:jpeg_hdrs",
@@ -2060,7 +2055,7 @@ cc_library(
         "//tensorflow/core/platform/default:logging.h",
     ],
     copts = tf_copts(),
-    linkopts = if_android(["-ldl"]),
+    linkopts = ["-ldl"],
     deps = [
         ":core_stringpiece",
         "//tensorflow/core/platform:dynamic_annotations",
@@ -2073,8 +2068,8 @@ cc_library(
 )
 
 cc_library(
-    name = "portable_gif_internal",
-    srcs = if_mobile([
+    name = "android_gif_internal",
+    srcs = if_android([
         "lib/gif/gif_io.cc",
         "//tensorflow/core/platform:gif_hdrs",
     ]),
@@ -2087,7 +2082,7 @@ cc_library(
         "//tensorflow/core/platform/default:logging.h",
     ],
     copts = tf_copts(),
-    linkopts = if_android(["-ldl"]),
+    linkopts = ["-ldl"],
     deps = [
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:gif",
@@ -2096,16 +2091,6 @@ cc_library(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/strings",
     ],
-)
-
-alias(
-    name = "android_jpeg_internal",
-    actual = ":portable_jpeg_internal",
-)
-
-alias(
-    name = "android_gif_internal",
-    actual = ":portable_gif_internal",
 )
 
 alias(

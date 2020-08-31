@@ -6117,9 +6117,6 @@ filegroup(
         "//tensorflow/core/kernels/linalg:einsum_op_impl_complex128.cc",
         "//tensorflow/core/kernels/linalg:einsum_op_impl.h",
         "//tensorflow/core/kernels/linalg:einsum_op.h",
-        "//tensorflow/core/kernels/image:decode_image_op.cc",
-        "//tensorflow/core/kernels/image:encode_jpeg_op.cc",
-        "//tensorflow/core/kernels/image:encode_png_op.cc",
     ] + select({
         ":xsmm_convolutions": [
             "xsmm_conv2d.h",
@@ -6439,9 +6436,6 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:portable_gif_internal",
-        "//tensorflow/core:portable_jpeg_internal",
-        "//tensorflow/core:portable_png_internal",
         "//tensorflow/core:portable_tensorflow_lib_lite",
         "//tensorflow/core:protos_all_cc_impl",
         "//tensorflow/core/platform:strong_hash",

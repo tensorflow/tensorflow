@@ -276,15 +276,3 @@ tf_cc_test(
         ],
     }),
 )
-
-# Alias to support selective build of image ops.
-# TODO(b/163285312): Remove after tensorflow/core refactoring completed.
-cc_library(
-    name = "portable_images_lib",
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:portable_gif_internal",
-        "//tensorflow/core:portable_jpeg_internal",
-        "//tensorflow/core:portable_png_internal",
-    ],
-)

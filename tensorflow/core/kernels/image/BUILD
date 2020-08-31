@@ -61,9 +61,6 @@ exports_files([
     "resize_nearest_neighbor_op.cc",
     "resize_nearest_neighbor_op.h",
     "sample_distorted_bounding_box_op.cc",
-    "decode_image_op.cc",
-    "encode_jpeg_op.cc",
-    "encode_png_op.cc",
 ])
 
 # Private support libraries ---------------------------------------------------

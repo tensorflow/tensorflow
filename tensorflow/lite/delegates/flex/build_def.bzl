@@ -139,7 +139,6 @@ def tflite_flex_cc_library(
                 "@icu//:common",
                 "//tensorflow/core:portable_tensorflow_lib_lite",
                 "//tensorflow/core/platform:strong_hash",
-                "//tensorflow/lite/delegates/flex:portable_images_lib",
             ],
             alwayslink = 1,
         )
