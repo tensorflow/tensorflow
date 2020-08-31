@@ -74,6 +74,7 @@ PYTHON_TARGETS, PY_TEST_QUERY_EXPRESSION = BuildPyTestDependencies()
 # List of dependencies that should not included in the pip package.
 DEPENDENCY_DENYLIST = [
     "//tensorflow/python:extra_py_tests_deps",
+    "//tensorflow/cc/saved_model:saved_model_test_files",
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     "//tensorflow:no_tensorflow_py_deps",
     "//tensorflow/tools/pip_package:win_pip_package_marker",
