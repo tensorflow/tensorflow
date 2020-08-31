@@ -297,10 +297,10 @@ def create_conv_model(fingerprint_input, model_settings, is_training):
   print(">>> first_conv_shape:", first_dropout.shape)
   
   max_pool = tf.nn.max_pool2d(input=first_dropout,
-                              ksize=[1, 2, 2, 1],
-                              strides=[1, 2, 2, 1],
-                              # ksize=[1, 1, 4, 1],
-                              # strides=[1, 1, 4, 1],
+                              # ksize=[1, 2, 2, 1],
+                              # strides=[1, 2, 2, 1],
+                              ksize=[1, 1, 4, 1],
+                              strides=[1, 1, 4, 1],
                               padding='SAME')
   
   second_filter_width = 4
