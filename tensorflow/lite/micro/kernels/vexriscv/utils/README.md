@@ -64,7 +64,7 @@ for i in $(seq 1000); do echo $i...; killall -INT riscv64-zephyr-elf-gdb; sleep 
 # obtained from GDB and only keep top 7 most frequent functions in the
 # image, for detail usage of the script, please refer to the source code
 
-python log_parser.py [INPUT] --visualize --top=7 --source=gdb
+python log_parser.py [INPUT] --regex=gdb_regex.json --visualize --top=7 --source=gdb
 ```
 
 Since we are redirecting the gdb interrupt messages to the file `<path-you-run-gdb>/profile.txt` (see the gdb script,) we can now parse the log and visualize it.
@@ -78,7 +78,7 @@ python log_parser.py profile.txt --regex=gdb_regex.json --visualize --top=7
 #### Get the statistic of the function call hierarchy
 To get a more detail view of how the entire function call stack looks like and how many time the function is called with the exact same call stack, we can add another option `--full-trace` to the script and it will generate a `*.json` file for the complete call stack trace.
 ```
-python log_parser.py profile.txt --visualize --top=7 --full-trace
+python log_parser.py profile.txt --regex=gdb_regex.json --visualize --top=7 --full-trace
 ```
 
 ```
