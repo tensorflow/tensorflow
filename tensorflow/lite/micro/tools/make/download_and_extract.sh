@@ -223,6 +223,7 @@ download_and_extract() {
     fi
   else
     echo "Error unsupported archive type. Failed to extract tool after download."
+    exit 1
   fi
   rm -rf ${tempdir2} ${tempdir}
 
