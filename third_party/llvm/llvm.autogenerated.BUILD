@@ -419,6 +419,19 @@ cc_binary(
     ],
 )
 
+cc_library(
+    name = "filecheck-lib",
+    srcs = glob([
+        "lib/FileCheck/*.cpp",
+        "lib/FileCheck/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/FileCheck/*.h",
+    ]),
+    includes = ["include"],
+    deps = [":Support"],
+)
+
 cc_binary(
     name = "FileCheck",
     testonly = 1,
@@ -429,7 +442,10 @@ cc_binary(
     copts = llvm_copts,
     linkopts = llvm_linkopts,
     stamp = 0,
-    deps = [":Support"],
+    deps = [
+        ":Support",
+        ":filecheck-lib",
+    ],
 )
 
 llvm_target_list = [
