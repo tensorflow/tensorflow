@@ -2988,14 +2988,7 @@ filegroup(
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",
         # BMP data
-        "lib/bmp/testdata/lena.bmp",
-        "lib/bmp/testdata/rgb_small.bmp",
-        "lib/bmp/testdata/rgb_small_255.bmp",
-        "lib/bmp/testdata/rgba_small.bmp",
-        "lib/bmp/testdata/rgba_small_255.bmp",
-        "lib/bmp/testdata/grayscale_small.bmp",
-        "lib/bmp/testdata/grayscale_small_3channels.bmp",
-        "lib/bmp/testdata/grayscale_small_4channels.bmp",
+        "//tensorflow/core/lib/bmp:bmp_testdata",
     ],
     visibility = ["//visibility:public"],
 )
