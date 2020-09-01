@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/gpu/common/transformations/general_transformations.h"
 #include "tensorflow/lite/delegates/gpu/common/types.h"
 #include "tensorflow/lite/delegates/gpu/metal/api.h"
 #include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"

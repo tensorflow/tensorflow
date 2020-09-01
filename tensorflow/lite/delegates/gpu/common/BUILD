@@ -23,7 +23,10 @@ cc_library(
 )
 
 exports_files(
-    ["custom_parsers.h"],
+    [
+        "custom_parsers.h",
+        "custom_transformations.h",
+    ],
     visibility = ["//tensorflow/lite/delegates/gpu/common:__subpackages__"],
 )
 
@@ -125,7 +128,7 @@ cc_library(
         "//tensorflow/lite:kernel_api",
         "//tensorflow/lite:util",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
+        "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels/internal:reference_base",
         "//tensorflow/lite/kernels/internal:tensor",
