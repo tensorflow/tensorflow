@@ -26,13 +26,8 @@ cc_library(
     ],
 )
 
-filegroup(
+alias(
     name = "testdata",
-    srcs = [
-        "testdata/lena_gray.png",
-        "testdata/lena_palette.png",
-        "testdata/lena_palette_trns.png",
-        "testdata/lena_rgba.png",
-        "testdata/palette_only.png",
-    ],
+    actual = "//tensorflow/core/lib/png/testdata:png_testdata",
+    visibility = ["//tensorflow/core:__pkg__"],
 )
