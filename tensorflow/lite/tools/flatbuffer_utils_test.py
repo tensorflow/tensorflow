@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import copy
 import os
+import subprocess
 
 from tensorflow.lite.tools import flatbuffer_utils
 from tensorflow.lite.tools import test_utils
