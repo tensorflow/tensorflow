@@ -228,7 +228,7 @@ class HDFSRandomAccessFile : public RandomAccessFile {
     Status s;
     char* dst = scratch;
     bool eof_retried = false;
-    const char* disable_eof_retried = getenv("DISABLE_HDFS_READ_EOF_RETRIED")
+    const char* disable_eof_retried = getenv("DISABLE_HDFS_READ_EOF_RETRIED");
     if (disable_eof_retried && disable_eof_retried[0] == '1') {
       // eof_retried = true, avoid calling hdfsOpenFile in Read, Fixes #42597
       eof_retried = true;
