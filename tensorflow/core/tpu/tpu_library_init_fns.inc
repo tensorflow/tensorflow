@@ -72,6 +72,11 @@ tensorflow::Status SetTpuProgramStructFn(void* library_handle) {
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetMayModifyVariables);
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_HasSharding);
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetTpuProgram);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeTpuExecutable);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeCompilerMetadata);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeHostComputeMetadata);
+  TFTPU_SET_FN(tpu_program_fn,
+               TpuProgram_DeserializeFromGetTpuProgramResponseProto);
 
   return tensorflow::Status::OK();
 }
