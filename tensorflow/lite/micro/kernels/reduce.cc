@@ -26,18 +26,20 @@ limitations under the License.
 #include "tensorflow/lite/micro/micro_utils.h"
 
 namespace {
-int NumAxis(const TfLiteTensor* axis) {
-  if (axis->dims == nullptr) {
+int NumAxis(const TfLiteTensor& axis) {
+  // Interpret an axis tensor with null dimensions as a scalar
+  if (axis.dims == nullptr) {
     return 1;
   }
-  return tflite::ElementCount(*axis->dims);
+  return tflite::ElementCount(*axis.dims);
 }
 
-int NumAxis(const TfLiteEvalTensor* axis) {
-  if (axis->dims == nullptr) {
+int NumAxis(const TfLiteEvalTensor& axis) {
+  // Interpret an axis tensor with null dimensions as a scalar
+  if (axis.dims == nullptr) {
     return 1;
   }
-  return tflite::ElementCount(*axis->dims);
+  return tflite::ElementCount(*axis.dims);
 }
 }  // namespace
 
@@ -104,11 +106,9 @@ TfLiteStatus PrepareMax(TfLiteContext* context, TfLiteNode* node) {
   op_data->output_scale = output->params.scale;
   op_data->num_output_elements = NumElements(output);
 
-  // Interpret an axis tensor with null dimensions as a scalar
-  int num_axis = NumAxis(axis);
   context->RequestScratchBufferInArena(context, sizeof(int) * input->dims->size,
                                        &op_data->temp_buffer_idx);
-  context->RequestScratchBufferInArena(context, sizeof(int) * num_axis,
+  context->RequestScratchBufferInArena(context, sizeof(int) * NumAxis(*axis),
                                        &op_data->resolved_axis_idx);
 
   return kTfLiteOk;
@@ -282,11 +282,11 @@ TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
   TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
   TfLiteReducerParams* params =
-      reinterpret_cast<TfLiteReducerParams*>(node->builtin_data);
+      static_cast<TfLiteReducerParams*>(node->builtin_data);
   OpData* op_data = static_cast<OpData*>(node->user_data);
 
   // Interpret an axis tensor with null dimensions as a scalar
-  int num_axis = NumAxis(axis);
+  int num_axis = NumAxis(*axis);
   int* temp_buffer = static_cast<int*>(
       context->GetScratchBuffer(context, op_data->temp_buffer_idx));
   int* resolved_axis = static_cast<int*>(

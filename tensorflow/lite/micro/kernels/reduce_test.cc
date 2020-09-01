@@ -43,7 +43,7 @@ template <typename T>
 TfLiteStatus ValidateReduceGoldens(TfLiteTensor* tensors, int tensors_size,
                                    const T* expected_output_data,
                                    T* output_data, int output_length,
-                                   TfLiteRegistration registration,
+                                   const TfLiteRegistration& registration,
                                    TfLiteReducerParams* params,
                                    float tolerance = 1e-5) {
   int inputs_array_data[] = {2, 0, 1};
@@ -74,7 +74,7 @@ void TestMeanFloatInput4D(const int* input_dims_data, const float* input_data,
   TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
 
-  TfLiteRegistration registration = tflite::ops::micro::Register_MEAN();
+  const TfLiteRegistration registration = tflite::ops::micro::Register_MEAN();
 
   constexpr int num_of_inputs = 2;   // input and axis
   constexpr int num_of_outputs = 1;  // output
@@ -96,7 +96,7 @@ void TestReduceOpFloat(const int* input_dims_data, const float* input_data,
                        const int* axis_dims_data, const int32_t* axis_data,
                        const int* output_dims_data,
                        const float* expected_output_data,
-                       TfLiteRegistration registration,
+                       const TfLiteRegistration& registration,
                        TfLiteReducerParams* params, float tolerance = 1e-5) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
@@ -128,7 +128,7 @@ void TestReduceOpQuantized(const int* input_dims_data, const float* input_data,
                            const int* output_dims_data,
                            const float* expected_output_data,
                            float output_scale, int output_zero_point,
-                           TfLiteRegistration registration,
+                           const TfLiteRegistration& registration,
                            TfLiteReducerParams* params) {
   // Convert dimesion arguments to TfLiteArrays
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
