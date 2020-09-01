@@ -17,8 +17,11 @@ limitations under the License.
 
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
@@ -173,11 +176,17 @@ static mlir::LogicalResult MlirHloToHloTextTranslateFunction(
 
 }  // namespace xla
 
+static void RegisterInputDialects(mlir::DialectRegistry& registry) {
+  registry.insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect>();
+}
+
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTranslate(
-    "mlir-hlo-to-hlo", xla::MlirHloToHloTranslateFunction);
+    "mlir-hlo-to-hlo", xla::MlirHloToHloTranslateFunction,
+    RegisterInputDialects);
 
 static mlir::TranslateFromMLIRRegistration MlirHloToHloTextTranslate(
-    "mlir-hlo-to-hlo-text", xla::MlirHloToHloTextTranslateFunction);
+    "mlir-hlo-to-hlo-text", xla::MlirHloToHloTextTranslateFunction,
+    RegisterInputDialects);
 
 static mlir::TranslateToMLIRRegistration HloToHloMlirTranslate(
     "hlo-to-mlir-hlo", xla::HloToMlirHloTranslateFunction);

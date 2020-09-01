@@ -28,6 +28,7 @@ void TF_Log(TF_LogLevel level, const char* fmt, ...) {
   va_list args;
   va_start(args, fmt);
   auto message = BuildMessage(fmt, args);
+  va_end(args);
   switch (level) {
     case TF_INFO:
       LOG(INFO) << message;
@@ -48,6 +49,7 @@ void TF_VLog(int level, const char* fmt, ...) {
   va_list args;
   va_start(args, fmt);
   auto message = BuildMessage(fmt, args);
+  va_end(args);
   VLOG(level) << message;
 }
 
@@ -55,5 +57,6 @@ void TF_DVLog(int level, const char* fmt, ...) {
   va_list args;
   va_start(args, fmt);
   auto message = BuildMessage(fmt, args);
+  va_end(args);
   DVLOG(level) << message;
 }

@@ -17,6 +17,7 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "llvm/Support/FormatVariadic.h"
 #include "mlir/IR/TypeUtilities.h"  // from @llvm-project
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassRegistry.h"  // from @llvm-project
@@ -24,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/transforms/lower_tf.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/xla/transforms/passes.h"
 
@@ -44,6 +46,15 @@ struct MarkOpsForOutsideCompilation
                          OperationPass<ModuleOp>> {
   void runOnOperation() override;
 };
+
+// Adds any canonicalization patterns to list of supported `patterns`.
+// TODO(b/161726307): Move or import the relevant patterns to LowerTF pass and
+// remove this.
+void AddCanonicalizationPatterns(MLIRContext* context,
+                                 OwningRewritePatternList* patterns) {
+  for (auto* op : context->getRegisteredOperations())
+    op->getCanonicalizationPatterns(*patterns, context);
+}
 
 // TODO(b/159128666): Check the control flow legalization passes instead once
 // added.
@@ -116,15 +127,32 @@ bool HasCapturedStringOperand(Operation* op) {
 LogicalResult MarkUncompilableOps(
     const Dialect* tf_dialect, Block* block,
     llvm::DenseSet<OperationName>& supported_ops) {
+  // Automatically marked ops for outside compilation have
+  // `_xla_outside_compilation` attribute value of "auto" plus
+  // an increasing counter.  Manually marked ops for outside compilation only
+  // have an increasing counteri for the attribute value.  Therefore there is no
+  // collision in
+  // `_xla_outside_compilation` attribute between automatically and manually
+  // marking ops.
+  int outside_compiled_cluster_counter = 0;
   block->walk([&](Operation* op) {
     if (!IsSupportedOp(*op, supported_ops, tf_dialect)) {
-      op->setAttr(kXlaOutsideCompilationAttr,
-                  StringAttr::get("auto", op->getContext()));
+      op->setAttr(
+          kXlaOutsideCompilationAttr,
+          StringAttr::get(
+              llvm::formatv("auto{0}", outside_compiled_cluster_counter).str(),
+              op->getContext()));
+      outside_compiled_cluster_counter++;
     }
     if (llvm::isa<TF::IfRegionOp, TF::WhileRegionOp>(op)) {
       if (HasCapturedStringOperand(op)) {
-        op->setAttr(kXlaOutsideCompilationAttr,
-                    StringAttr::get("auto", op->getContext()));
+        op->setAttr(
+            kXlaOutsideCompilationAttr,
+            StringAttr::get(
+                llvm::formatv("auto{0}", outside_compiled_cluster_counter)
+                    .str(),
+                op->getContext()));
+        outside_compiled_cluster_counter++;
       }
     }
   });
@@ -152,13 +180,15 @@ void UnmarkChildren(Block* block) {
 
 void MarkOpsForOutsideCompilation::runOnOperation() {
   auto module = getOperation();
-  const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
+  const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     getOperation().emitError() << "'tf' dialect is not registered";
     return signalPassFailure();
   }
   OwningRewritePatternList patterns;
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
+  TF::PopulateLoweringTFPatterns(module.getContext(), &patterns);
+  AddCanonicalizationPatterns(module.getContext(), &patterns);
 
   // `supported_ops` contains the name of all of the ops that can potentially be
   // lowered into HLO on the device. This doesn't always mean that the op can
@@ -166,7 +196,8 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   // be lowered in a subsequent pass.
   llvm::DenseSet<OperationName> supported_ops;
   for (auto& pattern : patterns) {
-    supported_ops.insert(*pattern->getRootKind());
+    Optional<OperationName> root_kind = pattern->getRootKind();
+    if (root_kind.hasValue()) supported_ops.insert(root_kind.getValue());
   }
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);

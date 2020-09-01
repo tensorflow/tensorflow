@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
@@ -278,16 +279,14 @@ Status XlaCompilationCache::CompileSingleOp(
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
 
-    bool are_args_supported =
-        absl::c_all_of(args, [](const XlaCompiler::Argument arg) {
-          return arg.kind == XlaCompiler::Argument::kConstant ||
-                 arg.kind == XlaCompiler::Argument::kParameter;
+    bool has_tensor_list_arg =
+        absl::c_any_of(args, [](const XlaCompiler::Argument arg) {
+          return arg.kind == XlaCompiler::Argument::kTensorList;
         });
     const ConfigProto* config = ctx->function_library()->config_proto();
     bool use_mlir = config && config->experimental().enable_mlir_bridge();
-    // TODO(b/155596779): Understand the source of other argument types and
-    // depending on the source either support those or avoid these codepath.
-    if (!use_mlir || !are_args_supported) {
+    // TODO(b/155596779): Support TensorList args.
+    if (!use_mlir || !has_tensor_list_arg) {
       return compiler->CompileGraph(compile_options, node_def.name(),
                                     std::move(graph), args, result);
     }
@@ -325,6 +324,10 @@ Status XlaCompilationCache::CompileImpl(
     absl::optional<int64> compile_threshold,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
+  if (FailOnXlaCompilation()) {
+    return errors::Internal("XLA compilation disabled");
+  }
+
   DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 

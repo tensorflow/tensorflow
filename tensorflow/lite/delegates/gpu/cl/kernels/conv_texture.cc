@@ -427,33 +427,33 @@ void ConvTexture::GetPossibleKernelWorkGroups(
                             work_groups);
 }
 
-absl::Status CreateConvTexture(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const Convolution2DAttributes& attr,
-                               ConvTexture* result) {
-  *result = ConvTexture(definition, attr);
-  result->GenerateCode(creation_context.device->info_);
-  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const Convolution2DAttributes& attr) {
+  ConvTexture result(definition, attr);
+  result.GenerateCode(device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
-absl::Status CreateConvTexture(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const FullyConnectedAttributes& attr,
-                               ConvTexture* result) {
-  *result = ConvTexture(definition);
-  result->GenerateCode(creation_context.device->info_);
-  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const FullyConnectedAttributes& attr) {
+  ConvTexture result(definition);
+  result.GenerateCode(device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
-absl::Status CreateConvTextureWino4x4To6x6(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const Convolution2DAttributes& attr, ConvTexture* result) {
-  *result = ConvTexture(definition);
-  result->different_weights_for_height_ = true;
-  result->block_size_ = {4, 1, 2};
-  result->GenerateCode(creation_context.device->info_);
-  return result->UploadDataForWinograd4x4To6x6(
-      attr.weights, *creation_context.device, creation_context.context);
+ConvTexture CreateConvTextureWino4x4To6x6(const DeviceInfo& device_info,
+                                          const OperationDef& definition,
+                                          const Convolution2DAttributes& attr) {
+  ConvTexture result(definition);
+  result.different_weights_for_height_ = true;
+  result.block_size_ = {4, 1, 2};
+  result.GenerateCode(device_info);
+  result.UploadDataForWinograd4x4To6x6(attr.weights);
+  return result;
 }
 
 }  // namespace cl

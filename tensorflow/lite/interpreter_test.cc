@@ -1484,9 +1484,9 @@ class TestCustomAllocation : public ::testing::Test {
   void SetUp() override {
     // Simple model with two custom ops that add 2 float tensors each.
     interpreter_.reset(new Interpreter);
-    interpreter_->AddTensors(5);
+    interpreter_->AddTensors(7);
     interpreter_->SetInputs({0, 1});
-    interpreter_->SetOutputs({3, 4});
+    interpreter_->SetOutputs({3, 4, 6});
     TfLiteQuantizationParams quant;
     interpreter_->SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {3},
                                                quant);
@@ -1498,6 +1498,10 @@ class TestCustomAllocation : public ::testing::Test {
                                                quant);
     interpreter_->SetTensorParametersReadWrite(4, kTfLiteFloat32, "", {3},
                                                quant);
+    interpreter_->SetTensorParametersReadWrite(5, kTfLiteFloat32, "", {3},
+                                               quant, /*is_variable=*/true);
+    interpreter_->SetTensorParametersReadWrite(6, kTfLiteFloat32, "", {3},
+                                               quant);
     auto* add_reg = ops::builtin::Register_ADD();
     TfLiteAddParams* builtin_data0 =
         reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
@@ -1505,15 +1509,21 @@ class TestCustomAllocation : public ::testing::Test {
         reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
     TfLiteAddParams* builtin_data2 =
         reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
+    TfLiteAddParams* builtin_data3 =
+        reinterpret_cast<TfLiteAddParams*>(malloc(sizeof(TfLiteAddParams)));
     builtin_data0->activation = kTfLiteActNone;
     builtin_data1->activation = kTfLiteActNone;
     builtin_data2->activation = kTfLiteActNone;
+    builtin_data3->activation = kTfLiteActNone;
     interpreter_->AddNodeWithParameters({0, 0}, {2}, nullptr, 0, builtin_data0,
                                         add_reg);
     interpreter_->AddNodeWithParameters({1, 1}, {3}, nullptr, 0, builtin_data1,
                                         add_reg);
     interpreter_->AddNodeWithParameters({2, 1}, {4}, nullptr, 0, builtin_data2,
                                         add_reg);
+    interpreter_->AddNodeWithParameters({0, 5}, {6}, nullptr, 0, builtin_data3,
+                                        add_reg);
+    interpreter_->SetVariables({5});
   }
 
   void AssignCustomAllocForTensor(int tensor_idx, int required_alignment) {
@@ -1526,18 +1536,22 @@ class TestCustomAllocation : public ::testing::Test {
 
   void VerifyInvoke() {
     std::vector<float> input = {1.0f, 2.0f, 3.0f};
+    std::vector<float> variable = {0.0f, 1.0f, 2.0f};
     std::vector<float> expected_output = {2.0f, 4.0f, 6.0f};
-    TfLiteTensor* tensor = interpreter_->tensor(interpreter_->outputs()[0]);
 
     // typed_tensor<...> should work irrespective of custom alloc, since it
-    // accesses tensor.data.
+    // accesses output_tensor.data.
+    memcpy(interpreter_->typed_tensor<float>(interpreter_->variables()[0]),
+           variable.data(), 3 * sizeof(float));
     memcpy(interpreter_->typed_tensor<float>(0), input.data(),
            3 * sizeof(float));
     memcpy(interpreter_->typed_tensor<float>(1), input.data(),
            3 * sizeof(float));
     ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+    TfLiteTensor* output_tensor =
+        interpreter_->tensor(interpreter_->outputs()[0]);
     for (int i = 0; i < 3; ++i) {
-      EXPECT_EQ(tensor->data.f[i], expected_output[i]) << i;
+      EXPECT_EQ(output_tensor->data.f[i], expected_output[i]) << i;
     }
   }
 
@@ -1647,6 +1661,36 @@ TEST_F(TestCustomAllocation, CustomInputAndOutputAllocs) {
 
   ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   VerifyInvoke();
+}
+
+// Ensure that custom allocs work for tensors on persistent arena as well.
+TEST_F(TestCustomAllocation, CustomAlloc_VariableTensor) {
+  // Set custom allocation for one input tensor.
+  AssignCustomAllocForTensor(interpreter_->variables()[0],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+  VerifyInvoke();
+
+  AssignCustomAllocForTensor(interpreter_->variables()[0],
+                             /*required_alignment=*/kDefaultTensorAlignment);
+  ASSERT_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
+
+  std::vector<float> input = {2.0f, 3.0f, 4.0f};
+  std::vector<float> variable = {1.0f, 2.0f, 3.0f};
+  std::vector<float> expected_output = {3.0f, 5.0f, 7.0f};
+  memcpy(interpreter_->typed_tensor<float>(interpreter_->variables()[0]),
+         variable.data(), 3 * sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(0), input.data(), 3 * sizeof(float));
+  memcpy(interpreter_->typed_tensor<float>(1), input.data(), 3 * sizeof(float));
+  ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk);
+
+  // expected_output = input + variable
+  TfLiteTensor* output_tensor =
+      interpreter_->tensor(interpreter_->outputs()[2]);
+  for (int i = 0; i < 3; ++i) {
+    EXPECT_EQ(output_tensor->data.f[i], expected_output[i]) << i;
+  }
 }
 
 TEST_F(TestCustomAllocation, ResizeTensorsWithoutEnoughMemory) {

@@ -17,14 +17,15 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_OPERATIONS_H_
 
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -62,6 +63,10 @@ enum class OperationType {
   PRELU,
   // Used to accurately run inference on quantized models.
   QUANTIZE_AND_DEQUANTIZE,
+  REDUCE_MAXIMUM,
+  REDUCE_MINIMUM,
+  REDUCE_PRODUCT,
+  REDUCE_SUM,
   RELU,
   RESHAPE,
   RESIZE,
@@ -356,6 +361,10 @@ struct PReLUAttributes {
   absl::variant<Tensor<Linear, DataType::FLOAT32>,
                 Tensor<HWC, DataType::FLOAT32>>
       alpha;
+};
+
+struct ReduceAttributes {
+  Axis axis = Axis::UNKNOWN;
 };
 
 struct SoftmaxAttributes {

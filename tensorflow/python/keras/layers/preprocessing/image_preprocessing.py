@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.compat import compat
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -469,6 +470,8 @@ class RandomTranslation(PreprocessingLayer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
 
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
@@ -490,6 +493,7 @@ class RandomTranslation(PreprocessingLayer):
                interpolation='bilinear',
                seed=None,
                name=None,
+               fill_value=0.0,
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
@@ -522,6 +526,7 @@ class RandomTranslation(PreprocessingLayer):
     check_fill_mode_and_interpolation(fill_mode, interpolation)
 
     self.fill_mode = fill_mode
+    self.fill_value = fill_value
     self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
@@ -559,7 +564,8 @@ class RandomTranslation(PreprocessingLayer):
           inputs,
           get_translation_matrix(translations),
           interpolation=self.interpolation,
-          fill_mode=self.fill_mode)
+          fill_mode=self.fill_mode,
+          fill_value=self.fill_value)
 
     output = control_flow_util.smart_cond(training, random_translated_inputs,
                                           lambda: inputs)
@@ -574,6 +580,7 @@ class RandomTranslation(PreprocessingLayer):
         'height_factor': self.height_factor,
         'width_factor': self.width_factor,
         'fill_mode': self.fill_mode,
+        'fill_value': self.fill_value,
         'interpolation': self.interpolation,
         'seed': self.seed,
     }
@@ -617,6 +624,7 @@ def get_translation_matrix(translations, name=None):
 def transform(images,
               transforms,
               fill_mode='reflect',
+              fill_value=0.0,
               interpolation='bilinear',
               output_shape=None,
               name=None):
@@ -636,6 +644,8 @@ def transform(images,
       not backpropagated into transformation parameters.
     fill_mode: Points outside the boundaries of the input are filled according
       to the given mode (one of `{'constant', 'reflect', 'wrap', 'nearest'}`).
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     output_shape: Output dimesion after the transform, [height, width]. If None,
       output is the same size as input image.
@@ -681,13 +691,25 @@ def transform(images,
         if output_shape_value is not None:
           output_shape = output_shape_value
 
-    output_shape = ops.convert_to_tensor_v2(
+    output_shape = ops.convert_to_tensor_v2_with_dispatch(
         output_shape, dtypes.int32, name='output_shape')
 
     if not output_shape.get_shape().is_compatible_with([2]):
       raise ValueError('output_shape must be a 1-D Tensor of 2 elements: '
                        'new_height, new_width, instead got '
                        '{}'.format(output_shape))
+
+    fill_value = ops.convert_to_tensor_v2_with_dispatch(
+        fill_value, dtypes.float32, name='fill_value')
+
+    if compat.forward_compatible(2020, 8, 5):
+      return gen_image_ops.ImageProjectiveTransformV3(
+          images=images,
+          output_shape=output_shape,
+          fill_value=fill_value,
+          transforms=transforms,
+          fill_mode=fill_mode.upper(),
+          interpolation=interpolation.upper())
 
     return gen_image_ops.ImageProjectiveTransformV2(
         images=images,
@@ -777,6 +799,8 @@ class RandomRotation(PreprocessingLayer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
 
   Input shape:
     4D tensor with shape: `(samples, height, width, channels)`,
@@ -796,6 +820,7 @@ class RandomRotation(PreprocessingLayer):
                interpolation='bilinear',
                seed=None,
                name=None,
+               fill_value=0.0,
                **kwargs):
     self.factor = factor
     if isinstance(factor, (tuple, list)):
@@ -809,6 +834,7 @@ class RandomRotation(PreprocessingLayer):
                        'got {}'.format(factor))
     check_fill_mode_and_interpolation(fill_mode, interpolation)
     self.fill_mode = fill_mode
+    self.fill_value = fill_value
     self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
@@ -834,6 +860,7 @@ class RandomRotation(PreprocessingLayer):
           inputs,
           get_rotation_matrix(angles, img_hd, img_wd),
           fill_mode=self.fill_mode,
+          fill_value=self.fill_value,
           interpolation=self.interpolation)
 
     output = control_flow_util.smart_cond(training, random_rotated_inputs,
@@ -848,6 +875,7 @@ class RandomRotation(PreprocessingLayer):
     config = {
         'factor': self.factor,
         'fill_mode': self.fill_mode,
+        'fill_value': self.fill_value,
         'interpolation': self.interpolation,
         'seed': self.seed,
     }
@@ -892,6 +920,8 @@ class RandomZoom(PreprocessingLayer):
     interpolation: Interpolation mode. Supported values: "nearest", "bilinear".
     seed: Integer. Used to create a random seed.
     name: A string, the name of the layer.
+    fill_value: a float represents the value to be filled outside the
+      boundaries when `fill_mode` is "constant".
 
   Example:
 
@@ -914,7 +944,6 @@ class RandomZoom(PreprocessingLayer):
       negative.
   """
 
-  # TODO(b/156526279): Add `fill_value` argument.
   def __init__(self,
                height_factor,
                width_factor=None,
@@ -922,6 +951,7 @@ class RandomZoom(PreprocessingLayer):
                interpolation='bilinear',
                seed=None,
                name=None,
+               fill_value=0.0,
                **kwargs):
     self.height_factor = height_factor
     if isinstance(height_factor, (tuple, list)):
@@ -951,6 +981,7 @@ class RandomZoom(PreprocessingLayer):
     check_fill_mode_and_interpolation(fill_mode, interpolation)
 
     self.fill_mode = fill_mode
+    self.fill_value = fill_value
     self.interpolation = interpolation
     self.seed = seed
     self._rng = make_generator(self.seed)
@@ -983,8 +1014,10 @@ class RandomZoom(PreprocessingLayer):
           array_ops.concat([width_zoom, height_zoom], axis=1),
           dtype=dtypes.float32)
       return transform(
-          inputs, get_zoom_matrix(zooms, img_hd, img_wd),
+          inputs,
+          get_zoom_matrix(zooms, img_hd, img_wd),
           fill_mode=self.fill_mode,
+          fill_value=self.fill_value,
           interpolation=self.interpolation)
 
     output = control_flow_util.smart_cond(training, random_zoomed_inputs,
@@ -1000,6 +1033,7 @@ class RandomZoom(PreprocessingLayer):
         'height_factor': self.height_factor,
         'width_factor': self.width_factor,
         'fill_mode': self.fill_mode,
+        'fill_value': self.fill_value,
         'interpolation': self.interpolation,
         'seed': self.seed,
     }

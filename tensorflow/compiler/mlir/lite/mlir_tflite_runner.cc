@@ -30,12 +30,16 @@ limitations under the License.
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SMLoc.h"
 #include "llvm/Support/SourceMgr.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Function.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
 #include "mlir/Parser.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export.h"
 #include "tensorflow/compiler/mlir/lite/flatbuffer_export_flags.h"
+#include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/delegates/flex/delegate.h"
@@ -98,6 +102,10 @@ int main(int argc, char** argv) {
 
   // Load the MLIR module.
   mlir::MLIRContext context;
+  context.getDialectRegistry()
+      .insert<mlir::TF::TensorFlowDialect, mlir::TFL::TensorFlowLiteDialect,
+              mlir::StandardOpsDialect>();
+
   llvm::SourceMgr source_mgr;
   source_mgr.AddNewSourceBuffer(std::move(*file_or_err), llvm::SMLoc());
   mlir::OwningModuleRef module(mlir::parseSourceFile(source_mgr, &context));

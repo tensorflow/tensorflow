@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_util.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
@@ -202,13 +203,17 @@ std::vector<HloInstruction*> MakePartitionOffsets(
     absl::Span<const int64> dims) {
   CHECK(!shape.IsTuple());
 
-  Array2D<int32> offset_array(
-      {sharding.tile_assignment().num_elements(), shape.rank()});
-  offset_array.Each([&](int64 i, int64 j, int32* value) {
-    *value = sharding.TileOffsetForDevice(shape, i)[j];
-  });
-  auto offset_table = b->AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR2FromArray2D(offset_array)));
+  std::vector<std::vector<int32>> offset_arrays(shape.rank());
+  for (int64 i = 0; i < shape.rank(); ++i) {
+    offset_arrays[i].resize(sharding.tile_assignment().num_elements());
+  }
+  auto shard_shape = MakePartitionedShape(shape, sharding);
+  sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        for (int64 i = 0; i < shape.rank(); ++i) {
+          offset_arrays[i][device] = indices[i] * shard_shape.dimensions(i);
+        }
+      });
   std::vector<HloInstruction*> offsets;
   for (int64 i = 0; i < shape.rank(); ++i) {
     if (sharding.tile_assignment().dim(i) == 1 ||
@@ -216,11 +221,10 @@ std::vector<HloInstruction*> MakePartitionOffsets(
       offsets.push_back(b->AddInstruction(
           HloInstruction::CreateConstant(LiteralUtil::Zero(S32))));
     } else {
+      auto offset_table = b->AddInstruction(HloInstruction::CreateConstant(
+          LiteralUtil::CreateR1<int32>(offset_arrays[i])));
       auto index = b->AddInstruction(HloInstruction::CreateDynamicSlice(
-          ShapeUtil::MakeShape(S32, {1, 1}), offset_table,
-          {partition_id, b->AddInstruction(HloInstruction::CreateConstant(
-                             LiteralUtil::CreateR0<uint32>(i)))},
-          {1, 1}));
+          ShapeUtil::MakeShape(S32, {1}), offset_table, {partition_id}, {1}));
       offsets.push_back(b->AddInstruction(
           HloInstruction::CreateReshape(ShapeUtil::MakeShape(S32, {}), index)));
     }
@@ -292,17 +296,29 @@ HloInstruction* PadBaseShapeBeforeUnevenTiledSharding(
   return PadToShape(hlo, padded_base_shape, b);
 }
 
-// TODO(wangtao): generize this function when target is partial replicate.
-absl::optional<HloSharding> PartialReplicateToTileCompatibleSharding(
-    const HloSharding& partial_sharding,
-    const std::vector<int64>& target_tile_dims) {
+absl::optional<HloSharding> PartialReplicateReshardCompatibleSharding(
+    const HloSharding& partial_sharding, const HloSharding& target_sharding) {
   if (!partial_sharding.ReplicateOnLastTileDim()) {
     return absl::nullopt;
   }
   int64 rank = partial_sharding.tile_assignment().num_dimensions() - 1;
-  if (target_tile_dims.size() < rank) {
+  int64 target_rank = target_sharding.tile_assignment().num_dimensions() -
+                      (target_sharding.ReplicateOnLastTileDim() ? 1 : 0);
+  if (target_rank != rank) {
     return absl::nullopt;
   }
+
+  absl::flat_hash_map<int64, int64> device_to_replication_group;
+  partial_sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        int64 gid = 0;
+        for (int64 i = 0; i < rank; ++i) {
+          gid *= partial_sharding.tile_assignment().dim(i);
+          gid += indices[i];
+        }
+        device_to_replication_group[device] = gid;
+      });
+
   // A dimension is expanded when target_tile_size > partial_tile_size and
   // target_tile_size % partial_tile_size == 0.
   // expand_tile_dims_positions is the index of the expand_dim.
@@ -312,7 +328,7 @@ absl::optional<HloSharding> PartialReplicateToTileCompatibleSharding(
   int num_expand_dims = 0;
   for (int64 dim = 0; dim < rank; dim++) {
     int64 partial_tile_size = partial_sharding.tile_assignment().dim(dim);
-    int64 target_tile_size = target_tile_dims[dim];
+    int64 target_tile_size = target_sharding.tile_assignment().dim(dim);
     if (target_tile_size % partial_tile_size != 0 ||
         target_tile_size < partial_tile_size) {
       return absl::nullopt;
@@ -325,14 +341,26 @@ absl::optional<HloSharding> PartialReplicateToTileCompatibleSharding(
   }
 
   // Reshape the partial replicate tile_dimensions.
+  int64 num_target_replication = 1;
+  if (target_sharding.ReplicateOnLastTileDim()) {
+    num_target_replication =
+        target_sharding.tile_assignment().dimensions().back();
+  }
   auto reshape_dimensions = partial_sharding.tile_assignment().dimensions();
   int64 num_replication = reshape_dimensions.back();
-  if (num_replication != Product(expand_tile_sizes)) {
+  if (num_replication / num_target_replication != Product(expand_tile_sizes) ||
+      num_replication % num_target_replication != 0) {
     return absl::nullopt;
   }
+
   reshape_dimensions.pop_back();
   reshape_dimensions.insert(reshape_dimensions.end(), expand_tile_sizes.begin(),
                             expand_tile_sizes.end());
+
+  if (target_sharding.ReplicateOnLastTileDim()) {
+    reshape_dimensions.push_back(num_target_replication);
+  }
+
   auto reshape_tile_assignment = partial_sharding.tile_assignment();
   reshape_tile_assignment.Reshape(reshape_dimensions);
 
@@ -346,13 +374,31 @@ absl::optional<HloSharding> PartialReplicateToTileCompatibleSharding(
     }
   }
   auto transpose_sharding = hlo_sharding_util::TransposeSharding(
-      HloSharding::Tile(reshape_tile_assignment), perm);
+      target_sharding.ReplicateOnLastTileDim()
+          ? HloSharding::PartialTile(reshape_tile_assignment)
+          : HloSharding::Tile(reshape_tile_assignment),
+      perm);
 
   // Reshape to target shape
   auto transpose_tile_assignment = transpose_sharding.tile_assignment();
-  transpose_tile_assignment.Reshape(target_tile_dims);
+  transpose_tile_assignment.Reshape(
+      target_sharding.tile_assignment().dimensions());
 
-  return HloSharding::Tile(transpose_tile_assignment);
+  bool groups_matching = true;
+  target_sharding.tile_assignment().Each(
+      [&](absl::Span<const int64> indices, int64 device) {
+        if (device_to_replication_group[device] !=
+            device_to_replication_group[transpose_tile_assignment(indices)]) {
+          groups_matching = false;
+        }
+      });
+
+  if (groups_matching) {
+    return target_sharding;
+  }
+  return target_sharding.ReplicateOnLastTileDim()
+             ? HloSharding::PartialTile(transpose_tile_assignment)
+             : HloSharding::Tile(transpose_tile_assignment);
 }
 
 absl::optional<HloInstruction*> TileToPartialReplicateHaloExchange(

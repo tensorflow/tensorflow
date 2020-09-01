@@ -541,7 +541,7 @@ bool InferDotShardingFromOperands(
 
 // Convolution handling for InferShardingFromOperands().
 bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
-                                          bool aggressive_prop,
+                                          int64 aggressiveness,
                                           bool may_combine_partial_sharding) {
   if (auto dot_dims = dot_as_convolution_util::ParseDotGeneralFromConvolution(
           instruction)) {
@@ -589,12 +589,27 @@ bool InferConvolutionShardingFromOperands(HloInstruction* instruction,
                                          may_combine_partial_sharding);
 }
 
+bool CanPropagateThroughAtAgressiveLevel(const HloInstruction& inst,
+                                         int64 aggressiveness) {
+  // At minimum agressiveness, only allow pass-through ops.
+  if (aggressiveness < 1 && !inst.IsElementwise() &&
+      inst.opcode() != HloOpcode::kTranspose &&
+      inst.opcode() != HloOpcode::kReshape) {
+    return false;
+  }
+  return true;
+}
+
 // Tries to update the sharding of the specified instruction based on its
 // operands and returns true if the sharding of the instruction have been
 // changed and false otherwise.
 bool InferShardingFromOperands(HloInstruction* instruction,
                                const ComputationMap& computation_map,
-                               bool is_spmd, bool aggressive_prop) {
+                               bool is_spmd, int64 aggressiveness) {
+  if (!CanPropagateThroughAtAgressiveLevel(*instruction, aggressiveness)) {
+    return false;
+  }
+  const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd)) {
     // If an array shaped HLO doesn't support spatial partitioning but at least
     // one of its operand is replicated then we make the HLO replicated as well.
@@ -607,8 +622,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
           return op->has_sharding() && op->sharding().IsReplicated();
         })) {
       return MaybeImproveInstructionSharding(
-          HloSharding::Replicate(), instruction,
-          /*may_combine_partial_sharding=*/is_spmd);
+          HloSharding::Replicate(), instruction, may_combine_partial_sharding);
     }
     return false;
   }
@@ -622,8 +636,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       HloSharding new_sharding = operand->sharding().GetSubSharding(
           operand->shape(), {instruction->tuple_index()});
       return MaybeImproveInstructionSharding(
-          std::move(new_sharding), instruction,
-          /*may_combine_partial_sharding=*/is_spmd);
+          std::move(new_sharding), instruction, may_combine_partial_sharding);
     }
     case HloOpcode::kTuple: {
       if (absl::c_none_of(instruction->operands(),
@@ -705,7 +718,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
           // support this in SPMD.
           changed |= MaybeImproveInstructionSharding(
               get_maybe_tuple_sharding(HloSharding::Replicate()), instruction,
-              /*may_combine_partial_sharding=*/is_spmd);
+              may_combine_partial_sharding);
           continue;
         }
         auto after_partial_replication =
@@ -716,7 +729,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
         if (after_partial_replication.IsReplicated()) {
           changed |= MaybeImproveInstructionSharding(
               get_maybe_tuple_sharding(HloSharding::Replicate()), instruction,
-              /*may_combine_partial_sharding=*/is_spmd);
+              may_combine_partial_sharding);
           continue;
         }
         // Use the same sharding for all tuple elements, because they are part
@@ -725,8 +738,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
             get_maybe_tuple_sharding(hlo_sharding_util::RemoveShapeDimensions(
                 after_partial_replication, instruction->dimensions()));
         changed |= MaybeImproveInstructionSharding(
-            std::move(new_sharding), instruction,
-            /*may_combine_partial_sharding=*/is_spmd);
+            std::move(new_sharding), instruction, may_combine_partial_sharding);
       }
       return changed;
     }
@@ -767,13 +779,11 @@ bool InferShardingFromOperands(HloInstruction* instruction,
               ? HloSharding::PartialTile(new_tile_assignment)
               : HloSharding::Tile(new_tile_assignment);
       return MaybeImproveInstructionSharding(
-          std::move(new_sharding), instruction,
-          /*may_combine_partial_sharding=*/is_spmd);
+          std::move(new_sharding), instruction, may_combine_partial_sharding);
     }
     case HloOpcode::kConvolution:
-      return InferConvolutionShardingFromOperands(
-          instruction, aggressive_prop,
-          /*may_combine_partial_sharding=*/is_spmd);
+      return InferConvolutionShardingFromOperands(instruction, aggressiveness,
+                                                  may_combine_partial_sharding);
     case HloOpcode::kTranspose: {
       const HloInstruction* input = instruction->operand(0);
       if (!IsSpatiallyPartitioned(input)) {
@@ -781,9 +791,8 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       }
       HloSharding sharding = hlo_sharding_util::TransposeSharding(
           input->sharding(), instruction->dimensions());
-      return MaybeImproveInstructionSharding(
-          std::move(sharding), instruction,
-          /*may_combine_partial_sharding=*/is_spmd);
+      return MaybeImproveInstructionSharding(std::move(sharding), instruction,
+                                             may_combine_partial_sharding);
     }
     case HloOpcode::kReduceWindow: {
       const HloInstruction* lhs = instruction->operand(0);
@@ -801,9 +810,8 @@ bool InferShardingFromOperands(HloInstruction* instruction,
                 << instruction->ToString();
         return false;
       }
-      return MaybeImproveInstructionSharding(
-          lhs->sharding(), instruction,
-          /*may_combine_partial_sharding=*/is_spmd);
+      return MaybeImproveInstructionSharding(lhs->sharding(), instruction,
+                                             may_combine_partial_sharding);
     }
     case HloOpcode::kSelectAndScatter: {
       // Shard according to first operand, as output keeps the same shape.
@@ -822,9 +830,8 @@ bool InferShardingFromOperands(HloInstruction* instruction,
                 << instruction->ToString();
         return false;
       }
-      return MaybeImproveInstructionSharding(
-          lhs->sharding(), instruction,
-          /*may_combine_partial_sharding=*/is_spmd);
+      return MaybeImproveInstructionSharding(lhs->sharding(), instruction,
+                                             may_combine_partial_sharding);
     }
     case HloOpcode::kReshape: {
       if (!IsSpatiallyPartitioned(instruction->operand(0))) {
@@ -835,9 +842,9 @@ bool InferShardingFromOperands(HloInstruction* instruction,
               instruction->operand(0)->shape(), instruction->shape(),
               instruction->operand(0)->sharding());
       if (new_sharding.has_value()) {
-        return MaybeImproveInstructionSharding(
-            std::move(*new_sharding), instruction,
-            /*may_combine_partial_sharding=*/is_spmd);
+        return MaybeImproveInstructionSharding(std::move(*new_sharding),
+                                               instruction,
+                                               may_combine_partial_sharding);
       }
       return false;
     }
@@ -848,14 +855,13 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       return MaybeImproveInstructionSharding(
           hlo_sharding_util::ReverseSharding(
               instruction->operand(0)->sharding(), instruction->dimensions()),
-          instruction, /*may_combine_partial_sharding=*/is_spmd);
+          instruction, may_combine_partial_sharding);
     }
     case HloOpcode::kDot: {
       const auto& dnums =
           dot_as_convolution_util::ParseDotGeneralFromDot(instruction);
-      return InferDotShardingFromOperands(
-          instruction, dnums,
-          /*may_combine_partial_sharding=*/is_spmd);
+      return InferDotShardingFromOperands(instruction, dnums,
+                                          may_combine_partial_sharding);
     }
     case HloOpcode::kParameter: {
       auto parent_it = computation_map.find(instruction->parent());
@@ -870,7 +876,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
               if (parent->operand(i)->has_sharding()) {
                 return MaybeImproveInstructionSharding(
                     parent->operand(i)->sharding(), instruction,
-                    /*may_combine_partial_sharding=*/is_spmd);
+                    may_combine_partial_sharding);
               }
               return false;
             }
@@ -897,16 +903,15 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       if (instruction->shape().IsTuple()) {
         return MaybeImproveInstructionSharding(
             HloSharding::SingleTuple(instruction->shape(), operand->sharding()),
-            instruction, /*may_combine_partial_sharding=*/is_spmd);
+            instruction, may_combine_partial_sharding);
       } else {
-        return MaybeImproveInstructionSharding(
-            operand->sharding(), instruction,
-            /*may_combine_partial_sharding=*/is_spmd);
+        return MaybeImproveInstructionSharding(operand->sharding(), instruction,
+                                               may_combine_partial_sharding);
       }
     }
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice: {
-      auto propagate_slicing = [instruction, is_spmd]() {
+      auto propagate_slicing = [&]() {
         const HloInstruction* operand =
             instruction->opcode() == HloOpcode::kDynamicSlice
                 ? instruction->operand(0)
@@ -916,9 +921,9 @@ bool InferShardingFromOperands(HloInstruction* instruction,
         }
 
         if (operand->sharding().IsReplicated()) {
-          return MaybeImproveInstructionSharding(
-              HloSharding::Replicate(), instruction,
-              /*may_combine_partial_sharding=*/is_spmd);
+          return MaybeImproveInstructionSharding(HloSharding::Replicate(),
+                                                 instruction,
+                                                 may_combine_partial_sharding);
         }
 
         const auto& tile_assignment = operand->sharding().tile_assignment();
@@ -929,11 +934,10 @@ bool InferShardingFromOperands(HloInstruction* instruction,
             return false;
           }
         }
-        return MaybeImproveInstructionSharding(
-            operand->sharding(), instruction,
-            /*may_combine_partial_sharding=*/is_spmd);
+        return MaybeImproveInstructionSharding(operand->sharding(), instruction,
+                                               may_combine_partial_sharding);
       };
-      auto propagate_base = [instruction, is_spmd]() {
+      auto propagate_base = [&]() {
         if (instruction->opcode() != HloOpcode::kDynamicUpdateSlice) {
           return false;
         }
@@ -942,7 +946,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
         }
         return MaybeImproveInstructionSharding(
             instruction->operand(0)->sharding(), instruction,
-            /*may_combine_partial_sharding=*/is_spmd);
+            may_combine_partial_sharding);
       };
       return propagate_slicing() || propagate_base();
     }
@@ -952,8 +956,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
         HloSharding new_sharding = hlo_sharding_util::GatherOutputSharding(
             instruction->operand(1)->sharding(), instruction);
         changed |= MaybeImproveInstructionSharding(
-            std::move(new_sharding), instruction,
-            /*may_combine_partial_sharding=*/is_spmd);
+            std::move(new_sharding), instruction, may_combine_partial_sharding);
       }
       if (is_spmd && IsSpatiallyPartitioned(instruction->operand(0))) {
         auto maybe_from_data =
@@ -962,7 +965,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
         if (maybe_from_data) {
           changed |= MaybeImproveInstructionSharding(
               std::move(*maybe_from_data), instruction,
-              /*may_combine_partial_sharding=*/is_spmd);
+              may_combine_partial_sharding);
         }
       }
       return changed;
@@ -972,7 +975,7 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       if (is_spmd && IsSpatiallyPartitioned(instruction->operand(0))) {
         changed |= MaybeImproveInstructionSharding(
             instruction->operand(0)->sharding(), instruction,
-            /*may_combine_partial_sharding=*/is_spmd);
+            may_combine_partial_sharding);
       }
       if (!IsSpatiallyPartitioned(instruction->operand(1)) &&
           !IsSpatiallyPartitioned(instruction->operand(2))) {
@@ -985,12 +988,11 @@ bool InferShardingFromOperands(HloInstruction* instruction,
         if (maybe_from_update) {
           changed |= MaybeImproveInstructionSharding(
               std::move(*maybe_from_update), instruction,
-              /*may_combine_partial_sharding=*/is_spmd);
+              may_combine_partial_sharding);
         }
       }
       changed |= MaybeImproveInstructionSharding(
-          HloSharding::Replicate(), instruction,
-          /*may_combine_partial_sharding=*/is_spmd);
+          HloSharding::Replicate(), instruction, may_combine_partial_sharding);
       return changed;
     }
     case HloOpcode::kWhile: {
@@ -1002,18 +1004,16 @@ bool InferShardingFromOperands(HloInstruction* instruction,
         sharding =
             MergeForMoreSpecificSharding(sharding, instruction->sharding());
       }
-      return MaybeImproveInstructionSharding(
-          std::move(sharding), instruction,
-          /*may_combine_partial_sharding=*/is_spmd);
+      return MaybeImproveInstructionSharding(std::move(sharding), instruction,
+                                             may_combine_partial_sharding);
     }
     default: {
-      if (instruction->IsElementwise() && is_spmd) {
+      if (instruction->IsElementwise() && may_combine_partial_sharding) {
         bool changed = false;
         for (auto operand : instruction->operands()) {
           if (IsSpatiallyPartitioned(operand)) {
             changed |= MaybeImproveInstructionSharding(
-                operand->sharding(), instruction,
-                /*may_combine_partial_sharding=*/is_spmd);
+                operand->sharding(), instruction, may_combine_partial_sharding);
           }
         }
         return changed;
@@ -1022,9 +1022,8 @@ bool InferShardingFromOperands(HloInstruction* instruction,
       if (!operand || !IsSpatiallyPartitioned(operand)) {
         return false;
       }
-      return MaybeImproveInstructionSharding(
-          operand->sharding(), instruction,
-          /*may_combine_partial_sharding=*/is_spmd);
+      return MaybeImproveInstructionSharding(operand->sharding(), instruction,
+                                             may_combine_partial_sharding);
     }
   }
   return false;
@@ -1110,10 +1109,14 @@ HloSharding InferDotOperandSharding(
 // Return the sharding that should be propagated from user to instruction.
 absl::optional<HloSharding> GetShardingFromUser(
     const HloInstruction& instruction, const HloInstruction& user,
-    bool aggressive_prop, bool is_spmd) {
+    int64 aggressiveness, bool is_spmd) {
+  if (!CanPropagateThroughAtAgressiveLevel(user, aggressiveness)) {
+    return absl::nullopt;
+  }
   if (!IsSpatiallyPartitioned(&user)) {
     return absl::nullopt;
   }
+  const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   switch (user.opcode()) {
     case HloOpcode::kBroadcast: {
       if (user.sharding().IsReplicated()) {
@@ -1185,9 +1188,8 @@ absl::optional<HloSharding> GetShardingFromUser(
       if (auto dot_dims =
               dot_as_convolution_util::ParseDotGeneralFromConvolution(&user)) {
         int64 op_idx = user.operand_index(&instruction);
-        return InferDotOperandSharding(
-            &user, *dot_dims, op_idx,
-            /*may_combine_partial_sharding=*/is_spmd);
+        return InferDotOperandSharding(&user, *dot_dims, op_idx,
+                                       may_combine_partial_sharding);
       }
       return absl::nullopt;
     }
@@ -1272,7 +1274,7 @@ absl::optional<HloSharding> GetShardingFromUser(
       int64 op_idx = user.operand_index(&instruction);
       auto dnums = dot_as_convolution_util::ParseDotGeneralFromDot(&user);
       return InferDotOperandSharding(&user, dnums, op_idx,
-                                     /*may_combine_partial_sharding=*/is_spmd);
+                                     may_combine_partial_sharding);
     }
     case HloOpcode::kReduce: {
       if (instruction.shape().rank() == 0) {
@@ -1373,18 +1375,18 @@ absl::optional<HloSharding> GetShardingFromUser(
 // false otherwise.
 bool InferShardingFromUsers(HloInstruction* instruction,
                             const ComputationMap& computation_map,
-                            bool aggressive_prop, bool is_spmd) {
+                            int64 aggressiveness, bool is_spmd) {
   if (!SupportSpatialPartitioning(instruction, computation_map, is_spmd)) {
     return false;
   }
   bool improved_sharding = false;
+  const bool may_combine_partial_sharding = is_spmd && aggressiveness > 0;
   for (const HloInstruction* user : instruction->users()) {
     absl::optional<HloSharding> user_sharding =
-        GetShardingFromUser(*instruction, *user, aggressive_prop, is_spmd);
+        GetShardingFromUser(*instruction, *user, aggressiveness, is_spmd);
     if (user_sharding) {
       improved_sharding |= MaybeImproveInstructionSharding(
-          std::move(*user_sharding), instruction,
-          /*may_combine_partial_sharding=*/is_spmd);
+          std::move(*user_sharding), instruction, may_combine_partial_sharding);
     }
   }
   return improved_sharding;
@@ -1654,7 +1656,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
   // strictly improve the sharding of the graph and it can't be improved
   // indefinitely.
   int64 iterations = 0;
-  auto run_to_fix_point = [&](bool aggressive_prop) {
+  auto run_to_fix_point = [&](int64 aggressiveness) {
     absl::flat_hash_set<const HloInstruction*> workset;
     for (const HloComputation* computation : module->computations()) {
       for (const HloInstruction* instruction : computation->instructions()) {
@@ -1690,7 +1692,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
         // operands.
         for (HloInstruction* instruction : instructions) {
           if (InferShardingFromOperands(instruction, computation_map, is_spmd_,
-                                        aggressive_prop)) {
+                                        aggressiveness)) {
             ++inferred_from_operand_counter;
             any_changed = true;
             VLOG(2) << "Add sharding (forward-pass): "
@@ -1709,7 +1711,7 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
         // Then iterate the HLO graph in reverse post order taking shardings
         // from users.
         for (auto it = instructions.rbegin(); it != instructions.rend(); ++it) {
-          if (InferShardingFromUsers(*it, computation_map, aggressive_prop,
+          if (InferShardingFromUsers(*it, computation_map, aggressiveness,
                                      is_spmd_)) {
             ++inferred_from_user_counter;
             any_changed = true;
@@ -1734,8 +1736,8 @@ StatusOr<bool> ShardingPropagation::Run(HloModule* module) {
       ++iterations;
     }
   };
-  run_to_fix_point(false);
-  run_to_fix_point(true);
+  run_to_fix_point(0);
+  run_to_fix_point(1);
 
   VLOG(1) << "Sharding propagation completed after " << iterations
           << " iterations";

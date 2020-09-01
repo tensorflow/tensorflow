@@ -27,10 +27,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-absl::Status UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
-                           const Convolution2DAttributes& conv_attr,
-                           CalculationsPrecision precision, CLContext* context,
-                           GPUOperation* op) {
+void UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
+                   const Convolution2DAttributes& conv_attr,
+                   CalculationsPrecision precision, GPUOperation* op) {
   int dw_dst_ch_aligned = AlignByN(dw_attr.weights.shape.i, 4);
   int dw_weights_count =
       dw_dst_ch_aligned * dw_attr.weights.shape.h * dw_attr.weights.shape.w;
@@ -93,31 +92,25 @@ absl::Status UploadWeights(const DepthwiseConvolution2DAttributes& dw_attr,
     }
   }
 
-  Buffer constants_buf;
   const bool fp32_weights = precision == CalculationsPrecision::F32;
   const int float_size = fp32_weights ? 4 : 2;
-  if (fp32_weights) {
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float_size * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &constants_buf));
-  } else {
-    std::vector<half> gpu_data_half(gpu_data.size());
-    for (int i = 0; i < gpu_data.size(); ++i) {
-      gpu_data_half[i] = gpu_data[i];
-    }
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(float_size * gpu_data_half.size(),
-                                         gpu_data_half.data(), context,
-                                         &constants_buf));
-  }
-
   BufferDescriptor desc;
   desc.element_type = fp32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
   desc.memory_type = MemoryType::CONSTANT;
-  op->args_.AddObject("constants", AccessType::READ,
-                      absl::make_unique<Buffer>(std::move(constants_buf)),
-                      absl::make_unique<BufferDescriptor>(desc));
-  return absl::OkStatus();
+  desc.size = float_size * gpu_data.size();
+  desc.data.resize(desc.size);
+
+  if (fp32_weights) {
+    memcpy(desc.data.data(), gpu_data.data(), desc.size);
+  } else {
+    half* gpu_data_half = reinterpret_cast<half*>(desc.data.data());
+    for (int i = 0; i < gpu_data.size(); ++i) {
+      gpu_data_half[i] = gpu_data[i];
+    }
+  }
+  op->args_.AddObject("constants",
+                      absl::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 std::string GenerateCode(const OperationDef& op_def,
@@ -221,7 +214,7 @@ std::string GenerateCode(const OperationDef& op_def,
 }  // namespace
 
 bool IsDepthwiseConvPlus1x1ConvSupported(
-    const CLDevice& device, const OperationDef& definition,
+    const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
     const Convolution2DAttributes& conv_attr) {
   const auto dw_shape = dw_attr.weights.shape;
@@ -240,16 +233,17 @@ bool IsDepthwiseConvPlus1x1ConvSupported(
   return good_dw && good_conv && recommended_dw && recommended_conv;
 }
 
-absl::Status CreateDepthwiseConvPlus1x1Conv(
-    const CreationContext& creation_context, const OperationDef& definition,
+GPUOperation CreateDepthwiseConvPlus1x1Conv(
+    const OperationDef& definition,
     const DepthwiseConvolution2DAttributes& dw_attr,
-    const Convolution2DAttributes& conv_attr, GPUOperation* result) {
-  *result = GPUOperation(definition);
-  result->code_ = GenerateCode(
-      definition, dw_attr, DivideRoundUp(conv_attr.weights.shape.o, 4), result);
-  result->tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_ZIs1;
-  return UploadWeights(dw_attr, conv_attr, definition.precision,
-                       creation_context.context, result);
+    const Convolution2DAttributes& conv_attr) {
+  GPUOperation result(definition);
+  result.code_ =
+      GenerateCode(definition, dw_attr,
+                   DivideRoundUp(conv_attr.weights.shape.o, 4), &result);
+  result.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_ZIs1;
+  UploadWeights(dw_attr, conv_attr, definition.precision, &result);
+  return result;
 }
 
 }  // namespace cl

@@ -24,14 +24,6 @@ exports_files([
     "run_lit.sh",
 ])
 
-cc_library(
-    name = "DialectSymbolRegistry",
-    # strip_include_prefix does not apply to textual_hdrs.
-    hdrs = ["include/mlir/IR/DialectSymbolRegistry.def"],
-    strip_include_prefix = "include/mlir/IR",
-    textual_hdrs = ["include/mlir/IR/DialectSymbolRegistry.def"],
-)
-
 [
     gentbl(
         name = name + "IncGen",
@@ -75,7 +67,6 @@ cc_library(
     includes = ["include"],
     deps = [
         ":CallOpInterfacesIncGen",
-        ":DialectSymbolRegistry",
         ":InferTypeOpInterfaceIncGen",
         ":OpAsmInterfaceIncGen",
         ":RegionKindInterfaceIncGen",
@@ -128,10 +119,19 @@ cc_library(
 cc_library(
     name = "CAPIIR",
     srcs = [
+        "lib/CAPI/IR/AffineMap.cpp",
         "lib/CAPI/IR/IR.cpp",
+        "lib/CAPI/IR/StandardAttributes.cpp",
+        "lib/CAPI/IR/StandardTypes.cpp",
     ],
     hdrs = [
+        "include/mlir-c/AffineMap.h",
         "include/mlir-c/IR.h",
+        "include/mlir-c/StandardAttributes.h",
+        "include/mlir-c/StandardTypes.h",
+        "include/mlir/CAPI/AffineMap.h",
+        "include/mlir/CAPI/IR.h",
+        "include/mlir/CAPI/Wrap.h",
     ],
     includes = ["include"],
     deps = [
@@ -154,23 +154,6 @@ cc_library(
     deps = [
         ":AllPassesAndDialectsNoRegistration",
         ":CAPIIR",
-    ],
-)
-
-cc_library(
-    name = "EDSCInterface",
-    srcs = [
-        "lib/EDSC/CoreAPIs.cpp",
-    ],
-    hdrs = [
-        "include/mlir-c/Core.h",
-    ],
-    includes = ["include"],
-    deps = [
-        ":IR",
-        ":Parser",
-        ":Support",
-        "@llvm-project//llvm:Support",
     ],
 )
 
@@ -612,6 +595,7 @@ cc_library(
         ":LinalgToLLVM",
         ":LinalgToSPIRV",
         ":LinalgToStandard",
+        ":OpenMPToLLVM",
         ":SCFToGPUPass",
         ":SCFToStandard",
         ":SPIRVToLLVM",
@@ -984,9 +968,14 @@ cc_library(
             "lib/Support/MlirOptMain.cpp",
         ],
     ),
-    hdrs = glob([
-        "include/mlir/Support/*.h",
-    ]),
+    hdrs = glob(
+        [
+            "include/mlir/Support/*.h",
+        ],
+        exclude = [
+            "include/mlir/Support/MlirOptMain.h",
+        ],
+    ),
     includes = ["include"],
     deps = [
         "@llvm-project//llvm:Support",
@@ -1138,6 +1127,7 @@ cc_library(
         ":ControlFlowInterfaces",
         ":IR",
         ":LLVMOpsIncGen",
+        ":OpenMPDialect",
         ":SideEffectInterfaces",
         ":Support",
         "@llvm-project//llvm:AsmParser",
@@ -1773,6 +1763,116 @@ gentbl(
     td_file = "include/mlir/Dialect/LLVMIR/ROCDLOps.td",
     td_srcs = [
         ":ROCDLOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "PDLDialect",
+    srcs = glob([
+        "lib/Dialect/PDL/IR/*.cpp",
+        "lib/Dialect/PDL/IR/*.h",
+    ]),
+    hdrs = glob([
+        "include/mlir/Dialect/PDL/IR/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":InferTypeOpInterface",
+        ":PDLOpsIncGen",
+        ":SideEffects",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+filegroup(
+    name = "PDLOpsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/PDL/IR/PDLBase.td",
+        "include/mlir/Dialect/PDL/IR/PDLOps.td",
+        "include/mlir/IR/SymbolInterfaces.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "PDLOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/PDL/IR/PDLOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/PDL/IR/PDLOps.cpp.inc",
+        ),
+        (
+            "-gen-dialect-decls",
+            "include/mlir/Dialect/PDL/IR/PDLOpsDialect.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/PDL/IR/PDLOps.td",
+    td_srcs = [
+        ":PDLOpsTdFiles",
+    ],
+)
+
+cc_library(
+    name = "PDLInterpDialect",
+    srcs = glob([
+        "lib/Dialect/PDLInterp/IR/*.cpp",
+        "lib/Dialect/PDLInterp/IR/*.h",
+    ]),
+    hdrs = glob([
+        "include/mlir/Dialect/PDLInterp/IR/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":InferTypeOpInterface",
+        ":PDLDialect",
+        ":PDLInterpOpsIncGen",
+        ":SideEffects",
+        ":Support",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+filegroup(
+    name = "PDLInterpOpsTdFiles",
+    srcs = [
+        "include/mlir/Dialect/PDL/IR/PDLBase.td",
+        "include/mlir/Dialect/PDLInterp/IR/PDLInterpOps.td",
+        "include/mlir/Interfaces/SideEffectInterfaces.td",
+        ":OpBaseTdFiles",
+    ],
+)
+
+gentbl(
+    name = "PDLInterpOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/PDLInterp/IR/PDLInterpOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/PDLInterp/IR/PDLInterpOps.cpp.inc",
+        ),
+        (
+            "-gen-dialect-decls -dialect=pdl_interp",
+            "include/mlir/Dialect/PDLInterp/IR/PDLInterpOpsDialect.h.inc",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/PDLInterp/IR/PDLInterpOps.td",
+    td_srcs = [
+        ":PDLInterpOpsTdFiles",
     ],
 )
 
@@ -2888,7 +2988,11 @@ cc_library(
         ":LinalgToStandard",
         ":LinalgTransforms",
         ":NVVMDialect",
+        ":OpenACCDialect",
         ":OpenMPDialect",
+        ":OpenMPToLLVM",
+        ":PDLDialect",
+        ":PDLInterpDialect",
         ":QuantOps",
         ":QuantPassIncGen",
         ":ROCDLDialect",
@@ -2930,9 +3034,8 @@ cc_library(
     alwayslink = 1,
 )
 
-# TODO(jpienaar): This library should be removed.
-cc_library(
-    name = "MlirOptMain",
+cc_binary(
+    name = "mlir-opt",
     srcs = [
         "tools/mlir-opt/mlir-opt.cpp",
     ],
@@ -2942,22 +3045,11 @@ cc_library(
         ":Analysis",
         ":IR",
         ":MlirOptLib",
-        ":Pass",
-        ":Support",
-        "@llvm-project//llvm:Support",
-    ],
-)
-
-cc_binary(
-    name = "mlir-opt",
-    deps = [
-        ":Analysis",
-        ":IR",
-        ":MlirOptLib",
-        ":MlirOptMain",
         ":OpenMPDialect",
+        ":Pass",
         ":QuantOps",
         ":SCFToGPUPass",
+        ":Support",
         ":Transforms",
         "@llvm-project//llvm:AllTargetsCodeGens",
         "@llvm-project//llvm:Support",
@@ -3189,6 +3281,65 @@ cc_binary(
     ],
 )
 
+## OpenACC dialect
+
+gentbl(
+    name = "OpenACCOpsIncGen",
+    strip_include_prefix = "include",
+    tbl_outs = [
+        (
+            "-gen-dialect-decls -dialect=acc",
+            "include/mlir/Dialect/OpenACC/OpenACCOpsDialect.h.inc",
+        ),
+        (
+            "-gen-op-decls",
+            "include/mlir/Dialect/OpenACC/OpenACCOps.h.inc",
+        ),
+        (
+            "-gen-op-defs",
+            "include/mlir/Dialect/OpenACC/OpenACCOps.cpp.inc",
+        ),
+        (
+            "-gen-enum-decls",
+            "include/mlir/Dialect/OpenACC/OpenACCOpsEnums.h.inc",
+        ),
+        (
+            "-gen-enum-defs",
+            "include/mlir/Dialect/OpenACC/OpenACCOpsEnums.cpp.inc",
+        ),
+        (
+            "-gen-op-doc",
+            "g3doc/Dialects/OpenACC/OpenACCOps.md",
+        ),
+    ],
+    tblgen = ":mlir-tblgen",
+    td_file = "include/mlir/Dialect/OpenACC/OpenACCOps.td",
+    td_srcs = [
+        ":OpBaseTdFiles",
+        ":OmpCommonTdGen",
+    ],
+)
+
+cc_library(
+    name = "OpenACCDialect",
+    srcs = glob(
+        [
+            "lib/Dialect/OpenACC/IR/*.cpp",
+            "lib/Dialect/OpenACC/IR/*.h",
+        ],
+    ),
+    hdrs = glob([
+        "include/mlir/Dialect/OpenACC/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":IR",
+        ":OpenACCOpsIncGen",
+        ":StandardOps",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
 ## OpenMP dialect
 gentbl(
     name = "OmpCommonTdGen",
@@ -3266,6 +3417,31 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "OpenMPToLLVM",
+    srcs = glob([
+        "lib/Conversion/OpenMPToLLVM/*.cpp",
+        "lib/Conversion/OpenMPToLLVM/*.h",
+    ]) + ["lib/Conversion/PassDetail.h"],
+    hdrs = glob([
+        "include/mlir/Conversion/OpenMPToLLVM/*.h",
+    ]),
+    includes = ["include"],
+    deps = [
+        ":ConversionPassIncGen",
+        ":IR",
+        ":LLVMDialect",
+        ":OpenMPDialect",
+        ":Pass",
+        ":StandardOps",
+        ":StandardToLLVM",
+        ":Transforms",
+        "@llvm-project//llvm:Core",
+        "@llvm-project//llvm:Support",
+    ],
+)
+
+## QuantOps dialect
 filegroup(
     name = "QuantizationOpsTdFiles",
     srcs = [
@@ -3276,7 +3452,6 @@ filegroup(
     ],
 )
 
-## QuantOps dialect
 gentbl(
     name = "QuantOpsIncGen",
     strip_include_prefix = "include",
@@ -3508,6 +3683,7 @@ cc_library(
         ":LinalgOps",
         ":LinalgTransforms",
         ":Pass",
+        ":SCFDialect",
         ":SCFToStandard",
         ":StandardOps",
         ":StandardToLLVM",
@@ -3745,6 +3921,7 @@ cc_library(
         ":EDSC",
         ":IR",
         ":LLVMDialect",
+        ":LinalgTransforms",
         ":Pass",
         ":SCFDialect",
         ":StandardOps",

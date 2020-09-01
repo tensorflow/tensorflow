@@ -138,6 +138,10 @@ struct DeviceInfo {
   // To track bug on some Adreno. b/131099086
   bool SupportsOneLayerTextureArray() const;
 
+  bool SupportsExtension(const std::string& extension) const;
+  bool IsCL20OrHigher() const;
+  bool SupportsSubGroupWithSize(int sub_group_size) const;
+
   std::vector<std::string> extensions;
   bool supports_fp16;
   bool supports_image3d_writes;
@@ -155,6 +159,7 @@ struct DeviceInfo {
   int max_work_group_size_x;
   int max_work_group_size_y;
   int max_work_group_size_z;
+  std::vector<int> supported_subgroup_sizes;
 
   // rtn is ROUND_TO_NEAREST
   // with rtn precision is much better then with rtz (ROUND_TO_ZERO)

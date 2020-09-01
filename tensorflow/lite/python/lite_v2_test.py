@@ -85,8 +85,6 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     # Convert model.
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
-    # We don't support integer types as we don't have statistical information
-    # to quantize (only supported for post training integer quantization).
     with self.assertRaises(ValueError) as error:
       converter.inference_input_type = inference_input_output_type
       converter.inference_output_type = inference_input_output_type
@@ -212,8 +210,6 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     # Convert quantized model.
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    # We don't support integer types as we don't have statistical information
-    # to quantize (only supported for post training integer quantization).
     with self.assertRaises(ValueError) as error:
       quantized_converter.inference_input_type = inference_input_output_type
       quantized_converter.inference_output_type = inference_input_output_type
@@ -223,11 +219,20 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         'must be tf.float32.', str(error.exception))
 
   @parameterized.named_parameters(
-      ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT),
-      ('_INT8InputOutput', lite.constants.INT8),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
-  def testPostTrainingIntegerAllowFloatQuantization(
-      self, inference_input_output_type):
+      ('_Default', False, False, lite.constants.FLOAT),
+      ('_INT8InputOutput', False, False, lite.constants.INT8),
+      ('_UINT8InputOutput', False, False, lite.constants.QUANTIZED_UINT8),
+      ('_INT16Quantize', False, True, lite.constants.FLOAT),
+      ('_INT16Quantize_INT16InputOutput', False, True, lite.constants.INT16),
+      ('_IntOnly', True, False, lite.constants.FLOAT),
+      ('_IntOnly_INT8InputOutput', True, False, lite.constants.INT8),
+      ('_IntOnly_UINT8InputOutput', True, False,
+       lite.constants.QUANTIZED_UINT8),
+      ('_IntOnly_INT16Quantize', True, True, lite.constants.FLOAT),
+      ('_IntOnly_INT16Quantize_INT16InputOutput', True, True,
+       lite.constants.INT16))
+  def testIntegerQuantization(self, is_int_only, is_int16_quantize,
+                              inference_input_output_type):
     func, calibration_gen = self._getIntegerQuantizeModel()
 
     # Convert float model.
@@ -239,111 +244,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
     quantized_converter.optimizations = [lite.Optimize.DEFAULT]
     quantized_converter.representative_dataset = calibration_gen
-    quantized_converter.inference_input_type = inference_input_output_type
-    quantized_converter.inference_output_type = inference_input_output_type
-    quantized_tflite_model = quantized_converter.convert()
-    self.assertIsNotNone(quantized_tflite_model)
-
-    interpreter = Interpreter(model_content=quantized_tflite_model)
-    interpreter.allocate_tensors()
-    input_details = interpreter.get_input_details()
-    self.assertLen(input_details, 1)
-    self.assertEqual(inference_input_output_type.as_numpy_dtype,
-                     input_details[0]['dtype'])
-    output_details = interpreter.get_output_details()
-    self.assertLen(output_details, 1)
-    self.assertEqual(inference_input_output_type.as_numpy_dtype,
-                     output_details[0]['dtype'])
-
-    # Ensure that the quantized tflite model is smaller.
-    self.assertLess(len(quantized_tflite_model), len(tflite_model))
-
-  def testPostTrainingIntegerAllowFloatQuantizationINT16InputOutput(self):
-    func, calibration_gen = self._getIntegerQuantizeModel()
-
-    # Convert float model.
-    converter = lite.TFLiteConverterV2.from_concrete_functions([func])
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
-
-    # Post-training quantization 16x8 with float fallback allowed.
-    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
-    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    quantized_converter.representative_dataset = calibration_gen
-    quantized_converter.target_spec.supported_ops = [
-        lite.OpsSet.\
-        EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
-        lite.OpsSet.TFLITE_BUILTINS
-    ]
-    inference_input_output_type = lite.constants.INT16
-    quantized_converter.inference_input_type = inference_input_output_type
-    quantized_converter.inference_output_type = inference_input_output_type
-    quantized_tflite_model = quantized_converter.convert()
-    self.assertIsNotNone(quantized_tflite_model)
-
-    interpreter = Interpreter(model_content=quantized_tflite_model)
-    interpreter.allocate_tensors()
-    input_details = interpreter.get_input_details()
-    self.assertLen(input_details, 1)
-    self.assertEqual(inference_input_output_type.as_numpy_dtype,
-                     input_details[0]['dtype'])
-    output_details = interpreter.get_output_details()
-    self.assertLen(output_details, 1)
-    self.assertEqual(inference_input_output_type.as_numpy_dtype,
-                     output_details[0]['dtype'])
-
-    # Ensure that the quantized tflite model is smaller.
-    self.assertLess(len(quantized_tflite_model), len(tflite_model))
-
-  def testPostTrainingIntegerQuant16x8MismatchInferenceParams(self):
-    # In this test we check that when we do 16x8 post-training
-    # quantization and set inference_input(output)_type to
-    # constants.INT8, we have an error.
-    func, calibration_gen = self._getIntegerQuantizeModel()
-
-    # Convert quantized model.
-    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
-    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    quantized_converter.representative_dataset = calibration_gen
-    quantized_converter.target_spec.supported_ops = [
-        lite.OpsSet.\
-          EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
-        ]
-
-    with self.assertRaises(ValueError) as error:
-      quantized_converter.inference_input_type = lite.constants.INT8
-      quantized_converter.inference_output_type = lite.constants.INT8
-      quantized_converter.convert()
-    self.assertEqual(
-        "The inference_input_type and inference_output_type "
-        "must be in ['tf.float32', 'tf.int16'].", str(error.exception))
-
-  @parameterized.named_parameters(
-      ('_DefaultFLOAT32InputOutput_UseTargetTypesFlag', lite.constants.FLOAT,
-       False, False),
-      ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT, True, False),
-      ('_INT8InputOutput', lite.constants.INT8, True, False),
-      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8, True, False),
-      ('_INT16InputOutput', lite.constants.INT16, True, True))
-  @test_util.run_v2_only
-  def testPostTrainingIntegerNoFloatQuantization(self,
-                                                 inference_input_output_type,
-                                                 use_target_ops_flag,
-                                                 quantization_16x8):
-    func, calibration_gen = self._getIntegerQuantizeModel()
-
-    # Convert float model.
-    converter = lite.TFLiteConverterV2.from_concrete_functions([func])
-    tflite_model = converter.convert()
-    self.assertTrue(tflite_model)
-
-    # Convert model by specifying target spec (instead of optimizations), since
-    # when targeting an integer only backend, quantization is mandatory.
-    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
-    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
-    quantized_converter.representative_dataset = calibration_gen
-    if use_target_ops_flag:
-      if quantization_16x8:
+    if is_int_only:
+      if is_int16_quantize:
         quantized_converter.target_spec.supported_ops = [
             lite.OpsSet.\
             EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8
@@ -353,7 +255,12 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
             lite.OpsSet.TFLITE_BUILTINS_INT8
         ]
     else:
-      quantized_converter.target_spec.supported_types = [lite.constants.INT8]
+      if is_int16_quantize:
+        quantized_converter.target_spec.supported_ops = [
+            lite.OpsSet.\
+            EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+            lite.OpsSet.TFLITE_BUILTINS
+        ]
     quantized_converter.inference_input_type = inference_input_output_type
     quantized_converter.inference_output_type = inference_input_output_type
     quantized_tflite_model = quantized_converter.convert()
@@ -372,6 +279,30 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
 
     # Ensure that the quantized tflite model is smaller.
     self.assertLess(len(quantized_tflite_model), len(tflite_model))
+
+  @parameterized.named_parameters(
+      ('_INT16Quantize_INT8InputOutput', True, lite.constants.INT8))
+  def testInvalidIntegerQuantization(self, is_int16_quantize,
+                                     inference_input_output_type):
+    func, calibration_gen = self._getIntegerQuantizeModel()
+
+    # Convert quantized model.
+    quantized_converter = lite.TFLiteConverterV2.from_concrete_functions([func])
+    quantized_converter.optimizations = [lite.Optimize.DEFAULT]
+    quantized_converter.representative_dataset = calibration_gen
+    if is_int16_quantize:
+      quantized_converter.target_spec.supported_ops = [
+          lite.OpsSet.\
+          EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8,
+          lite.OpsSet.TFLITE_BUILTINS
+      ]
+    with self.assertRaises(ValueError) as error:
+      quantized_converter.inference_input_type = lite.constants.INT8
+      quantized_converter.inference_output_type = lite.constants.INT8
+      quantized_converter.convert()
+    self.assertEqual(
+        "The inference_input_type and inference_output_type "
+        "must be in ['tf.float32', 'tf.int16'].", str(error.exception))
 
   def testCalibrateAndQuantizeBuiltinInt16(self):
     func, calibration_gen = self._getIntegerQuantizeModel()
@@ -555,6 +486,36 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     converter = lite.TFLiteConverterV2.from_concrete_functions([concrete_func])
     converter.convert()
     self._assertValidDebugInfo(converter._debug_info)
+
+  @test_util.run_v2_only
+  def testFlexOpWithInt8OpSet(self):
+    model = tf.keras.Sequential()
+    input_shape = (1, 4, 4, 4, 1)
+    model.add(
+        tf.keras.layers.Conv3D(
+            4,
+            kernel_size=(1, 1, 1),
+            activation='relu',
+            input_shape=input_shape[1:]))
+    model.add(tf.keras.layers.Flatten())
+    model.add(tf.keras.layers.Dense(2, activation='relu'))
+
+    @tf.function(
+        input_signature=[tf.TensorSpec(shape=input_shape, dtype=tf.float32)])
+    def _call_fn(inputs):
+      return model(inputs, training=False)
+
+    concrete_func = _call_fn.get_concrete_function(
+        tf.TensorSpec(input_shape, dtype=tf.float32))
+
+    converter = tf.lite.TFLiteConverter.from_concrete_functions([concrete_func])
+    converter.optimizations = [tf.lite.Optimize.DEFAULT]
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS_INT8,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+    tflite_model = converter.convert()
+    self.assertTrue(tflite_model)
 
 
 class FromSavedModelTest(lite_v2_test_util.ModelTest):

@@ -106,5 +106,11 @@ TEST_F(ReaderTest, InvalidExportPath) {
   EXPECT_FALSE(st.ok());
 }
 
+TEST_F(ReaderTest, ReadSavedModelDebugInfoIfPresent) {
+  const string export_dir = GetDataDependencyFilepath(TestDataSharded());
+  std::unique_ptr<GraphDebugInfo> debug_info_proto;
+  TF_ASSERT_OK(ReadSavedModelDebugInfoIfPresent(export_dir, &debug_info_proto));
+}
+
 }  // namespace
 }  // namespace tensorflow

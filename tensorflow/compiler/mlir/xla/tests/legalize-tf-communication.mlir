@@ -169,7 +169,7 @@ func @send_to_host(%arg0: tensor<i32>) {
   // CHECK:      "mhlo.send"([[ARG0]], [[INIT_TOKEN]])
   // CHECK-SAME: channel_id = {handle = 1 : i64, type = 2 : i64}
   // CHECK-SAME: is_host_transfer = true
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "send_key"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "send_key_dtoh_0"}
   // CHECK-SAME: (tensor<i32>, !mhlo.token) -> !mhlo.token
   "tf.XlaSendToHost"(%arg0) {key = "send_key"} : (tensor<i32>) -> ()
   return
@@ -186,7 +186,7 @@ func @recv_from_host() -> tensor<i32> {
   // CHECK:      [[RECV_TUPLE:%.*]] = "mhlo.recv"([[INIT_TOKEN]])
   // CHECK-SAME: channel_id = {handle = 1 : i64, type = 3 : i64}
   // CHECK-SAME: is_host_transfer = true
-  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "recv_key"}
+  // CHECK-SAME: mhlo.frontend_attributes = {_xla_host_transfer_original_type = "s32", _xla_host_transfer_rendezvous = "recv_key_htod_0"}
   // CHECK-SAME: (!mhlo.token) -> tuple<tensor<i32>, !mhlo.token>
 
 

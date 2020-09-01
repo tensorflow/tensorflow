@@ -4066,6 +4066,51 @@ TEST_P(MemorySpaceAssignmentTest, MoveCopyDoneEarlier) {
             find_schedule_index(cos->operand(0)));
 }
 
+TEST_P(MemorySpaceAssignmentTest, BitcastRoot) {
+  // Tests against a bug where the root of entry computation is a bitcast
+  // instruction and it ends up getting an allocation in the alternate memory.
+  absl::string_view hlo_string = R"(
+HloModule primitive_computation_gather.4, is_scheduled=true
+
+%while_body {
+  %param.1 = (s32[], f32[3,3,3]) parameter(0)
+  %get-tuple-element.32 = s32[] get-tuple-element(%param.1), index=0
+  %copy.6 = s32[] copy(s32[] %get-tuple-element.32)
+  %constant.8 = s32[] constant(1)
+  %add = s32[] add(s32[] %copy.6, s32[] %constant.8)
+  %get-tuple-element.35 = f32[3,3,3] get-tuple-element(%param.1), index=1
+  negate = f32[3,3,3] negate(get-tuple-element.35)
+  ROOT %tuple.10 = (s32[], f32[3,3,3]) tuple(s32[] %add, f32[3,3,3] negate)
+}
+
+%while_cond {
+  %param.0 = (s32[], f32[3,3,3]) parameter(0)
+  %get-tuple-element = s32[] get-tuple-element(%param.0), index=0
+  %constant.3 = s32[] constant(3)
+  ROOT %compare = pred[] compare(s32[] %get-tuple-element, s32[] %constant.3), direction=LT
+}
+
+ENTRY %primitive_computation_gather.4 (parameter.1: f32[3,10,5], parameter.2: s32[3,1]) -> f32[3,3,3] {
+  %constant.1 = s32[] constant(0)
+  %copy.11 = s32[] copy(s32[] %constant.1)
+  %constant = f32[] constant(0)
+  %broadcast = f32[3,3,3] broadcast(f32[] %constant), dimensions={}
+  %tuple.8 = (s32[], f32[3,10,5], s32[3,1], f32[3,3,3]) tuple(s32[] %copy.11, f32[3,3,3] %broadcast)
+  %while = (s32[], f32[3,3,3]) while(%tuple.8), condition=%while_cond, body=%while_body
+  %get-tuple-element.7 = f32[3,3,3] get-tuple-element(%while), index=1
+  ROOT %bitcast.1 = f32[3,3,3] bitcast(f32[3,3,3] %get-tuple-element.7)
+}
+  )";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+  AssignMemorySpace(module.get());
+
+  const HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_TRUE(!root->shape().has_layout() ||
+              root->shape().layout().memory_space() == kDefaultMemorySpace);
+}
+
 // A mock MemorySpaceAssignmentRepacker class that accepst a map of
 // (start_time,offset) -> new_offset values. Using this map, the repacker
 // repacks the allocations to the new_offset.
@@ -4566,6 +4611,125 @@ TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchPinnedTest) {
   EXPECT_EQ(cross_program_prefetches.size(), 0);
 }
 
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchReuse) {
+  // This test is for checking if the cross-program-prefetched buffer is freed
+  // after its last use and there is an end-of-program prefetch.
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+
+  ENTRY CrossProgramPrefetch {
+    p0 = (f32[8,8]{1,0}, f32[8,2]{1,0}) parameter(0)
+    get-tuple-element = f32[8,8]{1,0} get-tuple-element(p0), index=0
+    get-tuple-element.1 = f32[8,2]{1,0} get-tuple-element(p0), index=1
+    dot = f32[8,2]{1,0} dot(get-tuple-element, get-tuple-element.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    negate.1 = f32[8,2]{1,0} negate(dot)
+    negate.2 = f32[8,2]{1,0} negate(negate.1)
+    negate.3 = f32[8,2]{1,0} negate(negate.2)
+    negate.4 = f32[8,2]{1,0} negate(negate.3)
+    negate.5 = f32[8,2]{1,0} negate(negate.4)
+    negate.6 = f32[8,2]{1,0} negate(negate.5)
+    negate.7 = f32[8,2]{1,0} negate(negate.6)
+    negate.8 = f32[8,2]{1,0} negate(negate.7)
+    ROOT negate.9 = f32[8,2]{1,0} negate(negate.8)
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  if (!cross_program_prefetches.empty()) {
+    EXPECT_EQ(cross_program_prefetches[0].first, 0);
+    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({1}));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+      HloDataflowAnalysis::Run(*module));
+  const HloValue& cross_program_prefetched_value =
+      dataflow_analysis->GetValueDefinedAt(
+          module->entry_computation()->parameter_instruction(0), {1});
+  // Expect that there are two prefetches that use this value, one is the
+  // cross-program prefetch, the other is the end-of-program prefetch.
+  auto is_cross_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           use.instruction->is_cross_program_prefetch();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+                             is_cross_program_prefetch),
+            1);
+  auto is_end_of_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           !use.instruction->is_cross_program_prefetch();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+                             is_end_of_program_prefetch),
+            1);
+}
+
+TEST_P(MemorySpaceAssignmentTest, CrossProgramPrefetchNoReuse) {
+  // This tests the scenario that the cross-program-prefetched buffer is used
+  // again close to the end of the computation. In this case, it is better not
+  // to free the buffer.
+  absl::string_view hlo_string = R"(
+  HloModule cross_program_prefetch, is_scheduled=true
+
+  ENTRY CrossProgramPrefetch {
+    p0 = (f32[8,8]{1,0}, f32[8,2]{1,0}) parameter(0)
+    get-tuple-element = f32[8,8]{1,0} get-tuple-element(p0), index=0
+    get-tuple-element.1 = f32[8,2]{1,0} get-tuple-element(p0), index=1
+    dot = f32[8,2]{1,0} dot(get-tuple-element, get-tuple-element.1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+    negate.1 = f32[8,2]{1,0} negate(dot)
+    negate.2 = f32[8,2]{1,0} negate(negate.1)
+    negate.3 = f32[8,2]{1,0} negate(negate.2)
+    negate.4 = f32[8,2]{1,0} negate(negate.3)
+    negate.5 = f32[8,2]{1,0} negate(negate.4)
+    negate.6 = f32[8,2]{1,0} negate(negate.5)
+    negate.7 = f32[8,2]{1,0} negate(negate.6)
+    negate.8 = f32[8,2]{1,0} negate(negate.7)
+    ROOT dot.2 = f32[2,2]{1,0} dot(negate.8, get-tuple-element.1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AssignMemorySpace(module.get(), /*max_outstanding_async_copies=*/-1,
+                    /*max_prefetch_interval=*/5, /*min_prefetch_interval=*/2);
+
+  auto cross_program_prefetches = module->CrossProgramPrefetches();
+  EXPECT_EQ(cross_program_prefetches.size(), 1);
+  if (!cross_program_prefetches.empty()) {
+    EXPECT_EQ(cross_program_prefetches[0].first, 0);
+    EXPECT_EQ(cross_program_prefetches[0].second, ShapeIndex({1}));
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloDataflowAnalysis> dataflow_analysis,
+      HloDataflowAnalysis::Run(*module));
+  const HloValue& cross_program_prefetched_value =
+      dataflow_analysis->GetValueDefinedAt(
+          module->entry_computation()->parameter_instruction(0), {1});
+  // Expect that there is one prefetch that use this value, the cross-program
+  // prefetch. There shouldn't be an end-of-program prefetch.
+  auto is_cross_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           use.instruction->is_cross_program_prefetch();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+                             is_cross_program_prefetch),
+            1);
+  auto is_end_of_program_prefetch = [](const HloUse& use) {
+    return use.instruction->opcode() == HloOpcode::kCopyStart &&
+           !use.instruction->is_cross_program_prefetch();
+  };
+  EXPECT_EQ(absl::c_count_if(cross_program_prefetched_value.uses(),
+                             is_end_of_program_prefetch),
+            0);
+}
+
 using CostAnalysisPrefetchIntervalPickerTest = HloTestBase;
 
 TEST_F(CostAnalysisPrefetchIntervalPickerTest, PrefetchIntervalOrder) {
@@ -4790,11 +4954,12 @@ TEST_F(CostAnalysisPrefetchIntervalPickerTest, NestedWhile) {
 
   HloInstruction* root = module->entry_computation()->root_instruction();
   const HloUse use{root, /*operand_number=*/1, /*operand_index=*/{}};
+  const Shape& shape = root->operand(1)->shape();
 
   // We expect the root's latest prefetch start time to be before the while loop
   // (logical time 4).
-  EXPECT_EQ(interval_picker.LatestPrefetchStartTime(use, /*start_time=*/0,
-                                                    /*end_time=*/23),
+  EXPECT_EQ(interval_picker.LatestPrefetchStartTime(shape, /*start_time=*/0,
+                                                    /*end_time=*/23, &use),
             4);
 }
 

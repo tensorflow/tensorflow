@@ -18,6 +18,7 @@ limitations under the License.
 #include <algorithm>
 #include <cstdint>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <numeric>
 #include <string>
@@ -37,6 +38,7 @@ limitations under the License.
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/raw_ostream.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/Dialect/Traits.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -64,6 +66,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_side_effects.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/attribute_utils.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -438,6 +441,19 @@ static LogicalResult Verify(BroadcastToOp op) {
   return success();
 }
 
+OpFoldResult BroadcastToOp::fold(ArrayRef<Attribute> operands) {
+  Value input = this->input();
+
+  // Fold broadcast if operand and result types are the same and all dimensions
+  // are statically known (no-op broadcast).
+  auto result_ty = getType().dyn_cast<ShapedType>();
+  if (result_ty && result_ty.hasStaticShape() && result_ty == input.getType()) {
+    return input;
+  }
+
+  return {};
+}
+
 //===----------------------------------------------------------------------===//
 // CaseOp
 //===----------------------------------------------------------------------===//
@@ -456,21 +472,16 @@ LogicalResult FoldConstantCaseOp::matchAndRewrite(
   DenseIntElementsAttr branch;
   if (!matchPattern(op.branch_index(), m_Constant(&branch))) return failure();
 
-  // Only attempt to fold scalar valued case statements.
-  // TODO(jpienaar): This can be removed if CaseOp's verifier covers it.
-  if (!branch.getType().cast<RankedTensorType>().getShape().empty())
-    return failure();
-
   int index = *branch.getValues<int>().begin();
-  // TODO(jpienaar): This can be removed if CaseOp's verifier covers it.
-  if (index >= op.branches().size()) return failure();
+  if (index < 0 || index >= op.branches().size())
+    index = op.branches().size() - 1;
 
   auto func = op.branches()[index].cast<SymbolRefAttr>();
   auto empty = rewriter.getStringAttr("");
   auto call_op = rewriter.create<PartitionedCallOp>(
       op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
       /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-  PropagateDeviceAndInternalAttrs(op.getOperation(), call_op);
+  CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
   rewriter.replaceOp(op, call_op.getResults());
   return success();
 }
@@ -480,35 +491,111 @@ void CaseOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
   results.insert<FoldConstantCaseOp, DropAttributes<CaseOp>>(context);
 }
 
+static LogicalResult VerifyCaseOpBase(Operation *op, Value branch_index) {
+  if (!IsOfRankOrUnranked(branch_index, 0))
+    return op->emitOpError()
+           << "expects 'branch_index' to be a scalar, but got "
+           << branch_index.getType();
+  return success();
+}
+
+static LogicalResult VerifyCaseOrIfOpBranchFunctions(
+    Operation *op, ArrayRef<Attribute> branches,
+    llvm::function_ref<std::string(unsigned branch_index)> branch_name) {
+  SmallVector<FunctionType, 2> branch_types;
+  branch_types.reserve(branches.size());
+
+  // Functions have one less operand compared to op as first operand is elided
+  // (`cond` of `tf.If` and `branch_index` of `tf.Case`).
+  int expected_num_inputs = op->getNumOperands() - 1;
+  int expected_num_results = op->getNumResults();
+  for (auto branch : llvm::enumerate(branches)) {
+    auto branch_func = SymbolTable::lookupNearestSymbolFrom<FuncOp>(
+        op, branch.value().cast<SymbolRefAttr>());
+    if (!branch_func)
+      return op->emitOpError()
+             << "expects " << branch_name(branch.index()) << " ("
+             << branch.value() << ") to point to a defined function";
+
+    FunctionType branch_type = branch_func.getType();
+    if (branch_type.getNumInputs() != expected_num_inputs)
+      return op->emitOpError()
+             << "expects all branches to have " << expected_num_inputs
+             << " input(s), but " << branch_name(branch.index()) << " has "
+             << branch_type.getNumInputs() << " input(s)";
+
+    if (branch_type.getNumResults() != expected_num_results)
+      return op->emitOpError()
+             << "expects all branches to have " << expected_num_results
+             << " result(s), but " << branch_name(branch.index()) << " has "
+             << branch_type.getNumResults() << " result(s)";
+
+    // Non-conditional operands starting with the second operand are passed to
+    // branches and should be compatible across all branches' inputs.
+    for (auto operand_type :
+         llvm::enumerate(llvm::drop_begin(op->getOperandTypes(), 1))) {
+      Type branch_input_i_type = branch_type.getInput(operand_type.index());
+      if (!AreCastCompatible({operand_type.value(), branch_input_i_type}))
+        return op->emitOpError()
+               << "expects operand type " << operand_type.value()
+               << " to be cast compatible with " << branch_name(branch.index())
+               << " input type " << branch_input_i_type << " at index "
+               << operand_type.index();
+    }
+
+    // Branches' results should be pair-wise compatible with the op results.
+    for (auto result_type : llvm::enumerate(op->getResultTypes())) {
+      Type branch_result_i_type = branch_type.getResult(result_type.index());
+      if (!AreCastCompatible({result_type.value(), branch_result_i_type}))
+        return op->emitOpError()
+               << "expects result type " << result_type.value()
+               << " to be cast compatible with " << branch_name(branch.index())
+               << " result type " << branch_result_i_type << " at index "
+               << result_type.index();
+    }
+
+    branch_types.push_back(branch_type);
+  }
+
+  // If branches have incompatible input types that means that no tensor can
+  // serve as input to all the functions. Hence, the op is invalid.
+  for (int i = 0; i < expected_num_inputs; ++i) {
+    SmallVector<Type, 2> branch_input_i_types;
+    branch_input_i_types.reserve(branches.size());
+    llvm::transform(
+        branch_types, std::back_inserter(branch_input_i_types),
+        [i](FunctionType &branch_type) { return branch_type.getInput(i); });
+    if (!AreCastCompatible(branch_input_i_types)) {
+      std::string input_types_str;
+      llvm::raw_string_ostream os(input_types_str);
+      llvm::interleaveComma(branch_input_i_types, os);
+      return op->emitOpError()
+             << "expects all branch input type(s) (" << os.str()
+             << ") at index " << i << " to be cast compatible";
+    }
+  }
+
+  return success();
+}
+
+static LogicalResult Verify(CaseOp op) {
+  if (failed(VerifyCaseOpBase(op, op.branch_index()))) return failure();
+  auto branch_name = [](unsigned index) {
+    return llvm::formatv("branch #{0}", index).str();
+  };
+  return VerifyCaseOrIfOpBranchFunctions(op, op.branches().getValue(),
+                                         branch_name);
+}
+
 //===----------------------------------------------------------------------===//
 // CaseRegionOp
 //===----------------------------------------------------------------------===//
 
-// TODO(lyandy): Extract similar checks for CaseOp.
 static LogicalResult Verify(CaseRegionOp op) {
   if (op.branches().empty())
     return op.emitOpError() << "expects to have at least 1 region";
 
-  if (!IsOfRankOrUnranked(op.branch_index(), 0))
-    return op.emitOpError() << "expects 'branch_index' to be a scalar, but got "
-                            << op.branch_index().getType();
-
-  DenseIntElementsAttr branch_index_attr;
-  if (matchPattern(op.branch_index(), m_Constant(&branch_index_attr))) {
-    assert(branch_index_attr.getNumElements() == 1);
-    int64_t branch_index = branch_index_attr.getSplatValue<IntegerAttr>()
-                               .getValue()
-                               .getSExtValue();
-    if (branch_index < 0)
-      return op.emitOpError()
-             << "expects 'branch_index' to be non-negative, but got "
-             << branch_index;
-
-    if (branch_index >= op.branches().size())
-      return op.emitOpError()
-             << "expects 'branch_index' to be less than the number of regions ("
-             << op.branches().size() << "), but got " << branch_index;
-  }
+  if (failed(VerifyCaseOpBase(op, op.branch_index()))) return failure();
 
   for (auto region_and_idx : llvm::enumerate(op.branches())) {
     std::string region_name =
@@ -1837,79 +1924,18 @@ static LogicalResult Verify(GatherV2Op op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(IfOp op) {
-  auto then_fn = op.then_func();
-  if (!then_fn)
-    return op.emitOpError("then_branch refers to an undefined function : ")
-           << op.then_branch();
-  auto else_fn = op.else_func();
-  if (!else_fn)
-    return op.emitOpError("else_branch refers to an undefined function : ")
-           << op.else_branch();
-  auto then_fn_type = then_fn.getType();
-  auto else_fn_type = else_fn.getType();
-
-  // Non-conditional operands starting with the second operand are passed to
-  // branches and should be pair-wise compatible with branches' inputs.
-  unsigned expected_num_inputs = op.getNumOperands() - 1;
-  if (then_fn_type.getNumInputs() != expected_num_inputs ||
-      else_fn_type.getNumInputs() != expected_num_inputs)
-    return op.emitError("branches should have " + Twine(expected_num_inputs) +
-                        " inputs");
-
-  for (unsigned i = 0; i < expected_num_inputs; ++i) {
-    auto operand_type = op.getOperand(i + 1).getType().cast<TensorType>();
-    auto then_input_type = then_fn_type.getInput(i).cast<TensorType>();
-    if (!AreCastCompatible({operand_type, then_input_type}))
-      return op.emitError(
-          llvm::formatv("then branch input type {0} is incompatible with "
-                        "operand type {1} at index {2}",
-                        then_input_type, operand_type, i));
-
-    auto else_input_type = else_fn_type.getInput(i).cast<TensorType>();
-    if (!AreCastCompatible({operand_type, else_input_type}))
-      return op.emitError(
-          llvm::formatv("else branch input type {0} is incompatible with "
-                        "operand type {1} at index {2}",
-                        else_input_type, operand_type, i));
-
-    // If branches have incompatible input types that means that no tensor can
-    // serve as input to both the functions. Hence, the op is invalid.
-    if (!AreCastCompatible({then_input_type, else_input_type}))
-      return op.emitError(llvm::formatv(
-          "branches inputs have incompatible types {0} and {1} at index {2}",
-          then_input_type, else_input_type, i));
-  }
-
-  // Branches' results should be pair-wise compatible with the op results.
-  unsigned expected_num_results = op.getNumResults();
-  if (then_fn_type.getNumResults() != expected_num_results ||
-      else_fn_type.getNumResults() != expected_num_results)
-    return op.emitError("branches should have " + Twine(expected_num_results) +
-                        " results");
-
-  for (unsigned i = 0; i < expected_num_results; ++i) {
-    auto result_type = op.getResult(i).getType().cast<TensorType>();
-    auto then_result_type = then_fn_type.getResult(i).cast<TensorType>();
-    if (!AreCastCompatible({then_result_type, result_type}))
-      return op.emitError(
-          llvm::formatv("then branch result type {0} is incompatible with op "
-                        "result type {1} at index {2}",
-                        then_result_type, result_type, i));
-
-    auto else_result_type = else_fn_type.getResult(i).cast<TensorType>();
-    if (!AreCastCompatible({else_result_type, result_type}))
-      return op.emitError(
-          llvm::formatv("else branch result type {0} is incompatible with op "
-                        "result type {1} at index {2}",
-                        else_result_type, result_type, i));
-  }
-  return success();
+  auto branch_name = [](unsigned index) -> std::string {
+    return index == 0 ? "'then_branch'" : "'else_branch'";
+  };
+  return VerifyCaseOrIfOpBranchFunctions(
+      op, {op.then_branchAttr(), op.else_branchAttr()}, branch_name);
 }
 
 //===----------------------------------------------------------------------===//
 // IfOp canonicalization.
 //===----------------------------------------------------------------------===//
 
+namespace {
 class FoldConstantIfOp : public OpRewritePattern<TF::IfOp> {
  public:
   explicit FoldConstantIfOp(MLIRContext *context)
@@ -1941,9 +1967,9 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
   auto rewrite = [&](auto op_type) {
     auto empty = rewriter.getStringAttr("");
     auto call_op = rewriter.create<typename decltype(op_type)::CallOp>(
-        op.getLoc(), op.getResultTypes(), op.getOperands().drop_front(), func,
+        op.getLoc(), op.getResultTypes(), op.input(), func,
         /*config=*/empty, /*config_proto=*/empty, /*executor_type=*/empty);
-    PropagateDeviceAndInternalAttrs(op.getOperation(), call_op);
+    CopyDeviceAndUnderscoredAttributes(op.getOperation(), call_op);
     rewriter.replaceOp(op, call_op.getResults());
   };
 
@@ -1954,6 +1980,7 @@ LogicalResult FoldConstantIfOp::matchAndRewrite(
 
   return success();
 }
+}  // anonymous namespace
 
 void IfOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
                                        MLIRContext *context) {
@@ -1970,6 +1997,61 @@ static LogicalResult Verify(IfRegionOp op) {
   if (failed(VerifyRegionResults(op, op.else_branch(), "else")))
     return failure();
   return success();
+}
+
+namespace {
+class FoldConstantIfRegionOp : public OpRewritePattern<TF::IfRegionOp> {
+ public:
+  explicit FoldConstantIfRegionOp(MLIRContext *context)
+      : OpRewritePattern<TF::IfRegionOp>(context) {}
+  LogicalResult matchAndRewrite(TF::IfRegionOp op,
+                                PatternRewriter &rewriter) const override;
+};
+
+LogicalResult FoldConstantIfRegionOp::matchAndRewrite(
+    TF::IfRegionOp op, PatternRewriter &rewriter) const {
+  // Extract the constant cond value.
+  DenseIntElementsAttr cond_attr;
+  if (!matchPattern(op.cond(), m_Constant(&cond_attr))) return failure();
+
+  // IfRegion condition should always be a scalar. Select the region to fold to.
+  bool cond = cond_attr.getSplatValue<BoolAttr>().getValue();
+  Region &region = cond ? op.then_branch() : op.else_branch();
+
+  // If the IfRegion is stateless but the region being inlined itself is not
+  // stateless, then inlining the region could cause a loss of information.
+  // However, its probably better to fold the IfRegion instead of having the
+  // dead branch stay.
+
+  // Inline the region in place of the IfRegion op, and forward the yield
+  // inputs to the IfRegion op results. This is possible only if the yield
+  // types match the result types.
+  auto yield = cast<YieldOp>(region.front().getTerminator());
+  auto updated_results = llvm::to_vector<4>(yield.getOperands());
+
+  // If the yield types do not match the IfRegion result types, add appropriate
+  // casts.
+  rewriter.setInsertionPoint(yield);
+  for (auto it : llvm::zip(op.getResultTypes(), updated_results)) {
+    auto &updated_result = std::get<1>(it);
+    Type result_type = std::get<0>(it);
+    if (result_type != updated_result.getType()) {
+      updated_result =
+          rewriter.create<TF::CastOp>(op.getLoc(), result_type, updated_result,
+                                      /*Truncate=*/rewriter.getBoolAttr(false));
+    }
+  }
+  // Inline the region into the block containing the IfRegion.
+  rewriter.mergeBlockBefore(&region.front(), op);
+  rewriter.eraseOp(yield);
+  rewriter.replaceOp(op, updated_results);
+  return success();
+}
+}  // anonymous namespace
+
+void IfRegionOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
+                                             MLIRContext *context) {
+  results.insert<FoldConstantIfRegionOp>(context);
 }
 
 //===----------------------------------------------------------------------===//

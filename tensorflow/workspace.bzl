@@ -515,6 +515,29 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     tf_http_archive(
+        name = "typing_extensions_archive",
+        build_file = clean_dep("//third_party:typing_extensions.BUILD"),
+        sha256 = "79ee589a3caca649a9bfd2a8de4709837400dfa00b6cc81962a1e6a1815969ae",
+        strip_prefix = "typing_extensions-3.7.4.2/src_py3",
+        system_build_file = clean_dep("//third_party/systemlibs:typing_extensions.BUILD"),
+        urls = [
+            "http://mirror.tensorflow.org/files.pythonhosted.org/packages/6a/28/d32852f2af6b5ead85d396249d5bdf450833f3a69896d76eb480d9c5e406/typing_extensions-3.7.4.2.tar.gz",
+            "https://files.pythonhosted.org/packages/6a/28/d32852f2af6b5ead85d396249d5bdf450833f3a69896d76eb480d9c5e406/typing_extensions-3.7.4.2.tar.gz",
+        ],
+    )
+
+    filegroup_external(
+        name = "typing_extensions_license",
+        licenses = ["notice"],  # PSFL
+        sha256_urls = {
+            "ff17ce94e102024deb68773eb1cc74ca76da4e658f373531f0ac22d68a6bb1ad": [
+                "http://mirror.tensorflow.org/raw.githubusercontent.com/python/typing/master/typing_extensions/LICENSE",
+                "https://raw.githubusercontent.com/python/typing/master/typing_extensions/LICENSE",
+            ],
+        },
+    )
+
+    tf_http_archive(
         name = "opt_einsum_archive",
         build_file = clean_dep("//third_party:opt_einsum.BUILD"),
         sha256 = "d3d464b4da7ef09e444c30e4003a27def37f85ff10ff2671e5f7d7813adac35b",
@@ -699,8 +722,8 @@ def tf_repositories(path_prefix = "", tf_repo_name = ""):
     )
 
     # Check out LLVM and MLIR from llvm-project.
-    LLVM_COMMIT = "0581c0b0eeba03da590d1176a4580cf9b9e8d1e3"
-    LLVM_SHA256 = "9d93364e8ecd080258a2d2a113383387b91e5f6f2b662b48897cde8c47c178b6"
+    LLVM_COMMIT = "ffd0b31c7cbaa8322d2963afe6ace4e3a0889ddb"
+    LLVM_SHA256 = "a0ee81e91362821047e321788033f7b12d794c92067a8ea2b7cfa2a8faefd443"
     LLVM_URLS = [
         "https://storage.googleapis.com/mirror.tensorflow.org/github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),
         "https://github.com/llvm/llvm-project/archive/{commit}.tar.gz".format(commit = LLVM_COMMIT),

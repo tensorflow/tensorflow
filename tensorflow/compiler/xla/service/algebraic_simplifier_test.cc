@@ -5647,6 +5647,30 @@ INSTANTIATE_TEST_SUITE_P(
     DotOfGatherSimplificationTestInstantiation, DotOfGatherSimplificationTest,
     ::testing::ValuesIn(DotOfGatherPositiveNegativeTests()));
 
+TEST_F(AlgebraicSimplifierTest, GatherOfScalarToBroadcast) {
+  const char* hlo_string = R"(
+  HloModule repeat
+
+  ENTRY main {
+    o = f32[1,1] parameter(0)
+    i = s32[100,2] parameter(1)
+    ROOT g = f32[100] gather(o, i), collapsed_slice_dims={0,1},
+                                  start_index_map={0,1},
+                                  index_vector_dim=1,
+                                  offset_dims={},
+                                  slice_sizes={1,1}
+  }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseAndReturnVerifiedModule(hlo_string));
+
+  AlgebraicSimplifierOptions options;
+  AlgebraicSimplifier simplifier(options);
+  EXPECT_TRUE(simplifier.Run(module.get()).ValueOrDie());
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, GmockMatch(m::Broadcast(m::Reshape(m::Parameter(0)))));
+}
+
 TEST_F(AlgebraicSimplifierTest, TupleReduceReshape) {
   const char* hlo_string = R"(
 HloModule module
@@ -6931,5 +6955,57 @@ TEST_F(AlgebraicSimplifierTest, UnaryVariadicReduce) {
               GmockMatch(m::Add(m::Parameter(0), m::Parameter(1))));
 }
 
+TEST_F(AlgebraicSimplifierTest, BroadcastAndPadReorder) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      c1 = pred[] constant(true)
+      b2 = pred[32,1,768]{2,1,0} broadcast(pred[] c1), dimensions={}
+      c3 = pred[] constant(false)
+      ROOT p4 = pred[4096,1,768]{2,1,0} pad(pred[32,1,768]{2,1,0} b2, pred[] c3), padding=0_4064x0_0x0_0
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Broadcast(
+                  m::Pad(m::Broadcast(m::Constant()), m::Constant()))));
+}
+
+TEST_F(AlgebraicSimplifierTest, BroadcastAndPadReorderWithUse) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      c1 = pred[] constant(true)
+      b2 = pred[1,768,32]{2,1,0} broadcast(pred[] c1), dimensions={}
+      c3 = pred[] constant(false)
+      p4 = pred[1,768,4096]{2,1,0} pad(pred[1,768,32]{2,1,0} b2, pred[] c3), padding=0_0x0_0x0_4064
+      ROOT p5 = (pred[1,768,4096]{2,1,0}) tuple(pred[1,768,4096]{2,1,0} p4)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Broadcast(
+                  m::Pad(m::Broadcast(m::Constant()), m::Constant())))));
+}
+
+TEST_F(AlgebraicSimplifierTest, BroadcastAndPadReorderWithNonScalar) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      c1 = pred[32] parameter(0)
+      b2 = pred[1,768,32]{2,1,0} broadcast(pred[32] c1), dimensions={2}
+      c3 = pred[] constant(false)
+      p4 = pred[1,768,4096]{2,1,0} pad(pred[1,768,32]{2,1,0} b2, pred[] c3), padding=0_0x0_0x0_4064
+      ROOT p5 = (pred[1,768,4096]{2,1,0}) tuple(pred[1,768,4096]{2,1,0} p4)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::Tuple(m::Broadcast(
+                  m::Pad(m::Broadcast(m::Parameter()), m::Constant())))));
+}
 }  // namespace
 }  // namespace xla

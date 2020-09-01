@@ -196,8 +196,8 @@ class DefaultTensorTie : public TensorTie {
             ToTensorStorageType(d.object_def.object_type,
                                 d.object_def.data_layout),
             Layout::BHWC};
-        RETURN_IF_ERROR(AllocateTensorMemory(env->context(), env->device(),
-                                             shape, desc, &cl_memory_));
+        RETURN_IF_ERROR(
+            AllocateTensorMemory(env->context(), shape, desc, &cl_memory_));
         if (d.object_def.object_type == ObjectType::OPENCL_TEXTURE) {
           external_obj_ = OpenClTexture{cl_memory_.memory()};
         } else {

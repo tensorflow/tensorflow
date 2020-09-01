@@ -99,12 +99,14 @@ class QuantizationDriver {
  public:
   explicit QuantizationDriver(FuncOp fn, bool is_signed,
                               bool disable_per_channel,
-                              OpQuantSpecGetter op_quant_spec_getter)
+                              OpQuantSpecGetter op_quant_spec_getter,
+                              bool enforce_fixed_output_range)
       : fn_(fn),
         builder_(fn.getBody()),
         is_signed_(is_signed),
         disable_per_channel_(disable_per_channel),
-        op_quant_spec_getter_(op_quant_spec_getter) {}
+        op_quant_spec_getter_(op_quant_spec_getter),
+        enforce_fixed_output_range_(enforce_fixed_output_range) {}
 
   // The entry point of the quantization parameters propagation.
   void Run();
@@ -354,6 +356,8 @@ class QuantizationDriver {
   llvm::SmallVector<BlockArgument, 4> args_;
 
   OpQuantSpecGetter op_quant_spec_getter_;
+
+  bool enforce_fixed_output_range_;
 };
 }  // namespace
 
@@ -794,7 +798,8 @@ bool QuantizationDriver::PropagateParams() {
     }
 
     // TODO(fengliuai): make the bit width configurable.
-    if (auto restricted = llvm::dyn_cast<FixedOutputRangeInterface>(op)) {
+    auto restricted = llvm::dyn_cast<FixedOutputRangeInterface>(op);
+    if (restricted && enforce_fixed_output_range_) {
       // TODO(fengliuai): different result can have different fixed range.
       auto params = restricted.GetFixedOutputRange(is_signed_, /*bit_width=*/8);
       for (auto i = 0; i < op->getNumResults(); ++i) {
@@ -864,10 +869,12 @@ void QuantizationDriver::Run() {
   }
 }
 
-void ApplyQuantizationParamsPropagation(
-    mlir::FuncOp func, bool is_signed, bool disable_per_channel,
-    OpQuantSpecGetter op_quant_spec_getter) {
-  QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter)
+void ApplyQuantizationParamsPropagation(mlir::FuncOp func, bool is_signed,
+                                        bool disable_per_channel,
+                                        OpQuantSpecGetter op_quant_spec_getter,
+                                        bool post_training_quantization) {
+  QuantizationDriver(func, is_signed, disable_per_channel, op_quant_spec_getter,
+                     post_training_quantization)
       .Run();
 }
 

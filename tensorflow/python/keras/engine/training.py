@@ -445,6 +445,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
               loss_weights=None,
               weighted_metrics=None,
               run_eagerly=None,
+              steps_per_execution=None,
               **kwargs):
     """Configures the model for training.
 
@@ -496,17 +497,18 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
           logic will not be wrapped in a `tf.function`. Recommended to leave
           this as `None` unless your `Model` cannot be run inside a
           `tf.function`.
-        **kwargs: Any additional arguments. Supported arguments:
-            - `experimental_steps_per_execution`: Int. The number of batches to
-              run during each `tf.function` call. Running multiple batches
-              inside a single `tf.function` call can greatly improve performance
-              on TPUs or small models with a large Python overhead. Note that if
-              this value is set to `N`, `Callback.on_batch` methods will only be
-              called every `N` batches. This currently defaults to `1`. At most,
-              one full epoch will be run each execution. If a number larger than
-              the size of the epoch is passed, the execution will be truncated
-              to the size of the epoch.
-            - `sample_weight_mode` for backward compatibility.
+        steps_per_execution: Int. Defaults to 1. The number of batches to
+          run during each `tf.function` call. Running multiple batches
+          inside a single `tf.function` call can greatly improve performance
+          on TPUs or small models with a large Python overhead.
+          At most, one full epoch will be run each
+          execution. If a number larger than the size of the epoch is passed,
+          the execution will be truncated to the size of the epoch.
+          Note that if `steps_per_execution` is set to `N`,
+          `Callback.on_batch_begin` and `Callback.on_batch_end` methods
+          will only be called every `N` batches
+          (i.e. before/after each `tf.function` execution).
+        **kwargs: Arguments supported for backwards compatibility only.
 
     Raises:
         ValueError: In case of invalid arguments for
@@ -514,6 +516,13 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     """
     base_layer.keras_api_gauge.get_cell('compile').set(True)
     with self.distribute_strategy.scope():
+      if 'experimental_steps_per_execution' in kwargs:
+        logging.warn('The argument `steps_per_execution` is no longer '
+                     'experimental. Pass `steps_per_execution` instead of '
+                     '`experimental_steps_per_execution`.')
+        if not steps_per_execution:
+          steps_per_execution = kwargs.pop('experimental_steps_per_execution')
+
       self._validate_compile(optimizer, metrics, **kwargs)
       self._run_eagerly = run_eagerly
 
@@ -523,9 +532,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       self.compiled_metrics = compile_utils.MetricsContainer(
           metrics, weighted_metrics, output_names=self.output_names)
 
-      experimental_steps_per_execution = kwargs.pop(
-          'experimental_steps_per_execution', 1)
-      self._configure_steps_per_execution(experimental_steps_per_execution)
+      self._configure_steps_per_execution(steps_per_execution or 1)
 
       # Initializes attrs that are reset each time `compile` is called.
       self._reset_compile_cache()
@@ -2460,9 +2467,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if kwargs.pop('target_tensors', None) is not None:
       raise ValueError(
           'target_tensors argument is not supported when executing eagerly.')
-    invalid_kwargs = set(kwargs) - {
-        'experimental_steps_per_execution', 'sample_weight_mode'
-    }
+    invalid_kwargs = set(kwargs) - {'sample_weight_mode'}
     if invalid_kwargs:
       raise TypeError('Invalid keyword argument(s) in `compile`: %s' %
                       (invalid_kwargs,))

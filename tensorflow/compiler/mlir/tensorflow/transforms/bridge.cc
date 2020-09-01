@@ -101,13 +101,16 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addPass(TFDevice::CreateResourceOpLiftingPass());
   pm.addPass(TF::CreateTFFunctionalControlFlowToRegions());
   pm.addPass(mlir::createInlinerPass());
+  pm.addPass(TFDevice::CreateMarkOpsForOutsideCompilationPass());
   pm.addPass(CreateTPUExtractHeadTailOutsideCompilationPass());
+  pm.addPass(CreateTPUExtractOutsideCompilationPass());
   pm.addPass(TF::CreateTFRegionControlFlowToFunctional());
 
   pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorConstantSinkingPass());
   pm.addPass(TF::CreateResourceDeviceInferencePass());
   pm.addPass(TFDevice::CreateClusterOutliningPass());
   pm.addPass(CreateTPUDynamicPaddingMapperPass());
+  pm.addPass(CreateTPUResourceReadForWritePass());
   pm.addPass(CreateTPUShardingIdentificationPass());
   pm.addPass(TFDevice::CreateAnnotateParameterReplicationPass());
   pm.addPass(CreateTPURewritePass());
@@ -115,6 +118,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addNestedPass<FuncOp>(CreateTPUDynamicLayoutPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
+  pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
   pm.addPass(CreateTPUVariableReformattingPass());
 }
 

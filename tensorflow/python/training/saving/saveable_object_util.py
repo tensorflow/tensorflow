@@ -326,7 +326,7 @@ def _add_saveable(saveables, seen_ops, saveable):
   Raises:
     ValueError: If the saveable has already been processed.
   """
-  if saveable.op in seen_ops:
+  if saveable.op is not None and saveable.op in seen_ops:
     raise ValueError("The same saveable will be restored with two names: %s" %
                      saveable.name)
   saveables.append(saveable)

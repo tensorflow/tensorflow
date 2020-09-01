@@ -314,21 +314,41 @@ tf_device::LaunchOp CreateLaunchOpForOutsideCluster(
   return launch_op;
 }
 
-// Extracts all externally provided operands of `cluster_ops`.
+// Extracts all externally provided operands of `host_cluster_ops`.
 llvm::SmallSetVector<Value, 4> GetExternalOperands(
-    llvm::ArrayRef<Operation*> cluster_ops) {
+    tf_device::ClusterOp tpu_cluster,
+    llvm::ArrayRef<Operation*> host_cluster_ops) {
   llvm::SmallSetVector<Value, 4> external_values;
 
-  for (Operation* op : cluster_ops) {
-    for (Value v : op->getOperands()) {
-      Operation* defining_op = v.getDefiningOp();
-      if (!defining_op) continue;
-      bool is_external = llvm::none_of(cluster_ops, [&](Operation* cluster_op) {
-        return defining_op == cluster_op;
-      });
+  for (Operation* host_cluster_op : host_cluster_ops) {
+    auto cluster_op_parent_region = host_cluster_op->getParentRegion();
+    host_cluster_op->walk([&](Operation* op) {
+      auto region = op->getParentRegion();
 
-      if (is_external) external_values.insert(v);
-    }
+      if (region == cluster_op_parent_region) {
+        // For op operands, add operand defining ops, if they are not included
+        // in `host_cluster_ops`.
+        for (Value v : op->getOperands()) {
+          Operation* defining_op = v.getDefiningOp();
+          if (!defining_op) continue;
+          bool is_external = llvm::none_of(
+              host_cluster_ops,
+              [&](Operation* cluster_op) { return defining_op == cluster_op; });
+
+          if (is_external) external_values.insert(v);
+        }
+      } else {
+        llvm::SetVector<Value> external_captured_inputs;
+        visitUsedValuesDefinedAbove(*region, *region, [&](OpOperand* operand) {
+          Region* parent_region = operand->get().getParentRegion();
+          if (!tpu_cluster.body().isAncestor(parent_region)) return;
+
+          external_captured_inputs.insert(operand->get());
+        });
+        external_values.insert(external_captured_inputs.begin(),
+                               external_captured_inputs.end());
+      }
+    });
   }
 
   return external_values;
@@ -494,7 +514,7 @@ void CreateParallelExecuteFromOutsideClusters(ModuleOp module,
         &builder, cluster_ops.back(), host_device);
 
     // Determine if there are any inputs that are provided out of cluster.
-    auto external_inputs = GetExternalOperands(cluster_ops);
+    auto external_inputs = GetExternalOperands(tpu_cluster, cluster_ops);
     auto external_outputs = GetExternalOutputs(cluster_ops);
 
     MoveOutsideCompiledOps(module, tpu_cluster, cluster.value().getFirst(),

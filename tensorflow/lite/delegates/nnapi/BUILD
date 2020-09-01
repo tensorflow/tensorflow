@@ -1,4 +1,5 @@
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -26,6 +27,7 @@ cc_library(
         "nnapi_delegate.h",
         "nnapi_delegate_kernel.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     deps = [
         "//tensorflow/lite:allocation",
         "//tensorflow/lite:kernel_api",

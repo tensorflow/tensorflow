@@ -512,7 +512,6 @@ class Conv2DOp : public BinaryOp<T> {
     OP_REQUIRES_OK(context, InitConv2DParameters(context, &params_));
 
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
-    use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
   }
 
@@ -1184,7 +1183,8 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,       \
       const std::array<int, 2>& padding_left,                               \
       const std::array<int, 2>& padding_right,                              \
-      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format);    \
+      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format,     \
+      T padding_value);                                                     \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
 DECLARE_GPU_SPEC(float);

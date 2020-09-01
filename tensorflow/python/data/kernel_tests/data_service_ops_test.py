@@ -65,6 +65,14 @@ def _make_distributed_dataset(dataset,
           task_refresh_interval_hint_ms=20))
 
 
+def _all_cluster_configurations():
+  with_work_dir = combinations.combine(
+      work_dir=None, fault_tolerant_mode=[True, False])
+  without_work_dir = combinations.combine(
+      work_dir="", fault_tolerant_mode=False)
+  return with_work_dir + without_work_dir
+
+
 def _make_distributed_range_dataset(num_elements,
                                     dispatcher,
                                     job_name=None,
@@ -89,15 +97,20 @@ def _make_distributed_range_dataset(num_elements,
 
 class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  def start_dispatch_server(self, name="", port=0):
+  def start_dispatch_server(self,
+                            name="",
+                            port=0,
+                            work_dir=None,
+                            fault_tolerant_mode=True):
     # If a test starts multiple independent dispatch servers, it should give
     # them different `name` values.
-    work_dir = os.path.join(self.get_temp_dir(), "work_dir_", name)
+    work_dir = os.path.join(self.get_temp_dir(), "work_dir_",
+                            name) if work_dir is None else work_dir
     return server_lib.DispatchServer(
         port=port,
         protocol=server_lib.DEFAULT_PROTOCOL,
         work_dir=work_dir,
-        fault_tolerant_mode=True)
+        fault_tolerant_mode=fault_tolerant_mode)
 
   def start_worker_server(self, dispatcher, port=0):
     return server_lib.WorkerServer(
@@ -109,7 +122,10 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     """Stops `dispatcher` and returns a new dispatcher with the same port."""
     port = int(_address_from_target(dispatcher.target).split(":")[1])
     dispatcher._stop()
-    return self.start_dispatch_server(port=port)
+    return self.start_dispatch_server(
+        port=port,
+        work_dir=dispatcher._work_dir,
+        fault_tolerant_mode=dispatcher._fault_tolerant_mode)
 
   def restart_worker(self, worker, dispatcher, use_same_port=True):
     """Stops `worker` and returns a new worker."""
@@ -119,23 +135,25 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     worker._stop()
     return self.start_worker_server(dispatcher, port)
 
-  def start_cluster(self, num_workers, name=""):
-    """Creates a cluster of tf.data service servers.
+  def start_cluster(self,
+                    num_workers,
+                    name="",
+                    work_dir=None,
+                    fault_tolerant_mode=True):
+    """Creates and starts a tf.data service cluster."""
+    dispatcher = self.start_dispatch_server(
+        name=name, work_dir=work_dir, fault_tolerant_mode=fault_tolerant_mode)
+    workers = [self.start_worker_server(dispatcher) for _ in range(num_workers)]
+    return dispatcher, workers
 
-    Args:
-      num_workers: The number of workers in the cluster.
-      name: A name for the cluster.
-
-    Returns:
-      A tuple of (dispatcher, list_of_workers).
-    """
-    dispatcher = self.start_dispatch_server(name=name)
-    servers = [self.start_worker_server(dispatcher) for _ in range(num_workers)]
-    return dispatcher, servers
-
-  @combinations.generate(test_base.eager_only_combinations())
-  def testDistributeBasic(self):
-    dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
+  @combinations.generate(
+      combinations.times(test_base.eager_only_combinations(),
+                         _all_cluster_configurations()))
+  def testDistributeBasic(self, work_dir, fault_tolerant_mode):
+    dispatcher, workers = self.start_cluster(  # to avoid gcing workers, pylint: disable=unused-variable
+        1,
+        work_dir=work_dir,
+        fault_tolerant_mode=fault_tolerant_mode)
     num_elements = 10
     ds = _make_distributed_range_dataset(10, dispatcher)
     results = [elem.numpy() for elem in ds]
@@ -387,9 +405,11 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(test_base.eager_only_combinations(),
-                         combinations.combine(use_same_port=[True, False])))
-  def testRestartWorker(self, use_same_port):
-    dispatcher, [worker] = self.start_cluster(1)
+                         combinations.combine(use_same_port=[True, False]),
+                         _all_cluster_configurations()))
+  def testRestartWorker(self, use_same_port, work_dir, fault_tolerant_mode):
+    dispatcher, [worker] = self.start_cluster(
+        1, work_dir=work_dir, fault_tolerant_mode=fault_tolerant_mode)
     num_elements = 100
     ds = _make_distributed_range_dataset(num_elements, dispatcher)
     iterator = iter(ds)
@@ -449,9 +469,12 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
   def testSharedJobName(self):
     dispatcher, workers = self.start_cluster(1)  # to avoid gcing workers, pylint: disable=unused-variable
     num_elements = 100
-    ds = dataset_ops.Dataset.range(num_elements)
-    ds1 = _make_distributed_dataset(ds, dispatcher, job_name="job_name")
-    ds2 = _make_distributed_dataset(ds, dispatcher, job_name="job_name")
+
+    def make_ds():
+      return dataset_ops.Dataset.range(num_elements).shuffle(num_elements)
+
+    ds1 = _make_distributed_dataset(make_ds(), dispatcher, job_name="job_name")
+    ds2 = _make_distributed_dataset(make_ds(), dispatcher, job_name="job_name")
     iter1 = iter(ds1)
     iter2 = iter(ds2)
     results = []
@@ -577,10 +600,8 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       _make_distributed_dataset(dataset, dispatcher)
       return dataset
 
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError, r"The `.distribute\(...\)` dataset "
-        "transformation is not supported within tf.data functions"):
-      ds = ds.interleave(interleave_fn, cycle_length=2)
+    ds = ds.interleave(interleave_fn, cycle_length=2)
+    self.assertDatasetProduces(ds, [0, 0, 1, 1])
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeNonStringAddresses(self):

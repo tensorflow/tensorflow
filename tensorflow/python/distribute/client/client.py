@@ -26,13 +26,14 @@ import contextlib
 import enum
 import functools
 import os
+import re
 import sys
 import threading
 import weakref
 from absl import logging
 from six.moves import queue
 
-from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.client import metric_utils
@@ -42,8 +43,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import function as tf_function
 from tensorflow.python.eager import remote
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -546,8 +545,9 @@ class _CoordinatedClosureQueue(object):
 class WorkerPreemptionHandler(object):
   """Handles worker preemptions."""
 
-  def __init__(self, server_def):
+  def __init__(self, server_def, cluster):
     self._server_def = server_def
+    self._cluster = cluster
     self._cluster_update_lock = threading.Lock()
     self._cluster_due_for_update = threading.Event()
     self._worker_up_cond = threading.Condition(self._cluster_update_lock)
@@ -581,6 +581,13 @@ class WorkerPreemptionHandler(object):
     try:
       yield
     except errors.OpError as e:
+      # If the error is due to temporary connectivity issues between worker and
+      # ps, put back closure, ignore error and do not mark worker as failure.
+      if self._cluster._record_and_ignore_transient_ps_failure(e):  # pylint: disable=protected-access
+        if on_failure_fn:
+          on_failure_fn()
+        return
+
       self._validate_preemption_failure(e)
       logging.error("Worker %s failed with error: %s", worker_device_name, e)
       if on_failure_fn:
@@ -770,7 +777,6 @@ class Cluster(object):
       device_filters.set_device_filters(
           "ps", i, ["/job:worker", "/job:%s" % client_name])
 
-    context.context().mirroring_policy = context.MIRRORING_ALL
     # Allow at most one outstanding RPC for each worker at a certain time. This
     # is to simplify worker failure handling in the runtime
     os.environ["TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE"] = "False"
@@ -779,14 +785,47 @@ class Cluster(object):
                               protocol=cluster_resolver.rpc_layer,
                               cluster_device_filters=device_filters)
 
+    # Ignore PS failures reported by workers due to transient connection errors.
+    # Transient connectivity issues between workers and PS are relayed by the
+    # workers to the client, leading the client to believe that there are PS
+    # failures. The difference between transient vs. permanent PS failure is the
+    # number of reports from the workers. When this env var is set to a positive
+    # integer K, the client ignores up to K reports of a failed PS task. I.e.,
+    # only when there are more than K trials of executing closures fail due to
+    # errors from the same PS instance do we consider the PS instance encounters
+    # a failure.
+    # TODO(b/164279603): Remove this workaround when the underlying connectivity
+    # issue in gRPC server is resolved.
+    self._transient_ps_failures_threshold = int(os.environ.get(
+        "TF_CLIENT_IGNORE_TRANSIENT_PS_FAILURES", 3))
+    self._potential_ps_failures_lock = threading.Lock()
+    self._potential_ps_failures_count = [0] * self._num_ps
+
     self._closure_queue = _CoordinatedClosureQueue()
-    self.failure_handler = WorkerPreemptionHandler(context.get_server_def())
+    self.failure_handler = WorkerPreemptionHandler(context.get_server_def(),
+                                                   self)
     worker_device_strings = [
         "/job:worker/replica:0/task:%d" % i for i in range(self._num_workers)
     ]
     self.workers = [
         Worker(i, w, self) for i, w in enumerate(worker_device_strings)
     ]
+
+  def _record_and_ignore_transient_ps_failure(self, e):
+    """Records potential PS failures and return if failure should be ignored."""
+    if self._transient_ps_failures_threshold <= 0 or not _is_ps_failure(e):
+      return False
+
+    ps_tasks = _extract_failed_ps_instances(str(e))
+    with self._potential_ps_failures_lock:
+      for t in ps_tasks:
+        self._potential_ps_failures_count[t] += 1
+        # The number of UnavailableError encountered on this PS task exceeds the
+        # maximum number of ignored error
+        if (self._potential_ps_failures_count[t] >=
+            self._transient_ps_failures_threshold):
+          return False
+    return True
 
   def schedule(self, function, args, kwargs):
     """Schedules `function` to be dispatched to a worker for execution.
@@ -826,9 +865,7 @@ class Client(object):
   """An object to schedule and orchestrate remote function execution.
 
   A `Client` object represents a program used to create dataset, schedule
-  functions to be executed, and fetch the results of the functions. Operations
-  that will involve other tasks in the cluster, such as variable creation,
-  reading variables etc., should be performed within `client.context()`.
+  functions to be executed, and fetch the results of the functions.
 
   Currently, `Client` is not supported to be used in a standalone manner.
   It should be used in conjunction with `ParameterServerStrategyV2`. The
@@ -859,36 +896,9 @@ class Client(object):
     self._strategy = strategy
     self.cluster = Cluster(strategy._cluster_resolver)
 
-  @contextlib.contextmanager
-  def context(self):
-    """Context manager under which client distribution is in effect.
-
-    All distribution related methods using this `Client`, including those that
-    create and update variables, should be used within this context. This
-    context manager handles cluster fault tolerance in remote function
-    execution.
-
-    The context manager calls `join` automatically when exiting successfully.
-
-    Entering `Client.context` also enters the underlying strategy's scope, and
-    this means that `tf.distribute.get_strategy()` will return the strategy
-    object being used.
-
-    Yields:
-      Nothing.
-    """
-    with self._strategy.scope(), self._handle_parameter_server_failure():
-      yield
-    self.join()
-
-  @contextlib.contextmanager
-  def experimental_variable_partitioning_scope(self):
-    with self._strategy.experimental_variable_partitioning_scope():
-      yield
-
-  (experimental_variable_partitioning_scope.__doc__) = (
-      parameter_server_strategy_v2.ParameterServerStrategyV2
-      .experimental_variable_partitioning_scope.__doc__)
+  @property
+  def strategy(self):
+    return self._strategy
 
   def schedule(self, fn, args=None, kwargs=None):
     """Schedules `fn` to be dispatched to a worker for execution asynchronously.
@@ -943,13 +953,10 @@ class Client(object):
         scheduled function since the last time an error was thrown or since
         the beginning of the program.
     """
-    # TODO(b/160702436): Invoke `strategy.run` for user's function so it enters
-    # a `ReplicaContext` in a logically correct way.
-    with distribute_lib.ReplicaContext(
-        self._strategy,
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
-      with self._translate_parameter_server_failure():
-        return self.cluster.schedule(fn, args=args, kwargs=kwargs)
+    # Slot variables are usually created during function tracing time; thus
+    # `schedule` needs to be called within the `strategy.scope()`.
+    with self.strategy.scope(), _translate_parameter_server_failure():
+      return self.cluster.schedule(fn, args=args, kwargs=kwargs)
 
   def join(self):
     """Blocks until all the scheduled functions have finished execution.
@@ -970,9 +977,7 @@ class Client(object):
         scheduled function since the last time an error was thrown or since
         the beginning of the program.
     """
-    # TODO(b/159486639): Update the docs once we can cancel the functions being
-    # executed on workers, that when `join` returns, the system is stabilized.
-    with self._translate_parameter_server_failure():
+    with _translate_parameter_server_failure():
       self.cluster.join()
 
   def done(self):
@@ -1071,31 +1076,32 @@ class Client(object):
       return (result,)
     return result
 
-  # pylint: disable=missing-function-docstring
-  @contextlib.contextmanager
-  def _translate_parameter_server_failure(self):
-    try:
-      yield
-    except Exception as e:  # pylint: disable=broad-except
-      if _is_ps_failure(e):
-        logging.exception("Encountered parameter server failures!")
-        raise ParameterServerFailureError(e)
-      else:
-        raise
 
-  # pylint: disable=missing-function-docstring
-  @contextlib.contextmanager
-  def _handle_parameter_server_failure(self):
-    try:
-      with self._translate_parameter_server_failure():
-        yield
-    except ParameterServerFailureError as e:  # pylint: disable=broad-except
-      restart_exit_code = os.environ.get(
-          "TF_CLIENT_NON_FATAL_RESTART_EXIT_CODE", None)
-      if restart_exit_code is not None:
-        sys.exit(int(restart_exit_code))
-      else:
-        raise
+# pylint: disable=missing-function-docstring
+@contextlib.contextmanager
+def _translate_parameter_server_failure():
+  try:
+    yield
+  except Exception as e:  # pylint: disable=broad-except
+    if _is_ps_failure(e):
+      raise ParameterServerFailureError(e)
+    else:
+      raise
+
+
+# pylint: disable=missing-function-docstring
+@contextlib.contextmanager
+def handle_parameter_server_failure():
+  try:
+    with _translate_parameter_server_failure():
+      yield
+  except ParameterServerFailureError as e:  # pylint: disable=broad-except
+    restart_exit_code = os.environ.get("TF_CLIENT_NON_FATAL_RESTART_EXIT_CODE",
+                                       None)
+    if restart_exit_code is not None:
+      sys.exit(int(restart_exit_code))
+    else:
+      raise
 
 
 class _PerWorkerDistributedDataset(object):
@@ -1141,15 +1147,12 @@ class _PerWorkerDistributedDataset(object):
     per_worker_iterator = self._client._create_per_worker_resources(
         _create_per_worker_iterator)
 
-    # Create an iterator, so the consumer function of this iterator can start
-    # tracing using this iterator without needing to wait for the completion of
-    # the iterater creation. Note: the iterator shouldn't use memory until it is
-    # consumed.
-    # TODO(b/154675763): get rid of this workaround once we can make input_fn a
-    # tf.function.
-    iterator = _create_per_worker_iterator()
+    # Setting type_spec of each RemoteValue so that functions taking these
+    # RemoteValues as inputs can be traced.
     for iterator_remote_value in per_worker_iterator._values:
-      iterator_remote_value._set_type_spec(iterator._type_spec)
+      iterator_remote_value._set_type_spec(
+          iterator_ops.IteratorSpec(
+              self._dataset_fn.structured_outputs.element_spec))
     return _PerWorkerDistributedIterator(per_worker_iterator._values)
 
   @property
@@ -1169,6 +1172,12 @@ class _PerWorkerDistributedIterator(PerWorkerValues):
     """Returns the next input from the iterator for all replicas."""
     raise NotImplementedError("Iterating over an `AsyncDistributedIterator` "
                               "is not supported right now.")
+
+
+def _extract_failed_ps_instances(err_msg):
+  """Return a set of potentially failing ps instances from error message."""
+  tasks = re.findall("/job:ps/replica:0/task:[0-9]+", err_msg)
+  return set(int(t.split(":")[-1]) for t in tasks)
 
 
 def _is_ps_failure(error):

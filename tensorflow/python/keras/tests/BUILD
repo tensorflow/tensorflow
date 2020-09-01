@@ -17,6 +17,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 tf_py_test(
     name = "get_config_test",
     srcs = ["get_config_test.py"],
@@ -274,7 +280,6 @@ cuda_py_test(
     name = "op_callbacks_test",
     srcs = ["op_callbacks_test.py"],
     python_version = "PY3",
-    tags = ["no_cuda11"],
     xla_enable_strict_auto_jit = False,
     deps = [
         "//tensorflow/python:framework_ops",

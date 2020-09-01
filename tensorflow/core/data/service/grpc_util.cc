@@ -57,8 +57,8 @@ Status Retry(const std::function<Status()>& f, const std::string& description,
         std::min(deadline_with_backoff_micros, deadline_micros);
     int64 wait_time_micros = backoff_until - now_micros;
     if (wait_time_micros > 100 * 1000) {
-      LOG(INFO) << "Failed to " << description << ". Will retry in "
-                << wait_time_micros / 1000 << "ms.";
+      LOG(INFO) << "Failed to " << description << ": " << s
+                << ". Will retry in " << wait_time_micros / 1000 << "ms.";
     }
     Env::Default()->SleepForMicroseconds(wait_time_micros);
     s = f();

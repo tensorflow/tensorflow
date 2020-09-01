@@ -138,8 +138,7 @@ ENTRY entry {
               op::AllReduce(op::Select(
                   op::Broadcast(op::Compare(op::PartitionId(), op::Constant())),
                   op::Constant(), op::Broadcast())),
-              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId(),
-                                           op::Constant())),
+              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
               op::Constant())),
           op::Shape("s32[1,3]")));
 }
@@ -161,8 +160,7 @@ ENTRY entry {
       op::Copy(op::AllReduce(AllOf(
           op::DynamicUpdateSlice(
               op::Broadcast(), AllOf(op::Constant(), op::Shape("s32[1,3]")),
-              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId(),
-                                           op::Constant())),
+              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
               op::Constant()),
           op::Shape("s32[2,3]")))));
 }
@@ -184,8 +182,7 @@ ENTRY entry {
       op::Copy(op::Copy(op::AllReduce(AllOf(
           op::DynamicUpdateSlice(
               op::Broadcast(), AllOf(op::Constant(), op::Shape("s32[1,3]")),
-              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId(),
-                                           op::Constant())),
+              op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
               op::Constant()),
           op::Shape("s32[2,3]"))))));
 }
@@ -279,8 +276,8 @@ ENTRY entry {
   HloInstruction* root = module->entry_computation()->root_instruction();
   ASSERT_THAT(root, op::Tuple());
 
-  auto offset = op::Reshape(
-      op::DynamicSlice(op::Constant(), op::PartitionId(), op::Constant()));
+  auto offset =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
 
   EXPECT_THAT(root->operand(0),
               op::DynamicSlice(op::GetTupleElement(op::Parameter()), offset,
@@ -305,13 +302,13 @@ ENTRY entry {
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(
-      root, op::Copy(op::AllReduce(op::DynamicUpdateSlice(
-                op::Broadcast(),
-                op::GetTupleElement(
-                    AllOf(op::Infeed(), op::Shape("(f32[4,2]{1,0}, token[])"))),
-                op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId(),
-                                             op::Constant())),
-                op::Constant()))));
+      root,
+      op::Copy(op::AllReduce(op::DynamicUpdateSlice(
+          op::Broadcast(),
+          op::GetTupleElement(
+              AllOf(op::Infeed(), op::Shape("(f32[4,2]{1,0}, token[])"))),
+          op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
+          op::Constant()))));
 }
 
 TEST_F(SpmdPartitioningTest, UnevenTiledInfeed) {
@@ -3923,6 +3920,26 @@ ENTRY entry {
                           op::Shape("f32[3,5]")));
 }
 
+TEST_F(SpmdPartitioningTest, PassthroughGather_PartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[2,9] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[3] parameter(1), sharding={replicated}
+  ROOT %gather = f32[3,9] gather(%input, %indices), offset_dims={1},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=1,
+    slice_sizes={1,9}, sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Gather(op::Parameter(0), op::Parameter(1)),
+                          op::Shape("f32[3,5]")));
+}
+
 TEST_F(SpmdPartitioningTest, IndexPassthroughGather) {
   const char* const hlo_string = R"(
 HloModule module
@@ -3936,6 +3953,27 @@ ENTRY entry {
 })";
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Gather(op::Parameter(0), op::Parameter(1)),
+                          op::Shape("f32[8,2,2]")));
+}
+
+TEST_F(SpmdPartitioningTest, IndexPassthroughGather_PartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[2,9,8] parameter(0), sharding={replicated}
+  %indices = s32[4,2,4] parameter(1),
+    sharding={devices=[2,1,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %gather = f32[8,4,4] gather(%input, %indices), offset_dims={0},
+    collapsed_slice_dims={0,1}, start_index_map={0,1}, index_vector_dim=1,
+    slice_sizes={1,1,8},
+    sharding={devices=[1,2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
   VLOG(1) << module->ToString();
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Gather(op::Parameter(0), op::Parameter(1)),
@@ -3956,8 +3994,39 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto offset = op::Reshape(
-      op::DynamicSlice(op::Constant(), op::PartitionId(), op::Constant()));
+  auto offset =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
+  auto min = AllOf(op::Broadcast(offset), op::Shape("s32[2,3]"));
+  auto max = AllOf(op::Broadcast(op::Add(offset, op::Constant())),
+                   op::Shape("s32[2,3]"));
+  auto clamp = op::Clamp(min, op::Parameter(1), max);
+  auto gather = op::Gather(op::Parameter(0), op::Subtract(clamp, min));
+  auto mask =
+      op::Or(op::Lt(op::Parameter(1), min), op::Gt(op::Parameter(1), max));
+  auto masked =
+      op::Select(op::Broadcast(mask), op::Broadcast(op::Constant()), gather);
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::AllReduce(masked), op::Shape("f32[2,3,9]")));
+}
+
+TEST_F(SpmdPartitioningTest,
+       GatherPartitionedOnTrivialSliceDims_PartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %input = f32[17,9] parameter(0),
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[2,3] parameter(1), sharding={replicated}
+  ROOT %gather = f32[2,3,9] gather(%input, %indices), offset_dims={2},
+    collapsed_slice_dims={0}, start_index_map={0}, index_vector_dim=2,
+    slice_sizes={1,9}, sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto offset =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
   auto min = AllOf(op::Broadcast(offset), op::Shape("s32[2,3]"));
   auto max = AllOf(op::Broadcast(op::Add(offset, op::Constant())),
                    op::Shape("s32[2,3]"));
@@ -4001,6 +4070,39 @@ ENTRY entry {
                           op::Shape("f32[2,5]")));
 }
 
+TEST_F(SpmdPartitioningTest, PassthroughScatter_PartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[2,9] parameter(0),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[3] parameter(1), sharding={replicated}
+  %updates = f32[3,9] parameter(2),
+    sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+  ROOT %scatter = f32[2,9] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={1},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=1,
+      sharding={devices=[1,2,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Scatter(op::Parameter(0), op::Parameter(1),
+                                      op::Parameter(2)),
+                          op::Shape("f32[2,5]")));
+}
+
 TEST_F(SpmdPartitioningTest, IndexPassthroughScatter) {
   const char* const hlo_string = R"(
 HloModule module
@@ -4030,6 +4132,42 @@ ENTRY entry {
       root,
       AllOf(op::AllReduce(op::Scatter(
                 op::Select(op::Broadcast(op::Convert(op::PartitionId())),
+                           op::Broadcast(op::Constant()), op::Parameter(0)),
+                op::Parameter(1), op::Parameter(2))),
+            op::Shape("f32[2,9,8]")));
+}
+
+TEST_F(SpmdPartitioningTest, IndexPassthroughScatter_PartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[2,9,8] parameter(0), sharding={replicated}
+  %indices = s32[4,2,4] parameter(1),
+    sharding={devices=[2,1,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  %updates = f32[4,4,8] parameter(2),
+    sharding={devices=[2,2,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %scatter = f32[2,9,8] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={2},
+      inserted_window_dims={0,1},
+      scatter_dims_to_operand_dims={0,1},
+      index_vector_dim=1, sharding={replicated}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(op::AllReduce(op::Scatter(
+                op::Select(op::Broadcast(op::Convert(op::Reshape())),
                            op::Broadcast(op::Constant()), op::Parameter(0)),
                 op::Parameter(1), op::Parameter(2))),
             op::Shape("f32[2,9,8]")));
@@ -4093,8 +4231,45 @@ ENTRY entry {
   TF_ASSERT_OK_AND_ASSIGN(auto module,
                           PartitionComputation(hlo_string, /*num_devices=*/2));
   VLOG(1) << module->ToString();
-  auto offset = op::Reshape(
-      op::DynamicSlice(op::Constant(), op::PartitionId(), op::Constant()));
+  auto offset =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
+  auto indices = op::Subtract(
+      op::Parameter(1), AllOf(op::Broadcast(offset), op::Shape("s32[2,3]")));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Scatter(op::Parameter(0), indices, op::Parameter(2)),
+                    op::Shape("f32[9,9]")));
+}
+
+TEST_F(SpmdPartitioningTest,
+       ScatterPartitionedOnTrivialSliceDims_PartialReplicate) {
+  const char* const hlo_string = R"(
+HloModule module
+
+add (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  rhs = f32[] parameter(1)
+  ROOT sum = f32[] add(lhs, rhs)
+}
+
+ENTRY entry {
+  %input = f32[17,9] parameter(0),
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  %indices = s32[2,3] parameter(1), sharding={replicated}
+  %updates = f32[2,3,9] parameter(2), sharding={replicated}
+  ROOT %scatter = f32[17,9] scatter(%input, %indices, %updates),
+      to_apply=add,
+      update_window_dims={2},
+      inserted_window_dims={0},
+      scatter_dims_to_operand_dims={0},
+      index_vector_dim=2,
+      sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto offset =
+      op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId()));
   auto indices = op::Subtract(
       op::Parameter(1), AllOf(op::Broadcast(offset), op::Shape("s32[2,3]")));
   HloInstruction* root = module->entry_computation()->root_instruction();
@@ -4730,6 +4905,63 @@ ENTRY entry {
   EXPECT_THAT(root, op::AllReduce(op::AllReduce(dot)));
 }
 
+TEST_F(SpmdPartitioningTest, DotNonContractingPartialMatchContractingMatch) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[24,8,100] parameter(0), sharding={devices=[2,1,2]0,1,2,3}
+  %rhs = f32[100,50] parameter(1), sharding={devices=[2,2]0,2,1,3}
+  ROOT %dot = f32[24,8,50] dot(%lhs, %rhs),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    sharding={devices=[2,2,1]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto lhs = AllOf(op::Shape("f32[12,8,50]"), op::Parameter(0));
+  auto rhs = AllOf(op::Shape("f32[50,25]"), op::Parameter(1));
+  auto dot = AllOf(
+      op::Shape("f32[12,8,50]"),
+      op::Dot(lhs, AllOf(op::Shape("f32[50,50]"),
+                         op::AllReduce(op::DynamicUpdateSlice(_, rhs, _, _)))));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::Shape("f32[12,4,50]"),
+                          op::DynamicSlice(op::AllReduce(dot), _, _, _)))
+      << module->ToString();
+}
+
+TEST_F(SpmdPartitioningTest, DotLHSMutiNonContractingRHSNotMatch) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = f32[24,8,10] parameter(0), sharding={devices=[2,2,1]0,1,2,3}
+  %rhs = f32[10,50] parameter(1),
+    sharding={devices=[2,1,2]0,2,1,3 last_tile_dim_replicate}
+  ROOT %dot = f32[24,8,50] dot(%lhs, %rhs),
+    lhs_batch_dims={}, rhs_batch_dims={},
+    lhs_contracting_dims={2}, rhs_contracting_dims={0},
+    sharding={devices=[2,2,1]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+
+  auto lhs = AllOf(op::Shape("f32[12,4,10]"), op::Parameter(0));
+  auto rhs = AllOf(op::Shape("f32[5,50]"), op::Parameter(1));
+  auto dot = AllOf(
+      op::Shape("f32[12,4,50]"),
+      op::Dot(lhs, AllOf(op::Shape("f32[10,50]"),
+                         op::AllReduce(op::DynamicUpdateSlice(_, rhs, _, _)))));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, dot) << module->ToString();
+}
+
 TEST_F(SpmdPartitioningTest,
        ElementwiseTest_PartialReplicateToTiledHaloExchange) {
   const char* const hlo_string = R"(
@@ -4775,6 +5007,266 @@ ENTRY entry {
                                         op::Reshape(), op::Constant()));
   auto root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::Shape("f32[2,3]"), op::Add(add_lhs, add_rhs)));
+}
+
+TEST_F(SpmdPartitioningTest, TileToPartialReplicateReshard) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,8] parameter(0)
+  %copy = f32[8,8] copy(%param0),
+    sharding={devices=[2,2]0,1,2,3}
+  ROOT %copy0 = f32[8,8] copy(%copy),
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto tiled = AllOf(op::Shape("f32[4,4]"),
+                     op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
+                                               op::Reshape())));
+  auto partially_replicated = AllOf(
+      op::Shape("f32[4,8]"), op::Copy(op::AllReduce(op::DynamicUpdateSlice(
+                                 op::Broadcast(_), tiled, _, _))));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, partially_replicated);
+}
+
+TEST_F(SpmdPartitioningTest, PartialReplicateToTileReshard) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,8] parameter(0)
+  %copy = f32[8,8] copy(%param0),
+    sharding={devices=[2,1,2]0,1,2,3 last_tile_dim_replicate}
+  ROOT %copy0 = f32[8,8] copy(%copy),
+    sharding={devices=[2,2]0,1,2,3}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/4));
+  VLOG(1) << module->ToString();
+  auto partially_replicated =
+      AllOf(op::Shape("f32[4,8]"),
+            op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
+                                      op::Constant())));
+  auto tiled = AllOf(op::Shape("f32[4,4]"),
+                     op::Copy(op::DynamicSlice(partially_replicated,
+                                               op::Constant(), op::Reshape())));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, tiled);
+}
+
+TEST_F(SpmdPartitioningTest,
+       PartialReplicateToPartialReplicateReshard_AllReduce) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,8] parameter(0)
+  %copy = f32[8,8] copy(param0),
+    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %copy0 = f32[8,8] copy(%copy),
+    sharding={devices=[2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  VLOG(1) << module->ToString();
+  auto partially_replicated_init =
+      AllOf(op::Shape("f32[4,4]"),
+            op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
+                                      op::Reshape())));
+  auto partially_replicated =
+      AllOf(op::Shape("f32[4,8]"),
+            op::Copy(op::AllReduce(op::DynamicUpdateSlice(
+                op::Broadcast(_), partially_replicated_init, _, _))));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, partially_replicated);
+}
+
+TEST_F(SpmdPartitioningTest,
+       PartialReplicateToPartialReplicateReshard_DynamicSlice) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,8] parameter(0)
+  %copy = f32[8,8] copy(%param0),
+    sharding={devices=[2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %copy0 = f32[8,8] copy(%copy),
+    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto partially_replicated =
+      AllOf(op::Shape("f32[4,8]"),
+            op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
+                                      op::Constant())));
+  auto tiled = AllOf(op::Shape("f32[4,4]"),
+                     op::Copy(op::DynamicSlice(partially_replicated,
+                                               op::Constant(), op::Reshape())));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, tiled);
+}
+
+TEST_F(SpmdPartitioningTest,
+       PartialReplicateToPartialReplicateReshard_DynamicSlice2) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,8] parameter(0)
+  %copy = f32[8,8] copy(%param0),
+    sharding={devices=[1,1,8]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %copy0 = f32[8,8] copy(%copy),
+    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto partially_replicated =
+      AllOf(op::Shape("f32[8,8]"),
+            op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
+                                      op::Constant())));
+  auto tiled = AllOf(op::Shape("f32[4,4]"),
+                     op::Copy(op::DynamicSlice(partially_replicated,
+                                               op::Reshape(), op::Reshape())));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, tiled);
+}
+
+TEST_F(SpmdPartitioningTest,
+       PartialReplicateToPartialReplicateReshardWithCollectivePermute) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,8] parameter(0)
+  %copy = f32[8,8] copy(param0),
+    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %copy0 = f32[8,8] copy(%copy),
+    sharding={devices=[1,2,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  VLOG(1) << module->ToString();
+  auto partially_replicated_init =
+      AllOf(op::Shape("f32[4,4]"),
+            op::CollectivePermute(op::Copy(op::DynamicSlice(
+                op::Parameter(0), op::Reshape(), op::Reshape()))));
+  auto partially_replicated =
+      AllOf(op::Shape("f32[8,4]"),
+            op::Copy(op::AllReduce(op::DynamicUpdateSlice(
+                op::Broadcast(_), partially_replicated_init, _, _))));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, partially_replicated);
+}
+
+TEST_F(SpmdPartitioningTest,
+       PartialReplicateToPartialReplicateReshardCollectivePermute1) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[8,8] parameter(0)
+  %copy = f32[8,8] copy(%param0),
+    sharding={devices=[1,2,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %copy0 = f32[8,8] copy(%copy),
+    sharding={devices=[2,2,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+  auto partially_replicated =
+      AllOf(op::Shape("f32[8,4]"),
+            op::Copy(op::DynamicSlice(op::Parameter(0), op::Constant(),
+                                      op::Reshape())));
+  auto tiled =
+      AllOf(op::Shape("f32[4,4]"),
+            op::Copy(op::CollectivePermute(op::DynamicSlice(
+                partially_replicated, op::Reshape(), op::Constant()))));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, tiled);
+}
+
+TEST_F(SpmdPartitioningTest,
+       PartialReplicateToPartialReplicateReshardHaloExchange) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[6,3] parameter(0)
+  %copy = f32[6,3] copy(param0),
+    sharding={devices=[4,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %copy0 = f32[6,3] copy(%copy),
+    sharding={devices=[2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  VLOG(1) << module->ToString();
+  auto partially_replicated_init =
+      AllOf(op::Shape("f32[2,3]"),
+            op::Copy(op::DynamicSlice(op::Pad(op::Parameter(0), op::Constant()),
+                                      op::Reshape(), op::Constant())));
+  auto slice =
+      AllOf(op::Shape("f32[2,3]"),
+            op::DynamicSlice(op::Concatenate(op::CollectivePermute(op::Slice(
+                                                 partially_replicated_init)),
+                                             partially_replicated_init),
+                             _, _));
+  auto partially_replicated =
+      AllOf(op::Shape("f32[3,3]"),
+            op::Copy(op::Slice(op::AllReduce(
+                op::DynamicUpdateSlice(op::Broadcast(_), slice, _, _)))));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, partially_replicated);
+}
+
+TEST_F(SpmdPartitioningTest,
+       PartialReplicateToPartialReplicateReshardHaloExchange1) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %param0 = f32[6,3] parameter(0)
+  %copy = f32[6,3] copy(param0),
+    sharding={devices=[2,1,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+  ROOT %copy0 = f32[6,3] copy(%copy),
+    sharding={devices=[4,1,2]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+
+  VLOG(1) << module->ToString();
+  auto partially_replicated_init =
+      AllOf(op::Shape("f32[3,3]"),
+            op::Copy(op::DynamicSlice(op::Parameter(0), op::Reshape(),
+                                      op::Constant())));
+  auto slice = AllOf(
+      op::Shape("f32[4,3]"),
+      op::DynamicSlice(op::Pad(op::Concatenate(partially_replicated_init,
+                                               op::CollectivePermute(op::Slice(
+                                                   partially_replicated_init))),
+                               op::Constant()),
+                       _, _));
+  auto partially_replicated =
+      AllOf(op::Shape("f32[2,3]"), op::Copy(op::DynamicSlice(slice, _, _)));
+  auto root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, partially_replicated);
 }
 
 }  // namespace

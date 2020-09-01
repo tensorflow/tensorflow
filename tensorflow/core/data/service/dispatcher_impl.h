@@ -59,6 +59,8 @@ class DataServiceDispatcherImpl {
                         RegisterWorkerResponse* response);
   Status WorkerUpdate(const WorkerUpdateRequest* request,
                       WorkerUpdateResponse* response);
+  Status GetDatasetDef(const GetDatasetDefRequest* request,
+                       GetDatasetDefResponse* response);
 
   /// Client-facing API.
   Status GetOrRegisterDataset(const GetOrRegisterDatasetRequest* request,
@@ -67,38 +69,46 @@ class DataServiceDispatcherImpl {
                    CreateJobResponse* response);
   Status GetOrCreateJob(const GetOrCreateJobRequest* request,
                         GetOrCreateJobResponse* response);
+  Status ReleaseJobClient(const ReleaseJobClientRequest* request,
+                          ReleaseJobClientResponse* response);
   Status GetTasks(const GetTasksRequest* request, GetTasksResponse* response);
   Status GetWorkers(const GetWorkersRequest* request,
                     GetWorkersResponse* response);
 
  private:
   // Registers a dataset with the given fingerprint, storing the new dataset's
-  // id in `*dataset-id`.
+  // id in `dataset_id`.
   Status RegisterDataset(uint64 fingerprint, const DatasetDef& dataset,
-                         int64* dataset_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+                         int64& dataset_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Gets a worker's stub from `worker_stubs_`, or if none exists, creates a
-  // stub and stores it in `worker_stubs_`.
+  // stub and stores it in `worker_stubs_`. A borrowed pointer to the stub is
+  // stored in `out_stub`.
   Status GetOrCreateWorkerStub(const std::string& worker_address,
-                               WorkerService::Stub** out_stub)
+                               WorkerService::Stub*& out_stub)
       LOCKS_EXCLUDED(mu_);
-  // Creates a job and stores it in `*job`. This method updates the
+  // Creates a job and stores it in `job`. This method updates the
   // dispatcher state with the new job, but does not assign tasks to workers.
   Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
                    absl::optional<DispatcherState::NamedJobKey> named_job_key,
-                   std::shared_ptr<const DispatcherState::Job>* job)
+                   std::shared_ptr<const DispatcherState::Job>& job)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  // Acquires a job client id to read from the given job and sets
+  // `job_client_id`.
+  Status AcquireJobClientId(
+      const std::shared_ptr<const DispatcherState::Job>& job,
+      int64& job_client_id) EXCLUSIVE_LOCKS_REQUIRED(mu_);
   // Creates one task for each worker, for the given job. The created tasks are
-  // stored in `*tasks`. This method only updates dispatcher metadata with the
+  // stored in `tasks`. This method only updates dispatcher metadata with the
   // new tasks, but doesn't assign the tasks to the workers.
   Status CreateTasksForJob(
       std::shared_ptr<const DispatcherState::Job> job,
-      std::vector<std::shared_ptr<const DispatcherState::Task>>* tasks)
+      std::vector<std::shared_ptr<const DispatcherState::Task>>& tasks)
       EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Creates a new task for a job, storing the created task in `*task`.
+  // Creates a new task for a job, storing the created task in `task`.
   Status CreateTask(std::shared_ptr<const DispatcherState::Job> job,
                     const std::string& worker_address,
-                    std::shared_ptr<const DispatcherState::Task>* task);
+                    std::shared_ptr<const DispatcherState::Task>& task);
   // Assigns the list of tasks to the workers indicated by their
   // `worker_address` fields.
   Status AssignTasks(

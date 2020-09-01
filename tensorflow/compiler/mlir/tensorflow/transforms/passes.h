@@ -79,6 +79,11 @@ std::unique_ptr<OperationPass<FuncOp>> CreateRewriteTPUEmbeddingOpsPass();
 // Performs specific fusion for GPU targets.
 std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass();
 
+// Create a pass that convert ops that copy tensors between devices, e.g.
+// tf.Identity.
+std::unique_ptr<OperationPass<mlir::FuncOp>>
+CreateTensorDeviceCopyConversionPass();
+
 struct LayoutOptimizationPipelineOptions
     : public PassPipelineOptions<LayoutOptimizationPipelineOptions> {
   Option<std::string> force_data_format{
@@ -282,6 +287,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicLayoutPass();
 // `tf_device.launch_func` `padding_map` attribute to its encapsulated function.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUDynamicPaddingMapperPass();
 
+// Creates a pass that adds `tf.ReadVariableOp` to a TPU cluster for resources
+// the cluster only writes to.
+std::unique_ptr<OperationPass<ModuleOp>> CreateTPUResourceReadForWritePass();
+
 // Creates a pass that rewrites `tf_device.launch_func` on TPUs into TPU runtime
 // ops.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass();
@@ -294,6 +303,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass();
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
 std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
+
+// Creates a pass that wraps ReadVariableOp/AssignVariable op that consumes a
+// packed tensor to have same device placement as underlying TPU device.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps();
 
 // Creates a pass that adds ops which perform formatting on variables at
 // run-time according to compilation result.

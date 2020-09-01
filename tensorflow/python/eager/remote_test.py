@@ -92,7 +92,6 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual(with_variable(constant_op.constant([2])).numpy(), [3])
 
-  @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceFunctionRemoteOutput(self):
     with ops.device('/job:worker/replica:0/task:0/cpu:0'):
       variable_b = variables.Variable(1)
@@ -101,10 +100,15 @@ class SingleWorkerTest(test.TestCase, parameterized.TestCase):
     def remote_output(i):
       with ops.device('/job:worker/replica:0/task:0/cpu:0'):
         c = variable_b + 1
-      return c, i + variable_b
+      return i + variable_b, c
 
-    self.assertAllEqual(
-        remote_output(constant_op.constant([1]))[0].numpy(), 2)
+    rets = remote_output(constant_op.constant([1]))
+    self.assertEqual(rets[0].backing_device,
+                     '/job:localhost/replica:0/task:0/device:CPU:0')
+    self.assertEqual(rets[1].backing_device,
+                     '/job:worker/replica:0/task:0/device:CPU:0')
+    self.assertAllEqual(rets[0].numpy(), [2])
+    self.assertAllEqual(rets[1].numpy(), 2)
 
   def testMultiDeviceFunctionAmbiguousDevice(self):
 
@@ -464,8 +468,6 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
       c = a + 1.0
       return c
 
-    context.context().mirroring_policy = context.MIRRORING_NONE
-
     with ops.device('/job:worker/replica:0/task:0'):
       self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
@@ -473,14 +475,24 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
       with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
         self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
 
-    context.context().mirroring_policy = context.MIRRORING_ALL
+  def testMultiDeviceFunctionRemoteOutput(self):
+    with ops.device('/job:worker/replica:0/task:1/cpu:0'):
+      variable_b = variables.Variable(1)
 
-    with ops.device('/job:worker/replica:0/task:0'):
-      self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+    @def_function.function
+    def remote_output(i):
+      with ops.device('/job:worker/replica:0/task:1/cpu:0'):
+        c = variable_b + 1
+      return i + variable_b, c
 
-    if test_util.is_gpu_available():
-      with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
-        self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
+    with ops.device('/job:worker/replica:0/task:0/cpu:0'):
+      rets = remote_output(constant_op.constant([1]))
+    self.assertEqual(rets[0].backing_device,
+                     '/job:worker/replica:0/task:0/device:CPU:0')
+    self.assertEqual(rets[1].backing_device,
+                     '/job:worker/replica:0/task:1/device:CPU:0')
+    self.assertAllEqual(rets[0].numpy(), [2])
+    self.assertAllEqual(rets[1].numpy(), 2)
 
   @test_util.eager_lazy_remote_copy_on_and_off
   def testMultiDeviceWhileLoopOnRemoteDevice(self):
@@ -496,17 +508,6 @@ class MultiWorkersTest(test.TestCase, parameterized.TestCase):
         return a + 1.0, 1
 
       return control_flow_ops.while_loop_v2(lambda _, d: d < 1, body, [i, 0])[0]
-
-    context.context().mirroring_policy = context.MIRRORING_NONE
-
-    with ops.device('/job:worker/replica:0/task:0'):
-      self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
-
-    if test_util.is_gpu_available():
-      with ops.device('/job:worker/replica:0/task:0/device:GPU:0'):
-        self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])
-
-    context.context().mirroring_policy = context.MIRRORING_ALL
 
     with ops.device('/job:worker/replica:0/task:0'):
       self.assertAllEqual(remote_function(constant_op.constant([1.0])), [3.0])

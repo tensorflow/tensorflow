@@ -15,11 +15,17 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
 
+#include <algorithm>
 #include <cstdint>
+#include <set>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -126,6 +132,14 @@ std::string ToString(enum OperationType op) {
       return "prelu";
     case OperationType::QUANTIZE_AND_DEQUANTIZE:
       return "quantize_and_dequantize";
+    case OperationType::REDUCE_MAXIMUM:
+      return "reduce_maximum";
+    case OperationType::REDUCE_MINIMUM:
+      return "reduce_minimum";
+    case OperationType::REDUCE_PRODUCT:
+      return "reduce_product";
+    case OperationType::REDUCE_SUM:
+      return "reduce_sum";
     case OperationType::RELU:
       return "relu";
     case OperationType::RESHAPE:
@@ -195,6 +209,10 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"pow", OperationType::POW},
           {"prelu", OperationType::PRELU},
           {"quantize_and_dequantize", OperationType::QUANTIZE_AND_DEQUANTIZE},
+          {"reduce_maximum", OperationType::REDUCE_MAXIMUM},
+          {"reduce_minimum", OperationType::REDUCE_MINIMUM},
+          {"reduce_product", OperationType::REDUCE_PRODUCT},
+          {"reduce_sum", OperationType::REDUCE_SUM},
           {"relu", OperationType::RELU},
           {"resize", OperationType::RESIZE},
           {"reshape", OperationType::RESHAPE},

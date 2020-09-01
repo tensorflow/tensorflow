@@ -201,6 +201,7 @@ Status GpuCompiler::OptimizeHloModule(
       pass.AddPass<ZeroSizedHloElimination>();
 
       pass.AddPass<GatherExpander>(GatherExpander::kEliminateSimpleGathers);
+      pass.AddPass<ScatterExpander>(ScatterExpander::kEliminateSimpleScatters);
 
       AlgebraicSimplifierOptions options;
       // When transposes appear in a fusion node, we can easily adjust the

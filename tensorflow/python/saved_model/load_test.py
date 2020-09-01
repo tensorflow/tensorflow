@@ -1800,6 +1800,8 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     root = tracking.AutoTrackable()
     root.table = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
     root.table.insert("foo", 15)
+    root.table2 = lookup_ops.MutableHashTable(dtypes.string, dtypes.float32, -1)
+    root.table2.insert("idk", 21)
 
     @def_function.function(
         input_signature=[tensor_spec.TensorSpec(None, dtypes.string)])

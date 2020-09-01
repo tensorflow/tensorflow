@@ -1097,9 +1097,9 @@ tf_cc_tests(
     ],
 )
 
-filegroup(
+cc_library(
     name = "pywrap_required_hdrs",
-    srcs = [
+    textual_hdrs = [
         "op_gen_lib.h",
         "rendezvous.h",
     ],

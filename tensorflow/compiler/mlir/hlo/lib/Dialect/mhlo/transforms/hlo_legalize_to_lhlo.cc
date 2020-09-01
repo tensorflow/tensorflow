@@ -388,6 +388,10 @@ class HloToLhloTensorStoreOpConverter
 
 struct HloLegalizeToLhlo
     : public PassWrapper<HloLegalizeToLhlo, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<lmhlo::LmhloDialect>();
+  }
+
  public:
   HloLegalizeToLhlo() = default;
   HloLegalizeToLhlo(const HloLegalizeToLhlo& o) {
@@ -483,6 +487,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::DivOp>,
       HloToLhloOpConverter<mhlo::DotOp>,
       HloToLhloOpConverter<mhlo::ExpOp>,
+      HloToLhloOpConverter<mhlo::FloorOp>,
       HloToLhloOpConverter<mhlo::GatherOp>,
       HloToLhloOpConverter<mhlo::ImagOp>,
       HloToLhloOpConverter<mhlo::IotaOp>,

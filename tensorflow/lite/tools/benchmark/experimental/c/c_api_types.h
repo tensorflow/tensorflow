@@ -47,7 +47,8 @@ extern "C" {
 typedef enum TfLiteStatus {
   kTfLiteOk = 0,
   kTfLiteError = 1,
-  kTfLiteDelegateError = 2
+  kTfLiteDelegateError = 2,
+  kTfLiteApplicationError = 3
 } TfLiteStatus;
 
 // The list of external context types known to TF Lite. This list exists solely
@@ -88,7 +89,7 @@ typedef struct TfLiteIntArray {
 // https://github.com/google/re2/commit/b94b7cd42e9f02673cd748c1ac1d16db4052514c
 #if (!defined(__clang__) && defined(__GNUC__) && __GNUC__ == 6 && \
      __GNUC_MINOR__ >= 1) ||                                      \
-    defined(HEXAGON)
+    defined(HEXAGON) || (__clang_major__ == 7 && __clang_minor__ == 1)
   int data[0];
 #else
   int data[];
@@ -223,6 +224,17 @@ void TfLiteFloatArrayFree(TfLiteFloatArray* a);
                          TfLiteTypeGetName(b));                            \
       return kTfLiteError;                                                 \
     }                                                                      \
+  } while (0)
+
+#define TF_LITE_ENSURE_NEAR(context, a, b, epsilon)                          \
+  do {                                                                       \
+    auto delta = ((a) > (b)) ? ((a) - (b)) : ((b) - (a));                    \
+    if (delta > epsilon) {                                                   \
+      TF_LITE_KERNEL_LOG((context), "%s:%d %s not near %s (%f != %f)",       \
+                         __FILE__, __LINE__, #a, #b, static_cast<double>(a), \
+                         static_cast<double>(b));                            \
+      return kTfLiteError;                                                   \
+    }                                                                        \
   } while (0)
 
 #define TF_LITE_ENSURE_OK(context, status) \

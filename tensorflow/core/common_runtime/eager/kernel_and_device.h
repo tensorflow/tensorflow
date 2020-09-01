@@ -97,6 +97,7 @@ class KernelAndDevice : public core::RefCounted {
  public:
   struct Context {
     bool log_device_placement = false;
+    bool eager_lazy_copy = false;
   };
 
   // Populates this with a kernel appropriate for 'ndef'.

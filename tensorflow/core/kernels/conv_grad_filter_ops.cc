@@ -301,7 +301,6 @@ class Conv2DBackpropFilterOp : public OpKernel {
                                               /*num_dims=*/4, data_format_));
 
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
-    use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
 
     if (std::is_same<Device, CPUDevice>::value) {
@@ -1136,19 +1135,20 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                              \
-  template <>                                                            \
-  void TransformFilter<GPUDevice, T, int, 4>::operator()(                \
-      const GPUDevice& d, FilterTensorFormat dst_filter_format,          \
-      typename TTypes<T, 4, int>::ConstTensor in,                        \
-      typename TTypes<T, 4, int>::Tensor out);                           \
-  extern template struct TransformFilter<GPUDevice, T, int, 4>;          \
-  template <>                                                            \
-  void PadInput<GPUDevice, T, int, 4>::operator()(                       \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
-      const std::array<int, 2>& padding_left,                            \
-      const std::array<int, 2>& padding_right,                           \
-      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format); \
+#define DECLARE_GPU_SPEC(T)                                             \
+  template <>                                                           \
+  void TransformFilter<GPUDevice, T, int, 4>::operator()(               \
+      const GPUDevice& d, FilterTensorFormat dst_filter_format,         \
+      typename TTypes<T, 4, int>::ConstTensor in,                       \
+      typename TTypes<T, 4, int>::Tensor out);                          \
+  extern template struct TransformFilter<GPUDevice, T, int, 4>;         \
+  template <>                                                           \
+  void PadInput<GPUDevice, T, int, 4>::operator()(                      \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,   \
+      const std::array<int, 2>& padding_left,                           \
+      const std::array<int, 2>& padding_right,                          \
+      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format, \
+      T padding_value);                                                 \
   extern template struct PadInput<GPUDevice, T, int, 4>;
 
 DECLARE_GPU_SPEC(float);

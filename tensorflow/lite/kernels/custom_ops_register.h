@@ -21,12 +21,16 @@ namespace tflite {
 namespace ops {
 namespace custom {
 
+TfLiteRegistration* Register_CUMSUM();
 TfLiteRegistration* Register_RFFT2D();
 TfLiteRegistration* Register_HASHTABLE();
 TfLiteRegistration* Register_HASHTABLE_FIND();
 TfLiteRegistration* Register_HASHTABLE_IMPORT();
 TfLiteRegistration* Register_HASHTABLE_SIZE();
-}
+TfLiteRegistration* Register_REAL();
+TfLiteRegistration* Register_IMAG();
+
+}  // namespace custom
 }  // namespace ops
 }  // namespace tflite
 

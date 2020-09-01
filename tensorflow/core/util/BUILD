@@ -17,6 +17,7 @@ load(
     "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load(
     "//third_party/mkl:build_defs.bzl",
     "mkl_deps",
@@ -364,6 +365,7 @@ filegroup(
 tf_version_info_genrule(
     name = "version_info_gen",
     out = "version_info.cc",
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -507,6 +509,7 @@ cc_library(
     name = "version_info",
     srcs = ["version_info.cc"],
     hdrs = ["//tensorflow/core/public:version.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
     alwayslink = if_static(0, 1),
 )
@@ -626,9 +629,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ] + if_cuda([
         "//tensorflow/stream_executor/cuda:cusparse_lib",
-        "@cub_archive//:cub",
+        "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
-        "@local_config_rocm//rocm:hipsparse",
+        "//tensorflow/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
 

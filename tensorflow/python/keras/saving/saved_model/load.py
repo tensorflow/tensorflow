@@ -43,7 +43,6 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking.tracking import delete_tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util import object_identity
 
 # To avoid circular dependencies between keras/engine and keras/saving,
 # code in keras/saving must delay imports.
@@ -179,8 +178,6 @@ class KerasObjectLoader(tf_load.Loader):
     # records all nodes that were generated directly/indirectly from the config,
     # so that they do not get recreated multiple times.
     self._nodes_recreated_from_config = {}
-    self._all_nodes_recreated_from_config = (
-        object_identity.ObjectIdentityWeakSet())
     # Store all node ids that have already been traversed when tracking nodes
     # that were recreated from the config.
     self._traversed_nodes_from_config = []
@@ -293,7 +290,6 @@ class KerasObjectLoader(tf_load.Loader):
                      'Object: {}'.format(obj_child))
       self._nodes_recreated_from_config[child_id] = (
           obj_child, self._config_node_setter(setter))
-      self._all_nodes_recreated_from_config.add(obj_child)
       self._add_children_recreated_from_config(
           obj_child, child_proto, child_id)
 
@@ -363,7 +359,6 @@ class KerasObjectLoader(tf_load.Loader):
 
     setter = self._config_node_setter(_revive_setter)
     self._nodes_recreated_from_config[node_id] = obj, setter
-    self._all_nodes_recreated_from_config.add(obj)
     self._add_children_recreated_from_config(
         obj, self._proto.nodes[node_id], node_id)
     return obj, setter
@@ -380,8 +375,11 @@ class KerasObjectLoader(tf_load.Loader):
         metadata['class_name'] == 'Sequential' or
         metadata['class_name'] == 'Functional')
     if not (generic_utils.validate_config(config) and
-            model_is_functional_or_sequential):
-      return None  # Revive as custom model.
+            model_is_functional_or_sequential
+           ) or generic_utils.get_registered_object(class_name) is not None:
+      # Model should not be revived as a graph network. Try reviving directly
+      # from config or as a custom model.
+      return None
 
     # Revive functional and sequential models as blank model objects for now (
     # must be initialized to enable setattr tracking and attribute caching).

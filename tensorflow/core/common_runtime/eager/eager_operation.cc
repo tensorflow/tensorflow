@@ -277,11 +277,6 @@ Status EagerOperation::AddInputList(
   return InferInputListAttrs(inputs.size());
 }
 
-Status EagerOperation::SetUseXla(bool enable) {
-  use_xla_ = enable;
-  return Status::OK();
-}
-
 Status EagerOperation::Reset(
     const char* op, const char* device_name, bool remote,
     EagerExecutor* executor,
@@ -313,7 +308,6 @@ Status EagerOperation::Reset(
         "registered in the binary running in this process.");
   }
   attrs_.Reset(op);
-  use_xla_ = false;
   stack_trace_.reset();
   is_function_ = is_function;
   cancellation_manager_ = nullptr;

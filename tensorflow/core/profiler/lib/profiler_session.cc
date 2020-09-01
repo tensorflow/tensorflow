@@ -85,13 +85,28 @@ Status ProfilerSession::CollectData(profiler::XSpace* space) {
   // 1. Merge plane of host events with plane of CUPTI driver api.
   const profiler::XPlane* cupti_driver_api_plane =
       profiler::FindPlaneWithName(*space, profiler::kCuptiDriverApiPlaneName);
-  if (cupti_driver_api_plane) {
+  const profiler::XPlane* python_tracer_plane =
+      profiler::FindPlaneWithName(*space, profiler::kPythonTracerPlaneName);
+  if (cupti_driver_api_plane || python_tracer_plane) {
     profiler::XPlane* host_plane = profiler::FindOrAddMutablePlaneWithName(
         space, profiler::kHostThreadsPlaneName);
-    profiler::MergePlanes(*cupti_driver_api_plane, host_plane);
+    if (cupti_driver_api_plane) {
+      profiler::MergePlanes(*cupti_driver_api_plane, host_plane);
+    }
+    if (python_tracer_plane) {
+      profiler::MergePlanes(*python_tracer_plane, host_plane);
+    }
     profiler::SortXLinesBy(host_plane, profiler::XLinesComparatorByName());
-    profiler::RemovePlaneWithName(space, profiler::kCuptiDriverApiPlaneName);
+    // NOTE: RemovePlaneWithName might invalidate plane pointers. so do these
+    // at the last step.
+    if (cupti_driver_api_plane) {
+      profiler::RemovePlaneWithName(space, profiler::kCuptiDriverApiPlaneName);
+    }
+    if (python_tracer_plane) {
+      profiler::RemovePlaneWithName(space, profiler::kPythonTracerPlaneName);
+    }
   }
+
   // 2. Normalize all timestamps by shifting timeline to profiling start time.
   // NOTE: this have to be done before sorting XSpace due to timestamp overflow.
   profiler::NormalizeTimestamps(space, start_time_ns_);

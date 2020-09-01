@@ -42,13 +42,13 @@ class XlaBuilderTest : public ::testing::Test {
  protected:
   XlaBuilderTest()
       : name_(SetupTest()),
-        context_(),
         module_(mlir::ModuleOp::create(mlir::UnknownLoc::get(&context_))),
         builder_(&module_->getBodyRegion()),
-        xla_builder_(name_, builder_, module_->getLoc()) {}
+        xla_builder_(name_, builder_, module_->getLoc()) {
+    context_.loadDialect<mlir::mhlo::MhloDialect>();
+  }
 
   string SetupTest() {
-    mlir::registerDialect<mlir::mhlo::MhloDialect>();
     return ::testing::UnitTest::GetInstance()->current_test_info()->name();
   }
 

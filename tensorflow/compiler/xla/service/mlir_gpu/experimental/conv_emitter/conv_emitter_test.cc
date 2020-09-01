@@ -20,6 +20,8 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "mlir/Conversion/SCFToStandard/SCFToStandard.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
+#include "mlir/Dialect/Affine/IR/AffineOps.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -46,6 +48,7 @@ std::string CompileHloConvAndGetMlir(absl::string_view hlo_text) {
       hlo_module.entry_computation()->root_instruction();
 
   mlir::MLIRContext context;
+  context.loadDialect<mlir::AffineDialect, mlir::StandardOpsDialect>();
   mlir::OwningModuleRef mlir_module(
       mlir::ModuleOp::create(mlir::UnknownLoc::get(&context)));
 

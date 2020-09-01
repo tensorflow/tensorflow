@@ -44,7 +44,7 @@ namespace cl {
 // NOTE: We do not need to nudge min/max values in this op, since they would
 // already be adjusted while generating the quantized model.
 GPUOperation CreateQuantizeAndDequantize(
-    const CreationContext& creation_context, const OperationDef& definition,
+    const OperationDef& definition,
     const QuantizeAndDequantizeAttributes& attr);
 
 }  // namespace cl

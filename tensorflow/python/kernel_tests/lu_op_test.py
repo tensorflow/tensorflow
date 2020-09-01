@@ -91,7 +91,7 @@ class LuOpTest(test.TestCase):
     # Prepare the upper factor.
     upper = array_ops.matrix_band_part(lu, 0, -1)
 
-    verification = math_ops.matmul(lower, upper)
+    verification = test_util.matmul_without_tf32(lower, upper)
 
     # Permute the rows of product of the Cholesky factors.
     if num_rows > 0:

@@ -161,7 +161,7 @@ StatusOr<ElementsAttr> ConvertTensor(const Tensor& input_tensor,
     default:
       // TODO(shpeisman): restructure code to reuse dialect pointer across
       // calls.
-      auto* dialect = builder->getContext()->getRegisteredDialect("tf");
+      auto* dialect = builder->getContext()->getLoadedDialect("tf");
       return OpaqueElementsAttr::get(dialect, type, MangleTensor(input_tensor));
   }
 

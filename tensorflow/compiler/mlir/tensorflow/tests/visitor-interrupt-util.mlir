@@ -69,7 +69,7 @@ func @foo(%arg0: tensor<f32>) -> tensor<f32> {
 // Test static filtering
 // expected-remark@below {{0: before all regions}}
 // expected-remark@below {{7: walk was interrupted}}
-func @foo(%arg0: tensor<f32>) -> tensor<f32> {
+func @foo(%arg0: tensor<f32>, %arg1: tensor<i1>) -> tensor<f32> {
   // expected-remark@below {{1: before all regions}}
   %cst = constant dense<1.0> : tensor<f32>
   // expected-remark@below {{2: before all regions}}
@@ -77,7 +77,7 @@ func @foo(%arg0: tensor<f32>) -> tensor<f32> {
   // expected-remark@below {{8: before all regions}}
   // expected-remark@below {{9: before region #1}}
   // expected-remark@below {{10: after all regions}}
-  %0 = "tf.IfRegion"(%arg0) ({
+  %0 = "tf.IfRegion"(%arg1) ({
     // expected-remark@below {{3: before all regions}}
     %1 = "tf.Identity"(%arg0) : (tensor<f32>) -> tensor<f32>
     // expected-remark@below {{4: before all regions}}
@@ -86,6 +86,6 @@ func @foo(%arg0: tensor<f32>) -> tensor<f32> {
     // expected-remark@below {{6: before all regions}}
     %1 = "tf.Identity"(%arg0) : (tensor<f32>) -> tensor<f32>
     "tf.Yield"(%1) { interrupt_after_all = true } : (tensor<f32>) -> ()
-  }) {is_stateless = true}: (tensor<f32>) -> tensor<f32>
+  }) {is_stateless = true}: (tensor<i1>) -> tensor<f32>
   return %0 : tensor<f32>
 }

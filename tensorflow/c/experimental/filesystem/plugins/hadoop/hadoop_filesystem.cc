@@ -37,11 +37,17 @@ static void plugin_memory_free(void* ptr) { free(ptr); }
 void ParseHadoopPath(const std::string& fname, std::string* scheme,
                      std::string* namenode, std::string* path) {
   size_t scheme_end = fname.find("://") + 2;
-  *scheme = fname.substr(0, scheme_end + 1);
+  // We don't want `://` in scheme.
+  *scheme = fname.substr(0, scheme_end - 2);
   size_t nn_end = fname.find("/", scheme_end + 1);
-  if (nn_end == std::string::npos) return;
+  if (nn_end == std::string::npos) {
+    *namenode = fname.substr(scheme_end + 1);
+    *path = "";
+    return;
+  }
   *namenode = fname.substr(scheme_end + 1, nn_end - scheme_end - 1);
-  *path = fname.substr(nn_end + 1);
+  // We keep `/` in path.
+  *path = fname.substr(nn_end);
 }
 
 void SplitArchiveNameAndPath(std::string* path, std::string* nn,
@@ -54,7 +60,7 @@ void SplitArchiveNameAndPath(std::string* path, std::string* nn,
   }
   // Case of hadoop archive. Namenode is the path to the archive.
   std::ostringstream namenodestream;
-  namenodestream << "har://" << nn
+  namenodestream << "har://" << *nn
                  << path->substr(0, index_end_archive_name + 4);
   *nn = namenodestream.str();
   path->erase(0, index_end_archive_name + 4);
@@ -247,8 +253,8 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
 
   char* dst = buffer;
   bool eof_retried = false;
-  int64_t r = 0;
-  while (TF_GetCode(status) == TF_OK && !eof_retried) {
+  int64_t read = 0;
+  while (TF_GetCode(status) == TF_OK && n > 0) {
     // We lock inside the loop rather than outside so we don't block other
     // concurrent readers.
     absl::MutexLock l(&hdfs_file->mu);
@@ -257,12 +263,13 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
     // of int32. -2 offset can avoid JVM OutOfMemoryError.
     size_t read_n =
         (std::min)(n, static_cast<size_t>(std::numeric_limits<int>::max() - 2));
-    r = libhdfs->hdfsPread(fs, handle, static_cast<tOffset>(offset), dst,
-                           static_cast<tSize>(read_n));
+    int64_t r = libhdfs->hdfsPread(fs, handle, static_cast<tOffset>(offset),
+                                   dst, static_cast<tSize>(read_n));
     if (r > 0) {
       dst += r;
       n -= r;
       offset += r;
+      read += r;
     } else if (!eof_retried && r == 0) {
       // Always reopen the file upon reaching EOF to see if there's more data.
       // If writers are streaming contents while others are concurrently
@@ -274,11 +281,13 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
         TF_SetStatusFromIOError(status, errno, path);
         return -1;
       }
-      handle = libhdfs->hdfsOpenFile(fs, hdfs_path, O_RDONLY, 0, 0, 0);
-      if (handle == nullptr) {
+      hdfs_file->handle =
+          libhdfs->hdfsOpenFile(fs, hdfs_path, O_RDONLY, 0, 0, 0);
+      if (hdfs_file->handle == nullptr) {
         TF_SetStatusFromIOError(status, errno, path);
         return -1;
       }
+      handle = hdfs_file->handle;
       eof_retried = true;
     } else if (eof_retried && r == 0) {
       TF_SetStatus(status, TF_OUT_OF_RANGE, "Read less bytes than requested");
@@ -288,7 +297,7 @@ int64_t Read(const TF_RandomAccessFile* file, uint64_t offset, size_t n,
       TF_SetStatusFromIOError(status, errno, path);
     }
   }
-  return r;
+  return read;
 }
 
 }  // namespace tf_random_access_file
@@ -308,7 +317,7 @@ typedef struct HDFSFile {
         handle(handle) {}
 } HDFSFile;
 
-static void Cleanup(TF_WritableFile* file) {
+void Cleanup(TF_WritableFile* file) {
   auto hdfs_file = static_cast<HDFSFile*>(file->plugin_file);
   hdfs_file->libhdfs->hdfsCloseFile(hdfs_file->fs, hdfs_file->handle);
   hdfs_file->fs = nullptr;
@@ -426,6 +435,23 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
 
 void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
                      TF_WritableFile* file, TF_Status* status) {
+  auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
+  auto fs = Connect(libhdfs, path, status);
+  if (TF_GetCode(status) != TF_OK) return;
+
+  std::string scheme, namenode, hdfs_path;
+  ParseHadoopPath(path, &scheme, &namenode, &hdfs_path);
+
+  auto handle = libhdfs->hdfsOpenFile(fs, hdfs_path.c_str(), O_WRONLY, 0, 0, 0);
+  if (handle == nullptr) return TF_SetStatusFromIOError(status, errno, path);
+
+  file->plugin_file =
+      new tf_writable_file::HDFSFile(hdfs_path, fs, libhdfs, handle);
+  TF_SetStatus(status, TF_OK, "");
+}
+
+void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_WritableFile* file, TF_Status* status) {
   auto libhdfs = static_cast<LibHDFS*>(filesystem->plugin_filesystem);
   auto fs = Connect(libhdfs, path, status);
   if (TF_GetCode(status) != TF_OK) return;

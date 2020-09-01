@@ -285,9 +285,19 @@ def : Pat<(TF_AllToAllOp AnyRankedTensor:$input, (TF_ConstOp $group_assignment),
 // FFT op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
-          (HLO_FftOp $input, HLO_FFT_TYPE_RFFT,
-           (CastElementsToI64Elements $fft_length))>;
+def GetInnerDimFromValue : NativeCodeCall<
+  "GetInnerDimFromValue($0.getType().cast<ShapedType>(), &$_builder)">;
+
+def CheckInnerDimStatic
+  : Constraint<CPred<"CheckInnerDimStatic($0.getType().cast<ShapedType>(), &$_builder)">>;
+
+def : Pat<(TF_FFTOp:$res $input),
+          (HLO_FftOp $input, HLO_FFT_TYPE_FFT, (GetInnerDimFromValue $res)),
+          [(CheckInnerDimStatic $input)]>;
+
+def : Pat<(TF_IFFTOp:$res $input),
+          (HLO_FftOp $input, HLO_FFT_TYPE_IFFT, (GetInnerDimFromValue $res)),
+          [(CheckInnerDimStatic $input)]>;
 
 //===----------------------------------------------------------------------===//
 // GatherV2 op patterns.
@@ -434,6 +444,35 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_
 def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
           (TensorCastOp (HLO_ConstOp $value)),
           [(HLO_Tensor $res)]>;
+
+//===----------------------------------------------------------------------===//
+// Elu op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_EluOp AnyRankedTensor:$features),
+          (HLO_SelectOp
+           (HLOClient_BroadcastCompareOp
+              $features,
+              (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
+              (BinBroadcastDimensions $zero, $features),
+              HLO_COMPARISON_DIRECTION_GT),
+           $features,
+           (HLO_Expm1Op $features))>;
+
+def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$features),
+           (HLO_SelectOp
+            (HLOClient_BroadcastCompareOp
+              $features,
+              (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
+              (BinBroadcastDimensions $zero, $features),
+              HLO_COMPARISON_DIRECTION_GT),
+            $gradients,
+            (HLO_MulOp
+             $gradients,
+             (HLOClient_BroadcastAddOp
+               $features,
+               (HLO_ConstOp:$one (GetScalarOfType<1> $features)),
+               (BinBroadcastDimensions $one, $features))))>;
 
 //===----------------------------------------------------------------------===//
 // Relu op patterns.
@@ -681,5 +720,6 @@ def : Pat<(TF_XlaGatherOp $operand, $start_indices, (TF_ConstOp $slice_sizes),
                           $dimension_numbers, $indices_are_sorted),
           (HLO_GatherOp $operand, $start_indices,
                         (ToGatherDimNumsAttr $dimension_numbers),
-                        $slice_sizes, $indices_are_sorted),
+                        (CastElementsToI64Elements $slice_sizes),
+                        $indices_are_sorted),
           [(HasValidGatherDims $dimension_numbers)]>;

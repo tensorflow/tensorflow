@@ -58,9 +58,9 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-filegroup(
+cc_library(
     name = "pywrap_required_hdrs",
-    srcs = [
+    textual_hdrs = [
         "c_api_internal.h",
         "c_api_macros.h",
         "conversion_macros.h",
@@ -387,6 +387,7 @@ tf_cuda_library(
         "//tensorflow/core/common_runtime/eager:eager_operation",
         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
         "//tensorflow/core/platform",
+        "//tensorflow/core/platform:blocking_counter",
         "@com_google_absl//absl/strings",
     ],
     alwayslink = 1,

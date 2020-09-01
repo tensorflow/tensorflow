@@ -200,8 +200,15 @@ class PrefetchIntervalPicker {
                                          int64 latest_end_time) const = 0;
 
   // Returns the latest time that a prefetch can start.
-  virtual int64 LatestPrefetchStartTime(const HloUse& use, int64 start_time,
-                                        int64 end_time) const = 0;
+  virtual int64 LatestPrefetchStartTime(const Shape& shape, int64 start_time,
+                                        int64 end_time,
+                                        const HloUse* use) const = 0;
+
+  // Returns the preferred time that a prefetch can start.
+  virtual int64 PreferredPrefetchStartTime(const Shape& shape,
+                                           int64 earliest_prefetch_start_time,
+                                           int64 latest_prefetch_start_time,
+                                           int64 prefetch_end_time) const = 0;
 
   // Returns the latest time that a prefetch can end that is less than or equal
   // to proposed_prefetch_end_time.
@@ -269,8 +276,14 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64 PreferredEvictionEndTime(const Shape& shape, int64 start_time,
                                  int64 latest_end_time) const override;
 
-  int64 LatestPrefetchStartTime(const HloUse& use, int64 start_time,
-                                int64 end_time) const override;
+  int64 LatestPrefetchStartTime(const Shape& shape, int64 start_time,
+                                int64 end_time,
+                                const HloUse* use) const override;
+
+  int64 PreferredPrefetchStartTime(const Shape& shape,
+                                   int64 earliest_prefetch_start_time,
+                                   int64 latest_prefetch_start_time,
+                                   int64 prefetch_end_time) const override;
 
   void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
 
@@ -308,10 +321,17 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64 PreferredEvictionEndTime(const Shape& shape, int64 start_time,
                                  int64 latest_end_time) const override;
 
-  int64 LatestPrefetchStartTime(const HloUse& use, int64 start_time,
-                                int64 end_time) const override;
   int64 LatestPrefetchEndTime(int64 original_prefetch_end_time,
                               int64 proposed_prefetch_end_time) const override;
+
+  int64 LatestPrefetchStartTime(const Shape& shape, int64 start_time,
+                                int64 end_time,
+                                const HloUse* use) const override;
+
+  int64 PreferredPrefetchStartTime(const Shape& shape,
+                                   int64 earliest_prefetch_start_time,
+                                   int64 latest_prefetch_start_time,
+                                   int64 prefetch_end_time) const override;
 
   void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
 
@@ -561,12 +581,14 @@ class MemorySpaceAssignment {
    public:
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
                    absl::optional<Chunk> chunk, int64 start_time,
-                   int64 end_time, int64 copy_done_schedule_before_time)
+                   int64 end_time, int64 copy_done_schedule_before_time,
+                   bool is_cross_program_prefetch = false)
         : Allocation(/*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
           copy_start_schedule_after_(start_time),
-          copy_done_schedule_before_(copy_done_schedule_before_time) {}
+          copy_done_schedule_before_(copy_done_schedule_before_time),
+          is_cross_program_prefetch_(is_cross_program_prefetch) {}
 
     bool is_copy_allocation() const override { return true; }
 
@@ -606,6 +628,10 @@ class MemorySpaceAssignment {
       copy_start_schedule_after_ = copy_start_schedule_after;
     }
 
+    bool is_cross_program_prefetch() const {
+      return is_cross_program_prefetch_;
+    }
+
     bool operator==(const CopyAllocation& other) const;
     std::string ToString() const override;
 
@@ -617,6 +643,7 @@ class MemorySpaceAssignment {
     // is before copy_done_schedule_before_.
     int64 copy_start_schedule_after_;
     int64 copy_done_schedule_before_;
+    bool is_cross_program_prefetch_;
     HloInstruction* copy_start_;
     HloInstruction* copy_done_;
   };
@@ -1188,7 +1215,8 @@ class AlternateMemoryBestFitHeap
                     MemorySpace memory_space, absl::optional<Chunk> chunk,
                     int64 start_time, int64 end_time,
                     int64 copy_done_schedule_before_time,
-                    MemorySpaceAssignment::AllocationSequence* allocations);
+                    MemorySpaceAssignment::AllocationSequence* allocations,
+                    bool is_cross_program_prefetch = false);
 
   // This method is used for committing the chunk candidate but adding it to
   // pending_chunks_ so that we can "uncommit" them in case we need to roll back

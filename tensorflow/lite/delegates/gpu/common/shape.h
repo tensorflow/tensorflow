@@ -16,17 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SHAPE_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_SHAPE_H_
 
-#include <sys/types.h>
+#include <stddef.h>
+#include <stdint.h>
 
-#include <algorithm>
 #include <array>
 #include <functional>
 #include <numeric>
 #include <string>
 #include <utility>
 #include <vector>
-
-#include "absl/hash/hash.h"
 
 namespace tflite {
 namespace gpu {

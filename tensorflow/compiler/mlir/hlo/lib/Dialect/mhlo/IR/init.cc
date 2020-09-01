@@ -31,3 +31,11 @@ void mlir::mhlo::registerAllDialects() {
 
   // Dependent dialects
 }
+
+void mlir::mhlo::registerAllMhloDialects(mlir::DialectRegistry &registry) {
+  // clang-format off
+  registry.insert<mlir::chlo::HloClientDialect,
+                  mlir::lmhlo::LmhloDialect,
+                  mlir::mhlo::MhloDialect>();
+  // clang-format on
+}

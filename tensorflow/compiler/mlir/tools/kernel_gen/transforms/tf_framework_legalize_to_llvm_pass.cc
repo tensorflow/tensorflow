@@ -33,6 +33,10 @@ namespace {
 
 class TestTFFrameworkToLLVMPass
     : public TestTFFrameworkLegalizeToLLVMPassBase<TestTFFrameworkToLLVMPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<LLVM::LLVMDialect>();
+  }
+
  public:
   void runOnOperation() override {
     ModuleOp m = getOperation();

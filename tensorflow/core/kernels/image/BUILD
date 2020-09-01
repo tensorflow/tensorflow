@@ -276,7 +276,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "resize_bilinear_op",
     prefix = "resize_bilinear_op",
-    deps = IMAGE_DEPS,
+    deps = IMAGE_DEPS + ["//tensorflow/core/kernels:cast_op"],
 )
 
 tf_kernel_library(

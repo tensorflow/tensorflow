@@ -24,33 +24,14 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-LSTM::LSTM(const OperationDef& definition, const DeviceInfo& device_info)
-    : GPUOperation(definition) {
-  code_ = GetLSTMCode(definition_, device_info);
-}
-
-LSTM::LSTM(LSTM&& kernel) : GPUOperation(std::move(kernel)) {}
-
-LSTM& LSTM::operator=(LSTM&& kernel) {
-  if (this != &kernel) {
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
-std::string LSTM::GetLSTMCode(const OperationDef& op_def,
-                              const DeviceInfo& device_info) {
-  AddSrcTensor("intermediate", op_def.src_tensors[0]);
-  AddSrcTensor("prev_state", op_def.src_tensors[1]);
-  AddDstTensor("new_state", op_def.dst_tensors[0]);
-  AddDstTensor("activation", op_def.dst_tensors[1]);
-
+namespace {
+std::string GetLSTMCode(const OperationDef& op_def,
+                        const DeviceInfo& device_info) {
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
   c += "  int B = get_global_id(0);\n";
-  c += "  int Z = get_global_id(1);\n";
+  c += "  int Z = get_global_id(2);\n";
   c += "  if (Z >= args.activation.Slices() || B >= args.activation.Batch()) "
        "return;\n";
   c += "  FLT4 prev_st = args.prev_state.Read(0, 0, Z, B);\n";
@@ -105,15 +86,18 @@ std::string LSTM::GetLSTMCode(const OperationDef& op_def,
   return c;
 }
 
-int3 LSTM::GetGridSize() const {
-  const int grid_x = dst_[0]->Batch();
-  const int grid_y = dst_[0]->Slices();
-  const int grid_z = 1;
-  return int3(grid_x, grid_y, grid_z);
-}
+}  // namespace
 
-LSTM CreateLSTM(const OperationDef& definition, const DeviceInfo& device_info) {
-  return LSTM(definition, device_info);
+GPUOperation CreateLSTM(const OperationDef& definition,
+                        const DeviceInfo& device_info) {
+  GPUOperation op(definition);
+  op.AddSrcTensor("intermediate", definition.src_tensors[0]);
+  op.AddSrcTensor("prev_state", definition.src_tensors[1]);
+  op.AddDstTensor("new_state", definition.dst_tensors[0]);
+  op.AddDstTensor("activation", definition.dst_tensors[1]);
+  op.code_ = GetLSTMCode(definition, device_info);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  return op;
 }
 
 }  // namespace cl

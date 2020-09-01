@@ -17,6 +17,8 @@ limitations under the License.
 
 #include <string>
 
+#include "tensorflow/lite/delegates/gpu/cl/cl_program.h"
+#include "tensorflow/lite/delegates/gpu/cl/device_info.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
@@ -32,7 +34,7 @@ std::string GetVectorReduceCode() {
 })";
 }
 
-std::string GetReduceCode(size_t work_group_size_x, size_t work_group_size_y) {
+std::string GetReduceCode() {
   // If it is supported, use the built-in work_group_reduce_add function.
   // Otherwise, implement a reduction using __local memory. Note this only works
   // with power-of-two work group sizes.
@@ -45,38 +47,41 @@ std::string GetReduceCode(size_t work_group_size_x, size_t work_group_size_y) {
 #ifdef __opencl_c_work_group_collective_functions
 #define local_reduce(input, tmp) work_group_reduce_add(input)
 #else  // !defined(__opencl_c_work_group_collective_functions)
-static inline float local_reduce(float input, __local float tmp[)" +
-         std::to_string(work_group_size_y) + "][" +
-         std::to_string(work_group_size_x) + R"(]) {
-  const size_t local_id_x = get_local_id(0);
-  const size_t local_id_y = get_local_id(1);
-  tmp[local_id_y][local_id_x] = input;
-  mem_fence(CLK_LOCAL_MEM_FENCE);
-  size_t reduction_size = get_local_size(0) / 2;
+static inline float local_reduce(float input, __local float* tmp) {
+  const int local_id = get_local_id(0);
+  tmp[local_id] = input;
+  barrier(CLK_LOCAL_MEM_FENCE);
+  int reduction_size = get_local_size(0) / 2;
   while (reduction_size > 0) {
-    if (local_id_x < reduction_size) {
-      tmp[local_id_y][local_id_x] += tmp[local_id_y][local_id_x + reduction_size];
+    if (local_id < reduction_size) {
+      tmp[local_id] += tmp[local_id + reduction_size];
     }
-    mem_fence(CLK_LOCAL_MEM_FENCE);
+    barrier(CLK_LOCAL_MEM_FENCE);
     reduction_size /=  2;
   }
-  return tmp[local_id_y][0];
+  return tmp[0];
 }
 #endif  // defined(__opencl_c_work_group_collective_functions)
 )";
 }
 }  // namespace
 
-MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition)
+MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
+                                                 const DeviceInfo& device_info)
     : GPUOperation(definition) {
   // The kernel code does not inherently need a fixed size, but in order to not
   // hardcode the __local array's size for the reductions, we would need to pass
   // that size to the kernel at runtime, and that is currently not supported.
   // For now, fix workgroup size to 128 threads.
   work_group_size_.x = 128;
-  work_group_size_.y = 1;
-  work_group_size_.z = 1;
+  work_group_size_.y = 1;  // Required
+  work_group_size_.z = 1;  // Required
   code_ = GetNormalizationCode();
+  if (device_info.cl_version >= OpenCLVersion::CL_3_0) {
+    compiler_options_.push_back(CompilerOptions::CL_3_0);
+  } else if (device_info.cl_version >= OpenCLVersion::CL_2_0) {
+    compiler_options_.push_back(CompilerOptions::CL_2_0);
+  }
 }
 
 std::string MeanStdDevNormalization::GetNormalizationCode() {
@@ -85,19 +90,15 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
 
   std::string c = GetCommonDefines(definition_.precision);
   c += GetVectorReduceCode();
-  c += GetReduceCode(work_group_size_.x, work_group_size_.y);
+  c += GetReduceCode();
   c += "__attribute__((reqd_work_group_size(" +
-       std::to_string(work_group_size_.x) + ", " +
-       std::to_string(work_group_size_.y) + ", " +
-       std::to_string(work_group_size_.z) + ")))\n";
-  c += R"(__kernel void main_function(
-$0) {
+       std::to_string(work_group_size_.x) + ", 1, 1)))\n";
+  c += R"(__kernel void main_function($0) {
 #ifndef __opencl_c_work_group_collective_functions
   __local float tmp[)" +
-       std::to_string(work_group_size_.y) + "][" +
        std::to_string(work_group_size_.x) + R"(];
 #endif
-  size_t B = get_global_id(1);
+  const int B = get_global_id(1);
   if (get_global_id(2) > 0) { return; }
   if (B >= args.src_tensor.Batch()) { return; }
   // Calculate the total sum of the input tensor.
@@ -152,8 +153,8 @@ int3 MeanStdDevNormalization::GetGridSize() const {
 }
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
-    const OperationDef& definition) {
-  return MeanStdDevNormalization(definition);
+    const OperationDef& definition, const DeviceInfo& device_info) {
+  return MeanStdDevNormalization(definition, device_info);
 }
 
 }  // namespace cl

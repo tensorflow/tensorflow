@@ -86,7 +86,7 @@ ENTRY %main.6 (arg_tuple.1: (f32[], f32[])) -> (f32[]) {
   %arg_tuple.1 = (f32[], f32[]) parameter(0)
   %get-tuple-element.2 = f32[] get-tuple-element((f32[], f32[]) %arg_tuple.1), index=0
   %get-tuple-element.3 = f32[] get-tuple-element((f32[], f32[]) %arg_tuple.1), index=1
-  %add.4 = f32[] add(f32[] %get-tuple-element.2, f32[] %get-tuple-element.3)
+  %add.4 = f32[] add(f32[] %get-tuple-element.2, f32[] %get-tuple-element.3), metadata={source_file="-" source_line=4}
   ROOT %tuple.5 = (f32[]) tuple(f32[] %add.4)
 }
 
@@ -143,7 +143,7 @@ TEST(CompileSerializedMlirToXlaHloTest, IndividualArgs) {
 ENTRY %main.5 (Arg_0.1: f32[], Arg_1.2: f32[]) -> (f32[]) {
   %Arg_0.1 = f32[] parameter(0)
   %Arg_1.2 = f32[] parameter(1)
-  %add.3 = f32[] add(f32[] %Arg_0.1, f32[] %Arg_1.2)
+  %add.3 = f32[] add(f32[] %Arg_0.1, f32[] %Arg_1.2), metadata={source_file="-" source_line=4}
   ROOT %tuple.4 = (f32[]) tuple(f32[] %add.3)
 }
 
@@ -215,7 +215,7 @@ ENTRY %main.6 (arg_tuple.1: (f32[10,19], f32[19,10])) -> (f32[10,19]) {
   %arg_tuple.1 = (f32[10,19]{1,0}, f32[19,10]{1,0}) parameter(0), parameter_replication={false,true}
   %get-tuple-element.2 = f32[10,19]{1,0} get-tuple-element((f32[10,19]{1,0}, f32[19,10]{1,0}) %arg_tuple.1), index=0
   %get-tuple-element.3 = f32[19,10]{1,0} get-tuple-element((f32[10,19]{1,0}, f32[19,10]{1,0}) %arg_tuple.1), index=1
-  %reshape.4 = f32[10,19]{1,0} reshape(f32[19,10]{1,0} %get-tuple-element.3)
+  %reshape.4 = f32[10,19]{1,0} reshape(f32[19,10]{1,0} %get-tuple-element.3), metadata={source_file="-" source_line=5}
   ROOT %tuple.5 = (f32[10,19]{1,0}) tuple(f32[10,19]{1,0} %reshape.4)
 }
 

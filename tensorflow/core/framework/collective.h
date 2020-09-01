@@ -161,18 +161,15 @@ class DeviceResolverInterface {
       std::vector<DeviceAttributes>* attributes,
       const StatusCallback& done) = 0;
 
-  // Populate *attributes with the DeviceAttributes of the specified
-  // device.
+  // Populates *attributes with the DeviceAttributes of the specified device.
   virtual void GetDeviceAttributesAsync(const string& device,
                                         const string& task,
                                         DeviceAttributes* attributes,
                                         const StatusCallback& done) = 0;
 
-  // Clear the cache of device data belonging to the specified task.
-  virtual void ClearTask(const string& task) = 0;
-
-  // Clear the cache of all device data.
-  virtual void ClearCache() = 0;
+  // Returns the cached device attributes of a task.
+  virtual Status GetTaskCached(const string& task,
+                               std::vector<DeviceAttributes>* attributes) = 0;
 };
 
 // Interface that provides resolution of shared CollectiveParams fields.
@@ -183,7 +180,8 @@ class ParamResolverInterface {
   // Called by each collective op at first execution in order to fill out
   // the CollectiveParams structure with data gathered from the full
   // (maybe distributed) collection of peer nodes.
-  virtual void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+  virtual void CompleteParamsAsync(const DeviceAttributes& device,
+                                   CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    const StatusCallback& done) = 0;
 
@@ -279,6 +277,12 @@ class CollectiveRemoteAccess {
                           const DeviceLocality& client_locality,
                           const StatusCallback& done) = 0;
 
+  // Checks the health of a collective peer. It probes the peer to see if it is
+  // alive. Note that if a peer has restarted, it's considered a different one,
+  // so CheckPeerHealth fails.
+  virtual void CheckPeerHealth(const string& peer_task,
+                               const StatusCallback& done) = 0;
+
   virtual BufRendezvous* buf_rendezvous() = 0;
 
   virtual void StartAbort(const Status& s) = 0;
@@ -298,7 +302,8 @@ class CollectiveExecutor : public core::RefCounted {
         "a CollectiveExecutor has not been provided."));
   }
 
-  virtual void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+  virtual void CompleteParamsAsync(const DeviceAttributes& device,
+                                   CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    StatusCallback done) {
     done(errors::Internal(

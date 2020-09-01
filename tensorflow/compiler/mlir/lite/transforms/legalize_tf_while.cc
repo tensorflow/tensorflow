@@ -33,6 +33,10 @@ namespace {
 // cond and body regions.
 struct LegalizeWhile
     : public PassWrapper<LegalizeWhile, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<TFL::TensorFlowLiteDialect>();
+  }
+
   void RunOnFunction(FuncOp func);
 
   void runOnOperation() override {

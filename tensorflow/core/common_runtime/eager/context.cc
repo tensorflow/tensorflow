@@ -72,8 +72,7 @@ auto* eager_context_created =
 
 EagerContext::EagerContext(
     const SessionOptions& opts,
-    ContextDevicePlacementPolicy default_device_placement_policy,
-    ContextMirroringPolicy default_mirroring_policy, bool async,
+    ContextDevicePlacementPolicy default_device_placement_policy, bool async,
     const bool lazy_copy_function_remote_inputs, const DeviceMgr* device_mgr,
     bool device_mgr_owned, Rendezvous* rendezvous,
     const CustomKernelCreator* custom_kernel_creator,
@@ -81,7 +80,6 @@ EagerContext::EagerContext(
     : ImmediateExecutionContext(kEager),
       opts_(opts),
       default_device_placement_policy_(default_device_placement_policy),
-      default_mirroring_policy_(default_mirroring_policy),
       local_device_manager_(device_mgr, device_mgr_owned),
       host_cpu_device_(device_mgr->HostCPU()),
       rendezvous_(rendezvous),
@@ -170,24 +168,15 @@ AbstractTensorInterface* EagerContext::CreateTensor(
 
 AbstractTensorInterface* EagerContext::CreateTensor(
     DataType dtype, const int64_t* dims, int num_dims, void* data, size_t len,
-    bool convert_string, MemoryReleaser memory_releaser,
-    void* memory_releaser_arg) {
+    MemoryReleaser memory_releaser, void* memory_releaser_arg) {
   TF_Tensor* tensor_wrapper =
       TF_NewTensor(static_cast<TF_DataType>(dtype), dims, num_dims, data, len,
                    memory_releaser, memory_releaser_arg);
 
-  if (convert_string) {
-    tensorflow::Tensor tensor;
-    Status status = TF_TensorToTensor(tensor_wrapper, &tensor);
-    TF_DeleteTensor(tensor_wrapper);
-    if (!status.ok()) return nullptr;
-    return new TensorInterface(std::move(tensor));
-  } else {
-    AbstractTensorInterface* result = nullptr;
-    std::swap(result, tensor_wrapper->tensor);
-    TF_DeleteTensor(tensor_wrapper);
-    return result;
-  }
+  AbstractTensorInterface* result = nullptr;
+  std::swap(result, tensor_wrapper->tensor);
+  TF_DeleteTensor(tensor_wrapper);
+  return result;
 }
 
 void EagerContext::ResetPFLR(const DeviceMgr* device_mgr, Env* env,
@@ -410,25 +399,6 @@ ContextDevicePlacementPolicy EagerContext::GetDevicePlacementPolicy() const {
     return policy_map_it->second;
   }
   return default_device_placement_policy_;
-}
-
-void EagerContext::SetThreadLocalMirroringPolicy(
-    ContextMirroringPolicy policy) {
-  mutex_lock ml(policy_map_mu_);
-  mirroring_policy_[std::this_thread::get_id()] = policy;
-}
-
-ContextMirroringPolicy EagerContext::GetMirroringPolicy() const {
-  tf_shared_lock l(policy_map_mu_);
-  auto policy_map_it = mirroring_policy_.find(std::this_thread::get_id());
-  if (policy_map_it != mirroring_policy_.end()) {
-    return policy_map_it->second;
-  }
-  return default_mirroring_policy_;
-}
-
-bool EagerContext::MirrorTensors() const {
-  return GetMirroringPolicy() == MIRRORING_ALL;
 }
 
 bool EagerContext::LazyCopyFunctionRemoteInputs() const {

@@ -180,7 +180,7 @@ class BaseDenseAttention(Layer):
       q_mask = mask[0]
       if q_mask is None:
         return None
-      return ops.convert_to_tensor_v2(q_mask)
+      return ops.convert_to_tensor_v2_with_dispatch(q_mask)
     return None
 
   def _validate_call_args(self, inputs, mask):

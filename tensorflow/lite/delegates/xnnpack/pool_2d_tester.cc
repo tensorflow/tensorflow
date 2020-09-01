@@ -43,15 +43,19 @@ void Pool2DTester::Test(tflite::BuiltinOperator pool_op,
   const tflite::Model* model = tflite::GetModel(buffer.data());
 
   std::unique_ptr<tflite::Interpreter> delegate_interpreter;
-  ASSERT_EQ(tflite::InterpreterBuilder(
-                model, tflite::ops::builtin::BuiltinOpResolver())(
-                &delegate_interpreter),
-            kTfLiteOk);
+  ASSERT_EQ(
+      tflite::InterpreterBuilder(
+          model,
+          tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
+          &delegate_interpreter),
+      kTfLiteOk);
   std::unique_ptr<tflite::Interpreter> default_interpreter;
-  ASSERT_EQ(tflite::InterpreterBuilder(
-                model, tflite::ops::builtin::BuiltinOpResolver())(
-                &default_interpreter),
-            kTfLiteOk);
+  ASSERT_EQ(
+      tflite::InterpreterBuilder(
+          model,
+          tflite::ops::builtin::BuiltinOpResolverWithoutDefaultDelegates())(
+          &default_interpreter),
+      kTfLiteOk);
 
   ASSERT_TRUE(delegate_interpreter);
   ASSERT_TRUE(default_interpreter);

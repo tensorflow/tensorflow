@@ -551,8 +551,9 @@ Status GetOrCreateKernelAndDevice(
           ctx.GetCollectiveExecutorHandle(), ctx.HostCPU()));
     }
 
-    TF_RETURN_IF_ERROR(
-        kernel->Init({ctx.LogDevicePlacement()}, ndef, graph_collector));
+    TF_RETURN_IF_ERROR(kernel->Init(
+        {ctx.LogDevicePlacement(), ctx.LazyCopyFunctionRemoteInputs()}, ndef,
+        graph_collector));
 
     if (op->is_function()) {
       ctx.AddKernelToCache(cache_key, kernel.get());
@@ -1068,11 +1069,6 @@ Status EagerExecute(EagerOperation* op, TensorHandle** retvals,
   profiler::TraceMe activity(
       [&] { return absl::StrCat("EagerExecute: ", op->Name()); },
       profiler::TraceMeLevel::kInfo);
-
-  if (VariantDeviceIsCustom(op->Device())) {
-    return absl::get<CustomDevice*>(op->Device())
-        ->Execute(op, retvals, num_retvals);
-  }
 
   if (!op->Executor().Async()) {
     // In sync mode, always clear error to maintain the same behavior as before.

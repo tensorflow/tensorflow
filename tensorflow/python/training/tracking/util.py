@@ -397,7 +397,7 @@ class _NameBasedRestoreCoordinator(object):
             restored_tensors=restored_tensors, restored_shapes=None)
 
 
-# TODO(allenl): If this ends up in a public API, consider adding LINT.IfChange
+# TODO(allenl): If this ends up in a public API, consider adding LINT.If Change
 # or consolidating the implementation with get_variable.
 def _default_getter(name,
                     shape,
@@ -1908,8 +1908,9 @@ class Checkpoint(tracking.AutoTrackable):
       kwargs["root"] = root
       root._maybe_initialize_trackable()
 
-      self._save_counter = root._lookup_dependency("save_counter")
-      self._root = root
+      self._save_counter = data_structures.NoDependency(
+          root._lookup_dependency("save_counter"))
+      self._root = data_structures.NoDependency(root)
 
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
       setattr(self, k, v)
@@ -1930,7 +1931,8 @@ class Checkpoint(tracking.AutoTrackable):
               "root.{name} already exists.".format(name=k))
 
     self._saver = saver_with_op_caching(saver_root, attached_dependencies)
-    self._attached_dependencies = attached_dependencies
+    self._attached_dependencies = data_structures.NoDependency(
+        attached_dependencies)
 
   def _maybe_create_save_counter(self):
     """Create a save counter if it does not yet exist."""
@@ -1952,7 +1954,7 @@ class Checkpoint(tracking.AutoTrackable):
           # When loading a checkpoint, the save counter is created after
           # the checkpoint has been loaded, so it must be handled in a deferred
           # manner.
-          restore = self.root._deferred_dependencies.get("save_counter")  # pylint: disable=protected-access
+          restore = self.root._deferred_dependencies.pop("save_counter", ())  # pylint: disable=protected-access
           if restore:
             restore[0].restore(self._save_counter)
 

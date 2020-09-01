@@ -121,7 +121,7 @@ def _model_loss(model,
   if any(
       isinstance(input_t, (np.ndarray, float, int))
       for input_t in nest.flatten(inputs)):
-    inputs = nest.map_structure(ops.convert_to_tensor_v2, inputs)
+    inputs = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch, inputs)
 
   outs = model(inputs, **kwargs)
   outs = nest.flatten(outs)
@@ -131,7 +131,8 @@ def _model_loss(model,
   # TODO(sallymatson/psv): check if we should do same mismatch fix for weights
   if sample_weights:
     sample_weights = [
-        training_utils.cast_if_floating_dtype(ops.convert_to_tensor_v2(val))
+        training_utils.cast_if_floating_dtype(
+            ops.convert_to_tensor_v2_with_dispatch(val))
         if val is not None else None for val in sample_weights
     ]
 
