@@ -108,8 +108,6 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
        std::to_string(work_group_size_.x) + R"(];
 #endif
   const int B = get_global_id(1);
-  if (get_global_id(2) > 0) { return; }
-  if (B >= args.src_tensor.Batch()) { return; }
   // Calculate the total sum of the input tensor.
   // First, get a local sum of input[local_id_x + N*local_size_x] for all N.
   float4 private_sum4 = (float4)(0.0f);
