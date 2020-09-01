@@ -82,7 +82,7 @@ def read_model_with_mutable_tensors(input_tflite_file):
 
 
 def convert_object_to_bytearray(model_object):
-  """Converts a tflite model from an object to a bytearray."""
+  """Converts a tflite model from an object to a immutable bytearray."""
   # Initial size of the buffer, which will grow automatically if needed
   builder = flatbuffers.Builder(1024)
   model_offset = model_object.Pack(builder)
