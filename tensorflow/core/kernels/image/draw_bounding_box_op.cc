@@ -78,8 +78,8 @@ class DrawBoundingBoxesOp : public OpKernel {
     const int64 width = images.dim_size(2);
     std::vector<std::vector<float>> color_table;
     int64 thickness = int64{1};
-    if (context->num_inputs() > 2) {  // Enters always in TF 2.x and in
-                                      // TF 1.x, iff colors passed
+    
+    if (context->num_inputs() > 2) {  // DrawBoundingBoxesV2 and V3
       const Tensor& colors_tensor = context->input(2);
       OP_REQUIRES(context, colors_tensor.shape().dims() == 2,
                   errors::InvalidArgument("colors must be a 2-D matrix",
@@ -105,10 +105,10 @@ class DrawBoundingBoxesOp : public OpKernel {
         }
       }
 
-      if (context->num_inputs() > 3) { // Get the thickness parameter
+      if (context->num_inputs() > 3) { // DrawBoundingBoxesV3
         thickness = static_cast<int64>(context->input(3));
         OP_REQUIRES(context, thickness > 0,
-                errors::InvalidArgument("Thickness should be greater than 1"));
+                errors::InvalidArgument("Thickness should be at least 1"));
       }
     }
     if (color_table.empty()) {
@@ -168,16 +168,7 @@ class DrawBoundingBoxesOp : public OpKernel {
         // Define a variable `line_width` for THIS box specifically
         const int64 half_dimension = std::min<int64>( 
             (right_outer - left_outer)/2, (bottom_outer - top_outer)/2 );
-        if (thickness > half_dimension) {
-            LOG(WARNING) << "Bounding box (" << min_box_row << "," << min_box_col
-                       << "," << max_box_row << "," << max_box_col
-                       << ") cannot accomodate the full thickness, and is being "
-                       << "drawn with a thickness of 1";
-            const int64 line_width = 1;
-        }
-        else {
-            const int64 line_width = thickness;
-        }
+        const int64 line_width = std::max<int64>(half_dimension, thickness);
 
         // Define the inner limits of the box (with thickness)
         const int64 top_inner = static_cast<int64>(top_outer + line_width);
