@@ -3771,7 +3771,7 @@ ReductionCodegenInfo IrEmitterUnnested::ComputeReductionCodegenInfo(
                               reduction_dimensions.is_row_reduction);
 }
 
-Status IrEmitterUnnested::EmitIRForReduction(
+void IrEmitterUnnested::EmitIRForReduction(
     HloInstruction* unnested_hlo,
     absl::Span<HloInstruction* const> output_instructions,
     ReductionCodegenInfo* reduction_info, const Shape& input_shape) {
@@ -3820,8 +3820,6 @@ Status IrEmitterUnnested::EmitIRForReduction(
   EmitEpilogueForReduction(index_ty, unnested_hlo, *reduction_info,
                            reduce_instructions, reduction_output_shape_indices,
                            reducers, tiling_kernel_info);
-
-  return Status::OK();
 }
 
 namespace {
@@ -3830,9 +3828,9 @@ namespace {
 // broadcasted constant/scalar.
 bool IsBroadcastedConstantOrScalar(const HloInstruction& instr) {
   return instr.IsConstant() || ShapeUtil::IsScalar(instr.shape()) ||
-         HloOpcode::kBroadcast == instr.opcode() &&
-             (instr.operand(0)->IsConstant() ||
-              ShapeUtil::IsScalar(instr.operand(0)->shape()));
+         (HloOpcode::kBroadcast == instr.opcode() &&
+          (instr.operand(0)->IsConstant() ||
+           ShapeUtil::IsScalar(instr.operand(0)->shape())));
 }
 
 // Divides output_instructions into groups. Different groups will be executed
