@@ -17,7 +17,7 @@ set -e
 
 # Build the docker image
 cd tensorflow/tools/ci_build
-docker build -t -horovod_test_container:latest -f Dockerfile.horovod.gpu .
+docker build -t horovod_test_container:latest -f Dockerfile.horovod.gpu .
 
 docker run -it --rm \
   --gpus all \
