@@ -93,33 +93,6 @@ tf.math.acosh(x) ==> [nan nan 0. 0.62236255 5.9914584 9.903487 inf]
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_AddOp : TF_Op<"Add", [NoSideEffect, ResultsBroadcastableShape, TF_LayoutAgnostic, TF_SameOperandsAndResultElementTypeResolveRef]>,
-               WithBroadcastableBinOpBuilder {
-  let summary = "Returns x + y element-wise.";
-
-  let description = [{
-*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-
-Given two input tensors, the `tf.add` operation computes the sum for every element in the tensor.
-
-Both input and output have a range `(-inf, inf)`.
-  }];
-
-  let arguments = (ins
-    TF_NumberOrStrTensor:$x,
-    TF_NumberOrStrTensor:$y
-  );
-
-  let results = (outs
-    TF_NumberOrStrTensor:$z
-  );
-
-  TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
-
-  let hasCanonicalizer = 1;
-}
-
 def TF_AddNOp : TF_Op<"AddN", [Commutative, NoSideEffect]> {
   let summary = "Add all input tensors element wise.";
 
