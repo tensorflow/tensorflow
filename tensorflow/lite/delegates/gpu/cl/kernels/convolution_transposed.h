@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_CONVOLUTION_TRANSPOSED_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_CONVOLUTION_TRANSPOSED_H_
 
+#include <cstdint>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
@@ -43,6 +44,7 @@ class ConvolutionTransposed : public GPUOperation {
       TuningType tuning_type, const DeviceInfo& device_info,
       const KernelInfo& kernel_info,
       std::vector<int3>* work_groups) const override;
+  absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 
   // Move only
@@ -55,26 +57,37 @@ class ConvolutionTransposed : public GPUOperation {
   friend ConvolutionTransposed CreateConvolutionTransposed(
       const DeviceInfo& device_info, const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
-  explicit ConvolutionTransposed(const OperationDef& definition,
-                                 const ConvolutionTransposedAttributes& attr,
-                                 const DeviceInfo& device_info);
+  friend ConvolutionTransposed CreateConvolutionTransposed3D(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const ConvolutionTransposed3DAttributes& attr);
+  ConvolutionTransposed(const OperationDef& definition,
+                        const ConvolutionTransposedAttributes& attr,
+                        const DeviceInfo& device_info);
+  ConvolutionTransposed(const OperationDef& definition,
+                        const ConvolutionTransposed3DAttributes& attr,
+                        const DeviceInfo& device_info);
+
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights,
+                     bool weights_are_buffer);
+
+  template <DataType T>
+  void UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights,
                      bool weights_are_buffer);
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
                                                 const DeviceInfo& device_info,
                                                 bool weights_are_buffer,
-                                                const int3& block_size);
-  int2 stride_;
-  int3 block_size_ = int3(1, 1, 1);
+                                                const int4& block_size);
+  int4 stride_;
+  int4 block_size_ = int4(1, 1, 1, 1);  // WHDS
 };
 
 template <DataType T>
 void ConvolutionTransposed::UploadWeights(
     const tflite::gpu::Tensor<OHWI, T>& weights, bool weights_are_buffer) {
   const int dst_depth =
-      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.z);
+      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.w);
   const int src_depth = DivideRoundUp(weights.shape.i, 4);
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
@@ -88,19 +101,19 @@ void ConvolutionTransposed::UploadWeights(
   if (f32_weights) {
     float4* ptr = reinterpret_cast<float4*>(data.data());
     if (weights_are_buffer) {
-      RearrangeWeightsToOHWIOGroupI4O4(weights, block_size_.z,
+      RearrangeWeightsToOHWIOGroupI4O4(weights, block_size_.w,
                                        absl::MakeSpan(ptr, elements_count));
     } else {
-      RearrangeWeightsToI4HWIOOGroupO4(weights, block_size_.z,
+      RearrangeWeightsToI4HWIOOGroupO4(weights, block_size_.w,
                                        absl::MakeSpan(ptr, elements_count));
     }
   } else {
     half4* ptr = reinterpret_cast<half4*>(data.data());
     if (weights_are_buffer) {
-      RearrangeWeightsToOHWIOGroupI4O4(weights, block_size_.z,
+      RearrangeWeightsToOHWIOGroupI4O4(weights, block_size_.w,
                                        absl::MakeSpan(ptr, elements_count));
     } else {
-      RearrangeWeightsToI4HWIOOGroupO4(weights, block_size_.z,
+      RearrangeWeightsToI4HWIOOGroupO4(weights, block_size_.w,
                                        absl::MakeSpan(ptr, elements_count));
     }
   }
@@ -130,9 +143,75 @@ void ConvolutionTransposed::UploadWeights(
   }
 }
 
+template <DataType T>
+void ConvolutionTransposed::UploadWeights(
+    const tflite::gpu::Tensor<OHWDI, T>& weights, bool weights_are_buffer) {
+  const int dst_depth =
+      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size_.w);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int kernel_x = weights.shape.w;
+  const int kernel_y = weights.shape.h;
+  const int kernel_z = weights.shape.d;
+
+  const int elements_count =
+      kernel_x * kernel_y * kernel_z * src_depth * dst_depth * 4;
+  const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+
+  const int float4_size = f32_weights ? 16 : 8;
+  std::vector<uint8_t> data(float4_size * elements_count);
+
+  if (f32_weights) {
+    float4* ptr = reinterpret_cast<float4*>(data.data());
+    if (weights_are_buffer) {
+      RearrangeWeightsToODHWIOGroupI4O4(weights, block_size_.w,
+                                        absl::MakeSpan(ptr, elements_count));
+    } else {
+      RearrangeWeightsToI4DHWIOOGroupO4(weights, block_size_.w,
+                                        absl::MakeSpan(ptr, elements_count));
+    }
+  } else {
+    half4* ptr = reinterpret_cast<half4*>(data.data());
+    if (weights_are_buffer) {
+      RearrangeWeightsToODHWIOGroupI4O4(weights, block_size_.w,
+                                        absl::MakeSpan(ptr, elements_count));
+    } else {
+      RearrangeWeightsToI4DHWIOOGroupO4(weights, block_size_.w,
+                                        absl::MakeSpan(ptr, elements_count));
+    }
+  }
+
+  if (weights_are_buffer) {
+    BufferDescriptor desc;
+    desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+    desc.element_size = 16;
+    desc.size = float4_size * elements_count;
+    desc.data = std::move(data);
+    args_.AddObject("weights",
+                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+  } else {
+    int texture_width = dst_depth;
+    int texture_height = src_depth * kernel_x * kernel_y * kernel_z;
+    int sub_size = float4_size * texture_width * texture_height;
+    for (int i = 0; i < 4; ++i) {
+      Texture2DDescriptor desc;
+      desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+      desc.size = int2(texture_width, texture_height);
+      desc.data.resize(sub_size);
+      memcpy(desc.data.data(), data.data() + sub_size * i, sub_size);
+      const std::string name = "weights" + std::to_string(i);
+      args_.AddObject(name,
+                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+    }
+  }
+}
+
 ConvolutionTransposed CreateConvolutionTransposed(
     const DeviceInfo& device_info, const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr);
+
+ConvolutionTransposed CreateConvolutionTransposed3D(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposed3DAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu
