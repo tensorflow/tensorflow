@@ -22,6 +22,8 @@ limitations under the License.
 
 void ParseHadoopPath(const std::string& fname, std::string* scheme,
                      std::string* namenode, std::string* path);
+void SplitArchiveNameAndPath(std::string* path, std::string* nn,
+                             TF_Status* status);
 class LibHDFS;
 
 namespace tf_random_access_file {
@@ -47,6 +49,8 @@ void NewRandomAccessFile(const TF_Filesystem* filesystem, const char* path,
                          TF_RandomAccessFile* file, TF_Status* status);
 void NewWritableFile(const TF_Filesystem* filesystem, const char* path,
                      TF_WritableFile* file, TF_Status* status);
+void NewAppendableFile(const TF_Filesystem* filesystem, const char* path,
+                       TF_WritableFile* file, TF_Status* status);
 void NewReadOnlyMemoryRegionFromFile(const TF_Filesystem* filesystem,
                                      const char* path,
                                      TF_ReadOnlyMemoryRegion* region,
