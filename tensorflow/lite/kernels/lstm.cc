@@ -55,6 +55,10 @@ struct OpData {
   int scratch_tensor_index;
   lstm_eval::IntegerLstmParameter integer_lstm_param;
   bool compute_row_sums;
+
+  // Only used for sparse hybrid lstm kernels.
+  int ledger_index;
+  bool ledger_initialized;
 };
 
 namespace full {
@@ -76,6 +80,63 @@ enum HybridTemporaryTensor {
   kRowSums = 11,
   kNumHybridTemporaryTensors = 12,
 };
+
+constexpr int kLedgersToAdd = 9;
+constexpr int kInputToInputWeightsLedgerOffset = 0;
+constexpr int kInputToForgetWeightsLedgerOffset = 1;
+constexpr int kInputToCellWeightsLedgerOffset = 2;
+constexpr int kInputToOutputWeightsLedgerOffset = 3;
+constexpr int kRecurrentToInputWeightsLedgerOffset = 4;
+constexpr int kRecurrentToForgetWeightsLedgerOffset = 5;
+constexpr int kRecurrentToCellWeightsLedgerOffset = 6;
+constexpr int kRecurrentToOutputWeightsLedgerOffset = 7;
+constexpr int kProjectionWeightsLedgerOffset = 8;
+
+TfLiteStatus make_ledger(const TfLiteSparsity* sparsity, TfLiteContext* context,
+                         TfLiteTensor* ledger) {
+  ledger->type = kTfLiteUInt8;
+  ledger->allocation_type = kTfLiteArenaRwPersistent;
+  if (sparsity == nullptr) {
+    return kTfLiteOk;
+  }
+  TfLiteIntArray* ledger_size = TfLiteIntArrayCreate(1);
+  ledger_size->data[0] = sparsity->dim_metadata[1].array_indices->size +
+                         sparsity->dim_metadata[1].array_segments->size - 1;
+  return context->ResizeTensor(context, ledger, ledger_size);
+}
+
+TfLiteStatus copy_ledger(const TfLiteSparsity* sparsity, TfLiteTensor* ledger) {
+  if (sparsity == nullptr) {
+    return kTfLiteOk;
+  }
+
+  const auto* array_segments = sparsity->dim_metadata[1].array_segments;
+  const auto* array_indices = sparsity->dim_metadata[1].array_indices;
+  uint8_t* output_data = GetTensorData<uint8_t>(ledger);
+  int output_data_ptr = 0;
+
+  for (int i = 0; i < array_segments->size - 1; i++) {
+    int row_start = array_segments->data[i];
+    int row_end = array_segments->data[i + 1];
+    if (row_end - row_start > UINT8_MAX) {
+      return kTfLiteError;
+    }
+    // Copy num of non-zero blocks in row i.
+    output_data[output_data_ptr] = static_cast<uint8_t>(row_end - row_start);
+    output_data_ptr++;
+
+    for (int j = row_start; j < row_end; j++) {
+      if (array_indices->data[j] > UINT8_MAX) {
+        return kTfLiteError;
+      }
+      // Copy indices of non-zero blocks in row i.
+      output_data[output_data_ptr] =
+          static_cast<uint8_t>(array_indices->data[j]);
+      output_data_ptr++;
+    }
+  }
+  return kTfLiteOk;
+}
 
 TfLiteStatus PopulateQuantizedLstmParams8x8_16(
     TfLiteContext* context, TfLiteNode* node,
@@ -744,6 +805,9 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // TODO(b/159066113): maybe just add the minimum required temp tensors?
   context->AddTensors(context, kNumHybridTemporaryTensors,
                       &op_data->scratch_tensor_index);
+  // Tensors used for the sparse hybrid kernel.
+  context->AddTensors(context, /*tensors_to_add=*/kLedgersToAdd,
+                      &op_data->ledger_index);
   return op_data;
 }
 
@@ -1239,6 +1303,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // The weights are of consistent type, so it suffices to check one.
   const bool is_hybrid_op = IsHybridOp(input, input_to_output_weights);
 
+  const bool is_sparse_op = (input_to_output_weights->sparsity != nullptr);
+
   // The type of Integer LSTM.
   const int num_intermediate_tensors = node->intermediates->size;
   if (is_integer) {
@@ -1251,7 +1317,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   TfLiteIntArrayFree(node->temporaries);
   if (is_hybrid_op) {
-    node->temporaries = TfLiteIntArrayCreate(kNumHybridTemporaryTensors);
+    if (is_sparse_op) {
+      node->temporaries =
+          TfLiteIntArrayCreate(kNumHybridTemporaryTensors + kLedgersToAdd);
+    } else {
+      node->temporaries = TfLiteIntArrayCreate(kNumHybridTemporaryTensors);
+    }
   } else if (is_integer) {
     if (is_8x8_16) {
       node->temporaries = TfLiteIntArrayCreate(6);
@@ -1289,7 +1360,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (is_hybrid_op) {
-    op_data->compute_row_sums = true;
+    if (!is_sparse_op) {
+      op_data->compute_row_sums = true;
+    }
     // Allocate temporary tensors to store quantized values of input,
     // output_state and cell_state tensors.
     node->temporaries->data[kInputQuantized] =
@@ -1453,6 +1526,125 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       row_sums_size->data[1] = row_sums_dims[1];
       TF_LITE_ENSURE_OK(
           context, context->ResizeTensor(context, row_sums, row_sums_size));
+    }
+
+    if (is_sparse_op) {
+      op_data->ledger_initialized = false;
+      int offset = kNumHybridTemporaryTensors;
+      {
+        node->temporaries->data[offset + kInputToInputWeightsLedgerOffset] =
+            op_data->ledger_index + kInputToInputWeightsLedgerOffset;
+        const TfLiteTensor* input_to_input_weights =
+            GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
+        TfLiteTensor* input_to_input_weights_ledger =
+            &context->tensors[op_data->ledger_index +
+                              kInputToInputWeightsLedgerOffset];
+        auto status = make_ledger(input_to_input_weights == nullptr
+                                      ? nullptr
+                                      : input_to_input_weights->sparsity,
+                                  context, input_to_input_weights_ledger);
+        if (status != kTfLiteOk) return status;
+      }
+      {
+        node->temporaries->data[offset + kInputToForgetWeightsLedgerOffset] =
+            op_data->ledger_index + kInputToForgetWeightsLedgerOffset;
+        const TfLiteTensor* input_to_forget_weights =
+            GetInput(context, node, kInputToForgetWeightsTensor);
+        TfLiteTensor* input_to_forget_weights_ledger =
+            &context->tensors[op_data->ledger_index +
+                              kInputToForgetWeightsLedgerOffset];
+        auto status = make_ledger(input_to_forget_weights->sparsity, context,
+                                  input_to_forget_weights_ledger);
+        if (status != kTfLiteOk) return status;
+      }
+      {
+        node->temporaries->data[offset + kInputToCellWeightsLedgerOffset] =
+            op_data->ledger_index + kInputToCellWeightsLedgerOffset;
+        const TfLiteTensor* input_to_cell_weights =
+            GetInput(context, node, kInputToCellWeightsTensor);
+        TfLiteTensor* input_to_cell_weights_ledger =
+            &context->tensors[op_data->ledger_index +
+                              kInputToCellWeightsLedgerOffset];
+        auto status = make_ledger(input_to_cell_weights->sparsity, context,
+                                  input_to_cell_weights_ledger);
+        if (status != kTfLiteOk) return status;
+      }
+      {
+        node->temporaries->data[offset + kInputToOutputWeightsLedgerOffset] =
+            op_data->ledger_index + kInputToOutputWeightsLedgerOffset;
+        const TfLiteTensor* input_to_output_weights =
+            GetInput(context, node, kInputToOutputWeightsTensor);
+        TfLiteTensor* input_to_output_weights_ledger =
+            &context->tensors[op_data->ledger_index +
+                              kInputToOutputWeightsLedgerOffset];
+        auto status = make_ledger(input_to_output_weights->sparsity, context,
+                                  input_to_output_weights_ledger);
+        if (status != kTfLiteOk) return status;
+      }
+      {
+        node->temporaries->data[offset + kRecurrentToInputWeightsLedgerOffset] =
+            op_data->ledger_index + kRecurrentToInputWeightsLedgerOffset;
+        const TfLiteTensor* recurrent_to_input_weights = GetOptionalInputTensor(
+            context, node, kRecurrentToInputWeightsTensor);
+        TfLiteTensor* recurrent_to_input_weights_ledger =
+            &context->tensors[op_data->ledger_index +
+                              kRecurrentToInputWeightsLedgerOffset];
+        auto status = make_ledger(recurrent_to_input_weights == nullptr
+                                      ? nullptr
+                                      : recurrent_to_input_weights->sparsity,
+                                  context, recurrent_to_input_weights_ledger);
+        if (status != kTfLiteOk) return status;
+      }
+      {
+        node->temporaries
+            ->data[offset + kRecurrentToForgetWeightsLedgerOffset] =
+            op_data->ledger_index + kRecurrentToForgetWeightsLedgerOffset;
+        const TfLiteTensor* recurrent_to_forget_weights =
+            GetInput(context, node, kRecurrentToForgetWeightsTensor);
+        TfLiteTensor* recurrent_to_forget_weights_ledger =
+            &context->tensors[op_data->ledger_index +
+                              kRecurrentToForgetWeightsLedgerOffset];
+        auto status = make_ledger(recurrent_to_forget_weights->sparsity,
+                                  context, recurrent_to_forget_weights_ledger);
+        if (status != kTfLiteOk) return status;
+      }
+      {
+        node->temporaries->data[offset + kRecurrentToCellWeightsLedgerOffset] =
+            op_data->ledger_index + kRecurrentToCellWeightsLedgerOffset;
+        const TfLiteTensor* recurrent_to_cell_weights =
+            GetInput(context, node, kRecurrentToCellWeightsTensor);
+        TfLiteTensor* recurrent_to_cell_weights_ledger =
+            &context->tensors[op_data->ledger_index +
+                              kRecurrentToCellWeightsLedgerOffset];
+        auto status = make_ledger(recurrent_to_cell_weights->sparsity, context,
+                                  recurrent_to_cell_weights_ledger);
+        if (status != kTfLiteOk) return status;
+      }
+      {
+        node->temporaries
+            ->data[offset + kRecurrentToOutputWeightsLedgerOffset] =
+            op_data->ledger_index + kRecurrentToOutputWeightsLedgerOffset;
+        const TfLiteTensor* recurrent_to_output_weights =
+            GetInput(context, node, kRecurrentToOutputWeightsTensor);
+        TfLiteTensor* recurrent_to_output_weights_ledger =
+            &context->tensors[op_data->ledger_index +
+                              kRecurrentToOutputWeightsLedgerOffset];
+        auto status = make_ledger(recurrent_to_output_weights->sparsity,
+                                  context, recurrent_to_output_weights_ledger);
+        if (status != kTfLiteOk) return status;
+      }
+      {
+        node->temporaries->data[offset + kProjectionWeightsLedgerOffset] =
+            op_data->ledger_index + kProjectionWeightsLedgerOffset;
+        const TfLiteTensor* projection_weights =
+            GetInput(context, node, kProjectionWeightsTensor);
+        TfLiteTensor* projection_weights_ledger =
+            &context->tensors[op_data->ledger_index +
+                              kProjectionWeightsLedgerOffset];
+        auto status = make_ledger(projection_weights->sparsity, context,
+                                  projection_weights_ledger);
+        if (status != kTfLiteOk) return status;
+      }
     }
   }
 
@@ -1624,14 +1816,116 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteUInt8:
     case kTfLiteInt8: {
       const bool is_hybrid = (input->type == kTfLiteFloat32);
+      const bool is_sparse = input_to_output_weights->sparsity != nullptr;
       if (is_hybrid) {
         TfLiteTensor* row_sums = GetTemporary(context, node, kRowSums);
         const int row_sums_size = row_sums->dims->data[0];
+        if (is_sparse) {
+          TfLiteTensor* input_to_input_weights_ledger =
+              &context->tensors[op_data->ledger_index +
+                                kInputToInputWeightsLedgerOffset];
+          TfLiteTensor* input_to_forget_weights_ledger =
+              &context->tensors[op_data->ledger_index +
+                                kInputToForgetWeightsLedgerOffset];
+          TfLiteTensor* input_to_cell_weights_ledger =
+              &context->tensors[op_data->ledger_index +
+                                kInputToCellWeightsLedgerOffset];
+          TfLiteTensor* input_to_output_weights_ledger =
+              &context->tensors[op_data->ledger_index +
+                                kInputToOutputWeightsLedgerOffset];
+          TfLiteTensor* recurrent_to_input_weights_ledger =
+              &context->tensors[op_data->ledger_index +
+                                kRecurrentToInputWeightsLedgerOffset];
+          TfLiteTensor* recurrent_to_forget_weights_ledger =
+              &context->tensors[op_data->ledger_index +
+                                kRecurrentToForgetWeightsLedgerOffset];
+          TfLiteTensor* recurrent_to_cell_weights_ledger =
+              &context->tensors[op_data->ledger_index +
+                                kRecurrentToCellWeightsLedgerOffset];
+          TfLiteTensor* recurrent_to_output_weights_ledger =
+              &context->tensors[op_data->ledger_index +
+                                kRecurrentToOutputWeightsLedgerOffset];
+          TfLiteTensor* projection_weights_ledger =
+              &context->tensors[op_data->ledger_index +
+                                kProjectionWeightsLedgerOffset];
+          if (!op_data->ledger_initialized) {
+            copy_ledger(input_to_input_weights == nullptr
+                            ? nullptr
+                            : input_to_input_weights->sparsity,
+                        input_to_input_weights_ledger);
+            copy_ledger(input_to_forget_weights->sparsity,
+                        input_to_forget_weights_ledger);
+            copy_ledger(input_to_cell_weights->sparsity,
+                        input_to_cell_weights_ledger);
+            copy_ledger(input_to_output_weights->sparsity,
+                        input_to_output_weights_ledger);
+            copy_ledger(recurrent_to_input_weights == nullptr
+                            ? nullptr
+                            : recurrent_to_input_weights->sparsity,
+                        recurrent_to_input_weights_ledger);
+            copy_ledger(recurrent_to_forget_weights->sparsity,
+                        recurrent_to_forget_weights_ledger);
+            copy_ledger(recurrent_to_cell_weights->sparsity,
+                        recurrent_to_cell_weights_ledger);
+            copy_ledger(recurrent_to_output_weights->sparsity,
+                        recurrent_to_output_weights_ledger);
+            copy_ledger(projection_weights->sparsity,
+                        projection_weights_ledger);
+            op_data->ledger_initialized = true;
+          }
+          return lstm_eval::EvalHybrid(
+              input, input_to_input_weights, input_to_input_weights_ledger,
+              input_to_forget_weights, input_to_forget_weights_ledger,
+              input_to_cell_weights, input_to_cell_weights_ledger,
+              input_to_output_weights, input_to_output_weights_ledger,
+              recurrent_to_input_weights, recurrent_to_input_weights_ledger,
+              recurrent_to_forget_weights, recurrent_to_forget_weights_ledger,
+              recurrent_to_cell_weights, recurrent_to_cell_weights_ledger,
+              recurrent_to_output_weights, recurrent_to_output_weights_ledger,
+              cell_to_input_weights, cell_to_forget_weights,
+              cell_to_output_weights, input_layer_norm_coefficients,
+              forget_layer_norm_coefficients, cell_layer_norm_coefficients,
+              output_layer_norm_coefficients,
+              /*aux_input=*/nullptr,
+              /*aux_input_to_input_weights=*/nullptr,
+              /*aux_input_to_forget_weights=*/nullptr,
+              /*aux_input_to_cell_weights=*/nullptr,
+              /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
+              forget_gate_bias, cell_gate_bias, output_gate_bias,
+              projection_weights, projection_weights_ledger, projection_bias,
+              params,
+              /*forward_sequence=*/true, /*time_major=*/true,
+              /*output_offset=*/0, GetTemporary(context, node, kScratchBuffer),
+              GetTemporary(context, node, kInputScalingFactors),
+              /*aux_input_sf=*/nullptr,
+              GetTemporary(context, node, kOutputStateScalingFactors),
+              GetTemporary(context, node, kProductScalingFactors),
+              GetTemporary(context, node, kRecoveredCellWeights),
+              GetTemporary(context, node, kInputQuantized),
+              /*aux_input_quantized=*/nullptr,
+              GetTemporary(context, node, kOutputStateQuantized),
+              GetTemporary(context, node, kCellStateQuantized), output_state,
+              cell_state, GetTemporary(context, node, kAccumScratch), output,
+              GetTemporary(context, node, kInputZeroPoints),
+              /*aux_input_zp=*/nullptr,
+              GetTemporary(context, node, kOutputStateZeroPoints), row_sums,
+              row_sums_size, &op_data->compute_row_sums,
+              CpuBackendContext::GetFromContext(context));
+        }
         return lstm_eval::EvalHybrid(
-            input, input_to_input_weights, input_to_forget_weights,
-            input_to_cell_weights, input_to_output_weights,
-            recurrent_to_input_weights, recurrent_to_forget_weights,
-            recurrent_to_cell_weights, recurrent_to_output_weights,
+            input, input_to_input_weights,
+            /*input_to_input_weights_ledger*/ nullptr, input_to_forget_weights,
+            /*input_to_forget_weights_ledger*/ nullptr, input_to_cell_weights,
+            /*input_to_cell_weights_ledger*/ nullptr, input_to_output_weights,
+            /*input_to_output_weights_ledger*/ nullptr,
+            recurrent_to_input_weights,
+            /*recurrent_to_input_weights_ledger*/ nullptr,
+            recurrent_to_forget_weights,
+            /*recurrent_to_forget_weights_ledger*/ nullptr,
+            recurrent_to_cell_weights,
+            /*recurrent_to_cell_weights_ledger*/ nullptr,
+            recurrent_to_output_weights,
+            /*recurrent_to_output_weights_ledger*/ nullptr,
             cell_to_input_weights, cell_to_forget_weights,
             cell_to_output_weights, input_layer_norm_coefficients,
             forget_layer_norm_coefficients, cell_layer_norm_coefficients,
@@ -1641,7 +1935,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
             /*aux_input_to_cell_weights=*/nullptr,
             /*aux_input_to_output_weights=*/nullptr, input_gate_bias,
             forget_gate_bias, cell_gate_bias, output_gate_bias,
-            projection_weights, projection_bias, params,
+            projection_weights, /*projection_weights_ledger*/ nullptr,
+            projection_bias, params,
             /*forward_sequence=*/true, /*time_major=*/true, /*output_offset=*/0,
             GetTemporary(context, node, kScratchBuffer),
             GetTemporary(context, node, kInputScalingFactors),

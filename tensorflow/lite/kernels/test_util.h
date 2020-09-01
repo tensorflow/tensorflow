@@ -214,9 +214,82 @@ class SingleOpModel {
     return AddConstInput(TensorData{type, shape}, data);
   }
 
+  // TODO(b/166202747): Use a better way to do type specialization. Reduce
+  // duplicate code in the two functions below.
+  int AddConstSparseInput(const TensorData& t,
+                          const std::vector<int8_t>& data) {
+    int id = tensors_.size();
+    const int dims_count = t.traversal_order.size();
+    std::vector<int8_t> dense_data(data);
+
+    tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+        t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
+    converter.DenseToSparse(dense_data.data());
+
+    const auto dim_metadata = converter.GetDimMetadata();
+    const auto sparse_data = converter.GetData();
+
+    // Build sparsity parameter.
+    std::vector<flatbuffers::Offset<DimensionMetadata>> fb_dim_metadata(
+        dims_count);
+    for (int i = 0; i < dims_count; i++) {
+      const int metadata_idx = 2 * i;
+      if (i < t.shape.size() &&
+          t.format[t.traversal_order[i]] == kTfLiteDimSparseCSR) {
+        auto array_segments =
+            CreateInt32Vector(builder_,
+                              builder_.CreateVector(dim_metadata[metadata_idx]))
+                .Union();
+        auto array_indices =
+            CreateInt32Vector(
+                builder_, builder_.CreateVector(dim_metadata[metadata_idx + 1]))
+                .Union();
+        fb_dim_metadata[i] = CreateDimensionMetadata(
+            builder_, DimensionType_SPARSE_CSR, 0,
+            SparseIndexVector_Int32Vector, array_segments,
+            SparseIndexVector_Int32Vector, array_indices);
+      } else {
+        fb_dim_metadata[i] = CreateDimensionMetadata(
+            builder_, DimensionType_DENSE, dim_metadata[metadata_idx][0]);
+      }
+    }
+
+    flatbuffers::Offset<SparsityParameters> s_param = CreateSparsityParameters(
+        builder_, builder_.CreateVector(t.traversal_order),
+        builder_.CreateVector(t.block_map),
+        builder_.CreateVector(fb_dim_metadata));
+
+    int buffer_id = 0;
+    if (!data.empty()) {
+      // Initialize buffers list with empty buffer to allow for non-const
+      // tensors.
+      if (buffers_.empty()) {
+        buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
+      }
+
+      // Add compressed data as a Buffer to buffers list.
+      buffer_id = buffers_.size();
+      auto data_buffer = builder_.CreateVector(
+          reinterpret_cast<const uint8_t*>(sparse_data.data()),
+          sparse_data.size());
+      buffers_.push_back(CreateBuffer(builder_, data_buffer));
+    }
+
+    tensors_.push_back(CreateTensor(
+        builder_, builder_.CreateVector<int>(t.shape), t.type,
+        /*buffer=*/buffer_id,
+        /*name=*/0, /*quantization=*/0, /*is_variable=*/false, s_param));
+
+    inputs_.push_back(id);
+    tensor_data_[id] = t;
+
+    return id;
+  }
+
   // Add a constant sparse tensor as input.
   template <typename T>
-  int AddConstSparseInput(const TensorData& t, std::initializer_list<T> data) {
+  int AddConstSparseInput(const TensorData& t, const std::vector<T>& data,
+                          bool symmetric_quantize = false) {
     int id = tensors_.size();
     const int dims_count = t.traversal_order.size();
     std::vector<T> dense_data(data);
@@ -258,8 +331,9 @@ class SingleOpModel {
         builder_.CreateVector(t.block_map),
         builder_.CreateVector(fb_dim_metadata));
 
+    flatbuffers::Offset<QuantizationParameters> q_params = 0;
     int buffer_id = 0;
-    if (data.size()) {
+    if (!data.empty()) {
       // Initialize buffers list with empty buffer to allow for non-const
       // tensors.
       if (buffers_.empty()) {
@@ -268,16 +342,31 @@ class SingleOpModel {
 
       // Add compressed data as a Buffer to buffers list.
       buffer_id = buffers_.size();
-      auto data_buffer = builder_.CreateVector(
-          reinterpret_cast<const uint8_t*>(sparse_data.data()),
-          sizeof(T) * sparse_data.size());
-      buffers_.push_back(CreateBuffer(builder_, data_buffer));
+      if (symmetric_quantize) {
+        const int length = sparse_data.size();
+        std::vector<int8_t> q(length);
+        float min, max, scaling_factor;
+        tensor_utils::SymmetricQuantizeFloats(
+            sparse_data.data(), length, q.data(), &min, &max, &scaling_factor);
+        q_params = CreateQuantizationParameters(
+            builder_, 0, 0, builder_.CreateVector<float>({scaling_factor}),
+            builder_.CreateVector<int64_t>({0}));
+        auto data_buffer = builder_.CreateVector(
+            reinterpret_cast<const uint8_t*>(q.data()), q.size());
+        buffers_.push_back(CreateBuffer(builder_, data_buffer));
+      } else {
+        auto data_buffer = builder_.CreateVector(
+            reinterpret_cast<const uint8_t*>(sparse_data.data()),
+            sizeof(T) * sparse_data.size());
+        buffers_.push_back(CreateBuffer(builder_, data_buffer));
+      }
     }
 
-    tensors_.push_back(CreateTensor(
-        builder_, builder_.CreateVector<int>(t.shape), t.type,
-        /*buffer=*/buffer_id,
-        /*name=*/0, /*quantization=*/0, /*is_variable=*/false, s_param));
+    tensors_.push_back(
+        CreateTensor(builder_, builder_.CreateVector<int>(t.shape),
+                     symmetric_quantize ? TensorType_INT8 : t.type,
+                     /*buffer=*/buffer_id,
+                     /*name=*/0, q_params, /*is_variable=*/false, s_param));
 
     inputs_.push_back(id);
     tensor_data_[id] = t;
