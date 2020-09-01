@@ -51,7 +51,7 @@ class TrainingCheckpointTests(test.TestCase, parameterized.TestCase):
       restore_checkpoint = trackable_utils.Checkpoint()
       restore_checkpoint.restore(save_path)
       initial_value = restore_checkpoint._preload_simple_restoration(
-          "v", variable_shape)
+          "v")
       v = variables_lib.Variable(initial_value)
       # Check that the variable is now tagged as restored. `Checkpoint` then
       # knows it doesn't have to restore `v`'s value when it's assigned to an

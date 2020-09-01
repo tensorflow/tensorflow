@@ -45,6 +45,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.tracking import base
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -436,6 +437,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           initial_value = kwargs["initial_value"]
           if callable(initial_value):
             initial_value = initial_value()
+          if isinstance(initial_value, base.CheckpointInitialValue):
+            initial_value = initial_value.wrapped_value
           assert not callable(initial_value)
           initial_value = ops.convert_to_tensor(
               initial_value, dtype=kwargs.get("dtype", None))
