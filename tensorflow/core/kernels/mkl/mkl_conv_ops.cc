@@ -24,8 +24,8 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#include "mkldnn.hpp"
 #include "absl/strings/str_join.h"
+#include "mkldnn.hpp"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -853,10 +853,12 @@ class MklConvOp : public OpKernel {
   void set_fuse_biasadd(bool fuse_biasadd) { fuse_biasadd_ = fuse_biasadd; }
   void set_fuse_activation(bool fuse_activation,
                            mkldnn::algorithm activation_alg,
-                           float relu_up_bound = 0.0) {
+                           float alpha_or_upbound = 0.0) {
     fuse_activation_ = fuse_activation;
     activation_alg_ = activation_alg;
-    relu_up_bound_ = relu_up_bound;
+    // This variable is used for alpha in leakyrelu or upper bound in relu6
+    // depending on the context
+    alpha_or_upbound_ = alpha_or_upbound;
   }
   void set_fuse_pad(bool fuse_pad) {
     fuse_pad_ = fuse_pad;
@@ -884,7 +886,7 @@ class MklConvOp : public OpKernel {
     }
     if (fuse_activation_) {
       params.post_op_params.push_back(
-          {"activation", activation_alg_, {1.0, relu_up_bound_, 0.0}, ""});
+          {"activation", activation_alg_, {1.0, alpha_or_upbound_, 0.0}, ""});
     }
   }
 
@@ -1007,7 +1009,9 @@ class MklConvOp : public OpKernel {
   bool fuse_pad_ = pad_enabled;
   bool fuse_add_ = false;
 
-  float relu_up_bound_ = 0.0;
+  // This variable is used for alpha in leakyrelu or upper bound in relu6
+  // depending on the context
+  float alpha_or_upbound_ = 0.0;
   mkldnn::algorithm activation_alg_ = ALGORITHM_UNDEF;
 
   int input_index_pad_ = 2;
@@ -1308,6 +1312,11 @@ class MklFusedConvOp
       this->set_fuse_activation(true, ALGORITHM::eltwise_bounded_relu, 6.0);
     } else if (fused_ops == std::vector<string>{"Elu"}) {
       this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
+    } else if (fused_ops == std::vector<string>{"LeakyRelu"}) {
+      float leakyrelu_alpha;
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
+      this->set_fuse_activation(true, ALGORITHM::eltwise_relu, leakyrelu_alpha);
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Relu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, ALGORITHM::eltwise_relu);
@@ -1323,6 +1332,15 @@ class MklFusedConvOp
     } else if (fused_ops == std::vector<string>{"BiasAdd", "Elu"}) {
       this->set_fuse_biasadd(true);
       this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
+      OP_REQUIRES(context, num_args == 1,
+                  errors::InvalidArgument(
+                      "Fused Conv2D must have one extra argument: bias."));
+    } else if (fused_ops == std::vector<string>{"BiasAdd", "LeakyRelu"}) {
+      this->set_fuse_biasadd(true);
+      float leakyrelu_alpha;
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
+      this->set_fuse_activation(true, ALGORITHM::eltwise_relu, leakyrelu_alpha);
       OP_REQUIRES(context, num_args == 1,
                   errors::InvalidArgument(
                       "Fused Conv2D must have one extra argument: bias."));
@@ -1353,6 +1371,18 @@ class MklFusedConvOp
       this->set_fuse_biasadd(true);
       this->set_fuse_add(true);
       this->set_fuse_activation(true, ALGORITHM::eltwise_elu, 1.0);
+      OP_REQUIRES(
+          context, num_args == 2,
+          errors::InvalidArgument(
+              "Fused Conv2D must have two extra arguments: bias and add."));
+    } else if (fused_ops ==
+               std::vector<string>{"BiasAdd", "Add", "LeakyRelu"}) {
+      this->set_fuse_biasadd(true);
+      this->set_fuse_add(true);
+      float leakyrelu_alpha;
+      OP_REQUIRES_OK(context,
+                     context->GetAttr("leakyrelu_alpha", &leakyrelu_alpha));
+      this->set_fuse_activation(true, ALGORITHM::eltwise_relu, leakyrelu_alpha);
       OP_REQUIRES(
           context, num_args == 2,
           errors::InvalidArgument(

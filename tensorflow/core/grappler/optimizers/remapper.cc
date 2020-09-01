@@ -361,12 +361,7 @@ bool IsDeviceCompatible(const RemapperContext& ctx, Pattern& matched) {
 }
 
 bool IsSupportedActivation(const NodeDef& node) {
-// Disable LeakyRelu temporarily before MKL PR is merged.
-#ifndef INTEL_MKL
   return IsRelu(node) || IsRelu6(node) || IsElu(node) || IsLeakyRelu(node);
-#else
-  return IsRelu(node) || IsRelu6(node) || IsElu(node);
-#endif  // !INTEL_MKL
 }
 
 inline bool HasControlFaninOrFanout(const utils::MutableNodeView& node_view) {
