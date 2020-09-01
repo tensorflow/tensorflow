@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""This tool reverses xxd dump from *.cc source file to its original binary file
+r"""Reverses xxd dump from to binary file
 
 This script is used to convert models from C++ source file (dumped with xxd) to
 the binary model weight file and analyze it with model visualizer like Netron
@@ -25,86 +25,43 @@ xxd -i model_data.tflite > model_data.cc
 
 Example usage:
 
-python reverse_xxd_dump_from_cc.py model_data.cc --output=model_data.tflite
+python reverse_xxd_dump_from_cc.py \
+  --input_cc_file=model_data.cc \
+  --output_tflite_file=model_data.tflite
 """
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import argparse
-import os
-import re
+import sys
+
+from tensorflow.lite.tools import flatbuffer_utils
+from tensorflow.python.platform import app
 
 
-def generate_default_output(filename, postfix=None, extension=None):
-  """Generate output filename given the filename and extension
-
-  Args:
-    filename(str): Input filename
-    postfix(str): Postfix to add to the output filename
-    extension(str): Output file extension, if not given, it will be
-      the same as input file.
-
-  Return:
-    string for the output filename given input args
-  """
-  name, ext = os.path.splitext(filename)
-
-  if extension is not None:
-    if not extension.startswith("."):
-      extension = "." + extension
-
-    ext = extension
-
-  if postfix is None:
-    postfix = ""
-
-  output = "{}{}{}".format(name, postfix, ext)
-
-  return output
-
-
-def reverse_dump(filename, output=None, extension=".tflite"):
-  """Reverse dump the tensorflow model weight from C++ array source array
-
-  Args:
-    filename(str): Input filename (the input *.cc file)
-    output(str): Output filename, default to be same as input file but
-      with different extension, default extension is *.tflite
-  """
-  if output is None:
-    output = generate_default_output(filename, extension=extension)
-
-  # Pattern to match with hexadecimal value in the array
-  pattern = re.compile(r"\W*(0x[0-9a-fA-F,x ]+).*")
-
-  array = bytearray()
-  with open(filename) as f:
-    for line in f:
-      values_match = pattern.match(line)
-
-      if values_match is None:
-        continue
-
-      # Match in the parentheses (hex array only)
-      list_text = values_match.group(1)
-      # Extract hex values (text)
-      values_text = filter(None, list_text.split(","))
-      # Convert to hex
-      values = [int(x, base=16) for x in values_text]
-
-      array.extend(values)
-
-  with open(output, 'wb') as f:
-    f.write(array)
-
-  print("Byte data written to `{}`".format(output))
-
-
-if __name__ == "__main__":
-  parser = argparse.ArgumentParser()
+def main(_):
+  """Application run loop."""
+  parser = argparse.ArgumentParser(
+      description='Reverses xxd dump from to binary file')
   parser.add_argument(
-    "source",
-    type=str,
-    help="C/C++ source file dumped from `xxd -i [HEX_FILE]`")
-  parser.add_argument("-o", "--output", type=str, help="Output filename")
+      '--input_cc_file',
+      type=str,
+      required=True,
+      help='Full path name to the input cc file.')
+  parser.add_argument(
+      '--output_tflite_file',
+      type=str,
+      required=True,
+      help='Full path name to the stripped output tflite file.')
 
   args = parser.parse_args()
 
-  reverse_dump(args.source, args.output)
+  # Read the model from xxd output C++ source file
+  model = flatbuffer_utils.xxd_output_to_object(args.input_cc_file)
+  # Write the model
+  flatbuffer_utils.write_model(model, args.output_tflite_file)
+
+
+if __name__ == '__main__':
+  app.run(main=main, argv=sys.argv[:1])
