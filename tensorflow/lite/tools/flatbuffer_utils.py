@@ -156,8 +156,8 @@ def randomize_weights(model, random_seed=0):
       buffer_i_data[j] = random.randint(0, 255)
 
 
-def xxd_output_to_bytearray(input_cc_file):
-  """Converts xxd output C++ source file to bytearray
+def xxd_output_to_bytes(input_cc_file):
+  """Converts xxd output C++ source file to bytes (immutable)
   
   Args:
     input_cc_file: Full path name to th C++ source file dumped by xxd
@@ -192,7 +192,7 @@ def xxd_output_to_bytearray(input_cc_file):
       values = [int(x, base=16) for x in values_text]
       model_bytearray.extend(values)
 
-  return model_bytearray
+  return bytes(model_bytearray)
 
 
 def xxd_output_to_object(input_cc_file):
@@ -208,5 +208,5 @@ def xxd_output_to_object(input_cc_file):
   Returns:
     A python object corresponding to the input tflite file.
   """
-  model_bytearray = xxd_output_to_bytearray(input_cc_file)
-  return convert_bytearray_to_object(model_bytearray)
+  model_bytes = xxd_output_to_bytes(input_cc_file)
+  return convert_bytearray_to_object(model_bytes)
