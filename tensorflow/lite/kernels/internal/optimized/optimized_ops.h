@@ -8132,6 +8132,46 @@ inline void BroadcastMinimumDispatch(const ArithmeticParams& params,
                           MinimumElementwise, MinimumScalarBroadcast);
 }
 
+template <typename T>
+void CumsumImpl(const T* input_data, const RuntimeShape& shape, int axis,
+                bool exclusive, bool reverse, T* output_data) {
+  Eigen::array<Eigen::DenseIndex, 3> dims = {1, 1, 1};
+
+  for (int i = 0; i < axis; ++i) {
+    dims[0] *= shape.Dims(i);
+  }
+  dims[1] = shape.Dims(axis);
+  for (int i = axis + 1; i < shape.DimensionsCount(); ++i) {
+    dims[2] *= shape.Dims(i);
+  }
+
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<const T, 3, Eigen::RowMajor, Eigen::DenseIndex>,
+      Eigen::Aligned>
+      ConstTensor;
+  typedef Eigen::TensorMap<
+      Eigen::Tensor<T, 3, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned>
+      Tensor;
+  ConstTensor input(input_data, dims);
+  Tensor output(output_data, dims);
+
+  if (reverse) {
+    Eigen::array<bool, 3> reverse_idx = {false, true, false};
+    output =
+        input.reverse(reverse_idx).cumsum(1, exclusive).reverse(reverse_idx);
+  } else {
+    output = input.cumsum(1, exclusive);
+  }
+}
+
+template <typename T>
+void CumSum(const T* input_data, const RuntimeShape& shape, int axis,
+            bool exclusive, bool reverse, T* output_data) {
+  const int dim = shape.DimensionsCount();
+  TFLITE_DCHECK_GE(dim, 1);
+  CumsumImpl<T>(input_data, shape, axis, exclusive, reverse, output_data);
+}
+
 }  // namespace optimized_ops
 }  // namespace tflite
 

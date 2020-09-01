@@ -237,6 +237,7 @@ cc_library(
     hdrs = ["mlir_hlo_to_hlo.h"],
     deps = [
         ":type_to_shape",
+        "//tensorflow/compiler/mlir:name_utils",
         "//tensorflow/compiler/mlir/hlo",
         "//tensorflow/compiler/mlir/tensorflow:convert_type",
         "//tensorflow/compiler/mlir/tensorflow:error_util",

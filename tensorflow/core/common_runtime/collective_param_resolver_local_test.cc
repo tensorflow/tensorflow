@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -84,6 +85,12 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
       prl_->CompleteDefaultRanking(nullptr, &cp, &ir, attributes);
       EXPECT_EQ(ir.shared.instance.device_names, expected_device_order);
     }
+  }
+
+  DeviceAttributes GetDeviceAttributes(const string& device_name) {
+    Device* device = nullptr;
+    TF_CHECK_OK(device_mgr_->LookupDevice(device_name, &device));
+    return device->attributes();
   }
 
   string task_name_;
@@ -187,12 +194,13 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
     cp->instance.impl_details.subdiv_offsets.push_back(0);
     cp->is_source = false;
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
-      prl_->CompleteParamsAsync(cp->instance.device_names[0], cp,
-                                nullptr /*CancellationManager*/,
-                                [&statuses, &note, i](const Status& s) {
-                                  statuses[i] = s;
-                                  note[i].Notify();
-                                });
+      prl_->CompleteParamsAsync(
+          GetDeviceAttributes(cp->instance.device_names[0]), cp,
+          nullptr /*CancellationManager*/,
+          [&statuses, &note, i](const Status& s) {
+            statuses[i] = s;
+            note[i].Notify();
+          });
     });
   }
   for (int i = 0; i < NUM_DEVS; ++i) {
@@ -240,12 +248,13 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcast1Task) {
     CollectiveParams* cp = &cps[i];
     InitializeCollectiveParamsForBroadcast(kInstanceKey, i, i == 1, cp);
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
-      prl_->CompleteParamsAsync(cp->instance.device_names[0], cp,
-                                nullptr /*CancellationManager*/,
-                                [&statuses, &note, i](const Status& s) {
-                                  statuses[i] = s;
-                                  note[i].Notify();
-                                });
+      prl_->CompleteParamsAsync(
+          GetDeviceAttributes(cp->instance.device_names[0]), cp,
+          nullptr /*CancellationManager*/,
+          [&statuses, &note, i](const Status& s) {
+            statuses[i] = s;
+            note[i].Notify();
+          });
     });
   }
   for (int i = 0; i < NUM_DEVS; ++i) {
@@ -278,12 +287,13 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsBroadcastForgotSender) {
     CollectiveParams* cp = &cps[i];
     InitializeCollectiveParamsForBroadcast(kInstanceKey, i, false, cp);
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
-      prl_->CompleteParamsAsync(cp->instance.device_names[0], cp,
-                                nullptr /*CancellationManager*/,
-                                [&statuses, &note, i](const Status& s) {
-                                  statuses[i] = s;
-                                  note[i].Notify();
-                                });
+      prl_->CompleteParamsAsync(
+          GetDeviceAttributes(cp->instance.device_names[0]), cp,
+          nullptr /*CancellationManager*/,
+          [&statuses, &note, i](const Status& s) {
+            statuses[i] = s;
+            note[i].Notify();
+          });
     });
   }
   for (int i = 0; i < NUM_DEVS; ++i) {
@@ -326,8 +336,8 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingGroup) {
           strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
       cp[i] = MakeCollectiveParams(/*group_key*/ 100, /*instance_key*/ 100,
                                    /*is_source*/ i == 0);
-      prl_->CompleteParamsAsync(device, &cp[i], &cancel_mgr,
-                                [&done](const Status& s) {
+      prl_->CompleteParamsAsync(GetDeviceAttributes(device), &cp[i],
+                                &cancel_mgr, [&done](const Status& s) {
                                   EXPECT_EQ(s.code(), error::ABORTED);
                                   EXPECT_EQ(s.error_message(), "__aborted__");
                                   done.DecrementCount();
@@ -355,8 +365,8 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
             strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
         cp[i] = MakeCollectiveParams(group_key, instance_key,
                                      /*is_source*/ i == 0);
-        prl_->CompleteParamsAsync(device, &cp[i], &cancel_mgr,
-                                  [&done](const Status& s) {
+        prl_->CompleteParamsAsync(GetDeviceAttributes(device), &cp[i],
+                                  &cancel_mgr, [&done](const Status& s) {
                                     EXPECT_EQ(s.code(), error::OK);
                                     done.DecrementCount();
                                   });
@@ -373,12 +383,13 @@ TEST_F(CollectiveParamResolverLocalTest, AbortPendingInstance) {
               strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
           cp[i] = MakeCollectiveParams(group_key, instance_key + 1,
                                        /*is_source*/ i == 0);
-          prl_->CompleteParamsAsync(
-              device, &cp[i], &cancel_mgr, [&done](const Status& s) {
-                EXPECT_EQ(s.code(), error::ABORTED);
-                EXPECT_EQ(s.error_message(), "__aborted__");
-                done.DecrementCount();
-              });
+          prl_->CompleteParamsAsync(GetDeviceAttributes(device), &cp[i],
+                                    &cancel_mgr, [&done](const Status& s) {
+                                      EXPECT_EQ(s.code(), error::ABORTED);
+                                      EXPECT_EQ(s.error_message(),
+                                                "__aborted__");
+                                      done.DecrementCount();
+                                    });
           start.DecrementCount();
         });
   }
@@ -402,8 +413,8 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
             strings::StrCat("/job:localhost/replica:0/task:0/device:CPU:", i);
         cp[i] = MakeCollectiveParams(group_key, instance_key,
                                      /*is_source*/ i == 0);
-        prl_->CompleteParamsAsync(device, &cp[i], &cancel_mgr,
-                                  [&done](const Status& s) {
+        prl_->CompleteParamsAsync(GetDeviceAttributes(device), &cp[i],
+                                  &cancel_mgr, [&done](const Status& s) {
                                     EXPECT_EQ(s.code(), error::OK);
                                     done.DecrementCount();
                                   });
@@ -418,7 +429,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsAfterAbortion) {
     Notification done;
     auto cp = MakeCollectiveParams(group_key, instance_key,
                                    /*is_source*/ true);
-    prl_->CompleteParamsAsync(device, &cp, &cancel_mgr,
+    prl_->CompleteParamsAsync(GetDeviceAttributes(device), &cp, &cancel_mgr,
                               [&done](const Status& s) {
                                 EXPECT_EQ(s.code(), error::ABORTED);
                                 EXPECT_EQ(s.error_message(), "__aborted__");
@@ -457,7 +468,8 @@ TEST_F(CollectiveParamResolverLocalTest, AbortNormalCompleteParamsAsync) {
               auto cp =
                   MakeCollectiveParams(/* group_key*/ key, /*instance_key*/ key,
                                        /*is_source*/ i == 0);
-              prl_->CompleteParamsAsync(device, &cp, &cancel_mgr,
+              prl_->CompleteParamsAsync(GetDeviceAttributes(device), &cp,
+                                        &cancel_mgr,
                                         [&status, &n](const Status& s) {
                                           status = s;
                                           n.Notify();

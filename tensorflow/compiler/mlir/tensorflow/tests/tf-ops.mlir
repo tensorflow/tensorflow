@@ -3550,3 +3550,10 @@ func @testDivNoNanWithRef(%arg0: tensor<f32>, %arg1: tensor<!tf.f32ref>) -> tens
   %0 = "tf.DivNoNanOp"(%arg0, %arg1) : (tensor<f32>, tensor<!tf.f32ref>) -> tensor<f32>
   return %0 : tensor<f32>
 }
+
+// CHECK-LABEL: @testAddWithRef
+func @testAddWithRef(%arg0: tensor<!tf.f64ref>, %arg1: tensor<f64>) -> tensor<f64> {
+  // CHECK: tf.Add
+  %0 = "tf.Add"(%arg0, %arg1) : (tensor<!tf.f64ref>, tensor<f64>) -> tensor<f64>
+  return %0 : tensor<f64>
+}

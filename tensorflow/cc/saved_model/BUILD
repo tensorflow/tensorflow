@@ -57,7 +57,7 @@ tf_cc_test(
     name = "reader_test",
     srcs = ["reader_test.cc"],
     data = [
-        ":saved_model_half_plus_two",
+        ":saved_model_test_files",
     ],
     linkstatic = 1,
     deps = [
@@ -149,7 +149,7 @@ tf_cc_test(
     name = "bundle_v2_test",
     srcs = ["bundle_v2_test.cc"],
     data = [
-        ":saved_model_half_plus_two",
+        ":saved_model_test_files",
     ],
     linkstatic = 1,
     deps = [
@@ -166,7 +166,7 @@ tf_cc_test(
     name = "saved_model_bundle_test",
     srcs = ["saved_model_bundle_test.cc"],
     data = [
-        ":saved_model_half_plus_two",
+        ":saved_model_test_files",
     ],
     linkstatic = 1,
     deps = [
@@ -188,7 +188,7 @@ tf_cc_test(
     name = "saved_model_bundle_lite_test",
     srcs = ["saved_model_bundle_lite_test.cc"],
     data = [
-        ":saved_model_half_plus_two",
+        ":saved_model_test_files",
     ],
     linkstatic = 1,
     deps = [
@@ -227,7 +227,7 @@ py_binary(
 
 # TODO(b/32673259): add a test to continuously validate these files.
 filegroup(
-    name = "saved_model_half_plus_two",
+    name = "saved_model_test_files",
     srcs = glob([
         "testdata/half_plus_two_pbtxt/**",
         "testdata/half_plus_two_main_op/**",
@@ -236,7 +236,13 @@ filegroup(
         "testdata/x_plus_y_v2_debuginfo/**",
         "testdata/CyclicModule/**",
         "testdata/VarsAndArithmeticObjectGraph/**",
+        "testdata/fuzz_generated/**",
     ]),
+)
+
+alias(
+    name = "saved_model_half_plus_two",
+    actual = ":saved_model_test_files",
 )
 
 exports_files(
@@ -248,5 +254,6 @@ exports_files(
         "testdata/x_plus_y_v2_debuginfo/**",
         "testdata/CyclicModule/**",
         "testdata/VarsAndArithmeticObjectGraph/**",
+        "testdata/fuzz_generated/**",
     ]),
 )

@@ -76,7 +76,7 @@ Status CreateWorkerStub(const std::string& address, const std::string& protocol,
   args.SetMaxReceiveMessageSize(-1);
   std::shared_ptr<::grpc::ChannelCredentials> credentials;
   TF_RETURN_IF_ERROR(
-      CredentialsFactory::CreateClientCredentials(protocol, credentials));
+      CredentialsFactory::CreateClientCredentials(protocol, &credentials));
   auto channel = ::grpc::CreateCustomChannel(address, credentials, args);
   stub = WorkerService::NewStub(channel);
   return Status::OK();
@@ -361,15 +361,21 @@ Status DataServiceDispatcherImpl::ValidateMatchingJob(
     std::string requested = ProcessingModeToString(processing_mode);
     std::string actual = ProcessingModeToString(job->processing_mode);
     return errors::FailedPrecondition(
-        "Found a job with name ", job_name, ", but the processing mode <",
-        actual, "> doesn't match the requested processing mode <", requested,
-        ">.");
+        "Tried to create a job with name ", job_name, " and processing_mode <",
+        requested,
+        "> but there is already an existing job with that name using "
+        "processing mode <",
+        actual, ">");
   }
   if (job->dataset_id != dataset_id) {
     return errors::FailedPrecondition(
-        "Found a job with name ", job_name, ", but the dataset id <",
-        job->dataset_id, "> doesn't match the requested dataset id <",
-        dataset_id, ">.");
+        "Tried to create a job with name ", job_name, " for dataset ",
+        dataset_id,
+        ", but there is already an existing job with that name for dataset ",
+        job->dataset_id,
+        ". This either means that you are distributing two different datasets "
+        "under the same job_name, or that your dataset is being constructed "
+        "non-deterministically.");
   }
   return Status::OK();
 }
