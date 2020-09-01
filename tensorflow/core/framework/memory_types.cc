@@ -136,7 +136,7 @@ Status MemoryTypesForNode(const OpRegistryInterface* op_registry,
         NameRangesForNode(ndef, *op_def, &inp_names, &out_names));
 
     // Now that we know the size, fill with the default 'DEVICE_MEMORY'.
-    // Stick to old behavior except for function calls
+    // Stick to old behavior (mark named edges only) except for function calls
     // (since some kernels incorrectly rely on INT32 being on the GPU)
     if (is_fn) {
       inp_mtypes->resize(inp_dtypes.size(), DEVICE_MEMORY);
