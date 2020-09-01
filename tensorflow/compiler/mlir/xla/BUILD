@@ -324,6 +324,16 @@ cc_library(
 )
 
 cc_library(
+    name = "translate_cl_options",
+    srcs = ["xla_mlir_translate_cl.cc"],
+    hdrs = ["xla_mlir_translate_cl.h"],
+    deps = [
+        "@llvm-project//llvm:Support",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
     name = "xla_mlir_translate",
     srcs = ["xla_mlir_translate.cc"],
     hdrs = ["xla_mlir_translate.h"],
@@ -331,6 +341,7 @@ cc_library(
         ":hlo_to_mlir_hlo",
         ":mhlo_to_lhlo_with_xla",
         ":mlir_hlo_to_hlo",
+        ":translate_cl_options",
         "//tensorflow/compiler/jit:xla_cpu_jit",
         "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/mlir/hlo",

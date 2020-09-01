@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/xla/hlo_to_mlir_hlo.h"
 #include "tensorflow/compiler/mlir/xla/mlir_hlo_to_hlo.h"
 #include "tensorflow/compiler/mlir/xla/transforms/mhlo_to_lhlo_with_xla.h"
+#include "tensorflow/compiler/mlir/xla/xla_mlir_translate_cl.h"
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
@@ -32,19 +33,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/protobuf.h"
-
-// NOLINTNEXTLINE
-static llvm::cl::opt<bool> emit_use_tuple_arg(
-    "emit-use-tuple-args",
-    llvm::cl::desc(
-        "Emit HLO modules using tuples as args for the entry computation"),
-    llvm::cl::init(false));
-
-// NOLINTNEXTLINE
-static llvm::cl::opt<bool> emit_return_tuple(
-    "emit-return-tuple",
-    llvm::cl::desc("Emit HLO modules with entry computations returning tuple"),
-    llvm::cl::init(false));
 
 namespace xla {
 
