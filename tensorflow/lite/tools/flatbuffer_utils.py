@@ -158,7 +158,7 @@ def randomize_weights(model, random_seed=0):
 
 def xxd_output_to_bytes(input_cc_file):
   """Converts xxd output C++ source file to bytes (immutable)
-  
+
   Args:
     input_cc_file: Full path name to th C++ source file dumped by xxd
 
