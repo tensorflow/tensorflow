@@ -22,7 +22,6 @@ load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 package(
     default_visibility = [
         # TODO(scottzhu): Remove these two deps and convert the test to integration test.
-        "//tensorflow/python:__pkg__",  # For loss_scale_optimizer_test
         "//tensorflow/python/distribute:__pkg__",  # For collective_all_reduce_strategy_test
         "//tensorflow/python/keras:__subpackages__",
         "//tensorflow/tools/pip_package:__pkg__",

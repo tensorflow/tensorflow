@@ -7653,19 +7653,3 @@ py_library(
     srcs_version = "PY2AND3",
     deps = ["//tensorflow/python/keras/optimizer_v2:legacy_learning_rate_decay"],
 )
-
-py_test(
-    name = "loss_scale_optimizer_test",
-    size = "small",
-    # This test currently depends on rules only python:__pkg__ has visibility for.
-    srcs = ["//tensorflow/python/training/experimental:loss_scale_optimizer_test.py"],
-    python_version = "PY3",
-    deps = [
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:one_device_strategy",
-        "//tensorflow/python/keras/mixed_precision/experimental:test_util",
-        "//tensorflow/python/training/experimental:loss_scale_optimizer",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
