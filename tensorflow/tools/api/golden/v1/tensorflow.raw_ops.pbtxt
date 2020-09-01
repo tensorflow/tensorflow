@@ -1250,7 +1250,7 @@ tf_module {
   }
   member_method {
     name: "DrawBoundingBoxesV3"
-    argspec: "args=[\'images\', \'boxes\', \'colors\', \'thickness\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
+    argspec: "args=[\'images\', \'boxes\', \'colors\', \'thickness\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "DummyIterationCounter"

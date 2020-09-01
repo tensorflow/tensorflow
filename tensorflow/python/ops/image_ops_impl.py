@@ -5483,8 +5483,9 @@ def draw_bounding_boxes_v3(images, boxes, colors, thickness=1, name=None):
    [1. 1. 1. 1. 1.]], dtype=float32)>
 
   """
-  if tf.compat.forward_compatible(2020,10,15):
-    return gen_image_ops.draw_bounding_boxes_v3(images, boxes, colors, thickness, name)
+  if tf.compat.forward_compatible(2020, 10, 15):
+    return gen_image_ops.draw_bounding_boxes_v3(images, boxes, colors, 
+                                                thickness, name)
   return draw_bounding_boxes_v2(images, boxes, colors, name)
 
 
