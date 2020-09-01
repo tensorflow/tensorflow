@@ -2159,6 +2159,7 @@ class RoIToTransformMatrixOperationParser : public TFLiteOperationParser {
   absl::Status IsSupported(const TfLiteContext* context,
                            const TfLiteNode* tflite_node,
                            const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckMaxSupportedOpVersion(registration, 2));
     RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
                                        /*runtime_inputs=*/1, /*outputs=*/1));
     return absl::OkStatus();
@@ -2183,41 +2184,6 @@ class RoIToTransformMatrixOperationParser : public TFLiteOperationParser {
     output_value->tensor.shape = output_shape;
     return absl::OkStatus();
   }
-
- private:
-};
-
-class RoIToTransformMatrixV2OperationParser : public TFLiteOperationParser {
- public:
-  absl::Status IsSupported(const TfLiteContext* context,
-                           const TfLiteNode* tflite_node,
-                           const TfLiteRegistration* registration) final {
-    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
-                                       /*runtime_inputs=*/1, /*outputs=*/1));
-    return absl::OkStatus();
-  }
-
-  absl::Status Parse(const TfLiteNode* tflite_node,
-                     const TfLiteRegistration* registration,
-                     GraphFloat32* graph, ObjectReader* reader) final {
-    Node* node = graph->NewNode();
-    RETURN_IF_ERROR(reader->AddInput(node, 0));  // bbox
-    RETURN_IF_ERROR(reader->AddOutputs(node));
-
-    std::string op_name = "roi_to_transform_matrix_v2";
-    node->operation.type = op_name;
-    BHWC output_shape;
-    RETURN_IF_ERROR(ParseCustomAttributes(
-        op_name, registration->version, tflite_node->custom_initial_data,
-        tflite_node->custom_initial_data_size, &(node->operation.attributes),
-        &output_shape));
-
-    auto output_value = graph->FindOutputs(node->id)[0];
-    output_value->tensor.shape = output_shape;
-    return absl::OkStatus();
-  }
-
- private:
 };
 
 class TransformTensorOperationParser : public TFLiteOperationParser {
@@ -2620,9 +2586,6 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       }
       if (custom_name == "RoIToTransformMatrix") {
         return std::make_unique<RoIToTransformMatrixOperationParser>();
-      }
-      if (custom_name == "RoIToTransformMatrixV2") {
-        return std::make_unique<RoIToTransformMatrixV2OperationParser>();
       }
       if (custom_name == "TransformTensor") {
         return std::make_unique<TransformTensorOperationParser>();
