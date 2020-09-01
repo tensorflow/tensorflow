@@ -171,8 +171,7 @@ class XxdOutputToBytesTest(test_util.TensorFlowTestCase):
     tmp_dir = self.get_temp_dir()
     model_filename = os.path.join(tmp_dir, 'model.tflite')
 
-    # 2. INVOKE
-    # Invoke the write_model and read_model functions
+    # 2. Write model to temporary file (will be used as input for xxd)
     flatbuffer_utils.write_model(initial_model, model_filename)
 
     # 3. DUMP WITH xxd
