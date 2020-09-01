@@ -564,15 +564,15 @@ def _reduce(tf_fn,
 # TODO (DarrenZhang01): Add `axis` support to the `size` API.
 @np_utils.np_doc('size')
 def size(x, axis=None):   # pylint: disable=missing-docstring
-  x = np.asarray(x) if isinstance(x, tf.Tensor) else x
+  x = asarray(x).data
   if axis is not None:
     raise NotImplementedError("axis argument is not supported in the current "
                               "`np.size` implementation")
   if isinstance(x, (int, float, np.int32, np.int64,
                     np.float32, np.float64)):
     return 1
-  elif isinstance(x, (np_arrays.ndarray, np.ndarray)):
-    return prod(x.shape)
+  elif isinstance(x, (np_arrays.ndarray, np.ndarray)) or tf.is_tensor(x):
+    return prod(tuple(x.shape))
   else:
     raise TypeError("The inputs must be one of types {int, float, numpy array"
                     ", TensorFlow Tensor, TensorFlow ndarray} object.")

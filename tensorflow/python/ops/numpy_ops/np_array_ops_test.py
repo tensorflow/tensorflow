@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import sys
 import numpy as np
 from six.moves import range
 from six.moves import zip
@@ -808,7 +807,7 @@ class ArrayMethodsTest(test.TestCase):
   def testSize(self):
 
     def run_test(arr, axis=None):
-      onp_arr = np.array(arr) if isinstance(arr, tf.Tensor) else arr
+      onp_arr = np.array(arr)
       self.assertEqual(np_array_ops.size(arr, axis), np.size(onp_arr, axis))
 
     run_test(np_array_ops.array([1]))
@@ -820,7 +819,8 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np_array_ops.ones((3, 2, 1)))
     run_test(tf.constant(5))
     run_test(tf.constant([1, 1, 1]))
-    self.assertRaises(NotImplementedError, size, np.ones((2, 2)), 1)
+    self.assertRaises(NotImplementedError, np_array_ops.size,
+                      np.ones((2, 2)), 1)
 
   def testRavel(self):
 
