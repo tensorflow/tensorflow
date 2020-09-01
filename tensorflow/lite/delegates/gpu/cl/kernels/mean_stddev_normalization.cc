@@ -64,6 +64,14 @@ static inline float local_reduce(float input, __local float* tmp) {
 #endif  // defined(__opencl_c_work_group_collective_functions)
 )";
 }
+
+std::string GetFilterCode() {
+  return R"(
+static inline float4 filter_outside_tensor(float4 x, int num_channels, int slice) {
+  return select(x, (float4)(0.0f), slice * 4 + (int4)(0, 1, 2, 3) >= num_channels);
+}
+)";
+}
 }  // namespace
 
 MeanStdDevNormalization::MeanStdDevNormalization(const OperationDef& definition,
@@ -91,6 +99,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
   std::string c = GetCommonDefines(definition_.precision);
   c += GetVectorReduceCode();
   c += GetReduceCode();
+  c += GetFilterCode();
   c += "__attribute__((reqd_work_group_size(" +
        std::to_string(work_group_size_.x) + ", 1, 1)))\n";
   c += R"(__kernel void main_function($0) {
@@ -106,10 +115,7 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
   float4 private_sum4 = (float4)(0.0f);
   for (int S = get_local_id(0); S < args.src_tensor.Slices(); S += get_local_size(0)) {
     const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
-    // Filter out reads beyond the end of the tensor.
-    const int4 is_after_end_of_tensor = (int4)(0, 1, 2, 3) >= (args.src_tensor.Channels() - S * 4);
-    const float4 filtered_t = select(t, (float4)(0.0f), is_after_end_of_tensor);
-    private_sum4 += filtered_t;
+    private_sum4 += filter_outside_tensor(t, args.src_tensor.Channels(), S);
   }
   // Reduce the vector to a single float and do a workgroup reduce.
   const float private_sum = reduce_vector(private_sum4);
@@ -120,12 +126,9 @@ std::string MeanStdDevNormalization::GetNormalizationCode() {
   float4 private_sum_diff_sq4 = (float4)(0.0f);
   for (int S = get_local_id(0); S < args.src_tensor.Slices(); S += get_local_size(0)) {
     const float4 t = args.src_tensor.Read<float>(0, 0, S, B);
-    const float4 diff = t - mean;
-    // Filter out reads beyond the end of the tensor.
-    const int4 is_after_end_of_tensor = (int4)(0, 1, 2, 3) >= (args.src_tensor.Channels() - S * 4);
-    const float4 filtered_diff = select(diff, (float4)(0.0f), is_after_end_of_tensor);
+    const float4 diff = filter_outside_tensor(t - mean, args.src_tensor.Channels(), S);
     // sum_diff_sq += diff²
-    private_sum_diff_sq4 = mad(filtered_diff, filtered_diff, private_sum_diff_sq4);
+    private_sum_diff_sq4 = mad(diff, diff, private_sum_diff_sq4);
   }
   // Reduce
   const float private_sum_diff_sq = reduce_vector(private_sum_diff_sq4);
