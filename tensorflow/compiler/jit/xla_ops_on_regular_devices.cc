@@ -38,18 +38,29 @@ namespace tensorflow {
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaDot").Device(DEVICE),                       \
                           XlaCompileOnDemandOp);                               \
-  REGISTER_KERNEL_BUILDER(Name("XlaDynamicSlice").Device(DEVICE),              \
-                          XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("XlaDynamicSlice").HostMemory("size_indices").Device(DEVICE),       \
+      XlaCompileOnDemandOp);                                                   \
   REGISTER_KERNEL_BUILDER(Name("XlaDynamicUpdateSlice").Device(DEVICE),        \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaIf").Device(DEVICE), XlaCompileOnDemandOp); \
-  REGISTER_KERNEL_BUILDER(Name("XlaPad").Device(DEVICE),                       \
+  REGISTER_KERNEL_BUILDER(Name("XlaPad")                                       \
+                              .HostMemory("padding_low")                       \
+                              .HostMemory("padding_high")                      \
+                              .HostMemory("padding_interior")                  \
+                              .Device(DEVICE),                                 \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaRecv").Device(DEVICE),                      \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaReduce").Device(DEVICE),                    \
                           XlaCompileOnDemandOp);                               \
-  REGISTER_KERNEL_BUILDER(Name("XlaReduceWindow").Device(DEVICE),              \
+  REGISTER_KERNEL_BUILDER(Name("XlaReduceWindow")                              \
+                              .HostMemory("window_dimensions")                 \
+                              .HostMemory("window_strides")                    \
+                              .HostMemory("base_dilations")                    \
+                              .HostMemory("window_dilations")                  \
+                              .HostMemory("padding")                           \
+                              .Device(DEVICE),                                 \
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaSelectAndScatter")                          \
                               .HostMemory("window_dimensions")                 \
@@ -75,11 +86,9 @@ namespace tensorflow {
                           XlaCompileOnDemandOp);                               \
   REGISTER_KERNEL_BUILDER(Name("XlaReplicaId").Device(DEVICE),                 \
                           XlaCompileOnDemandOp);                               \
-  REGISTER_KERNEL_BUILDER(Name("XlaGather")                                    \
-                              .HostMemory("start_indices")                     \
-                              .HostMemory("slice_sizes")                       \
-                              .Device(DEVICE),                                 \
-                          XlaCompileOnDemandOp);                               \
+  REGISTER_KERNEL_BUILDER(                                                     \
+      Name("XlaGather").HostMemory("slice_sizes").Device(DEVICE),              \
+      XlaCompileOnDemandOp);                                                   \
   REGISTER_KERNEL_BUILDER(Name("XlaScatter").Device(DEVICE),                   \
                           XlaCompileOnDemandOp);
 

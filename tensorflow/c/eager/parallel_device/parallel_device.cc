@@ -136,13 +136,6 @@ absl::optional<std::vector<MaybeParallelTensorOwned>> ExecuteWithSpecialOps(
     }
     result.emplace(std::move(outputs));
     return result;
-  } else if (operation_name == std::string("DeviceID")) {
-    std::vector<MaybeParallelTensorOwned> result_content;
-    result_content.reserve(1);
-    result_content.push_back(parallel_device.DeviceIDs(context, status));
-    if (TF_GetCode(status) != TF_OK) return result;
-    result.emplace(std::move(result_content));
-    return result;
   }
   std::vector<ParallelTensor*> parallel_inputs;
   std::vector<std::unique_ptr<ParallelTensor>> implicitly_broadcast_tensors;

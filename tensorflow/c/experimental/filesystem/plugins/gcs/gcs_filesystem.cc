@@ -121,17 +121,15 @@ static int64_t LoadBufferFromGCS(const std::string& path, size_t offset,
     return -1;
   }
   int64_t read;
-  if (!absl::SimpleAtoi(stream.headers().find("content-length")->second,
-                        &read)) {
+  auto content_length = stream.headers().find("content-length");
+  if (content_length == stream.headers().end()) {
     // When we read a file with offset that is bigger than the actual file size.
     // GCS will return an empty header (e.g no `content-length` header). In this
     // case, we will set read to `0` and continue.
-    if (TF_GetCode(status) == TF_OUT_OF_RANGE) {
-      read = 0;
-    } else {
-      TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
-      return -1;
-    }
+    read = 0;
+  } else if (!absl::SimpleAtoi(content_length->second, &read)) {
+    TF_SetStatus(status, TF_UNKNOWN, "Could not get content-length header");
+    return -1;
   }
   // `TF_OUT_OF_RANGE` isn't considered as an error. So we clear it here.
   TF_SetStatus(status, TF_OK, "");
@@ -990,8 +988,10 @@ static void RenameObject(const TF_Filesystem* filesystem,
 void RenameFile(const TF_Filesystem* filesystem, const char* src,
                 const char* dst, TF_Status* status) {
   if (!IsDirectory(filesystem, src, status)) {
-    if (TF_GetCode(status) == TF_FAILED_PRECONDITION)
+    if (TF_GetCode(status) == TF_FAILED_PRECONDITION) {
+      TF_SetStatus(status, TF_OK, "");
       RenameObject(filesystem, src, dst, status);
+    }
     return;
   }
 
@@ -1083,7 +1083,7 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
     stats->mtime_nsec = 0;
     return TF_SetStatus(status, TF_OK, "");
   }
-  if (TF_GetCode(status) == TF_OK) {
+  if (TF_GetCode(status) == TF_FAILED_PRECONDITION) {
     auto metadata = gcs_file->gcs_client.GetObjectMetadata(bucket, object);
     if (metadata) {
       stats->is_directory = false;
@@ -1095,6 +1095,18 @@ void Stat(const TF_Filesystem* filesystem, const char* path,
     }
     TF_SetStatusFromGCSStatus(metadata.status(), status);
   }
+}
+
+int64_t GetFileSize(const TF_Filesystem* filesystem, const char* path,
+                    TF_Status* status) {
+  // Only validate the name.
+  std::string bucket, object;
+  ParseGCSPath(path, false, &bucket, &object, status);
+  if (TF_GetCode(status) != TF_OK) return -1;
+
+  TF_FileStatistics stat;
+  Stat(filesystem, path, &stat, status);
+  return stat.length;
 }
 
 static char* TranslateName(const TF_Filesystem* filesystem, const char* uri) {

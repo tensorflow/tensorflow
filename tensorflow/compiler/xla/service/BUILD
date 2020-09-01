@@ -2340,6 +2340,7 @@ cc_library(
         ":call_inliner",
         ":hlo",
         ":hlo_casting_utils",
+        ":hlo_cse",
         ":hlo_dce",
         ":hlo_pass",
         ":hlo_pass_pipeline",

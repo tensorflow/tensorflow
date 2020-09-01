@@ -379,11 +379,12 @@ cc_library(
     hdrs = ["collective_param_resolver_local.h"],
     copts = tf_copts(),
     deps = [
-        ":device",
         ":device_mgr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

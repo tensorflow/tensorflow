@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -428,6 +429,27 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
           {attr.first.str(), value_str_attr.getValue().str()});
 
   return frontend_attributes;
+}
+
+// Returns a OpMetadata proto based on the location of the op. If the location
+// is unknown, an empty proto is returned. `op_name` are populated with the op
+// location (converted). FileLineColLoc locations are populated by taking the
+// file name and line number, and populating `source_file` and `source_line`
+// respectively.
+static xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op) {
+  xla::OpMetadata metadata;
+  if (op->getLoc().isa<mlir::UnknownLoc>()) return metadata;
+
+  std::string name = mlir::GetNameFromLoc(op->getLoc());
+  mlir::LegalizeNodeName(name);
+  metadata.set_op_name(name);
+
+  if (auto file_line_col_loc = op->getLoc().dyn_cast<mlir::FileLineColLoc>()) {
+    metadata.set_source_file(file_line_col_loc.getFilename().str());
+    metadata.set_source_line(file_line_col_loc.getLine());
+  }
+
+  return metadata;
 }
 
 // Checks if all shardings are set.

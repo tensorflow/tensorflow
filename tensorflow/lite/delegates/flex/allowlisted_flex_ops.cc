@@ -463,6 +463,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "StridedSliceAssign",
           "StridedSliceGrad",
           "StringJoin",
+          "StringLower",
           "StringSplit",
           "StringSplitV2",
           "StringToHashBucket",

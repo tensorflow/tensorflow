@@ -802,7 +802,7 @@ port::Status RegisterDevicePlugin(SEPluginInitFn init_fn) {
   SP_PlatformFns platform_fns{SP_PLATFORM_FNS_STRUCT_SIZE};
   params.major_version = SE_MAJOR;
   params.minor_version = SE_MINOR;
-  params.revision_version = SE_REVISION;
+  params.patch_version = SE_PATCH;
   params.platform = &platform;
   params.platform_fns = &platform_fns;
 

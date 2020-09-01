@@ -581,6 +581,46 @@ ENTRY main {
   EXPECT_THAT(root, AllOf(op::GetTupleElement(op::Conditional())));
 }
 
+TEST_F(ConditionalCodeMotionTest, NoMoveInWithMultipleGTE) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+on_true {
+  arg_tuple.1 = (f32[10]) parameter(0)
+  get-tuple-element.1 = f32[10] get-tuple-element(arg_tuple.1), index=0
+  add.1 = f32[10] add(get-tuple-element.1, get-tuple-element.1)
+  ROOT tuple.3 = (f32[10]) tuple(add.1)
+}
+
+on_false {
+  arg_tuple.2 = (f32[10]) parameter(0)
+  get-tuple-element.2 = f32[10] get-tuple-element(arg_tuple.2), index=0
+  mul.1 = f32[10] multiply(get-tuple-element.2, get-tuple-element.2)
+  ROOT tuple.4 = (f32[10]) tuple(mul.1)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (f32[10]) parameter(1)
+  tuple.2 = (f32[10]) parameter(2)
+  conditional = (f32[10])
+    conditional(pred.1, tuple.1, tuple.2), true_computation=on_true,
+    false_computation=on_false
+  get-first-index = f32[10] get-tuple-element(conditional), index=0
+  get-first-index.2 = f32[10] get-tuple-element(conditional), index=0
+  pow.1 = f32[10] power(get-first-index, get-first-index)
+  ROOT tuple.3 = (f32[10], f32[10]) tuple(pow.1, get-first-index.2)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::Tuple(op::Power(), op::GetTupleElement(op::Conditional())));
+}
+
 TEST_F(ConditionalCodeMotionTest, MovePowInWithSharedBranch) {
   absl::string_view hlo_string =
       R"(

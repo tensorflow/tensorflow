@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
@@ -668,6 +669,16 @@ StatusOr<bool> ConditionalCodeMotion::MoveInstructionIn(
     }
     TF_RETURN_IF_ERROR(conditional->parent()->RemoveInstruction(op));
   }
+
+  // Reset shapes of user gtes to the new shape.
+  if (use_index != -1) {
+    for (auto* user : conditional->users()) {
+      if (user->opcode() == HloOpcode::kGetTupleElement) {
+        *user->mutable_shape() =
+            conditional->shape().tuple_shapes(user->tuple_index());
+      }
+    }
+  }
   VLOG(1) << "Done moving instructions inside branches\n"
           << conditional->parent()->ToString(HloPrintOptions::Fingerprint())
           << "\n";
@@ -953,6 +964,14 @@ ConditionalCodeMotion::Decision ConditionalCodeMotion::ConsiderCodeMotion(
 }
 
 StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
+  bool changed = false;
+  {
+    HloPassPipeline subpipeline("before_conditional_code_motion");
+    subpipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/is_layout_sensitive_);
+    subpipeline.AddPass<HloDCE>();
+    TF_ASSIGN_OR_RETURN(bool cleanup_changed, subpipeline.Run(module));
+    changed |= cleanup_changed;
+  }
   // Gather all the conditional ops in the module ahead of time, to avoid
   // potential complications of modifying the code that affecting traversal.
   std::vector<HloInstruction*> conditional_ops;
@@ -975,7 +994,6 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     }
   }
 
-  bool changed = false;
   for (HloInstruction* conditional : conditional_ops) {
     int branch_count = conditional->branch_count();
     // check for shared conditional computations
@@ -1084,7 +1102,6 @@ StatusOr<bool> ConditionalCodeMotion::Run(HloModule* module) {
     subpipeline.AddPass<HloDCE>();
     subpipeline.AddPass<TupleSimplifier>();
     subpipeline.AddPass<HloDCE>();
-    subpipeline.AddPass<HloVerifier>(false, true);
     TF_ASSIGN_OR_RETURN(bool cleanup_changed, subpipeline.Run(module));
     changed |= cleanup_changed;
   }

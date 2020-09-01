@@ -605,6 +605,7 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
 
       ArgSignature sig;
       sig.dtype = buffer->shape().element_type();
+      sig.weak_type = false;
       sig.shape.assign(buffer->shape().dimensions().begin(),
                        buffer->shape().dimensions().end());
       arguments.signature.dynamic_args_signatures.push_back(sig);

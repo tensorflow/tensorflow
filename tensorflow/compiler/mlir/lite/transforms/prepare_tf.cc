@@ -639,13 +639,16 @@ struct ConvertTFStridedSlice : public RewritePattern {
     ++index;
 
     // After the ellipsis.
-    for (; index < begin_shape[0]; ++index) {
+    for (; index < begin_shape[0];) {
       padded_begin.push_back(begin_dense_elem_attr.getValue<int32_t>(index));
       padded_end.push_back(end_dense_elem_attr.getValue<int32_t>(index));
       padded_stride.push_back(stride_dense_elem_attr.getValue<int32_t>(index));
 
       if ((begin_mask >> index) & 1) new_begin_mask |= (1 << new_index);
       if ((end_mask >> index) & 1) new_end_mask |= (1 << new_index);
+
+      ++index;
+      ++new_index;
     }
 
     auto attribute_type = rewriter.getIntegerType(64);
@@ -734,6 +737,31 @@ struct ConvertTFBroadcastTo : public RewritePattern {
     auto mul_op = rewriter.create<TF::MulOp>(
         op->getLoc(), output_type, tf_broadcast_to_op.input(), tf_fill_op);
     rewriter.replaceOp(op, mul_op.getResult());
+    return success();
+  }
+};
+
+struct ConvertFusedBatchNorm : public OpRewritePattern<TF::FusedBatchNormOp> {
+  explicit ConvertFusedBatchNorm(MLIRContext *context)
+      : OpRewritePattern<TF::FusedBatchNormOp>(context) {}
+
+  LogicalResult matchAndRewrite(TF::FusedBatchNormOp tf_fused_batch_norm_op,
+                                PatternRewriter &rewriter) const override {
+    auto new_result_types =
+        llvm::to_vector<6>(tf_fused_batch_norm_op.getResultTypes());
+    // reserve_space_3
+    new_result_types.push_back(
+        UnrankedTensorType::get(FloatType::getF32(rewriter.getContext())));
+
+    OperationState new_state(tf_fused_batch_norm_op.getLoc(),
+                             TF::FusedBatchNormV3Op::getOperationName(),
+                             tf_fused_batch_norm_op.getOperands(),
+                             new_result_types,
+                             tf_fused_batch_norm_op.getAttrs());
+    Operation *tf_fused_batch_norm_op_v3 = rewriter.createOperation(new_state);
+
+    rewriter.replaceOp(tf_fused_batch_norm_op,
+                       tf_fused_batch_norm_op_v3->getResults().drop_back());
     return success();
   }
 };
@@ -899,6 +927,8 @@ void PrepareTFPass::runOnFunction() {
   // replaced with a single Conv op with dilation parameter.
   patterns.insert<ConvertTFDilatedConvOp<TF::Conv2DOp>,
                   ConvertTFDilatedConvOp<TF::DepthwiseConv2dNativeOp>>(ctx);
+
+  patterns.insert<ConvertFusedBatchNorm>(ctx);
   TFL::populateWithGenerated(ctx, &patterns);
   // TODO(karimnosseir): Split to separate pass probably after
   // deciding on long term plan for this optimization.

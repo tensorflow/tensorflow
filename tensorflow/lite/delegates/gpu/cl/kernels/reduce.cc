@@ -29,13 +29,13 @@ namespace {
 std::string GetReduceChannelsKernelCode(const OperationDef& op_def,
                                         const OperationType& op_type) {
   std::string c = GetCommonDefines(op_def.precision);
-  if (op_type == OperationType::ADD) {
+  if (op_type == OperationType::REDUCE_SUM) {
     c += "#define OP(a, b) ((a) + (b))\n";
-  } else if (op_type == OperationType::MUL) {
+  } else if (op_type == OperationType::REDUCE_PRODUCT) {
     c += "#define OP(a, b) ((a) * (b))\n";
-  } else if (op_type == OperationType::MAXIMUM) {
+  } else if (op_type == OperationType::REDUCE_MAXIMUM) {
     c += "#define OP(a, b) max(a, b)\n";
-  } else if (op_type == OperationType::MINIMUM) {
+  } else if (op_type == OperationType::REDUCE_MINIMUM) {
     c += "#define OP(a, b) min(a, b)\n";
   }
   c += "__kernel void main_function($0) {\n";
@@ -43,9 +43,9 @@ std::string GetReduceChannelsKernelCode(const OperationDef& op_def,
   c += "  int Y = get_global_id(1);\n";
   c += "  if (X >= args.dst_tensor.Width() || Y >= args.dst_tensor.Height()) "
        "return;\n";
-  if (op_type == OperationType::ADD) {
+  if (op_type == OperationType::REDUCE_SUM) {
     c += "  FLT4 reduced = (FLT4)(0.0f, 0.0f, 0.0f, 0.0f);\n";
-  } else if (op_type == OperationType::MUL) {
+  } else if (op_type == OperationType::REDUCE_PRODUCT) {
     c += "  FLT4 reduced = (FLT4)(1.0f, 1.0f, 1.0f, 1.0f);\n";
   } else {
     c += "  FLT4 V0 = args.src_tensor.Read(X, Y, 0);\n";
@@ -80,6 +80,7 @@ std::string GetReduceChannelsKernelCode(const OperationDef& op_def,
 }  // namespace
 
 GPUOperation CreateReduce(const OperationDef& definition,
+                          const ReduceAttributes& attr,
                           const OperationType& op_type) {
   GPUOperation op(definition);
   auto src_desc = definition.src_tensors[0];

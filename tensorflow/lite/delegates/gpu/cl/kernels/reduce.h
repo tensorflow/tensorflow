@@ -24,6 +24,7 @@ namespace gpu {
 namespace cl {
 
 GPUOperation CreateReduce(const OperationDef& definition,
+                          const ReduceAttributes& attr,
                           const OperationType& op_type);
 
 }  // namespace cl
