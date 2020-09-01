@@ -81,11 +81,6 @@ class ConvTexture : public GPUOperation {
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights);
 
-  template <DataType S, typename T>
-  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
-                            absl::Span<T> dst_0, absl::Span<T> dst_1,
-                            absl::Span<T> dst_2, absl::Span<T> dst_3);
-
   void GenerateCode(const DeviceInfo& device_info);
 
   std::string GenerateConvCode(const OperationDef& op_def,
@@ -146,107 +141,36 @@ void ConvTexture::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
   const int kernel_x = weights.shape.w;
   const int kernel_y = weights.shape.h;
 
-  int texture_width = dst_depth;
-  int texture_height = src_depth * kernel_x * kernel_y;
-
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
   DataType data_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
 
-  const int elements_count = texture_width * texture_height;
+  const int elements_count = dst_depth * src_depth * kernel_x * kernel_y * 4;
   const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
-  Texture2DDescriptor desc0;
-  desc0.element_type = data_type;
-  desc0.size = int2(texture_width, texture_height);
-  desc0.data.resize(elements_count * float4_size);
-
-  Texture2DDescriptor desc1;
-  desc1.element_type = data_type;
-  desc1.size = int2(texture_width, texture_height);
-  desc1.data.resize(elements_count * float4_size);
-
-  Texture2DDescriptor desc2;
-  desc2.element_type = data_type;
-  desc2.size = int2(texture_width, texture_height);
-  desc2.data.resize(elements_count * float4_size);
-
-  Texture2DDescriptor desc3;
-  desc3.element_type = data_type;
-  desc3.size = int2(texture_width, texture_height);
-  desc3.data.resize(elements_count * float4_size);
+  std::vector<uint8_t> data(float4_size * elements_count);
 
   if (f32_weights) {
-    float4* ptr0 = reinterpret_cast<float4*>(desc0.data.data());
-    float4* ptr1 = reinterpret_cast<float4*>(desc1.data.data());
-    float4* ptr2 = reinterpret_cast<float4*>(desc2.data.data());
-    float4* ptr3 = reinterpret_cast<float4*>(desc3.data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr0, elements_count),
-                         absl::MakeSpan(ptr1, elements_count),
-                         absl::MakeSpan(ptr2, elements_count),
-                         absl::MakeSpan(ptr3, elements_count));
+    float4* ptr = reinterpret_cast<float4*>(data.data());
+    RearrangeWeightsToI4HWIOOGroupO4(weights, block_size_.z,
+                                     absl::MakeSpan(ptr, elements_count));
   } else {
-    half4* ptr0 = reinterpret_cast<half4*>(desc0.data.data());
-    half4* ptr1 = reinterpret_cast<half4*>(desc1.data.data());
-    half4* ptr2 = reinterpret_cast<half4*>(desc2.data.data());
-    half4* ptr3 = reinterpret_cast<half4*>(desc3.data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr0, elements_count),
-                         absl::MakeSpan(ptr1, elements_count),
-                         absl::MakeSpan(ptr2, elements_count),
-                         absl::MakeSpan(ptr3, elements_count));
+    half4* ptr = reinterpret_cast<half4*>(data.data());
+    RearrangeWeightsToI4HWIOOGroupO4(weights, block_size_.z,
+                                     absl::MakeSpan(ptr, elements_count));
   }
 
-  args_.AddObject("weights0",
-                  absl::make_unique<Texture2DDescriptor>(std::move(desc0)));
-  args_.AddObject("weights1",
-                  absl::make_unique<Texture2DDescriptor>(std::move(desc1)));
-  args_.AddObject("weights2",
-                  absl::make_unique<Texture2DDescriptor>(std::move(desc2)));
-  args_.AddObject("weights3",
-                  absl::make_unique<Texture2DDescriptor>(std::move(desc3)));
-}
-
-template <DataType S, typename T>
-void ConvTexture::RearrangeWeightsData(
-    const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst_0,
-    absl::Span<T> dst_1, absl::Span<T> dst_2, absl::Span<T> dst_3) {
-  int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  dst_depth = AlignByN(dst_depth, block_size_.z);
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
-  const int kernel_x = weights.shape.w;
-  const int kernel_y = weights.shape.h;
-
-  int texture_width = dst_depth;
-
-  for (int d = 0; d < dst_depth / block_size_.z; ++d) {
-    for (int y = 0; y < kernel_y; ++y) {
-      for (int x = 0; x < kernel_x; ++x) {
-        for (int s = 0; s < src_depth; ++s) {
-          for (int sub_d = 0; sub_d < block_size_.z; ++sub_d) {
-            T filters[4];
-            for (int i = 0; i < 4; ++i) {
-              for (int j = 0; j < 4; ++j) {
-                const int s_ch = s * 4 + j;
-                const int d_ch = (d * block_size_.z + sub_d) * 4 + i;
-                if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
-                  const int f_index =
-                      weights.shape.LinearIndex({d_ch, y, x, s_ch});
-                  filters[j][i] = weights.data[f_index];
-                } else {
-                  filters[j][i] = 0.0f;
-                }
-              }
-            }
-            int x_coord = d * block_size_.z + sub_d;
-            int y_coord = (y * kernel_x + x) * src_depth + s;
-            int offset = y_coord * texture_width + x_coord;
-            dst_0[offset] = filters[0];
-            dst_1[offset] = filters[1];
-            dst_2[offset] = filters[2];
-            dst_3[offset] = filters[3];
-          }
-        }
-      }
-    }
+  const int texture_width = dst_depth;
+  const int texture_height = src_depth * kernel_x * kernel_y;
+  const int sub_size = float4_size * texture_width * texture_height;
+  for (int i = 0; i < 4; ++i) {
+    Texture2DDescriptor desc;
+    desc.element_type = data_type;
+    desc.size = int2(texture_width, texture_height);
+    desc.data.resize(sub_size);
+    memcpy(desc.data.data(), data.data() + sub_size * i, sub_size);
+    const std::string name = "weights" + std::to_string(i);
+    args_.AddObject(name,
+                    absl::make_unique<Texture2DDescriptor>(std::move(desc)));
   }
 }
 

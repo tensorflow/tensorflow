@@ -1,4 +1,4 @@
-/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2020 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,19 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_GENERAL_TRANSFORMATIONS_H_
-#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_GENERAL_TRANSFORMATIONS_H_
+#ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CUSTOM_TRANSFORMATIONS_H_
+#define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CUSTOM_TRANSFORMATIONS_H_
 
 #include "tensorflow/lite/delegates/gpu/common/model_transformer.h"
 
 namespace tflite {
 namespace gpu {
 
-// @return false when something went wrong that turned a graph in a broken state
-bool ApplyGeneralTransformations(ModelTransformer* transformer);
+// Applies all implemented custom model transformations.
+bool ApplyCustomTransformations(ModelTransformer* transformer);
 
 }  // namespace gpu
 }  // namespace tflite
 
-#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_TRANSFORMATIONS_GENERAL_TRANSFORMATIONS_H_
+#endif  // TENSORFLOW_LITE_DELEGATES_GPU_COMMON_CUSTOM_TRANSFORMATIONS_H_

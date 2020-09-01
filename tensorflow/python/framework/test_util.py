@@ -2149,7 +2149,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(expected_message, message)
-    elif isinstance(expected_message_maybe_ascii, str):
+    elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
           expected_message_maybe_ascii,

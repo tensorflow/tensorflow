@@ -1772,11 +1772,11 @@ static Attribute FoldSlice(SliceOp* op, I values) {
 
 OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
   // Check if the SliceOp is a NoOp operation.
-  auto operand_shape = getOperand().getType().cast<ShapedType>().getShape();
+  auto operand_type = getOperand().getType().cast<ShapedType>();
   auto result_type = getResult().getType().cast<ShapedType>();
-  auto result_shape = result_type.getShape();
 
-  if (result_type.hasStaticShape() && (operand_shape == result_shape)) {
+  if (operand_type.hasStaticShape() && result_type.hasStaticShape() &&
+      (operand_type.getShape() == result_type.getShape())) {
     return getOperand();
   }
 

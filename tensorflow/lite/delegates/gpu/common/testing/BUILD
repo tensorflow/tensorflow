@@ -33,6 +33,6 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/common:model_builder",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
         "//tensorflow/lite/delegates/gpu/common:status",
-        "//tensorflow/lite/delegates/gpu/common/transformations:general_transformations",
+        "//tensorflow/lite/delegates/gpu/common/transformations:model_transformations",
     ],
 )

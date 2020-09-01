@@ -1,3 +1,5 @@
+load("//tensorflow/core/platform:build_config.bzl", "tf_platform_alias")
+
 package(
     default_visibility = ["//visibility:public"],
     licenses = ["notice"],  # Apache 2.0
@@ -118,9 +120,9 @@ cc_test(
 )
 
 cc_library(
-    name = "general_transformations",
-    srcs = ["general_transformations.cc"],
-    hdrs = ["general_transformations.h"],
+    name = "model_transformations",
+    srcs = ["model_transformations.cc"],
+    hdrs = ["model_transformations.h"],
     deps = [
         ":add_quant_adjustments",
         ":fuse_add_to_conv",
@@ -130,7 +132,7 @@ cc_library(
         ":merge_padding_with",
         ":remove_noop",
         "//tensorflow/lite/delegates/gpu/common:model_transformer",
-    ],
+    ] + tf_platform_alias("custom_transformations", "//tensorflow/lite/delegates/gpu/common/"),
 )
 
 cc_library(

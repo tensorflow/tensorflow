@@ -1442,6 +1442,37 @@ TEST(GcsFileSystemTest, NewAppendableFile_NoObjectName) {
             fs.NewAppendableFile("gs://bucket/", nullptr, &file).code());
 }
 
+TEST(GcsFileSystemTest, NewAppendableFile_ObjectDoesNotExist) {
+  std::vector<HttpRequest*> requests(
+      {new FakeHttpRequest(
+           "Uri: https://storage.googleapis.com/bucket/filename\n"
+           "Auth Token: fake_token\n"
+           "Range: 0-1048575\n"
+           "Timeouts: 5 1 20\n",
+           "", errors::NotFound("404"), 404),
+       new FakeHttpRequest(
+           "Uri: https://www.googleapis.com/upload/storage/v1/b/bucket/o"
+           "?uploadType=resumable&name=filename\n"
+           "Auth Token: fake_token\n"
+           "Header X-Upload-Content-Length: 0\n"
+           "Post: yes\n"
+           "Timeouts: 5 1 10\n",
+           "")});
+  GcsFileSystem fs(
+      std::unique_ptr<AuthProvider>(new FakeAuthProvider),
+      std::unique_ptr<HttpRequest::Factory>(
+          new FakeHttpRequestFactory(&requests)),
+      std::unique_ptr<ZoneProvider>(new FakeZoneProvider), 0 /* block size */,
+      0 /* max bytes */, 0 /* max staleness */, 0 /* stat cache max age */,
+      0 /* stat cache max entries */, 0 /* matching paths cache max age */,
+      0 /* matching paths cache max entries */, kTestRetryConfig,
+      kTestTimeoutConfig, *kAllowedLocationsDefault,
+      nullptr /* gcs additional header */, false /* compose append */);
+
+  std::unique_ptr<WritableFile> file;
+  TF_EXPECT_OK(fs.NewAppendableFile("gs://bucket/filename", nullptr, &file));
+}
+
 TEST(GcsFileSystemTest, NewReadOnlyMemoryRegionFromFile) {
   const string content = "file content";
   std::vector<HttpRequest*> requests(
