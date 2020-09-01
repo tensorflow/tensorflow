@@ -122,14 +122,13 @@ void TestReduceOpFloat(const int* input_dims_data, const float* input_data,
 }
 
 template <typename T>
-void TestReduceOpQuantized(const int* input_dims_data, const float* input_data,
-                           float input_scale, int input_zero_point,
-                           const int* axis_dims_data, const int32_t* axis_data,
-                           const int* output_dims_data,
-                           const float* expected_output_data,
-                           float output_scale, int output_zero_point,
-                           const TfLiteRegistration& registration,
-                           TfLiteReducerParams* params) {
+void TestReduceOpQuantized(
+    const int* input_dims_data, const float* input_data, T* input_data_quant,
+    float input_scale, int input_zero_point, const int* axis_dims_data,
+    const int32_t* axis_data, const int* output_dims_data,
+    const float* expected_output_data, T* output_data_quant,
+    T* expected_output_data_quant, float output_scale, int output_zero_point,
+    const TfLiteRegistration& registration, TfLiteReducerParams* params) {
   // Convert dimesion arguments to TfLiteArrays
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
   TfLiteIntArray* axis_dims = IntArrayFromInts(axis_dims_data);
@@ -137,12 +136,6 @@ void TestReduceOpQuantized(const int* input_dims_data, const float* input_data,
 
   // Get number of elements in input and output tensors
   const int output_dims_count = ElementCount(*output_dims);
-  const int input_dims_count = ElementCount(*input_dims);
-
-  // Allocate arrays for quantized tensors
-  T output_data_quant[output_dims_count];
-  T input_data_quant[input_dims_count];
-  T expected_output_data_quant[output_dims_count];
 
   // Initialize tensors
   constexpr int tensors_size = 3;
@@ -201,7 +194,8 @@ void TestMeanOpQuantized(const int* input_dims_data, const float* input_data,
   TF_LITE_MICRO_EXPECT_EQ(
       kTfLiteOk,
       ValidateReduceGoldens(tensors, tensors_size, expected_output_data_quant,
-                            output_data_quant, output_dims_count, params, 1.0));
+                            output_data_quant, output_dims_count,
+                            tflite::ops::micro::Register_MEAN(), params, 1.0));
 }
 
 }  // namespace
@@ -392,9 +386,14 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDims) {
 
   TfLiteReducerParams params = {true};
 
+  int8_t input_data_quant[6];
+  int8_t output_data_quant[2];
+  int8_t expected_output_data_quant[2];
+
   tflite::testing::TestReduceOpQuantized<int8_t>(
-      input_shape, input_data, input_scale, input_zp, axis_shape, axis_data,
-      output_shape, expected_output_data, input_scale, input_zp,
+      input_shape, input_data, input_data_quant, input_scale, input_zp,
+      axis_shape, axis_data, output_shape, expected_output_data,
+      output_data_quant, expected_output_data_quant, input_scale, input_zp,
       tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
@@ -413,9 +412,14 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDimsDifferentScale) {
 
   TfLiteReducerParams params = {true};
 
+  int8_t input_data_quant[6];
+  int8_t output_data_quant[2];
+  int8_t expected_output_data_quant[2];
+
   tflite::testing::TestReduceOpQuantized<int8_t>(
-      input_shape, input_data, input_scale, input_zp, axis_shape, axis_data,
-      output_shape, expected_output_data, output_scale, output_zp,
+      input_shape, input_data, input_data_quant, input_scale, input_zp,
+      axis_shape, axis_data, output_shape, expected_output_data,
+      output_data_quant, expected_output_data_quant, output_scale, output_zp,
       tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
@@ -434,9 +438,14 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDims) {
 
   TfLiteReducerParams params = {false};
 
+  int8_t input_data_quant[6];
+  int8_t output_data_quant[2];
+  int8_t expected_output_data_quant[2];
+
   tflite::testing::TestReduceOpQuantized<int8_t>(
-      input_shape, input_data, input_scale, input_zp, axis_shape, axis_data,
-      output_shape, expected_output_data, output_scale, output_zp,
+      input_shape, input_data, input_data_quant, input_scale, input_zp,
+      axis_shape, axis_data, output_shape, expected_output_data,
+      output_data_quant, expected_output_data_quant, output_scale, output_zp,
       tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
@@ -455,9 +464,14 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDimsDifferentScale) {
 
   TfLiteReducerParams params = {false};
 
+  int8_t input_data_quant[6];
+  int8_t output_data_quant[2];
+  int8_t expected_output_data_quant[2];
+
   tflite::testing::TestReduceOpQuantized<int8_t>(
-      input_shape, input_data, input_scale, input_zp, axis_shape, axis_data,
-      output_shape, expected_output_data, output_scale, output_zp,
+      input_shape, input_data, input_data_quant, input_scale, input_zp,
+      axis_shape, axis_data, output_shape, expected_output_data,
+      output_data_quant, expected_output_data_quant, output_scale, output_zp,
       tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
