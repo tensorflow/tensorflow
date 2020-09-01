@@ -62,8 +62,9 @@ TfLiteStatus CalculateOpData(TfLiteContext* context, TfLiteNode* node,
         context, params->activation, output, &data->output_activation_min,
         &data->output_activation_max));
 
-    double real_multiplier = static_cast<double>(
-        input1->params.scale * input2->params.scale / output->params.scale);
+    double real_multiplier = static_cast<double>(input1->params.scale) *
+                             static_cast<double>(input2->params.scale) /
+                             static_cast<double>(output->params.scale);
     QuantizeMultiplier(real_multiplier, &data->output_multiplier,
                        &data->output_shift);
   }
