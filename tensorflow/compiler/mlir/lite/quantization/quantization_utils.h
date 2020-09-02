@@ -106,9 +106,9 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
         mins.push_back(FloatAttr::getValueAsDouble(*it++));
         maxs.push_back(FloatAttr::getValueAsDouble(*it));
       }
-      quant_type = quant::fakeQuantAttrsToType(
-          op.getLoc(), num_bits, op.axis()->getSExtValue(), mins, maxs,
-          narrow_range, expressed, is_signed);
+      quant_type =
+          quant::fakeQuantAttrsToType(op.getLoc(), num_bits, *op.axis(), mins,
+                                      maxs, narrow_range, expressed, is_signed);
     } else if (auto stats = op.layerStats().dyn_cast<DenseFPElementsAttr>()) {
       double rmin = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({0}));
       double rmax = FloatAttr::getValueAsDouble(stats.getValue<APFloat>({1}));

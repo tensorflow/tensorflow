@@ -117,7 +117,7 @@ class ConvertIotaOp : public OpRewritePattern<mhlo::IotaOp> {
                                 PatternRewriter &rewriter) const override {
     auto output_type = op.getType().cast<ShapedType>();
     auto output_size = output_type.getNumElements();
-    auto dimension = op.iota_dimension().getSExtValue();
+    auto dimension = op.iota_dimension();
     auto max_dim_size = output_type.getDimSize(dimension);
 
     auto element_type = output_type.getElementType();

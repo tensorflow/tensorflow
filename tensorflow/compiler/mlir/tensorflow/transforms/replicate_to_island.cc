@@ -376,7 +376,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
                                          tf_executor::IslandOp island_op,
                                          tf_device::ReplicateOp replicate_op) {
   OpBuilder builder(island_op);
-  const int num_replicas = replicate_op.n().getLimitedValue();
+  const int num_replicas = replicate_op.n();
 
   // Create islands per replica.
   llvm::SmallVector<tf_executor::IslandOp, 8> replicas;

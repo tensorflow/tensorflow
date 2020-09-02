@@ -172,7 +172,7 @@ static LogicalResult Verify(DotGeneralOp op) {
 /// Fold get_dimension_size when the said shape dimension is a constant.
 OpFoldResult GetDimensionSizeOp::fold(ArrayRef<Attribute> attrs) {
   RankedTensorType type = operand().getType().cast<RankedTensorType>();
-  int32_t dim = dimension().getSExtValue();
+  int32_t dim = dimension();
   if (type.isDynamic(dim)) return {};
   // The result type is always is a 0-d i32 tensor.
   return DenseIntElementsAttr::get<int32_t>(
@@ -190,7 +190,7 @@ static LogicalResult Verify(IotaOp op) {
   if (shape.getRank() == 0)
     return op.emitOpError() << "does not support scalars.";
 
-  auto iota_dimension = op.iota_dimension().getSExtValue();
+  auto iota_dimension = op.iota_dimension();
   if (iota_dimension >= shape.getRank() || iota_dimension < 0)
     return op.emitOpError() << "iota dimension cannot go beyond the output "
                                "rank or be negative.";
@@ -212,8 +212,7 @@ struct IotaBroadcast : public OpRewritePattern<IotaOp> {
     auto iota_dimension = iota.iota_dimension();
 
     auto iota_type = RankedTensorType::get(
-        {result_ty.getDimSize(iota_dimension.getLimitedValue())},
-        result_ty.getElementType());
+        {result_ty.getDimSize(iota_dimension)}, result_ty.getElementType());
 
     auto new_iota = rewriter.create<IotaOp>(iota.getLoc(), iota_type,
                                             rewriter.getI64IntegerAttr(0));
@@ -233,7 +232,7 @@ void IotaOp::getCanonicalizationPatterns(OwningRewritePatternList& results,
 }
 
 OpFoldResult IotaOp::fold(ArrayRef<Attribute> operands) {
-  auto dimension = iota_dimension().getLimitedValue();
+  auto dimension = iota_dimension();
   auto result_ty = getResult().getType().cast<ShapedType>();
   if (result_ty.hasRank() && result_ty.getDimSize(dimension) == 1) {
     Builder builder(getContext());
@@ -277,7 +276,7 @@ struct DynamicIotaBroadcast : public OpRewritePattern<DynamicIotaOp> {
     }
 
     auto iota_dimension = iota.iota_dimension();
-    auto iota_dimension_int = iota_dimension.getLimitedValue();
+    auto iota_dimension_int = iota_dimension;
 
     auto converted_shape = rewriter.create<IndexCastOp>(
         iota.getLoc(),
@@ -476,7 +475,7 @@ static LogicalResult Verify(DequantizeOp op) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(GetTupleElementOp op) {
-  auto indexVal = op.index().getZExtValue();
+  auto indexVal = op.index();
   auto operandType = op.getOperand().getType().cast<TupleType>();
   if (indexVal >= operandType.size()) {
     return op.emitOpError(
@@ -495,7 +494,7 @@ static LogicalResult Verify(GetTupleElementOp op) {
 OpFoldResult GetTupleElementOp::fold(ArrayRef<Attribute> operands) {
   if (auto tupleOp =
           dyn_cast_or_null<mhlo::TupleOp>(getOperand().getDefiningOp())) {
-    return tupleOp.getOperand(index().getLimitedValue());
+    return tupleOp.getOperand(index());
   }
 
   return {};
@@ -565,8 +564,8 @@ static LogicalResult Verify(AllToAllOp op) {
   // count.
   auto type = op.getOperand().getType().dyn_cast<RankedTensorType>();
   if (!type) return success();
-  auto split_dim_size = type.getDimSize(op.split_dimension().getSExtValue());
-  auto split_count = op.split_count().getSExtValue();
+  auto split_dim_size = type.getDimSize(op.split_dimension());
+  auto split_count = op.split_count();
   if (split_dim_size % split_count != 0) {
     return op.emitError() << "split dimension has size " << split_dim_size
                           << ", expected to be a multiple of split_count "
@@ -914,7 +913,7 @@ class ConcatenateOperandRemoval : public OpRewritePattern<ConcatenateOp> {
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(ConcatenateOp op,
                                 PatternRewriter& rewriter) const override {
-    auto axis = op.dimension().getLimitedValue();
+    auto axis = op.dimension();
     llvm::SmallVector<Value, 6> new_operands;
     for (auto operand : op.getOperands()) {
       auto ty = operand.getType().cast<ShapedType>();
@@ -994,7 +993,7 @@ void ConcatenateOp::getCanonicalizationPatterns(
 template <typename T>
 static Attribute foldConcatenateHelper(ConcatenateOp* op,
                                        ArrayRef<Attribute> operands) {
-  auto axis = op->dimension().getLimitedValue();
+  auto axis = op->dimension();
   auto type = op->getType().cast<ShapedType>();
 
   SmallVector<T, 6> values;
@@ -1042,7 +1041,7 @@ OpFoldResult ConcatenateOp::fold(ArrayRef<Attribute> operands) {
   ShapedType type = getResult().getType().cast<ShapedType>();
   if (!type.hasStaticShape()) return {};
 
-  auto axis = dimension().getLimitedValue();
+  auto axis = dimension();
   if (auto attr = foldConcatenate(this, operands)) {
     return attr;
   }
@@ -1845,7 +1844,7 @@ struct SimplifyConcatSlice : public OpRewritePattern<SliceOp> {
       return failure();
     }
 
-    auto dimension = concat.dimension().getSExtValue();
+    auto dimension = concat.dimension();
 
     auto start = slice.start_indices().getIntValues();
     auto limit = slice.limit_indices().getIntValues();
@@ -1995,7 +1994,7 @@ static LogicalResult Verify(SortOp op) {
       return op.emitOpError("requires all inputs to have the same dimensions");
 
     int64_t rank = input_shape.size();
-    int64_t cmp_dim = op.dimension().getSExtValue();
+    int64_t cmp_dim = op.dimension();
     if (cmp_dim < -rank || cmp_dim >= rank)
       return op.emitOpError("dimension attribute value must be in range [-")
              << rank << ", " << rank << "), but found " << cmp_dim;

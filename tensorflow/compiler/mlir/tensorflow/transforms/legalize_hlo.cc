@@ -88,7 +88,7 @@ class ConvertConvOp : public OpConversionPattern<mhlo::ConvOp> {
     const int input_channels =
         conv_op.lhs().getType().cast<ShapedType>().getDimSize(
             input_feature_dimension);
-    int feature_group_count = conv_op.feature_group_count().getSExtValue();
+    int feature_group_count = conv_op.feature_group_count();
 
     const bool is_depthwise_conv = input_channels == feature_group_count;
     std::string padding;

@@ -127,12 +127,12 @@ static tflite::TensorType ConvertDerivedTypeAttrForOptionWriter(
 
 // I32Attr already returns an int as required by flatbuffer builders.
 static int ConvertI32AttrForOptionWriter(
-    llvm::APInt i, flatbuffers::FlatBufferBuilder* builder) {
-  return i.getSExtValue();
+    int i, flatbuffers::FlatBufferBuilder* builder) {
+  return i;
 }
 
 static int ConvertPositiveI32AttrForOptionWriter(
-    llvm::APInt i, flatbuffers::FlatBufferBuilder* builder) {
+    int i, flatbuffers::FlatBufferBuilder* builder) {
   return ConvertI32AttrForOptionWriter(i, builder);
 }
 

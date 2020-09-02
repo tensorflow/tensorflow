@@ -216,8 +216,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
     rewriter.setInsertionPointAfter(tf_op);
-    IntegerAttr num_bits =
-        rewriter.getI64IntegerAttr(tf_op.num_bits().getSExtValue());
+    IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.num_bits());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
     TypeAttr qtype = quant::GetQuantizedTypeAttr(
@@ -538,8 +537,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
         loc, new_output_type, original_input, shape);
 
     // Replace the original strided_slice.
-    llvm::APInt new_begin_mask = strided_slice_op.begin_mask();
-    llvm::APInt new_end_mask = strided_slice_op.end_mask();
+    uint64_t new_begin_mask = strided_slice_op.begin_mask();
+    uint64_t new_end_mask = strided_slice_op.end_mask();
     // Since we expand the dims, we need to apply them to the begin_mask &
     // end_mask.
     new_begin_mask |= strided_slice_op.new_axis_mask();
@@ -602,8 +601,8 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     const int ellipsis_filled_dim_size = input_size - begin_shape[0] + 1;
 
-    int64_t begin_mask = strided_slice_op.begin_mask().getSExtValue();
-    int64_t end_mask = strided_slice_op.end_mask().getSExtValue();
+    int64_t begin_mask = strided_slice_op.begin_mask();
+    int64_t end_mask = strided_slice_op.end_mask();
     int64_t new_begin_mask = 0;
     int64_t new_end_mask = 0;
 
@@ -684,16 +683,16 @@ struct ConvertTFStridedSlice : public RewritePattern {
 
     // TODO(renjieliu): Consider expand the transformation for shrink mask as
     // well.
-    if (strided_slice_op.shrink_axis_mask().getZExtValue()) return failure();
+    if (strided_slice_op.shrink_axis_mask()) return failure();
 
     // Handle new axis mask.
-    uint64_t new_axis_mask = strided_slice_op.new_axis_mask().getZExtValue();
+    uint64_t new_axis_mask = strided_slice_op.new_axis_mask();
     if (new_axis_mask != 0) {
       return RewriteNewAxisMask(strided_slice_op, new_axis_mask, rewriter);
     }
 
     // Handle ellipsis mask.
-    uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask().getZExtValue();
+    uint64_t ellipsis_mask = strided_slice_op.ellipsis_mask();
     if (ellipsis_mask != 0) {
       return RewriteEllipsisMask(strided_slice_op, ellipsis_mask, rewriter);
     }

@@ -185,7 +185,7 @@ bool HandleReplicatedInputs(
     const TF::ResourceAliasAnalysis::Info& resource_alias_analysis) {
   // We need to know the devices to copy to.
   if (!replicate.devices()) return false;
-  int64_t num_replicas = replicate.n().getZExtValue();
+  int64_t num_replicas = replicate.n();
   auto inputs = replicate.getOperands()
                     .drop_front(replicate_arg_index * num_replicas)
                     .take_front(num_replicas);

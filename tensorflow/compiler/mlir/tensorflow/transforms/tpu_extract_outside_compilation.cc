@@ -210,8 +210,9 @@ Operation* ReplicateIf(const ControlFlowStackInfo& controlflow_info,
 
 // Creates a WhileRegionOp cond and body regions with yield op and
 // an empty body.
-TF::WhileRegionOp CloneEmptyWhile(bool is_stateless, APInt parallel_iterations,
-                                  Location loc, OpBuilder* builder) {
+TF::WhileRegionOp CloneEmptyWhile(bool is_stateless,
+                                  uint64_t parallel_iterations, Location loc,
+                                  OpBuilder* builder) {
   auto host_side_while = builder->create<TF::WhileRegionOp>(
       loc, /*output=*/ArrayRef<Type>{}, /*input=*/ArrayRef<Value>{},
       is_stateless, parallel_iterations);

@@ -1418,7 +1418,7 @@ Status IrEmitterUnnested::EmitMlirSort(MlirEmitterInput input) {
   std::vector<std::unique_ptr<Thunk>> thunks;
 
   Shape keys_shape = operand_shapes[0];
-  int64 dimension_to_sort = sort_op.dimension().getSExtValue();
+  int64 dimension_to_sort = sort_op.dimension();
   for (int64 i = 0; i < operand_count; ++i) {
     // We assume that the layout of all involved operands and outputs is the
     // same.

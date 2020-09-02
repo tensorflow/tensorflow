@@ -109,7 +109,7 @@ void NotEqualOp::build(OpBuilder &builder, OperationState &result, Value x,
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(OneHotOp op) {
-  int64_t axis = op.axis().getSExtValue();
+  int64_t axis = op.axis();
 
   auto indices_ty = op.indices().getType().dyn_cast<RankedTensorType>();
   if (indices_ty &&
@@ -207,7 +207,7 @@ static LogicalResult Verify(PackOp op) {
   // the axis value range is [-(R+1), R+1).
   int64_t range_begin = -inputs_rank - 1;  // Inclusive
   int64_t range_end = inputs_rank + 1;     // Exclusive
-  int64_t axis = op.axis().getSExtValue();
+  int64_t axis = op.axis();
   if (axis < range_begin || axis >= range_end) {
     return op.emitError() << "attribute 'axis' should be within range ["
                           << range_begin << ", " << range_end
@@ -232,7 +232,7 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
   if (values().size() < 2) return {};
 
   // Dimensions packed along axis = 0 (pack scalars into vector).
-  if (axis().getSExtValue() != 0) return {};
+  if (axis() != 0) return {};
 
   // First packed value is defined by a strided slice operation.
   auto slice_op = dyn_cast_or_null<StridedSliceOp>(values()[0].getDefiningOp());
@@ -247,11 +247,9 @@ OpFoldResult PackOp::fold(ArrayRef<Attribute> operands) {
 
   // All masks are `0` except `shrink_axis_mask` which is equal to `1` (slicing
   // scalar value from input vector).
-  if (slice_op.begin_mask().getSExtValue() != 0 ||
-      slice_op.ellipsis_mask().getSExtValue() != 0 ||
-      slice_op.end_mask().getSExtValue() != 0 ||
-      slice_op.new_axis_mask().getSExtValue() != 0 ||
-      slice_op.shrink_axis_mask().getSExtValue() != 1)
+  if (slice_op.begin_mask() != 0 || slice_op.ellipsis_mask() != 0 ||
+      slice_op.end_mask() != 0 || slice_op.new_axis_mask() != 0 ||
+      slice_op.shrink_axis_mask() != 1)
     return {};
 
   // Returns a value if the `value` is defined by a ConstOp with a single
@@ -1396,7 +1394,7 @@ static LogicalResult VerifyStridedSliceBase(OpTy op) {
 
   // Use bit compares to ensure ellipsis_mask is 0 or a power of 2, i.e. there
   // exists only no more than one ellipsis.
-  uint32_t ellipsis_mask = op.ellipsis_mask().getZExtValue();
+  uint32_t ellipsis_mask = op.ellipsis_mask();
   if (ellipsis_mask != 0 && !llvm::isPowerOf2_32(ellipsis_mask))
     return op.emitOpError("cannot have multiple ellipses");
 
@@ -1652,10 +1650,9 @@ bool StridedSliceOp::GetSlicedBoundRanges(
     sparse_strides.push_back(stride.getSExtValue());
 
   CalculateSlicedShapeFromSparseIndices(
-      input_shape, sparse_begin, sparse_end, sparse_strides,
-      begin_mask().getZExtValue(), end_mask().getZExtValue(),
-      ellipsis_mask().getZExtValue(), new_axis_mask().getZExtValue(),
-      shrink_axis_mask().getZExtValue(), slice_begin, slice_end, slice_stride);
+      input_shape, sparse_begin, sparse_end, sparse_strides, begin_mask(),
+      end_mask(), ellipsis_mask(), new_axis_mask(), shrink_axis_mask(),
+      slice_begin, slice_end, slice_stride);
   return true;
 }
 
@@ -1706,10 +1703,9 @@ bool StridedSliceGradOp::GetSlicedShapeAndBoundRanges(
     sparse_strides.push_back(stride.getSExtValue());
 
   CalculateSlicedShapeFromSparseIndices(
-      *input_shape, sparse_begin, sparse_end, sparse_strides,
-      begin_mask().getZExtValue(), end_mask().getZExtValue(),
-      ellipsis_mask().getZExtValue(), new_axis_mask().getZExtValue(),
-      shrink_axis_mask().getZExtValue(), slice_begin, slice_end, slice_stride);
+      *input_shape, sparse_begin, sparse_end, sparse_strides, begin_mask(),
+      end_mask(), ellipsis_mask(), new_axis_mask(), shrink_axis_mask(),
+      slice_begin, slice_end, slice_stride);
   return true;
 }
 
@@ -2090,7 +2086,7 @@ static LogicalResult Verify(UnpackOp op) {
   if (!value_type) return success();
 
   int64_t value_rank = value_type.getRank();
-  int64_t axis = op.axis().getSExtValue();
+  int64_t axis = op.axis();
   if (axis < -value_rank || axis >= value_rank)
     return op.emitOpError("axis attribute must be in the range of [-")
            << value_rank << ", " << value_rank << ')';

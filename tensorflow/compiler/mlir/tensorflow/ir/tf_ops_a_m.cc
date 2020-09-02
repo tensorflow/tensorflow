@@ -190,7 +190,7 @@ void BatchMatMulV2Op::getCanonicalizationPatterns(
 
 static LogicalResult Verify(BatchToSpaceOp op) {
   // Op already has a constraint that block_size >= 2.
-  int64_t block_size = op.block_size().getSExtValue();
+  int64_t block_size = op.block_size();
 
   llvm::SmallVector<int64_t, 4> input_shape(4, ShapedType::kDynamicSize);
   auto input_type = op.input().getType().cast<TensorType>();
@@ -1639,7 +1639,7 @@ static LogicalResult Verify(FakeQuantWithMinMaxArgsOp op) {
     return op.emitOpError("range is invalid: [" + Twine(std::to_string(rmin)) +
                           "," + Twine(std::to_string(rmax)) + "]");
   }
-  int64_t num_bits = op.num_bits().getSExtValue();
+  int64_t num_bits = op.num_bits();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
         "requires num_bits to be between 2 and 16, inclusive");
@@ -1659,7 +1659,7 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsOp op) {
   if (max && !IsOfRankedFloatTensorType(max, 0))
     return op.emitOpError("requires max to be a 0d float tensor");
 
-  int64_t num_bits = op.num_bits().getSExtValue();
+  int64_t num_bits = op.num_bits();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
         "requires num_bits to be between 2 and 16, inclusive");
@@ -1683,7 +1683,7 @@ static LogicalResult Verify(FakeQuantWithMinMaxVarsPerChannelOp op) {
   if (!HasRankAtLeast(inputs, 1))
     return op.emitError("requires inputs to be at least 1d float tensor");
 
-  int64_t num_bits = op.num_bits().getSExtValue();
+  int64_t num_bits = op.num_bits();
   if (num_bits < 2 || num_bits > 16) {
     return op.emitOpError(
         "requires num_bits to be between 2 and 16, inclusive");
@@ -1886,7 +1886,7 @@ StringRef FusedBatchNormV3Op::GetOptimalLayout(const RuntimeDevices &devices) {
 //===----------------------------------------------------------------------===//
 
 static LogicalResult Verify(GatherV2Op op) {
-  int64_t batch_dims = op.batch_dims().getSExtValue();
+  int64_t batch_dims = op.batch_dims();
   if (auto ty = op.indices().getType().dyn_cast<RankedTensorType>()) {
     int64_t rank = ty.getRank();
     if (batch_dims > rank || batch_dims < -rank)

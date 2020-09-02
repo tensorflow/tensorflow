@@ -303,7 +303,7 @@ class LowerDynamicStitchOp : public OpRewritePattern<TF::DynamicStitchOp> {
           reshaped_data.getType().cast<RankedTensorType>().getShape()[0];
       auto items = rewriter.create<UnpackOp>(
           loc, SmallVector<Type, 4>(num_items, item_ty), reshaped_data,
-          /*axis=*/APInt(64, 0));
+          /*axis=*/0);
       for (auto index_item : llvm::zip(index_attr, items.getResults())) {
         int64_t output_index = std::get<0>(index_item).getSExtValue();
         Value item = std::get<1>(index_item);
@@ -399,7 +399,7 @@ class LowerPackOp : public OpRewritePattern<TF::PackOp> {
         loc,
         DenseElementsAttr::get(
             RankedTensorType::get({}, rewriter.getIntegerType(64)), op.axis()));
-    int64_t axis = op.axis().getSExtValue();
+    int64_t axis = op.axis();
 
     Type prev_input_ty, inferred_ty;
     SmallVector<Value, 4> expanded_inputs;

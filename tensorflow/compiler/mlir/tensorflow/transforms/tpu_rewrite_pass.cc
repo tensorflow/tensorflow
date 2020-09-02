@@ -650,7 +650,7 @@ LogicalResult Rewrite(
   int num_replicas = 1;
   tf_device::ReplicateOp replicate =
       cluster_func.getParentOfType<tf_device::ReplicateOp>();
-  if (replicate) num_replicas = replicate.n().getLimitedValue();
+  if (replicate) num_replicas = replicate.n();
 
   auto num_cores_per_replica_attr = cluster_func.getAttrOfType<IntegerAttr>(
       tensorflow::kNumCoresPerReplicaAttr);
