@@ -109,7 +109,8 @@ DLDataType GetDlDataType(TF_DataType data_type, TF_Status* status) {
 // Gets DLPack's DLContext from eager tensor handle.
 DLContext GetDlContext(TFE_TensorHandle* h, TF_Status* status) {
   DLContext ctx;
-  const char* device_name = tensorflow::unwrap(h)->DeviceName(&status->status);
+  const char* device_name =
+      tensorflow::unwrap(h)->BackingDeviceName(&status->status);
   DeviceNameUtils::ParsedName parsed_name;
   tensorflow::DeviceNameUtils::ParseFullName(device_name, &parsed_name);
   std::string device_type = parsed_name.type;
