@@ -27,6 +27,8 @@ namespace py = pybind11;
 static const py::module* nest = new py::module(
     py::module::import("tensorflow.python.util.nest"));
 static const py::module* np = new py::module(py::module::import("numpy"));
+static const py::object* np_str = new py::object(np->attr("str_"));
+static const py::object* np_ndarray = new py::object(np->attr("ndarray"));
 static const py::object* create_constant_tensor = new py::object(
     py::module::import("tensorflow.python.framework.constant_op")
         .attr("constant"));
@@ -95,7 +97,7 @@ bool IsNdarray(py::handle value) {
       || swig::IsBaseResourceVariable(value_ptr)
       || py::hasattr(value, "_should_act_as_resource_variable")
       // For legacy reasons we do not automatically promote Numpy strings.
-      || PyObject_IsInstance(value_ptr, np->attr("str_").ptr())
+      || PyObject_IsInstance(value_ptr, np_str->ptr())
       // NumPy dtypes have __array__ as unbound methods.
       || PyObject_IsInstance(value_ptr, reinterpret_cast<PyObject*>(&PyType_Type))
       // CompositeTensors should be flattened instead.
@@ -124,12 +126,12 @@ py::tuple ConvertNumpyInputs(py::object inputs) {
       filtered_flat_inputs.append(flat_inputs[i]);
     } else if (py::hasattr(value, "__array__") && !(
         py::hasattr(value, "_should_act_as_resource_variable")
-        || PyObject_IsInstance(value_ptr, np->attr("str_").ptr())
+        || PyObject_IsInstance(value_ptr, np_str->ptr())
         || PyObject_IsInstance(value_ptr, reinterpret_cast<PyObject*>(&PyType_Type))
         || swig::IsCompositeTensor(value_ptr))) {
       // This case is equivalent to _is_ndarray(value) == True
       py::object a = AsNdarray(flat_inputs[i]);
-      if (!PyObject_IsInstance(a.ptr(), np->attr("ndarray").ptr())) {
+      if (!PyObject_IsInstance(a.ptr(), np_ndarray->ptr())) {
         throw py::type_error(strings::StrCat(
             "The output of __array__ must be an np.ndarray (got ",
             a.ptr()->ob_type->tp_name, " from ",
