@@ -379,7 +379,6 @@ cc_library(
     hdrs = ["collective_param_resolver_local.h"],
     copts = tf_copts(),
     deps = [
-        ":device",
         ":device_mgr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

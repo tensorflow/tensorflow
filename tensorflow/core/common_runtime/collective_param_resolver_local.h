@@ -19,9 +19,11 @@ limitations under the License.
 #include <memory>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 
@@ -45,7 +47,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
 
   ~CollectiveParamResolverLocal() override {}
 
-  void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+  void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
                            CancellationManager* cancel_mgr,
                            const StatusCallback& done) override;
 
@@ -70,10 +72,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
     CollGroupParams group;
     mutable mutex mu;
     Status status TF_GUARDED_BY(mu);
-    std::set<string> device_set TF_GUARDED_BY(mu);
-    std::vector<string> device_list TF_GUARDED_BY(mu);
-    std::set<string> task_set TF_GUARDED_BY(mu);
-    std::vector<string> task_list TF_GUARDED_BY(mu);
+    std::unordered_map<string, DeviceAttributes> devices TF_GUARDED_BY(mu);
     std::vector<StatusCallback> waiting TF_GUARDED_BY(mu);
   };
 
@@ -85,7 +84,7 @@ class CollectiveParamResolverLocal : public ParamResolverInterface {
   // callback.
   typedef std::function<void(const Status& s, const GroupRec* gr)>
       GroupRecCallback;
-  void CompleteGroupLocal(const string& device, CollectiveParams* cp,
+  void CompleteGroupLocal(const DeviceAttributes& device, CollectiveParams* cp,
                           const GroupRecCallback& done)
       TF_LOCKS_EXCLUDED(group_mu_);
 
