@@ -129,7 +129,7 @@ py::tuple ConvertNumpyInputs(py::object inputs) {
         || PyObject_IsInstance(value_ptr, np_str->ptr())
         || PyType_Check(value_ptr)
         || swig::IsCompositeTensor(value_ptr))) {
-      // This case is equivalent to _is_ndarray(value) == True
+      // This case is equivalent to IsNdarray(value) == True
       py::object a = AsNdarray(flat_inputs[i]);
       if (!PyObject_IsInstance(a.ptr(), np_ndarray->ptr())) {
         throw py::type_error(strings::StrCat(
