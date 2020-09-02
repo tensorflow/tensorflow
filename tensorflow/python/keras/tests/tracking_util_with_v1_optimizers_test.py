@@ -1,4 +1,4 @@
-  # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -26,7 +26,6 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -39,6 +38,7 @@ from tensorflow.python.keras.layers import core
 from tensorflow.python.module import module
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
@@ -708,4 +708,5 @@ class CheckpointCompatibilityTests(keras_parameterized.TestCase):
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

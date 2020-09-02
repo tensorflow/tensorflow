@@ -22,12 +22,13 @@ import os
 
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.eager import test
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import model_combinations
 from tensorflow.python.keras.distribute import saved_model_test_base as test_base
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
 from tensorflow.python.saved_model import load_options as load_options_lib
 from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.saved_model import saved_model
@@ -180,4 +181,5 @@ class SavedModelTFModuleTest(test_base.TestSavedModelBase):
 
 
 if __name__ == '__main__':
+  ops.enable_eager_execution()
   test.main()

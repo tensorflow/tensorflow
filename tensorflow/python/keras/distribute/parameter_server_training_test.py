@@ -30,7 +30,6 @@ from tensorflow.python.distribute.client import parameter_server_client
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_spec
@@ -40,6 +39,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops.losses import loss_reduction
+from tensorflow.python.platform import test
 from tensorflow.python.training.server_lib import ClusterSpec
 
 

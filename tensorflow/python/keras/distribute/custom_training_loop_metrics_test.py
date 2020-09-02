@@ -25,9 +25,9 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.keras import metrics
+from tensorflow.python.platform import test
 
 
 class KerasMetricsTest(test.TestCase, parameterized.TestCase):
