@@ -26,17 +26,14 @@ class FusionNodeIndexingEvaluation {
  public:
   explicit FusionNodeIndexingEvaluation(const HloInstruction* fusion);
 
-  // Evaluate the average number of times an instruction is emitted inside the
-  // fusion node, if 'producer' is fused into 'fusion_'. If this average
-  // duplication is "too high" (some arbitrary chosen constant), returns
-  // true.
-  bool AverageCodeDuplicationTooHigh(const HloInstruction* producer) const;
+  // Evaluate the number of times 'producer' would be emitted if it is fused
+  // into 'fusion_'. If the duplication is "too high" (some arbitrary chosen
+  // constant), returns true.
+  bool CodeDuplicationTooHigh(const HloInstruction* producer) const;
 
-  // Evaluate the total number of times an instruction is emitted inside the
-  // fusion node, if 'producer' is fused into 'fusion_'. An instruction may be
-  // emitted several times, once for each different index value with which it is
-  // indexed.
-  int64 EvaluateTotalEmittedInstructions(const HloInstruction* producer) const;
+  // Evaluate the number of times 'producer' would be emitted if it is fused
+  // into 'fusion_'.
+  int64 EvaluateEmittedInstructions(const HloInstruction* producer) const;
 
   // Update the evaluation cache after having fused 'producer' into 'fusion_'.
   // 'producer' is the cloned instruction which is now part of the fusion
@@ -84,9 +81,6 @@ class FusionNodeIndexingEvaluation {
 
   // The fusion instruction.
   const HloInstruction* fusion_;
-
-  // The total number of emitted instructions.
-  int64 total_emitted_instructions_;
 };
 }  // namespace xla
 

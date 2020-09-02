@@ -27,33 +27,25 @@ namespace xla {
 FusionNodeIndexingEvaluation::FusionNodeIndexingEvaluation(
     const HloInstruction* fusion)
     : fusion_(fusion) {
-  total_emitted_instructions_ = 0;
   HloInstruction* root = fusion->fused_expression_root();
   indexing_users_[root].insert(fusion);
   index_usage_count_[fusion] = 1;
   RecomputeCache();
 }
 
-bool FusionNodeIndexingEvaluation::AverageCodeDuplicationTooHigh(
+bool FusionNodeIndexingEvaluation::CodeDuplicationTooHigh(
     const HloInstruction* producer) const {
   // This constant is arbitrarily chosen. Essentially we don't want to have too
   // much code duplication, because it slows down the compilation time. There is
   // a tradeoff between compilation time and runtime here.
   const int64 kAllowedCodeDuplication = 15;
 
-  // index_usage_count_ contains an entry for each instruction in the fusion
-  // computation (except parameter instructions), plus an entry for the 'fusion'
-  // instruction. So the size of this map is already one bigger than the number
-  // of instructions in the fusion node that are emitted, thus accounting for
-  // the number of instructions after 'producer' is fused.
-  return EvaluateTotalEmittedInstructions(producer) /
-             index_usage_count_.size() >
-         kAllowedCodeDuplication;
+  return EvaluateEmittedInstructions(producer) > kAllowedCodeDuplication;
 }
 
-int64 FusionNodeIndexingEvaluation::EvaluateTotalEmittedInstructions(
+int64 FusionNodeIndexingEvaluation::EvaluateEmittedInstructions(
     const HloInstruction* producer) const {
-  int64 total = total_emitted_instructions_;
+  int64 total = 0;
   for (const auto* user : indexing_users_.at(producer)) {
     total += index_usage_count_.at(user);
   }
@@ -99,7 +91,6 @@ void FusionNodeIndexingEvaluation::UpdateIndexUsageCount(
     total += index_usage_count_.at(user);
   }
   CHECK(index_usage_count_.emplace(instruction, total).second);
-  total_emitted_instructions_ += total;
 }
 
 void FusionNodeIndexingEvaluation::UpdateIndexingUsersOfOperands(

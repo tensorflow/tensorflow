@@ -112,8 +112,7 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     fusion_node_evaluations_.emplace(consumer,
                                      FusionNodeIndexingEvaluation(consumer));
   }
-  if (fusion_node_evaluations_.at(consumer).AverageCodeDuplicationTooHigh(
-          producer)) {
+  if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(producer)) {
     VLOG(5) << "Fusion of " << producer->name() << " into " << consumer->name()
             << " would result in overly large code duplication.";
     return false;
