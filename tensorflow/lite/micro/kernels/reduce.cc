@@ -55,6 +55,7 @@ struct OpData {
   int32_t multiplier;
   int shift;
   int temp_buffer_idx;
+  int resolved_axis_idx;
   int input_zp;
   float input_scale;
   int output_zp;
@@ -62,7 +63,7 @@ struct OpData {
   int num_output_elements;
 };
 
-void* InitMean(TfLiteContext* context, const char* buffer, size_t length) {
+void* InitReduce(TfLiteContext* context, const char* buffer, size_t length) {
   return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
@@ -343,7 +344,7 @@ TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace reduce
 
 TfLiteRegistration Register_MEAN() {
-  return {/*init=*/reduce::InitMean,
+  return {/*init=*/reduce::InitReduce,
           /*free=*/nullptr,
           /*prepare=*/reduce::PrepareMeanOrSum,
           /*invoke=*/reduce::EvalMean,
@@ -354,7 +355,7 @@ TfLiteRegistration Register_MEAN() {
 }
 
 TfLiteRegistration Register_REDUCE_MAX() {
-  return {/*init=*/reduce::InitMax,
+  return {/*init=*/reduce::InitReduce,
           /*free=*/nullptr,
           /*prepare=*/reduce::PrepareMax,
           /*invoke=*/reduce::EvalMax,
