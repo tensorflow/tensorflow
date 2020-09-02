@@ -633,3 +633,35 @@ func @fold_get_dimension_size(%I : tensor<1x128x512xf32>) -> tensor<i32> {
   // CHECK-NEXT: %[[C:.*]] = mhlo.constant dense<512> : tensor<i32>
   // CHECK-NEXT: return %[[C]]
 }
+
+// CHECK-LABEL: func @fold_select_same
+func @fold_select_same(%arg0 : tensor<f32>, %arg1 : tensor<i1>) -> tensor<f32> {
+  %1 = "mhlo.select"(%arg1, %arg0, %arg0) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: return %arg0
+  return %1 : tensor<f32>
+}
+
+// CHECK-LABEL: func @fold_select_first
+func @fold_select_first(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32> {
+  %0 = mhlo.constant dense<1> : tensor<i1>
+  %1 = "mhlo.select"(%0, %arg0, %arg1) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: return %arg0
+  return %1 : tensor<f32>
+}
+
+// CHECK-LABEL: func @fold_select_second
+func @fold_select_second(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32> {
+  %0 = mhlo.constant dense<0> : tensor<i1>
+  %1 = "mhlo.select"(%0, %arg0, %arg1) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: return %arg1
+  return %1 : tensor<f32>
+}
+
+// CHECK-LABEL: func @fold_select_vector
+func @fold_select_vector(%arg0 : tensor<4xf32>, %arg1 : tensor<4xf32>) -> tensor<4xf32> {
+  %0 = mhlo.constant dense<1> : tensor<4xi1>
+  %1 = "mhlo.select"(%0, %arg0, %arg1) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: return %arg0
+  return %1 : tensor<4xf32>
+}
+

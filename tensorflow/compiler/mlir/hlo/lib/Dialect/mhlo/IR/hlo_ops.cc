@@ -1410,6 +1410,29 @@ static LogicalResult Verify(SelectOp op) {
   return success();
 }
 
+OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
+  if (on_true() == on_false()) {
+    return on_true();
+  }
+
+  auto predicate = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!predicate) {
+    return {};
+  }
+
+  auto predicateTy = predicate.getType().cast<ShapedType>();
+  if (!predicateTy.getElementType().isInteger(1)) {
+    return {};
+  }
+
+  if (predicate.isSplat()) {
+    return predicate.getSplatValue<APInt>().getBoolValue() ? on_true()
+                                                           : on_false();
+  }
+
+  return {};
+}
+
 // Makes it such that a SelectOp that is a non-root operation in a DRR infers
 // the return type based on operand type.
 LogicalResult SelectOp::inferReturnTypes(
