@@ -24,14 +24,9 @@ limitations under the License.
 
 namespace py = pybind11;
 
-static const py::module* nest = new py::module(
-    py::module::import("tensorflow.python.util.nest"));
 static const py::module* np = new py::module(py::module::import("numpy"));
 static const py::object* np_str = new py::object(np->attr("str_"));
 static const py::object* np_ndarray = new py::object(np->attr("ndarray"));
-static const py::object* create_constant_tensor = new py::object(
-    py::module::import("tensorflow.python.framework.constant_op")
-        .attr("constant"));
 
 namespace tensorflow {
 
@@ -48,6 +43,8 @@ class PyConcreteFunction {
 py::object PyConcreteFunction::BuildCallOutputs(
     py::object result, py::object structured_outputs, bool _ndarrays_list,
     bool _ndarray_singleton) {
+  static const py::module* nest = new py::module(
+      py::module::import("tensorflow.python.util.nest"));
   // TODO(jlchu): Look into lazy loading of np_arrays module
   static const py::module* np_arrays = new py::module(
       py::module::import("tensorflow.python.ops.numpy_ops.np_arrays"));
@@ -105,6 +102,12 @@ bool IsNdarray(py::handle value) {
 }
 
 py::tuple ConvertNumpyInputs(py::object inputs) {
+  static const py::module* nest = new py::module(
+      py::module::import("tensorflow.python.util.nest"));
+  static const py::object* create_constant_tensor = new py::object(
+      py::module::import("tensorflow.python.framework.constant_op")
+          .attr("constant"));
+
   // We assume that any CompositeTensors have already converted their components
   // from numpy arrays to Tensors, so we don't need to expand composites here
   // for the numpy array conversion. Instead, we do so because the flattened
