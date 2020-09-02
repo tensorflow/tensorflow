@@ -98,6 +98,9 @@
       the `experimental_optimization.reorder_data_discarding_ops` dataset
       option.
     * `tf.data.Options` were previously immutable and can now be overriden.
+    * `tf.data.Dataset.from_generator` now supports Ragged and Sparse tensors
+      with a new `output_signature` argument, which allows `from_generator` to
+      produce any type describable by a `tf.TypeSpec`.
 * `tf.image`:
     * Added deterministic `tf.image.stateless_random_*` functions for each
       `tf.image.random_*` function. Added a new op
@@ -183,13 +186,11 @@
       checkpoint saved in the `variables/` folder in the SavedModel.
     * When restoring, `save_path` can be a path to a SavedModel. The function
       will automatically find the checkpoint in the SavedModel.
-*   `tf.nn`:
-    * `tf.nn.max_pool2d` now supports explicit padding.
 *   Other:
     * We have replaced uses of "whitelist" and "blacklist" with "allowlist"
   and "denylist" where possible. Please see 
   https://developers.google.com/style/word-list#blacklist for more context.
-  <ADD RELEASE NOTES HERE>
+    * <ADD RELEASE NOTES HERE>
 
 ## Thanks to our Contributors
 
