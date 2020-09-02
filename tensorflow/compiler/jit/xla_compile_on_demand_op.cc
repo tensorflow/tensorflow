@@ -113,14 +113,6 @@ Status XlaCompileOnDemandOp::Compile(
   for (int64 i = 0; i < ctx->num_inputs(); ++i) {
     const Tensor& device_tensor = ctx->input(i);
 
-    if (const XlaTensor* xla_tensor = XlaTensor::FromTensor(&device_tensor)) {
-      if (xla_tensor->has_host_tensor()) {
-        if (absl::c_binary_search(constant_input_indices, i)) {
-          constant_arguments[i] = xla_tensor->host_tensor();
-        }
-      }
-    }
-
     if (!constant_arguments.count(i)) {
       if (absl::c_binary_search(constant_input_indices, i)) {
         if (ctx->input_memory_type(i) != HOST_MEMORY) {

@@ -352,9 +352,6 @@ static Status SetOutputForConstant(
     ctx->set_output(output_num, const_tensor);
     output_tensor = ctx->mutable_output(output_num);
   }
-  if (XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor)) {
-    xla_tensor->set_host_tensor(const_tensor);
-  }
   return Status::OK();
 }
 
