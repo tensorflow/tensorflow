@@ -18,7 +18,6 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
@@ -30,24 +29,37 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/test.h"
+#include "tensorflow/c/eager/c_api.h"
+#include "tensorflow/core/platform/types.h"
 
-using namespace std;
-using namespace tensorflow;
-using namespace tensorflow::gradients;
-using namespace tensorflow::gradients::internal;
 
-// Get a scalar TensorHandle with given value.
-Status TestScalarTensorHandle(AbstractContext* ctx, float value,
+// using namespace std;
+// using namespace tensorflow;
+// using namespace tensorflow::gradients;
+// using namespace tensorflow::gradients::internal;
+
+namespace tensorflow {
+namespace gradients {
+
+TFE_TensorHandle* ScalarTensorHandleHelper(TFE_Context* ctx, float value);
+
+TFE_TensorHandle* TensorHandleWithDimsFloatHelper(TFE_Context* ctx, float data[],
+                                                int64_t dims[], int num_dims);
+
+TFE_TensorHandle* TensorHandleWithDimsIntHelper(TFE_Context* ctx, int data[],
+                                              int64_t dims[], int num_dims);
+
+// Get a scalar TensorHandle with given value
+Status ScalarTensorHandle(AbstractContext* ctx, float value,
                               AbstractTensorHandle** tensor);
 
-// Get a TensorHandle with given float values and dimensions.
-Status TestTensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
+// Get a TensorHandle with given float values and dimensions
+Status TensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
                                      int64_t dims[], int num_dims,
                                      AbstractTensorHandle** tensor);
 
-// Get a TensorHandle with given int values and dimensions.
-Status TestTensorHandleWithDimsInt(AbstractContext* ctx, int data[],
+// Get a TensorHandle with given int values and dimensions
+Status TensorHandleWithDimsInt(AbstractContext* ctx, int data[],
                                    int64_t dims[], int num_dims,
                                    AbstractTensorHandle** tensor);
 
@@ -68,8 +80,8 @@ AbstractTensorHandlePtr GetScalarTensorHandleUtil(AbstractContext* ctx,
                                                   float val);
 
 // Performs gradient update for each weight using given learning rate.
-Status UpdateWeights(AbstractContext* ctx, vector<AbstractTensorHandle*>& grads,
-                     vector<AbstractTensorHandle*>& weights,
+Status UpdateWeights(AbstractContext* ctx, std::vector<AbstractTensorHandle*>& grads,
+                     std::vector<AbstractTensorHandle*>& weights,
                      AbstractTensorHandle* learning_rate);
 
 // Helper function for RunModel to build the function for graph mode.
@@ -78,7 +90,7 @@ AbstractContext* BuildFunction(const char* fn_name);
 // Helper function for RunModel to add params for graph mode.
 Status CreateParamsForInputs(AbstractContext* ctx,
                              absl::Span<AbstractTensorHandle* const> inputs,
-                             vector<AbstractTensorHandle*>* params);
+                             std::vector<AbstractTensorHandle*>* params);
 
 using Model = std::function<Status(
     AbstractContext*, absl::Span<AbstractTensorHandle* const>,
@@ -92,3 +104,6 @@ Status RunModel(Model model, AbstractContext* ctx,
                 const GradientRegistry& registry);
 
 Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx);
+
+}  // namespace gradients
+}  // namespace tensorflow
