@@ -106,10 +106,10 @@ bool IsNdarray(py::handle value) {
 
 py::tuple ConvertNumpyInputs(py::object inputs) {
   // We assume that any CompositeTensors have already converted their components
-  // from numpy arrays to Tensors, so we don't need to expand composites here for
-  // the numpy array conversion. Instead, we do so because the flattened inputs
-  // are eventually passed to ConcreteFunction()._call_flat, which requires
-  // expanded composites.
+  // from numpy arrays to Tensors, so we don't need to expand composites here
+  // for the numpy array conversion. Instead, we do so because the flattened
+  // inputs are eventually passed to ConcreteFunction()._call_flat, which
+  // requires expanded composites.
   py::list flat_inputs = PyoOrThrow(swig::Flatten(inputs.ptr(), true));
 
   // Check for NumPy arrays in arguments and convert them to Tensors.
