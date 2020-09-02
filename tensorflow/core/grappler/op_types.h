@@ -100,6 +100,7 @@ bool IsImag(const NodeDef& node);
 bool IsImmutableConst(const NodeDef& node);
 bool IsInvGrad(const NodeDef& node);
 bool IsLeakyRelu(const NodeDef& node);
+bool IsLeakyReluGrad(const NodeDef& node);
 bool IsLess(const NodeDef& node);
 bool IsLessEqual(const NodeDef& node);
 bool IsLog(const NodeDef& node);

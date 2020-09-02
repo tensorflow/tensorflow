@@ -1805,6 +1805,7 @@ bool IsDefaultLayoutAgnosticOp(const NodeDef& node) {
                                             "IsFinite",
                                             "IsInf",
                                             "IsNan",
+                                            "LeakyRelu",
                                             "Lgamma",
                                             "Log",
                                             "LogicalNot",
@@ -1853,10 +1854,11 @@ bool IsTernaryOp(const NodeDef& node) { return IsBetainc(node); }
 
 bool IsUnaryGrad(const NodeDef& node) {
   bool is_unary_grad =
-      IsEluGrad(node) || IsInvGrad(node) || IsReciprocalGrad(node) ||
-      IsRelu6Grad(node) || IsReluGrad(node) || IsRsqrtGrad(node) ||
-      IsSeluGrad(node) || IsSigmoidGrad(node) || IsSoftplusGrad(node) ||
-      IsSoftsignGrad(node) || IsSqrtGrad(node) || IsTanhGrad(node);
+      IsEluGrad(node) || IsInvGrad(node) || IsLeakyReluGrad(node) ||
+      IsReciprocalGrad(node) || IsRelu6Grad(node) || IsReluGrad(node) ||
+      IsRsqrtGrad(node) || IsSeluGrad(node) || IsSigmoidGrad(node) ||
+      IsSoftplusGrad(node) || IsSoftsignGrad(node) || IsSqrtGrad(node) ||
+      IsTanhGrad(node);
   return is_unary_grad;
 }
 
