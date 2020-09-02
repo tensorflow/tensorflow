@@ -48,7 +48,7 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
                                const int* output_dims_data, T* output_data) {
   TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
 
-  int expected_size_dims_data[] = {2, 1, 2};
+  int expected_size_dims_data[] = {1, 2};
   TfLiteIntArray* expected_size_dims =
       IntArrayFromInts(expected_size_dims_data);
 
@@ -62,6 +62,8 @@ void TestResizeNearestNeighbor(const int* input_dims_data, const T* input_data,
       CreateInt32Tensor(expected_size_data, expected_size_dims),
       TestCreateTensor(output_data, output_dims),
   };
+
+  tensors[1].allocation_type = kTfLiteMmapRo;
 
   TfLiteResizeNearestNeighborParams builtin_data = {false, false};
 
