@@ -332,6 +332,7 @@ cc_library(
         ":flags",
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
+        "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",

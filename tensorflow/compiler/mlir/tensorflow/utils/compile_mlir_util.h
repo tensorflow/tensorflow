@@ -75,7 +75,7 @@ Status CompileSerializedMlirToXlaHlo(
 // Same as the above but takes input as TensorFlow Graph.
 // TODO(lyandy): Allow populating of targets/control outputs.
 Status CompileGraphToXlaHlo(
-    const Graph& graph, llvm::ArrayRef<const XlaArgument> args,
+    const Graph& graph, llvm::ArrayRef<XlaArgument> args,
     llvm::StringRef device_type, bool use_tuple_args,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,

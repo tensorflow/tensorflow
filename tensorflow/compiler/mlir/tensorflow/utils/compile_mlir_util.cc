@@ -434,7 +434,7 @@ Status CompileSerializedMlirToXlaHlo(
 // removed from the signature. For resource args, their subtypes are populated.
 // Returns the original indices for the other arguments on success.
 static StatusOr<std::vector<int>> RewriteWithArgs(
-    mlir::ModuleOp module, llvm::ArrayRef<const XlaArgument> args) {
+    mlir::ModuleOp module, llvm::ArrayRef<XlaArgument> args) {
   mlir::FuncOp main_fn = module.lookupSymbol<mlir::FuncOp>("main");
   std::vector<int> params;
 
@@ -495,7 +495,7 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
 }
 
 Status CompileGraphToXlaHlo(
-    const Graph& graph, llvm::ArrayRef<const XlaArgument> args,
+    const Graph& graph, llvm::ArrayRef<XlaArgument> args,
     llvm::StringRef device_type, bool use_tuple_args,
     const FunctionLibraryDefinition& flib_def, const GraphDebugInfo& debug_info,
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
