@@ -253,16 +253,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
     # Use your favorite diff tools (e.g. meld) to resolve the conflicts.
     git add <files that were manually resolved>
     git commit
-    # Update the commit message to call out which files were manually resolved for a
-    # conflict. See [this commit](https://github.com/tensorflow/tensorflow/pull/42571/commits/303e22d09a175fdc1093d57fa09b44367851628b) as an example.
     ```
-
-   The benefit of `git merge` and resolving the conflicts is that the github review
-   tool can easily show the reviewer ecatly what part of the merge commit was a
-   manual change, and which parts were files that were automatically merged.
-
-   Additionally, the commit message shows which branch was merged (i.e.
-   upstream/master was merged into your feature branch)
 
  1. If a force push seems to be the only path forward, please stop and let your
     PR reviewer know ***before*** force pushing. We will attempt to do the merge
