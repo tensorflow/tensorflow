@@ -25,24 +25,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/micro_utils.h"
 
-namespace {
-int NumAxis(const TfLiteTensor& axis) {
-  // Interpret an axis tensor with null dimensions as a scalar
-  if (axis.dims == nullptr) {
-    return 1;
-  }
-  return tflite::ElementCount(*axis.dims);
-}
-
-int NumAxis(const TfLiteEvalTensor& axis) {
-  // Interpret an axis tensor with null dimensions as a scalar
-  if (axis.dims == nullptr) {
-    return 1;
-  }
-  return tflite::ElementCount(*axis.dims);
-}
-}  // namespace
-
 namespace tflite {
 namespace ops {
 namespace micro {
@@ -109,8 +91,9 @@ TfLiteStatus PrepareMax(TfLiteContext* context, TfLiteNode* node) {
 
   context->RequestScratchBufferInArena(context, sizeof(int) * input->dims->size,
                                        &op_data->temp_buffer_idx);
-  context->RequestScratchBufferInArena(context, sizeof(int) * NumAxis(*axis),
-                                       &op_data->resolved_axis_idx);
+  context->RequestScratchBufferInArena(
+      context, sizeof(int) * static_cast<int>(ElementCount(*axis->dims)),
+      &op_data->resolved_axis_idx);
 
   return kTfLiteOk;
 }
@@ -287,7 +270,7 @@ TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
   OpData* op_data = static_cast<OpData*>(node->user_data);
 
   // Interpret an axis tensor with null dimensions as a scalar
-  int num_axis = NumAxis(*axis);
+  int num_axis = static_cast<int>(ElementCount(*axis->dims));
   int* temp_buffer = static_cast<int*>(
       context->GetScratchBuffer(context, op_data->temp_buffer_idx));
   int* resolved_axis = static_cast<int*>(
