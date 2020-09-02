@@ -629,8 +629,7 @@ class Lower_UnaryOpsComposition
   LogicalResult matchAndRewrite(TF::_UnaryOpsCompositionOp op,
                                 PatternRewriter &rewriter) const override {
     Value result = op.x();
-    for (StringRef op_name :
-         op.op_names().getAsRange<StringAttr, StringRef>()) {
+    for (StringRef op_name : op.op_names().getAsValueRange<StringAttr>()) {
       std::string full_name = "tf." + op_name.str();
       // All ops in the sequences have the same result type as the original
       // result type.

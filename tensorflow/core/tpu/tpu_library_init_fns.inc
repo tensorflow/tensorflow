@@ -72,6 +72,11 @@ tensorflow::Status SetTpuProgramStructFn(void* library_handle) {
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetMayModifyVariables);
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_HasSharding);
   TFTPU_SET_FN(tpu_program_fn, TpuProgram_GetTpuProgram);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeTpuExecutable);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeCompilerMetadata);
+  TFTPU_SET_FN(tpu_program_fn, TpuProgram_SerializeHostComputeMetadata);
+  TFTPU_SET_FN(tpu_program_fn,
+               TpuProgram_DeserializeFromGetTpuProgramResponseProto);
 
   return tensorflow::Status::OK();
 }
@@ -92,6 +97,7 @@ tensorflow::Status SetTpuUtilStructFns(void* library_handle) {
   auto* util_fn = tensorflow::tpu::UtilApiFn();
 
   TFTPU_SET_FN(util_fn, TpuTopology_AvailableCoreCount);
+  TFTPU_SET_FN(util_fn, TpuNetUtil_RecycleUnusedPort);
   TFTPU_SET_FN(util_fn, TpuCompile_IsTpuCompilationEnabled);
   TFTPU_SET_FN(util_fn, TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
   TFTPU_SET_FN(util_fn, TpuCompile_CreateCompilationCacheKey);

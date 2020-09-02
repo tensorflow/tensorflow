@@ -234,7 +234,8 @@ OverviewPageAnalysis ComputeAnalysisResult(const OpStats& op_stats) {
   uint64 outside_compilation_device_op_time_ps = 0;
   for (const OpMetrics& metrics :
        op_stats.device_op_metrics_db().metrics_db()) {
-    if (!IsOutsideCompilationOp(metrics.provenance(), metrics.name())) continue;
+    if (!IsOutsideCompilationOp(metrics.provenance(), metrics.long_name()))
+      continue;
     outside_compilation_device_op_time_ps += metrics.self_time_ps();
   }
   uint64 num_total_tf_ops = num_host_tf_ops + num_device_tf_ops;

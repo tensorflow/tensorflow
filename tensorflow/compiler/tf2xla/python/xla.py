@@ -387,6 +387,14 @@ def reduce_window(operand,
 
 replica_id = gen_xla_ops.xla_replica_id
 
+# Set a static bound for the given input value as a hint to Xla compiler,
+# returns the same value.
+# Usage:
+# def f(t, p):
+#   p = xla.set_bound(p, 3) # Tells xla the constraint that p <= 3.
+#   return t[:p]            # xla knows the bound of the slice is 3.
+set_bound = gen_xla_ops.xla_set_bound
+
 
 def reshape(x, new_sizes, dimensions=None, name=None):
   if dimensions is not None:

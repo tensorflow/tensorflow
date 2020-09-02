@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 
 namespace tensorflow {
+namespace profiler {
 
 void ProfilerServer::StartProfilerServer(int32 port) {
   std::string server_address = absl::StrCat("[::]:", port);
@@ -54,4 +55,5 @@ ProfilerServer::~ProfilerServer() {
   }
 }
 
+}  // namespace profiler
 }  // namespace tensorflow

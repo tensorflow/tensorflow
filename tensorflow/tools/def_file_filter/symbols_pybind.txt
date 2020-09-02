@@ -337,8 +337,8 @@ tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
 
 [profiler_server_impl] # profiler
-tensorflow::ProfilerServer::StartProfilerServer
-tensorflow::ProfilerServer::~ProfilerServer
+tensorflow::profiler::ProfilerServer::StartProfilerServer
+tensorflow::profiler::ProfilerServer::~ProfilerServer
 
 [profiler_client_impl] # profiler
 tensorflow::profiler::ProfileGrpc

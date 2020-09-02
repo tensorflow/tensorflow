@@ -433,55 +433,6 @@ class SingleWorkerCrossDeviceOpsTest(CrossDeviceOpsTestBase):
     self.assertAllEqual(self.evaluate(result.values), [1.0, 1.0])
 
 
-class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
-                                    CrossDeviceOpsTestBase):
-
-  worker_devices = [
-      "/job:worker/replica:0/task:0", "/job:worker/replica:0/task:1"
-  ]
-  multi_worker_allreduce_combinations = combinations.combine(
-      cross_device_ops=[
-          combinations.NamedObject(
-              "MultiWorkerAllReduce",
-              cross_device_ops_lib.MultiWorkerAllReduce(worker_devices, 2,
-                                                        ("pscpu/pscpu", 2, -1),
-                                                        0)),
-          combinations.NamedObject(
-              "MultiWorkerAllReducePack",
-              cross_device_ops_lib.MultiWorkerAllReduce(worker_devices, 2,
-                                                        ("pscpu/pscpu", 2, -1),
-                                                        1)),
-          combinations.NamedObject(
-              "MultiWorkerAllReduceMultipleSpecs",
-              cross_device_ops_lib.MultiWorkerAllReduce(
-                  worker_devices, 2, [("pscpu/pscpu", 2, 100),
-                                      ("xring", 2, -1)], 0)),
-      ],
-      devices=[
-          [
-              "/job:worker/replica:0/task:0/device:CPU:0",
-              "/job:worker/replica:0/task:1/device:CPU:0"
-          ],
-          [
-              "/job:worker/replica:0/task:0/device:GPU:0",
-              "/job:worker/replica:0/task:1/device:GPU:0"
-          ],
-          [
-              "/job:worker/replica:0/task:0/device:GPU:0",
-              "/job:worker/replica:0/task:0/device:GPU:1",
-              "/job:worker/replica:0/task:1/device:GPU:0",
-              "/job:worker/replica:0/task:1/device:GPU:1"
-          ],
-      ],
-      mode=["graph"])
-
-  @combinations.generate(multi_worker_allreduce_combinations)
-  def testReductionAndBroadcast(self, cross_device_ops, devices):
-    # Mimic the default device of multi-worker strategies.
-    with ops.device("/job:worker/replica:0/task:0"):
-      self._testReductionAndBroadcast(cross_device_ops, devices)
-
-
 NUM_WORKERS = 3
 
 CollectiveCommunication = cross_device_ops_lib.CollectiveCommunication

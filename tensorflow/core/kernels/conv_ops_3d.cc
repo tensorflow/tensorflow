@@ -539,7 +539,8 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 5, int>::ConstTensor in, \
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
-      typename TTypes<T, 5, int>::Tensor out, TensorFormat format);   \
+      typename TTypes<T, 5, int>::Tensor out, TensorFormat format,    \
+      T padding_value);                                               \
   template <>                                                         \
   void NHWCToNCHW<GPUDevice, T, 5>::operator()(                       \
       const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \

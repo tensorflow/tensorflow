@@ -158,7 +158,7 @@ XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
       constants_(constants),
       resources_(resources),
       function_(function),
-      platform_info_(XlaPlatformInfoFromContext(ctx)),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
       has_ref_vars_(has_ref_vars) {}
 
 static Status CompileToLocalExecutable(
@@ -180,7 +180,7 @@ static Status CompileToLocalExecutable(
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaCompilationCache>(
       rm->default_container(), "xla_cache", &cache,
       [&](XlaCompilationCache** cache) {
-        return BuildXlaCompilationCache(ctx, platform_info, cache);
+        return BuildXlaCompilationCache(ctx->device(), platform_info, cache);
       }));
   // Hold the reference to the JIT during evaluation. (We could probably
   // free it sooner because the ResourceMgr will retain a reference, but
@@ -191,7 +191,9 @@ static Status CompileToLocalExecutable(
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
   XlaCompiler::Options options = GenerateCompilerOptions(
-      *cache, ctx, platform_info, has_ref_vars, &tf_allocator_adapter);
+      *cache, *ctx->function_library(), ctx->device(),
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
+      platform_info, has_ref_vars, &tf_allocator_adapter);
 
   std::map<int, Tensor> constant_args;
   for (int i : constants) {
@@ -248,8 +250,10 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   VLOG(1) << "Executing XLA Computation...";
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-  se::DeviceMemoryAllocator* allocator =
-      GetAllocator(&tf_allocator_adapter, ctx, platform_info_);
+  se::DeviceMemoryAllocator* allocator = GetAllocator(
+      &tf_allocator_adapter, ctx->device(),
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
+      platform_info_);
   int device_ordinal = stream ? stream->parent()->device_ordinal()
                               : client->default_device_ordinal();
   XlaComputationLaunchContext launch_context(
@@ -373,7 +377,7 @@ XlaCompileOp::XlaCompileOp(OpKernelConstruction* ctx)
       constants_(ConstantsVector(ctx)),
       resources_(ResourcesVector(ctx)),
       function_(FunctionAttr(ctx)),
-      platform_info_(XlaPlatformInfoFromContext(ctx)),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
       must_compile_(MustCompileAttr(ctx)),
       has_ref_vars_(HasRefVars(ctx)) {}
 
@@ -461,7 +465,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
 }
 
 XlaRunOp::XlaRunOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), platform_info_(XlaPlatformInfoFromContext(ctx)) {}
+    : OpKernel(ctx), platform_info_(XlaPlatformInfoFromDevice(ctx->device())) {}
 
 void XlaRunOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaRunOp " << def().name();
@@ -472,8 +476,10 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       XlaExecutableClosureStore::Global()->Consume(key);
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-  se::DeviceMemoryAllocator* allocator =
-      GetAllocator(&tf_allocator_adapter, ctx, platform_info_);
+  se::DeviceMemoryAllocator* allocator = GetAllocator(
+      &tf_allocator_adapter, ctx->device(),
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
+      platform_info_);
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   int device_ordinal = stream ? stream->parent()->device_ordinal()

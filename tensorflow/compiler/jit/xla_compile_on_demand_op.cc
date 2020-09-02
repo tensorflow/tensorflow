@@ -49,8 +49,10 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
   xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-  se::DeviceMemoryAllocator* allocator =
-      GetAllocator(&tf_allocator_adapter, ctx, platform_info_);
+  se::DeviceMemoryAllocator* allocator = GetAllocator(
+      &tf_allocator_adapter, ctx->device(),
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
+      platform_info_);
   XlaComputationLaunchContext launch_context(
       client, allocator, client->default_device_ordinal(),
       /*allocate_xla_tensors=*/platform_info_.xla_device_metadata() != nullptr,
@@ -121,30 +123,11 @@ Status XlaCompileOnDemandOp::Compile(
 
     if (!constant_arguments.count(i)) {
       if (absl::c_binary_search(constant_input_indices, i)) {
-        if (ctx->input_memory_type(i) != HOST_MEMORY &&
-            ctx->op_device_context()) {
-          // Slow path; the argument is not available as a host constant so we
-          // must fetch it synchronously.
-          Tensor host_tensor;
-          AllocatorAttributes attrs;
-          attrs.set_on_host(true);
-          TF_RETURN_IF_ERROR(ctx->allocate_temp(device_tensor.dtype(),
-                                                device_tensor.shape(),
-                                                &host_tensor, attrs));
-          Status status = ctx->op_device_context()->CopyDeviceTensorToCPUSync(
-              &device_tensor, "ConstantArgument",
-              reinterpret_cast<Device*>(ctx->device()), &host_tensor);
-          if (!status.ok()) {
-            LOG(ERROR) << "Copying tensor of shape "
-                       << device_tensor.shape().DebugString() << " from "
-                       << ctx->device()->name() << "to CPU failed with "
-                       << status.ToString();
-            return status;
-          }
-          constant_arguments[i] = host_tensor;
-        } else {
-          constant_arguments[i] = device_tensor;
+        if (ctx->input_memory_type(i) != HOST_MEMORY) {
+          return errors::Internal(
+              "Expected constant argument not in host memory");
         }
+        constant_arguments[i] = device_tensor;
       }
     }
   }
@@ -157,13 +140,16 @@ Status XlaCompileOnDemandOp::Compile(
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaCompilationCache>(
       rm->default_container(), "xla_cache", cache,
       [&](XlaCompilationCache** write_into_cache) {
-        return BuildXlaCompilationCache(ctx, platform_info_, write_into_cache);
+        return BuildXlaCompilationCache(ctx->device(), platform_info_,
+                                        write_into_cache);
       }));
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-  XlaCompiler::Options options =
-      GenerateCompilerOptions(**cache, ctx, platform_info_,
-                              /*has_ref_vars=*/true, &tf_allocator_adapter);
+  XlaCompiler::Options options = GenerateCompilerOptions(
+      **cache, *ctx->function_library(), ctx->device(),
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
+      platform_info_,
+      /*has_ref_vars=*/true, &tf_allocator_adapter);
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;

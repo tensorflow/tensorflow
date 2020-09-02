@@ -1686,11 +1686,6 @@ class ResourceVariable(BaseResourceVariable):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
-    if isinstance(initial_value, trackable.CheckpointInitialValue):
-      self._maybe_initialize_trackable()
-      self._update_uid = initial_value.checkpoint_position.restore_uid
-      initial_value = initial_value.wrapped_value
-
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     with ops.init_scope():
@@ -1719,10 +1714,15 @@ class ResourceVariable(BaseResourceVariable):
                 s=[compat.as_bytes("loc:@%s" % handle_name)]))
         with ops.get_default_graph()._attr_scope({"_class": attr}):
           with ops.name_scope("Initializer"), device_context_manager(None):
-            initial_value = ops.convert_to_tensor(
-                initial_value() if init_from_fn else initial_value,
-                name="initial_value",
-                dtype=dtype)
+            if init_from_fn:
+              initial_value = initial_value()
+            if isinstance(initial_value, trackable.CheckpointInitialValue):
+              self._maybe_initialize_trackable()
+              self._update_uid = initial_value.checkpoint_position.restore_uid
+              initial_value = initial_value.wrapped_value
+            initial_value = ops.convert_to_tensor(initial_value,
+                                                  name="initial_value",
+                                                  dtype=dtype)
           if shape is not None:
             if not initial_value.shape.is_compatible_with(shape):
               raise ValueError(

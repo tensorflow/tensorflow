@@ -774,19 +774,19 @@ class TPUEmbedding(tracking.AutoTrackable):
 
     def create_variables(table):
       """Create all variables."""
-      shape = (table.vocabulary_size, table.dim)
+      variable_shape = (table.vocabulary_size, table.dim)
 
       def getter(name, shape, dtype, initializer, trainable):
-        # TODO(bfontain): make CheckpointInitialValue a callable rather than
-        # something that inherits from tensor.
-        if not isinstance(initializer, base.CheckpointInitialValue):
-          initial_value = functools.partial(initializer, shape, dtype=dtype)
-        else:
-          initial_value = initializer
-
+        del shape
+        # _add_variable_with_custom_getter clears the shape sometimes, so we
+        # take the global shape from outside the getter.
+        initial_value = functools.partial(initializer, variable_shape,
+                                          dtype=dtype)
         return tf_variables.Variable(
             name=name,
             initial_value=initial_value,
+            shape=variable_shape,
+            dtype=dtype,
             trainable=trainable)
 
       def variable_creator(name, initializer, trainable=True):
@@ -796,7 +796,7 @@ class TPUEmbedding(tracking.AutoTrackable):
         return self._add_variable_with_custom_getter(
             name=name,
             initializer=initializer,
-            shape=shape,
+            shape=variable_shape,
             dtype=dtypes.float32,
             getter=getter,
             trainable=trainable)
@@ -1490,9 +1490,6 @@ def extract_variable_info(kwargs):
     return (kwargs["name"], shape,
             kwargs["initial_value"].keywords.get("dtype", kwargs["dtype"]),
             kwargs["initial_value"].func)
-  elif isinstance(kwargs["initial_value"], base.CheckpointInitialValue):
-    return (kwargs["name"], kwargs["initial_value"].shape,
-            kwargs["initial_value"].dtype, kwargs["initial_value"])
   elif "shape" not in kwargs or kwargs["shape"] is None:
     raise ValueError(
         "Unable to extract initializer function and shape from {}. Please "
@@ -1529,26 +1526,21 @@ def make_sharded_variable_creator(hosts):
     partitions = ([rows // num_hosts + 1] * missing + [rows // num_hosts] *
                   (num_hosts - missing))
     variables = []
-    newkwargs = kwargs
-    newkwargs["dtype"] = dtype
+    kwargs["dtype"] = dtype
     # TODO(bfontain): Remove this check once we can pass position and shape of
-    # shards to CheckpointInitialValue.
-    if isinstance(initial_value, base.CheckpointInitialValue) and num_hosts > 1:
+    # shards to CheckpointInitialValueCallable.
+    if isinstance(initial_value,
+                  base.CheckpointInitialValueCallable) and num_hosts > 1:
       raise RuntimeError("Delayed restoration of variables not available when "
                          "there are multiple TPU hosts, please ensure that the "
                          "api object has been built before you restore.")
 
     for i, p in enumerate(partitions):
       with ops.device(hosts[i]):
-        newkwargs["shape"] = (p, cols)
-        newkwargs["name"] = "{}_{}".format(name, i)
-        if isinstance(initial_value, base.CheckpointInitialValue):
-          # TODO(bfontain): Patch CheckpointInitialValue to take in account the
-          # position and shape of this shard.
-          newkwargs["initial_value"] = initial_value
-        else:
-          newkwargs["initial_value"] = (
-              lambda: initial_value(newkwargs["shape"], dtype=dtype))
+        kwargs["shape"] = (p, cols)
+        kwargs["name"] = "{}_{}".format(name, i)
+        kwargs["initial_value"] = functools.partial(
+            initial_value, kwargs["shape"], dtype=dtype)
         variables.append(next_creator(*args, **kwargs))
     return TPUShardedVariable(variables, name=name)
   return sharded_variable_creator

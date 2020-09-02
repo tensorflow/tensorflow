@@ -63,7 +63,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         }
         std::unique_ptr<tensorflow::data::DispatchGrpcDataServer> server;
         tensorflow::Status status =
-            tensorflow::data::NewDispatchServer(config, &server);
+            tensorflow::data::NewDispatchServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },
@@ -80,7 +80,7 @@ PYBIND11_MODULE(_pywrap_server_lib, m) {
         }
         std::unique_ptr<tensorflow::data::WorkerGrpcDataServer> server;
         tensorflow::Status status =
-            tensorflow::data::NewWorkerServer(config, &server);
+            tensorflow::data::NewWorkerServer(config, server);
         tensorflow::MaybeRaiseFromStatus(status);
         return server;
       },

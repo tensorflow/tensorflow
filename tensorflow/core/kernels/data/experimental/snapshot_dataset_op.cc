@@ -245,11 +245,12 @@ class SnapshotDatasetV2Op::Dataset::Iterator::Writer
   void SignalEOF(bool mark_closed) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   mutex mu_;
+  mutex writer_status_mu_;
   std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
 
   absl::flat_hash_map<int64, std::unique_ptr<snapshot_util::AsyncWriter>>
       writers_ TF_GUARDED_BY(mu_);
-  Status writer_status_ TF_GUARDED_BY(mu_);
+  Status writer_status_ TF_GUARDED_BY(writer_status_mu_);
   bool writers_closed_ TF_GUARDED_BY(mu_);
 
   uint64 run_id_ TF_GUARDED_BY(mu_);
@@ -673,9 +674,12 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetNextInternal(
     }
 
     // Writers have either encountered an error or are closed.
-    if (!writer_status_.ok() || writers_closed_) {
-      *end_of_sequence = true;
-      return writer_status_;
+    {
+      mutex_lock wsl(writer_status_mu_);
+      if (!writer_status_.ok() || writers_closed_) {
+        *end_of_sequence = true;
+        return writer_status_;
+      }
     }
 
     TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, out_tensors, end_of_sequence));
@@ -683,7 +687,10 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetNextInternal(
     // Finalize metadata file when we are at the end of the iterator.
     if (*end_of_sequence) {
       SignalEOF(/*mark_closed=*/true);
-      TF_RETURN_IF_ERROR(writer_status_);
+      {
+        mutex_lock wsl(writer_status_mu_);
+        TF_RETURN_IF_ERROR(writer_status_);
+      }
       return WriteMetadataFile(ctx->env(), /*finalized=*/true);
     }
 
@@ -699,7 +706,8 @@ Status SnapshotDatasetV2Op::Dataset::Iterator::Writer::GetNextInternal(
           current_checkpoint_id_, dataset()->compression_, kFileFormatVersion,
           dataset()->output_dtypes(), [this](Status s) {
             if (!s.ok()) {
-              mutex_lock l(mu_);
+              LOG(ERROR) << "AsyncWriter in snapshot writer failed: " << s;
+              mutex_lock l(writer_status_mu_);
               writer_status_ = s;
             }
           });

@@ -123,9 +123,12 @@ class MicroAllocator {
   // the 'head' section of the memory arena. All variable tensor data will also
   // be allocated. This method should be called after assigning model resources
   // in StartModelAllocation(). The eval_tensors pointer should be the value
-  // passed into this class during StartModelAllocation().
+  // passed into this class during StartModelAllocation(). Scratch buffer
+  // handles are stored in the out-param `scratch_buffer_handles`. This value
+  // will be used in `GetScratchBuffer` call to retrieve scratch buffers.
   TfLiteStatus FinishModelAllocation(const Model* model,
-                                     TfLiteEvalTensor* eval_tensors);
+                                     TfLiteEvalTensor* eval_tensors,
+                                     void** scratch_buffer_handles = nullptr);
 
   // Allocates a TfLiteTensor struct and populates the returned value with
   // properties from the model flatbuffer. This struct is allocated from
@@ -160,12 +163,18 @@ class MicroAllocator {
   // This method only allocates a BufferHandle holding information for memory
   // planning. The buffer ptr is ready after `FinishModelAllocation` and can
   // be retrieved by `GetScratchBuffer` method using the returned buffer_idx.
-  // Note that there should be no tail allocation between two consecutive
-  // `RequestScratchBufferInArena` calls.
+  // Note that this method should only be called in the Prepare stage.
   TfLiteStatus RequestScratchBufferInArena(int node_id, size_t bytes,
                                            int* buffer_idx);
-  // Returns the pointer to the planned scratch buffer.
-  void* GetScratchBuffer(int buffer_idx) const;
+
+  // Return the number of scratch buffers in the allocator.
+  size_t GetScratchBufferCount() const { return scratch_buffer_count_; }
+
+  // Return the pointer to the planned scratch buffer. `scratch_buffer_handles`
+  // should be the corresponding value returned in `FinishModelAllocation`.
+  // `scratch_buffer_handles` is intentionally desigend as void*. The actual
+  // data type is an implementation detail, and is only visible in this class.
+  static void* GetScratchBuffer(void* scratch_buffer_handles, int buffer_idx);
 
   // Returns the arena usage in bytes, only available after
   // `FinishModelAllocation`. Otherwise, it will return 0.
@@ -236,12 +245,15 @@ class MicroAllocator {
   ErrorReporter* error_reporter_;
   bool model_is_allocating_;
 
-  // In reverse order for efficiency.
-  // i.e. scratch_buffer_handles_[0] is the handle for the last buffer,
-  // corresponding to the last RequestScratchBufferInArena call.
+  // Points to the first allocated scratch buffer handle.
+  // Scratch buffer handles are placed in the head during `Prepare` stage and
+  // then moved to the tail for static memory plan.
   internal::ScratchBufferHandle* scratch_buffer_handles_ = nullptr;
   // How many scratch buffers have been allocated.
   size_t scratch_buffer_count_ = 0;
+
+  virtual TfLiteStatus InitScratchBufferHandles();
+  virtual TfLiteStatus MoveScratchBufferHandlesToTail();
 
   TF_LITE_REMOVE_VIRTUAL_DELETE
 };

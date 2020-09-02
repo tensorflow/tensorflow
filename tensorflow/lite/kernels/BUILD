@@ -702,6 +702,7 @@ cc_library(
     name = "custom_ops",
     srcs = [
         "complex_support.cc",
+        "cumsum.cc",
         "rfft2d.cc",
     ],
     hdrs = ["custom_ops_register.h"],
@@ -714,6 +715,7 @@ cc_library(
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d",
+        "@flatbuffers",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -2294,6 +2296,21 @@ cc_test(
 cc_test(
     name = "complex_support_test",
     srcs = ["complex_support_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "cumsum_test",
+    srcs = ["cumsum_test.cc"],
     deps = [
         ":custom_ops",
         ":test_main",

@@ -1410,6 +1410,29 @@ static LogicalResult Verify(SelectOp op) {
   return success();
 }
 
+OpFoldResult SelectOp::fold(ArrayRef<Attribute> operands) {
+  if (on_true() == on_false()) {
+    return on_true();
+  }
+
+  auto predicate = operands[0].dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!predicate) {
+    return {};
+  }
+
+  auto predicateTy = predicate.getType().cast<ShapedType>();
+  if (!predicateTy.getElementType().isInteger(1)) {
+    return {};
+  }
+
+  if (predicate.isSplat()) {
+    return predicate.getSplatValue<APInt>().getBoolValue() ? on_true()
+                                                           : on_false();
+  }
+
+  return {};
+}
+
 // Makes it such that a SelectOp that is a non-root operation in a DRR infers
 // the return type based on operand type.
 LogicalResult SelectOp::inferReturnTypes(
@@ -1772,11 +1795,11 @@ static Attribute FoldSlice(SliceOp* op, I values) {
 
 OpFoldResult SliceOp::fold(ArrayRef<Attribute> operands) {
   // Check if the SliceOp is a NoOp operation.
-  auto operand_shape = getOperand().getType().cast<ShapedType>().getShape();
+  auto operand_type = getOperand().getType().cast<ShapedType>();
   auto result_type = getResult().getType().cast<ShapedType>();
-  auto result_shape = result_type.getShape();
 
-  if (result_type.hasStaticShape() && (operand_shape == result_shape)) {
+  if (operand_type.hasStaticShape() && result_type.hasStaticShape() &&
+      (operand_type.getShape() == result_type.getShape())) {
     return getOperand();
   }
 

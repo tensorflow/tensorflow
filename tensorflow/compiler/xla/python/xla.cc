@@ -171,13 +171,13 @@ class TraceMeWrapper : public tensorflow::profiler::TraceMeWrapper {
 void BuildProfilerSubmodule(py::module* m) {
   py::module profiler =
       m->def_submodule("profiler", "TensorFlow profiler integration");
-  py::class_<tensorflow::ProfilerServer,
-             std::unique_ptr<tensorflow::ProfilerServer>>
+  py::class_<tensorflow::profiler::ProfilerServer,
+             std::unique_ptr<tensorflow::profiler::ProfilerServer>>
       profiler_server_class(profiler, "ProfilerServer");
   profiler.def(
       "start_server",
-      [](int port) -> std::unique_ptr<tensorflow::ProfilerServer> {
-        auto server = absl::make_unique<tensorflow::ProfilerServer>();
+      [](int port) -> std::unique_ptr<tensorflow::profiler::ProfilerServer> {
+        auto server = absl::make_unique<tensorflow::profiler::ProfilerServer>();
         server->StartProfilerServer(port);
         return server;
       },

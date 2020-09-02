@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/framework/op.h"
+#ifndef TENSORFLOW_COMPILER_MLIR_XLA_XLA_MLIR_TRANSLATE_CL_H_
+#define TENSORFLOW_COMPILER_MLIR_XLA_XLA_MLIR_TRANSLATE_CL_H_
 
-// TODO(allenl): Figure out if we need this op, and if so whether we should move
-// it to core TF. Right now the eager C API does some checking of op
-// registrations before calling into custom devices, but we may be able to avoid
-// that.
-REGISTER_OP("DeviceID")
-    .Output("device_id: int64")
-    .SetIsStateful()
-    .SetShapeFn(tensorflow::shape_inference::ScalarShape);
+#include "llvm/Support/CommandLine.h"
+
+// This file contains command-line options aimed to provide the parameters
+// required by the MLIR module to XLA HLO conversion. It is only intended to be
+// included by binaries.
+
+extern llvm::cl::opt<bool> emit_use_tuple_arg;
+extern llvm::cl::opt<bool> emit_return_tuple;
+
+#endif  // TENSORFLOW_COMPILER_MLIR_XLA_XLA_MLIR_TRANSLATE_CL_H_

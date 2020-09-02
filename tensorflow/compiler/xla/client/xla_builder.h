@@ -164,6 +164,15 @@ class XlaBuilder {
   // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(OpMetadata metadata) { metadata_ = std::move(metadata); }
 
+  // Swaps the passed op metadata with the ones currently set.
+  //
+  // Returns the old op metadata.
+  OpMetadata SwapOpMetadata(OpMetadata metadata) {
+    OpMetadata old_metadata = std::move(metadata_);
+    metadata_ = std::move(metadata);
+    return old_metadata;
+  }
+
   // Similar to SetOpMetadata, but only set the metadata for the next op.
   void SetOneShotOpMetadata(OpMetadata metadata) {
     metadata_ = std::move(metadata);
@@ -1339,6 +1348,25 @@ class XlaScopedFrontendAttributesAssignment {
 
   TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedFrontendAttributesAssignment);
 };
+
+// RAII-style object: sets the current op metadata in builder on construction,
+// and sets back to the previous assignment on destruction.
+class XlaScopedOpMetadataAssignment {
+ public:
+  XlaScopedOpMetadataAssignment(xla::XlaBuilder* builder, OpMetadata metadata)
+      : builder_(builder) {
+    saved_ = builder_->SwapOpMetadata(metadata);
+  }
+
+  ~XlaScopedOpMetadataAssignment() { builder_->SwapOpMetadata(saved_); }
+
+ private:
+  xla::XlaBuilder* const builder_;
+  OpMetadata saved_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaScopedOpMetadataAssignment);
+};
+
 // Free functions for building XlaOps. The intention is that these will
 // become the public API for building XlaOps rather than calling methods on
 // XlaBuilder directly.

@@ -129,7 +129,7 @@ class RemoveIdentityReshape : public NodeTransformation {
       return {TransformStatus::SKIPPED,
               "Can not apply transformation when node output is graph output"};
     }
-    absl::Status status = RemoveOneInputOneOutputNode(graph, node);
+    absl::Status status = RemoveSimpleNodeKeepInput(graph, node);
     if (!status.ok()) {
       return {TransformStatus::INVALID,
               "Unable to remove a node: " + std::string(status.message())};

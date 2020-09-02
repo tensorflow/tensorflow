@@ -142,8 +142,8 @@ class _DelegatingTrackableMixin(object):
     return self._trackable._add_variable_with_custom_getter(
         name, shape, dtype, initializer, getter, overwrite, **kwargs_for_getter)
 
-  def _preload_simple_restoration(self, name, shape):
-    return self._trackable._preload_simple_restoration(name, shape)
+  def _preload_simple_restoration(self, name):
+    return self._trackable._preload_simple_restoration(name)
 
   def _track_trackable(self, trackable, name, overwrite=False):  # pylint: disable=redefined-outer-name
     return self._trackable._track_trackable(trackable, name, overwrite)

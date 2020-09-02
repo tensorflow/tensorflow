@@ -452,7 +452,8 @@ Status MlirAbstractOp::SetAttrFloat(const char* attr_name, float value) {
   return Unimplemented("SetAttrFloat has not been implemented yet.");
 }
 Status MlirAbstractOp::SetAttrBool(const char* attr_name, bool value) {
-  return Unimplemented("SetAttrBool has not been implemented yet.");
+  attrs_[attr_name] = BoolAttr::get(value, context_);
+  return Status::OK();
 }
 Status MlirAbstractOp::SetAttrShape(const char* attr_name, const int64_t* dims,
                                     const int num_dims) {

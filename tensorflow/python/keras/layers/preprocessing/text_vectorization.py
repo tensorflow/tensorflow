@@ -367,7 +367,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
     # on an implicit call to `build` in the base layer's `adapt`, since
     # preprocessing changes the input shape.
     if isinstance(data, (list, tuple, np.ndarray)):
-      data = ops.convert_to_tensor(data)
+      data = ops.convert_to_tensor_v2_with_dispatch(data)
 
     if isinstance(data, ops.Tensor):
       if data.shape.rank == 1:
@@ -566,7 +566,7 @@ class TextVectorization(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def call(self, inputs):
     if isinstance(inputs, (list, tuple, np.ndarray)):
-      inputs = ops.convert_to_tensor(inputs)
+      inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
 
     self._called = True
     inputs = self._preprocess(inputs)

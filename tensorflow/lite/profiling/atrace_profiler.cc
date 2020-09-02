@@ -15,6 +15,9 @@ limitations under the License.
 #include "tensorflow/lite/profiling/atrace_profiler.h"
 
 #include <dlfcn.h>
+#if defined(__ANDROID__)
+#include <sys/system_properties.h>
+#endif
 
 #include <type_traits>
 
@@ -89,8 +92,20 @@ class ATraceProfiler : public tflite::Profiler {
   FpEndSection atrace_end_section_;
 };
 
-std::unique_ptr<tflite::Profiler> CreateATraceProfiler() {
+std::unique_ptr<tflite::Profiler> MaybeCreateATraceProfiler() {
+#if defined(TFLITE_ENABLE_DEFAULT_PROFILER)
   return std::unique_ptr<tflite::Profiler>(new ATraceProfiler());
+#else  // TFLITE_ENABLE_DEFAULT_PROFILER
+#if defined(__ANDROID__)
+  constexpr char kTraceProp[] = "debug.tflite.trace";
+  char trace_enabled[PROP_VALUE_MAX] = "";
+  int length = __system_property_get(kTraceProp, trace_enabled);
+  if (length == 1 && trace_enabled[0] == '1') {
+    return std::unique_ptr<tflite::Profiler>(new ATraceProfiler());
+  }
+#endif  // __ANDROID__
+  return nullptr;
+#endif  // TFLITE_ENABLE_DEFAULT_PROFILER
 }
 
 }  // namespace profiling

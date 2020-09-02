@@ -244,16 +244,7 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
       } else {
         total = 0;
         for (const auto* user : indexing_users[instruction]) {
-          int64 weight = 1;
-          // Concatenate is special: the index differs for each operand, so
-          // in the worst case we have to deal with as many index values as
-          // the number of operands of Concatenate. By considering the worst
-          // case, we are more conservative than necessary regarding
-          // refusing to fuse.
-          if (user->opcode() == HloOpcode::kConcatenate) {
-            weight = user->operand_count();
-          }
-          total += index_usage_count[user] * weight;
+          total += index_usage_count[user];
         }
       }
       for (const auto* operand : instruction->operands()) {

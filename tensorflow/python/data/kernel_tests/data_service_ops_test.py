@@ -600,10 +600,8 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
       _make_distributed_dataset(dataset, dispatcher)
       return dataset
 
-    with self.assertRaisesRegex(
-        errors.InvalidArgumentError, r"The `.distribute\(...\)` dataset "
-        "transformation is not supported within tf.data functions"):
-      ds = ds.interleave(interleave_fn, cycle_length=2)
+    ds = ds.interleave(interleave_fn, cycle_length=2)
+    self.assertDatasetProduces(ds, [0, 0, 1, 1])
 
   @combinations.generate(test_base.eager_only_combinations())
   def testDistributeNonStringAddresses(self):

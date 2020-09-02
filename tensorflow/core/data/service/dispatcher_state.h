@@ -56,7 +56,7 @@ class DispatcherState {
   DispatcherState& operator=(const DispatcherState&) = delete;
 
   // Applies the given update to the dispatcher's state.
-  Status Apply(Update update);
+  Status Apply(const Update& update);
 
   // A dataset registered with the dispatcher.
   struct Dataset {
@@ -129,15 +129,15 @@ class DispatcherState {
   // Returns the next available dataset id.
   int64 NextAvailableDatasetId() const;
   // Gets a dataset by id. Returns NOT_FOUND if there is no such dataset.
-  Status DatasetFromId(int64 id, std::shared_ptr<const Dataset>* dataset) const;
+  Status DatasetFromId(int64 id, std::shared_ptr<const Dataset>& dataset) const;
   // Gets a dataset by fingerprint. Returns NOT_FOUND if there is no such
   // dataset.
   Status DatasetFromFingerprint(uint64 fingerprint,
-                                std::shared_ptr<const Dataset>* dataset) const;
+                                std::shared_ptr<const Dataset>& dataset) const;
 
   // Gets a worker by address. Returns NOT_FOUND if there is no such worker.
   Status WorkerFromAddress(const std::string& address,
-                           std::shared_ptr<const Worker>* worker) const;
+                           std::shared_ptr<const Worker>& worker) const;
   // Lists all workers registered with the dispatcher.
   std::vector<std::shared_ptr<const Worker>> ListWorkers() const;
 
@@ -146,9 +146,9 @@ class DispatcherState {
   // Returns a list of all jobs.
   std::vector<std::shared_ptr<const Job>> ListJobs();
   // Gets a job by id. Returns NOT_FOUND if there is no such job.
-  Status JobFromId(int64 id, std::shared_ptr<const Job>* job) const;
+  Status JobFromId(int64 id, std::shared_ptr<const Job>& job) const;
   // Gets a named job by key. Returns NOT_FOUND if there is no such job.
-  Status NamedJobByKey(NamedJobKey key, std::shared_ptr<const Job>* job) const;
+  Status NamedJobByKey(NamedJobKey key, std::shared_ptr<const Job>& job) const;
 
   // Returns the job associated with the given job client id. Returns NOT_FOUND
   // if the job_client_id is unknown or has been released.
@@ -160,12 +160,12 @@ class DispatcherState {
   // Returns the next available task id.
   int64 NextAvailableTaskId() const;
   // Gets a task by id. Returns NOT_FOUND if there is no such task.
-  Status TaskFromId(int64 id, std::shared_ptr<const Task>* task) const;
-  // Stores a list of all tasks for the given job to `*tasks`. Returns NOT_FOUND
+  Status TaskFromId(int64 id, std::shared_ptr<const Task>& task) const;
+  // Stores a list of all tasks for the given job to `tasks`. Returns NOT_FOUND
   // if there is no such job.
   Status TasksForJob(int64 job_id,
-                     std::vector<std::shared_ptr<const Task>>* tasks) const;
-  // Stores a list of all tasks for the given worker to `*tasks`. Returns
+                     std::vector<std::shared_ptr<const Task>>& tasks) const;
+  // Stores a list of all tasks for the given worker to `tasks`. Returns
   // NOT_FOUND if there is no such worker.
   Status TasksForWorker(const absl::string_view worker_address,
                         std::vector<std::shared_ptr<const Task>>& tasks) const;

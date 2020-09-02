@@ -54,6 +54,31 @@ TrackableReference = collections.namedtuple(
     ])
 
 
+class CheckpointInitialValueCallable(object):
+  """A callable object that returns a CheckpointInitialValue.
+
+  See CheckpointInitialValue for more information.
+  """
+
+  def __init__(self, checkpoint_position):
+    self._checkpoint_position = checkpoint_position
+
+  @property
+  def checkpoint_position(self):
+    return self._checkpoint_position
+
+  def __call__(self, shape=None, dtype=None):
+    # Note that the signature here is for compatibility with normal callable
+    # initializers which take shape and dtype. Although dtype isn't used, it
+    # will get passed in by a functool.partial_wrapper in places like
+    # base_layer_utils.py's make_variable.
+    return CheckpointInitialValue(self._checkpoint_position, shape)
+
+  @property
+  def restore_uid(self):
+    return self._checkpoint_position.restore_uid
+
+
 class CheckpointInitialValue(ops.Tensor):
   """Tensor wrapper for managing update UIDs in `Variables`.
 
@@ -312,7 +337,7 @@ class CheckpointPosition(object):
               name="%s_checkpoint_read" % (serialized_tensor.name,))
         # Copy the value to the current device if necessary.
         value_tensors[serialized_tensor.name] = array_ops.identity(value)
-      return value_tensors
+    return value_tensors
 
   def gather_ops_or_named_saveables(self):
     """Looks up or creates SaveableObjects which don't have cached ops."""
@@ -735,11 +760,11 @@ class Trackable(object):
         # then assigning (when executing eagerly). This call returns None if
         # there is nothing to restore.
         checkpoint_initializer = self._preload_simple_restoration(
-            name=name, shape=shape)
+            name=name)
       else:
         checkpoint_initializer = None
       if (checkpoint_initializer is not None and
-          not (isinstance(initializer, CheckpointInitialValue) and
+          not (isinstance(initializer, CheckpointInitialValueCallable) and
                (initializer.restore_uid > checkpoint_initializer.restore_uid))):
         # If multiple Trackable objects are "creating" the same variable
         # via the magic of custom getters, the one with the highest restore UID
@@ -767,7 +792,7 @@ class Trackable(object):
       # fallback once all get_variable() return types are Trackable.
       return new_variable
 
-  def _preload_simple_restoration(self, name, shape):
+  def _preload_simple_restoration(self, name):
     """Return a dependency's value for restore-on-create.
 
     Note the restoration is not deleted; if for some reason preload is called
@@ -778,7 +803,6 @@ class Trackable(object):
     Args:
       name: The object-local name of the dependency holding the variable's
         value.
-      shape: The shape of the variable being loaded into.
 
     Returns:
       An callable for use as a variable's initializer/initial_value, or None if
@@ -801,8 +825,8 @@ class Trackable(object):
     checkpoint_position = max(
         deferred_dependencies_list,
         key=lambda restore: restore.checkpoint.restore_uid)
-    return CheckpointInitialValue(
-        checkpoint_position=checkpoint_position, shape=shape)
+    return CheckpointInitialValueCallable(
+        checkpoint_position=checkpoint_position)
 
   def _track_trackable(self, trackable, name, overwrite=False):
     """Declare a dependency on another `Trackable` object.

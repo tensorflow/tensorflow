@@ -29,6 +29,10 @@ namespace tensorflow {
 namespace profiler {
 namespace {
 
+// The maximum number of Tensorflow Ops displayed on Tensorflow Stats page.
+// 500 device side ops and 500 host side ops.
+const int kMaxNumOfOps = 500;
+
 TfStatsRecord ConvertOpMetricsToTfStatsRecord(
     bool on_device, const OpMetrics& metrics,
     double ridge_point_operational_intensity) {
@@ -60,7 +64,8 @@ TfStatsTable GenerateTfStatsTable(
     total_device_time_ps -= IdleTimePs(device_tf_metrics_db);
   }
   double total_device_time_us = PicosToMicros(total_device_time_ps);
-  for (const OpMetrics* metrics : SortedOpMetricsDb(device_tf_metrics_db)) {
+  for (const OpMetrics* metrics :
+       SortedOpMetricsDb(device_tf_metrics_db, kMaxNumOfOps)) {
     if (exclude_idle && IsIdleOp(*metrics)) continue;
     TfStatsRecord* record = tf_stats_table.add_tf_stats_record();
     *record = ConvertOpMetricsToTfStatsRecord(
@@ -84,8 +89,8 @@ TfStatsTable GenerateTfStatsTable(
     total_host_time_ps -= IdleTimePs(host_tf_metrics_db);
   }
   double total_host_time_us = PicosToMicros(total_host_time_ps);
-  for (const OpMetrics* metrics :
-       tensorflow::profiler::SortedOpMetricsDb(host_tf_metrics_db)) {
+  for (const OpMetrics* metrics : tensorflow::profiler::SortedOpMetricsDb(
+           host_tf_metrics_db, kMaxNumOfOps)) {
     if (exclude_idle && IsIdleOp(*metrics)) continue;
     TfStatsRecord* record = tf_stats_table.add_tf_stats_record();
     *record = ConvertOpMetricsToTfStatsRecord(

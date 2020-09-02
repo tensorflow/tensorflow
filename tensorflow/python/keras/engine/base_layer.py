@@ -1006,10 +1006,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         np_arrays.ndarray, np.ndarray, float, int)) for x in input_list):
 
       def _convert_non_tensor(x):
-        # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
+        # Don't call `ops.convert_to_tensor` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
-          return ops.convert_to_tensor_v2(x)
+          return ops.convert_to_tensor_v2_with_dispatch(x)
         return x
 
       inputs = nest.map_structure(_convert_non_tensor, inputs)
@@ -1518,7 +1518,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx())
       loss._unconditional_loss = True  # pylint: disable=protected-access
       return loss
 
@@ -1535,7 +1536,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         continue
       if not tensor_util.is_tensor(loss) and not isinstance(
           loss, keras_tensor.KerasTensor):
-        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx())
       # TF Functions should take the eager path.
       if ((tf_utils.is_symbolic_tensor(loss) or
            isinstance(loss, keras_tensor.KerasTensor)) and
@@ -3267,7 +3269,7 @@ def _in_functional_construction_mode(layer, inputs, args, kwargs, input_list):  
 
 def _convert_numpy_or_python_types(x):
   if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
-    return ops.convert_to_tensor_v2(x)
+    return ops.convert_to_tensor_v2_with_dispatch(x)
   return x
 
 

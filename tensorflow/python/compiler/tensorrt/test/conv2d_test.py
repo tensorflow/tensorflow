@@ -114,12 +114,6 @@ class Conv2DNCHWTest(trt_test.TfTrtIntegrationTestBase):
       return 4e-02
     return super(Conv2DNCHWTest, self).ExpectedRelativeTolerance(run_params)
 
-  def ShouldRunTest(self, run_params):
-    # TODO(b/162448349): Enable the test for TRT 7.1.3.
-    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
-      return (False, "Skip test due to b/162448349")
-    return super().ShouldRunTest(run_params)
-
 
 class Conv2DNHWCTest(trt_test.TfTrtIntegrationTestBase):
   """Testing conversion of Conv2D (data_format=NCHW) in TF-TRT conversion."""
@@ -142,12 +136,6 @@ class Conv2DNHWCTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return ["TRTEngineOp_0"]
-
-  def ShouldRunTest(self, run_params):
-    # TODO(b/162448349): Enable the test for TRT 7.1.3.
-    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
-      return (False, "Skip test due to b/162448349")
-    return super().ShouldRunTest(run_params)
 
 
 class Conv2DStridedNCHWTest(trt_test.TfTrtIntegrationTestBase):
@@ -179,12 +167,6 @@ class Conv2DStridedNCHWTest(trt_test.TfTrtIntegrationTestBase):
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""
     return ["TRTEngineOp_0"]
-
-  def ShouldRunTest(self, run_params):
-    # TODO(b/162448349): Enable the test for TRT 7.1.3.
-    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
-      return (False, "Skip test due to b/162448349")
-    return super().ShouldRunTest(run_params)
 
 
 class Conv2DTranposeTest(trt_test.TfTrtIntegrationTestBase):
