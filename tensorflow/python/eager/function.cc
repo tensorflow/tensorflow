@@ -40,7 +40,8 @@ static const py::object* create_constant_tensor = new py::object(
 
 namespace tensorflow {
 
-struct PyConcreteFunction {
+class PyConcreteFunction {
+ public:
   PyConcreteFunction() {}
   py::object BuildCallOutputs(py::object result,
                               py::object structured_outputs,
@@ -61,7 +62,7 @@ py::object PyConcreteFunction::BuildCallOutputs(
   }
 
   // Implied invariant: result == None only if structured_outputs == None
-  py::list list_result = (py::list)result;
+  py::list list_result = static_cast<py::list>(result);
 
   if (!list_result.empty()) {
     if (_ndarrays_list) {
@@ -88,7 +89,7 @@ py::object PyConcreteFunction::BuildCallOutputs(
   return nest->attr("pack_sequence_as")(structured_outputs, outputs_list, true);
 }
 
-py::object AsNdarray(py::object value) {
+py::object AsNdarray(py::handle value) {
   // TODO(tomhennigan) Support __array_interface__ too.
   return value.attr("__array__")();
 }
@@ -135,7 +136,7 @@ py::tuple ConvertNumpyInputs(py::object inputs) {
             PyObject_HasAttr(value_ptr, PyUnicode_DecodeUTF8(
                 "_should_act_as_resource_variable", 32, "strict"))
             || PyObject_IsInstance(value_ptr, np->attr("str_").ptr())
-            || PyObject_IsInstance(value_ptr, (PyObject*) &PyType_Type)
+            || PyObject_IsInstance(value_ptr, reinterpret_cast<PyObject*>(&PyType_Type))
             || PyObject_IsInstance(value_ptr, CompositeTensor.ptr()))) {
       // This case is equivalent to _is_ndarray(value) == True
       py::object a = AsNdarray(flat_inputs[i]);
