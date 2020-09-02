@@ -397,32 +397,6 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDims) {
       tflite::ops::micro::Register_REDUCE_MAX(), &params);
 }
 
-TF_LITE_MICRO_TEST(Int8MaxOpTestKeepDimsDifferentScale) {
-  const int input_shape[] = {3, 1, 3, 2};
-  const float input_data[] = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  const int axis_shape[] = {1, 1};
-  const int axis_data[] = {1, 1};
-  const int output_shape[] = {1, 2};
-  const float expected_output_data[] = {0.5, 0.6};
-
-  float input_scale = 2 / 255.0;
-  int input_zp = 0;
-  float output_scale = 3 / 255.0;
-  int output_zp = 0;
-
-  TfLiteReducerParams params = {true};
-
-  int8_t input_data_quant[6];
-  int8_t output_data_quant[2];
-  int8_t expected_output_data_quant[2];
-
-  tflite::testing::TestReduceOpQuantized<int8_t>(
-      input_shape, input_data, input_data_quant, input_scale, input_zp,
-      axis_shape, axis_data, output_shape, expected_output_data,
-      output_data_quant, expected_output_data_quant, output_scale, output_zp,
-      tflite::ops::micro::Register_REDUCE_MAX(), &params);
-}
-
 TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDims) {
   const int input_shape[] = {3, 1, 3, 2};
   const float input_data[] = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
@@ -434,32 +408,6 @@ TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDims) {
   float input_scale = 2 / 255.0;
   int input_zp = 0;
   float output_scale = 2 / 255.0;
-  int output_zp = 0;
-
-  TfLiteReducerParams params = {false};
-
-  int8_t input_data_quant[6];
-  int8_t output_data_quant[2];
-  int8_t expected_output_data_quant[2];
-
-  tflite::testing::TestReduceOpQuantized<int8_t>(
-      input_shape, input_data, input_data_quant, input_scale, input_zp,
-      axis_shape, axis_data, output_shape, expected_output_data,
-      output_data_quant, expected_output_data_quant, output_scale, output_zp,
-      tflite::ops::micro::Register_REDUCE_MAX(), &params);
-}
-
-TF_LITE_MICRO_TEST(Int8MaxOpTestWithoutKeepDimsDifferentScale) {
-  const int input_shape[] = {3, 1, 3, 2};
-  const float input_data[] = {0.4, 0.2, 0.3, 0.4, 0.5, 0.6};
-  const int axis_shape[] = {1, 1};
-  const int axis_data[] = {1, 1};
-  const int output_shape[] = {1, 2};
-  const float expected_output_data[] = {0.5, 0.6};
-
-  float input_scale = 2 / 255.0;
-  int input_zp = 0;
-  float output_scale = 3 / 255.0;
   int output_zp = 0;
 
   TfLiteReducerParams params = {false};

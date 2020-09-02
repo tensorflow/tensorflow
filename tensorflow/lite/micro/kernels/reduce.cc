@@ -291,6 +291,9 @@ TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
               }));
       break;
     case kTfLiteInt8:
+      TF_LITE_ENSURE_EQ(context, static_cast<double>(op_data->input_scale),
+                        static_cast<double>(op_data->output_scale));
+      TF_LITE_ENSURE_EQ(context, op_data->input_zp, op_data->output_zp);
       TF_LITE_ENSURE(
           context,
           reference_ops::ReduceGeneric<int8_t>(
@@ -303,18 +306,6 @@ TfLiteStatus EvalMax(TfLiteContext* context, TfLiteNode* node) {
               [](const int8_t current, const int8_t in) -> int8_t {
                 return (in > current) ? in : current;
               }));
-
-      // Convert between different output scales
-      if (op_data->input_scale != op_data->output_scale) {
-        int8_t* output_data = tflite::micro::GetTensorData<int8_t>(output);
-        for (int i = 0; i < op_data->num_output_elements; i++) {
-          output_data[i] = static_cast<int8_t>(std::max(
-              std::min(MultiplyByQuantizedMultiplier(
-                           output_data[i], op_data->multiplier, op_data->shift),
-                       static_cast<int>(std::numeric_limits<int8_t>::max())),
-              static_cast<int>(std::numeric_limits<int8_t>::min())));
-        }
-      }
       break;
     default:
       TF_LITE_KERNEL_LOG(context,
