@@ -94,19 +94,17 @@ py::object AsNdarray(py::handle value) {
   return value.attr("__array__")();
 }
 
-bool IsNdarray(py::object value) {
+bool IsNdarray(py::handle value) {
   // TODO(tomhennigan) Support __array_interface__ too.
   PyObject* value_ptr = value.ptr();
-  return PyObject_HasAttr(value_ptr,
-                          PyUnicode_DecodeUTF8("__array__", 9, "strict")) && !(
+  return py::hasattr(value, "__array__") && !(
       PyObject_IsInstance(value_ptr, Tensor.ptr())
       || PyObject_IsInstance(value_ptr, BaseResourceVariable.ptr())
-      || PyObject_HasAttr(value_ptr, PyUnicode_DecodeUTF8(
-             "_should_act_as_resource_variable", 32, "strict"))
+      || py::hasattr(value, "_should_act_as_resource_variable")
       // For legacy reasons we do not automatically promote Numpy strings.
       || PyObject_IsInstance(value_ptr, np->attr("str_").ptr())
       // NumPy dtypes have __array__ as unbound methods.
-      || PyObject_IsInstance(value_ptr, (PyObject*) &PyType_Type)
+      || PyObject_IsInstance(value_ptr, reinterpret_cast<PyObject*>(&PyType_Type))
       // CompositeTensors should be flattened instead.
       || PyObject_IsInstance(value_ptr, CompositeTensor.ptr()));
 }
@@ -127,14 +125,13 @@ py::tuple ConvertNumpyInputs(py::object inputs) {
   py::list filtered_flat_inputs;
 
   for (int i = 0; i < flat_inputs.size(); ++i) {
+    py::handle value = flat_inputs[i].ptr();
     PyObject* value_ptr = flat_inputs[i].ptr();
     if (PyObject_IsInstance(value_ptr, Tensor.ptr()) ||
         PyObject_IsInstance(value_ptr, BaseResourceVariable.ptr())) {
       filtered_flat_inputs.append(flat_inputs[i]);
-    } else if (PyObject_HasAttr(
-        value_ptr, PyUnicode_DecodeUTF8("__array__", 9, "strict")) && !(
-            PyObject_HasAttr(value_ptr, PyUnicode_DecodeUTF8(
-                "_should_act_as_resource_variable", 32, "strict"))
+    } else if (py::hasattr(value, "__array__") && !(
+            py::hasattr(value, "_should_act_as_resource_variable")
             || PyObject_IsInstance(value_ptr, np->attr("str_").ptr())
             || PyObject_IsInstance(value_ptr, reinterpret_cast<PyObject*>(&PyType_Type))
             || PyObject_IsInstance(value_ptr, CompositeTensor.ptr()))) {
