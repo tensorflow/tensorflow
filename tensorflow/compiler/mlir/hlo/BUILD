@@ -702,7 +702,6 @@ cc_library(
     ],
     deps = [
         ":hlo",
-        ":hlo_dialect_force_registration",
         ":lower_complex_inc_gen",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
