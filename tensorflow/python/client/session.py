@@ -416,10 +416,12 @@ class _DictFetchMapper(_FetchMapper):
     return self._unique_fetches
 
   def build_results(self, values):
-    results = self._fetch_type()
-    for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
-      results[k] = m.build_results([values[j] for j in vi])
-    return results
+
+    def _generator():
+      for k, m, vi in zip(self._keys, self._mappers, self._value_indices):
+        yield k, m.build_results([values[j] for j in vi])
+
+    return self._fetch_type(_generator())
 
 
 class _AttrsFetchMapper(_FetchMapper):

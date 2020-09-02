@@ -18,8 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import random
 import os
+import random
 import sys
 import threading
 import time
@@ -67,6 +67,11 @@ try:
   import attr  # pylint:disable=g-import-not-at-top
 except ImportError:
   attr = None
+
+try:
+  from frozendict import frozendict  # pylint:disable=g-import-not-at-top
+except ImportError:
+  frozendict = dict
 
 
 class SessionTest(test_util.TensorFlowTestCase):
@@ -417,7 +422,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session() as sess:
       # pylint: disable=invalid-name
       ABC = collections.namedtuple('ABC', ['a', 'b', 'c'])
-      DEFG = collections.namedtuple('DEFG', ['d', 'e', 'f', 'g'])
+      DEFGH = collections.namedtuple('DEFGH', ['d', 'e', 'f', 'g', 'h'])
       # pylint: enable=invalid-name
       a_val = 42.0
       b_val = None
@@ -425,15 +430,20 @@ class SessionTest(test_util.TensorFlowTestCase):
       a = constant_op.constant(a_val)
       b = control_flow_ops.no_op()  # An op, not a tensor.
       c = constant_op.constant(c_val)
-      # List of lists, tuples, namedtuple, and dict
+      # List of lists, tuples, namedtuple, dict, and frozendict
       res = sess.run([[a, b, c], (a, b, c),
                       ABC(a=a, b=b, c=c), {
                           'a': a.name,
                           'c': c,
                           'b': b
-                      }])
+                      },
+                      frozendict({
+                          'a': a.name,
+                          'c': c,
+                          'b': b
+                      })])
       self.assertTrue(isinstance(res, list))
-      self.assertEqual(4, len(res))
+      self.assertEqual(5, len(res))
       self.assertTrue(isinstance(res[0], list))
       self.assertEqual(3, len(res[0]))
       self.assertEqual(a_val, res[0][0])
@@ -453,14 +463,23 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(a_val, res[3]['a'])
       self.assertEqual(b_val, res[3]['b'])
       self.assertEqual(c_val, res[3]['c'])
-      # Tuple of lists, tuples, namedtuple, and dict
+      self.assertTrue(isinstance(res[4], frozendict))
+      self.assertEqual(3, len(res[4]))
+      self.assertEqual(a_val, res[4]['a'])
+      self.assertEqual(b_val, res[4]['b'])
+      self.assertEqual(c_val, res[4]['c'])
+      # Tuple of lists, tuples, namedtuple, dict, and frozendict
       res = sess.run(([a, b, c], (a.name, b, c), ABC(a=a, b=b, c=c), {
           'a': a,
           'c': c,
           'b': b
-      }))
+      }, frozendict({
+          'a': a.name,
+          'c': c,
+          'b': b
+      })))
       self.assertTrue(isinstance(res, tuple))
-      self.assertEqual(4, len(res))
+      self.assertEqual(5, len(res))
       self.assertTrue(isinstance(res[0], list))
       self.assertEqual(3, len(res[0]))
       self.assertEqual(a_val, res[0][0])
@@ -480,9 +499,14 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(a_val, res[3]['a'])
       self.assertEqual(b_val, res[3]['b'])
       self.assertEqual(c_val, res[3]['c'])
-      # Namedtuple of lists, tuples, namedtuples, and dict
+      self.assertTrue(isinstance(res[4], frozendict))
+      self.assertEqual(3, len(res[4]))
+      self.assertEqual(a_val, res[4]['a'])
+      self.assertEqual(b_val, res[4]['b'])
+      self.assertEqual(c_val, res[4]['c'])
+      # Namedtuple of lists, tuples, namedtuples, dict, and frozendict
       res = sess.run(
-          DEFG(
+          DEFGH(
               d=[a, b, c],
               e=(a, b, c),
               f=ABC(a=a.name, b=b, c=c),
@@ -490,8 +514,13 @@ class SessionTest(test_util.TensorFlowTestCase):
                   'a': a,
                   'c': c,
                   'b': b
-              }))
-      self.assertTrue(isinstance(res, DEFG))
+              },
+              h=frozendict({
+                  'a': a,
+                  'c': c,
+                  'b': b
+              })))
+      self.assertTrue(isinstance(res, DEFGH))
       self.assertTrue(isinstance(res.d, list))
       self.assertEqual(3, len(res.d))
       self.assertEqual(a_val, res.d[0])
@@ -511,7 +540,12 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(a_val, res.g['a'])
       self.assertEqual(b_val, res.g['b'])
       self.assertEqual(c_val, res.g['c'])
-      # Dict of lists, tuples, namedtuples, and dict
+      self.assertTrue(isinstance(res.h, frozendict))
+      self.assertEqual(3, len(res.h))
+      self.assertEqual(a_val, res.h['a'])
+      self.assertEqual(b_val, res.h['b'])
+      self.assertEqual(c_val, res.h['c'])
+      # Dict of lists, tuples, namedtuples, dict, and frozendict
       res = sess.run({
           'd': [a, b, c],
           'e': (a, b, c),
@@ -520,10 +554,15 @@ class SessionTest(test_util.TensorFlowTestCase):
               'a': a.name,
               'c': c,
               'b': b
-          }
+          },
+          'h': frozendict({
+              'a': a,
+              'c': c,
+              'b': b
+          }),
       })
       self.assertTrue(isinstance(res, dict))
-      self.assertEqual(4, len(res))
+      self.assertEqual(5, len(res))
       self.assertTrue(isinstance(res['d'], list))
       self.assertEqual(3, len(res['d']))
       self.assertEqual(a_val, res['d'][0])
@@ -543,6 +582,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(a_val, res['g']['a'])
       self.assertEqual(b_val, res['g']['b'])
       self.assertEqual(c_val, res['g']['c'])
+      self.assertTrue(isinstance(res['h'], frozendict))
+      self.assertEqual(3, len(res['h']))
+      self.assertEqual(a_val, res['h']['a'])
+      self.assertEqual(b_val, res['h']['b'])
+      self.assertEqual(c_val, res['h']['c'])
 
   def testFetchTensorObject(self):
     with session.Session() as s:
