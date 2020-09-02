@@ -98,7 +98,7 @@ bool IsNdarray(py::handle value) {
   // TODO(tomhennigan) Support __array_interface__ too.
   PyObject* value_ptr = value.ptr();
   return py::hasattr(value, "__array__") && !(
-      PyObject_IsInstance(value_ptr, Tensor.ptr())
+      swig::IsTensor(value_ptr)
       || PyObject_IsInstance(value_ptr, BaseResourceVariable.ptr())
       || py::hasattr(value, "_should_act_as_resource_variable")
       // For legacy reasons we do not automatically promote Numpy strings.
@@ -106,7 +106,7 @@ bool IsNdarray(py::handle value) {
       // NumPy dtypes have __array__ as unbound methods.
       || PyObject_IsInstance(value_ptr, reinterpret_cast<PyObject*>(&PyType_Type))
       // CompositeTensors should be flattened instead.
-      || PyObject_IsInstance(value_ptr, CompositeTensor.ptr()));
+      || swig::IsCompositeTensor(value_ptr));
 }
 
 py::tuple ConvertNumpyInputs(py::object inputs) {
@@ -127,14 +127,14 @@ py::tuple ConvertNumpyInputs(py::object inputs) {
   for (int i = 0; i < flat_inputs.size(); ++i) {
     py::handle value = flat_inputs[i].ptr();
     PyObject* value_ptr = flat_inputs[i].ptr();
-    if (PyObject_IsInstance(value_ptr, Tensor.ptr()) ||
+    if (swig::IsTensor(value_ptr) ||
         PyObject_IsInstance(value_ptr, BaseResourceVariable.ptr())) {
       filtered_flat_inputs.append(flat_inputs[i]);
     } else if (py::hasattr(value, "__array__") && !(
-            py::hasattr(value, "_should_act_as_resource_variable")
-            || PyObject_IsInstance(value_ptr, np->attr("str_").ptr())
-            || PyObject_IsInstance(value_ptr, reinterpret_cast<PyObject*>(&PyType_Type))
-            || PyObject_IsInstance(value_ptr, CompositeTensor.ptr()))) {
+        py::hasattr(value, "_should_act_as_resource_variable")
+        || PyObject_IsInstance(value_ptr, np->attr("str_").ptr())
+        || PyObject_IsInstance(value_ptr, reinterpret_cast<PyObject*>(&PyType_Type))
+        || swig::IsCompositeTensor(value_ptr))) {
       // This case is equivalent to _is_ndarray(value) == True
       py::object a = AsNdarray(flat_inputs[i]);
       if (!PyObject_IsInstance(a.ptr(), np->attr("ndarray").ptr())) {
