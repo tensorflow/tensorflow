@@ -30,7 +30,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import data_adapter
@@ -676,7 +675,7 @@ class GeneratorDataAdapterTest(DataAdapterTestBase):
     self.model.fit(self.generator_input, steps_per_epoch=10)
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   @data_utils.dont_use_multiprocessing_pool
   def test_with_multiprocessing_training(self):
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd',
@@ -743,7 +742,7 @@ class KerasSequenceAdapterTest(DataAdapterTestBase):
     self.model.fit(self.sequence_input)
 
   @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   @data_utils.dont_use_multiprocessing_pool
   def test_with_multiprocessing_training(self):
     self.model.compile(loss='sparse_categorical_crossentropy', optimizer='sgd',
