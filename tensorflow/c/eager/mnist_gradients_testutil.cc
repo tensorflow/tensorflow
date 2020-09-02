@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/gradients_util.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/experimental/ops/nn_ops.h"
@@ -470,7 +471,6 @@ Status MatMulModel(AbstractContext* ctx,
                             /*transpose_b=*/false, registry));  // Compute X*W1
 
   outputs[0] = temp_outputs[0];
-
   delete tape;
   return Status::OK();
 }
@@ -489,7 +489,6 @@ Status MulModel(AbstractContext* ctx,
                          "mul0", registry));  // Compute x*y
 
   outputs[0] = temp_outputs[0];
-
   delete tape;
   return Status::OK();
 }
