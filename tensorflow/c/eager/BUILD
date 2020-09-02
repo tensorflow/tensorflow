@@ -229,13 +229,12 @@ tf_cuda_cc_test(
 )
 
 cc_library(
-    name = "gradients_testutil",
-    testonly = True,
+    name = "gradients_util",
     srcs = [
-        "gradients_testutil.cc",
+        "gradients_util.cc",
     ],
     hdrs = [
-         "gradients_testutil.h",
+         "gradients_util.h",
     ],
     visibility = [
         "//tensorflow:internal",
@@ -246,22 +245,20 @@ cc_library(
         ":tape",
         ":abstract_tensor_handle",
         ":gradients",
+        ":c_api",
         ":c_api_experimental",
-        ":c_api_test_util",
         ":c_api_unified_internal",
         ":gradients_internal",
         "//tensorflow/c/experimental/ops:array_ops",
         "//tensorflow/c/experimental/ops:math_ops",
         "//tensorflow/c/experimental/ops:nn_ops",
         "//tensorflow/c:c_api",
-        "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/cc/profiler",
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/lib/llvm_rtti",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
@@ -297,7 +294,6 @@ cc_library(
 
 cc_library(
     name = "gradient_checker",
-    testonly = True,
     srcs = [
         "gradient_checker.cc",
     ],
@@ -310,13 +306,10 @@ cc_library(
     deps = [
        ":abstract_tensor_handle",
         ":c_api_experimental",
-        ":c_api_test_util",
         ":c_api_unified_internal",
         ":gradients_internal",
-        ":mnist_gradients_testutil",
-        ":gradients_testutil",
+        ":gradients_util",
         "//tensorflow/c:c_api",
-        "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/experimental/gradients:math_grad",
         "//tensorflow/c/experimental/gradients:nn_grad",
@@ -327,8 +320,6 @@ cc_library(
         "//tensorflow/compiler/mlir/tensorflow/c:mlir_c_api_registration",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core/lib/llvm_rtti",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",

@@ -19,12 +19,10 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/gradients_internal.h"
-#include "tensorflow/c/eager/mnist_gradients_testutil.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
@@ -32,7 +30,9 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/core/platform/test.h"
+
+namespace tensorflow {
+namespace gradients {
 
 using namespace std;
 
@@ -198,3 +198,6 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
 
   return Status::OK();
 }
+
+}  // namespace gradients
+}  // namespace tensorflow

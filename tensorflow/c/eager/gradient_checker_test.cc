@@ -10,14 +10,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradient_checker.h"
-// #include "tensorflow/c/eager/gradients_testutil.h"
+#include "tensorflow/c/eager/gradients_util.h"
 
 #include <memory>
 
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
-#include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
@@ -109,7 +108,7 @@ TEST_P(GradientCheckerTest, TestGradCheckMul) {
   AbstractTensorHandlePtr x;
   {
     AbstractTensorHandle* x_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
+    Status s = ScalarTensorHandle(ctx.get(), 2.0f, &x_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     x.reset(x_raw);
   }
@@ -117,7 +116,7 @@ TEST_P(GradientCheckerTest, TestGradCheckMul) {
   AbstractTensorHandlePtr y;
   {
     AbstractTensorHandle* y_raw = nullptr;
-    Status s = TestScalarTensorHandle(ctx.get(), 7.0f, &y_raw);
+    Status s = ScalarTensorHandle(ctx.get(), 7.0f, &y_raw);
     ASSERT_EQ(errors::OK, s.code()) << s.error_message();
     y.reset(y_raw);
   }
