@@ -531,7 +531,7 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
           {{static_cast<int>(input_pad_top), static_cast<int>(input_pad_left)}},
           {{static_cast<int>(input_pad_bottom),
             static_cast<int>(input_pad_right)}},
-          To32Bit(transformed_input.tensor<T, 4>()), params.data_format);
+          To32Bit(transformed_input.tensor<T, 4>()), params.data_format, T{});
       input = transformed_input;
       in_rows = new_in_rows;
       in_cols = new_in_cols;
@@ -837,7 +837,7 @@ class FusedConv2DOp : public OpKernel {
       const std::array<int, 2>& padding_left,                           \
       const std::array<int, 2>& padding_right,                          \
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format, \
-      T padding_value);                                                 \
+      const T& padding_value);                                          \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
 // Registration of the GPU implementations.

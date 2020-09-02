@@ -194,7 +194,7 @@ struct LaunchConvOp<GPUDevice, T, OpKernelContext> {
         functor::PadInput<GPUDevice, T, int, 5>()(
             ctx->eigen_device<GPUDevice>(), To32Bit(input_param.tensor<T, 5>()),
             {{0, 0, 0}}, {{planes_odd, rows_odd, cols_odd}},
-            To32Bit(transformed_input.tensor<T, 5>()), data_format);
+            To32Bit(transformed_input.tensor<T, 5>()), data_format, T{});
         input = transformed_input;
         in_rows = new_in_rows;
         in_cols = new_in_cols;
@@ -540,7 +540,7 @@ namespace functor {
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
       typename TTypes<T, 5, int>::Tensor out, TensorFormat format,    \
-      T padding_value);                                               \
+      const T& padding_value);                                        \
   template <>                                                         \
   void NHWCToNCHW<GPUDevice, T, 5>::operator()(                       \
       const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
