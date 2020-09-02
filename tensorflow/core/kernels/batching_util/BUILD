@@ -97,6 +97,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:traceme_encode",
     ],
     alwayslink = 1,
 )
