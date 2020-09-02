@@ -50,7 +50,17 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, cpu_budget_ > 0,
                 errors::InvalidArgument("CPU budget must be positive but is ",
                                         cpu_budget_, "."));
-    ram_budget_ = kRamBudgetShare * port::AvailableRam();
+    if (ctx->HasAttr("ram_budget")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("ram_budget", &ram_budget_));
+    } else {
+      ram_budget_ = 0;
+    }
+    if (ram_budget_ == 0) {
+      ram_budget_ = kRamBudgetShare * port::AvailableRam();
+    }
+    OP_REQUIRES(ctx, ram_budget_ > 0,
+                errors::InvalidArgument("RAM budget must be positive but is ",
+                                        ram_budget_, "."));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,

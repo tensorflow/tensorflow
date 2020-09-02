@@ -392,10 +392,10 @@ class DatasetV2(collections_abc.Iterable, tracking_base.Trackable,
                                  graph_rewrites.default, graph_rewrite_configs)
 
     # (3) Apply autotune options
-    autotune, algorithm, cpu_budget = options._autotune_settings()  # pylint: disable=protected-access
+    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()  # pylint: disable=protected-access
 
     if autotune:
-      dataset = _ModelDataset(dataset, algorithm, cpu_budget)
+      dataset = _ModelDataset(dataset, algorithm, cpu_budget, ram_budget)
 
     # (4) Apply stats aggregator options
     if options.experimental_stats and options.experimental_stats.aggregator:  # pylint: disable=line-too-long
@@ -4445,12 +4445,13 @@ class _OptionsDataset(UnaryUnchangedStructureDataset):
 class _ModelDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and models performance."""
 
-  def __init__(self, input_dataset, algorithm, cpu_budget):
+  def __init__(self, input_dataset, algorithm, cpu_budget, ram_budget):
     self._input_dataset = input_dataset
     variant_tensor = gen_dataset_ops.model_dataset(
         input_dataset._variant_tensor,  # pylint: disable=protected-access
         algorithm=algorithm.value,
         cpu_budget=cpu_budget,
+        ram_budget=ram_budget,
         **self._flat_structure)
     super(_ModelDataset, self).__init__(input_dataset, variant_tensor)
 
