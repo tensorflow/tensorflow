@@ -128,12 +128,14 @@ struct CallSignature {
   // Shape and dtype for both the dynamic positional arguments and the keyword
   // arguments (sorted by interned keyword pointers).
   std::vector<ArgSignature> dynamic_args_signatures;
+  PjRtDevice* device;
 
   bool operator==(const CallSignature& other) const {
     return std::tie(dynamic_positional_args_treedef, static_args, keyword_args,
-                    dynamic_args_signatures) ==
+                    dynamic_args_signatures, device) ==
            std::tie(other.dynamic_positional_args_treedef, other.static_args,
-                    other.keyword_args, other.dynamic_args_signatures);
+                    other.keyword_args, other.dynamic_args_signatures,
+                    other.device);
   }
   bool operator!=(const CallSignature& other) const {
     return !(*this == other);
@@ -181,6 +183,7 @@ H AbslHashValue(H h, const CallSignature& s) {
                             s.keyword_args.size());
   h = H::combine_contiguous(std::move(h), &s.dynamic_args_signatures.front(),
                             s.dynamic_args_signatures.size());
+  h = H::combine(std::move(h), s.device);
   return h;
 }
 
@@ -568,6 +571,8 @@ Status ConvertArgsToBuffers(bool jax_enable_x64, xla::PyClient& pyclient,
     // No `DeviceArray` were found default to `default_device`.
     data_device = default_device;
   }
+  CHECK(data_device);
+  arguments.signature.device = data_device;
   xla::PjRtClient* pjrt_client = data_device->client();
 
   for (py::handle arg : arguments.flat_dynamic_args) {
