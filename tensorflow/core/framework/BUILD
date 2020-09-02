@@ -1044,7 +1044,6 @@ tf_cc_tests(
         "rendezvous_test.cc",
         "resource_mgr_test.cc",
         "resource_op_kernel_test.cc",
-        "selective_registration_test.cc",
         "shape_inference_test.cc",
         "shape_inference_testutil_test.cc",
         "tensor_shape_test.cc",
