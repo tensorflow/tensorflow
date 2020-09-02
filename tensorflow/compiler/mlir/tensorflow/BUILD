@@ -826,6 +826,7 @@ cc_library(
         ":export_tf_dialect_op",
         ":lower_tf_lib",
         ":mangling_util",
+        ":shape_inference_utils",
         ":tensorflow",
         ":tensorflow_analysis",
         ":tensorflow_optimize_inc_gen",
@@ -856,6 +857,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -1840,5 +1842,28 @@ cc_library(
     hdrs = ["utils/attribute_utils.h"],
     deps = [
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "shape_inference_utils",
+    srcs = ["utils/shape_inference_utils.cc"],
+    hdrs = ["utils/shape_inference_utils.h"],
+    deps = [
+        ":convert_tensor",
+        ":convert_type",
+        ":export_utils",
+        ":tensorflow",
+        ":tensorflow_attributes",
+        ":tensorflow_types",
+        "//tensorflow/compiler/mlir:array_container_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Support",
     ],
 )
