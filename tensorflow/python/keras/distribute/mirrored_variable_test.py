@@ -25,9 +25,9 @@ from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import context
+from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.keras.layers import core
-from tensorflow.python.platform import test
 
 
 def _mimic_two_cpus():

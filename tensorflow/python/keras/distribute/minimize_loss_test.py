@@ -29,6 +29,7 @@ from tensorflow.python.distribute import strategy_test_lib
 from tensorflow.python.distribute.single_loss_example import batchnorm_example
 from tensorflow.python.distribute.single_loss_example import minimize_loss_example
 from tensorflow.python.eager import context
+from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -41,7 +42,6 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.ops.losses import losses_impl
-from tensorflow.python.platform import test
 
 
 VAR_MAP_V1 = {
