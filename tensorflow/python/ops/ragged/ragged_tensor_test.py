@@ -155,8 +155,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
                                 'RaggedTensor constructor is private'):
       RaggedTensor(values=values, row_partition=rp)
 
-    with self.assertRaisesRegex(TypeError,
-                                'values must be a Tensor or RaggedTensor'):
+    with self.assertRaisesRegex(
+        TypeError,
+        r"""type\(values\) must be one of: 'Tensor, RaggedTensor.*"""):
       RaggedTensor(values=range(7), row_partition=rp, internal=True)
 
     with self.assertRaisesRegex(TypeError,

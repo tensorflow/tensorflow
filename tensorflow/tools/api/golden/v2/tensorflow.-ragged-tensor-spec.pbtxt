@@ -9,6 +9,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "flat_values_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "ragged_rank"
     mtype: "<type \'property\'>"
   }
@@ -26,7 +30,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'shape\', \'dtype\', \'ragged_rank\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'None\', \"<dtype: \'int64\'>\"], "
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'ragged_rank\', \'row_splits_dtype\', \'flat_values_spec\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'None\', \"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
     name: "from_value"
