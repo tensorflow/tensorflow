@@ -289,6 +289,8 @@ setup(
     # PyPI package information.
     classifiers=sorted([
         'Development Status :: 5 - Production/Stable',
+        # TODO(angerson) Add IFTTT when possible
+        'Environment :: GPU :: NVIDIA CUDA :: 11',
         'Intended Audience :: Developers',
         'Intended Audience :: Education',
         'Intended Audience :: Science/Research',
