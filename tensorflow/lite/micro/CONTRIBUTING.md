@@ -194,9 +194,9 @@ Having said that, we still invite feature requests via
 [TF Lite Micro Github issues](https://github.com/tensorflow/tensorflow/issues/new?labels=comp%3Amicro&template=70-tflite-micro-issue.md)
 to determine if the requested feature aligns with the TFLM roadmap.
 
-# Development Workflow
+# Development Workflow Notes
 
-## Before Creating a Pull Request
+## Before submitting your PR
 
  1. Run in-place clang-format on all the files that are modified in your git
     tree with
@@ -206,7 +206,10 @@ to determine if the requested feature aligns with the TFLM roadmap.
 
  1. Make sure your code is lint-free.
 
-    Get a copy of [cpplint](https://github.com/google/styleguide/tree/gh-pages/cpplint)
+    Get a copy of cpplint
+    ```
+    git@github.com:google/styleguide.git
+    ```
 
     Run cpplint.py on all modified files in your git tree:
     ```
@@ -226,12 +229,12 @@ to determine if the requested feature aligns with the TFLM roadmap.
     following command (replace `micro_interpreter_test` with the target that you
     want to test:
     ```
-    CC=clang BAZEL_COMPILER=llvm bazel run --copt=-DADDRESS_SANITIZER \
-    --copt=-fsanitize=address --linkopt=-fsanitize=address \
+    CC=clang BAZEL_COMPILER=llvm bazel run --copt=-DADDRESS_SANITIZER    
+    --copt=-fsanitize=address --linkopt=-fsanitize=address
     tensorflow/lite/micro:micro_interpreter_test
     ```
 
-## Making Changes During the Pull Request Review Process
+## During the PR review
 
  1. Do not change the git version history. Always merge upstream/master, and no
     force-pushes please.
@@ -270,7 +273,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
     force-push may be unavoidable.
 
 
-## Reviewer Notes
+## Reviewer notes
 
  * [GIthub CLI](cli.github.com) can be useful to quickly checkout a PR to test
    locally.
@@ -300,7 +303,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
    git remote rm <remote_name>
    ```
 
-## Python Notes
+## Python notes
 
 Most PRs for TensorFlow Lite Micro will be C++ only. Adding some notes on Python
 that can be expanded and improved as necessary.
