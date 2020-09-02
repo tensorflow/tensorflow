@@ -206,19 +206,16 @@ to determine if the requested feature aligns with the TFLM roadmap.
 
  1. Make sure your code is lint-free.
 
-    Get a copy of cpplint
-    ```
-    git@github.com:google/styleguide.git
-    ```
+    Get a copy of [cpplint](https://github.com/google/styleguide/tree/gh-pages/cpplint)
 
     Run cpplint.py on all modified files in your git tree:
     ```
     cpplint.py `git ls-files -m`
     ```
+
  1. Run all the tests for x86, and any other platform that you are modifying.
     ```
     make -f tensorflow/lite/micro/tools/make/Makefile test
-
     ```
 
     Please check the READMEs in the optimized kernel directories for specific
