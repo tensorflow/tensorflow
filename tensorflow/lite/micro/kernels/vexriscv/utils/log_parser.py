@@ -185,8 +185,7 @@ def renode_log_parser(data, output, ignore_list=None):
   ignore_count = 0
   processed = []
   for idx, line in enumerate(data):
-    print("Processing {:.2f}%".format((idx + 1) / len(data) * 100.),
-        end="\r")
+    print("Processing {:.2f}%".format((idx + 1) / len(data) * 100.), end="\r")
 
     if message not in line:
       continue
@@ -205,8 +204,7 @@ def renode_log_parser(data, output, ignore_list=None):
 
     processed.append(entry)
 
-  print(
-    "Extracted {} lines ({:.2f}%); {} lines are ignored ({:.2f}%)".format(
+  print("Extracted {} lines ({:.2f}%); {} lines are ignored ({:.2f}%)".format(
       len(processed),
       len(processed) / len(data) * 100., ignore_count,
       ignore_count / len(data) * 100.))
@@ -218,11 +216,11 @@ def renode_log_parser(data, output, ignore_list=None):
 
 
 def parse_log(filename,
-        output=None,
-        re_file=None,
-        source="gdb",
-        ignore=None,
-        full_trace=False):
+              output=None,
+              re_file=None,
+              source="gdb",
+              ignore=None,
+              full_trace=False):
   """
   Args:
     filename(str)
@@ -300,28 +298,28 @@ if __name__ == "__main__":
   parser = argparse.ArgumentParser()
   parser.add_argument("input", type=str, help="Input raw log file.")
   parser.add_argument("--output",
-            type=str,
-            help="Parsed log file. Default: [NAME]-parsed.[EXT]")
+                      type=str,
+                      help="Parsed log file. Default: [NAME]-parsed.[EXT]")
   parser.add_argument("--regex",
-            type=str,
-            help="Path to the regex files for parsing GDB log.")
+                      type=str,
+                      help="Path to the regex files for parsing GDB log.")
   parser.add_argument("--visualize",
-            action="store_true",
-            help="Parse and visualize")
+                      action="store_true",
+                      help="Parse and visualize")
   parser.add_argument("--top", type=int, help="Top # to visualize")
   parser.add_argument("--source",
-            type=str,
-            default="gdb",
-            choices=["gdb", "renode"],
-            help="Source of where the log is captured")
-  parser.add_argument("--ignore",
-            type=str,
-            help="List of functions (one for each line in the file) to \
+                      type=str,
+                      default="gdb",
+                      choices=["gdb", "renode"],
+                      help="Source of where the log is captured")
+  parser.add_argument(
+      "--ignore",
+      type=str,
+      help="List of functions (one for each line in the file) to \
                   ignore after parsing.")
-  parser.add_argument("--full-trace",
-                      action="store_true",
-                      help="")
-  parser.add_argument("--title", type=str,
+  parser.add_argument("--full-trace", action="store_true", help="")
+  parser.add_argument("--title",
+                      type=str,
                       help="Set title for the visualized image")
 
   args = parser.parse_args()
@@ -331,7 +329,7 @@ if __name__ == "__main__":
     args.output = "{}-parsed{}".format(fname, extension)
 
   parse_log(args.input, args.output, args.regex, args.source, args.ignore,
-        args.full_trace)
+            args.full_trace)
 
   if args.visualize:
     visualize_log(args.output, top=args.top, title=args.title)
