@@ -586,6 +586,7 @@ tf_python_pybind_extension(
     srcs = ["function.cc"],
     module_name = "_concrete_function",
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/python:pybind11_lib",
         "//tensorflow/python:util_header",
         "//third_party/python_runtime:headers",

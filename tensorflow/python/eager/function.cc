@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/python/lib/core/pybind11_lib.h"
 #include "tensorflow/python/util/util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace py = pybind11;
 
@@ -129,10 +130,10 @@ py::tuple ConvertNumpyInputs(py::object inputs) {
       // This case is equivalent to _is_ndarray(value) == True
       py::object a = AsNdarray(flat_inputs[i]);
       if (!PyObject_IsInstance(a.ptr(), np->attr("ndarray").ptr())) {
-        throw py::type_error(
-            std::string("The output of __array__ must be an np.ndarray (got ") +
-            a.ptr()->ob_type->tp_name + " from " +
-            value_ptr->ob_type->tp_name + ").");
+        throw py::type_error(strings::StrCat(
+            "The output of __array__ must be an np.ndarray (got ",
+            a.ptr()->ob_type->tp_name, " from ",
+            value_ptr->ob_type->tp_name, ")."));
       }
       flat_inputs[i] = (*create_constant_tensor)(a);
       filtered_flat_inputs.append(flat_inputs[i]);
