@@ -99,7 +99,7 @@ bool IsNdarray(py::handle value) {
       // For legacy reasons we do not automatically promote Numpy strings.
       || PyObject_IsInstance(value_ptr, np_str->ptr())
       // NumPy dtypes have __array__ as unbound methods.
-      || PyObject_IsInstance(value_ptr, reinterpret_cast<PyObject*>(&PyType_Type))
+      || PyType_Check(value_ptr)
       // CompositeTensors should be flattened instead.
       || swig::IsCompositeTensor(value_ptr));
 }
@@ -127,15 +127,15 @@ py::tuple ConvertNumpyInputs(py::object inputs) {
     } else if (py::hasattr(value, "__array__") && !(
         py::hasattr(value, "_should_act_as_resource_variable")
         || PyObject_IsInstance(value_ptr, np_str->ptr())
-        || PyObject_IsInstance(value_ptr, reinterpret_cast<PyObject*>(&PyType_Type))
+        || PyType_Check(value_ptr)
         || swig::IsCompositeTensor(value_ptr))) {
       // This case is equivalent to _is_ndarray(value) == True
       py::object a = AsNdarray(flat_inputs[i]);
       if (!PyObject_IsInstance(a.ptr(), np_ndarray->ptr())) {
         throw py::type_error(strings::StrCat(
             "The output of __array__ must be an np.ndarray (got ",
-            a.ptr()->ob_type->tp_name, " from ",
-            value_ptr->ob_type->tp_name, ")."));
+            Py_TYPE(a.ptr())->tp_name, " from ",
+            Py_TYPE(value_ptr)->tp_name, ")."));
       }
       flat_inputs[i] = (*create_constant_tensor)(a);
       filtered_flat_inputs.append(flat_inputs[i]);
