@@ -73,7 +73,11 @@ class BenchmarkAdapt(benchmark.Benchmark):
     batched_ds = ds.take(num_elements).batch(batch_size)
     input_t = keras.Input(shape=(), dtype=dtypes.string)
     layer = index_lookup.IndexLookup(
-        max_tokens=k, num_oov_tokens=0, reserve_zero=False)
+        max_tokens=k,
+        num_oov_indices=0,
+        mask_token=None,
+        oov_token="OOV",
+        dtype=dtypes.string)
     _ = layer(input_t)
     num_repeats = 5
     starts = []
@@ -93,7 +97,11 @@ class BenchmarkAdapt(benchmark.Benchmark):
     batched_ds = ds.take(num_elements).batch(batch_size)
     input_t = keras.Input(shape=(), dtype=dtypes.string)
     layer = index_lookup.IndexLookup(
-        max_tokens=k, num_oov_tokens=0, reserve_zero=False)
+        max_tokens=k,
+        num_oov_indices=0,
+        mask_token=None,
+        oov_token="OOV",
+        dtype=dtypes.string)
     _ = layer(input_t)
     num_repeats = 5
     starts = []
