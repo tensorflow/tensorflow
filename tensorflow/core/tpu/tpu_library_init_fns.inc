@@ -11,6 +11,7 @@ tensorflow::Status SetTpuConfigStructFns(void* library_handle) {
 
   TFTPU_SET_FN(config_fn, ConfigureDistributedTpuOp_DoWork);
   TFTPU_SET_FN(config_fn, WaitForDistributedTpuOp_DoWork);
+  TFTPU_SET_FN(config_fn, ShutdownDistributedTpuOp_DoWork);
   TFTPU_SET_FN(config_fn, InitializeHostForDistributedTpuOp_DoWork);
   TFTPU_SET_FN(config_fn, SetGlobalTPUArrayOp_DoWork);
   TFTPU_SET_FN(config_fn, DisconnectDistributedTpuChipsOp_DoWork);
@@ -19,11 +20,6 @@ tensorflow::Status SetTpuConfigStructFns(void* library_handle) {
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_HasTPUPodState);
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_TpusPerHost);
   TFTPU_SET_FN(config_fn, TpuConfigurationApi_TpuMemoryLimit);
-  TFTPU_SET_FN(config_fn,
-               TpuConfigurationApi_RemoteCompilationCacheSizeInBytes);
-  TFTPU_SET_FN(config_fn,
-               TpuConfigurationApi_CompilationCacheServerAddressFromConfig);
-  TFTPU_SET_FN(config_fn, TpuConfigurationApi_GetServerAddressAndPort);
 
   return tensorflow::Status::OK();
 }
