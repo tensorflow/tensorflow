@@ -82,7 +82,5 @@ HardwareType ParseHardwareType(absl::string_view device_type) {
   return HardwareType::UNKNOWN_HARDWARE;
 }
 
-bool HasDevice(HardwareType x) { return x > tensorflow::profiler::CPU_ONLY; }
-
 }  // namespace profiler
 }  // namespace tensorflow
