@@ -208,6 +208,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core/common_runtime:bfc_allocator",
         "//tensorflow/core/common_runtime/gpu:gpu_mem_allocator",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:tf_allocator_adapter",
     ] + if_cuda(["@local_config_nccl//:nccl"]),
 )
