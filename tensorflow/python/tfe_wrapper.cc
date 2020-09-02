@@ -359,10 +359,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                 tensorflow::InputTFE_Context(ctx)));
 
         tensorflow::DeviceNameUtils::ParsedName input_device_name;
-        if (!tensorflow::DeviceNameUtils::ParseFullName(device_name,
-                                                        &input_device_name) &&
-            !tensorflow::DeviceNameUtils::ParseLocalName(device_name,
-                                                         &input_device_name)) {
+        if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(
+                device_name, &input_device_name)) {
           tensorflow::ThrowValueError(
               absl::StrFormat("Failed parsing device name: '%s'", device_name)
                   .c_str());
