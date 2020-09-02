@@ -1,8 +1,8 @@
 # Custom operators
 
-Since TensorFlow Lite only supports a limited number of TensorFlow operators,
-not every model is convertible. For details, refer to
-[operator compatibility](ops_compatibility.md).
+Since the TensorFlow Lite builtin operator library only supports a limited
+number of TensorFlow operators, not every model is convertible. For details,
+refer to [operator compatibility](ops_compatibility.md).
 
 To allow conversion, users can provide their own custom implementation of an
 unsupported TensorFlow operator in TensorFlow Lite, known as a custom operator.
