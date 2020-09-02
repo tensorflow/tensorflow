@@ -28,6 +28,11 @@ python log_parser.py profile.txt --regex=gdb_regex.json \
 --visualize --top=7 --title=magic_wand
 
 """
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import argparse
 import collections
 import json
