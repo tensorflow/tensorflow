@@ -5,6 +5,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "DispatcherConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "WorkerConfig"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "WorkerServer"
     mtype: "<type \'type\'>"
   }

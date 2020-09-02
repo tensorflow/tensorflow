@@ -40,6 +40,12 @@
 * `tf.raw_ops.Max` and `tf.raw_ops.Min` no longer accept inputs of type
   `tf.complex64` or `tf.complex128`, because the behavior of these ops is not
   well defined for complex types.
+* `tf.data.experimental.service.DispatchServer` now takes a config tuple
+  instead of individual arguments. Usages should be updated to
+  `tf.data.experimental.service.DispatchServer(dispatcher_config)`.
+* `tf.data.experimental.service.WorkerServer` now takes a config tuple
+  instead of individual arguments. Usages should be updated to
+  `tf.data.experimental.service.WorkerServer(worker_config)`.
 
 ## Known Caveats
 

@@ -107,16 +107,16 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     work_dir = os.path.join(self.get_temp_dir(), "work_dir_",
                             name) if work_dir is None else work_dir
     return server_lib.DispatchServer(
-        port=port,
-        protocol=server_lib.DEFAULT_PROTOCOL,
-        work_dir=work_dir,
-        fault_tolerant_mode=fault_tolerant_mode)
+        server_lib.DispatcherConfig(
+            port=port,
+            work_dir=work_dir,
+            fault_tolerant_mode=fault_tolerant_mode))
 
   def start_worker_server(self, dispatcher, port=0):
     return server_lib.WorkerServer(
-        port=port,
-        dispatcher_address=_address_from_target(dispatcher.target),
-        protocol=server_lib.DEFAULT_PROTOCOL)
+        server_lib.WorkerConfig(
+            dispatcher_address=_address_from_target(dispatcher.target),
+            port=port))
 
   def restart_dispatcher(self, dispatcher):
     """Stops `dispatcher` and returns a new dispatcher with the same port."""
@@ -124,8 +124,8 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     dispatcher._stop()
     return self.start_dispatch_server(
         port=port,
-        work_dir=dispatcher._work_dir,
-        fault_tolerant_mode=dispatcher._fault_tolerant_mode)
+        work_dir=dispatcher._config.work_dir,
+        fault_tolerant_mode=dispatcher._config.fault_tolerant_mode)
 
   def restart_worker(self, worker, dispatcher, use_same_port=True):
     """Stops `worker` and returns a new worker."""
@@ -362,10 +362,11 @@ class DataServiceOpsTest(test_base.DatasetTestBase, parameterized.TestCase):
     except:
       raise self.skipTest("Flakes in portpicker library do not represent "
                           "TensorFlow errors.")
-    dispatcher = server_lib.DispatchServer(port=dispatcher_port, start=False)
+    dispatcher = server_lib.DispatchServer(
+        server_lib.DispatcherConfig(port=dispatcher_port), start=False)
     worker = server_lib.WorkerServer(
-        port=0,
-        dispatcher_address=_address_from_target(dispatcher.target),
+        server_lib.WorkerConfig(
+            dispatcher_address=_address_from_target(dispatcher.target), port=0),
         start=False)
 
     def start_servers():
