@@ -180,8 +180,7 @@ class ParamResolverInterface {
   // Called by each collective op at first execution in order to fill out
   // the CollectiveParams structure with data gathered from the full
   // (maybe distributed) collection of peer nodes.
-  virtual void CompleteParamsAsync(const DeviceAttributes& device,
-                                   CollectiveParams* cp,
+  virtual void CompleteParamsAsync(const string& device, CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    const StatusCallback& done) = 0;
 
@@ -302,8 +301,7 @@ class CollectiveExecutor : public core::RefCounted {
         "a CollectiveExecutor has not been provided."));
   }
 
-  virtual void CompleteParamsAsync(const DeviceAttributes& device,
-                                   CollectiveParams* cp,
+  virtual void CompleteParamsAsync(const string& device, CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    StatusCallback done) {
     done(errors::Internal(

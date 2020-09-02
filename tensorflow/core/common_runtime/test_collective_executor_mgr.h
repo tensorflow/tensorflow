@@ -16,7 +16,6 @@ limitations under the License.
 #define TENSORFLOW_CORE_COMMON_RUNTIME_TEST_COLLECTIVE_EXECUTOR_MGR_H_
 
 #include "tensorflow/core/framework/collective.h"
-#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace tensorflow {
@@ -36,7 +35,7 @@ class TestCollectiveExecutor : public CollectiveExecutor {
 };
 
 class TestParamResolver : public ParamResolverInterface {
-  void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
+  void CompleteParamsAsync(const string& device, CollectiveParams* cp,
                            CancellationManager* cancel_mgr,
                            const StatusCallback& done) override {
     done(errors::Internal("Unimplemented"));

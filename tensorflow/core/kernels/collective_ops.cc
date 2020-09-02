@@ -73,7 +73,7 @@ class CollectiveOpKernel : public AsyncOpKernel {
                 << " group " << col_params_.group.group_key << " instance "
                 << col_params_.instance.instance_key;
         col_exec->CompleteParamsAsync(
-            c->device()->attributes(), &col_params_, c->cancellation_manager(),
+            c->device()->name(), &col_params_, c->cancellation_manager(),
             [this, c, done](const Status& s) {
               if (s.ok()) {
                 col_params_.instance.impl_details.dependencies = dependencies_;
@@ -538,8 +538,7 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
               << " group " << col_params->group.group_key << " instance "
               << col_params->instance.instance_key;
       col_exec->CompleteParamsAsync(
-          c->device()->attributes(), col_params.get(),
-          c->cancellation_manager(),
+          c->device()->name(), col_params.get(), c->cancellation_manager(),
           [c, done = std::move(done), col_params, col_exec](const Status& s) {
             if (s.ok()) {
               auto actual_done = [c, group_key = col_params->group.group_key,

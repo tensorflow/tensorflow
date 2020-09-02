@@ -113,7 +113,7 @@ class BaseCollectiveExecutor : public CollectiveExecutor {
   void ExecuteAsync(OpKernelContext* ctx, const CollectiveParams& col_params,
                     const string& exec_key, StatusCallback done) override;
 
-  void CompleteParamsAsync(const DeviceAttributes& device, CollectiveParams* cp,
+  void CompleteParamsAsync(const string& device, CollectiveParams* cp,
                            CancellationManager* cancel_mgr,
                            StatusCallback done) override;
 
