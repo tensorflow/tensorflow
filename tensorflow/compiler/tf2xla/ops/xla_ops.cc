@@ -291,6 +291,16 @@ dimension_numbers: a serialized xla::DotDimensionNumbers proto.
 precision_config: a serialized xla::PrecisionConfig proto.
 )doc");
 
+REGISTER_OP("XlaSetBound")
+    .Input("input: int32")
+    .Input("bound: int32")
+    .Output("output: int32")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(
+        R"doc(Set a bound for the given input value as a hint to Xla compiler,
+        returns the same value.
+)doc");
+
 REGISTER_OP("XlaDynamicSlice")
     .Input("input: T")
     .Input("start_indices: Tindices")

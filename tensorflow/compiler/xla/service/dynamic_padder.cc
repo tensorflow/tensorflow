@@ -179,6 +179,22 @@ StatusOr<bool> ReplaceSetSize(HloInstruction* instr) {
   return true;
 }
 
+StatusOr<bool> ReplaceSetBound(HloInstruction* instr) {
+  if (instr->opcode() != HloOpcode::kCustomCall ||
+      instr->custom_call_target() != "SetBound") {
+    return false;
+  }
+
+  TF_RET_CHECK(Shape::Equal().IgnoreDynamicDimension()(
+      instr->shape(), instr->operand(0)->shape()))
+      << "instr->shape() " << instr->shape().ToString() << " , "
+      << "instruction operand shape " << instr->operand(0)->shape();
+  HloInstruction* operand = instr->mutable_operand(0);
+
+  TF_RETURN_IF_ERROR(instr->ReplaceAllUsesWith(operand));
+  return true;
+}
+
 bool ShouldSkipPadOnOperand(const HloInstruction* inst, int64 operand_num,
                             int64 dimension) {
   if ((inst->opcode() == HloOpcode::kReduceWindow ||
@@ -1370,7 +1386,10 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
   for (auto* computation : module->computations()) {
     for (auto instruction : computation->MakeInstructionPostOrder()) {
       TF_ASSIGN_OR_RETURN(bool replaced_set_size, ReplaceSetSize(instruction));
+      TF_ASSIGN_OR_RETURN(bool replaced_set_bound,
+                          ReplaceSetBound(instruction));
       changed = changed || replaced_set_size;
+      changed = changed || replaced_set_bound;
     }
   }
 
