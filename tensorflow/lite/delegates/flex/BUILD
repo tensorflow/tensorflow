@@ -180,6 +180,7 @@ tf_cc_test(
         ":delegate_data",
         ":delegate_only_runtime",
         ":test_util",
+        "//tensorflow/core:all_kernels",
         "@com_google_googletest//:gtest",
     ],
 )
