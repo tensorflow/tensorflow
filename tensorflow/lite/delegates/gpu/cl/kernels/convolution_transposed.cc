@@ -17,12 +17,14 @@ limitations under the License.
 
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/kernels/work_group_picking.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor_type.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -123,13 +125,9 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   auto src_desc = op_def.src_tensors[0];
   src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   AddSrcTensor("src_tensor", src_desc);
-
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
-  const auto src_tensor_type = op_def.src_tensors[0].storage_type;
-  bool image_buffer = src_tensor_type == TensorStorageType::IMAGE_BUFFER;
-  bool manual_clamp =
-      image_buffer || src_tensor_type == TensorStorageType::BUFFER;
+  const auto& src_def = op_def.src_tensors[0];
 
   std::string c = GetCommonDefines(op_def.precision);
 
@@ -166,13 +164,13 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   auto generate_id = [&](const std::string& x, const std::string& y,
                          const std::string& z) {
     std::string id;
-    if (op_def.src_tensors[0].HasAxis(Axis::WIDTH)) {
+    if (src_def.HasAxis(Axis::WIDTH)) {
       id += "_w" + x;
     }
-    if (op_def.src_tensors[0].HasAxis(Axis::HEIGHT)) {
+    if (src_def.HasAxis(Axis::HEIGHT)) {
       id += "_h" + y;
     }
-    if (op_def.src_tensors[0].HasAxis(Axis::DEPTH)) {
+    if (src_def.HasAxis(Axis::DEPTH)) {
       id += "_d" + z;
     }
     return id;
@@ -186,14 +184,18 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   auto generate_check = [&](const std::string& x, const std::string& y,
                             const std::string& z) {
     std::string check;
-    if (op_def.src_tensors[0].HasAxis(Axis::WIDTH)) {
-      check += "in_x" + x;
-    }
-    if (op_def.src_tensors[0].HasAxis(Axis::HEIGHT)) {
-      check += " && in_y" + y;
-    }
-    if (op_def.src_tensors[0].HasAxis(Axis::DEPTH)) {
-      check += " && in_z" + z;
+    const std::vector<Axis> axes{Axis::WIDTH, Axis::HEIGHT, Axis::DEPTH};
+    const std::vector<std::string> names{"in_x", "in_y", "in_z"};
+    const std::vector<std::string> coords{x, y, z};
+    for (int i = 0; i < axes.size(); ++i) {
+      const auto& axis = axes[i];
+      if (src_def.HasAxis(axis) && !src_def.SupportsZeroClamp(axis) &&
+          block_size[i] != 1) {
+        if (!check.empty()) {
+          check += " && ";
+        }
+        check += names[i] + coords[i];
+      }
     }
     return check;
   };
@@ -223,7 +225,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   c += "  int ceil_x = dst_x / args.stride_x;\n";
   c += "  dst_x = ceil_x * args.stride_x * " + std::to_string(block_size.x) +
        " + rem_x;\n";
-  if (op_def.src_tensors[0].HasAxis(Axis::DEPTH)) {
+  if (src_def.HasAxis(Axis::DEPTH)) {
     c += "  int linear_id_y = get_global_id(1);\n";
     c += "  int dst_y = linear_id_y % args.grid_size_y;\n";
     c += "  int dst_z = linear_id_y / args.grid_size_y;\n";
@@ -247,7 +249,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   if (weights_are_buffer) {
     c += "  int f_base = dst_s * args.src_tensor.Slices() * args.kernel_size_x "
          "* args.kernel_size_y";
-    if (op_def.src_tensors[0].HasAxis(Axis::DEPTH)) {
+    if (src_def.HasAxis(Axis::DEPTH)) {
       c += " * args.kernel_size_z";
     }
     c += ";\n";
@@ -280,7 +282,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   c +=
       "  int src_y = (kernel_first_dst_y + offset_y_strided) / args.stride_y - "
       "offset_y;\n";
-  if (op_def.src_tensors[0].HasAxis(Axis::DEPTH)) {
+  if (src_def.HasAxis(Axis::DEPTH)) {
     c += "  int kernel_first_dst_z = dst_z + args.padding_z;\n";
     c += "  int kernel_last_dst_z = kernel_first_dst_z - args.kernel_size_z;\n";
     c += "  int offset_z = abs(args.padding_z);\n";
@@ -294,13 +296,16 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
     for (int z = 0; z < block_size.z; ++z) {
       const std::string zindex = std::to_string(z);
       c += "    int sz" + zindex + " = src_z + " + zindex + ";\n";
-      if (src_tensor_type != TensorStorageType::TEXTURE_3D) {
+      if (!src_def.SupportsZeroClamp(Axis::DEPTH)) {
         c += "    bool in_z" + zindex + " = sz" + zindex + " >= 0 && sz" +
              zindex + " < args.src_tensor.Depth();\n";
+        if (!src_def.CanReadOutOfBorder(Axis::DEPTH)) {
+          c += "    sz" + zindex + " = clamp(sz" + zindex +
+               ", 0, args.src_tensor.Depth() - 1);\n";
+        }
       }
     }
-    if (block_size.z == 1 &&
-        (src_tensor_type != TensorStorageType::TEXTURE_3D)) {
+    if (block_size.z == 1 && !src_def.SupportsZeroClamp(Axis::DEPTH)) {
       c += "    if (!in_z0) continue;\n";
     }
     c += "    int kernel_z = kernel_first_dst_z - src_as_dst_z;\n";
@@ -316,16 +321,19 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   for (int y = 0; y < block_size.y; ++y) {
     const std::string yindex = std::to_string(y);
     const std::string src_y =
-        op_def.src_tensors[0].HasAxis(Axis::DEPTH) ? "src_y_copy" : "src_y";
+        src_def.HasAxis(Axis::DEPTH) ? "src_y_copy" : "src_y";
     c += "    int sy" + yindex + " = " + src_y + " + " + yindex + ";\n";
-    if (manual_clamp) {
+    if (!src_def.SupportsZeroClamp(Axis::HEIGHT)) {
       c += "    bool in_y" + yindex + " = sy" + yindex + " >= 0 && sy" +
            yindex + " < args.src_tensor.Height();\n";
-      if (!image_buffer) {
+      if (!src_def.CanReadOutOfBorder(Axis::HEIGHT)) {
         c += "    sy" + yindex + " = clamp(sy" + yindex +
              ", 0, args.src_tensor.Height() - 1);\n";
       }
     }
+  }
+  if (block_size.y == 1 && !src_def.SupportsZeroClamp(Axis::HEIGHT)) {
+    c += "      if (!in_y0) continue;\n";
   }
   c += "    int kernel_y = kernel_first_dst_y - src_as_dst_y;\n";
   c += "    int src_as_dst_x = src_x * args.stride_x;\n";
@@ -336,14 +344,17 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   for (int x = 0; x < block_size.x; ++x) {
     const std::string xindex = std::to_string(x);
     c += "      int sx" + xindex + " = src_x_copy + " + xindex + ";\n";
-    if (manual_clamp) {
+    if (!src_def.SupportsZeroClamp(Axis::WIDTH)) {
       c += "      bool in_x" + xindex + " = sx" + xindex + " >= 0 && sx" +
            xindex + " < args.src_tensor.Width();\n";
-      if (!image_buffer) {
+      if (!src_def.CanReadOutOfBorder(Axis::WIDTH)) {
         c += "      sx" + xindex + " = clamp(sx" + xindex +
              ", 0, args.src_tensor.Width() - 1);\n";
       }
     }
+  }
+  if (block_size.x == 1 && !src_def.SupportsZeroClamp(Axis::WIDTH)) {
+    c += "      if (!in_x0) continue;\n";
   }
   for (int z = 0; z < block_size.z; ++z) {
     const std::string zind = std::to_string(z);
@@ -354,12 +365,14 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
         const std::string id = generate_id(xind, yind, zind);
         const std::string check = generate_check(xind, yind, zind);
         std::string coords = "sx" + xind + ", sy" + yind;
-        if (op_def.src_tensors[0].HasAxis(Axis::DEPTH)) {
+        if (src_def.HasAxis(Axis::DEPTH)) {
           coords += ", sz" + zind;
         }
-        c += "      args.src_tensor.GetAddress(addr" + id + ", " + coords +
-             ", 0);\n";
-        if (image_buffer) {
+        if (src_def.IsLinear()) {
+          c += "      args.src_tensor.GetAddress(addr" + id + ", " + coords +
+               ", 0);\n";
+        }
+        if (src_def.ReturnsZeroForNegOneRead()) {
           c += "      addr" + id + " = select(-1, addr" + id + ", (" + check +
                "));\n";
           c += "      int ds" + id +
@@ -369,14 +382,11 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
       }
     }
   }
-  if (src_tensor_type == TensorStorageType::BUFFER) {
+  if (src_def.storage_type == TensorStorageType::BUFFER) {
     c += "      int ds = args.src_tensor.SliceStride();\n";
   }
-  if (block_size.x == 1 && block_size.y == 1 && manual_clamp) {
-    c += "      if (!in_x0 || !in_y0) continue;\n";
-  }
   c += "      int kernel_x = kernel_first_dst_x - src_as_dst_x;\n";
-  if (op_def.src_tensors[0].HasAxis(Axis::DEPTH)) {
+  if (src_def.HasAxis(Axis::DEPTH)) {
     c += "      int kernel_index = (kernel_z * args.kernel_size_y + kernel_y) "
          "*  args.kernel_size_x + kernel_x;\n";
   } else {
@@ -398,26 +408,36 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
       for (int x = 0; x < block_size.x; ++x) {
         const std::string xind = std::to_string(x);
         const std::string id = generate_id(xind, yind, zind);
-        const std::string check = generate_check(xind, yind, zind);
-        if (image_buffer) {
-          c += "        FLT4 src" + id + " = args.src_tensor.Read(addr" + id +
-               "); addr" + id + " += ds" + id + ";\n";
-        } else if (manual_clamp) {
-          if (conditional_read) {
-            c += "        FLT4 src" + id + " = " + check +
-                 " ? args.src_tensor.Read(addr" + id +
-                 ") : (FLT4)(0.0f); addr" + id + " += ds;\n";
-          } else {
-            c += "        FLT4 src" + id + " = args.src_tensor.Read(addr" + id +
-                 ") * (FLT)(" + check + "); addr" + id + " += ds;\n";
-          }
+        std::string address;
+        if (src_def.IsLinear()) {
+          address = "addr" + id;
         } else {
-          std::string coords = "sx" + xind + ", sy" + yind;
-          if (op_def.src_tensors[0].HasAxis(Axis::DEPTH)) {
-            coords += ", sz" + zind;
+          address = "sx" + xind + ", sy" + yind;
+          if (src_def.HasAxis(Axis::DEPTH)) {
+            address += ", sz" + zind;
           }
-          c += "        FLT4 src" + id + " = args.src_tensor.Read(" + coords +
-               ", s);\n";
+          address += ", s";
+        }
+        if (src_def.ReturnsZeroForNegOneRead()) {
+          c += "        FLT4 src" + id + " = args.src_tensor.Read(" + address +
+               "); " + address + " += ds" + id + ";\n";
+        } else {
+          const std::string check = generate_check(xind, yind, zind);
+          if (!check.empty()) {
+            if (conditional_read) {
+              c += "        FLT4 src" + id + " = " + check +
+                   " ? args.src_tensor.Read(" + address + ") : (FLT4)(0.0f);\n";
+            } else {
+              c += "        FLT4 src" + id + " = args.src_tensor.Read(" +
+                   address + ") * (FLT)(" + check + ");\n";
+            }
+          } else {
+            c += "        FLT4 src" + id + " = args.src_tensor.Read(" +
+                 address + ");\n";
+          }
+          if (src_def.IsLinear()) {
+            c += "        addr" + id + " += ds;\n";
+          }
         }
       }
     }
@@ -456,7 +476,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
   c += "      }\n";
   c += "    }\n";
   c += "  }\n";
-  if (op_def.src_tensors[0].HasAxis(Axis::DEPTH)) {
+  if (src_def.HasAxis(Axis::DEPTH)) {
     c += "  }\n";
   }
   for (int s = 0; s < block_size.w; ++s) {
@@ -476,7 +496,7 @@ std::string ConvolutionTransposed::GenerateConvolutionTransposedCode(
           c += "    {\n";
           c += "      int xc = dst_x + args.stride_x * " + xind + ";\n";
           c += "      int yc = dst_y + args.stride_y * " + yind + ";\n";
-          if (op_def.src_tensors[0].HasAxis(Axis::DEPTH)) {
+          if (src_def.HasAxis(Axis::DEPTH)) {
             c += "      int zc = dst_z + args.stride_z * " + zind + ";\n";
             checks += " && zc < args.dst_tensor.Depth()";
             coords += ", zc";
