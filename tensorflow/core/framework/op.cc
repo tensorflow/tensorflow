@@ -289,16 +289,4 @@ Status OpListOpRegistry::LookUp(const string& op_type_name,
   return OpNotFound(op_type_name);
 }
 
-// Other registration ---------------------------------------------------------
-
-namespace register_op {
-OpDefBuilderReceiver::OpDefBuilderReceiver(
-    const OpDefBuilderWrapper<true>& wrapper) {
-  OpRegistry::Global()->Register(
-      [wrapper](OpRegistrationData* op_reg_data) -> Status {
-        return wrapper.builder().Finalize(op_reg_data);
-      });
-}
-}  // namespace register_op
-
 }  // namespace tensorflow
