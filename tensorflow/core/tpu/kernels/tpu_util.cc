@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/tpu/kernels/tpu_util.h"
 
+#include "absl/strings/str_format.h"
 #include "absl/strings/str_split.h"
 #include "tensorflow/core/platform/random.h"
 #include "tensorflow/core/tpu/tpu_api.h"
@@ -97,8 +98,13 @@ Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
   return Status::OK();
 }
 
-void RecycleUnusedPort(int port) {
-  UtilApiFn()->TpuNetUtil_RecycleUnusedPortFn(port);
+xla::StatusOr<std::unique_ptr<::grpc::ServerBuilder>> CreateServerBuilder(
+    int serving_port) {
+  auto server_builder = absl::make_unique<::grpc::ServerBuilder>();
+  server_builder->AddListeningPort(
+      absl::StrFormat("[::]:%d", serving_port),
+      ::grpc::InsecureServerCredentials());  // NOLINT
+  return std::move(server_builder);
 }
 }  // namespace tpu
 }  // namespace tensorflow
