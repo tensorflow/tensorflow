@@ -23,6 +23,7 @@ import numpy
 import six
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -36,7 +37,6 @@ from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import test
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import util
@@ -609,5 +609,4 @@ class InterfaceTests(keras_parameterized.TestCase):
 
 
 if __name__ == "__main__":
-  ops.enable_eager_execution()
   test.main()

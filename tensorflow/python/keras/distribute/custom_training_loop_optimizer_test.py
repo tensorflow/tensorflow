@@ -24,10 +24,10 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import variables
-from tensorflow.python.platform import test
 
 
 class OptimizerTest(test.TestCase, parameterized.TestCase):

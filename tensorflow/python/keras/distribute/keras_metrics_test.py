@@ -21,10 +21,10 @@ from absl.testing import parameterized
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import metrics
 from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
 
 
 def _labeled_dataset_fn():

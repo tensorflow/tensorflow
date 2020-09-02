@@ -30,9 +30,9 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import def_function
+from tensorflow.python.eager import test
 from tensorflow.python.module import module
 from tensorflow.python.ops import math_ops
-from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
