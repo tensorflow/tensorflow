@@ -116,6 +116,7 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
                          std::vector<AbstractTensorHandle*> inputs,
                          float* dtheta_approx, int input_index,
                          bool use_function, bool is_scalar_out) {
+  GradientRegistry registry;
   AbstractTensorHandle* theta =
       inputs[input_index];  // parameter we are grad checking
 
@@ -175,13 +176,13 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
                                       is_scalar_out));
     AbstractTensorHandle* fMinus = f_outputs[0];
 
-    // Take Difference of both estimates: (f(x + eps) - f(x - eps)).
+    // Take Difference of both estimates: (f(theta + eps) - f(theta - eps)).
     TF_RETURN_IF_ERROR(
         ops::Sub(ctx, {fPlus, fMinus}, absl::MakeSpan(f_outputs), "sub_top"));
     AbstractTensorHandle* fDiff = f_outputs[0];
 
     // Calculate using the difference quotient definition:
-    // (f(x + eps) - f(x - eps)) / (2 * eps).
+    // (f(theta + eps) - f(theta - eps)) / (2 * eps).
     TF_RETURN_IF_ERROR(ops::DivNoNan(ctx, {fDiff, two_eps.get()},
                                      absl::MakeSpan(f_outputs),
                                      "diff_quotient"));

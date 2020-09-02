@@ -82,7 +82,8 @@ TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   float dapprox[4] = {0};
   Status s = CalcNumericalGrad(ctx.get(), MatMulModel, inputs, dapprox,
                                /*input_index=*/0,
-                               /*use_function=*/!std::get<2>(GetParam()));
+                               /*use_function=*/!std::get<2>(GetParam()), 
+                               /*is_scalar_out=*/false);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   float expected_dA[4] = {-.5f, 2.0f, -.5f, 2.0f};
@@ -203,7 +204,8 @@ TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
   float dapprox[9] = {0};  // Will contain numerical approximation data.
   s = CalcNumericalGrad(ctx.get(), SoftmaxModel, inputs, dapprox,
                         /*input_index=*/0,
-                        /*use_function=*/!std::get<2>(GetParam()));
+                        /*use_function=*/!std::get<2>(GetParam()), 
+                        /*is_scalar_out=*/false);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
   // Now compare the two implementations:

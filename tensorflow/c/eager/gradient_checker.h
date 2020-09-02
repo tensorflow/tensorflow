@@ -45,14 +45,15 @@ using Model = std::function<Status(
  *
  * `use_function` indicates whether to use graph mode(true) or eager(false).
  *
- * `is_scalar_out` should be true when `forward` returns a scalar TensorHandle;
+ * `is_scalar_out` is an optional parameter defaulting to true,
+ *  meaning it assumes that `forward` returns a scalar TensorHandle;
  *  else this function will reduce_sum the tensor to get a scalar to estimate
- *  the gradient with. Default is false.
+ *  the gradient with.
  */
 Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
                          std::vector<AbstractTensorHandle*> inputs,
                          float* dtheta_approx, int input_index,
-                         bool use_function, bool is_scalar_out = false);
+                         bool use_function, bool is_scalar_out = true);
 
 }  // namespace gradients
 }  // namespace tensorflow
