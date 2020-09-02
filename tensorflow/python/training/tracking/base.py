@@ -54,6 +54,11 @@ TrackableReference = collections.namedtuple(
     ])
 
 
+# TODO(bfontain):  Update once sharded initialization interface is finalized.
+ShardInfo = collections.namedtuple(
+    "CheckpointInitialValueShardInfo", ["shape", "offset"])
+
+
 class CheckpointInitialValueCallable(object):
   """A callable object that returns a CheckpointInitialValue.
 
@@ -67,12 +72,13 @@ class CheckpointInitialValueCallable(object):
   def checkpoint_position(self):
     return self._checkpoint_position
 
-  def __call__(self, shape=None, dtype=None):
+  def __call__(self, shape=None, dtype=None, shard_info=None):
     # Note that the signature here is for compatibility with normal callable
     # initializers which take shape and dtype. Although dtype isn't used, it
     # will get passed in by a functool.partial_wrapper in places like
     # base_layer_utils.py's make_variable.
-    return CheckpointInitialValue(self._checkpoint_position, shape)
+    return CheckpointInitialValue(
+        self._checkpoint_position, shape, shard_info=shard_info)
 
   @property
   def restore_uid(self):
@@ -92,8 +98,18 @@ class CheckpointInitialValue(ops.Tensor):
   how `CheckpointInitialValue` is used.
   """
 
-  def __init__(self, checkpoint_position, shape=None):
-    self.wrapped_value = checkpoint_position.value_tensors()[VARIABLE_VALUE_KEY]
+  def __init__(self, checkpoint_position, shape=None, shard_info=None):
+    if shard_info:
+      full_shape_str = " ".join("%d" % d for d in shape) + " "
+      slice_spec = ":".join(
+          "%d,%d" % (o, s) for o, s in zip(shard_info.offset, shard_info.shape))
+      shape_and_slice = full_shape_str + slice_spec
+      # Override shape here so we set the correct shape below.
+      shape = shard_info.shape
+    else:
+      shape_and_slice = ""
+    self.wrapped_value = checkpoint_position.value_tensors(
+        {VARIABLE_VALUE_KEY: shape_and_slice})[VARIABLE_VALUE_KEY]
     if shape:
       # We need to set the static shape information on the initializer if
       # possible so we don't get a variable with an unknown shape.
@@ -311,11 +327,17 @@ class CheckpointPosition(object):
             attributes[0].name == VARIABLE_VALUE_KEY and
             not self.object_proto.children)
 
-  def value_tensors(self):
+  def value_tensors(self, shape_and_slices=None):
     """Create value `Tensor`s for this object's attributes.
 
     Does not require that the Python object has been created. Used for
     restore-on-create when executing eagerly.
+
+    Args:
+      shape_and_slices: A dict mapping from object attribute names to a shape
+        and slice string that will be passed to a RestoreV2 op. If the dict is
+        None or if an object attribute is not in the dict, the full tensor will
+        be restored.
 
     Returns:
       A dictionary mapping from object attribute names to `Tensor`s.
@@ -329,10 +351,15 @@ class CheckpointPosition(object):
       with ops.init_scope():
         with ops.device(io_device):
           # Run the restore itself on the io_device(CPU or specified).
+          if (shape_and_slices is not None and
+              serialized_tensor.name in shape_and_slices):
+            shape_and_slice = shape_and_slices[serialized_tensor.name]
+          else:
+            shape_and_slice = ""
           value, = io_ops.restore_v2(
               prefix=self._checkpoint.save_path_tensor,
               tensor_names=[checkpoint_key],
-              shape_and_slices=[""],
+              shape_and_slices=[shape_and_slice],
               dtypes=[base_type],
               name="%s_checkpoint_read" % (serialized_tensor.name,))
         # Copy the value to the current device if necessary.

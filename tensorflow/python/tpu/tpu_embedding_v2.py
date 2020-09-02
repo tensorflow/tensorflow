@@ -51,6 +51,7 @@ from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -1490,7 +1491,8 @@ def extract_variable_info(kwargs):
     return (kwargs["name"], shape,
             kwargs["initial_value"].keywords.get("dtype", kwargs["dtype"]),
             kwargs["initial_value"].func)
-  elif "shape" not in kwargs or kwargs["shape"] is None:
+  elif "shape" not in kwargs or kwargs["shape"] is None or not callable(
+      kwargs["initial_value"]):
     raise ValueError(
         "Unable to extract initializer function and shape from {}. Please "
         "either pass a function that expects a shape and dtype as the "
@@ -1518,7 +1520,8 @@ def make_sharded_variable_creator(hosts):
     kwargs["skip_mirrored_creator"] = True
 
     num_hosts = len(hosts)
-    name, shape, dtype, initial_value = extract_variable_info(kwargs)
+    name, shape, dtype, unwrapped_initial_value = extract_variable_info(kwargs)
+    initial_value = kwargs["initial_value"]
     rows = shape[0]
     cols = shape[1]
     missing = rows % num_hosts
@@ -1526,21 +1529,23 @@ def make_sharded_variable_creator(hosts):
     partitions = ([rows // num_hosts + 1] * missing + [rows // num_hosts] *
                   (num_hosts - missing))
     variables = []
-    kwargs["dtype"] = dtype
-    # TODO(bfontain): Remove this check once we can pass position and shape of
-    # shards to CheckpointInitialValueCallable.
-    if isinstance(initial_value,
-                  base.CheckpointInitialValueCallable) and num_hosts > 1:
-      raise RuntimeError("Delayed restoration of variables not available when "
-                         "there are multiple TPU hosts, please ensure that the "
-                         "api object has been built before you restore.")
+    sharding_aware = "shard_info" in tf_inspect.getargspec(initial_value).args
 
+    # Keep track of offset for sharding aware initializers.
+    offset = 0
+    kwargs["dtype"] = dtype
     for i, p in enumerate(partitions):
       with ops.device(hosts[i]):
-        kwargs["shape"] = (p, cols)
         kwargs["name"] = "{}_{}".format(name, i)
-        kwargs["initial_value"] = functools.partial(
-            initial_value, kwargs["shape"], dtype=dtype)
+        kwargs["shape"] = (p, cols)
+        if sharding_aware:
+          shard_info = base.ShardInfo(kwargs["shape"], (offset, 0))
+          kwargs["initial_value"] = functools.partial(
+              initial_value, shard_info=shard_info)
+          offset += p
+        else:
+          kwargs["initial_value"] = functools.partial(
+              unwrapped_initial_value, kwargs["shape"], dtype=dtype)
         variables.append(next_creator(*args, **kwargs))
     return TPUShardedVariable(variables, name=name)
   return sharded_variable_creator
