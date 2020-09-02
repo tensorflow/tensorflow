@@ -130,7 +130,7 @@ The segmentation category mask should looks like:
 <img src="images/segmentation-output.png" alt="segmentation-output" width="30%">
 
 Try out the simple
-[CLI demo tool for ImageClassifier](https://github.com/tensorflow/tflite-support/tree/master/tensorflow_lite_support/examples/task/vision/desktop#image-segmenter)
+[CLI demo tool for ImageSegmenter](https://github.com/tensorflow/tflite-support/tree/master/tensorflow_lite_support/examples/task/vision/desktop#image-segmenter)
 with your own model and test data.
 
 ## Model compatibility requirements
