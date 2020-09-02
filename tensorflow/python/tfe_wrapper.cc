@@ -400,7 +400,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
               absl::StrFormat("No matching devices found for '%s'", device_name)
                   .c_str());
         }
-        CHECK(matched_device);
 
         tensorflow::AllocatorAttributes attrs;
         tensorflow::Allocator* allocator = matched_device->GetAllocator(attrs);
@@ -414,7 +413,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
             absl::StrFormat("Allocator stats not available for device '%s'",
                             matched_device->name())
                 .c_str());
-        LOG(FATAL) << "Unreachable";
       });
 
   // XLA Eager Logic
