@@ -1,3 +1,29 @@
+
+<!--
+Semi-automated TOC generation with instructions from
+https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
+-->
+<!--ts-->
+   * [Resources](#resources)
+   * [Contributing Guidelines](#contributing-guidelines)
+      * [General Pull Request Guidelines](#general-pull-request-guidelines)
+      * [Guidelines for Specific Contribution Categories](#guidelines-for-specific-contribution-categories)
+         * [Bug Fixes](#bug-fixes)
+         * [Reference Kernel Implementations](#reference-kernel-implementations)
+         * [Optimized Kernel Implementations](#optimized-kernel-implementations)
+         * [New Target / Platform / IDE / Examples](#new-target--platform--ide--examples)
+         * [New Features](#new-features)
+   * [Development Workflow Notes](#development-workflow-notes)
+      * [Before submitting your PR](#before-submitting-your-pr)
+      * [During the PR review](#during-the-pr-review)
+      * [Reviewer notes](#reviewer-notes)
+      * [Python notes](#python-notes)
+
+<!-- Added by: advaitjain, at: Wed 02 Sep 2020 02:55:16 PM PDT -->
+
+<!--te-->
+
+
 # Resources
 
 A
@@ -179,10 +205,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
 
  1. Make sure your code is lint-free.
 
-    Get a copy of cpplint
-    ```
-    git@github.com:google/styleguide.git
-    ```
+    Get a copy of [cpplint](https://github.com/google/styleguide/tree/gh-pages/cpplint)
 
     Run cpplint.py on all modified files in your git tree:
     ```
@@ -202,8 +225,8 @@ to determine if the requested feature aligns with the TFLM roadmap.
     following command (replace `micro_interpreter_test` with the target that you
     want to test:
     ```
-    CC=clang BAZEL_COMPILER=llvm bazel run --copt=-DADDRESS_SANITIZER    
-    --copt=-fsanitize=address --linkopt=-fsanitize=address
+    CC=clang BAZEL_COMPILER=llvm bazel run --copt=-DADDRESS_SANITIZER \
+    --copt=-fsanitize=address --linkopt=-fsanitize=address \
     tensorflow/lite/micro:micro_interpreter_test
     ```
 
