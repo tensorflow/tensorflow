@@ -25,15 +25,10 @@ namespace py = pybind11;
 
 static const py::module* nest = new py::module(
     py::module::import("tensorflow.python.util.nest"));
-static const py::object Tensor =
-    py::module::import("tensorflow.python.framework.ops").attr("Tensor");
 static const py::object BaseResourceVariable =
     py::module::import("tensorflow.python.ops.resource_variable_ops")
         .attr("BaseResourceVariable");
 static const py::module* np = new py::module(py::module::import("numpy"));
-static const py::object CompositeTensor =
-    py::module::import("tensorflow.python.framework.composite_tensor")
-        .attr("CompositeTensor");
 static const py::object* create_constant_tensor = new py::object(
     py::module::import("tensorflow.python.framework.constant_op")
         .attr("constant"));
