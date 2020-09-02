@@ -25,9 +25,6 @@ namespace py = pybind11;
 
 static const py::module* nest = new py::module(
     py::module::import("tensorflow.python.util.nest"));
-static const py::object BaseResourceVariable =
-    py::module::import("tensorflow.python.ops.resource_variable_ops")
-        .attr("BaseResourceVariable");
 static const py::module* np = new py::module(py::module::import("numpy"));
 static const py::object* create_constant_tensor = new py::object(
     py::module::import("tensorflow.python.framework.constant_op")
@@ -94,7 +91,7 @@ bool IsNdarray(py::handle value) {
   PyObject* value_ptr = value.ptr();
   return py::hasattr(value, "__array__") && !(
       swig::IsTensor(value_ptr)
-      || PyObject_IsInstance(value_ptr, BaseResourceVariable.ptr())
+      || swig::IsBaseResourceVariable(value_ptr)
       || py::hasattr(value, "_should_act_as_resource_variable")
       // For legacy reasons we do not automatically promote Numpy strings.
       || PyObject_IsInstance(value_ptr, np->attr("str_").ptr())
@@ -121,9 +118,8 @@ py::tuple ConvertNumpyInputs(py::object inputs) {
 
   for (int i = 0; i < flat_inputs.size(); ++i) {
     py::handle value = flat_inputs[i].ptr();
-    PyObject* value_ptr = flat_inputs[i].ptr();
-    if (swig::IsTensor(value_ptr) ||
-        PyObject_IsInstance(value_ptr, BaseResourceVariable.ptr())) {
+    PyObject* value_ptr = value.ptr();
+    if (swig::IsTensor(value_ptr) || swig::IsBaseResourceVariable(value_ptr)) {
       filtered_flat_inputs.append(flat_inputs[i]);
     } else if (py::hasattr(value, "__array__") && !(
         py::hasattr(value, "_should_act_as_resource_variable")
