@@ -219,6 +219,11 @@ void TpuComputationPlacer_AssignDevices(XLA_ComputationPlacer* placer,
                                         int replica_count,
                                         int computation_count, int* assignment,
                                         SE_Status* status);
+void TpuComputationPlacer_AssignLocalDevices(SE_TpuTopology_Host* host,
+                                             int replica_count,
+                                             int computation_count,
+                                             int* assignment,
+                                             SE_Status* status);
 
 int TpuTopology_LogicalDevicesPerHost(SE_TpuTopology* tpu_topology,
                                       TpuCoreTypeEnum tpu_core_type);
@@ -390,6 +395,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_Free);
   TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_AssignDevices);
+  TFTPU_ADD_FN_IN_STRUCT(TpuComputationPlacer_AssignLocalDevices);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_LogicalDevicesPerChip);

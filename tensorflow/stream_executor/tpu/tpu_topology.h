@@ -52,6 +52,8 @@ class TpuHostLocationExternal {
       : host_location_(host_location) {}
   int32 Id() const;
 
+  SE_TpuTopology_Host* impl() const { return host_location_; }
+
  private:
   SE_TpuTopology_Host* host_location_;
 };
