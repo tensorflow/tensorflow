@@ -115,7 +115,8 @@ class MicroInterpreter {
   // TODO(b/149795762): Add this to the TfLiteStatus enum.
   TfLiteStatus Invoke();
 
-  size_t tensors_size() const { return context_.tensors_size; }
+  // size_t tensors_size() const { return context_.tensors_size; }
+  size_t tensors_size() const { return subgraph_->tensors()->Length(); }
   TfLiteTensor* tensor(size_t tensor_index);
   template <class T>
   T* typed_tensor(int tensor_index) {
