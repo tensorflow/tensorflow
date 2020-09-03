@@ -530,16 +530,11 @@ bool CanCreateXlaKernel(const NodeDef& node_def) {
 }
 
 Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
-                                       const NodeDef& node_def,
+                                       const NameAttrList& function,
                                        const FunctionBody** fbody,
                                        std::vector<int>* constant_arg_indices,
                                        std::vector<int>* resource_arg_indices) {
   FunctionLibraryRuntime::Handle handle;
-  // If node_def is not instantiable, e.g., the function does not exist,
-  // simply bail out.
-  NameAttrList function;
-  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
-
   TF_RETURN_IF_ERROR(
       flr->Instantiate(function.name(), AttrSlice(&function.attr()), &handle));
   *fbody = flr->GetFunctionBody(handle);

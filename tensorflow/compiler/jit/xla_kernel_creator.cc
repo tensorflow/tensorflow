@@ -122,11 +122,13 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   }
 
   // Get function body, constant args, and resource args.
+  NameAttrList function;
+  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
   const FunctionBody* fbody = nullptr;
   std::vector<int> constant_arg_indices;
   std::vector<int> resource_arg_indices;
   TF_RETURN_IF_ERROR(GetBodyAndConstantsAndResources(
-      flr, node_def, &fbody, &constant_arg_indices, &resource_arg_indices));
+      flr, function, &fbody, &constant_arg_indices, &resource_arg_indices));
 
   // Set input and output memory types.
   MemoryTypeVector input_memory_types(fbody->arg_types.size(), DEVICE_MEMORY);
@@ -176,8 +178,6 @@ static Status CreateXlaKernel(FunctionLibraryRuntime* flr,
   }
 
   // Create the kernel.
-  NameAttrList function;
-  TF_RETURN_IF_ERROR(NameAndAttrsFromFunctionCall(node_def, &function));
   Device* dev = flr->device();
   Status s;
   auto props = std::make_shared<NodeProperties>(
