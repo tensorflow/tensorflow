@@ -337,6 +337,7 @@ std::unique_ptr<OperationPass<ModuleOp>>
 CreateTPUExtractOutsideCompilationPass();
 
 // Populates the supplied passmanager with the passes required to run the
+// bridge.
 void CreateTPUBridgePipeline(OpPassManager& pm);
 
 // Populates the supplied passmanager with the passes required to run the
