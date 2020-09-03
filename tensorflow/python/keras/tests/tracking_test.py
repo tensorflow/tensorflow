@@ -177,20 +177,17 @@ class ListTests(keras_parameterized.TestCase):
     m2(m2.null_input())
     self.assertLen(m2.trainable_variables, 6)
 
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testUpdatesForwarded(self):
-    with context.graph_mode():
-      model = HasList()
-      model_input = array_ops.ones([32, 2])
-      model(model_input)
+    model = HasList()
+    model_input = array_ops.ones([32, 2])
+    model(model_input)
+    if context.executing_eagerly():
+      self.assertEqual(0, len(model.updates))
+    else:
       self.assertGreater(len(model.layers_with_updates[0].updates), 0)
       self.assertEqual(set(model.layers_with_updates[0].updates),
                        set(model.updates))
-
-    with context.eager_mode():
-      model = HasList()
-      model_input = array_ops.ones([32, 2])
-      model(model_input)
-      self.assertEqual(0, len(model.updates))
 
   @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testLossesForwarded(self):

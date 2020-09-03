@@ -25,7 +25,6 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import constant_op
@@ -1487,47 +1486,47 @@ class MeanTensorTest(test.TestCase, parameterized.TestCase):
       self.assertAllClose(self.evaluate(m.count), [1, 1])
       self.assertAllClose(self.evaluate(call_metric([20, 2])), [60, 21])
 
+  @combinations.generate(combinations.combine(mode=['eager']))
   def test_in_keras_model(self):
-    with context.eager_mode():
-      class ModelWithMetric(Model):
+    class ModelWithMetric(Model):
 
-        def __init__(self):
-          super(ModelWithMetric, self).__init__()
-          self.dense1 = layers.Dense(
-              3, activation='relu', kernel_initializer='ones')
-          self.dense2 = layers.Dense(
-              1, activation='sigmoid', kernel_initializer='ones')
-          self.mean_tensor = metrics.MeanTensor()
+      def __init__(self):
+        super(ModelWithMetric, self).__init__()
+        self.dense1 = layers.Dense(
+            3, activation='relu', kernel_initializer='ones')
+        self.dense2 = layers.Dense(
+            1, activation='sigmoid', kernel_initializer='ones')
+        self.mean_tensor = metrics.MeanTensor()
 
-        def call(self, x):
-          x = self.dense1(x)
-          x = self.dense2(x)
-          self.mean_tensor(self.dense1.kernel)
-          return x
+      def call(self, x):
+        x = self.dense1(x)
+        x = self.dense2(x)
+        self.mean_tensor(self.dense1.kernel)
+        return x
 
-      model = ModelWithMetric()
-      model.compile(
-          loss='mae',
-          optimizer='rmsprop',
-          run_eagerly=True)
+    model = ModelWithMetric()
+    model.compile(
+        loss='mae',
+        optimizer='rmsprop',
+        run_eagerly=True)
 
-      x = np.ones((100, 4))
-      y = np.zeros((100, 1))
-      model.evaluate(x, y, batch_size=50)
-      self.assertAllClose(self.evaluate(model.mean_tensor.result()),
-                          np.ones((4, 3)))
-      self.assertAllClose(self.evaluate(model.mean_tensor.total),
-                          np.full((4, 3), 2))
-      self.assertAllClose(self.evaluate(model.mean_tensor.count),
-                          np.full((4, 3), 2))
+    x = np.ones((100, 4))
+    y = np.zeros((100, 1))
+    model.evaluate(x, y, batch_size=50)
+    self.assertAllClose(self.evaluate(model.mean_tensor.result()),
+                        np.ones((4, 3)))
+    self.assertAllClose(self.evaluate(model.mean_tensor.total),
+                        np.full((4, 3), 2))
+    self.assertAllClose(self.evaluate(model.mean_tensor.count),
+                        np.full((4, 3), 2))
 
-      model.evaluate(x, y, batch_size=25)
-      self.assertAllClose(self.evaluate(model.mean_tensor.result()),
-                          np.ones((4, 3)))
-      self.assertAllClose(self.evaluate(model.mean_tensor.total),
-                          np.full((4, 3), 4))
-      self.assertAllClose(self.evaluate(model.mean_tensor.count),
-                          np.full((4, 3), 4))
+    model.evaluate(x, y, batch_size=25)
+    self.assertAllClose(self.evaluate(model.mean_tensor.result()),
+                        np.ones((4, 3)))
+    self.assertAllClose(self.evaluate(model.mean_tensor.total),
+                        np.full((4, 3), 4))
+    self.assertAllClose(self.evaluate(model.mean_tensor.count),
+                        np.full((4, 3), 4))
 
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
