@@ -283,6 +283,10 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
       sinusoid_gradient = self.evaluate(self._compute_stft_gradient(sinusoid))
       self.assertFalse((sinusoid_gradient == 0.0).all())
 
+  @test.disable_for_rocm(skip_message='On ROCm, this fails with '
+                                      'mismatches at some locations '
+                                      '(possibly due to peculiarities '
+                                      'of rocFFT - investigate)')
   @parameterized.parameters(
       (64, 16, 8, 16, np.float32, 2e-3, 5e-4),
       (64, 16, 8, 16, np.float64, 1e-8, 1e-8),
@@ -296,10 +300,6 @@ class SpectralOpsTest(test.TestCase, parameterized.TestCase):
       (29, 5, 1, 10, np.float64, 1e-8, 1e-8))
   def test_gradients_numerical(self, signal_length, frame_length, frame_step,
                                fft_length, np_rtype, forward_tol, backward_tol):
-    # On ROCm, this fails with mismatches at some locations
-    # (possibly due to peculiarities of rocFFT - investigate)
-    if test.is_built_with_rocm():
-      return
     # TODO(rjryan): Investigate why STFT gradient error is so high.
     signal = np.random.rand(signal_length).astype(np_rtype) * 2 - 1
 

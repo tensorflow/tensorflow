@@ -99,7 +99,7 @@ def is_built_with_rocm():
 
 @tf_export('test.disable_for_rocm')
 def disable_for_rocm(skip_message):
-  """Decorator that disables the test if TensorFlow was built with ROCm (GPU) support."""
+  """Disables the test if TensorFlow was built with ROCm (GPU) support."""
   def decorator_disable_for_rocm(func):
     def wrapper_disable_for_rocm(self, *args, **kwargs):
       if is_built_with_rocm():
