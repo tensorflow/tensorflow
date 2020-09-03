@@ -86,12 +86,6 @@ Status ParseMlirModule(llvm::StringRef mlir_module_string,
   return Status::OK();
 }
 
-// Arguments to a computation can be either a tensor or resource.
-struct TensorOrResourceShape {
-  TensorShape shape;
-  bool is_resource = false;
-};
-
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
 Status GetXlaInputShapes(
     mlir::ModuleOp module, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
@@ -361,9 +355,9 @@ Status ConvertMLIRToXlaComputation(
   return Status::OK();
 }
 
-static Status CompileMlirToXlaHlo(
+Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args,
+    llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
@@ -383,8 +377,7 @@ static Status CompileMlirToXlaHlo(
   compilation_result->computation = std::make_shared<xla::XlaComputation>();
   TF_RETURN_IF_ERROR(ConvertMLIRToXlaComputation(
       module_op, device_type, compilation_result->computation.get(),
-      use_tuple_args,
-      /*return_tuple=*/true, shape_representation_fn,
+      use_tuple_args, use_return_tuple, shape_representation_fn,
       std::move(custom_legalization_passes)));
 
   // Construct mapping from XlaComputation's arg to input edges of execute
@@ -423,10 +416,10 @@ Status CompileSerializedMlirToXlaHlo(
   tensor_or_resource_shapes.reserve(arg_shapes.size());
   for (const auto& arg_shape : arg_shapes)
     tensor_or_resource_shapes.push_back({arg_shape});
-  return CompileMlirToXlaHlo(mlir_module.get(), tensor_or_resource_shapes,
-                             device_type, use_tuple_args,
-                             shape_representation_fn, compilation_result,
-                             std::move(custom_legalization_passes));
+  return CompileMlirToXlaHlo(
+      mlir_module.get(), tensor_or_resource_shapes, device_type, use_tuple_args,
+      /*use_return_tuple=*/true, shape_representation_fn, compilation_result,
+      std::move(custom_legalization_passes));
 }
 
 // Rewrites the given module with specified args. For each of the constant args,
@@ -534,9 +527,10 @@ Status CompileGraphToXlaHlo(
     if (failed(pm.run(module))) return diag_handler.ConsumeStatus();
   }
 
-  auto status = CompileMlirToXlaHlo(
-      module, arg_shapes, device_type, use_tuple_args, shape_representation_fn,
-      compilation_result, std::move(custom_legalization_passes));
+  auto status = CompileMlirToXlaHlo(module, arg_shapes, device_type,
+                                    use_tuple_args, /*use_return_tuple=*/true,
+                                    shape_representation_fn, compilation_result,
+                                    std::move(custom_legalization_passes));
   compilation_result->input_mapping = remaining_params;
   return status;
 }

@@ -63,6 +63,21 @@ Status ConvertMLIRToXlaComputation(
     const XlaHelpers::ShapeRepresentationFn shape_representation_fn = nullptr,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes = {});
 
+// Helper struct representing argument tensor or resource handle shapes.
+struct TensorOrResourceShape {
+  TensorShape shape;
+  bool is_resource = false;
+};
+
+// Compiles a MLIR module into XLA HLO, generates all accompanying metadata and
+// stores them in CompilationResult.
+Status CompileMlirToXlaHlo(
+    mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
+    llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
+    XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    XlaCompilationResult* compilation_result,
+    std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes);
+
 // Compiles a serialized MLIR module into XLA HLO, generates all accompanying
 // metadata and stores them in CompilationResult.
 Status CompileSerializedMlirToXlaHlo(
@@ -72,7 +87,8 @@ Status CompileSerializedMlirToXlaHlo(
     XlaCompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes = {});
 
-// Same as the above but takes input as TensorFlow Graph.
+// Compiles a TensorFlow Graph into XLA HLO, generates all accompanying metadata
+// and stores them in CompilationResult.
 // TODO(lyandy): Allow populating of targets/control outputs.
 Status CompileGraphToXlaHlo(
     const Graph& graph, llvm::ArrayRef<XlaArgument> args,
