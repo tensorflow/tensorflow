@@ -3843,6 +3843,35 @@ ENTRY entry {
                           op::Shape("s32[2]")));
 }
 
+TEST_F(SpmdPartitioningTest, PartialReplicatedRng) {
+  const char* const hlo_string = R"(
+HloModule module
+
+ENTRY entry {
+  %lhs = s32[] parameter(0), sharding={replicated}
+  %rhs = s32[] parameter(1), sharding={replicated}
+  ROOT %rng = s32[8]{0} rng(%lhs, %rhs),
+      distribution=rng_uniform,
+      sharding={devices=[2,4]0,1,2,3,4,5,6,7 last_tile_dim_replicate}
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          PartitionComputation(hlo_string, /*num_devices=*/8));
+  VLOG(1) << module->ToString();
+
+  auto root = module->entry_computation()->root_instruction();
+  auto lhs = AllOf(op::Parameter(0), op::Shape("s32[]"));
+  auto rhs = AllOf(op::Parameter(1), op::Shape("s32[]"));
+  auto partition_id =
+      AllOf(op::Reshape(op::DynamicSlice(op::Constant(), op::PartitionId())),
+            op::Shape("u32[]"));
+  EXPECT_THAT(
+      root, AllOf(op::AllReduce(op::Select(
+                      op::Broadcast(op::Compare(partition_id, op::Constant())),
+                      op::Rng(lhs, rhs), op::Broadcast(op::Constant()))),
+                  op::Shape("s32[4]")));
+}
+
 TEST_F(SpmdPartitioningTest, DynamicSliceAlongNonPartitionedDimension) {
   const char* const hlo_string = R"(
 HloModule module
