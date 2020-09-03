@@ -349,6 +349,7 @@ tf_cuda_cc_test(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_test_util",
         "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/experimental/gradients:array_grad",
         "//tensorflow/c/experimental/gradients:math_grad",
         "//tensorflow/c/experimental/gradients:nn_grad",
         "//tensorflow/c/experimental/ops:array_ops",

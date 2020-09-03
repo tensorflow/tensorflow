@@ -67,6 +67,11 @@ Status SparseSoftmaxCrossEntropyWithLogits(
     absl::Span<AbstractTensorHandle*> outputs, const char* name,
     const GradientRegistry& registry);
 
+Status Pad(AbstractContext* ctx, Tape* tape,
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry);
+
 // ====================== End Tape Ops ============================
 
 // Computes
@@ -136,6 +141,10 @@ Status SoftmaxModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle*> outputs,
                     const GradientRegistry& registry);
 
+Status PadGradModel(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> inputs,
+                       absl::Span<AbstractTensorHandle*> outputs,
+                       const GradientRegistry& registry);
 }  // namespace internal
 }  // namespace gradients
 }  // namespace tensorflow

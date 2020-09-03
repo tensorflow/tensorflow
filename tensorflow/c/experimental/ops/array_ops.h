@@ -39,6 +39,23 @@ Status ExpandDims(AbstractContext* ctx,
                   absl::Span<AbstractTensorHandle* const> inputs,
                   absl::Span<AbstractTensorHandle*> outputs, const char* name);
 
+Status Slice(AbstractContext* ctx,
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status Rank(AbstractContext* ctx,
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status ConcatV2(AbstractContext* ctx,
+              absl::Span<AbstractTensorHandle* const> values, 
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
+Status Reshape(AbstractContext* ctx,
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name);
+
 }  // namespace ops
 }  // namespace tensorflow
 

@@ -53,6 +53,7 @@ Status Shape(AbstractContext* ctx,
              absl::Span<AbstractTensorHandle* const> inputs,
              absl::Span<AbstractTensorHandle*> outputs, const char* name) {
   AbstractOperationPtr shape_op(ctx->CreateOperation());
+<<<<<<< HEAD
   TF_RETURN_IF_ERROR(shape_op->Reset("Shape", /*raw_device_name=*/nullptr));
 
   if (isa<tracing::TracingOperation>(shape_op.get())) {
@@ -80,6 +81,101 @@ Status ExpandDims(AbstractContext* ctx,
   int num_retvals = 1;
   return op->Execute(outputs, &num_retvals);
 }
+=======
+ TF_RETURN_IF_ERROR(
+     shape_op->Reset("Shape", /*raw_device_name=*/nullptr));
+ 
+ if (isa<tracing::TracingOperation>(shape_op.get())) {
+   TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(shape_op.get())
+                          ->SetOpName(name));
+ }
+ 
+ TF_RETURN_IF_ERROR(shape_op->AddInput(inputs[0])); // input
+ int num_retvals = 1;
+ TF_RETURN_IF_ERROR(shape_op->Execute(outputs, &num_retvals));
+ return Status::OK();
+}
+
+Status Slice(AbstractContext* ctx,
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+AbstractOperationPtr slice_op(ctx->CreateOperation());
+TF_RETURN_IF_ERROR(
+    slice_op->Reset("Slice", /*raw_device_name=*/nullptr));
+if (isa<tracing::TracingOperation>(slice_op.get())) {
+  TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(slice_op.get())
+                         ->SetOpName(name));
+}
+ 
+TF_RETURN_IF_ERROR(slice_op->AddInput(inputs[0])); // input
+TF_RETURN_IF_ERROR(slice_op->AddInput(inputs[1])); // begin
+TF_RETURN_IF_ERROR(slice_op->AddInput(inputs[2])); // size
+ 
+int num_retvals = 1;
+TF_RETURN_IF_ERROR(slice_op->Execute(outputs, &num_retvals));
+return Status::OK();
+}
+
+Status Rank(AbstractContext* ctx,
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+AbstractOperationPtr rank_op(ctx->CreateOperation());
+TF_RETURN_IF_ERROR(
+    rank_op->Reset("Rank", /*raw_device_name=*/nullptr));
+if (isa<tracing::TracingOperation>(rank_op.get())) {
+  TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(rank_op.get())
+                         ->SetOpName(name));
+}
+ 
+TF_RETURN_IF_ERROR(rank_op->AddInput(inputs[0])); // input
+ 
+int num_retvals = 1;
+TF_RETURN_IF_ERROR(rank_op->Execute(outputs, &num_retvals));
+return Status::OK();
+}
+
+Status ConcatV2(AbstractContext* ctx,
+              absl::Span<AbstractTensorHandle* const> values, 
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+AbstractOperationPtr c_op(ctx->CreateOperation());
+TF_RETURN_IF_ERROR(
+    c_op->Reset("ConcatV2", /*raw_device_name=*/nullptr));
+if (isa<tracing::TracingOperation>(c_op.get())) {
+  TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(c_op.get())
+                         ->SetOpName(name));
+}
+ 
+TF_RETURN_IF_ERROR(c_op->AddInputList(values)); // values
+TF_RETURN_IF_ERROR(c_op->AddInput(inputs[0])); // axis
+ 
+int num_retvals = 1;
+TF_RETURN_IF_ERROR(c_op->Execute(outputs, &num_retvals));
+return Status::OK();
+}
+
+Status Reshape(AbstractContext* ctx,
+              absl::Span<AbstractTensorHandle* const> inputs,
+              absl::Span<AbstractTensorHandle*> outputs, const char* name) {
+AbstractOperationPtr reshape_op(ctx->CreateOperation());
+
+TF_RETURN_IF_ERROR(
+    reshape_op->Reset("Reshape", /*raw_device_name=*/nullptr));
+if (isa<tracing::TracingOperation>(reshape_op.get())) {
+  TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(reshape_op.get())
+                         ->SetOpName(name));
+}
+ 
+TF_RETURN_IF_ERROR(reshape_op->AddInput(inputs[0])); // input
+TF_RETURN_IF_ERROR(reshape_op->AddInput(inputs[1])); // new shape
+ 
+int num_retvals = 1;
+TF_RETURN_IF_ERROR(reshape_op->Execute(outputs, &num_retvals));
+return Status::OK();
+}
+
+
+>>>>>>> 2ff94dcf7b (pad grad working eager but not graph mode)
 
 }  // namespace ops
 }  // namespace tensorflow

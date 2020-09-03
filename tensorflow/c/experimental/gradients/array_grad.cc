@@ -18,6 +18,12 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 
+using tensorflow::ops::Slice;
+using tensorflow::ops::Rank;
+using tensorflow::ops::ConcatV2;
+using tensorflow::ops::Shape;
+using tensorflow::ops::Reshape;
+
 namespace tensorflow {
 namespace gradients {
 namespace {
@@ -47,11 +53,70 @@ class PadGradientFunction : public GradientFunction {
        : forward_inputs(f_inputs) {}
   Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
+    
+    std::cout << "inside grad" << std::endl;
     grad_outputs->resize(2);
-    //   float vals[] = {1,1,1,1};
-    //   int64_t dims[] = {2,2};
-    //   int num_dims = 2;
-    //   AbstractTensorHandlePtr p = GetTensorHandleUtilFloat(ctx->ctx, vals, dims, num_dims);
+
+    AbstractTensorHandle* upstream_grad = grad_inputs[0];
+    AbstractTensorHandle* x = forward_inputs[0];
+
+    // Paddings will be shape [Rank(x), 2]
+    AbstractTensorHandle* paddings = forward_inputs[1];
+
+    // Get Rank(x)
+    std::string name = "Rank_pad";
+    std::vector<AbstractTensorHandle*> temp_outputs(1);
+    TF_RETURN_IF_ERROR(Rank(ctx->ctx, {x},
+                       absl::MakeSpan(temp_outputs), name.c_str()));
+    AbstractTensorHandle* Rank_x = temp_outputs[0];
+    std::cout << "got the rank" << std::endl;
+
+    AbstractTensorHandlePtr zero = GetScalarTensorHandleUtilInt(ctx->ctx, 0);
+    AbstractTensorHandlePtr one = GetScalarTensorHandleUtilInt(ctx->ctx, 1);
+    
+    std::cout << "made some tensors" << std::endl;
+    // Concatenate Rank and 1 to strip first column from paddings.
+    name = "Concat_Rank_&_1";
+    TF_RETURN_IF_ERROR(ConcatV2(ctx->ctx, {Rank_x, one.get()}, {zero.get()},
+                       absl::MakeSpan(temp_outputs), name.c_str()));
+    AbstractTensorHandle* size = temp_outputs[0];
+
+  
+    std::cout << "concatenated rank & 1" << std::endl;
+    // Make a Tensor with begin values [0, 0] to strip from paddings.
+    int begin_vals[] = {0, 0};
+    int64_t begin_dims[] = {2};
+    AbstractTensorHandlePtr begin = GetTensorHandleUtilInt(ctx->ctx, begin_vals, begin_dims, 1);
+
+    // Get first column from paddings.
+    name = "Slice_from_paddings";
+    TF_RETURN_IF_ERROR(Slice(ctx->ctx, {paddings, begin.get(), size},
+            absl::MakeSpan(temp_outputs), name.c_str()));
+    AbstractTensorHandle* first_col_2d = temp_outputs[0];  
+    //AbstractTensorHandle* pad_left = temp_outputs[0];
+    
+    std::cout << "got the first col" << std::endl;
+
+    // Reshape the first column to be a 1-D Tensor
+    name = "Reshape_fc";
+    AbstractTensorHandlePtr minus_one = GetScalarTensorHandleUtilInt(ctx->ctx, -1);
+    TF_RETURN_IF_ERROR(Reshape(ctx->ctx, {first_col_2d, minus_one.get()},
+            absl::MakeSpan(temp_outputs), name.c_str()));
+    AbstractTensorHandle* pad_left = temp_outputs[0];
+    
+    // Get the original shape of the input.
+    name = "Shape_x";
+    TF_RETURN_IF_ERROR(Shape(ctx->ctx, {x},
+                       absl::MakeSpan(temp_outputs), name.c_str()));
+    AbstractTensorHandle* x_shape = temp_outputs[0];
+    
+    // Slice out the original shape from the upstream gradient
+    name = "Slice_grad";
+    TF_RETURN_IF_ERROR(Slice(ctx->ctx, {upstream_grad, pad_left, x_shape},
+            absl::MakeSpan(temp_outputs), name.c_str()));
+
+    (*grad_outputs)[0] = temp_outputs[0]; // dx
+    (*grad_outputs)[1] = nullptr; // No grad for paddings
     return Status::OK();
   }
   ~PadGradientFunction() override {}

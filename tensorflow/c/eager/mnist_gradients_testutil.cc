@@ -159,24 +159,27 @@ Status SparseSoftmaxCrossEntropyWithLogits(
 }
 
 Status Pad(AbstractContext* ctx, Tape* tape,
-            absl::Span<AbstractTensorHandle* const> inputs,
-            absl::Span<AbstractTensorHandle*> outputs, const char* name,
-            const GradientRegistry& registry) {
-  AbstractOperationPtr pad_op(ctx->CreateOperation());
-  ForwardOperation forward_op;
-  forward_op.ctx = ctx;
-  TF_RETURN_IF_ERROR(
-      Reset(pad_op.get(), "Pad", /*raw_device_name=*/nullptr, &forward_op));
-  if (isa<TracingOperation>(pad_op.get())) {
-    TF_RETURN_IF_ERROR(
-        dyn_cast<TracingOperation>(pad_op.get())->SetOpName(name));
-  }
-  TF_RETURN_IF_ERROR(AddInput(pad_op.get(), inputs[0], &forward_op)); //inputs
-  TF_RETURN_IF_ERROR(AddInput(pad_op.get(), inputs[0], &forward_op)); //paddings
-  int num_retvals = 1;
-  return Execute(pad_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
-                 registry);
+           absl::Span<AbstractTensorHandle* const> inputs,
+           absl::Span<AbstractTensorHandle*> outputs, const char* name,
+           const GradientRegistry& registry) {
+ AbstractOperationPtr pad_op(ctx->CreateOperation());
+ ForwardOperation forward_op;
+ forward_op.ctx = ctx;
+ TF_RETURN_IF_ERROR(
+     Reset(pad_op.get(), "Pad", /*raw_device_name=*/nullptr, &forward_op));
+ if (isa<TracingOperation>(pad_op.get())) {
+   TF_RETURN_IF_ERROR(
+       dyn_cast<TracingOperation>(pad_op.get())->SetOpName(name));
+ }
+ 
+ TF_RETURN_IF_ERROR(AddInput(pad_op.get(), inputs[0], &forward_op)); // input
+ TF_RETURN_IF_ERROR(AddInput(pad_op.get(), inputs[1], &forward_op)); // paddings
+ 
+ int num_retvals = 1;
+ return Execute(pad_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                registry);
 }
+
 
 //===================== Test Models to run =========================
 
@@ -530,6 +533,37 @@ Status SoftmaxModel(AbstractContext* ctx,
   delete tape;
   return Status::OK();
 }
+
+Status PadGradModel(AbstractContext* ctx,
+                       absl::Span<AbstractTensorHandle* const> inputs,
+                       absl::Span<AbstractTensorHandle*> outputs,
+                       const GradientRegistry& registry) {
+ TapeVSpace vspace(ctx);
+ auto tape = new Tape(/*persistent=*/false);
+ tape->Watch(ToId(inputs[0]));  // Watch input.
+ tape->Watch(ToId(inputs[1]));  // Watch input.
+ std::vector<AbstractTensorHandle*> pad_outputs(1);
+ TF_RETURN_IF_ERROR(Pad(ctx, tape, inputs, absl::MakeSpan(pad_outputs),
+                            "pad_test", registry));
+ std::unordered_map<tensorflow::int64, TapeTensor>
+     source_tensors_that_are_targets;
+ 
+ std::cout << "finished forward pad" <<std::endl;
+  std::vector<AbstractTensorHandle*> out_grads;
+  TF_RETURN_IF_ERROR(tape->ComputeGradient(
+      vspace, /*target_tensor_ids=*/{ToId(pad_outputs[0])},
+      /*source_tensor_ids=*/{ToId(inputs[0]), ToId(inputs[1])}, source_tensors_that_are_targets,
+      /*output_gradients=*/{}, &out_grads,
+      /*build_default_zeros_grads=*/false));
+ 
+ outputs[0] = pad_outputs[0];
+ outputs[1] = out_grads[0];
+ outputs[2] = out_grads[1];
+ 
+ delete tape;
+ return Status::OK();
+}
+
 
 // ============================= End Models ================================
 

@@ -64,6 +64,10 @@ AbstractTensorHandlePtr GetTensorHandleUtilInt(AbstractContext* ctx, int vals[],
 AbstractTensorHandlePtr GetScalarTensorHandleUtil(AbstractContext* ctx,
                                                   float val);
 
+// // Util function that wraps an AbstractTensorHandle* with given data.
+AbstractTensorHandlePtr GetScalarTensorHandleUtilInt(AbstractContext* ctx,
+                                                  int val);                                                  
+
 // Performs gradient update for each weight using given learning rate.
 Status UpdateWeights(AbstractContext* ctx,
                      std::vector<AbstractTensorHandle*>& grads,

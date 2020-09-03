@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/c/eager/mnist_gradients_testutil.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
+#include "tensorflow/c/experimental/gradients/array_grad.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/c/tf_tensor.h"
@@ -51,9 +52,47 @@ Status RegisterGradients(GradientRegistry* registry) {
   TF_RETURN_IF_ERROR(registry->Register("MatMul", MatMulRegisterer));
   TF_RETURN_IF_ERROR(
       registry->Register("SparseSoftmaxCrossEntropyWithLogits",
-                         SparseSoftmaxCrossEntropyWithLogitsRegisterer));
+                         SparseSoftmaxCrossEntropyLossRegisterer));
+  TF_RETURN_IF_ERROR(registry->Register("Pad", PadRegisterer));
   return Status::OK();
 }
+
+void printArr(auto data[], int n) {
+ std::cout << std::endl << "[";
+ for (int i = 0; i < n - 1; i++) {
+
+   std::cout << data[i] << ", ";
+
+ }
+ std::cout << data[n - 1] << "]" << std::endl << std::endl;
+}
+
+
+void printTensor(AbstractTensorHandle* t) {
+ TF_Tensor* tensor;
+ Status s = GetValue(t, &tensor);
+ ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+ int size = TF_TensorElementCount(tensor);
+ float result_data[size] = {0};
+ memcpy(&result_data[0], TF_TensorData(tensor),   TF_TensorByteSize(tensor));
+ printArr(result_data, size);
+ TF_DeleteTensor(tensor);
+}
+
+void printTensorInt(AbstractTensorHandle* t) {
+  TF_Tensor* tensor;
+  Status s = GetValue(t, &tensor);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  int size = TF_TensorElementCount(tensor);
+  int result_data[size] = {0};
+  memcpy(&result_data[0], TF_TensorData(tensor),TF_TensorByteSize(tensor));
+  printArr(result_data, size);
+  TF_DeleteTensor(tensor);
+
+}
+
+
 
 TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
@@ -72,7 +111,7 @@ TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   float B_vals[] = {.5f, -1.0f, 1.0f, 1.0f};
   int64_t B_dims[] = {2, 2};
   int num_dims = 2;
-
+  
   AbstractTensorHandlePtr A =
       GetTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
   AbstractTensorHandlePtr B =
@@ -245,6 +284,154 @@ TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
   TF_DeleteTensor(dX_tensor);
   TF_DeleteTensor(gt);
 }
+
+TEST_P(GradientCheckerTest, TestPadGrad) {
+ std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+     TF_NewStatus(), TF_DeleteStatus);
+ AbstractContextPtr ctx;
+ {
+   AbstractContext* ctx_raw = nullptr;
+   Status s =
+       BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+   ctx.reset(ctx_raw);
+ }
+ 
+ float A_vals[] = {2.0f, 1.0f, 1.0f, 3.0f};
+ 
+ int64_t A_dims[] = {2, 2};  // {N, height, width, in_channels}
+ int num_dims = 2;
+ 
+ AbstractTensorHandlePtr A =
+     GetTensorHandleUtilFloat(ctx.get(), A_vals, A_dims, num_dims);
+
+ float B_vals[] = {5, 6, 7, 8};
+ 
+ int64_t B_dims[] = {2, 2};  // {N, height, width, in_channels}
+
+ 
+ AbstractTensorHandlePtr B =
+     GetTensorHandleUtilFloat(ctx.get(), B_vals, B_dims, num_dims);
+ 
+ int pad_vals[] = {1, 2,  // [left_pad, right_pad] per dimension
+                   3, 4};
+ int64_t pad_dims[] = {2, 2};
+ 
+ AbstractTensorHandlePtr paddings =
+     GetTensorHandleUtilInt(ctx.get(), pad_vals, pad_dims, num_dims);
+ 
+ 
+ GradientRegistry registry;
+ Status s = RegisterGradients(&registry);
+ ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+ 
+ std::vector<AbstractTensorHandle*> outputs(3);  // [pad_out, dA, dpaddings (null)]
+ s = RunModel(PadGradModel, ctx.get(), {A.get(), paddings.get()}, absl::MakeSpan(outputs),
+              /*use_function=*/!std::get<2>(GetParam()), registry);
+ ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+ AbstractTensorHandle* pad_out = outputs[0];
+ printTensor(outputs[0]);
+ printTensor(outputs[1]);
+ 
+ // s = ops::Shape(ctx.get(), {outputs[0]}, absl::MakeSpan(outputs), "shape_out");
+ // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+ 
+ // printTensorInt(outputs[0], 2); // should be [4,4]
+ 
+//  s = ops::Shape(ctx.get(), {A.get()}, absl::MakeSpan(outputs), "shape_out");
+//  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+//  AbstractTensorHandle* orig_shape = outputs[0];
+//  printTensorInt(orig_shape, 2); // should be [2,2]
+ 
+ 
+//  int slice_vals[] = {pad_vals[0], pad_vals[2]};
+//  int64_t slice_dims[] = {2};
+ 
+//  AbstractTensorHandlePtr slice_begin =
+//      GetTensorHandleUtilInt(ctx.get(), slice_vals, slice_dims, 1);
+ 
+//   s = ops::Slice(ctx.get(), {pad_out, slice_begin.get(), orig_shape}, absl::MakeSpan(outputs), "slice_out");
+//  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+//  AbstractTensorHandle* slice_out = outputs[0];
+ 
+//  printTensor(slice_out);
+//  s = ops::Shape(ctx.get(), {slice_out}, absl::MakeSpan(outputs), "shape_out");
+//  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+ 
+//  printTensorInt(outputs[0], 2); // shoudl be 2,2
+
+
+
+// std::cout << "rank";
+// printTensorInt(outputs[0], 2); // shoudl be 2, 2
+
+// AbstractTensorHandlePtr zero =  GetScalarTensorHandleUtilInt(ctx.get(), 0);
+
+// std::cout << "concatting";
+//  s = ops::ConcatV2(ctx.get(), {A.get(), B.get()}, {zero.get()}, absl::MakeSpan(outputs), "cc");
+//  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+//   AbstractTensorHandle* cc = outputs[0];
+// printTensor(outputs[0]);
+
+//  s = ops::Shape(ctx.get(), {cc}, absl::MakeSpan(outputs), "shape_out");
+//  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+// printTensorInt(outputs[0], 2);
+
+// HEREEEE
+    // s = ops::Rank(ctx.get(), {A.get()}, absl::MakeSpan(outputs), "ranker");
+    // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    // AbstractTensorHandle* Rank_x = outputs[0];
+
+    // AbstractTensorHandlePtr zero = GetScalarTensorHandleUtilInt(ctx.get(), 0);
+    // AbstractTensorHandlePtr one = GetScalarTensorHandleUtilInt(ctx.get(), 1);
+
+    // s = ops::ConcatV2(ctx.get(), {Rank_x, one.get()}, {zero.get()},
+    //                    absl::MakeSpan(outputs), "cocat");
+    // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    // AbstractTensorHandle* size = outputs[0];
+    // std::cout << "slizzy";
+    // printTensorInt(size);
+
+
+    // s = ops::Shape(ctx.get(), {size}, absl::MakeSpan(outputs), "shape_out");
+    // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    // AbstractTensorHandle* size_shape = outputs[0];
+    // std::cout << "slizzy shape";
+    // printTensorInt(size_shape);
+
+    // int b_vals[] = {0, 0};
+    // int64_t b_dims[] = {2};
+    // AbstractTensorHandlePtr beginners = GetTensorHandleUtilInt(ctx.get(), b_vals, b_dims, 1);
+
+    //  s = ops::Slice(ctx.get(), {paddings.get(), beginners.get(), size}, absl::MakeSpan(outputs), "slice_out");
+    //  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    //  AbstractTensorHandle* firstcol = outputs[0];
+    // std::cout << "firstcol";
+    // printTensorInt(firstcol);
+
+    // s = ops::Shape(ctx.get(), {firstcol}, absl::MakeSpan(outputs), "shape_out");
+    // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    // AbstractTensorHandle* fc_shape = outputs[0];
+    // std::cout << "firstcol shape";
+    // printTensorInt(fc_shape);
+
+    // AbstractTensorHandlePtr minus_one = GetScalarTensorHandleUtilInt(ctx.get(), -1);
+    // s = ops::Reshape(ctx.get(), {firstcol, minus_one.get()}, absl::MakeSpan(outputs),
+    //                   "resh");
+    // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    // AbstractTensorHandle* reshaped_fc = outputs[0];
+    // std::cout << "firstcol_reshaped (should be same as above)";
+    // printTensorInt(reshaped_fc);
+
+    // s = ops::Shape(ctx.get(), {reshaped_fc}, absl::MakeSpan(outputs), "shape_out");
+    // ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    // AbstractTensorHandle* rfc_shape = outputs[0];
+    // std::cout << "firstcol_reshaped shape (should be [2])";
+    // printTensorInt(rfc_shape);
+
+ 
+}
+
 
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(

@@ -170,6 +170,13 @@ AbstractTensorHandlePtr GetScalarTensorHandleUtil(AbstractContext* ctx,
   return y;
 }
 
+AbstractTensorHandlePtr GetScalarTensorHandleUtilInt(AbstractContext* ctx,
+                                                     int val) {
+  int64_t* dims;
+  int vals[] = {val};
+  return GetTensorHandleUtilInt(ctx, vals, dims, 0);
+}
+
 Status UpdateWeights(AbstractContext* ctx, vector<AbstractTensorHandle*>& grads,
                      vector<AbstractTensorHandle*>& weights,
                      AbstractTensorHandle* learning_rate) {
