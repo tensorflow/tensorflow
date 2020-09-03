@@ -1363,6 +1363,81 @@ class Pooling2DOperationParser : public TFLiteOperationParser {
   const PoolingType type_;
 };
 
+class ReduceOperationParser : public TFLiteOperationParser {
+ public:
+  explicit ReduceOperationParser(OperationType operation_type)
+      : operation_type_(operation_type) {}
+
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    RETURN_IF_ERROR(CheckInputsOutputs(context, tflite_node,
+                                       /*runtime_inputs=*/1, /*outputs=*/1));
+    auto* axes = &context->tensors[tflite_node->inputs->data[1]];
+    if (axes->allocation_type != kTfLiteMmapRo || axes->type != kTfLiteInt32) {
+      return absl::UnimplementedError(
+          "Reduce has unsupported tensor for axes.");
+    }
+    if (tflite::NumElements(axes) != 1) {
+      return absl::UnimplementedError(
+          "Supported reduce in single dimensions only.");
+    }
+    return absl::OkStatus();
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(operation_type_);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+
+    const TfLiteReducerParams* tf_options;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+
+    Tensor<Linear, DataType::INT32> axes;
+    RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
+
+    const TfLiteTensor* input = reader->GetInputTensor(0);
+    const int axis_index =
+        axes.data[0] == -1 ? input->dims->size - 1 : axes.data[0];
+    if (axis_index < 0 || axis_index >= input->dims->size) {
+      return absl::UnimplementedError(
+          "Unknown reduce axis for Reduce operation");
+    }
+    std::vector<Axis> index_to_axis;
+    switch (input->dims->size) {
+      case 1:
+        // B layout
+        index_to_axis = {Axis::BATCH};
+        break;
+      case 2:
+        // BC layout
+        index_to_axis = {Axis::BATCH, Axis::CHANNELS};
+        break;
+      case 3:
+        // BWC layout
+        index_to_axis = {Axis::BATCH, Axis::WIDTH, Axis::CHANNELS};
+        break;
+      case 4:
+        // BHWC layout
+        index_to_axis = {Axis::BATCH, Axis::HEIGHT, Axis::WIDTH,
+                         Axis::CHANNELS};
+        break;
+      default:
+        return absl::UnavailableError("Unknown layout in Reduce op input.");
+    }
+    ReduceAttributes attr;
+    attr.axis = index_to_axis[axis_index];
+    node->operation.attributes = attr;
+    return absl::OkStatus();
+  }
+
+ private:
+  const OperationType operation_type_;
+};
+
 class QuantizeOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2483,6 +2558,15 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<PadOperationParser>(/*mirror_pad=*/false);
     case kTfLiteBuiltinPow:
       return std::make_unique<ElementwiseOperationParser>(OperationType::POW);
+    case kTfLiteBuiltinReduceMax:
+      return std::make_unique<ReduceOperationParser>(
+          OperationType::REDUCE_MAXIMUM);
+    case kTfLiteBuiltinReduceMin:
+      return std::make_unique<ReduceOperationParser>(
+          OperationType::REDUCE_MINIMUM);
+    case kTfLiteBuiltinReduceProd:
+      return std::make_unique<ReduceOperationParser>(
+          OperationType::REDUCE_PRODUCT);
     case kTfLiteBuiltinQuantize:
       if (allow_quant_ops) {
         return std::make_unique<QuantizeOperationParser>();
@@ -2524,6 +2608,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<StridedSliceOperationParser>();
     case kTfLiteBuiltinSub:
       return std::make_unique<ElementwiseOperationParser>(OperationType::SUB);
+    case kTfLiteBuiltinSum:
+      return std::make_unique<ReduceOperationParser>(OperationType::REDUCE_SUM);
     case kTfLiteBuiltinTanh:
       return std::make_unique<ElementwiseOperationParser>(OperationType::TANH);
     case kTfLiteBuiltinTranspose:
