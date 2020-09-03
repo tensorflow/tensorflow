@@ -24,6 +24,7 @@ import numpy as np
 from six.moves import range
 import tensorflow as tf
 
+from tensorflow.lite.python import lite_constants
 from tensorflow.lite.python import util
 from tensorflow.lite.toco import types_pb2 as _types_pb2
 from tensorflow.python.client import session
@@ -291,9 +292,9 @@ def _test_param_modify_integer_model_io_type():
       # "DuringTraining": False,
   }
   map_types = {
-      "": dtypes.float32,
-      "INT8": dtypes.int8,
-      "UINT8": dtypes.uint8,
+      "": lite_constants.FLOAT,
+      "INT8": lite_constants.INT8,
+      "UINT8": lite_constants.QUANTIZED_UINT8
   }
   for k1, v1 in map_model_type.items():
     for k2, v2 in map_types.items():

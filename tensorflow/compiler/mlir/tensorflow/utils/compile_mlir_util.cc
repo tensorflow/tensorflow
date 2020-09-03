@@ -86,12 +86,6 @@ Status ParseMlirModule(llvm::StringRef mlir_module_string,
   return Status::OK();
 }
 
-// Arguments to a computation can be either a tensor or resource.
-struct TensorOrResourceShape {
-  TensorShape shape;
-  bool is_resource = false;
-};
-
 // Converts arg_shapes to xla::Shape's and store into xla_input_shapes.
 Status GetXlaInputShapes(
     mlir::ModuleOp module, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
@@ -361,9 +355,9 @@ Status ConvertMLIRToXlaComputation(
   return Status::OK();
 }
 
-static Status CompileMlirToXlaHlo(
+Status CompileMlirToXlaHlo(
     mlir::ModuleOp module_op, llvm::ArrayRef<TensorOrResourceShape> arg_shapes,
-    llvm::StringRef device_type, bool use_tuple_args,
+    llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
     XlaHelpers::ShapeRepresentationFn shape_representation_fn,
     XlaCompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
@@ -383,8 +377,7 @@ static Status CompileMlirToXlaHlo(
   compilation_result->computation = std::make_shared<xla::XlaComputation>();
   TF_RETURN_IF_ERROR(ConvertMLIRToXlaComputation(
       module_op, device_type, compilation_result->computation.get(),
-      use_tuple_args,
-      /*return_tuple=*/true, shape_representation_fn,
+      use_tuple_args, use_return_tuple, shape_representation_fn,
       std::move(custom_legalization_passes)));
 
   // Construct mapping from XlaComputation's arg to input edges of execute
@@ -423,10 +416,10 @@ Status CompileSerializedMlirToXlaHlo(
   tensor_or_resource_shapes.reserve(arg_shapes.size());
   for (const auto& arg_shape : arg_shapes)
     tensor_or_resource_shapes.push_back({arg_shape});
-  return CompileMlirToXlaHlo(mlir_module.get(), tensor_or_resource_shapes,
-                             device_type, use_tuple_args,
-                             shape_representation_fn, compilation_result,
-                             std::move(custom_legalization_passes));
+  return CompileMlirToXlaHlo(
+      mlir_module.get(), tensor_or_resource_shapes, device_type, use_tuple_args,
+      /*use_return_tuple=*/true, shape_representation_fn, compilation_result,
+      std::move(custom_legalization_passes));
 }
 
 // Rewrites the given module with specified args. For each of the constant args,
@@ -434,8 +427,8 @@ Status CompileSerializedMlirToXlaHlo(
 // removed from the signature. For resource args, their subtypes are populated.
 // Returns the original indices for the other arguments on success.
 static StatusOr<std::vector<int>> RewriteWithArgs(
-    mlir::ModuleOp module, llvm::ArrayRef<XlaArgument> args) {
-  mlir::FuncOp main_fn = module.lookupSymbol<mlir::FuncOp>("main");
+    mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args) {
+  mlir::FuncOp main_fn = module_op.lookupSymbol<mlir::FuncOp>("main");
   std::vector<int> params;
 
   bool has_resource_args = false;
@@ -473,7 +466,7 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
                         ConvertTensor(xla_arg.constant_value, &builder));
     // TODO(hinsu): Use the actual location of the constant.
     auto constant = builder.create<mlir::TF::ConstOp>(
-        mlir::UnknownLoc::get(module.getContext()), value_attr);
+        mlir::UnknownLoc::get(module_op.getContext()), value_attr);
     mlir_arg.replaceAllUsesWith(constant);
     args_to_erase.push_back(idx);
   }
@@ -492,6 +485,38 @@ static StatusOr<std::vector<int>> RewriteWithArgs(
   for (int idx : llvm::reverse(args_to_erase)) main_fn.eraseArgument(idx);
 
   return params;
+}
+
+Status CompileGraphToXlaHlo(
+    mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
+    llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    XlaCompilationResult* compilation_result,
+    std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes) {
+  TF_ASSIGN_OR_RETURN(std::vector<int> remaining_params,
+                      RewriteWithArgs(module_op, args));
+  llvm::SmallVector<TensorOrResourceShape, 4> arg_shapes;
+  arg_shapes.reserve(remaining_params.size());
+  for (unsigned idx : remaining_params) {
+    const auto& arg = args[idx];
+    arg_shapes.push_back({absl::get<TensorShape>(arg.shape),
+                          /*is_resource=*/arg.kind == XlaArgument::kResource});
+  }
+
+  mlir::PassManager pm(module_op.getContext());
+  mlir::TF::StandardPipelineOptions tf_options;
+  mlir::TF::CreateTFStandardPipeline(pm, tf_options);
+  {
+    mlir::StatusScopedDiagnosticHandler diag_handler(module_op.getContext());
+    if (failed(pm.run(module_op))) return diag_handler.ConsumeStatus();
+  }
+
+  auto status = CompileMlirToXlaHlo(module_op, arg_shapes, device_type,
+                                    use_tuple_args, use_return_tuple,
+                                    shape_representation_fn, compilation_result,
+                                    std::move(custom_legalization_passes));
+  compilation_result->input_mapping = remaining_params;
+  return status;
 }
 
 Status CompileGraphToXlaHlo(
@@ -515,30 +540,11 @@ Status CompileGraphToXlaHlo(
       ConvertGraphToMlir(graph, debug_info, flib_def, config, &context);
   if (!module_or.ok()) return module_or.status();
 
-  mlir::ModuleOp module = module_or.ValueOrDie().get();
-  TF_ASSIGN_OR_RETURN(std::vector<int> remaining_params,
-                      RewriteWithArgs(module, {args.data(), args.size()}));
-  llvm::SmallVector<TensorOrResourceShape, 4> arg_shapes;
-  arg_shapes.reserve(remaining_params.size());
-  for (unsigned idx : remaining_params) {
-    const auto& arg = args[idx];
-    arg_shapes.push_back({absl::get<TensorShape>(arg.shape),
-                          /*is_resource=*/arg.kind == XlaArgument::kResource});
-  }
-
-  mlir::PassManager pm(&context);
-  mlir::TF::StandardPipelineOptions tf_options;
-  mlir::TF::CreateTFStandardPipeline(pm, tf_options);
-  {
-    mlir::StatusScopedDiagnosticHandler diag_handler(module.getContext());
-    if (failed(pm.run(module))) return diag_handler.ConsumeStatus();
-  }
-
-  auto status = CompileMlirToXlaHlo(
-      module, arg_shapes, device_type, use_tuple_args, shape_representation_fn,
-      compilation_result, std::move(custom_legalization_passes));
-  compilation_result->input_mapping = remaining_params;
-  return status;
+  mlir::ModuleOp module_op = module_or.ValueOrDie().get();
+  return CompileGraphToXlaHlo(module_op, args, device_type, use_tuple_args,
+                              /*use_return_tuple=*/true,
+                              shape_representation_fn, compilation_result,
+                              std::move(custom_legalization_passes));
 }
 
 }  // namespace tensorflow

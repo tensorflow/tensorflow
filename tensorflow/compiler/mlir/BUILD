@@ -169,6 +169,7 @@ tf_cc_binary(
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:mlir_roundtrip_flags",
         "//tensorflow/compiler/mlir/tensorflow:tensorflow_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow:tf_xla_mlir_translate",
         "//tensorflow/compiler/mlir/tensorflow:translate_cl_options",
         "//tensorflow/compiler/mlir/tensorflow:translate_lib",
         "//tensorflow/compiler/mlir/tensorflow:translate_registration",

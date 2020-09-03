@@ -969,6 +969,11 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "union_find",
+    hdrs = ["union_find.h"],
+)
+
 # -----------------------------------------------------------------------------
 
 # This is a headers target that extra XLA devices can use to prevent circular dependencies.  Devices that are compiled as separate shared objects can also use it to prevent linking of library code.

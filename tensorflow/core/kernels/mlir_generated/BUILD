@@ -3,6 +3,7 @@
 load("//tensorflow/core/kernels/mlir_generated:build_defs.bzl", "gen_kernel_library", "if_mlir_generated_gpu_kernels_enabled")
 load(
     "//tensorflow:tensorflow.bzl",
+    "if_cuda_or_rocm",
     "tf_kernel_library",
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
@@ -10,7 +11,6 @@ load(
     "//tensorflow/core/platform:build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 package(
     default_visibility = ["//tensorflow/core/kernels:__subpackages__"],
@@ -33,7 +33,7 @@ tf_kernel_library(
         "cwise_op_gpu_tanh.cu.cc",
     ],
     tags = ["manual"],
-    deps = if_cuda([
+    deps = if_cuda_or_rocm([
         ":abs_kernels",
         ":tanh_kernels",
         "@com_google_absl//absl/strings",
@@ -129,6 +129,102 @@ gen_kernel_library(
         "f64",
         "i32",
         "i64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "ceil",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "cos",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "exp",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "floor",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "log",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "neg",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "rsqrt",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
+    ],
+    unroll_factors = "4",
+)
+
+gen_kernel_library(
+    name = "sqrt",
+    same_shape = "0,1",
+    tile_size = "256",
+    types = [
+        "f16",
+        "f32",
+        "f64",
     ],
     unroll_factors = "4",
 )

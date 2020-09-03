@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-//===- cubin_creator.cc -----------------------------------------*- C++ -*-===//
+//===- gpu_binary_creator.cc ------------------------------------*- C++ -*-===//
 //
-// This file implements the function to compile a TF kernel function to a cubin.
+// This file implements the function to compile a TF kernel function
+// to gpu binary (hsaco for AMD, cubin for NVIDIA)
 //
 //===----------------------------------------------------------------------===//
-#include "tensorflow/compiler/mlir/tools/kernel_gen/cubin_creator.h"
+#include "tensorflow/compiler/mlir/tools/kernel_gen/gpu_binary_creator.h"
 
 #include <string>
 #include <utility>
@@ -42,6 +43,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassManager.h"  // from @llvm-project
 #include "mlir/Target/NVVMIR.h"  // from @llvm-project
+#include "mlir/Target/ROCDLIR.h"  // from @llvm-project
 #include "mlir/Transforms/DialectConversion.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
@@ -59,6 +61,8 @@ limitations under the License.
 #include "tensorflow/core/platform/path.h"
 #if GOOGLE_CUDA
 #include "tensorflow/stream_executor/gpu/asm_compiler.h"
+#elif TENSORFLOW_USE_ROCM
+#include "tensorflow/core/platform/rocm_rocdl_path.h"
 #endif
 
 namespace {
@@ -249,7 +253,8 @@ Status PropagateTensorFlowABIKnowledgeToKernel(
 
 }  // namespace
 
-StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
+StatusOr<std::vector<uint8_t>>
+tensorflow::kernel_gen::GenerateGpuBinaryForTfCode(
     llvm::StringRef tf_code, std::pair<int32_t, int32_t> compute_capability,
     llvm::ArrayRef<uint32_t> tile_sizes, llvm::ArrayRef<uint32_t> same_shape,
     llvm::ArrayRef<uint32_t> unroll_factors) {
@@ -266,13 +271,44 @@ StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
     options.use_approximations = true;
     TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerLHLOToGPU(module.get(), options));
   }
+
+#if !defined(TENSORFLOW_USE_ROCM) && !defined(GOOGLE_CUDA)
+  return InternalError(
+      "Neither TENSORFLOW_USE_ROCM nor GOOGLE_CUDA are defined."
+      " Did you specify either --config=rocm or --config=cuda ?");
+#endif
+
+#if TENSORFLOW_USE_ROCM
+  TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToROCDL(module.get()));
+#elif GOOGLE_CUDA
   TF_RETURN_IF_ERROR(xla::mlir_gpu::LowerKernelBodiesToNVVM(module.get()));
+#endif
+
   TF_RETURN_IF_ERROR(
       PropagateTensorFlowABIKnowledgeToKernel(module.get(), same_shape));
 
   mlir::OwningModuleRef kernel_module =
       xla::mlir_gpu::ExtractKernelModule(*module).ValueOrDie();
+
   llvm::LLVMContext llvmContext;
+
+#if TENSORFLOW_USE_ROCM
+  auto llvmModule = mlir::translateModuleToROCDLIR(*kernel_module, llvmContext);
+  if (!llvmModule) {
+    return InternalError("Could not translate MLIR module to ROCDL IR");
+  }
+
+  llvmModule->setModuleIdentifier("acme");
+
+  xla::HloModuleConfig config;
+  config.set_debug_options(xla::GetDebugOptionsFromFlags());
+
+  int gpu_version = compute_capability.first;
+  std::string libdevice_dir = tensorflow::RocdlRoot();
+
+  return xla::gpu::amdgpu::CompileToHsaco(llvmModule.get(), gpu_version, config,
+                                          libdevice_dir);
+#elif GOOGLE_CUDA
   auto llvmModule = mlir::translateModuleToNVVMIR(*kernel_module, llvmContext);
   if (!llvmModule) {
     return InternalError("Could not translate MLIR module to NVVM");
@@ -295,12 +331,8 @@ StatusOr<std::vector<uint8_t>> tensorflow::kernel_gen::GenerateCubinForTfCode(
                                     config, libdevice_dir, enable_fusion));
   VLOG(1) << ptx;
 
-#if GOOGLE_CUDA
   return tensorflow::se::CompileGpuAsm(
       std::get<0>(compute_capability), std::get<1>(compute_capability),
       ptx.c_str(), xla::gpu::PtxOptsFromConfig(config));
-#else
-  return InternalError(
-      "GOOGLE_CUDA not defined. Did you specify --config=cuda ?");
 #endif
 }

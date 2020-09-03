@@ -1564,6 +1564,35 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tf_xla_mlir_translate",
+    srcs = ["utils/tf_xla_mlir_translate.cc"],
+    deps = [
+        "compile_mlir_util",
+        ":mlir_roundtrip_flags",
+        ":tensorflow",
+        ":translate_cl_options",
+        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/compiler/mlir/xla:translate_cl_options",
+        "//tensorflow/compiler/tf2xla:xla_argument",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Translation",
+    ],
+    alwayslink = 1,
+)
+
 tf_cc_test(
     name = "compile_mlir_util_test",
     size = "small",
