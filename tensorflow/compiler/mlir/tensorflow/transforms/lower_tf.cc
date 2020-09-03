@@ -190,34 +190,37 @@ Value ValuesToRank1(PatternRewriter &rewriter, Location loc, Type dtype,
 //   %sum2 = "tf.AddV2"(%sum0, %sum1)
 //   %result = "tf.AddV2"(%sum2, %4)
 //
-class LowerAddNOp : public OpRewritePattern<TF::AddNOp> {
+class LowerAddNOp : public RewritePattern {
  public:
   explicit LowerAddNOp(MLIRContext *context)
-      : OpRewritePattern<TF::AddNOp>(context) {}
+      : RewritePattern(TF::AddNOp::getOperationName(),
+                       {TF::AddV2Op::getOperationName()}, 1, context) {}
 
-  LogicalResult matchAndRewrite(TF::AddNOp op,
+  LogicalResult matchAndRewrite(Operation *op,
                                 PatternRewriter &rewriter) const override {
+    auto addn_op = cast<TF::AddNOp>(op);
+
     // TODO(hinsu): Support variant with TensorList type. tf.AddV2 doesn't
     // support variant type so variant types require special handling.
-    if (getElementTypeOrSelf(op.getType()).isa<VariantType>()) return failure();
-
-    llvm::SmallVector<Value, 4> operands(op.inputs().begin(),
-                                         op.inputs().end());
+    if (getElementTypeOrSelf(addn_op.getType()).isa<VariantType>())
+      return failure();
+    llvm::SmallVector<Value, 4> operands(addn_op.inputs().begin(),
+                                         addn_op.inputs().end());
 
     int64_t n = operands.size();
     // Keep doing tree-based reduction when there are more than one operand.
     while (n > 1) {
       for (int64_t i = 0; i < n; i += 2) {
         // Add two adjacent operands if applicable.
-        operands[i / 2] = (i + 1 < n)
-                              ? rewriter.create<TF::AddV2Op>(
-                                    op.getLoc(), operands[i], operands[i + 1])
-                              : operands[i];
+        operands[i / 2] =
+            (i + 1 < n) ? rewriter.create<TF::AddV2Op>(
+                              addn_op.getLoc(), operands[i], operands[i + 1])
+                        : operands[i];
       }
       n = (n + 1) / 2;
     }
 
-    rewriter.replaceOp(op, operands[0]);
+    rewriter.replaceOp(addn_op, operands[0]);
     return success();
   }
 };
