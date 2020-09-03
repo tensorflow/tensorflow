@@ -2206,38 +2206,19 @@ OpFoldResult VariableShapeOp::fold(ArrayRef<Attribute> operands) {
 // WhileOp
 //===----------------------------------------------------------------------===//
 
-static LogicalResult Verify(WhileOp op) {
-  auto cond_fn = op.cond_func();
-  auto body_fn = op.body_func();
-  if (!cond_fn) {
-    return op.emitOpError("cond refers to an undefined function : ")
-           << op.cond();
-  }
-  if (!body_fn) {
-    return op.emitOpError("body refers to an undefined function : ")
-           << op.body();
-  }
-
-  auto cond_fn_type = cond_fn.getType();
-  auto body_fn_type = body_fn.getType();
-
-  // Verify that the cond function has exactly one result.
-  if (cond_fn_type.getNumResults() != 1)
-    return op.emitOpError("requires cond function to have exactly one result");
-
-  SmallVector<Type, 4> operands(op.getOperandTypes());
-
+static LogicalResult VerifyWhileTypes(Operation *op, TypeRange cond_input,
+                                      TypeRange body_input,
+                                      TypeRange body_result) {
   // Collect all the type lists for the op so that different pairs of type lists
   // can be compared for the compatibility.
   constexpr int kNumTypeLists = 5;
-  const std::array<std::pair<std::string, ArrayRef<Type>>, kNumTypeLists>
-      type_lists = {{
-          {"operand", operands},
-          {"body function result", body_fn_type.getResults()},
-          {"result", op.getResultTypes()},
-          {"cond function input", cond_fn_type.getInputs()},
-          {"body function input", body_fn_type.getInputs()},
-      }};
+  const std::array<TypeRangeWithDesc, kNumTypeLists> type_lists = {{
+      {op->getOperandTypes(), "input"},
+      {body_result, "body result"},
+      {op->getResultTypes(), "result"},
+      {cond_input, "condition input"},
+      {body_input, "body input"},
+  }};
 
   // A pair of type lists should be cast compatible with each other if one is
   // converted to the another for a function call or assignment or there is a
@@ -2267,25 +2248,35 @@ static LogicalResult Verify(WhileOp op) {
     for (int j = std::max(2, i + 1); j < kNumTypeLists; ++j) {
       auto &a = type_lists[i];
       auto &b = type_lists[j];
-
-      int a_size = a.second.size();
-      if (a_size != b.second.size())
-        return op.emitOpError(
-            llvm::formatv("requires the number of {0}s to be equal to the "
-                          "number of {1}s. Found {2} and {3}, respectively",
-                          a.first, b.first, a_size, b.second.size()));
-
-      for (int idx = 0; idx < a_size; ++idx) {
-        auto a_type = a.second[idx];
-        auto b_type = b.second[idx];
-
-        if (!AreCastCompatible({a_type, b_type}))
-          return op.emitError(llvm::formatv(
-              "{0} type {1} is incompatible with {2} type {3} at index {4}",
-              a.first, a_type, b.first, b_type, idx));
-      }
+      if (failed(VerifyTypeRangesAreCompatible(op, a, b))) return failure();
     }
   }
+  return success();
+}
+
+static LogicalResult Verify(WhileOp op) {
+  auto cond_fn = op.cond_func();
+  auto body_fn = op.body_func();
+  if (!cond_fn) {
+    return op.emitOpError("cond refers to an undefined function : ")
+           << op.cond();
+  }
+  if (!body_fn) {
+    return op.emitOpError("body refers to an undefined function : ")
+           << op.body();
+  }
+
+  auto cond_fn_type = cond_fn.getType();
+  auto body_fn_type = body_fn.getType();
+
+  // Verify that the cond function has exactly one result.
+  if (cond_fn_type.getNumResults() != 1)
+    return op.emitOpError("requires cond function to have exactly one result");
+
+  if (failed(VerifyWhileTypes(op, /*cond_input=*/cond_fn_type.getInputs(),
+                              /*body_input=*/body_fn_type.getInputs(),
+                              /*body_result=*/body_fn_type.getResults())))
+    return failure();
   return success();
 }
 
@@ -2302,50 +2293,23 @@ void WhileOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 //===----------------------------------------------------------------------===//
 static LogicalResult Verify(WhileRegionOp op) {
   // Verify that the condition generates a single tensor<i1> result.
-  YieldOp yield = cast<YieldOp>(op.cond().front().getTerminator());
-  if (yield.getNumOperands() != 1)
+  Operation *cond_yield = op.cond().front().getTerminator();
+  if (cond_yield->getNumOperands() != 1)
     return op.emitOpError()
            << "condition should have a single tensor<i1> result";
 
-  auto cond_type = yield.getOperand(0).getType().dyn_cast<RankedTensorType>();
+  auto cond_type =
+      cond_yield->getOperand(0).getType().dyn_cast<RankedTensorType>();
   if (!cond_type || !cond_type.getShape().equals({}) ||
       !cond_type.getElementType().isInteger(/*width=*/1))
     return op.emitOpError()
            << "condition should have a single tensor<i1> result";
 
-  // The body result types should match while op result types.
-  if (failed(VerifyRegionResults(op, op.body(), "body"))) return failure();
-
-  // Both condition and body should have same number and type of operands as
-  // the WhileRegion inputs.
-  const int num_inputs = op.getNumOperands();
-  auto block_inputs_match_op_inputs = [&](Region &region,
-                                          StringRef name) -> LogicalResult {
-    Block &block = region.front();
-    if (block.getNumArguments() != num_inputs)
-      return op.emitOpError()
-             << name << " should have same number of inputs (" << num_inputs
-             << ") as " << WhileRegionOp::getOperationName() << " but has "
-             << block.getNumArguments() << " inputs";
-
-    for (auto types_idx : llvm::enumerate(
-             llvm::zip(op.getOperandTypes(), block.getArgumentTypes()))) {
-      auto op_input_type = std::get<0>(types_idx.value());
-      auto block_input_type = std::get<1>(types_idx.value());
-      if (!AreCastCompatible({block_input_type, op_input_type}))
-        return op.emitOpError(llvm::formatv(
-            "{0} input type {1} is incompatible with {2} "
-            "input type {3} at index {4}",
-            name, block_input_type, WhileRegionOp::getOperationName(),
-            op_input_type, types_idx.index()));
-    }
-    return success();
-  };
-
-  if (failed(block_inputs_match_op_inputs(op.cond(), "condition")) ||
-      failed(block_inputs_match_op_inputs(op.body(), "body")))
+  Operation *body_yield = op.body().front().getTerminator();
+  if (failed(VerifyWhileTypes(op, /*cond_input=*/op.cond().getArgumentTypes(),
+                              /*body_input=*/op.body().getArgumentTypes(),
+                              /*body_result=*/body_yield->getOperandTypes())))
     return failure();
-
   return success();
 }
 
@@ -2457,7 +2421,8 @@ struct WhileRegionEliminatePassThrough
     auto &new_body_block = new_while_op.body().front();
     auto &new_yield = *new_body_block.getTerminator();
 
-    // Build a vector of new results. Also patch up the region bodies and yield.
+    // Build a vector of new results. Also patch up the region bodies and
+    // yield.
     SmallVector<Value, 4> new_results;
     next_idx = 0;
     for (int op_idx : llvm::seq<int>(0, old_num_operands)) {
