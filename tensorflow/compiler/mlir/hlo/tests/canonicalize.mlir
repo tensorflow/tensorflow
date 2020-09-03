@@ -191,6 +191,20 @@ func @concatenate_const_2D_horizontal() -> tensor<2x2xi32> {
   return %2 : tensor<2x2xi32>
 }
 
+// CHECK-LABEL: constant_like_constant
+func @constant_like_constant(%arg0: tensor<3x4xi32>) -> tensor<3x4xf32> {
+  // CHECK: mhlo.constant dense<3.200000e+00>
+  %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<3x4xi32>) -> tensor<3x4xf32>
+  return %0 : tensor<3x4xf32>
+}
+
+// CHECK-LABEL: constant_like_constant_dynamic
+func @constant_like_constant_dynamic(%arg0: tensor<*xi32>) -> tensor<*xf32> {
+  // CHECK: chlo.constant_like
+  %0 = "chlo.constant_like"(%arg0) { value = 3.2 : f32 } : (tensor<*xi32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: dynamic_slice_variable_start
 func @dynamic_slice_variable_start(%arg0: tensor<3x4xi32>, %arg1: tensor<i64>, %arg2: tensor<i64>) -> tensor<1x4xi32> {
   // CHECK: "mhlo.dynamic-slice"
@@ -287,6 +301,13 @@ func @slice_2D_fold_vertical() -> tensor<4x1xi64> {
   return %1 : tensor<4x1xi64>
 }
 
+// CHECK-LABEL: slice_unknown_shape
+func @slice_unknown_shape(%arg0: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK: "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<*xf32>) -> tensor<*xf32>
+  %0 = "mhlo.slice"(%arg0) {limit_indices = dense<[1, 4]> : tensor<2xi64>, start_indices = dense<0> : tensor<2xi64>, strides = dense<1> : tensor<2xi64>} : (tensor<*xf32>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
 // CHECK-LABEL: slice_concat_fold_first
 func @slice_concat_fold_first(%arg0: tensor<1x5xf32>, %arg1: tensor<1x5xf32>) -> tensor<1x5xf32> {
   %0 = "mhlo.concatenate"(%arg0, %arg1) { dimension = 0 : i64 } : (tensor<1x5xf32>, tensor<1x5xf32>) -> tensor<2x5xf32>
@@ -363,6 +384,25 @@ func @dynamic_broadcast_in_dim_op_not_actually_dynamic(%arg0: tensor<4xf32>, %ar
   %0 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %arg1) { broadcast_dimensions = dense<1> : tensor<1xi64> } : (tensor<4xf32>, tensor<2xi64>) -> tensor<5x4xf32>
   // CHECK: return %[[RESULT]] : tensor<5x4xf32>
   return %0 : tensor<5x4xf32>
+}
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_1
+func @dynamic_broadcast_in_dim_to_same_shape_1(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<?xf32>
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> tensor<1xindex>
+  %2 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %0) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: return %[[ARG]] : tensor<?xf32>
+  return %2 : tensor<?xf32>
+}
+
+// CHECK-LABEL: func @dynamic_broadcast_in_dim_to_same_shape_2
+func @dynamic_broadcast_in_dim_to_same_shape_2(%arg0: tensor<?xf32>) -> tensor<?xf32> {
+  // CHECK-SAME: %[[ARG:.*]]: tensor<?xf32>
+  %0 = shape.shape_of %arg0 : tensor<?xf32> -> !shape.shape
+  %1 = shape.to_extent_tensor %0 : !shape.shape -> tensor<1xindex>
+  %2 = "mhlo.dynamic_broadcast_in_dim"(%arg0, %1) { broadcast_dimensions = dense<0> : tensor<1xi64> } : (tensor<?xf32>, tensor<1xindex>) -> tensor<?xf32>
+  // CHECK: return %[[ARG]] : tensor<?xf32>
+  return %2 : tensor<?xf32>
 }
 
 // CHECK-LABEL: func @broadcast_in_dim_constant_fold_0d
@@ -542,3 +582,86 @@ func @dce_while_without_side_effect(%arg0: tensor<i64>) -> tensor<i64> {
 
   return %arg0 : tensor<i64>
 }
+
+// CHECK-LABEL: unpack_repack_same_tuple
+// CHECK-SAME: ([[ARG0:%.*]]: tuple<tensor<i32>, !mhlo.token, tensor<f32>>)
+func @unpack_repack_same_tuple(%arg0: tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> tuple<tensor<i32>, !mhlo.token, tensor<f32>> {
+  %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> tensor<i32>
+  %1 = "mhlo.get_tuple_element"(%arg0) {index = 1 : i32} : (tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> !mhlo.token
+  %2 = "mhlo.get_tuple_element"(%arg0) {index = 2 : i32} : (tuple<tensor<i32>, !mhlo.token, tensor<f32>>) -> tensor<f32>
+  %3 = "mhlo.tuple"(%0, %1, %2) : (tensor<i32>, !mhlo.token, tensor<f32>) -> tuple<tensor<i32>, !mhlo.token, tensor<f32>>
+
+  // CHECK: return [[ARG0]]
+  return %3 : tuple<tensor<i32>, !mhlo.token, tensor<f32>>
+}
+
+// CHECK-LABEL: unpack_repack_same_tuple_single_element
+// CHECK-SAME: ([[ARG0:%.*]]: tuple<tensor<i32>>)
+func @unpack_repack_same_tuple_single_element(%arg0: tuple<tensor<i32>>) -> tuple<tensor<i32>> {
+  %0 = "mhlo.get_tuple_element"(%arg0) {index = 0 : i32} : (tuple<tensor<i32>>) -> tensor<i32>
+  %3 = "mhlo.tuple"(%0) : (tensor<i32>) -> tuple<tensor<i32>>
+
+  // CHECK: return [[ARG0]]
+  return %3 : tuple<tensor<i32>>
+}
+
+// CHECK-LABEL: func @erase_dead_lhlo_constant
+func @erase_dead_lhlo_constant() {
+  %M = alloc() : memref<256x1024xf32>
+  // CHECK-NEXT: return
+  "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
+  dealloc %M : memref<256x1024xf32>
+  return
+}
+
+// A negative test for dead lhlo constant op erasure.
+// CHECK-LABEL: func @erase_dead_lhlo_constant_negative
+func @erase_dead_lhlo_constant_negative(%M : memref<4xf32>) -> memref<256x1024xf32> {
+  // CHECK-NEXT: lmhlo.constant
+  "lmhlo.constant"(%M) {value = dense<0.0> : tensor<f32>} : (memref<4xf32>) -> ()
+  // CHECK-NEXT: alloc
+  // CHECK-NEXT: lmhlo.constant
+  %N = alloc() : memref<256x1024xf32>
+  "lmhlo.constant"(%N) {value = dense<0.0> : tensor<f32>} : (memref<256x1024xf32>) -> ()
+  return %N : memref<256x1024xf32>
+}
+
+// CHECK-LABEL: func @fold_get_dimension_size
+func @fold_get_dimension_size(%I : tensor<1x128x512xf32>) -> tensor<i32> {
+  %size = "mhlo.get_dimension_size"(%I) {dimension = 2 : i32} : (tensor<1x128x512xf32>) -> tensor<i32>
+  return %size : tensor<i32>
+  // CHECK-NEXT: %[[C:.*]] = mhlo.constant dense<512> : tensor<i32>
+  // CHECK-NEXT: return %[[C]]
+}
+
+// CHECK-LABEL: func @fold_select_same
+func @fold_select_same(%arg0 : tensor<f32>, %arg1 : tensor<i1>) -> tensor<f32> {
+  %1 = "mhlo.select"(%arg1, %arg0, %arg0) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: return %arg0
+  return %1 : tensor<f32>
+}
+
+// CHECK-LABEL: func @fold_select_first
+func @fold_select_first(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32> {
+  %0 = mhlo.constant dense<1> : tensor<i1>
+  %1 = "mhlo.select"(%0, %arg0, %arg1) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: return %arg0
+  return %1 : tensor<f32>
+}
+
+// CHECK-LABEL: func @fold_select_second
+func @fold_select_second(%arg0 : tensor<f32>, %arg1 : tensor<f32>) -> tensor<f32> {
+  %0 = mhlo.constant dense<0> : tensor<i1>
+  %1 = "mhlo.select"(%0, %arg0, %arg1) : (tensor<i1>, tensor<f32>, tensor<f32>) -> tensor<f32>
+  // CHECK: return %arg1
+  return %1 : tensor<f32>
+}
+
+// CHECK-LABEL: func @fold_select_vector
+func @fold_select_vector(%arg0 : tensor<4xf32>, %arg1 : tensor<4xf32>) -> tensor<4xf32> {
+  %0 = mhlo.constant dense<1> : tensor<4xi1>
+  %1 = "mhlo.select"(%0, %arg0, %arg1) : (tensor<4xi1>, tensor<4xf32>, tensor<4xf32>) -> tensor<4xf32>
+  // CHECK: return %arg0
+  return %1 : tensor<4xf32>
+}
+

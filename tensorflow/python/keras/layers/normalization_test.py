@@ -27,7 +27,6 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -757,7 +756,7 @@ class LayerNormalizationNumericsTest(keras_parameterized.TestCase):
         self.assertAllClose(gamma_grad_t, gamma_grad_ref, rtol=tol, atol=tol)
 
   # The gradient_checker_v2 does not work properly with LayerNorm in graph mode.
-  @tf_test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_backward(self):
     # For numeric stability, we ensure the axis's dimension(s) have at least 4
     # elements.

@@ -23,9 +23,9 @@ import unittest
 import numpy as np
 
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
-from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -242,14 +242,11 @@ class SoftmaxTest(test.TestCase):
                          [[5., 4., 3., 2.], [1., 2., 3., 4.]]])
     self.assertEqual([3, 2, 4], op.get_shape())
 
-  @test_util.run_deprecated_v1
   def testEmptyInput(self):
-    with self.cached_session():
-      x = array_ops.placeholder(dtypes.float32, shape=[0, 3])
-      self.assertEqual(0, array_ops.size(x).eval())
-      # reshape would raise if logits is empty
-      with self.assertRaises(errors_impl.InvalidArgumentError):
-        nn_ops.softmax(x, axis=0).eval()
+    x = array_ops.ones(shape=[0, 3], dtype=dtypes.float32)
+    y = np.zeros(shape=[0, 3], dtype=np.float32)
+    self.assertEqual(0, self.evaluate(array_ops.size(x)))
+    self.assertAllEqual(y, self.evaluate(nn_ops.softmax(x, axis=0)))
 
   def testDimTooLarge(self):
     with self.cached_session():
@@ -266,7 +263,6 @@ class SoftmaxTest(test.TestCase):
       with self.assertRaises(errors_impl.InvalidArgumentError):
         nn_ops.softmax(ones, axis=2).eval()
 
-  @test_util.run_deprecated_v1
   def testLargeDims(self):
     # Make sure that we properly handle large inputs. See
     # https://github.com/tensorflow/tensorflow/issues/4425 for details
@@ -275,10 +271,10 @@ class SoftmaxTest(test.TestCase):
       np_softmax = self._npSoftmax(ones)
 
       for use_gpu in [True, False]:
-        with self.cached_session(use_gpu=use_gpu) as sess:
-          x = array_ops.placeholder(dtypes.float32)
+        with self.cached_session(use_gpu=use_gpu):
+          x = constant_op.constant(ones)
           y = nn_ops.softmax(x)
-          tf_softmax = sess.run(y, feed_dict={x: ones})
+          tf_softmax = self.evaluate(y)
         self.assertAllClose(tf_softmax, np_softmax)
 
 

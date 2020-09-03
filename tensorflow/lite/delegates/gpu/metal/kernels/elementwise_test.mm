@@ -79,6 +79,19 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
+- (void)testCopy {
+  OperationType op_type = OperationType::COPY;
+  const BHWC shape(1, 2, 2, 1);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0, -6.2, 2.0, 4.0}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({0.0, -6.2, 2.0, 4.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
 - (void)testDiv {
   OperationType op_type = OperationType::DIV;
   const BHWC shape(1, 2, 2, 1);
@@ -90,6 +103,21 @@ TensorRef<BHWC> GetTensorRef(int ref, const BHWC& shape) {
   auto status = model.Invoke();
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({0.0, -3.1, -4.0, 1.0}, model.GetOutput(0), 1e-6f);
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+}
+
+- (void)testElu {
+  OperationType op_type = OperationType::ELU;
+  const BHWC shape(1, 1, 1, 7);
+  SingleOpModel model({/*type=*/ToString(op_type), /*attributes=*/{}},
+                      /*inputs=*/{GetTensorRef(0, shape)},
+                      /*outputs=*/{GetTensorRef(1, shape)});
+  XCTAssertTrue(model.PopulateTensor(0, {0.0f, 1.0f, -1.0f, 100.0f, -100.0f, 0.01f, -0.01f}));
+  auto status = model.Invoke();
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
+  status = CompareVectors({0.0f, 1.0f, std::exp(-1.0f) - 1.0f, 100.0f,
+                           std::exp(-100.0f) - 1.0f, 0.01f, std::exp(-0.01f) - 1.0f},
+                          model.GetOutput(0), 1e-6f);
   XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 

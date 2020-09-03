@@ -21,13 +21,13 @@ from __future__ import print_function
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import distribute_utils
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.distribute import values
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import config
 from tensorflow.python.keras.layers import core
+from tensorflow.python.platform import test
 
 
 def _mimic_two_cpus():
@@ -96,9 +96,9 @@ class MirroredVariableCreationTest(test.TestCase):
       result = distribution.extended.call_for_each_replica(
           model_fn, args=(features,))
       for kernel, bias in result:
-        self.assertIsInstance(kernel, values.MirroredVariable)
+        self.assertTrue(distribute_utils.is_mirrored(kernel))
         self.assertAllDifferent(distribution.experimental_local_results(kernel))
-        self.assertIsInstance(bias, values.MirroredVariable)
+        self.assertTrue(distribute_utils.is_mirrored(bias))
         self.assertAllDifferent(distribution.experimental_local_results(kernel))
 
 

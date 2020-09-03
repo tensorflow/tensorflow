@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <type_traits>
 
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 
 namespace mlir {
 namespace mhlo {
@@ -52,6 +52,7 @@ MAP_HLO_TO_LHLO(CosOp);
 MAP_HLO_TO_LHLO(DivOp);
 MAP_HLO_TO_LHLO(DotOp);
 MAP_HLO_TO_LHLO(ExpOp);
+MAP_HLO_TO_LHLO(FloorOp);
 MAP_HLO_TO_LHLO(GatherOp);
 MAP_HLO_TO_LHLO(ImagOp);
 MAP_HLO_TO_LHLO(IotaOp);

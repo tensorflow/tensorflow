@@ -643,11 +643,6 @@ Status ValidateDotDimensionNumbers(
     return InvalidArgument("%s", message);
   };
 
-  // Check if both element types are the same.
-  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
-    return fail("Element types do not match.");
-  }
-
   // Validate basic properties of dot dimension numbers.
   TF_RETURN_IF_ERROR(ValidateDotDimensionNumbers(lhs, rhs, dimension_numbers));
 
@@ -954,18 +949,18 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(ExpectArray(
       rhs, absl::StrCat("rhs of binary operation ", HloOpcodeString(opcode))));
   switch (opcode) {
+    case HloOpcode::kAdd:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
+    case HloOpcode::kMultiply:
       return InferElementwiseBinaryOpShape(opcode, lhs, rhs,
                                            broadcast_dimensions);
 
     case HloOpcode::kSubtract:
-    case HloOpcode::kAdd:
     case HloOpcode::kAtan2:
     case HloOpcode::kPower:
     case HloOpcode::kDivide:
     case HloOpcode::kRemainder:
-    case HloOpcode::kMultiply:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
@@ -1621,11 +1616,6 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         batch_group_count, feature_group_count);
   }
 
-  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
-    return InvalidArgument(
-        "Convolution with different element types: %s and %s.",
-        ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs));
-  }
   if (dnums.input_spatial_dimensions_size() !=
       dnums.kernel_spatial_dimensions_size()) {
     return InvalidArgument(
@@ -2833,6 +2823,38 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   }
 
   return output_shape;
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferDynamicReshapeShape(
+    const Shape& operand, absl::Span<const Shape* const> dim_size_shapes,
+    absl::Span<const int64> new_size_bounds,
+    const std::vector<bool>& dims_are_dynamic) {
+  if (new_size_bounds.size() != dims_are_dynamic.size()) {
+    return InvalidArgument(
+        "DynamicReshape has to have the same number of elements in new_sizes "
+        "(%d) and dims_are_dynamic (%d)",
+        new_size_bounds.size(), dims_are_dynamic.size());
+  }
+
+  for (const Shape* dim_size_shape : dim_size_shapes) {
+    if (dim_size_shape->element_type() != S32 && dim_size_shape->rank() != 0) {
+      return InvalidArgument(
+          "DynamicReshape's dim size has to be scalar S32, got (%s): ",
+          dim_size_shape->ToString());
+    }
+  }
+
+  Shape inferred_shape = ShapeUtil::MakeShape(
+      operand.element_type(), new_size_bounds, dims_are_dynamic);
+  if (ShapeUtil::ElementsIn(operand) != ShapeUtil::ElementsIn(inferred_shape)) {
+    return InvalidArgument(
+        "Reshape operation has mismatched element counts: from=%d (%s) "
+        "to=%d (%s).",
+        ShapeUtil::ElementsIn(operand), ShapeUtil::HumanString(operand),
+        ShapeUtil::ElementsIn(inferred_shape),
+        ShapeUtil::HumanString(inferred_shape));
+  }
+  return inferred_shape;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferReshapeShape(

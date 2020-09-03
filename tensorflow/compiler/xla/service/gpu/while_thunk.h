@@ -46,12 +46,12 @@ class WhileThunk : public Thunk {
   WhileThunk(const WhileThunk&) = delete;
   WhileThunk& operator=(const WhileThunk&) = delete;
 
-  void ComputeAnnotations() override;
   Status Initialize(const GpuExecutable& executable,
                     se::StreamExecutor* executor) override;
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   const BufferAllocation::Slice condition_result_buffer_index_;
   std::unique_ptr<SequentialThunk> condition_thunk_sequence_;
   std::unique_ptr<SequentialThunk> body_thunk_sequence_;

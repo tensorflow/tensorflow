@@ -27,13 +27,15 @@ import tensorflow.compat.v1 as tf
 from tensorflow.compiler.mlir.tensorflow.tests.tf_saved_model import common_v1
 
 # CHECK: "tf_saved_model.session_initializer"() {initializer = [[init:@.*]]} : () -> ()
-# CHECK: "tf_saved_model.asset"() {filename = {{.*}}, sym_name = "[[asset:.*]]"}
+# CHECK: "tf_saved_model.asset"() {filename = {{.*}}, sym_name = "[[asset1:__tf_saved_model_asset1_.*]]"}
+# CHECK: "tf_saved_model.asset"() {filename = {{.*}}, sym_name = "[[asset0:__tf_saved_model_asset0_.*]]"}
 
 # CHECK:      func [[init]]
-# CHECK-SAME: [[ARG:%.*]]: tensor<!tf.string> {tf_saved_model.bound_input = @[[asset]]}
+# CHECK-SAME: [[ARG0:%.*]]: tensor<!tf.string> {tf_saved_model.bound_input = @[[asset0]]}
+# CHECK-SAME: [[ARG1:%.*]]: tensor<!tf.string> {tf_saved_model.bound_input = @[[asset1]]}
 # CHECK-NEXT: [[R0:%.*]] = "tf.HashTableV2"()
 # CHECK-SAME: shared_name = "[[hash_table:.*]]"
-# CHECK-NEXT: "tf.InitializeTableFromTextFileV2"([[R0]], [[ARG]])
+# CHECK-NEXT: "tf.InitializeTableFromTextFileV2"([[R0]], [[ARG0]])
 
 
 def write_vocabulary_file(vocabulary):
@@ -48,11 +50,16 @@ def write_vocabulary_file(vocabulary):
 
 def test():
 
+  vocabulary_file = write_vocabulary_file(['cat', 'is', 'on', 'the', 'mat'])
   table_initializer = tf.lookup.TextFileInitializer(
-      write_vocabulary_file(['cat', 'is', 'on', 'the', 'mat']), tf.string,
-      tf.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
+      vocabulary_file, tf.string, tf.lookup.TextFileIndex.WHOLE_LINE, tf.int64,
       tf.lookup.TextFileIndex.LINE_NUMBER)
+  # Incur another bound_input on the asset, but with a different sym_name, i.e.,
+  # __tf_saved_model_asset1_tokens.txt vs. __tf_saved_model_asset0_tokens.txt.
   table = tf.lookup.StaticVocabularyTable(table_initializer, num_oov_buckets=10)
+  vocab_file_tensor = tf.convert_to_tensor(vocabulary_file, tf.string,
+                                           name='asset_filepath')
+  tf.add_to_collection(tf.GraphKeys.ASSET_FILEPATHS, vocab_file_tensor)
 
   x = tf.placeholder(tf.string, shape=(), name='input')
   r = table.lookup(x)

@@ -36,6 +36,8 @@ ABSL_CONST_INIT extern const absl::string_view kCuptiDriverApiPlaneName;
 ABSL_CONST_INIT extern const absl::string_view kMetadataPlaneName;
 // Name of XPlane that contains kpi related metrics.
 ABSL_CONST_INIT extern const absl::string_view kTFStreamzPlaneName;
+// Name of XPlane that contains events from python tracer.
+ABSL_CONST_INIT extern const absl::string_view kPythonTracerPlaneName;
 
 // Names of XLines that contain ML-level events.
 ABSL_CONST_INIT extern const absl::string_view kStepLineName;
@@ -84,6 +86,21 @@ enum HostEventType {
   // tf.data related.
   kIteratorGetNextOp,
   kIteratorGetNextAsOptionalOp,
+  kIterator,
+  kDeviceInputPipelineSecondIterator,
+  kPrefetchProduce,
+  kPrefetchConsume,
+  kParallelInterleaveProduce,
+  kParallelInterleaveConsume,
+  kParallelInterleaveInitializedInput,
+  kParallelMapProduce,
+  kParallelMapConsume,
+  kMapAndBatchProduce,
+  kMapAndBatchConsume,
+  kParseExampleProduce,
+  kParseExampleConsume,
+  // JAX related.
+  kExecuteOnLocalDevices,
   // GPU related.
   kKernelLaunch,
   kKernelExecute,
@@ -122,6 +139,8 @@ enum StatType {
   kTensorShapes,
   kKpiName,
   kKpiValue,
+  kElementId,
+  kParentId,
   // XPlane semantics related.
   kProducerType,
   kConsumerType,
@@ -198,6 +217,9 @@ inline bool IsStatType(StatType stat_type, absl::string_view stat_name) {
 }
 
 absl::optional<int64> FindStatType(absl::string_view stat_name);
+
+// Returns true if the given event shouldn't be shown in the trace viewer.
+bool IsInternalEvent(absl::optional<int64> event_type);
 
 // Returns true if the given stat shouldn't be shown in the trace viewer.
 bool IsInternalStat(absl::optional<int64> stat_type);

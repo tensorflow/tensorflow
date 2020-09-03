@@ -311,7 +311,7 @@ class EagerFunctionTest(xla_test.XLATestCase):
     if 'GPU' in self.device:
       # TODO(b/32333178)
       self.skipTest('Current implementation of RandomStandardNormal kernel '
-                    'is very slow on GPU, and has been blacklisted.')
+                    'is very slow on GPU, and has been denylisted.')
     with self.test_scope():
       data_format = 'channels_last'
       conv = convolutional.Conv2D(

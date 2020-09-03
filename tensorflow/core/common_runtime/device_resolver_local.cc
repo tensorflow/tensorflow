@@ -46,4 +46,10 @@ void DeviceResolverLocal::GetDeviceAttributesAsync(const string& device,
   done(s);
 }
 
+Status DeviceResolverLocal::GetTaskCached(
+    const string& task, std::vector<DeviceAttributes>* attributes) {
+  return errors::Internal(
+      "GetTaskCached is not supposed to be called in local collectives");
+}
+
 }  // namespace tensorflow

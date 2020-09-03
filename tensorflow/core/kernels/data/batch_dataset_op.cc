@@ -17,6 +17,7 @@ limitations under the License.
 #include <algorithm>
 #include <utility>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -73,7 +74,7 @@ class BatchDatasetOp::Dataset : public DatasetBase {
     const auto& input_shapes = input_->output_shapes();
     output_shapes_.reserve(input_shapes.size());
     for (const auto& input_shape : input_shapes) {
-      if (drop_remainder_) {
+      if (drop_remainder_ || input_->Cardinality() == kInfiniteCardinality) {
         output_shapes_.emplace_back(
             PartialTensorShape({batch_size_}).Concatenate(input_shape));
       } else {

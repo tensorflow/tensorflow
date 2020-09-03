@@ -140,6 +140,7 @@ exports_files(
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
         "data/experimental/snapshot.proto",
+        "data/experimental/service_config.proto",
         "debug_event.proto",
         "meta_graph.proto",
         "named_tensor.proto",
@@ -165,6 +166,7 @@ tf_proto_library(
         # TODO(ebrevdo): Re-enable once CriticalSection is in core.
         # "critical_section.proto",
         "data/experimental/snapshot.proto",
+        "data/experimental/service_config.proto",
         "debug_event.proto",
         "meta_graph.proto",
         "named_tensor.proto",

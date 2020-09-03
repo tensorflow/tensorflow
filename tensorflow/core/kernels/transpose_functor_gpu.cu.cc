@@ -72,7 +72,7 @@ void TransposeSimple(const GPUDevice& d, const Tensor& in,
     host_buf[ndims * 2 + i] = perm[i];
   }
   // Copies the input strides, output strides and permutation to the device.
-  auto num_bytes = sizeof(int64) * host_buf.size();
+  auto num_bytes = sizeof(int32) * host_buf.size();
   auto dev_buf = d.allocate(num_bytes);
   // NOTE: host_buf is not allocated by GpuHostAllocator, and
   // therefore we are doing a sync copy effectively.

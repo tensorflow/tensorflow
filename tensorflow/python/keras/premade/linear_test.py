@@ -26,6 +26,7 @@ from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import losses
@@ -51,13 +52,32 @@ class LinearModelTest(keras_parameterized.TestCase):
     model.fit(inp, output, epochs=5)
     self.assertTrue(model.built)
 
-  def test_linear_model_with_multi_input(self):
+  def test_linear_model_with_list_input(self):
     model = linear.LinearModel()
     input_a = np.random.uniform(low=-5, high=5, size=(64, 1))
     input_b = np.random.uniform(low=-5, high=5, size=(64, 1))
     output = .3 * input_a + .2 * input_b
     model.compile('sgd', 'mse', [])
     model.fit([input_a, input_b], output, epochs=5)
+
+  def test_linear_model_with_mismatched_dict_inputs(self):
+    model = linear.LinearModel()
+    input_a = np.random.uniform(low=-5, high=5, size=(64, 1))
+    input_b = np.random.uniform(low=-5, high=5, size=(64, 1))
+    output = .3 * input_a + .2 * input_b
+    model.compile('sgd', 'mse', [])
+    model.build({'a': tensor_shape.TensorShape([None, 1]),
+                 'b': tensor_shape.TensorShape([None, 1])})
+    with self.assertRaisesRegex(ValueError, 'Missing keys'):
+      model.fit({'c': input_a, 'b': input_b}, output, epochs=5)
+
+  def test_linear_model_with_dict_input(self):
+    model = linear.LinearModel()
+    input_a = np.random.uniform(low=-5, high=5, size=(64, 1))
+    input_b = np.random.uniform(low=-5, high=5, size=(64, 1))
+    output = .3 * input_a + .2 * input_b
+    model.compile('sgd', 'mse', [])
+    model.fit({'a': input_a, 'b': input_b}, output, epochs=5)
 
   def test_linear_model_as_layer(self):
     input_a = input_layer.Input(shape=(1,), name='a')

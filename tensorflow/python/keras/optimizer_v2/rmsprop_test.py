@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import embedding_ops
@@ -104,7 +105,7 @@ class RMSpropOptimizerTest(test.TestCase):
   def testDense(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
-      with ops.get_default_graph().as_default(), test_util.use_gpu():
+      with ops.get_default_graph().as_default(), testing_utils.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1, 0.2], dtype=dtype.as_numpy_dtype)
@@ -379,7 +380,7 @@ class RMSpropOptimizerTest(test.TestCase):
   def testSparse(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     for (dtype, learning_rate, rho, momentum, epsilon, centered) in _TESTPARAMS:
-      with ops.get_default_graph().as_default(), test_util.use_gpu():
+      with ops.get_default_graph().as_default(), testing_utils.use_gpu():
         # Initialize variables for numpy implementation.
         var0_np = np.array([1.0, 2.0], dtype=dtype.as_numpy_dtype)
         grads0_np = np.array([0.1], dtype=dtype.as_numpy_dtype)

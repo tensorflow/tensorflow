@@ -30,16 +30,16 @@ struct SessionOptions;
 class DeviceFactory {
  public:
   virtual ~DeviceFactory() {}
-  static void Register(const string& device_type, DeviceFactory* factory,
+  static void Register(const std::string& device_type, DeviceFactory* factory,
                        int priority);
-  static DeviceFactory* GetFactory(const string& device_type);
+  static DeviceFactory* GetFactory(const std::string& device_type);
 
   // Append to "*devices" all suitable devices, respecting
   // any device type specific properties/counts listed in "options".
   //
   // CPU devices are added first.
   static Status AddDevices(const SessionOptions& options,
-                           const string& name_prefix,
+                           const std::string& name_prefix,
                            std::vector<std::unique_ptr<Device>>* devices);
 
   // Helper for tests.  Create a single device of type "type".  The
@@ -73,7 +73,7 @@ class DeviceFactory {
 
   // Most clients should call AddDevices() instead.
   virtual Status CreateDevices(
-      const SessionOptions& options, const string& name_prefix,
+      const SessionOptions& options, const std::string& name_prefix,
       std::vector<std::unique_ptr<Device>>* devices) = 0;
 
   // Return the device priority number for a "device_type" string.
@@ -88,7 +88,7 @@ class DeviceFactory {
   // higher than the packaged devices.  See calls to
   // REGISTER_LOCAL_DEVICE_FACTORY to see the existing priorities used
   // for built-in devices.
-  static int32 DevicePriority(const string& device_type);
+  static int32 DevicePriority(const std::string& device_type);
 };
 
 namespace dfactory {
@@ -127,7 +127,7 @@ class Registrar {
   // GPUCompatibleCPU: 70
   // ThreadPoolDevice: 60
   // Default: 50
-  explicit Registrar(const string& device_type, int priority = 50) {
+  explicit Registrar(const std::string& device_type, int priority = 50) {
     DeviceFactory::Register(device_type, new Factory(), priority);
   }
 };

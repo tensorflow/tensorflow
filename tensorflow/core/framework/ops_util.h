@@ -81,7 +81,7 @@ bool IsDim0SliceAligned(const TensorShape& s, int64 start, int64 end_or_size) {
 }
 
 // Returns <suffix> sanitized to have only [a-zA-Z0-9-_].
-string SanitizeThreadSuffix(string suffix);
+std::string SanitizeThreadSuffix(std::string suffix);
 
 // Helper to compute 'strides' given a tensor 'shape'. I.e.,
 // strides[i] = prod(shape.dim_size[(i+1):])

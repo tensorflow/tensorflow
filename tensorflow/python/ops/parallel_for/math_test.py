@@ -261,6 +261,9 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
     self._test_loop_fn(loop_fn, 4)
 
+  @test_util.run_without_tensor_float_32(
+      "Calls matmul in parallel for-loop and compares result to calling matmul "
+      "in sequential for-loop")
   def test_matmul(self):
     for tr_a in (True, False):
       for tr_b in (True, False):
@@ -341,7 +344,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
         math_ops.reduce_min,
         math_ops.reduce_mean,
     ]:
-      for axis in ([1], None, [0, 2]):
+      for axis in ([1], None, [0, 2], constant_op.constant([1], dtypes.int64)):
         for keepdims in (True, False):
 
           # pylint: disable=cell-var-from-loop
@@ -356,7 +359,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
   def test_boolean_reduction(self):
     x = random_ops.random_uniform([2, 3, 4, 5]) > 0.5
     for op in [math_ops.reduce_any, math_ops.reduce_all]:
-      for axis in ([1], None, [0, 2]):
+      for axis in ([1], None, [0, 2], constant_op.constant([1], dtypes.int64)):
         for keepdims in (True, False):
 
           # pylint: disable=cell-var-from-loop
@@ -402,7 +405,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
   def test_cum_sum(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
-    for axis in (1, -2):
+    for axis in (1, -2, constant_op.constant(1, dtypes.int64)):
       for exclusive in (True, False):
         for reverse in (True, False):
 
@@ -418,7 +421,7 @@ class MathTest(PForTestCase, parameterized.TestCase):
 
   def test_cum_prod(self):
     x = random_ops.random_uniform([2, 3, 4, 5])
-    for axis in (1, -2):
+    for axis in (1, -2, constant_op.constant(1, dtypes.int64)):
       for exclusive in (True, False):
         for reverse in (True, False):
 
@@ -745,6 +748,9 @@ class LinalgTest(PForTestCase):
 
     self._test_loop_fn(loop_fn, 2)
 
+  @test_util.run_without_tensor_float_32(
+      "Calls einsum in parallel for-loop and compares result to calling einsum "
+      "in sequential for-loop")
   def test_einsum(self):
     b = 10
     x_series = random_ops.random_uniform([b, 9, 9])

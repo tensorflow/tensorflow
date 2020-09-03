@@ -3604,5 +3604,52 @@ class TestFunctionTracing(keras_parameterized.TestCase):
     self.assertEqual(sum(new_func_graph in log for log in logs.output), 9)
 
 
+class TestBuildCustomModel(keras_parameterized.TestCase):
+
+  @keras_parameterized.run_all_keras_modes
+  def test_build_list_of_inputs(self):
+
+    class MyModel(training_module.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.l1 = layers_module.Dense(1)
+        self.l2 = layers_module.Dense(2)
+
+      def call(self, x):
+        a, b = x
+        return self.l1(a) + self.l2(b)
+
+    # List of tuples
+    model = MyModel()
+    model.build([(None, 1), (None, 2)])
+    self.assertEqual(model.l1.kernel.shape.as_list(), [1, 1])
+    self.assertEqual(model.l2.kernel.shape.as_list(), [2, 2])
+    # List of lists
+    model = MyModel()
+    model.build([[None, 1], [None, 2]])
+    self.assertEqual(model.l1.kernel.shape.as_list(), [1, 1])
+    self.assertEqual(model.l2.kernel.shape.as_list(), [2, 2])
+
+  @keras_parameterized.run_all_keras_modes
+  def test_build_single_inputs(self):
+
+    class MyModel(training_module.Model):
+
+      def __init__(self):
+        super(MyModel, self).__init__()
+        self.l1 = layers_module.Dense(1)
+
+      def call(self, x):
+        return self.l1(x)
+
+    model = MyModel()
+    model.build((None, 1))
+    self.assertEqual(model.l1.kernel.shape.as_list(), [1, 1])
+    model = MyModel()
+    model.build([None, 1])
+    self.assertEqual(model.l1.kernel.shape.as_list(), [1, 1])
+
+
 if __name__ == '__main__':
   test.main()

@@ -48,7 +48,13 @@ class InaccessibleTensorError(ValueError):
   pass
 
 
+@tf_export("errors.OperatorNotAllowedInGraphError", v1=[])
 class OperatorNotAllowedInGraphError(TypeError):
+  """An error is raised for unsupported operator in Graph execution.
+
+  For example, using a `tf.Tensor` as a Python `bool` in Graph execution
+  is not allowed.
+  """
   pass
 
 

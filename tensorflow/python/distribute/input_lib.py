@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import sys
 
@@ -53,6 +52,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.types import distribute as distribute_types
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 from tensorflow.tools.docs import doc_controls
@@ -143,7 +143,7 @@ def get_distributed_datasets_from_function(dataset_fn,
 
 
 @tf_export("distribute.DistributedIterator", v1=[])
-class DistributedIteratorInterface(collections.Iterator,
+class DistributedIteratorInterface(collections_abc.Iterator,
                                    distribute_types.Iterator):
   """An iterator over `tf.distribute.DistributedDataset`.
 
@@ -216,6 +216,7 @@ class DistributedIteratorInterface(collections.Iterator,
         "DistributedIterator.element_spec() must be implemented in descendants")
 
   def get_next_as_optional(self):
+    # pylint: disable=line-too-long
     """Returns a `tf.experimental.Optional` that contains the next value for all replicas.
 
     If the `tf.distribute.DistributedIterator` has reached the end of the
@@ -230,6 +231,7 @@ class DistributedIteratorInterface(collections.Iterator,
     >>> distributed_iterator = iter(
     ...     strategy.experimental_distribute_dataset(dataset))
     >>> def step_fn(x):
+    ...   # train the model with inputs
     ...   return x
     >>> @tf.function
     ... def train_fn(distributed_iterator):
@@ -237,21 +239,23 @@ class DistributedIteratorInterface(collections.Iterator,
     ...     optional_data = distributed_iterator.get_next_as_optional()
     ...     if not optional_data.has_value():
     ...       break
-    ...     tf.print(strategy.run(step_fn, args=(optional_data.get_value(),)))
+    ...     per_replica_results = strategy.run(step_fn, args=(optional_data.get_value(),))
+    ...     tf.print(strategy.experimental_local_results(per_replica_results))
     >>> train_fn(distributed_iterator)
-    ... # ([0 1],)
-    ... # ([2 3],)
+    ... # ([0 1], [2 3])
+    ... # ([4], [])
 
     Returns:
       An `tf.experimental.Optional` object representing the next value from the
       `tf.distribute.DistributedIterator` (if it has one) or no value.
     """
+    # pylint: enable=line-too-long
     raise NotImplementedError(
         "get_next_as_optional() not implemented in descendants")
 
 
 @tf_export("distribute.DistributedDataset", v1=[])
-class DistributedDatasetInterface(collections.Iterable,
+class DistributedDatasetInterface(collections_abc.Iterable,
                                   distribute_types.Iterable):
   # pylint: disable=line-too-long
   """Represents a dataset distributed among devices and machines.
@@ -495,36 +499,48 @@ class InputWorkers(object):
     return InputWorkers(worker_device_pairs)
 
 
-def _get_next_as_optional(iterator, strategy, name=None):
-  """Returns an empty dataset indicator and the next input from the iterator."""
+def _get_next_as_optional(iterator, strategy, return_per_replica=False):
+  """Returns an empty dataset indicator and the next input from the iterator.
+
+  Args:
+    iterator: a DistributedIterator object.
+    strategy: the `tf.distribute.Strategy` instance.
+    return_per_replica: a boolean. If True, the returned data will be wrapped
+      with `PerReplica` structure. Otherwise it is a 2D
+      num_input_workers*num_replicas_per_worker list.
+
+  Returns:
+    A tuple (a boolean tensor indicating whether the next batch has value
+    globally, data from all replicas).
+  """
   replicas = []
   worker_has_values = []
   worker_devices = []
   for i, worker in enumerate(iterator._input_workers.worker_devices):  # pylint: disable=protected-access
-    if name is not None:
-      d = tf_device.DeviceSpec.from_string(worker)
-      new_name = "%s_%s_%d" % (name, d.job, d.task)
-    else:
-      new_name = None
-
     with ops.device(worker):
       worker_has_value, next_element = (
-          iterator._iterators[i].get_next_as_list(new_name))  # pylint: disable=protected-access
+          iterator._iterators[i].get_next_as_list())  # pylint: disable=protected-access
       # Collective all-reduce requires explicit devices for inputs.
       with ops.device("/cpu:0"):
         # Converting to integers for all-reduce.
-        worker_has_value = math_ops.cast(worker_has_value, dtypes.int32)
+        worker_has_value = math_ops.cast(worker_has_value, dtypes.int64)
         worker_devices.append(worker_has_value.device)
         worker_has_values.append(worker_has_value)
       # Make `replicas` a flat list of values across all replicas.
       replicas.append(next_element)
 
+  if return_per_replica:
+    flattened_data = []
+    for per_worker_data in replicas:
+      flattened_data.extend(per_worker_data)
+    replicas = distribute_utils.regroup(flattened_data)
+
   # Run an all-reduce to see whether any worker has values.
   # TODO(b/131423105): we should be able to short-cut the all-reduce in some
   # cases.
   if getattr(strategy.extended, "_support_per_replica_values", True):
-    # Slight hack: `reduce` expects a `PerReplica`, so we pass it one, even
-    # though it doesn't actually have a value per replica.
+    # `reduce` expects a `PerReplica`, so we pass it one, even
+    # though it doesn't actually have a value per replica
     worker_has_values = values.PerReplica(worker_has_values)
     global_has_value = strategy.reduce(
         reduce_util.ReduceOp.SUM, worker_has_values, axis=None)
@@ -588,16 +604,12 @@ class DistributedIteratorBase(DistributedIteratorInterface):
     # get_next_as_optional(). And we only enable get_next_as_optional when the
     # output shapes are not static.
     #
-    # TODO(yuefengz): Currently `experimental_enable_get_next_as_optional` is
-    # always set to False in CollectiveAllReduceStrategy. We want to have a way
-    # to distinguish multi workers/single worker between graph, so we can enable
-    # the behavior in single worker case.
-    #
     # TODO(rxsang): We want to always enable the get_next_as_optional behavior
     # when user passed input_fn instead of dataset.
     if getattr(
         strategy.extended, "experimental_enable_get_next_as_optional", False):
-      self._enable_get_next_as_optional = not static_shape
+      self._enable_get_next_as_optional = (
+          not static_shape) or strategy.extended._in_multi_worker_mode()
     else:
       self._enable_get_next_as_optional = False
 
@@ -622,29 +634,15 @@ class DistributedIteratorBase(DistributedIteratorInterface):
     return self
 
   def get_next_as_optional(self):
-    global_has_value, replicas = _get_next_as_optional(self, self._strategy)
+    global_has_value, replicas = _get_next_as_optional(
+        self, self._strategy, return_per_replica=True)
 
     def return_none():
       return optional_ops.Optional.empty(self._element_spec)
 
-    def return_value(replicas):
-      """Wraps the inputs for replicas in an `tf.experimental.Optional`."""
-      results = []
-      for i, worker in enumerate(self._input_workers.worker_devices):
-        with ops.device(worker):
-          devices = self._input_workers.compute_devices_for_worker(i)
-          for j, device in enumerate(devices):
-            with ops.device(device):
-              result = replicas[i][j]
-              results.append(result)
-      replicas = results
-
-      return optional_ops.Optional.from_value(
-          distribute_utils.regroup(replicas))
-
-    return control_flow_ops.cond(global_has_value,
-                                 lambda: return_value(replicas),
-                                 lambda: return_none())  # pylint: disable=unnecessary-lambda
+    return control_flow_ops.cond(
+        global_has_value, lambda: optional_ops.Optional.from_value(replicas),
+        return_none)
 
   def get_next(self, name=None):
     """Returns the next input from the iterator for all replicas."""
@@ -671,7 +669,8 @@ class DistributedIteratorBase(DistributedIteratorInterface):
       out_of_range_replicas.append(data)
       return data
 
-    global_has_value, replicas = _get_next_as_optional(self, self._strategy)
+    global_has_value, replicas = _get_next_as_optional(
+        self, self._strategy, return_per_replica=False)
     results = []
     for i, worker in enumerate(self._input_workers.worker_devices):
       with ops.device(worker):
@@ -868,9 +867,10 @@ class DistributedIterator(DistributedIteratorBase,
       self._iterators = components
       static_shape = _get_static_shape(self._iterators)
       self._strategy = strategy
-      if getattr(
-          strategy.extended, "experimental_enable_get_next_as_optional", False):
-        self._enable_get_next_as_optional = not static_shape
+      if getattr(strategy.extended,
+                 "experimental_enable_get_next_as_optional", False):
+        self._enable_get_next_as_optional = (
+            not static_shape) or strategy.extended._in_multi_worker_mode()
       else:
         self._enable_get_next_as_optional = False
     else:
@@ -905,7 +905,8 @@ class _IterableInput(DistributedDatasetInterface):
   def reduce(self, initial_state, reduce_fn):
     """Execute a `reduce_fn` over all the elements of the input."""
     iterator = iter(self)
-    has_data, data = _get_next_as_optional(iterator, self._strategy)
+    has_data, data = _get_next_as_optional(
+        iterator, self._strategy, return_per_replica=True)
 
     def cond(has_data, data, state):
       del data, state  # Unused.
@@ -914,16 +915,9 @@ class _IterableInput(DistributedDatasetInterface):
     def loop_body(has_data, data, state):
       """Executes `reduce_fn` in a loop till the dataset is empty."""
       del has_data  # Unused.
-      # data is list of lists here. where each list corresponds to one worker.
-      # TODO(b/130570614): Add support for the multiworker and TPU pods use
-      # case.
-      if self._input_workers.num_workers == 1:
-        data = data[0]
-      else:
-        raise ValueError("Dataset iteration within a tf.function is"
-                         " not supported for multiple workers.")
-      state = reduce_fn(state, distribute_utils.regroup(data))
-      has_data, data = _get_next_as_optional(iterator, self._strategy)
+      state = reduce_fn(state, data)
+      has_data, data = _get_next_as_optional(
+          iterator, self._strategy, return_per_replica=True)
       return has_data, data, state
 
     has_data, data, final_state = control_flow_ops.while_loop(
@@ -967,7 +961,7 @@ class DistributedDataset(_IterableInput):
       try:
         # pylint: disable=protected-access
         with ops.colocate_with(dataset._variant_tensor):
-          dataset = distribute._RebatchDataset(dataset, split_batch_by)
+          dataset = distribute._LegacyRebatchDataset(dataset, split_batch_by)
           # Add a prefetch to pipeline rebatching for performance.
           # TODO(rachelim): Instead of inserting an extra prefetch stage here,
           # leverage static graph rewrites to insert _RebatchDataset before
@@ -1031,6 +1025,13 @@ class DistributedDataset(_IterableInput):
       iterator = DistributedIterator(self._input_workers, worker_iterators,
                                      self._strategy)
     iterator._element_spec = self.element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   @property
@@ -1105,6 +1106,13 @@ class DistributedDatasetV1(DistributedDataset):
     iterator = DistributedIteratorV1(self._input_workers, worker_iterators,
                                      self._strategy)
     iterator._element_spec = self.element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   def __iter__(self):
@@ -1172,6 +1180,13 @@ class DistributedDatasetsFromFunction(_IterableInput):
         iterator = DistributedIterator(self._input_workers, iterators,
                                        self._strategy)
       iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+
+      # When async eager is enabled, sometimes the iterator may not finish
+      # initialization before passing to a multi device function, add a sync
+      # point here to make sure all underlying iterators are initialized.
+      if context.executing_eagerly():
+        context.async_wait()
+
       return iterator
 
     raise RuntimeError("__iter__() is only supported inside of tf.function "
@@ -1212,6 +1227,13 @@ class DistributedDatasetsFromFunctionV1(DistributedDatasetsFromFunction):
     iterator = DistributedIteratorV1(self._input_workers, iterators,
                                      self._strategy)
     iterator._element_spec = self._element_spec  # pylint: disable=protected-access
+
+    # When async eager is enabled, sometimes the iterator may not finish
+    # initialization before passing to a multi device function, add a sync point
+    # here to make sure all underlying iterators are initialized.
+    if context.executing_eagerly():
+      context.async_wait()
+
     return iterator
 
   def __iter__(self):
@@ -1269,6 +1291,7 @@ class InputFunctionIterator(DistributedIteratorV1):
 
     super(InputFunctionIterator, self).__init__(input_workers, iterators,
                                                 strategy)
+    self._enable_get_next_as_optional = False
 
 
 # TODO(anjalisridhar): This class will soon be removed and users should move

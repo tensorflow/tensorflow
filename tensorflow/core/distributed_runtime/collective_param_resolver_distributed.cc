@@ -18,14 +18,18 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/cancellable_call.h"
 #include "tensorflow/core/distributed_runtime/device_resolver_distributed.h"
 #include "tensorflow/core/distributed_runtime/worker_cache.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 namespace {
 
 class CompleteGroupCall : public CancellableCall {
  public:
-  CompleteGroupCall(const CollGroupParams& group, const string& device_name,
+  CompleteGroupCall(const CollGroupParams& group,
+                    const DeviceAttributes& device,
                     const CollectiveType& collective_type,
                     CancellationManager* cancel_mgr,
                     const string& remote_worker, WorkerCacheInterface* wc)
@@ -33,7 +37,7 @@ class CompleteGroupCall : public CancellableCall {
     req_.set_group_key(group.group_key);
     req_.set_group_size(group.group_size);
     req_.set_device_type(group.device_type.type_string());
-    req_.add_device_name(device_name);
+    *req_.mutable_device_attributes() = device;
     req_.set_collective_type(collective_type);
   }
   ~CompleteGroupCall() override {}
@@ -98,16 +102,16 @@ CollectiveParamResolverDistributed::CollectiveParamResolverDistributed(
 }
 
 void CollectiveParamResolverDistributed::CompleteParamsAsync(
-    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
-    const StatusCallback& done) {
-  VLOG(1) << "CompleteParams distributed " << device << " for " << cp << ": "
-          << cp->ToString();
+    const DeviceAttributes& device, CollectiveParams* cp,
+    CancellationManager* cancel_mgr, const StatusCallback& done) {
+  VLOG(1) << "CompleteParams distributed " << device.name() << " for " << cp
+          << ": " << cp->ToString();
   CompleteGroupDistributed(device, cp, cancel_mgr,
                            [this, device, cp, cancel_mgr, done](
                                const Status& s, const GroupRec* gr) {
                              if (s.ok()) {
-                               CompleteInstanceDistributed(device, gr, cp,
-                                                           cancel_mgr, done);
+                               CompleteInstanceDistributed(
+                                   device.name(), gr, cp, cancel_mgr, done);
                              } else {
                                done(s);
                              }
@@ -117,28 +121,28 @@ void CollectiveParamResolverDistributed::CompleteParamsAsync(
 void CollectiveParamResolverDistributed::CompleteGroupAsync(
     const CompleteGroupRequest* request, CompleteGroupResponse* response,
     CancellationManager* cancel_mgr, const StatusCallback& done) {
+  if (!request->has_device_attributes()) {
+    done(errors::Internal(
+        "CompleteGroupRequest device_attributes is not set. Make sure you're "
+        "running the same version of Tensorflow on all workers."));
+    return;
+  }
   CollectiveParams cp;
   cp.group.group_key = request->group_key();
   cp.group.group_size = request->group_size();
   cp.group.device_type = DeviceType(request->device_type());
-  for (const string& dn : request->device_name()) {
-    cp.instance.device_names.push_back(dn);
-  }
   cp.instance.type = CollectiveType(request->collective_type());
   CompleteGroupDistributed(
-      cp.instance.device_names[0], &cp, cancel_mgr,
+      request->device_attributes(), &cp, cancel_mgr,
       [response, done](const Status& s, const GroupRec* gr) {
         if (s.ok()) {
           mutex_lock l(gr->mu);
           response->set_group_key(gr->group.group_key);
           response->set_group_size(gr->group.group_size);
           response->set_device_type(gr->group.device_type.type_string());
-          response->set_num_tasks(gr->task_set.size());
-          for (const string& dn : gr->device_list) {
-            response->add_device_name(dn);
-          }
-          for (const string& tn : gr->task_list) {
-            response->add_task_name(tn);
+          response->set_num_tasks(gr->group.num_tasks);
+          for (const auto& item : gr->devices) {
+            *response->add_device_attributes() = item.second;
           }
           response->set_communicator_key(
               gr->group.runtime_details.communicator_key);
@@ -152,6 +156,22 @@ void CollectiveParamResolverDistributed::CompleteGroupAsync(
 void CollectiveParamResolverDistributed::CompleteInstanceAsync(
     const CompleteInstanceRequest* request, CompleteInstanceResponse* response,
     CancellationManager* cancel_mgr, const StatusCallback& done) {
+  GroupRec* gr = GetCachedGroup(request->group_key());
+  if (gr == nullptr) {
+    done(errors::FailedPrecondition(
+        "group ", request->group_key(),
+        " not found. This normally means the server has restarted"));
+    return;
+  }
+  {
+    mutex_lock l(gr->mu);
+    if (!gr->status.ok() || gr->devices.size() != gr->group.group_size) {
+      done(errors::FailedPrecondition(
+          "group ", request->group_key(),
+          " failed to resolve. This normally means the server has restarted"));
+      return;
+    }
+  }
   CollectiveParams* cp = new CollectiveParams;
   cp->name = request->name();
   cp->group.group_key = request->group_key();
@@ -164,87 +184,70 @@ void CollectiveParamResolverDistributed::CompleteInstanceAsync(
   for (int32 offset : request->subdiv_offset()) {
     cp->instance.impl_details.subdiv_offsets.push_back(offset);
   }
-  string* device = new string(request->device());
-  VLOG(1) << "New cp " << cp << " for device " << *device << " : "
-          << cp->ToString();
-  StatusCallback done_and_cleanup = [cp, device, done](const Status& s) {
+  StatusCallback done_and_cleanup = [cp, done](const Status& s) {
     done(s);
     delete cp;
-    delete device;
   };
-  // Start by completing the group.
-  CompleteGroupDistributed(
-      *device, cp, cancel_mgr,
-      [this, cp, device, response, cancel_mgr, done_and_cleanup](
-          const Status& cg_status, const GroupRec* gr) {
-        if (cg_status.ok()) {
-          // Then complete the instance.
-          CompleteInstanceDistributed(
-              *device, gr, cp, cancel_mgr,
-              [this, gr, cp, response,
-               done_and_cleanup](const Status& ci_status) {
-                if (ci_status.ok()) {
-                  // Now source_rank should be known, so
-                  // retrieve it.
-                  FindInstanceRec(
-                      gr, cp,
-                      [cp, response, done_and_cleanup](const Status& fi_status,
-                                                       InstanceRec* ir) {
-                        if (fi_status.ok()) {
-                          mutex_lock l(ir->out_mu);
-                          ir->WaitForOutMu(l);
-                          response->set_instance_key(cp->instance.instance_key);
-                          response->set_source_rank(ir->source_rank);
-                          done_and_cleanup(fi_status);
-                        } else {
-                          done_and_cleanup(fi_status);
-                        }
-                      });
+  CompleteInstanceDistributed(
+      request->device(), gr, cp, cancel_mgr,
+      [this, gr, cp, response, done_and_cleanup](const Status& ci_status) {
+        if (ci_status.ok()) {
+          // Now source_rank should be known, so
+          // retrieve it.
+          FindInstanceRec(
+              gr, cp,
+              [cp, response, done_and_cleanup](const Status& fi_status,
+                                               InstanceRec* ir) {
+                if (fi_status.ok()) {
+                  mutex_lock l(ir->out_mu);
+                  ir->WaitForOutMu(l);
+                  response->set_instance_key(cp->instance.instance_key);
+                  response->set_source_rank(ir->source_rank);
+                  done_and_cleanup(fi_status);
                 } else {
-                  done_and_cleanup(ci_status);
+                  done_and_cleanup(fi_status);
                 }
               });
         } else {
-          done_and_cleanup(cg_status);
+          done_and_cleanup(ci_status);
         }
       });
 }
 
-bool CollectiveParamResolverDistributed::GroupIsCached(int32 group_key) {
+CollectiveParamResolverDistributed::GroupRec*
+CollectiveParamResolverDistributed::GetCachedGroup(int32 group_key) {
   mutex_lock l(group_mu_);
-  const auto& it = group_table_.find(group_key);
-  return it != group_table_.end();
+  auto it = group_table_.find(group_key);
+  if (it == group_table_.end()) {
+    return nullptr;
+  }
+  return it->second.get();
 }
 
 Status CollectiveParamResolverDistributed::UpdateGroupCache(
     const CompleteGroupResponse& resp) {
   // Build a new record from resp.
   std::unique_ptr<GroupRec> gr(new GroupRec);
-  mutex_lock grl(gr->mu);
-  gr->group.device_type = DeviceType(resp.device_type());
-  gr->group.group_key = resp.group_key();
-  gr->group.group_size = resp.group_size();
-  gr->group.num_tasks = resp.num_tasks();
-  if (resp.device_name_size() != gr->group.group_size) {
-    return errors::Internal(
-        "CompleteGroupResponse group_size doesn't match device_name list");
+  {
+    mutex_lock grl(gr->mu);
+    gr->group.device_type = DeviceType(resp.device_type());
+    gr->group.group_key = resp.group_key();
+    gr->group.group_size = resp.group_size();
+    gr->group.num_tasks = resp.num_tasks();
+    if (resp.device_attributes().empty()) {
+      return errors::Internal(
+          "CompleteGroupResponse device_attributes is empty. Make sure you're "
+          "running the same version of Tensorflow on all workers.");
+    }
+    if (resp.device_attributes_size() != gr->group.group_size) {
+      return errors::Internal(
+          "CompleteGroupResponse group_size doesn't match device_name list");
+    }
+    for (const DeviceAttributes& device : resp.device_attributes()) {
+      gr->devices[device.name()] = device;
+    }
+    gr->group.runtime_details.communicator_key = resp.communicator_key();
   }
-  for (const string& dn : resp.device_name()) {
-    gr->device_set.insert(dn);
-    gr->device_list.push_back(dn);
-  }
-  if (resp.task_name_size() != gr->group.group_size) {
-    return errors::Internal(
-        "CompleteGroupResponse group_size doesn't match task_name list");
-  }
-  for (const string& tn : resp.task_name()) {
-    gr->task_list.push_back(tn);
-    gr->task_set.insert(tn);
-  }
-  CHECK_EQ(gr->task_set.size(), gr->group.num_tasks);
-  gr->group.runtime_details.communicator_key = resp.communicator_key();
-  VLOG(2) << "Group communicator_key="
-          << absl::CEscape(gr->group.runtime_details.communicator_key);
   {
     // Group membership should never change. Once a record is in group_table_
     // it never gets removed.
@@ -271,14 +274,15 @@ Status CollectiveParamResolverDistributed::UpdateGroupCache(
 }
 
 void CollectiveParamResolverDistributed::CompleteGroupDistributed(
-    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
-    const GroupRecCallback& done) {
+    const DeviceAttributes& device, CollectiveParams* cp,
+    CancellationManager* cancel_mgr, const GroupRecCallback& done) {
   VLOG(1) << "CompleteGroupDistributed group_key=" << cp->group.group_key
-          << " dev: " << device << " is_leader=" << (group_leader_.empty());
+          << " dev: " << device.name()
+          << " is_leader=" << (group_leader_.empty());
   if (group_leader_.empty()) {
     // This is the group leader, so resolution is local.
     return CompleteGroupLocal(device, cp, done);
-  } else if (!GroupIsCached(cp->group.group_key)) {
+  } else if (GetCachedGroup(cp->group.group_key) == nullptr) {
     // Need to update Group cache from the leader.
     CompleteGroupCall* call =
         new CompleteGroupCall(cp->group, device, cp->instance.type, cancel_mgr,
@@ -302,10 +306,15 @@ void CollectiveParamResolverDistributed::CompleteGroupDistributed(
   }
 }
 
-bool CollectiveParamResolverDistributed::InstanceIsCached(int32 instance_key) {
+bool CollectiveParamResolverDistributed::InstanceIsCached(int32 group_key,
+                                                          int32 instance_key) {
   mutex_lock l(instance_mu_);
-  const auto& it = instance_table_.find(instance_key);
-  return it != instance_table_.end();
+  auto group_it = instance_table_.find(group_key);
+  if (group_it == instance_table_.end()) {
+    return false;
+  }
+  auto instance_it = group_it->second.find(instance_key);
+  return instance_it != group_it->second.end();
 }
 
 void CollectiveParamResolverDistributed::UpdateInstanceCache(
@@ -339,7 +348,8 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
       }
       if (ir->known_count < cp->group.group_size) {
         ir->known_count = cp->group.group_size;
-        if (ir->known.size() != cp->group.group_size) {
+        const int ir_known_size = ir->known.size();
+        if (ir_known_size != cp->group.group_size) {
           ir->status = errors::Internal(
               "UpdateInstanceCache:: CompleteInstanceResponse for instance ",
               cp->instance.instance_key, " has known.size()=", ir->known.size(),
@@ -347,7 +357,7 @@ void CollectiveParamResolverDistributed::UpdateInstanceCache(
           status = ir->status;
           break;
         }
-        for (int i = 0; i < ir->known.size(); ++i) {
+        for (int i = 0; i < ir_known_size; ++i) {
           ir->known[i] = true;
         }
       }
@@ -371,7 +381,7 @@ void CollectiveParamResolverDistributed::CompleteInstanceDistributed(
   if (group_leader_.empty()) {
     // This is the group leader so resolution is local.
     return CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
-  } else if (InstanceIsCached(cp->instance.instance_key)) {
+  } else if (InstanceIsCached(gr->group.group_key, cp->instance.instance_key)) {
     return CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
   } else {
     CompleteInstanceCall* call = new CompleteInstanceCall(

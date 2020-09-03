@@ -109,6 +109,7 @@ do_pylint() {
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
 "^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/keras/engine/base_layer.py.*\[E1102.*not-callable "\
 "^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
 "^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
@@ -355,7 +356,7 @@ do_external_licenses_check(){
 
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
-  # Blacklist
+  # Denylist
   echo ${MISSING_LICENSES_FILE}
   grep \
     -e "@bazel_tools//third_party/" \

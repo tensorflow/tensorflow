@@ -594,7 +594,7 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
         output = self.evaluate(output_node)
         self.assertNear(2.0, output, 0.00001)
 
-  def test_resource_variable_can_be_written_after_blacklisting(self):
+  def test_resource_variable_can_be_written_after_denylisting(self):
     with ops.Graph().as_default():
       with variable_scope.variable_scope("", use_resource=True):
         variable_node = variable_scope.get_variable(
@@ -614,17 +614,17 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
 
           # Test variable name black list. This should result in the variable
           # not being a const.  Furthermore, the paths that read from and assign
-          # to the blacklisted variable should continue to be valid.
-          constant_graph_def_with_blacklist = (
+          # to the denylisted variable should continue to be valid.
+          constant_graph_def_with_denylist = (
               convert_to_constants
               .convert_variables_to_constants_from_session_graph(
                   session=sess,
                   graph_def=variable_graph_def,
                   output_node_names=["output_node", initializer_name],
-                  variable_names_blacklist=set(["variable_node"])))
+                  variable_names_denylist=set(["variable_node"])))
 
           variable_node = None
-          for node in constant_graph_def_with_blacklist.node:
+          for node in constant_graph_def_with_denylist.node:
             if node.name == "variable_node":
               variable_node = node
           self.assertIsNotNone(variable_node)
@@ -634,7 +634,7 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
     # variable is not, and that the graph can be executed and update the
     # variable can be updated with each execution.
     with ops.Graph().as_default():
-      _ = importer.import_graph_def(constant_graph_def_with_blacklist, name="")
+      _ = importer.import_graph_def(constant_graph_def_with_denylist, name="")
       with session_lib.Session() as sess:
         output_node = sess.graph.get_tensor_by_name("output_node:0")
         self.evaluate(sess.graph.get_operation_by_name(initializer_name))
@@ -798,7 +798,7 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
             .convert_variables_to_constants_from_session_graph(
                 sess,
                 variable_graph_def, ["out"],
-                variable_names_blacklist=["y"]))
+                variable_names_denylist=["y"]))
         self._assertGraphContains(
             constant_graph_def, """
             node {
@@ -840,7 +840,7 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
             .convert_variables_to_constants_from_session_graph(
                 sess,
                 variable_graph_def, ["out"],
-                variable_names_blacklist=["y"]))
+                variable_names_denylist=["y"]))
         self._assertGraphContains(
             constant_graph_def, """
             node {
@@ -1086,7 +1086,7 @@ class ConvertVariablesToConstantsSessionTest(test.TestCase):
             .convert_variables_to_constants_from_session_graph(
                 sess,
                 variable_graph_def, ["case/cond"],
-                variable_names_blacklist=["y"]))
+                variable_names_denylist=["y"]))
         self._assertGraphContains(
             constant_graph_def, """
             node {name: "x" op: "Const"}

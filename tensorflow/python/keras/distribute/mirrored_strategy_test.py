@@ -25,11 +25,11 @@ from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
-from tensorflow.python.eager import test
 from tensorflow.python.keras.engine import training as keras_training
 from tensorflow.python.keras.layers import core as keras_core
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import optimizer as optimizer_lib
 

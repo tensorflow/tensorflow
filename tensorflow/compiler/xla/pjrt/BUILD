@@ -59,6 +59,10 @@ cc_library(
     name = "tracked_device_buffer",
     srcs = ["tracked_device_buffer.cc"],
     hdrs = ["tracked_device_buffer.h"],
+    visibility = [
+        "//learning/pathways/data_parallel:__pkg__",
+        "//tensorflow:internal",
+    ],
     deps = [
         ":event_pool",
         ":local_device_state",
@@ -204,6 +208,7 @@ cc_library(
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core/common_runtime:bfc_allocator",
         "//tensorflow/core/common_runtime/gpu:gpu_mem_allocator",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/stream_executor:tf_allocator_adapter",
     ] + if_cuda(["@local_config_nccl//:nccl"]),
 )

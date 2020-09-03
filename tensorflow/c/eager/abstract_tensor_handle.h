@@ -18,11 +18,12 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/refcount.h"
 namespace tensorflow {
 
 // Abstract interface to a Tensor handle in either tracing or immediate
 // execution mode.
-class AbstractTensorHandle {
+class AbstractTensorHandle : public core::RefCounted {
  protected:
   enum AbstractTensorHandleKind { kGraph, kMlir, kEager, kTfrt };
   explicit AbstractTensorHandle(AbstractTensorHandleKind kind) : kind_(kind) {}
@@ -34,14 +35,6 @@ class AbstractTensorHandle {
 
   AbstractTensorHandleKind getKind() const { return kind_; }
 
-  // Release any underlying resources, including the interface object.
-  //
-  // WARNING: The destructor of this class is marked as protected to disallow
-  // clients from directly destroying this object since it may manage it's own
-  // lifetime through ref counting. Thus this must be allocated on the heap and
-  // clients MUST call Release() in order to destroy an instance of this class.
-  virtual void Release() = 0;
-
  private:
   const AbstractTensorHandleKind kind_;
 };
@@ -50,7 +43,7 @@ namespace internal {
 struct AbstractTensorHandleDeleter {
   void operator()(AbstractTensorHandle* p) const {
     if (p != nullptr) {
-      p->Release();
+      p->Unref();
     }
   }
 };

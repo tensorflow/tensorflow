@@ -98,5 +98,9 @@ TfLiteGpuDelegateOptionsV2 GPUCompatibilityList::GetBestOptionsFor(
   return TfLiteGpuDelegateOptionsV2Default();
 }
 
+bool GPUCompatibilityList::IsDatabaseLoaded() const {
+  return database_ != nullptr;
+}
+
 }  // namespace acceleration
 }  // namespace tflite

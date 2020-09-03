@@ -86,6 +86,7 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
   string offset2 = StrCat(offset, offset);
   string offset3 = StrCat(offset2, offset);
   string offset4 = StrCat(offset2, offset2);
+
   if (cluster) {
     LOG(INFO) << offset << "type             = " << cluster->type();
     LOG(INFO) << offset << "num warmup steps = " << cluster->NumWarmupSteps();
@@ -132,7 +133,15 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
         }
       }
     }
+
+    if (cluster->GetDeviceSet()) {
+      for (const auto dev : cluster->GetDeviceSet()->devices()) {
+        LOG(INFO) << "Device name= " << dev->name() << "Pased name= "
+                  << DeviceNameUtils::ParsedNameToString(dev->parsed_name());
+      }
+    }
   }
+
   LOG(INFO) << "item: " << item.id;
   if (!item.feed.empty()) {
     LOG(INFO) << offset << "Feeds  :";
@@ -170,13 +179,6 @@ void TRTOptimizationPass::PrintDebugInfo(grappler::Cluster* cluster,
     }
   } else {
     LOG(INFO) << offset << "No keep ops";
-  }
-  for (const auto dev : cluster->GetDeviceSet()->devices()) {
-    const auto& pname = dev->parsed_name();
-    LOG(INFO) << "Device name= " << dev->name()
-              << " parsedname job= " << pname.job << " id= " << pname.id
-              << " has_id: " << pname.has_id << " has_job: " << pname.has_job
-              << "has_type: " << pname.has_type << " type =" << pname.type;
   }
 }
 

@@ -9,6 +9,7 @@ py_library(
     name = "data",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/python:util",
         "//tensorflow/python/data/experimental",

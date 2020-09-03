@@ -24,10 +24,10 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import ops
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
 class OptimizerTest(test.TestCase, parameterized.TestCase):
@@ -56,8 +56,8 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
     @def_function.function
     def optimize():
       grads = values.PerReplica([
-          ops.convert_to_tensor([1., 1.]),
-          ops.convert_to_tensor([2., 2.]),
+          ops.convert_to_tensor_v2_with_dispatch([1., 1.]),
+          ops.convert_to_tensor_v2_with_dispatch([2., 2.]),
       ])
 
       def step_fn(grads):
@@ -85,7 +85,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
 
     @def_function.function
     def optimize():
-      grads = ops.convert_to_tensor([1., 1.])
+      grads = ops.convert_to_tensor_v2_with_dispatch([1., 1.])
 
       def step_fn(grads):
         optimizer.apply_gradients(
@@ -107,7 +107,7 @@ class OptimizerTest(test.TestCase, parameterized.TestCase):
       v = variables.Variable([0., 0.])
       optimizer = gradient_descent.SGD(0.1)
 
-    grads = ops.convert_to_tensor([1., 1.])
+    grads = ops.convert_to_tensor_v2_with_dispatch([1., 1.])
 
     def step_fn(grads):
       with self.assertRaises(NotImplementedError):

@@ -17,6 +17,8 @@ upper_tabs:
         path: /xla
       - title: XLA architecture
         path: /xla/architecture
+      - title: Known issues
+        path: /xla/known_issues
       - title: Broadcasting semantics
         path: /xla/broadcasting
       - title: Develop a new backend for XLA

@@ -32,11 +32,14 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.saved_model import save_context
+from tensorflow.python.saved_model import save_options
 
 
 class TFFunctionTest(test.TestCase, parameterized.TestCase):
 
-  def setup(self):
+  def setUp(self):
+    super().setUp()
     # Clear the state for every test.
     def_function.run_functions_eagerly(False)
 
@@ -105,6 +108,8 @@ class TFFunctionTest(test.TestCase, parameterized.TestCase):
       ))
   def testReadVariableInsideFunction(self, distribution, run_functions_eagerly):
 
+    def_function.run_functions_eagerly(run_functions_eagerly)
+
     # Get devices on which variables will be placed. Default strategy does not
     # define this, so assume cpu:0 in that case.
     try:
@@ -127,11 +132,40 @@ class TFFunctionTest(test.TestCase, parameterized.TestCase):
     def read():
       return v.read_value()
 
-    for i, d in enumerate(devices):
-      with ops.device(d):
-        # Verify that the value from each device is read, when in that device
-        # scope.
-        self.assertEqual(math_ops.cast(i, dtypes.float32), read())
+    # Verify that the value from each device is read, when in that device
+    # scope. Doing this inside strategy scope is needed to force function
+    # retracing on each device, otherwise `read()` will only be traced once
+    # on the first device and following variable read will always read the value
+    # on the first replica.
+    with distribution.scope():
+      for i, d in enumerate(devices):
+        with ops.device(d):
+          self.assertEqual(math_ops.cast(i, dtypes.float32), read())
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def testRetraceOnSaving(self, distribution):
+    with distribution.scope():
+      v = variables.Variable(0.)
+
+    tracing_count = [0]
+
+    @def_function.function
+    def func():
+      tracing_count[0] += 1
+      return v + 1.
+
+    distribution.run(func)
+    prev_tracing_count = tracing_count[0]
+    with save_context.save_context(save_options.SaveOptions()):
+      func()
+    self.assertEqual(prev_tracing_count + 1, tracing_count[0])
+
+    prev_tracing_count = tracing_count[0]
+    with save_context.save_context(save_options.SaveOptions()):
+      func()
+    self.assertEqual(prev_tracing_count, tracing_count[0])
 
 
 if __name__ == "__main__":

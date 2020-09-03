@@ -1,0 +1,12 @@
+path: "tensorflow.errors.OperatorNotAllowedInGraphError"
+tf_class {
+  is_instance: "<class \'tensorflow.python.framework.errors_impl.OperatorNotAllowedInGraphError\'>"
+  is_instance: "<class \'TypeError\'>"
+  member {
+    name: "args"
+    mtype: "<type \'getset_descriptor\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+}

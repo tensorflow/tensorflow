@@ -55,6 +55,10 @@ class Environment {
   std::vector<CalculationsPrecision> GetSupportedPrecisions() const;
   bool IsSupported(CalculationsPrecision precision) const;
   std::vector<TensorStorageType> GetSupportedStorages() const;
+  // returns storage types that support zero clamping when reading OOB in HW
+  // (Height/Width) dimensions.
+  std::vector<TensorStorageType> GetSupportedStoragesWithHWZeroClampSupport()
+      const;
   bool IsSupported(TensorStorageType storage_type) const;
 
   absl::Status Init();

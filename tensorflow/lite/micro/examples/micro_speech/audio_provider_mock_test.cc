@@ -27,12 +27,11 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestAudioProviderMock) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   int audio_samples_size = 0;
   int16_t* audio_samples = nullptr;
   TfLiteStatus get_status =
-      GetAudioSamples(error_reporter, 0, kFeatureSliceDurationMs,
+      GetAudioSamples(&micro_error_reporter, 0, kFeatureSliceDurationMs,
                       &audio_samples_size, &audio_samples);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, get_status);
   TF_LITE_MICRO_EXPECT_LE(audio_samples_size, kMaxAudioSampleSize);
@@ -41,8 +40,9 @@ TF_LITE_MICRO_TEST(TestAudioProviderMock) {
     TF_LITE_MICRO_EXPECT_EQ(g_yes_1000ms_sample_data[i], audio_samples[i]);
   }
 
-  get_status = GetAudioSamples(error_reporter, 500, kFeatureSliceDurationMs,
-                               &audio_samples_size, &audio_samples);
+  get_status =
+      GetAudioSamples(&micro_error_reporter, 500, kFeatureSliceDurationMs,
+                      &audio_samples_size, &audio_samples);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, get_status);
   TF_LITE_MICRO_EXPECT_LE(audio_samples_size, kMaxAudioSampleSize);
   TF_LITE_MICRO_EXPECT_NE(audio_samples, nullptr);
@@ -51,8 +51,9 @@ TF_LITE_MICRO_TEST(TestAudioProviderMock) {
                             audio_samples[i]);
   }
 
-  get_status = GetAudioSamples(error_reporter, 1500, kFeatureSliceDurationMs,
-                               &audio_samples_size, &audio_samples);
+  get_status =
+      GetAudioSamples(&micro_error_reporter, 1500, kFeatureSliceDurationMs,
+                      &audio_samples_size, &audio_samples);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, get_status);
   TF_LITE_MICRO_EXPECT_LE(audio_samples_size, kMaxAudioSampleSize);
   TF_LITE_MICRO_EXPECT_NE(audio_samples, nullptr);
@@ -60,8 +61,9 @@ TF_LITE_MICRO_TEST(TestAudioProviderMock) {
     TF_LITE_MICRO_EXPECT_EQ(0, audio_samples[i]);
   }
 
-  get_status = GetAudioSamples(error_reporter, 12250, kFeatureSliceDurationMs,
-                               &audio_samples_size, &audio_samples);
+  get_status =
+      GetAudioSamples(&micro_error_reporter, 12250, kFeatureSliceDurationMs,
+                      &audio_samples_size, &audio_samples);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, get_status);
   TF_LITE_MICRO_EXPECT_LE(audio_samples_size, kMaxAudioSampleSize);
   TF_LITE_MICRO_EXPECT_NE(audio_samples, nullptr);

@@ -1794,8 +1794,13 @@ class RefVariable(VariableV1, core.Tensor):
           # pylint: disable=protected-access
           with ops.get_default_graph()._attr_scope({"_class": attr}):
             with ops.name_scope("Initializer"), ops.device(None):
+              initial_value = initial_value()
+              if isinstance(initial_value, trackable.CheckpointInitialValue):
+                self._maybe_initialize_trackable()
+                self._update_uid = initial_value.checkpoint_position.restore_uid
+                initial_value = initial_value.wrapped_value
               self._initial_value = ops.convert_to_tensor(
-                  initial_value(), name="initial_value", dtype=dtype)
+                  initial_value, name="initial_value", dtype=dtype)
               if shape is None:
                 shape = (
                     self._initial_value.get_shape()

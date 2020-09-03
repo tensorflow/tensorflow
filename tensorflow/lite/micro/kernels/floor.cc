@@ -17,7 +17,7 @@ limitations under the License.
 
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
-#include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
 namespace ops {
@@ -28,11 +28,15 @@ constexpr int kInputTensor = 0;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
   TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteFloat32);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
-  reference_ops::Floor(GetTensorShape(input), GetTensorData<float>(input),
-                       GetTensorShape(output), GetTensorData<float>(output));
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
+  reference_ops::Floor(tflite::micro::GetTensorShape(input),
+                       tflite::micro::GetTensorData<float>(input),
+                       tflite::micro::GetTensorShape(output),
+                       tflite::micro::GetTensorData<float>(output));
   return kTfLiteOk;
 }
 }  // namespace floor

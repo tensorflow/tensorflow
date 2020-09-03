@@ -18,27 +18,27 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Block.h"  // from @llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
-#include "mlir/IR/Builders.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/IR/StandardTypes.h"  // from @llvm-project
-#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
-#include "mlir/Support/LogicalResult.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Block.h"
+#include "mlir/IR/BlockAndValueMapping.h"
+#include "mlir/IR/Builders.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/StandardTypes.h"
+#include "mlir/IR/TypeUtilities.h"
+#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/LogicalResult.h"
 
 using mlir::PassRegistration;
 
 namespace mlir {
 namespace mhlo {
 namespace {
-struct LegalizeControlFlow
-    : public mlir::PassWrapper<LegalizeControlFlow, FunctionPass> {
+struct LegalizeControlFlowPass
+    : public mlir::PassWrapper<LegalizeControlFlowPass, FunctionPass> {
   // Perform the lowering to MLIR control flow.
   void runOnFunction() override;
 };
@@ -206,7 +206,7 @@ LogicalResult LowerWhileOp(mlir::mhlo::WhileOp while_op) {
   return success();
 }
 
-void LegalizeControlFlow::runOnFunction() {
+void LegalizeControlFlowPass::runOnFunction() {
   auto func = getFunction();
   llvm::SmallVector<IfOp, 4> if_ops;
   func.walk([&](IfOp op) { if_ops.push_back(op); });
@@ -228,9 +228,5 @@ void LegalizeControlFlow::runOnFunction() {
 
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 mlir::mhlo::createLegalizeControlFlowPass() {
-  return std::make_unique<LegalizeControlFlow>();
+  return std::make_unique<LegalizeControlFlowPass>();
 }
-
-static PassRegistration<mlir::mhlo::LegalizeControlFlow> legalize_cf_pass(
-    "mhlo-legalize-control-flow",
-    "Legalize from MHLO control flow to CFG control flow");

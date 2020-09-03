@@ -60,10 +60,6 @@ tf_class {
     argspec: "args=[\'self\', \'fn\', \'input_iterator\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
-    name: "experimental_run_v2"
-    argspec: "args=[\'self\', \'fn\', \'args\', \'kwargs\', \'options\'], varargs=None, keywords=None, defaults=[\'()\', \'None\', \'None\'], "
-  }
-  member_method {
     name: "experimental_split_to_logical_devices"
     argspec: "args=[\'self\', \'tensor\', \'partition_dimensions\'], varargs=None, keywords=None, defaults=None"
   }

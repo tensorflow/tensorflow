@@ -104,8 +104,7 @@ The `tf_device.return` operation terminates and returns values from a
     }]>
    ];
 
-  let parser = [{ return Parse$cppClass(&parser, &result); }];
-  let printer = [{ return Print(*this, &p); }];
+  let assemblyFormat = "attr-dict ($results^ `:` type($results))?";
 }
 
 def TfDevice_LaunchFuncOp : TfDevice_Op<"launch_func", []> {
@@ -354,7 +353,10 @@ This op is used for outlining a cluster.
   );
 
   let extraClassDeclaration = [{
-    StringRef getFunc() { return func(); }
+    // returns the function that this operation will launch.
+    FuncOp getFunc() {
+      return SymbolTable::lookupNearestSymbolFrom<FuncOp>(*this, func());
+    }
   }];
 }
 

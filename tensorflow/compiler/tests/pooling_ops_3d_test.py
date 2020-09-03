@@ -75,9 +75,6 @@ class Pooling3DTest(xla_test.XLATestCase):
     actual = vals.flatten()
     self.assertAllClose(expected, actual)
 
-  @test_util.disable_mlir_bridge("TODO(b/159812644): AvgPool TF to HLO lowering"
-                                 " doesn't support all paddings and data "
-                                 "formats")
   def testAvgPool3dValidPadding(self):
     expected_output = [20.5, 21.5, 22.5]
     self._VerifyValues(
@@ -88,9 +85,6 @@ class Pooling3DTest(xla_test.XLATestCase):
         padding="VALID",
         expected=expected_output)
 
-  @test_util.disable_mlir_bridge("TODO(b/159812644): AvgPool TF to HLO lowering"
-                                 " doesn't support all paddings and data "
-                                 "formats")
   def testAvgPool3dSamePadding(self):
     expected_output = [20.5, 21.5, 22.5, 26.5, 27.5, 28.5]
     self._VerifyValues(
@@ -101,9 +95,6 @@ class Pooling3DTest(xla_test.XLATestCase):
         padding="SAME",
         expected=expected_output)
 
-  @test_util.disable_mlir_bridge("TODO(b/159812644): AvgPool TF to HLO lowering"
-                                 " doesn't support all paddings and data "
-                                 "formats")
   def testAvgPool3dSamePaddingDifferentStrides(self):
     expected_output = [1.5, 4.5, 7.5, 17.5, 20.5, 23.5, 33.5, 36.5, 39.5]
     self._VerifyValues(

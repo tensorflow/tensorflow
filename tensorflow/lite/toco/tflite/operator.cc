@@ -51,6 +51,7 @@ namespace tflite {
       {ArrayDataType::kInt64, ::tflite::TensorType_INT64},
       {ArrayDataType::kString, ::tflite::TensorType_STRING},
       {ArrayDataType::kComplex64, ::tflite::TensorType_COMPLEX64},
+      {ArrayDataType::kComplex128, ::tflite::TensorType_COMPLEX128},
       {ArrayDataType::kFloat16, ::tflite::TensorType_FLOAT16},
       {ArrayDataType::kFloat64, ::tflite::TensorType_FLOAT64}};
 
@@ -275,10 +276,10 @@ class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
     ::tflite::OpSignature op_sig =
         GetVersioningOpSig(builtin_op(), op_signature);
     if (input1_array.has_shape() && input2_array.has_shape()) {
-      op_sig.options.broadcast.num_dims =
+      op_sig.options.addsub.num_dims =
           std::max(input1_array.shape().dimensions_count(),
                    input2_array.shape().dimensions_count());
-      op_sig.options.broadcast.need_broadcast =
+      op_sig.options.addsub.need_broadcast =
           (input1_array.shape() != input2_array.shape());
     }
     return ::tflite::GetBuiltinOperatorVersion(op_sig);

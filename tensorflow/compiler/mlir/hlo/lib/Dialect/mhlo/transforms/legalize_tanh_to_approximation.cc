@@ -16,15 +16,15 @@ limitations under the License.
 // This file implements logic for lowering the tanh standard ops to an
 // approximation.
 
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Function.h"  // from @llvm-project
-#include "mlir/IR/PatternMatch.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Function.h"
+#include "mlir/IR/PatternMatch.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
-namespace hlo {
+namespace mhlo {
 namespace {
 
 /// Emits the fast tanh approximation that is also used by XLA.
@@ -126,8 +126,8 @@ class ApproximateTanhLowering : public OpRewritePattern<TanhOp> {
   }
 };
 
-struct LegalizeTanhToApproximation
-    : public PassWrapper<LegalizeTanhToApproximation, FunctionPass> {
+struct LegalizeTanhToApproximationPass
+    : public PassWrapper<LegalizeTanhToApproximationPass, FunctionPass> {
   /// Perform the lowering of standard dialect operations to approximations.
   void runOnFunction() override {
     OwningRewritePatternList patterns;
@@ -140,7 +140,7 @@ struct LegalizeTanhToApproximation
 
 std::unique_ptr<mlir::OperationPass<mlir::FuncOp>>
 createLegalizeTanhToApproximationPass() {
-  return std::make_unique<LegalizeTanhToApproximation>();
+  return std::make_unique<LegalizeTanhToApproximationPass>();
 }
 
 void PopulateTanhToApproximationPatterns(mlir::MLIRContext *context,
@@ -148,9 +148,5 @@ void PopulateTanhToApproximationPatterns(mlir::MLIRContext *context,
   patterns->insert<ApproximateTanhLowering>(context);
 }
 
-static PassRegistration<LegalizeTanhToApproximation> legalize_pass(
-    "mhlo-legalize-tanh-to-approximation",
-    "Legalize tanh from standard dialect to an approximation");
-
-}  // namespace hlo
+}  // namespace mhlo
 }  // namespace mlir

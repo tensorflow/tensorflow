@@ -101,6 +101,11 @@ class GcsStatsInterface {
   virtual ~GcsStatsInterface() = default;
 };
 
+struct UploadSessionHandle {
+  std::string session_uri;
+  bool resumable;
+};
+
 /// Google Cloud Storage implementation of a file system.
 ///
 /// The clients should use RetryingGcsFileSystem defined below,
@@ -125,44 +130,52 @@ class GcsFileSystem : public FileSystem {
                 std::pair<const string, const string>* additional_header,
                 bool compose_append);
 
-  Status NewRandomAccessFile(
-      const string& fname, std::unique_ptr<RandomAccessFile>* result) override;
+  TF_USE_FILESYSTEM_METHODS_WITH_NO_TRANSACTION_SUPPORT;
 
-  Status NewWritableFile(const string& fname,
+  Status NewRandomAccessFile(
+      const string& fname, TransactionToken* token,
+      std::unique_ptr<RandomAccessFile>* result) override;
+
+  Status NewWritableFile(const string& fname, TransactionToken* token,
                          std::unique_ptr<WritableFile>* result) override;
 
-  Status NewAppendableFile(const string& fname,
+  Status NewAppendableFile(const string& fname, TransactionToken* token,
                            std::unique_ptr<WritableFile>* result) override;
 
   Status NewReadOnlyMemoryRegionFromFile(
-      const string& fname,
+      const string& fname, TransactionToken* token,
       std::unique_ptr<ReadOnlyMemoryRegion>* result) override;
 
-  Status FileExists(const string& fname) override;
+  Status FileExists(const string& fname, TransactionToken* token) override;
 
-  Status Stat(const string& fname, FileStatistics* stat) override;
+  Status Stat(const string& fname, TransactionToken* token,
+              FileStatistics* stat) override;
 
-  Status GetChildren(const string& dir, std::vector<string>* result) override;
+  Status GetChildren(const string& dir, TransactionToken* token,
+                     std::vector<string>* result) override;
 
-  Status GetMatchingPaths(const string& pattern,
+  Status GetMatchingPaths(const string& pattern, TransactionToken* token,
                           std::vector<string>* results) override;
 
-  Status DeleteFile(const string& fname) override;
+  Status DeleteFile(const string& fname, TransactionToken* token) override;
 
-  Status CreateDir(const string& dirname) override;
+  Status CreateDir(const string& dirname, TransactionToken* token) override;
 
-  Status DeleteDir(const string& dirname) override;
+  Status DeleteDir(const string& dirname, TransactionToken* token) override;
 
-  Status GetFileSize(const string& fname, uint64* file_size) override;
+  Status GetFileSize(const string& fname, TransactionToken* token,
+                     uint64* file_size) override;
 
-  Status RenameFile(const string& src, const string& target) override;
+  Status RenameFile(const string& src, const string& target,
+                    TransactionToken* token) override;
 
-  Status IsDirectory(const string& fname) override;
+  Status IsDirectory(const string& fname, TransactionToken* token) override;
 
-  Status DeleteRecursively(const string& dirname, int64* undeleted_files,
+  Status DeleteRecursively(const string& dirname, TransactionToken* token,
+                           int64* undeleted_files,
                            int64* undeleted_dirs) override;
 
-  void FlushCaches() override;
+  void FlushCaches(TransactionToken* token) override;
 
   /// Set an object to collect runtime statistics from the GcsFilesystem.
   void SetStats(GcsStatsInterface* stats);
@@ -267,6 +280,31 @@ class GcsFileSystem : public FileSystem {
   virtual Status LoadBufferFromGCS(const string& fname, size_t offset, size_t n,
                                    char* buffer, size_t* bytes_transferred);
 
+  // Creates an upload session for an upcoming GCS object upload.
+  virtual Status CreateNewUploadSession(uint64 start_offset,
+                                        const std::string& object_to_upload,
+                                        const std::string& bucket,
+                                        uint64 file_size,
+                                        const std::string& gcs_path,
+                                        UploadSessionHandle* session_handle);
+
+  // Uploads object data to session.
+  virtual Status UploadToSession(const std::string& session_uri,
+                                 uint64 start_offset, uint64 already_uploaded,
+                                 const std::string& tmp_content_filename,
+                                 uint64 file_size,
+                                 const std::string& file_path);
+
+  /// \brief Requests status of a previously initiated upload session.
+  ///
+  /// If the upload has already succeeded, sets 'completed' to true.
+  /// Otherwise sets 'completed' to false and 'uploaded' to the currently
+  /// uploaded size in bytes.
+  virtual Status RequestUploadSessionStatus(const string& session_uri,
+                                            uint64 file_size,
+                                            const std::string& gcs_path,
+                                            bool* completed, uint64* uploaded);
+
   Status ParseGcsPathForScheme(StringPiece fname, string scheme,
                                bool empty_object_ok, string* bucket,
                                string* object);
@@ -281,6 +319,12 @@ class GcsFileSystem : public FileSystem {
                               string* bucket, string* object);
 
   std::shared_ptr<ComputeEngineMetadataClient> compute_engine_metadata_client_;
+
+  // Used by a subclass.
+  TimeoutConfig timeouts_;
+
+  /// The retry configuration used for retrying failed calls.
+  RetryConfig retry_config_;
 
  private:
   // GCS file statistics.
@@ -378,12 +422,7 @@ class GcsFileSystem : public FileSystem {
   std::unordered_set<string> allowed_locations_;
   bool compose_append_;
 
-  TimeoutConfig timeouts_;
-
   GcsStatsInterface* stats_ = nullptr;  // Not owned.
-
-  /// The initial delay for exponential backoffs when retrying failed calls.
-  RetryConfig retry_config_;
 
   // Additional header material to be transmitted with all GCS requests
   std::unique_ptr<std::pair<const string, const string>> additional_header_;

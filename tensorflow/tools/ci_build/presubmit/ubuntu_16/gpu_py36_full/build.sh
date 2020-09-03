@@ -50,7 +50,7 @@ function run_build () {
   tag_filters="gpu,-no_gpu,-nogpu,-benchmark-test,-no_oss,-oss_serial,-no_gpu_presubmit,-gpu_cupti""$(maybe_skip_v1)"
 
   # Get the default test targets for bazel.
-  source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
+  source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
   RBE_CONFIG="@ubuntu16.04-py3-gcc7_manylinux2010-cuda10.1-cudnn7-tensorrt6.0"
   TF_CUDA_CONFIG_REPO="${RBE_CONFIG}_config_cuda"

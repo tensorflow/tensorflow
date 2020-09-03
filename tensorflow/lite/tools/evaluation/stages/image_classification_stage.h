@@ -80,10 +80,10 @@ struct ImageLabel {
   std::string label;
 };
 
-// Reads a file containing newline-separated blacklisted image indices and
+// Reads a file containing newline-separated denylisted image indices and
 // filters them out from image_labels.
-TfLiteStatus FilterBlackListedImages(const std::string& blacklist_file_path,
-                                     std::vector<ImageLabel>* image_labels);
+TfLiteStatus FilterDenyListedImages(const std::string& denylist_file_path,
+                                    std::vector<ImageLabel>* image_labels);
 
 }  // namespace evaluation
 }  // namespace tflite

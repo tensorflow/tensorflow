@@ -28,6 +28,7 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras.engine import base_layer as keras_base_layer
 from tensorflow.python.keras.engine import input_spec
@@ -68,12 +69,12 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testKerasStyleAddWeight(self):
     keras_layer = keras_base_layer.Layer(name='keras_layer')
-    with ops.name_scope('foo', skip_on_eager=False):
+    with backend.name_scope('foo'):
       keras_variable = keras_layer.add_variable(
           'my_var', [2, 2], initializer=init_ops.zeros_initializer())
     self.assertEqual(keras_variable.name, 'foo/my_var:0')
 
-    with ops.name_scope('baz', skip_on_eager=False):
+    with backend.name_scope('baz'):
       old_style_layer = base_layers.Layer(name='my_layer')
       # Test basic variable creation.
       variable = old_style_layer.add_variable(
@@ -83,7 +84,7 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
     with base_layers.keras_style_scope():
       layer = base_layers.Layer(name='my_layer')
     # Test basic variable creation.
-    with ops.name_scope('bar', skip_on_eager=False):
+    with backend.name_scope('bar'):
       variable = layer.add_variable(
           'my_var', [2, 2], initializer=init_ops.zeros_initializer())
     self.assertEqual(variable.name, 'bar/my_var:0')
@@ -241,7 +242,7 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
     my_layer2.apply(inputs)
     self.assertEqual(my_layer2._scope.name, 'my_layer_2')
     # Name scope shouldn't affect names.
-    with ops.name_scope('some_name_scope'):
+    with backend.name_scope('some_name_scope'):
       default_layer2 = PrivateLayer()
       default_layer2.apply(inputs)
       self.assertEqual(default_layer2._scope.name, 'private_layer_2')
@@ -276,11 +277,6 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
       def call(self, inputs):
         return inputs
 
-    if not context.executing_eagerly():
-      layer = CustomerLayer()
-      with self.assertRaisesRegex(ValueError, r'requires a defined rank'):
-        layer.apply(array_ops.placeholder('int32'))
-
     layer = CustomerLayer()
     with self.assertRaisesRegex(ValueError, r'expected ndim=2'):
       layer.apply(constant_op.constant([1]))
@@ -294,29 +290,24 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInputSpecMinNdimCheck(self):
 
-    class CustomerLayer(base_layers.Layer):
+    class CustomLayer(base_layers.Layer):
 
       def __init__(self):
-        super(CustomerLayer, self).__init__()
+        super(CustomLayer, self).__init__()
         self.input_spec = input_spec.InputSpec(min_ndim=2)
 
       def call(self, inputs):
         return inputs
 
-    if not context.executing_eagerly():
-      layer = CustomerLayer()
-      with self.assertRaisesRegex(ValueError, r'requires a defined rank'):
-        layer.apply(array_ops.placeholder('int32'))
-
-    layer = CustomerLayer()
+    layer = CustomLayer()
     with self.assertRaisesRegex(ValueError, r'expected min_ndim=2'):
       layer.apply(constant_op.constant([1]))
 
     # Works
-    layer = CustomerLayer()
+    layer = CustomLayer()
     layer.apply(constant_op.constant([[1], [2]]))
 
-    layer = CustomerLayer()
+    layer = CustomLayer()
     layer.apply(constant_op.constant([[[1], [2]]]))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -330,11 +321,6 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
 
       def call(self, inputs):
         return inputs
-
-    if not context.executing_eagerly():
-      layer = CustomerLayer()
-      with self.assertRaisesRegex(ValueError, r'requires a defined rank'):
-        layer.apply(array_ops.placeholder('int32'))
 
     layer = CustomerLayer()
     with self.assertRaisesRegex(ValueError, r'expected max_ndim=2'):

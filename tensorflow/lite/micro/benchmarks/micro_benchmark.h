@@ -45,6 +45,8 @@ extern tflite::ErrorReporter* reporter;
 
 #define TF_LITE_MICRO_BENCHMARK(func)                                         \
   if (tflite::ticks_per_second() == 0) {                                      \
+    TF_LITE_REPORT_ERROR(micro_benchmark::reporter,                           \
+                         "no timer implementation found");                    \
     return 0;                                                                 \
   }                                                                           \
   start_ticks = tflite::GetCurrentTimeTicks();                                \
@@ -95,7 +97,6 @@ class MicroBenchmarkRunner {
   }
 
   void SetInput(const inputT* custom_input) {
-    // Populate input tensor with an image with no person.
     TfLiteTensor* input = interpreter_.input(0);
     inputT* input_buffer = tflite::GetTensorData<inputT>(input);
     int input_length = input->bytes / sizeof(inputT);

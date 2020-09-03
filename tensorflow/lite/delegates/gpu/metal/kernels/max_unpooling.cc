@@ -99,17 +99,15 @@ std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
       {input_indices_id, "device FLT4* const src_indices_buffer"},
   };
 
-  desc->output_buffer = {output_id, "device FLT4* output_buffer",
-                         [input_id, input_indices_id,
-                          params](const std::map<ValueId, BHWC>& buffers) {
-                           return CalculateOutputShape(
-                               buffers.find(input_id)->second, params);
-                         }};
+  desc->output_buffer = {
+      output_id, "device FLT4* output_buffer",
+      [input_id, params](const std::map<ValueId, BHWC>& buffers) {
+        return CalculateOutputShape(buffers.find(input_id)->second, params);
+      }};
 
   desc->uniform_buffers = {
       {"constant uniforms& params",
-       [input_id, input_indices_id, output_id,
-        params](const std::map<ValueId, BHWC>& buffers) {
+       [input_id, output_id, params](const std::map<ValueId, BHWC>& buffers) {
          const auto& dimension = buffers.find(input_id)->second;
          const auto& output_dimension = buffers.find(output_id)->second;
          std::vector<int> uniform_params{
@@ -126,7 +124,7 @@ std::vector<ComputeTaskDescriptorPtr> MaxUnpooling(
        }},
   };
 
-  desc->resize_function = [input_id, input_indices_id,
+  desc->resize_function = [input_id,
                            params](const std::map<ValueId, BHWC>& buffers) {
     const auto& src_shape = buffers.find(input_id)->second;
     BHWC dst_shape = CalculateOutputShape(src_shape, params);

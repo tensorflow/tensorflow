@@ -29,7 +29,6 @@ from absl.testing import absltest
 import numpy as np
 import tensorflow.compat.v2 as tf
 
-import tensorflow.python as tf_root
 from tensorflow.tools.docs import tf_doctest_lib
 
 # We put doctest after absltest so that it picks up the unittest monkeypatch.
@@ -190,8 +189,9 @@ def load_tests(unused_loader, tests, unused_ignore):
     tf_modules = get_module_and_inject_docstring(FLAGS.file)
 
   for module in tf_modules:
-    if any(module.__name__.startswith(PACKAGE + prefix)
-           for prefix in FLAGS.module_prefix_skip):
+    if any(
+        module.__name__.startswith(PACKAGE + prefix)
+        for prefix in FLAGS.module_prefix_skip):
       continue
     testcase = TfTestCase()
     tests.addTests(
@@ -221,5 +221,9 @@ def setUpModule():
 
 
 if __name__ == '__main__':
-  recursive_import(tf_root)
+  # Use importlib to import python submodule of tensorflow.
+  # We delete python submodule in root __init__.py file. This means
+  # normal import won't work for some Python versions.
+  tf_python_root = importlib.import_module(PACKAGE[:-1])
+  recursive_import(tf_python_root)
   absltest.main()

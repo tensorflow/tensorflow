@@ -15,12 +15,11 @@ limitations under the License.
 
 // This file implements a pass to remove redundant LHLO copy operations.
 
-#include "absl/memory/memory.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
-#include "mlir/IR/Operation.h"  // from @llvm-project
-#include "mlir/Pass/Pass.h"  // from @llvm-project
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
-#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
+#include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"
+#include "mlir/IR/Operation.h"
+#include "mlir/Pass/Pass.h"
 
 namespace mlir {
 namespace lmhlo {
@@ -30,7 +29,8 @@ namespace {
 // arguments. All uses of each buffer are replaced with the corresponding block
 // argument and the buffer is freed. Note that this pass only works in regions
 // with a single block.
-struct LhloCopyRemoval : mlir::PassWrapper<LhloCopyRemoval, OperationPass<>> {
+struct LhloCopyRemovalPass
+    : mlir::PassWrapper<LhloCopyRemovalPass, OperationPass<>> {
   void runOnOperation() override {
     llvm::SmallVector<mlir::Operation*, 2> eraseList;
     auto operation = getOperation();
@@ -95,11 +95,8 @@ struct LhloCopyRemoval : mlir::PassWrapper<LhloCopyRemoval, OperationPass<>> {
 }  // namespace
 
 std::unique_ptr<Pass> createLhloCopyRemovalPass() {
-  return absl::make_unique<LhloCopyRemoval>();
+  return std::make_unique<LhloCopyRemovalPass>();
 }
-
-static PassRegistration<LhloCopyRemoval> copy_removal_pass(
-    "lhlo-copy-removal", "Removes redundant LHLO copy operations");
 
 }  // namespace lmhlo
 }  // namespace mlir

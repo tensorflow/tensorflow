@@ -28,4 +28,11 @@ readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 
 # TODO(b/143715361): downloading first to allow for parallel builds.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile third_party_downloads
+
+# First make sure that the release build succeeds.
+readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=release build
+
+# Next, build w/o release so that we can run the tests and get additional
+# debugging info on failures.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile test

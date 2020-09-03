@@ -16,6 +16,7 @@ limitations under the License.
 // This transformation pass convert dense tensor to sparse format.
 
 #include "absl/memory/memory.h"
+#include "third_party/eigen3/Eigen/Core"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
@@ -35,6 +36,16 @@ namespace {
 const float kMinSparsityLevel = 0.3;
 // Heuristic to check if a block configuration is correct.
 const float kBlockOverRandomSparsityRatio = 0.9;
+
+Eigen::half APFloatToEigenHalf(const APFloat& val) {
+  uint16_t raw_data = val.bitcastToAPInt().getZExtValue();
+  return Eigen::half_impl::raw_uint16_to_half(raw_data);
+}
+
+APFloat EigenHalfToAPFloat(const Eigen::half& val) {
+  uint16_t raw_data = val.x;
+  return APFloat(APFloat::IEEEhalf(), APInt(16, raw_data));
+}
 
 void PopulateEncodingParams(const std::vector<int>& block_size,
                             std::vector<int>* traversal_order,
@@ -64,14 +75,18 @@ void PopulateEncodingParams(const std::vector<int>& block_size,
   }
 }
 
+inline float GetSparsity(const int num_zeros, const int num_elements) {
+  return (1.0 * num_zeros / num_elements);
+}
+
 float CalculateRandomSparsity(const ElementsAttr& attr,
                               const ShapedType& type) {
   int num_elements = type.getNumElements();
   int num_zeros = 0;
 
-  if (type.getElementType().isF32()) {
-    for (const auto val : attr.getValues<float>()) {
-      if (val == 0.f) {
+  if (type.getElementType().isa<FloatType>()) {
+    for (const auto val : attr.getValues<APFloat>()) {
+      if (val.isZero()) {
         num_zeros++;
       }
     }
@@ -83,7 +98,7 @@ float CalculateRandomSparsity(const ElementsAttr& attr,
     }
   }
 
-  return 1.0 * num_zeros / num_elements;
+  return GetSparsity(num_zeros, num_elements);
 }
 
 float CalculateBlockSparsity(const ElementsAttr& attr, const ShapedType& type,
@@ -108,7 +123,19 @@ float CalculateBlockSparsity(const ElementsAttr& attr, const ShapedType& type,
     for (const auto val : attr.getValues<float>()) data.push_back(val);
     format_converter.DenseToSparse(data.data());
     sparsity =
-        1 - 1.0 * format_converter.GetData().size() / type.getNumElements();
+        GetSparsity(type.getNumElements() - format_converter.GetData().size(),
+                    type.getNumElements());
+  } else if (type.getElementType().isF16()) {
+    tflite::optimize::sparsity::FormatConverter<Eigen::half> format_converter(
+        shape, traversal_order, format, b_size, b_map);
+    std::vector<Eigen::half> data;
+    data.reserve(type.getNumElements());
+    for (const auto& val : attr.getValues<APFloat>())
+      data.push_back(APFloatToEigenHalf(val));
+    format_converter.DenseToSparse(data.data());
+    sparsity =
+        GetSparsity(type.getNumElements() - format_converter.GetData().size(),
+                    type.getNumElements());
   } else if (type.getElementType().isa<quant::QuantizedType>()) {
     tflite::optimize::sparsity::FormatConverter<int8_t> format_converter(
         shape, traversal_order, format, b_size, b_map);
@@ -117,7 +144,8 @@ float CalculateBlockSparsity(const ElementsAttr& attr, const ShapedType& type,
     for (const auto val : attr.getValues<int8_t>()) data.push_back(val);
     format_converter.DenseToSparse(data.data());
     sparsity =
-        1 - 1.0 * format_converter.GetData().size() / type.getNumElements();
+        GetSparsity(type.getNumElements() - format_converter.GetData().size(),
+                    type.getNumElements());
   }
 
   return sparsity;
@@ -184,8 +212,8 @@ InspectResult InspectWeight(
 
 template <typename T>
 std::vector<T> BuildSparsityParameterAttribute(
-    const std::vector<int>& block_size, Operation* inst, OpBuilder* builder,
-    SparsityParameterAttr* s_param) {
+    const std::vector<int>& block_size, const T* dense_buffer, Operation* inst,
+    OpBuilder* builder, SparsityParameterAttr* s_param) {
   ElementsAttr attr;
   ShapedType type;
   if (auto cst = dyn_cast<ConstOp>(inst)) {
@@ -210,10 +238,7 @@ std::vector<T> BuildSparsityParameterAttribute(
 
   tflite::optimize::sparsity::FormatConverter<T> format_converter(
       shape, traversal_order, format, b_size, b_map);
-  std::vector<T> data;
-  data.reserve(type.getNumElements());
-  for (const auto val : attr.getValues<T>()) data.push_back(val);
-  format_converter.DenseToSparse(data.data());
+  format_converter.DenseToSparse(dense_buffer);
   auto metadata = format_converter.GetDimMetadata();
   auto compressed_data = format_converter.GetData();
   const int dim_size = metadata.size() / 2;
@@ -264,13 +289,26 @@ void DenseToSparse::runOnFunction() {
   func.walk([&](SparseOpInterface sparse_op) {
     const auto& sparse_operands = sparse_op.GetSparseOperands();
     std::vector<std::vector<int>> supported_block_size;
-    for (const int operand : sparse_operands) {
+    for (int operand : sparse_operands) {
       auto* op = sparse_op.getOperation();
-      const auto& value = op->getOperand(operand);
+      auto value = op->getOperand(operand);
 
       auto* inst = value.getDefiningOp();
       if (!inst) {
         continue;
+      }
+
+      // There could be a Dequantize op after the weight tensor in cases like
+      // fp16 post-training quantization. We need to get the weight from the
+      // input of the Dequantize op.
+      if (isa<DequantizeOp>(inst)) {
+        op = inst;
+        value = inst->getOperand(0);
+        inst = value.getDefiningOp();
+        if (!inst) {
+          continue;
+        }
+        operand = 0;
       }
 
       ShapedType type;
@@ -297,22 +335,60 @@ void DenseToSparse::runOnFunction() {
       builder.setInsertionPoint(op);
       SparsityParameterAttr s_param;
       if (auto cst = dyn_cast<ConstOp>(inst)) {
-        std::vector<float> compressed_data =
-            BuildSparsityParameterAttribute<float>(result.selected_block_size,
-                                                   inst, &builder, &s_param);
-        auto compressed_data_type = RankedTensorType::get(
-            {static_cast<int64_t>(compressed_data.size())},
-            builder.getF32Type());
-        auto new_value = DenseElementsAttr::get<float>(compressed_data_type,
-                                                       compressed_data);
-        auto s_const = builder.create<SparseConstOp>(op->getLoc(), cst.value(),
-                                                     s_param, new_value);
-        value.replaceAllUsesWith(s_const.getResult());
-        cst.erase();
+        auto attr = cst.value();
+        auto type = cst.getType().cast<ShapedType>();
+        if (type.getElementType().isF32()) {
+          std::vector<float> dense_data;
+          dense_data.reserve(type.getNumElements());
+          for (const auto val : attr.getValues<float>())
+            dense_data.push_back(val);
+          std::vector<float> compressed_data =
+              BuildSparsityParameterAttribute<float>(result.selected_block_size,
+                                                     dense_data.data(), inst,
+                                                     &builder, &s_param);
+          auto compressed_data_type = RankedTensorType::get(
+              {static_cast<int64_t>(compressed_data.size())},
+              builder.getF32Type());
+          auto new_value = DenseElementsAttr::get<float>(compressed_data_type,
+                                                         compressed_data);
+          auto s_const = builder.create<SparseConstOp>(
+              op->getLoc(), cst.value(), s_param, new_value);
+          value.replaceAllUsesWith(s_const.getResult());
+          cst.erase();
+        } else if (type.getElementType().isF16()) {
+          std::vector<Eigen::half> dense_data;
+          dense_data.reserve(type.getNumElements());
+          for (const auto& val : attr.getValues<APFloat>())
+            dense_data.push_back(APFloatToEigenHalf(val));
+          std::vector<Eigen::half> compressed_data =
+              BuildSparsityParameterAttribute<Eigen::half>(
+                  result.selected_block_size, dense_data.data(), inst, &builder,
+                  &s_param);
+          std::vector<APFloat> apfloat_data;
+          apfloat_data.reserve(type.getNumElements());
+          for (const auto& val : compressed_data)
+            apfloat_data.push_back(EigenHalfToAPFloat(val));
+          auto compressed_data_type = RankedTensorType::get(
+              {static_cast<int64_t>(compressed_data.size())},
+              type.getElementType());
+          auto new_value =
+              DenseElementsAttr::get(compressed_data_type, apfloat_data);
+          auto s_const = builder.create<SparseConstOp>(
+              op->getLoc(), cst.value(), s_param, new_value);
+          value.replaceAllUsesWith(s_const.getResult());
+          cst.erase();
+        }
       } else if (auto cst = dyn_cast<QConstOp>(inst)) {
+        auto attr = cst.value();
+        auto type = cst.getType().cast<ShapedType>();
+        std::vector<int8_t> dense_data(type.getNumElements());
+        dense_data.reserve(type.getNumElements());
+        for (const auto& val : attr.getValues<int8_t>())
+          dense_data.push_back(val);
         std::vector<int8_t> compressed_data =
             BuildSparsityParameterAttribute<int8_t>(result.selected_block_size,
-                                                    inst, &builder, &s_param);
+                                                    dense_data.data(), inst,
+                                                    &builder, &s_param);
         auto compressed_data_type = RankedTensorType::get(
             {static_cast<int64_t>(compressed_data.size())},
             builder.getIntegerType(8, true));

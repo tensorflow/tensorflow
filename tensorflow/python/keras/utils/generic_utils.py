@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import binascii
 import codecs
+import importlib
 import marshal
 import os
 import re
@@ -525,6 +526,8 @@ class Progbar(object):
     self._start = time.time()
     self._last_update = 0
 
+    self._time_after_first_step = None
+
   def update(self, current, values=None, finalize=None):
     """Updates the progress bar.
 
@@ -596,10 +599,7 @@ class Progbar(object):
       self._total_width = len(bar)
       sys.stdout.write(bar)
 
-      if current:
-        time_per_unit = (now - self._start) / current
-      else:
-        time_per_unit = 0
+      time_per_unit = self._estimate_step_duration(current, now)
 
       if self.target is None or finalize:
         if time_per_unit >= 1 or time_per_unit == 0:
@@ -662,6 +662,37 @@ class Progbar(object):
 
   def add(self, n, values=None):
     self.update(self._seen_so_far + n, values)
+
+  def _estimate_step_duration(self, current, now):
+    """Estimate the duration of a single step.
+
+    Given the step number `current` and the corresponding time `now`
+    this function returns an estimate for how long a single step
+    takes. If this is called before one step has been completed
+    (i.e. `current == 0`) then zero is given as an estimate. The duration
+    estimate ignores the duration of the (assumed to be non-representative)
+    first step for estimates when more steps are available (i.e. `current>1`).
+    Arguments:
+      current: Index of current step.
+      now: The current time.
+    Returns: Estimate of the duration of a single step.
+    """
+    if current:
+      # there are a few special scenarios here:
+      # 1) somebody is calling the progress bar without ever supplying step 1
+      # 2) somebody is calling the progress bar and supplies step one mulitple
+      #    times, e.g. as part of a finalizing call
+      # in these cases, we just fall back to the simple calculation
+      if self._time_after_first_step is not None and current > 1:
+        time_per_unit = (now - self._time_after_first_step) / (current - 1)
+      else:
+        time_per_unit = (now - self._start) / current
+
+      if current == 1:
+        self._time_after_first_step = now
+      return time_per_unit
+    else:
+      return 0
 
 
 def make_batches(size, batch_size):
@@ -801,7 +832,31 @@ def populate_dict_with_module_objects(target_dict, modules, obj_filter):
       if obj_filter(obj):
         target_dict[name] = obj
 
-# Aliases
 
+class LazyLoader(python_types.ModuleType):
+  """Lazily import a module, mainly to avoid pulling in large dependencies."""
+
+  def __init__(self, local_name, parent_module_globals, name):
+    self._local_name = local_name
+    self._parent_module_globals = parent_module_globals
+    super(LazyLoader, self).__init__(name)
+
+  def _load(self):
+    """Load the module and insert it into the parent's globals."""
+    # Import the target module and insert it into the parent's namespace
+    module = importlib.import_module(self.__name__)
+    self._parent_module_globals[self._local_name] = module
+    # Update this object's dict so that if someone keeps a reference to the
+    #   LazyLoader, lookups are efficient (__getattr__ is only called on lookups
+    #   that fail).
+    self.__dict__.update(module.__dict__)
+    return module
+
+  def __getattr__(self, item):
+    module = self._load()
+    return getattr(module, item)
+
+
+# Aliases
 
 custom_object_scope = CustomObjectScope  # pylint: disable=invalid-name

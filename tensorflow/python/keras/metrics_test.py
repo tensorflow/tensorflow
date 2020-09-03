@@ -32,7 +32,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
@@ -71,7 +70,7 @@ class KerasSumTest(test.TestCase, parameterized.TestCase):
       self.assertEqual(self.evaluate(m.total), 100)
 
       # check update_state() and result() + state accumulation + tensor input
-      update_op = m.update_state(ops.convert_n_to_tensor([1, 5]))
+      update_op = m.update_state(ops.convert_to_tensor_v2_with_dispatch([1, 5]))
       self.evaluate(update_op)
       self.assertAlmostEqual(self.evaluate(m.result()), 106)
       self.assertEqual(self.evaluate(m.total), 106)  # 100 + 1 + 5
@@ -210,7 +209,7 @@ class MeanTest(keras_parameterized.TestCase):
     self.assertEqual(m2.dtype, dtypes.float32)
     self.assertEqual(len(m2.variables), 2)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_function_wrapped_reset_state(self):
     m = metrics.Mean(name='my_mean')
 

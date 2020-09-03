@@ -171,12 +171,20 @@ download_and_extract() {
   # loop to attempt to recover from them.
   for (( i=1; i<=$curl_retries; ++i ))
   do
+    # We have to use this approach because we normally halt the script when
+    # there's an error, and instead we want to catch errors so we can retry.
+    set +e
     curl -Ls --fail --retry 5 "${url}" > ${tempfile}
     CURL_RESULT=$?
+    set -e
+
+    # Was the command successful? If so, continue.
     if [[ $CURL_RESULT -eq 0 ]]
     then
       break
     fi
+
+    # Keep trying if we see the '56' error code.
     if [[ ( $CURL_RESULT -ne 56 ) || ( $i -eq $curl_retries ) ]]
     then
       echo "Error $CURL_RESULT downloading '${url}'"

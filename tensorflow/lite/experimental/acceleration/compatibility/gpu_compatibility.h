@@ -53,6 +53,9 @@ class GPUCompatibilityList {
  public:
   // Construct list from bundled data.
   GPUCompatibilityList();
+  // Constructs list from the given flatbuffer data.
+  explicit GPUCompatibilityList(
+      const unsigned char* compatibility_list_flatbuffer);
   // Returns true if the provided device specs are supported by the database.
   bool Includes(const AndroidInfo& android_info,
                 const ::tflite::gpu::GpuInfo& gpu_info) const;
@@ -73,10 +76,9 @@ class GPUCompatibilityList {
 
   GPUCompatibilityList(const GPUCompatibilityList&) = delete;
   GPUCompatibilityList& operator=(const GPUCompatibilityList&) = delete;
+  bool IsDatabaseLoaded() const;
 
  protected:
-  explicit GPUCompatibilityList(
-      const unsigned char* compatibility_list_flatbuffer);
   const DeviceDatabase* database_;
 };
 

@@ -18,7 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/tpu/tpu_api.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
-#include "tensorflow/stream_executor/tpu/device_memory_base_helper.h"
+#include "tensorflow/stream_executor/tpu/c_api_conversions.h"
 #include "tensorflow/stream_executor/tpu/status_helper.h"
 #include "tensorflow/stream_executor/tpu/tpu_executor_c_api.h"
 #include "tensorflow/stream_executor/tpu/tpu_stream_interface.h"
@@ -45,28 +45,15 @@ class TpuStream : public tensorflow::tpu::TpuStreamInterface {
     StatusHelper status;
     tensorflow::tpu::ExecutorApiFn()
         ->TpuStream_TpuEnqueueOnDeviceSendRecvLocalFn(
-            stream_,
-            DeviceMemoryBaseHelper::DeviceMemoryBaseToSE_DeviceMemoryBase(
-                send_buffer),
-            DeviceMemoryBaseHelper::DeviceMemoryBaseToSE_DeviceMemoryBase(
-                recv_buffer),
-            status.c_status);
+            stream_, ApiConverter::ToC(send_buffer),
+            ApiConverter::ToC(recv_buffer), status.c_status);
     return status.status();
   }
 
- private:
-  SE_Stream* stream_;
-};
-
-class TpuEvent : public ::stream_executor::internal::EventInterface {
- public:
-  explicit TpuEvent(SE_Event* event) : event_(event) {}
-  ~TpuEvent() override {
-    tensorflow::tpu::ExecutorApiFn()->TpuEvent_FreeFn(event_);
-  }
+  SE_Stream* se_stream() const { return stream_; }
 
  private:
-  SE_Event* event_;
+  mutable SE_Stream* stream_;
 };
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_TPU_STREAM_H_

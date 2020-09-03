@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/framework/versions.h"
 #include "tensorflow/core/framework/versions.pb.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/coding.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
@@ -41,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/saved_tensor_slice_util.h"
@@ -925,7 +925,8 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
   }
   if (crc32c::Unmask(entry.crc32c()) != actual_crc32c) {
     return errors::DataLoss(
-        "Checksum does not match: stored ",
+        "TensorBundle at ", prefix_, " shard ", entry.shard_id(), " (",
+        entry.size(), " bytes): Checksum does not match: stored ",
         strings::Printf("%08u", crc32c::Unmask(entry.crc32c())),
         " vs. calculated on the restored bytes ", actual_crc32c);
   }

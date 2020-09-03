@@ -45,10 +45,8 @@ limitations under the License.
 #include "tensorflow/lite/string_type.h"
 #include "tensorflow/lite/string_util.h"
 #include "tensorflow/lite/testing/util.h"  // IWYU pragma: keep
-#include "tensorflow/lite/tools/delegates/delegate_provider.h"
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include "tensorflow/lite/tools/optimize/sparsity/format_converter.h"
-#include "tensorflow/lite/tools/tool_params.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
 namespace tflite {
@@ -114,7 +112,8 @@ struct TensorData {
              std::vector<int64_t> per_channel_quantization_offsets = {},
              int32_t channel_index = 0, std::vector<int> traversal_order = {},
              std::vector<TfLiteDimensionType> format = {},
-             std::vector<int> block_size = {}, std::vector<int> block_map = {})
+             std::vector<int> block_size = {}, std::vector<int> block_map = {},
+             std::vector<int> shape_signature = {})
       : type(type),
         shape(shape),
         min(min),
@@ -130,7 +129,8 @@ struct TensorData {
         traversal_order(traversal_order),
         format(format),
         block_size(block_size),
-        block_map(block_map) {}
+        block_map(block_map),
+        shape_signature(shape_signature) {}
   TensorType type;
   std::vector<int> shape;
   float min;
@@ -145,6 +145,7 @@ struct TensorData {
   std::vector<TfLiteDimensionType> format;
   std::vector<int> block_size;
   std::vector<int> block_map;
+  std::vector<int> shape_signature;
 };
 
 class SingleOpResolver : public OpResolver {
@@ -213,9 +214,82 @@ class SingleOpModel {
     return AddConstInput(TensorData{type, shape}, data);
   }
 
+  // TODO(b/166202747): Use a better way to do type specialization. Reduce
+  // duplicate code in the two functions below.
+  int AddConstSparseInput(const TensorData& t,
+                          const std::vector<int8_t>& data) {
+    int id = tensors_.size();
+    const int dims_count = t.traversal_order.size();
+    std::vector<int8_t> dense_data(data);
+
+    tflite::optimize::sparsity::FormatConverter<int8_t> converter(
+        t.shape, t.traversal_order, t.format, t.block_size, t.block_map);
+    converter.DenseToSparse(dense_data.data());
+
+    const auto dim_metadata = converter.GetDimMetadata();
+    const auto sparse_data = converter.GetData();
+
+    // Build sparsity parameter.
+    std::vector<flatbuffers::Offset<DimensionMetadata>> fb_dim_metadata(
+        dims_count);
+    for (int i = 0; i < dims_count; i++) {
+      const int metadata_idx = 2 * i;
+      if (i < t.shape.size() &&
+          t.format[t.traversal_order[i]] == kTfLiteDimSparseCSR) {
+        auto array_segments =
+            CreateInt32Vector(builder_,
+                              builder_.CreateVector(dim_metadata[metadata_idx]))
+                .Union();
+        auto array_indices =
+            CreateInt32Vector(
+                builder_, builder_.CreateVector(dim_metadata[metadata_idx + 1]))
+                .Union();
+        fb_dim_metadata[i] = CreateDimensionMetadata(
+            builder_, DimensionType_SPARSE_CSR, 0,
+            SparseIndexVector_Int32Vector, array_segments,
+            SparseIndexVector_Int32Vector, array_indices);
+      } else {
+        fb_dim_metadata[i] = CreateDimensionMetadata(
+            builder_, DimensionType_DENSE, dim_metadata[metadata_idx][0]);
+      }
+    }
+
+    flatbuffers::Offset<SparsityParameters> s_param = CreateSparsityParameters(
+        builder_, builder_.CreateVector(t.traversal_order),
+        builder_.CreateVector(t.block_map),
+        builder_.CreateVector(fb_dim_metadata));
+
+    int buffer_id = 0;
+    if (!data.empty()) {
+      // Initialize buffers list with empty buffer to allow for non-const
+      // tensors.
+      if (buffers_.empty()) {
+        buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
+      }
+
+      // Add compressed data as a Buffer to buffers list.
+      buffer_id = buffers_.size();
+      auto data_buffer = builder_.CreateVector(
+          reinterpret_cast<const uint8_t*>(sparse_data.data()),
+          sparse_data.size());
+      buffers_.push_back(CreateBuffer(builder_, data_buffer));
+    }
+
+    tensors_.push_back(CreateTensor(
+        builder_, builder_.CreateVector<int>(t.shape), t.type,
+        /*buffer=*/buffer_id,
+        /*name=*/0, /*quantization=*/0, /*is_variable=*/false, s_param));
+
+    inputs_.push_back(id);
+    tensor_data_[id] = t;
+
+    return id;
+  }
+
   // Add a constant sparse tensor as input.
   template <typename T>
-  int AddConstSparseInput(const TensorData& t, std::initializer_list<T> data) {
+  int AddConstSparseInput(const TensorData& t, const std::vector<T>& data,
+                          bool symmetric_quantize = false) {
     int id = tensors_.size();
     const int dims_count = t.traversal_order.size();
     std::vector<T> dense_data(data);
@@ -257,8 +331,9 @@ class SingleOpModel {
         builder_.CreateVector(t.block_map),
         builder_.CreateVector(fb_dim_metadata));
 
+    flatbuffers::Offset<QuantizationParameters> q_params = 0;
     int buffer_id = 0;
-    if (data.size()) {
+    if (!data.empty()) {
       // Initialize buffers list with empty buffer to allow for non-const
       // tensors.
       if (buffers_.empty()) {
@@ -267,16 +342,31 @@ class SingleOpModel {
 
       // Add compressed data as a Buffer to buffers list.
       buffer_id = buffers_.size();
-      auto data_buffer = builder_.CreateVector(
-          reinterpret_cast<const uint8_t*>(sparse_data.data()),
-          sizeof(T) * sparse_data.size());
-      buffers_.push_back(CreateBuffer(builder_, data_buffer));
+      if (symmetric_quantize) {
+        const int length = sparse_data.size();
+        std::vector<int8_t> q(length);
+        float min, max, scaling_factor;
+        tensor_utils::SymmetricQuantizeFloats(
+            sparse_data.data(), length, q.data(), &min, &max, &scaling_factor);
+        q_params = CreateQuantizationParameters(
+            builder_, 0, 0, builder_.CreateVector<float>({scaling_factor}),
+            builder_.CreateVector<int64_t>({0}));
+        auto data_buffer = builder_.CreateVector(
+            reinterpret_cast<const uint8_t*>(q.data()), q.size());
+        buffers_.push_back(CreateBuffer(builder_, data_buffer));
+      } else {
+        auto data_buffer = builder_.CreateVector(
+            reinterpret_cast<const uint8_t*>(sparse_data.data()),
+            sizeof(T) * sparse_data.size());
+        buffers_.push_back(CreateBuffer(builder_, data_buffer));
+      }
     }
 
-    tensors_.push_back(CreateTensor(
-        builder_, builder_.CreateVector<int>(t.shape), t.type,
-        /*buffer=*/buffer_id,
-        /*name=*/0, /*quantization=*/0, /*is_variable=*/false, s_param));
+    tensors_.push_back(
+        CreateTensor(builder_, builder_.CreateVector<int>(t.shape),
+                     symmetric_quantize ? TensorType_INT8 : t.type,
+                     /*buffer=*/buffer_id,
+                     /*name=*/0, q_params, /*is_variable=*/false, s_param));
 
     inputs_.push_back(id);
     tensor_data_[id] = t;
@@ -391,11 +481,15 @@ class SingleOpModel {
                    const std::vector<uint8_t>& custom_option,
                    const std::function<TfLiteRegistration*()>& registration);
 
+  // Allocate tensors and apply delegate.
+  // Note that this is called by default in BuiltInterpreter().
+  void AllocateAndDelegate(bool apply_delegate);
+
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                         int num_threads, bool allow_fp32_relax_to_fp16,
-                        bool apply_delegate);
+                        bool apply_delegate, bool allocate_and_delegate = true);
 
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes);
 
@@ -515,8 +609,7 @@ class SingleOpModel {
     resolver_ = std::move(resolver);
   }
 
-  // Enables NNAPI delegate application during interpreter creation.
-  static void SetForceUseNnapi(bool use_nnapi);
+  // Indicate whether the test has the NNAPI delegate applied.
   static bool GetForceUseNnapi();
   int CountOpsExecutedByCpuKernel();
 
@@ -585,10 +678,11 @@ class SingleOpModel {
       buffers_.push_back(CreateBuffer(builder_, data_buffer));
     }
 
-    tensors_.push_back(CreateTensor(builder_,
-                                    builder_.CreateVector<int>(t.shape), t.type,
-                                    /*buffer=*/buffer_id,
-                                    /*name=*/0, q_params, is_variable));
+    tensors_.push_back(CreateTensor(
+        builder_, builder_.CreateVector<int>(t.shape), t.type,
+        /*buffer=*/buffer_id,
+        /*name=*/0, q_params, is_variable,
+        /*sparsity=*/0, builder_.CreateVector<int>(t.shape_signature)));
 
     tensor_data_[id] = t;
 
@@ -769,6 +863,7 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<Buffer>> buffers_;
   TfLiteDelegate* delegate_ = nullptr;
+  int num_applied_delegates_ = 0;
 };
 
 // Populate string tensors.
@@ -899,37 +994,6 @@ class MultiOpModel : public SingleOpModel {
     return AddTensor<T>(t, {}, false);
   }
 };
-
-// A utility class to provide TfLite delegate creations for kernel tests. The
-// options of a particular delegate could be specified from commandline flags by
-// using the delegate provider registrar as implemented in lite/tools/delegates
-// directory.
-class KernelTestDelegateProviders {
- public:
-  // Returns a global KernelTestDelegateProviders instance.
-  static KernelTestDelegateProviders* Get();
-
-  KernelTestDelegateProviders();
-
-  // Initialize delegate-related parameters from commandline arguments and
-  // returns true if successful.
-  bool InitFromCmdlineArgs(int* argc, const char** argv);
-
-  // This provides a way to overwrite parameter values programmatically before
-  // creating TfLite delegates.
-  tools::ToolParams* MutableParams() { return &params_; }
-  const tools::ToolParams& ConstParams() const { return params_; }
-
-  // Create a list of TfLite delegates based on what have been initialized (i.e.
-  // 'params_').
-  std::vector<tools::TfLiteDelegatePtr> CreateAllDelegates() const;
-
- private:
-  // Contain delegate-related parameters that are initialized from command-line
-  // flags.
-  tools::ToolParams params_;
-};
-
 }  // namespace tflite
 
 #endif  // TENSORFLOW_LITE_KERNELS_TEST_UTIL_H_

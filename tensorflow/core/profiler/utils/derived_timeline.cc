@@ -130,15 +130,14 @@ void DerivedXLineBuilder::ExpandOrAddLevelEvent(const XEvent& event,
 }
 
 void DerivedXLineBuilder::ResetLastEvents(int level) {
-  for (int i = level, iter_limit = last_event_by_level_.size(); i < iter_limit;
-       ++i) {
+  for (int i = level, end = last_event_by_level_.size(); i < end; ++i) {
     last_event_by_level_[i] = absl::nullopt;
   }
   if (level == 0) ResetDependentLines();
 }
 
 void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
-                                 const EventGroupNameMap& event_group_name_map,
+                                 const GroupMetadataMap& group_metadata_map,
                                  XPlane* device_trace, bool step_info_only) {
   // Merge and sort events by Timespan as they come from different lines.
   std::vector<XEventVisitor> events;
@@ -198,10 +197,11 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
       XEvent step_event = CreateXEvent(
           *plane.GetOrCreateEventMetadata(absl::StrCat(*group_id)), offset_ps,
           duration_ps, group_id_stat_metadata_id, group_id);
-      if (auto group_name = gtl::FindOrNull(event_group_name_map, *group_id)) {
+      if (auto group_metadata =
+              gtl::FindOrNull(group_metadata_map, *group_id)) {
         XStat* stat = step_event.add_stats();
         stat->set_metadata_id(step_name_stat_metadata_id);
-        stat->set_str_value(*group_name);
+        stat->set_str_value(group_metadata->name);
       }
       steps.ExpandOrAddEvent(step_event);
     }
@@ -242,7 +242,7 @@ void DeriveEventsFromAnnotations(const SymbolResolver& symbol_resolver,
 }
 
 void DeriveEventsFromHostTrace(const XPlane* host_trace,
-                               const EventGroupNameMap& event_group_name_map,
+                               const GroupMetadataMap& group_metadata_map,
                                std::vector<XPlane*> device_traces) {
   struct GroupLaunchInfo {  // "Group" normally means step.
     Timespan timespan;
@@ -311,10 +311,10 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
     for (const auto& kv : per_device_launch_info[i]) {
       int64 group_id = kv.first;
       const GroupLaunchInfo& group_info = kv.second;
-      if (auto group_name = gtl::FindOrNull(event_group_name_map, group_id)) {
+      if (auto group_metadata = gtl::FindOrNull(group_metadata_map, group_id)) {
         XEventBuilder device_event =
             launch_line.AddEvent(*device_plane.GetOrCreateEventMetadata(
-                absl::StrCat("Launch Stats for ", *group_name)));
+                absl::StrCat("Launch Stats for ", group_metadata->name)));
         device_event.SetTimestampNs(
             host_plane_start + PicosToNanos(group_info.timespan.begin_ps()));
         device_event.SetDurationPs(group_info.timespan.duration_ps());
@@ -336,23 +336,23 @@ void DeriveEventsFromHostTrace(const XPlane* host_trace,
   }
 }
 
-void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
+void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               XSpace* space, bool step_info_only) {
   for (XPlane& plane : *space->mutable_planes()) {
     // Derived timelines only generated for device traces.
     if (IsGpuPlaneName(plane.name())) {
-      DeriveEventsFromAnnotations(DummySymbolResolver, event_group_name_map,
+      DeriveEventsFromAnnotations(DummySymbolResolver, group_metadata_map,
                                   &plane, step_info_only);
     }
   }
 }
 
-void GenerateDerivedTimeLines(const EventGroupNameMap& event_group_name_map,
+void GenerateDerivedTimeLines(const GroupMetadataMap& group_metadata_map,
                               const std::vector<XPlane*>& device_traces,
                               bool step_info_only) {
   for (XPlane* plane : device_traces) {
-    DeriveEventsFromAnnotations(DummySymbolResolver, event_group_name_map,
-                                plane, step_info_only);
+    DeriveEventsFromAnnotations(DummySymbolResolver, group_metadata_map, plane,
+                                step_info_only);
   }
 }
 

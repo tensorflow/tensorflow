@@ -25,6 +25,7 @@ from absl.testing import parameterized
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
@@ -143,7 +144,7 @@ class LRDecayTestV2(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testPiecewiseConstantEdgeCases(self, serialize):
     # Test casting boundaries from int32 to int64.
-    x_int64 = variables.Variable(0, dtype=variables.dtypes.int64)
+    x_int64 = variables.Variable(0, dtype=dtypes.int64)
     boundaries, values = [1, 2, 3], [0.4, 0.5, 0.6, 0.7]
     decayed_lr = learning_rate_schedule.PiecewiseConstantDecay(
         boundaries, values)

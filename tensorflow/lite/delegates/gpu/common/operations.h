@@ -17,14 +17,15 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_OPERATIONS_H_
 
 #include <cstdint>
+#include <set>
 #include <string>
 #include <vector>
 
 #include "absl/types/variant.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
-#include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 
 namespace tflite {
 namespace gpu {
@@ -40,9 +41,11 @@ enum class OperationType {
   CONST,
   CONVOLUTION_2D,
   CONVOLUTION_TRANSPOSED,
+  COPY,
   COS,
   DEPTHWISE_CONVOLUTION,
   DIV,
+  ELU,
   EXP,
   FULLY_CONNECTED,
   HARD_SWISH,
@@ -51,6 +54,7 @@ enum class OperationType {
   MAXIMUM,
   MAX_UNPOOLING_2D,
   MEAN,
+  MEAN_STDDEV_NORMALIZATION,
   MINIMUM,
   MUL,
   PAD,
@@ -59,6 +63,10 @@ enum class OperationType {
   PRELU,
   // Used to accurately run inference on quantized models.
   QUANTIZE_AND_DEQUANTIZE,
+  REDUCE_MAXIMUM,
+  REDUCE_MINIMUM,
+  REDUCE_PRODUCT,
+  REDUCE_SUM,
   RELU,
   RESHAPE,
   RESIZE,
@@ -355,6 +363,10 @@ struct PReLUAttributes {
       alpha;
 };
 
+struct ReduceAttributes {
+  Axis axis = Axis::UNKNOWN;
+};
+
 struct SoftmaxAttributes {
   Axis axis = Axis::UNKNOWN;
 };
@@ -366,10 +378,6 @@ enum LstmKernelType {
 
 struct LstmAttributes {
   LstmKernelType kernel_type = LstmKernelType::BASIC;
-};
-
-struct MultiplyAttributes {
-  TensorOrScalar param;
 };
 
 enum class SamplingType {
@@ -386,8 +394,7 @@ struct Resize2DAttributes {
   // If true, the centers of the 4 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
-  // half_pixel_centers assumes pixels are of half the actual dimensions, and
-  // yields more accurate resizes. Only applicable to BILINEAR sampling.
+
   bool half_pixel_centers = false;
 };
 
@@ -400,8 +407,7 @@ struct Resize3DAttributes {
   // If true, the centers of the 8 corner pixels of the input and output tensors
   // are aligned, preserving the values at the corner pixels. Defaults to false.
   bool align_corners = false;
-  // half_pixel_centers assumes pixels are of half the actual dimensions, and
-  // yields more accurate resizes. Only applicable to BILINEAR sampling.
+
   bool half_pixel_centers = false;
 };
 
@@ -478,10 +484,6 @@ struct Slice3DAttributes {
 //         input.
 BHWDC CalculateOutputShape(const BHWDC& input, const Slice3DAttributes& attr);
 
-struct AddAttributes {
-  TensorOrScalar param;
-};
-
 struct FullyConnectedAttributes {
   Tensor<OHWI, DataType::FLOAT32> weights;
   Tensor<Linear, DataType::FLOAT32> bias;
@@ -497,6 +499,10 @@ BHWC CalculateOutputShape(const BHWC& input, const MeanAttributes& attr);
 
 struct ElementwiseAttributes {
   TensorOrScalar param;
+  // For elementwise operation with 2 inputs op(A, B), runtime_tensor_is_second
+  // true when runtime tensor is B(on second position). this is important for
+  // ops that non commutative, for example substract.
+  bool runtime_tensor_is_second = false;
 };
 
 struct ReshapeAttributes {

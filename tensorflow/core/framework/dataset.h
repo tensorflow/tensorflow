@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/cancellation.h"
-#include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
+#include "tensorflow/core/framework/dataset_stateful_op_allowlist.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/model.h"
@@ -245,6 +245,9 @@ class GraphDefBuilderWrapper {
   void BuildAttrValue(const T& value, AttrValue* attr) {
     SetAttrValue(value, attr);
   }
+
+ protected:
+  GraphDefBuilder* builder() { return b_; }
 
  private:
   void AddPlaceholderInternal(const Tensor& val, Node** output);
@@ -592,6 +595,16 @@ class IteratorBase {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
+  // Skips the next `num_to_skip` outputs from the range that this iterator
+  // is traversing.
+  //
+  // If there are not enough outputs to skip, it will set
+  // `*end_of_sequence = true` and return `Status::OK()`. `*num_skipped` will
+  // store the number of outputs that are skipped. When `*end_of_sequence` is
+  // `false`, `*num_skipped` should equal to `num_to_skip`.
+  virtual Status Skip(IteratorContext* ctx, int num_to_skip,
+                      bool* end_of_sequence, int* num_skipped) = 0;
+
   // Returns a vector of DataType values, representing the respective
   // element types of each tuple component in the outputs of this
   // iterator.
@@ -830,6 +843,12 @@ class DatasetBase : public core::RefCounted {
         : GraphDefBuilderWrapper(b) {}
     Status AddInputDataset(SerializationContext* ctx,
                            const DatasetBase* dataset, Node** output);
+    Status AddDatasetOrTensor(SerializationContext* ctx, const Tensor& val,
+                              Node** output);
+
+   private:
+    Status AddDatasetOrTensorHelper(SerializationContext* ctx,
+                                    const Tensor& val, Node** output);
   };
 
   // Serializes the dataset into a `GraphDef`, which has two uses:
@@ -895,6 +914,9 @@ class DatasetBaseIterator : public IteratorBase {
     return GetNext(&ctx, out_tensors, end_of_sequence);
   }
 
+  Status Skip(IteratorContext* ctx, int num_to_skip, bool* end_of_sequence,
+              int* num_skipped) final;
+
   Status Save(SerializationContext* ctx, IteratorStateWriter* writer) final {
     return IteratorBase::Save(ctx, writer);
   }
@@ -904,6 +926,10 @@ class DatasetBaseIterator : public IteratorBase {
   virtual Status GetNextInternal(IteratorContext* ctx,
                                  std::vector<Tensor>* out_tensors,
                                  bool* end_of_sequence) = 0;
+
+  // Internal implementation of Skip that is wrapped in tracing logic
+  virtual Status SkipInternal(IteratorContext* ctx, int num_to_skip,
+                              bool* end_of_sequence, int* num_skipped);
 
   string full_name(const string& name) const {
     if (str_util::StrContains(name, kColon)) {
@@ -1063,7 +1089,7 @@ class DatasetOpKernel : public OpKernel {
   // the `DatasetOpKernel` class.
   static bool IsDatasetOp(const OpDef* op_def);
 
-  string TraceString(OpKernelContext* ctx, bool verbose) override;
+  string TraceString(const OpKernelContext& ctx, bool verbose) const override;
 
  protected:
   // Subclasses should implement this method. It will be called during Compute
@@ -1162,20 +1188,6 @@ class DatasetOpRegistrar {
       registrar__body__##ctr##__object(op_name)
 
 }  // namespace data
-
-// TODO(b/114112161): Remove these aliases when all users have moved over to the
-// `tensorflow::data` namespace.
-using data::DatasetBase;
-using data::DatasetContext;
-using data::DatasetIterator;
-using data::DatasetOpKernel;
-using data::IteratorBase;
-using data::IteratorContext;
-using data::IteratorStateReader;
-using data::IteratorStateWriter;
-using data::SerializationContext;
-using data::UnaryDatasetOpKernel;
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_FRAMEWORK_DATASET_H_

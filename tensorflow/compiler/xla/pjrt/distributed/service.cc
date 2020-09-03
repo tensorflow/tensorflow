@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/pjrt/distributed/service.h"
 
+#include "absl/time/time.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/protocol.h"
 #include "tensorflow/compiler/xla/pjrt/distributed/util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -69,11 +70,12 @@ void BuildGlobalTopology(absl::Span<LocalTopologyProto> local_topologies,
     mu_.AssertHeld();
     return num_nodes_present_ == nodes_.size();
   };
+  auto connect_timeout = absl::Milliseconds(request->timeout_milliseconds());
   if (!mu_.AwaitWithTimeout(absl::Condition(&all_nodes_present),
-                            kConnectTimeout)) {
+                            connect_timeout)) {
     return ToGrpcStatus(tensorflow::errors::DeadlineExceeded(
         "Timed out after %s waiting for all nodes to call Connect()",
-        absl::FormatDuration(kConnectTimeout)));
+        absl::FormatDuration(connect_timeout)));
   }
 
   if (node_id == 0) {

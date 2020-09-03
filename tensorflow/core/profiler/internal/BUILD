@@ -212,14 +212,7 @@ tf_cc_test(
     name = "tfprof_show_test",
     size = "small",
     srcs = ["tfprof_show_test.cc"],
-    data = [
-        "testdata/ckpt.data-00000-of-00001",
-        "testdata/ckpt.index",
-        "testdata/ckpt.meta",
-        "testdata/graph.pbtxt",
-        "testdata/run_meta",
-        "testdata/tfprof_log",
-    ],
+    data = ["//tensorflow/core/profiler/internal/testdata:profiler_testdata"],
     deps = [
         ":tfprof_constants",
         ":tfprof_stats",
@@ -238,10 +231,7 @@ tf_cc_test(
     name = "tfprof_timeline_test",
     size = "small",
     srcs = ["tfprof_timeline_test.cc"],
-    data = [
-        "testdata/graph.pbtxt",
-        "testdata/run_meta",
-    ],
+    data = ["//tensorflow/core/profiler/internal/testdata:profiler_testdata"],
     deps = [
         ":tfprof_constants",
         ":tfprof_stats",
@@ -300,14 +290,7 @@ tf_cc_test(
     name = "tfprof_stats_test",
     size = "small",
     srcs = ["tfprof_stats_test.cc"],
-    data = [
-        "testdata/ckpt.data-00000-of-00001",
-        "testdata/ckpt.index",
-        "testdata/ckpt.meta",
-        "testdata/graph.pbtxt",
-        "testdata/run_meta",
-        "testdata/tfprof_log",
-    ],
+    data = ["//tensorflow/core/profiler/internal/testdata:profiler_testdata"],
     deps = [
         ":tfprof_constants",
         ":tfprof_stats",
@@ -340,12 +323,7 @@ tf_cc_test(
     name = "tfprof_tensor_test",
     size = "small",
     srcs = ["tfprof_tensor_test.cc"],
-    data = [
-        "testdata/ckpt.data-00000-of-00001",
-        "testdata/ckpt.index",
-        "testdata/ckpt.meta",
-        "testdata/graph.pbtxt",
-    ],
+    data = ["//tensorflow/core/profiler/internal/testdata:profiler_testdata"],
     deps = [
         ":tfprof_stats",
         ":tfprof_tf_testlib",
