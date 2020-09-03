@@ -51,6 +51,10 @@ def GetHLOAxisFromTFAxisVariadic : NativeCodeCall<
   "$0, (*$1.begin()).getType().cast<RankedTensorType>().getRank(), "
   "&$_builder)">;
 
+def CastElementsToI64Elements : NativeCodeCall<
+  "hlo::ConvertElementsAttr("
+    "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+
 def : Pattern<
     (TF_FusedBatchNormOp:$root $x, $scale, $offset, $mean, $variance, $epsilon,
                          $exponential_avg_factor, $data_format,
@@ -255,12 +259,16 @@ def : Pat<(TF_ConcatV2Op $inputs, (TF_ConstOp OneElementAttr:$axis)),
           [(HasRankedFirstOperand $inputs)]>;
 
 //===----------------------------------------------------------------------===//
-// CrossReplicaSum op patterns.
+// CollectivePermute op patterns.
 //===----------------------------------------------------------------------===//
 
-def CastElementsToI64Elements : NativeCodeCall<
-  "hlo::ConvertElementsAttr("
-    "$0, $_builder.getIntegerType(64)).cast<DenseIntElementsAttr>()">;
+def : Pat<(TF_CollectivePermuteOp $input, (TF_ConstOp $source_target_pairs)),
+          (HLO_CollectivePermuteOp $input,
+            (CastElementsToI64Elements $source_target_pairs))>;
+
+//===----------------------------------------------------------------------===//
+// CrossReplicaSum op patterns.
+//===----------------------------------------------------------------------===//
 
 def : Pat<(TF_CrossReplicaSumOp $input, (TF_ConstOp $group_assignment)),
           (HLO_CrossReplicaSumOp $input,
@@ -277,9 +285,19 @@ def : Pat<(TF_AllToAllOp AnyRankedTensor:$input, (TF_ConstOp $group_assignment),
 // FFT op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_RFFTOp $input, (TF_ConstOp I32ElementsAttr:$fft_length)),
-          (HLO_FftOp $input, HLO_FFT_TYPE_RFFT,
-           (CastElementsToI64Elements $fft_length))>;
+def GetInnerDimFromValue : NativeCodeCall<
+  "GetInnerDimFromValue($0.getType().cast<ShapedType>(), &$_builder)">;
+
+def CheckInnerDimStatic
+  : Constraint<CPred<"CheckInnerDimStatic($0.getType().cast<ShapedType>(), &$_builder)">>;
+
+def : Pat<(TF_FFTOp:$res $input),
+          (HLO_FftOp $input, HLO_FFT_TYPE_FFT, (GetInnerDimFromValue $res)),
+          [(CheckInnerDimStatic $input)]>;
+
+def : Pat<(TF_IFFTOp:$res $input),
+          (HLO_FftOp $input, HLO_FFT_TYPE_IFFT, (GetInnerDimFromValue $res)),
+          [(CheckInnerDimStatic $input)]>;
 
 //===----------------------------------------------------------------------===//
 // GatherV2 op patterns.
@@ -426,6 +444,35 @@ def : Pattern<(TF_MatrixBandPartOp:$op AnyRankedTensor:$input, $num_lower, $num_
 def : Pat<(TF_ConstOp:$res ElementsAttr:$value),
           (TensorCastOp (HLO_ConstOp $value)),
           [(HLO_Tensor $res)]>;
+
+//===----------------------------------------------------------------------===//
+// Elu op patterns.
+//===----------------------------------------------------------------------===//
+
+def : Pat<(TF_EluOp AnyRankedTensor:$features),
+          (HLO_SelectOp
+           (HLOClient_BroadcastCompareOp
+              $features,
+              (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
+              (BinBroadcastDimensions $zero, $features),
+              HLO_COMPARISON_DIRECTION_GT),
+           $features,
+           (HLO_Expm1Op $features))>;
+
+def : Pat<(TF_EluGradOp AnyStaticShapeTensor:$gradients, AnyRankedTensor:$features),
+           (HLO_SelectOp
+            (HLOClient_BroadcastCompareOp
+              $features,
+              (HLO_ConstOp:$zero (GetScalarOfType<0> $features)),
+              (BinBroadcastDimensions $zero, $features),
+              HLO_COMPARISON_DIRECTION_GT),
+            $gradients,
+            (HLO_MulOp
+             $gradients,
+             (HLOClient_BroadcastAddOp
+               $features,
+               (HLO_ConstOp:$one (GetScalarOfType<1> $features)),
+               (BinBroadcastDimensions $one, $features))))>;
 
 //===----------------------------------------------------------------------===//
 // Relu op patterns.
@@ -660,3 +707,19 @@ def : Pattern<(TF_SoftplusOp AnyTensor:$features),
                 ),
                 (replaceWithValue $output)
               ]>;
+
+//===----------------------------------------------------------------------===//
+// XlaGather op.
+//===----------------------------------------------------------------------===//
+
+def ToGatherDimNumsAttr : NativeCodeCall<"GetGatherDimNumsAttr($0, &$_builder)">;
+
+def HasValidGatherDims : Constraint<CPred<"HasValidGatherDims($0)">>;
+
+def : Pat<(TF_XlaGatherOp $operand, $start_indices, (TF_ConstOp $slice_sizes),
+                          $dimension_numbers, $indices_are_sorted),
+          (HLO_GatherOp $operand, $start_indices,
+                        (ToGatherDimNumsAttr $dimension_numbers),
+                        (CastElementsToI64Elements $slice_sizes),
+                        $indices_are_sorted),
+          [(HasValidGatherDims $dimension_numbers)]>;

@@ -54,6 +54,11 @@ Status DynamicShapesToTensorShapes(const OpInputList& dynamic_shapes,
                                    std::vector<TensorShape>* shapes);
 Status DynamicShapesToTensorShapes(const InputList& dynamic_shapes,
                                    std::vector<TensorShape>* shapes);
+
+// We only recycle ports which were given to us by the portserver. For ports
+// we obtained through local trial-and-error, there is no reason to expect the
+// port to remain available after it is unbound.
+void RecycleUnusedPort(int port);
 }  // namespace tpu
 }  // namespace tensorflow
 

@@ -180,13 +180,13 @@ tf_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
-        "//tensorflow/python:saver_test_utils",
         "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:test_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/training:saver_test_utils",
     ],
 )
 
@@ -449,10 +449,10 @@ py_strict_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:saver",
         "//tensorflow/python:sparse_tensor",
-        "//tensorflow/python:training_lib",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:lift_to_graph",
         "//tensorflow/python/eager:wrap_function",
+        "//tensorflow/python/training:monitored_session",
         "//tensorflow/python/training/tracking",
     ],
 )

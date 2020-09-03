@@ -108,6 +108,7 @@ cc_library(
         "//tensorflow/core/profiler/utils:kernel_stats_utils",
         "//tensorflow/core/profiler/utils:math_utils",
         "//tensorflow/core/profiler/utils:op_metrics_db_utils",
+        "//tensorflow/core/profiler/utils:tf_op_utils",
         "//tensorflow/core/profiler/utils:time_utils",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",

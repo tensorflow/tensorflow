@@ -180,9 +180,8 @@ OpStats ConvertXSpaceToOpStats(const XSpace& space,
 
   // Combine into reports.
   if (config.contains(KERNEL_STATS_DB)) {
-    CopyKernelReportsToDb(reports, op_stats.mutable_kernel_stats_db());
-    // TODO(b/161943499) Replace sort with a TopK algorithm.
-    SortKernelsByTotalDurationDesc(op_stats.mutable_kernel_stats_db());
+    CopyTopKDurationKernelReportsToDb(reports,
+                                      op_stats.mutable_kernel_stats_db());
   }
 
   bool has_device = !device_planes.empty();

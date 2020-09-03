@@ -10,6 +10,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 # To run CPU benchmarks:
 #   bazel run -c opt benchmarks_test -- --benchmarks=.
 
@@ -67,6 +73,7 @@ cuda_py_test(
         "no_oss_py38",  # TODO(b/162044699)
     ],
     deps = [
+        ":profiler_lib",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -76,6 +83,7 @@ cuda_py_test(
     srcs = ["model_components_benchmarks_test.py"],
     python_version = "PY3",
     deps = [
+        ":profiler_lib",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -177,6 +185,17 @@ cuda_py_test(
     tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+cuda_py_test(
+    name = "mnist_conv_custom_training_benchmark_test",
+    srcs = ["keras_examples_benchmarks/mnist_conv_custom_training_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
+    deps = [
+        ":distribution_util",
         "//tensorflow:tensorflow_py",
     ],
 )

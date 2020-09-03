@@ -65,6 +65,8 @@ struct MklConvFwdParams {
   memory::dims dilations;
   memory::dims padding_left;
   memory::dims padding_right;
+  MKL_TENSOR_FORMAT tf_fmt;
+  bool native_format;
   string dtypes = string("");
   struct PostOpParam {
     string name;
@@ -77,7 +79,8 @@ struct MklConvFwdParams {
   MklConvFwdParams(memory::dims src_dims, memory::dims filter_dims,
                    memory::dims bias_dims, memory::dims dst_dims,
                    memory::dims strides, memory::dims dilations,
-                   memory::dims padding_left, memory::dims padding_right)
+                   memory::dims padding_left, memory::dims padding_right,
+                   MKL_TENSOR_FORMAT tf_fmt, bool native_format)
       : src_dims(src_dims),
         filter_dims(filter_dims),
         bias_dims(bias_dims),
@@ -85,7 +88,9 @@ struct MklConvFwdParams {
         strides(strides),
         dilations(dilations),
         padding_left(padding_left),
-        padding_right(padding_right) {}
+        padding_right(padding_right),
+        tf_fmt(tf_fmt),
+        native_format(native_format) {}
 };
 
 // With quantization, input, filter, and output can have different types
@@ -228,15 +233,21 @@ class MklConvFwdPrimitive : public MklPrimitive {
   };
 
   void Setup(const MklConvFwdParams& convFwdDims) {
-    // Create memory descriptors for convolution data w/ no specified format
+    MEMORY_FORMAT user_data_fmt;
+    if (convFwdDims.native_format) {
+      user_data_fmt = MklTensorFormatToMklDnnDataFormat(convFwdDims.tf_fmt);
+    } else {
+      // Create memory descriptors for convolution data w/ no specified format
+      user_data_fmt = MEMORY_FORMAT::any;
+    }
     context_.src_md.reset(new memory::desc(
-        {convFwdDims.src_dims}, MklDnnType<Tinput>(), MEMORY_FORMAT::any));
+        {convFwdDims.src_dims}, MklDnnType<Tinput>(), user_data_fmt));
 
     context_.filter_md.reset(new memory::desc(
         {convFwdDims.filter_dims}, MklDnnType<Tfilter>(), MEMORY_FORMAT::any));
 
     context_.dst_md.reset(new memory::desc(
-        {convFwdDims.dst_dims}, MklDnnType<Toutput>(), MEMORY_FORMAT::any));
+        {convFwdDims.dst_dims}, MklDnnType<Toutput>(), user_data_fmt));
 
     if (!convFwdDims.bias_dims.empty())
       context_.bias_md.reset(new memory::desc(
@@ -414,6 +425,9 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
     key_creator.AddAsKey(convFwdDims.padding_left);
     key_creator.AddAsKey(convFwdDims.padding_right);
     key_creator.AddAsKey(convFwdDims.dtypes);
+    if (convFwdDims.native_format) {
+      key_creator.AddAsKey(convFwdDims.tf_fmt);
+    }
 
     // Generate keys for post-ops
     for (auto const& post_op_param : convFwdDims.post_op_params) {
@@ -453,7 +467,7 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<float> {
 template <typename Device, typename Tinput, typename Tfilter, typename Tbias,
           typename Toutput, typename Ttemp_output, typename Tpadding,
           bool bias_enabled, bool pad_enabled, bool is_depthwise,
-          bool eager_mode>
+          bool native_format>
 class MklConvOp : public OpKernel {
  public:
   ~MklConvOp() {}
@@ -525,8 +539,9 @@ class MklConvOp : public OpKernel {
       const Tensor& src_tensor = MklGetInput(context, kInputIndex_Src);
       const Tensor& filter_tensor = MklGetInput(context, kInputIndex_Filter);
       MklDnnShape src_mkl_shape, filter_mkl_shape;
-      GetMklShape(context, kInputIndex_Src, &src_mkl_shape, eager_mode);
-      GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape, eager_mode);
+      GetMklShape(context, kInputIndex_Src, &src_mkl_shape, native_format);
+      GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape,
+                  native_format);
 
       OP_REQUIRES(context, !filter_mkl_shape.IsMklTensor(),
                   errors::InvalidArgument("Filter should not be in "
@@ -557,9 +572,9 @@ class MklConvOp : public OpKernel {
       // Get shapes of input tensors in MKL-DNN order
       MklDnnConvUtil conv_utl(context, strides_, padding_, data_format_,
                               dilations_);
-      auto src_tf_shape = GetTfShape(context, kInputIndex_Src, eager_mode);
+      auto src_tf_shape = GetTfShape(context, kInputIndex_Src, native_format);
       auto filter_tf_shape =
-          GetTfShape(context, kInputIndex_Filter, eager_mode);
+          GetTfShape(context, kInputIndex_Filter, native_format);
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &src_dims, &filter_dims, &strides,
           &dilations, &dst_dims_tf_order, &dst_dims_mkl_order, &padding_left,
@@ -572,17 +587,16 @@ class MklConvOp : public OpKernel {
 
       // Corner cases: output with 0 elements and 0 batch size.
       Tensor* dst_tensor = nullptr;
-      Tensor tmp_tensor;
       bool emit_filter_output = (typeid(Tinput) == typeid(Tfilter) &&
                                  typeid(Tinput) == typeid(Toutput) &&
                                  (typeid(Tinput) == typeid(float) ||
                                   typeid(Tinput) == typeid(bfloat16))) &&
-                                !eager_mode;
+                                !native_format;
       if (dst_tf_shape.num_elements() == 0 || dst_dims_tf_order[0] == 0) {
         MklDnnShape dst_mkl_shape;
         dst_mkl_shape.SetMklTensor(false);
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, &dst_tensor,
-                                  src_tf_shape, dst_mkl_shape, eager_mode);
+                                  src_tf_shape, dst_mkl_shape, native_format);
 
         // MklConv2D/3D also outputs converted filter as 2nd output.
         filter_mkl_shape.SetMklTensor(false);
@@ -682,18 +696,19 @@ class MklConvOp : public OpKernel {
       }
       MklConvFwdParams convFwdDims(
           src_dims, filter_dims, fuse_biasadd_ ? bias_dims : NONE_DIMS,
-          dst_dims_mkl_order, strides, dilations, padding_left, padding_right);
+          dst_dims_mkl_order, strides, dilations, padding_left, padding_right,
+          tf_fmt, native_format);
 
       // TODO(mdfaijul): Extend the basic parameters for data types and fusions
       this->ExtendConvFwdParams(context, convFwdDims);
       conv_fwd =
           MklConvFwdPrimitiveFactory<Tinput, Tfilter, Tbias, Ttemp_output>::Get(
               convFwdDims, do_not_cache);
-      // Allocate output tensors `output_tensor` and `filter_out_tensor`
+      // Allocate output tensors `dst_tensor` and `filter_out_tensor`
       MklDnnShape output_mkl_shape;
       std::shared_ptr<ConvFwdPd> conv_fwd_pd = conv_fwd->GetPrimitiveDesc();
       AllocateOutputTensor(context, *conv_fwd_pd, dst_dims_mkl_order, tf_fmt,
-                           &output_mkl_shape, &dst_tensor, &tmp_tensor);
+                           &output_mkl_shape, &dst_tensor);
 
       Tensor* filter_out_tensor = nullptr;
       if (emit_filter_output) {
@@ -772,30 +787,7 @@ class MklConvOp : public OpKernel {
         conv_fwd->Execute(src_data, filter_data, bias_data, dst_data,
                           fwd_cpu_stream);
       } else {
-        if (!eager_mode) {
-          conv_fwd->Execute(src_data, filter_data, dst_data, fwd_cpu_stream);
-        } else {
-          // In eager mode we first write the output to temporary
-          // buffer in MKL format. Then we convert the data to TF format.
-          Ttemp_output* tmp_data = reinterpret_cast<Ttemp_output*>(
-              tmp_tensor.flat<Toutput>().data());
-          conv_fwd->Execute(src_data, filter_data, tmp_data, fwd_cpu_stream);
-
-          // Now we need to convert the output to TF format.
-          auto output_tf_md = output_mkl_shape.GetTfLayout();
-#ifndef ENABLE_MKLDNN_V1
-          auto output_tf_pd = memory::primitive_desc(output_tf_md, cpu_engine_);
-#endif  // !ENABLE_MKLDNN_V1
-          auto dst_pd = conv_fwd_pd->PRIMITIVE_DESC_DST;
-          ReorderPd reorder_pd =
-              REORDER_PD_CONSTRUCTOR(dst_pd, OUTPUT_TF_MD, cpu_engine_);
-          memory* tmp_data_mem =
-              new MEMORY_CONSTRUCTOR(dst_pd, cpu_engine_, tmp_data);
-          memory* dst_data_mem =
-              new MEMORY_CONSTRUCTOR(OUTPUT_TF_MD, cpu_engine_, dst_data);
-          CreateAndExecuteReorder(reorder_pd, *tmp_data_mem, *dst_data_mem,
-                                  cpu_engine_, context);
-        }
+        conv_fwd->Execute(src_data, filter_data, dst_data, fwd_cpu_stream);
       }
 
       // Delete primitive since it is not cached.
@@ -911,8 +903,7 @@ class MklConvOp : public OpKernel {
                                     const memory::dims& output_dims_mkl_order,
                                     MKL_TENSOR_FORMAT output_tf_format,
                                     MklDnnShape* output_mkl_shape,
-                                    Tensor** output_tensor,
-                                    Tensor* tmp_tensor) {
+                                    Tensor** output_tensor) {
     DCHECK(output_tensor);
 #ifdef ENABLE_MKLDNN_V1
     auto dst_md = conv_prim_desc.dst_desc();
@@ -939,8 +930,7 @@ class MklConvOp : public OpKernel {
     // Allocate shape of TF tensor
     TensorShape output_tf_shape;
     output_tf_shape.AddDim((DST_MD.get_size() / sizeof(Toutput)));
-    if (eager_mode) {
-      AllocTmpBuffer<Toutput>(context, tmp_tensor, output_tf_shape);
+    if (native_format) {
       output_tf_shape = output_mkl_shape->GetTfShape();
     }
 
@@ -957,7 +947,7 @@ class MklConvOp : public OpKernel {
       } else {
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
                                   output_tf_shape, *output_mkl_shape,
-                                  eager_mode);
+                                  native_format);
 #ifdef ENABLE_MKLDNN_V1
         auto output_format_tag = MklTensorFormatToMklDnnDataFormat(
             output_mkl_shape->GetTfDataFormat());
@@ -991,7 +981,8 @@ class MklConvOp : public OpKernel {
       }
     } else {
       AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
-                                output_tf_shape, *output_mkl_shape, eager_mode);
+                                output_tf_shape, *output_mkl_shape,
+                                native_format);
     }
   }
 
@@ -1836,8 +1827,7 @@ class MklQuantizedConv2DSumReluOp
                             const memory::dims& output_dims_mkl_order,
                             MKL_TENSOR_FORMAT output_tf_format,
                             MklDnnShape* output_mkl_shape,
-                            Tensor** output_tensor,
-                            Tensor* tmp_tensor) override {
+                            Tensor** output_tensor) override {
     int summand_idx = context->num_inputs() / 2 - 1;
     if (std::is_same<Toutput, quint8>::value) {
       summand_idx -= 2;
@@ -1869,7 +1859,7 @@ class MklQuantizedConv2DSumReluOp
               false>::AllocateOutputTensor(context, conv_prim_desc,
                                            output_dims_mkl_order,
                                            output_tf_format, output_mkl_shape,
-                                           output_tensor, tmp_tensor);
+                                           output_tensor);
     const Tensor& summand = MklGetInput(context, summand_idx);
     if (summand.dtype() != DT_FLOAT)
       TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
@@ -2432,7 +2422,7 @@ REGISTER_KERNEL_BUILDER(
           .Label(mkl_op_registry::kMklLayoutDependentOpLabel),                 \
       MklDummyOp<CPUDevice, T>);                                               \
   REGISTER_KERNEL_BUILDER(                                                     \
-      Name("_MklEagerConv2D")                                                  \
+      Name("_MklNativeConv2D")                                                 \
           .Device(DEVICE_CPU)                                                  \
           .TypeConstraint<T>("T")                                              \
           .Label(mkl_op_registry::kMklNameChangeOpLabel),                      \

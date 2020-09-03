@@ -174,7 +174,8 @@ void RemoteCopyNode::StartSend() {
     // If StartRecv fails very quickly, `this` can be destroyed before the
     // callback below is executed. So, we can't capture `this`.
     eager_client->StreamingEnqueueAsync(
-        &request, response, [response, captured_state](const Status& s) {
+        /*call_opts=*/nullptr, &request, response,
+        [response, captured_state](const Status& s) {
           captured_state->SetSendStatus(s);
           if (!s.ok()) {
             captured_state->recv_cancellation()->StartCancel();
@@ -241,7 +242,7 @@ void RemoteCopyNode::RunRemoteRecv(EagerOperation* op, StatusCallback done) {
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   Device* recv_device = recv_device_;
   eager_client->StreamingEnqueueAsync(
-      &request, response,
+      /*call_opts=*/nullptr, &request, response,
       [captured_state, response, recv_device, context_view_id,
        done](const Status& s) {
         if (s.ok()) {
@@ -387,7 +388,7 @@ void RemoteCopyNode::StartSendPackedHandle(StatusCallback done) {
   Device* recv_device = recv_device_;
   const std::shared_ptr<CapturedSharedState>& captured_state = captured_state_;
   eager_client->StreamingEnqueueAsync(
-      &request, response,
+      /*call_opts=*/nullptr, &request, response,
       [captured_state, response, recv_device, context_view_id,
        done](const Status& s) {
         if (s.ok()) {
@@ -441,7 +442,7 @@ void RemoteCopyNode::StartRemoteSendTensor(StatusCallback done) {
   captured_state->SetSrcShape(tensor.shape());
   Device* recv_device = recv_device_;
   eager_client->StreamingEnqueueAsync(
-      &request, response,
+      /*call_opts=*/nullptr, &request, response,
       [captured_state, response, recv_device, context_view_id,
        done](const Status& s) {
         if (s.ok()) {

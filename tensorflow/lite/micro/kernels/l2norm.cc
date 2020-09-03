@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/portable_tensor.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/l2normalization.h"
 #include "tensorflow/lite/kernels/internal/reference/l2normalization.h"
-#include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 

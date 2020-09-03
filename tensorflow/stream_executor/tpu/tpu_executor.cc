@@ -80,6 +80,11 @@ Status TpuExecutor::GetStatus(Stream* stream) {
   return status.status();
 }
 
+tpu::TpuCoreLocationExternal TpuExecutor::GetCoreLocationExternal() const {
+  return tpu::TpuCoreLocationExternal(
+      tpu::ExecutorApiFn()->TpuExecutor_GetCoreLocationFn(executor_));
+}
+
 bool TpuExecutor::AllocateStream(Stream* stream) {
   return tpu::ExecutorApiFn()->TpuExecutor_AllocateStreamFn(
       executor_, stream_map().at(stream->implementation()));

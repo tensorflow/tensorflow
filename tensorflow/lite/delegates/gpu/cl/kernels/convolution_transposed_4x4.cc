@@ -28,35 +28,36 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
-    const OperationDef& definition, const CLDevice& device)
+    const OperationDef& definition, const DeviceInfo& device_info,
+    const ConvolutionTransposedAttributes& attr)
     : GPUOperation(definition) {
   work_group_size_ = int3(8, 4, 1);
-  if (device.IsPowerVR()) {
-    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
-  } else if (device.IsNvidia() || device.IsIntel()) {
-    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
-  } else if (device.IsAMD()) {
-    weights_upload_type_ = WeightsUploadType::CONSTANT_MEM;
+  WeightsUploadType weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  if (device_info.IsPowerVR()) {
+    weights_upload_type = WeightsUploadType::LOCAL_MEM_ASYNC;
+  } else if (device_info.IsNvidia() || device_info.IsIntel()) {
+    weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+  } else if (device_info.IsAMD()) {
+    weights_upload_type = WeightsUploadType::CONSTANT_MEM;
   } else {
-    weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
+    weights_upload_type = WeightsUploadType::GLOBAL_MEM;
   }
 
-  code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type_);
+  code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type);
+  UploadWeights(attr.weights, weights_upload_type);
   if (definition_.precision == CalculationsPrecision::F16 &&
-      device.IsPowerVR()) {
+      device_info.IsPowerVR()) {
     compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
   }
 }
 
 ConvolutionTransposed4x4::ConvolutionTransposed4x4(
     ConvolutionTransposed4x4&& operation)
-    : GPUOperation(std::move(operation)),
-      weights_upload_type_(operation.weights_upload_type_) {}
+    : GPUOperation(std::move(operation)) {}
 
 ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
     ConvolutionTransposed4x4&& operation) {
   if (this != &operation) {
-    std::swap(weights_upload_type_, operation.weights_upload_type_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
@@ -307,37 +308,25 @@ int3 ConvolutionTransposed4x4::GetGridSize() const {
 }
 
 bool IsConvolutionTransposed4x4Supported(
-    const CLDevice& device, const OperationDef& definition,
+    const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
   return attr.weights.shape.w == 4 && attr.weights.shape.h == 4 &&
          attr.stride.w == 2 && attr.stride.h == 2 &&
          attr.padding.prepended.w == 1 && attr.padding.prepended.h == 1;
 }
 
-absl::Status CreateConvolutionTransposed4x4(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr,
-    ConvolutionTransposed4x4* result) {
-  if (!IsConvolutionTransposed4x4Supported(*creation_context.device, definition,
-                                           attr)) {
-    return absl::InvalidArgumentError(
-        "ConvolutionTransposed4x4 doesn't support this attributes");
-  }
-  *result = ConvolutionTransposed4x4(definition, *creation_context.device);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  ConvolutionTransposed4x4 result(definition, device_info, attr);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
-  return absl::OkStatus();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return result;
 }
 
 }  // namespace cl

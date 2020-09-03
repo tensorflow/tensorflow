@@ -90,6 +90,10 @@ def _events_from_logdir(test_case, logdir):
 
 class TpuOutsideCompilationTest(test.TestCase, parameterized.TestCase):
 
+  def setUp(self):
+    super(TpuOutsideCompilationTest, self).setUp()
+    config.set_soft_device_placement(False)
+
   def testResourceVariableAssignOnHost(self):
     strategy = get_tpu_strategy()
     with strategy.scope():

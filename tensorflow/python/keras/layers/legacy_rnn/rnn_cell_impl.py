@@ -282,7 +282,7 @@ class RNNCell(base_layer.Layer):
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
     if inputs is not None:
       # Validate the given batch_size and dtype against inputs if provided.
-      inputs = ops.convert_to_tensor(inputs, name="inputs")
+      inputs = ops.convert_to_tensor_v2_with_dispatch(inputs, name="inputs")
       if batch_size is not None:
         if tensor_util.is_tensor(batch_size):
           static_batch_size = tensor_util.constant_value(

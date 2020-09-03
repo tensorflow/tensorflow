@@ -32,10 +32,9 @@ DepthwiseConv3x3::DepthwiseConv3x3(const OperationDef& definition,
                                    bool local_mem_uploads,
                                    const DeviceInfo& device_info)
     : GPUOperation(definition),
-      weights_are_buffer_(weights_are_buffer),
       local_mem_uploads_(local_mem_uploads) {
   work_group_size_ = int3(8, 4, 1);
-  code_ = GenerateDepthwiseConvCode(definition_, weights_are_buffer_,
+  code_ = GenerateDepthwiseConvCode(definition_, weights_are_buffer,
                                     local_mem_uploads_);
 
   if (definition_.precision == CalculationsPrecision::F16 &&
@@ -46,12 +45,10 @@ DepthwiseConv3x3::DepthwiseConv3x3(const OperationDef& definition,
 
 DepthwiseConv3x3::DepthwiseConv3x3(DepthwiseConv3x3&& operation)
     : GPUOperation(std::move(operation)),
-      weights_are_buffer_(operation.weights_are_buffer_),
       local_mem_uploads_(operation.local_mem_uploads_) {}
 
 DepthwiseConv3x3& DepthwiseConv3x3::operator=(DepthwiseConv3x3&& operation) {
   if (this != &operation) {
-    std::swap(weights_are_buffer_, operation.weights_are_buffer_);
     std::swap(local_mem_uploads_, operation.local_mem_uploads_);
     GPUOperation::operator=(std::move(operation));
   }
@@ -289,11 +286,6 @@ std::string DepthwiseConv3x3::GenerateDepthwiseConvCode(
   return c;
 }
 
-absl::Status DepthwiseConv3x3::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  return args_.SetObjectRef("dst_tensor", dst_[0]);
-}
-
 int3 DepthwiseConv3x3::GetGridSize() const {
   const int grid_x = DivideRoundUp(dst_[0]->Width(), 2) * dst_[0]->Batch();
   const int grid_y = DivideRoundUp(dst_[0]->Height(), 2);
@@ -321,21 +313,15 @@ bool IsDepthwiseConv3x3Supported(const DepthwiseConvolution2DAttributes& attr) {
          attr.padding.appended.h == 1;
 }
 
-absl::Status CreateDepthwiseConv3x3(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const DepthwiseConvolution2DAttributes& attr, DepthwiseConv3x3* result) {
-  if (!IsDepthwiseConv3x3Supported(attr)) {
-    return absl::InvalidArgumentError(
-        "DepthwiseConv3x3 doesn't support this attributes");
-  }
-  bool weights_are_buffer =
-      creation_context.device->IsPowerVR() || creation_context.device->IsMali();
-  bool local_mem_uploads =
-      weights_are_buffer && creation_context.device->IsPowerVR();
-  *result = DepthwiseConv3x3(definition, weights_are_buffer, local_mem_uploads,
-                             creation_context.device->info_);
-  return result->UploadWeightsAndBiases(attr.weights, attr.bias,
-                                        creation_context.context);
+DepthwiseConv3x3 CreateDepthwiseConv3x3(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const DepthwiseConvolution2DAttributes& attr) {
+  bool weights_are_buffer = device_info.IsPowerVR() || device_info.IsMali();
+  bool local_mem_uploads = weights_are_buffer && device_info.IsPowerVR();
+  DepthwiseConv3x3 result(definition, weights_are_buffer, local_mem_uploads,
+                          device_info);
+  result.UploadWeightsAndBiases(attr.weights, attr.bias, weights_are_buffer);
+  return result;
 }
 
 }  // namespace cl

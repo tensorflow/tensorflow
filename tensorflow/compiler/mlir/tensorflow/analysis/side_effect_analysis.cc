@@ -320,10 +320,7 @@ SideEffectAnalysisInfo::DirectControlSuccessors(
 }
 }  // namespace detail
 
-SideEffectAnalysis::SideEffectAnalysis(Operation* op) {
-  auto module = dyn_cast<ModuleOp>(op);
-  assert(module);
-
+SideEffectAnalysis::SideEffectAnalysis(ModuleOp module) {
   // Analyze entire module for alias analysis info.
   ResourceAliasAnalysis alias_analysis(module);
 

@@ -496,6 +496,18 @@ func @sin(%input: memref<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @floor
+func @floor(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "lmhlo.floor"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = floorf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @negf
 func @negf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
   "lmhlo.negate"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
@@ -685,6 +697,20 @@ func @reshape_2D_4D(%arg0: memref<12x42xi32>, %arg1 : memref<12x1x42x1xi32>) {
 }
 // CHECK: linalg.reshape %{{.*}} [#[[MAP1]], #[[MAP2]]]
 // CHECK-NEXT: linalg.copy
+
+// -----
+
+// CHECK-DAG: #[[RESHAPE_MAP1:.*]] = affine_map<(d0, d1, d2) -> (d0, d1, d2)>
+// CHECK-DAG: #[[RESHAPE_MAP2:.*]] = affine_map<(d0, d1, d2, d3) -> (d0, d1, d2, d3)>
+// CHECK-LABEL: func @reshape_3D_4D
+func @reshape_3D_4D(%arg0: memref<1x49x16xf32>, %arg1: memref<1x784x1x1xf32>) {
+  "lmhlo.reshape"(%arg0, %arg1)
+   : (memref<1x49x16xf32>, memref<1x784x1x1xf32>) -> ()
+  return
+}
+// CHECK: linalg.reshape %{{.*}} [#[[RESHAPE_MAP1]]]
+// CHECK: linalg.reshape %{{.*}} [#[[RESHAPE_MAP2]]]
+// CHECK: linalg.copy
 
 // -----
 

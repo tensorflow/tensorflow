@@ -24,29 +24,15 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-Padding::Padding(const OperationDef& definition, const PadAttributes& attr)
-    : GPUOperation(definition) {
-  code_ = GetPaddingCode(definition_, attr);
-}
-
-Padding::Padding(Padding&& kernel) : GPUOperation(std::move(kernel)) {}
-
-Padding& Padding::operator=(Padding&& kernel) {
-  if (this != &kernel) {
-    GPUOperation::operator=(std::move(kernel));
-  }
-  return *this;
-}
-
-std::string Padding::GetPaddingCode(const OperationDef& op_def,
-                                    const PadAttributes& attr) {
-  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
-  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-  args_.AddInt("prepended_x", attr.prepended.w);
-  args_.AddInt("prepended_y", attr.prepended.h);
-  args_.AddInt("prepended_z", attr.prepended.c);
-  args_.AddInt("prepended_w", attr.prepended.b);
+namespace {
+std::string GetPaddingCode(const OperationDef& op_def,
+                           const PadAttributes& attr, GPUOperation* op) {
+  op->AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  op->AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+  op->args_.AddInt("prepended_x", attr.prepended.w);
+  op->args_.AddInt("prepended_y", attr.prepended.h);
+  op->args_.AddInt("prepended_z", attr.prepended.c);
+  op->args_.AddInt("prepended_w", attr.prepended.b);
 
   const std::string dst_batch =
       op_def.dst_tensors[0].HasAxis(Axis::BATCH) ? "B" : "0";
@@ -149,16 +135,14 @@ std::string Padding::GetPaddingCode(const OperationDef& op_def,
   return c;
 }
 
-int3 Padding::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Slices();
-  return int3(grid_x, grid_y, grid_z);
-}
+}  // namespace
 
-Padding CreatePadding(const OperationDef& definition,
-                      const PadAttributes& attr) {
-  return Padding(definition, attr);
+GPUOperation CreatePadding(const OperationDef& definition,
+                           const PadAttributes& attr) {
+  GPUOperation op(definition);
+  op.code_ = GetPaddingCode(definition, attr, &op);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  return op;
 }
 
 }  // namespace cl

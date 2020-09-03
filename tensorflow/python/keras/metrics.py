@@ -963,7 +963,7 @@ class _ConfusionMatrixConditionCount(Metric):
       result = self.accumulator[0]
     else:
       result = self.accumulator
-    return ops.convert_to_tensor_v2(result)
+    return ops.convert_to_tensor_v2_with_dispatch(result)
 
   def reset_states(self):
     num_thresholds = len(to_list(self.thresholds))
@@ -3239,7 +3239,7 @@ def binary_accuracy(y_true, y_pred, threshold=0.5):
   Returns:
     Binary accuracy values. shape = `[batch_size, d0, .. dN-1]`
   """
-  y_pred = ops.convert_to_tensor_v2(y_pred)
+  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
   threshold = math_ops.cast(threshold, y_pred.dtype)
   y_pred = math_ops.cast(y_pred > threshold, y_pred.dtype)
   return K.mean(math_ops.equal(y_true, y_pred), axis=-1)
@@ -3297,8 +3297,8 @@ def sparse_categorical_accuracy(y_true, y_pred):
   Returns:
     Sparse categorical accuracy values.
   """
-  y_pred = ops.convert_to_tensor_v2(y_pred)
-  y_true = ops.convert_to_tensor_v2(y_true)
+  y_pred = ops.convert_to_tensor_v2_with_dispatch(y_pred)
+  y_true = ops.convert_to_tensor_v2_with_dispatch(y_true)
   y_pred_rank = y_pred.shape.ndims
   y_true_rank = y_true.shape.ndims
   # If the shape of y_true is (num_samples, 1), squeeze to (num_samples,)
@@ -3364,8 +3364,8 @@ def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
   Returns:
     Sparse top K categorical accuracy value.
   """
-  y_pred_rank = ops.convert_to_tensor_v2(y_pred).shape.ndims
-  y_true_rank = ops.convert_to_tensor_v2(y_true).shape.ndims
+  y_pred_rank = ops.convert_to_tensor_v2_with_dispatch(y_pred).shape.ndims
+  y_true_rank = ops.convert_to_tensor_v2_with_dispatch(y_true).shape.ndims
   # Flatten y_pred to (batch_size, num_samples) and y_true to (num_samples,)
   if (y_true_rank is not None) and (y_pred_rank is not None):
     if y_pred_rank > 2:

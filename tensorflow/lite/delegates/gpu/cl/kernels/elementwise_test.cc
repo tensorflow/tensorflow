@@ -546,9 +546,9 @@ TEST_F(OpenCLOperationTest, MaximumWithScalar) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation;
-      ASSERT_OK(CreateElementwise(creation_context_, op_def,
-                                  OperationType::MAXIMUM, attr, &operation));
+      GPUOperation operation =
+          CreateElementwise(creation_context_.GetDeviceInfo(), op_def,
+                            OperationType::MAXIMUM, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 4, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -577,9 +577,9 @@ TEST_F(OpenCLOperationTest, MaximumWithConstantLinearTensor) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation;
-      ASSERT_OK(CreateElementwise(creation_context_, op_def,
-                                  OperationType::MAXIMUM, attr, &operation));
+      GPUOperation operation =
+          CreateElementwise(creation_context_.GetDeviceInfo(), op_def,
+                            OperationType::MAXIMUM, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -608,9 +608,9 @@ TEST_F(OpenCLOperationTest, MaximumWithConstantHWCTensor) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation;
-      ASSERT_OK(CreateElementwise(creation_context_, op_def,
-                                  OperationType::MAXIMUM, attr, &operation));
+      GPUOperation operation =
+          CreateElementwise(creation_context_.GetDeviceInfo(), op_def,
+                            OperationType::MAXIMUM, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -638,9 +638,9 @@ TEST_F(OpenCLOperationTest, MaximumWithConstantHWCTensorBroadcastChannels) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation;
-      ASSERT_OK(CreateElementwise(creation_context_, op_def,
-                                  OperationType::MAXIMUM, attr, &operation));
+      GPUOperation operation =
+          CreateElementwise(creation_context_.GetDeviceInfo(), op_def,
+                            OperationType::MAXIMUM, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 2, 1, 2), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -694,9 +694,9 @@ TEST_F(OpenCLOperationTest, MinimumWithScalar) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation;
-      ASSERT_OK(CreateElementwise(creation_context_, op_def,
-                                  OperationType::MINIMUM, attr, &operation));
+      GPUOperation operation =
+          CreateElementwise(creation_context_.GetDeviceInfo(), op_def,
+                            OperationType::MINIMUM, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 4, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,
@@ -807,9 +807,8 @@ TEST_F(OpenCLOperationTest, SubWithScalarAtFirstPosition) {
       op_def.src_tensors.push_back({data_type, storage, Layout::HWC});
       op_def.dst_tensors.push_back({data_type, storage, Layout::HWC});
       TensorFloat32 dst_tensor;
-      GPUOperation operation;
-      ASSERT_OK(CreateElementwise(creation_context_, op_def, OperationType::SUB,
-                                  attr, &operation));
+      GPUOperation operation = CreateElementwise(
+          creation_context_.GetDeviceInfo(), op_def, OperationType::SUB, attr);
       ASSERT_OK(ExecuteGPUOperation(src_tensor_0, creation_context_, &operation,
                                     BHWC(1, 4, 1, 1), &dst_tensor));
       EXPECT_THAT(dst_tensor.data,

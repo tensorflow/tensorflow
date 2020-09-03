@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
@@ -493,14 +494,18 @@ class TensorArrayTest(test.TestCase):
 
       if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
           not context.executing_eagerly()):
-        error_msg = "Tried to read from index -1 but array size is: 3"
+        error_msg = "Trying to access element -1 in a list with 3 elements."
       else:
         error_msg = "index -1"
       # Test reading from a negative index, which is not allowed
       with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.read(-1))
 
-      error_msg = "Tried to read from index 3 but array size is: 3"
+      if (control_flow_util.ENABLE_CONTROL_FLOW_V2 and
+          not context.executing_eagerly()):
+        error_msg = "Trying to access element 3 in a list with 3 elements."
+      else:
+        error_msg = "Tried to read from index 3 but array size is: 3"
       # Test reading from too large an index
       with self.assertRaisesOpError(error_msg):
         self.evaluate(ta.read(3))
@@ -1561,6 +1566,9 @@ class TensorArrayTest(test.TestCase):
     ta_grad = ta.grad("grad")
     flows = [ta.flow, ta_grad.flow]
 
+    # Same goes for stack.
+    flows.append(ta.stack("stack"))
+
     # Similar tests for unpack and split
     with ops.device("/job:worker/task:0/cpu:0"):
       ta = tensor_array_ops.TensorArray(dtype=dtypes.float32, size=3)
@@ -1575,6 +1583,25 @@ class TensorArrayTest(test.TestCase):
     with ops.device("/job:worker/task:1/cpu:0"):
       ta = ta.split([1.0, 2.0], [1, 1])
     flows.append(ta.flow)
+
+    g = ops.get_default_graph()
+    dev_assignments = collections.defaultdict(list)
+    for op in g.get_operations():
+      dev_assignments[op.device].append(op.name)
+    # We have created 3 different TensorArray handles, only those and their
+    # "size" ops should be deviceless.
+    self.assertLen(dev_assignments[""], 6)
+    # We assigned two writes explicitly to device #2.
+    ops_assigned_to_task_2 = []
+    for device, ops_on_device in dev_assignments.items():
+      if "/task:2/" in device:
+        ops_assigned_to_task_2 = ops_on_device
+        break
+    self.assertLen(ops_assigned_to_task_2, 2)
+    # All other ops should colocate with the first write on device #1.
+    self.assertLen(dev_assignments, 3)
+    for device in dev_assignments:
+      self.assertNotIn("/task:0/", device)
 
     session = session_lib.Session(self._workers[0].target)
 
@@ -1789,36 +1816,6 @@ class TensorArrayTest(test.TestCase):
     ta = tensor_array_ops.TensorArray(dtypes.float32, size=42)
     ta = ta.write(0, [0])
     self.assertEqual([42, 1], ta.stack().shape.as_list())
-
-  def testUnstackShouldNotAffectSize(self):
-    with ops.Graph().as_default() as g:
-      with session_lib.Session(graph=g) as sess:
-        a = constant_op.constant([1., 2.])
-        ta = tensor_array_ops.TensorArray(
-            dtypes.float32, size=10, dynamic_size=True, clear_after_read=False)
-        error_msg = "Tried to read from index 10 but array size is: 10"
-        with self.assertRaisesOpError(error_msg):
-          sess.run(ta.read(10))
-        ua = ta.unstack(a)
-        self.assertAllEqual(sess.run(ua.read(9)), 0.)
-        with self.assertRaisesOpError(error_msg):
-          sess.run(ua.read(10))
-
-  @test_util.disable_control_flow_v2("b/122315734: Requires scatter in XLA")
-  @test_util.run_v1_only("b/122315734: Requires scatter in XLA")
-  def testUnstackShouldPreserveOldValues(self):
-    with ops.Graph().as_default() as g:
-      with session_lib.Session(graph=g) as sess:
-        ta = tensor_array_ops.TensorArray(
-            dtypes.float32, size=2, dynamic_size=True, clear_after_read=False)
-        error_msg = "Tried to read from index 2 but array size is: 2"
-        with self.assertRaisesOpError(error_msg):
-          sess.run(ta.read(2))
-        ua = ta.scatter([2], [2.])
-        self.assertAllEqual(sess.run(ua.read(2)), 2.)
-        b = constant_op.constant([0., 1.])
-        ub = ua.unstack(b)
-        self.assertAllEqual(sess.run(ub.read(2)), 2.)
 
 
 class TensorArrayBenchmark(test.Benchmark):

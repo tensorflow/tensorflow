@@ -2,6 +2,7 @@ load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite/micro:build_def.bzl", "micro_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite_combined")
 load("//tensorflow:tensorflow.bzl", "tf_opts_nortti_if_android")
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 
 package(
     default_visibility = [
@@ -429,6 +430,7 @@ cc_library(
     hdrs = [
         "op_macros.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts(),
     deps = ["//tensorflow/lite/micro:debug_log"],
 )
@@ -441,6 +443,7 @@ cc_library(
     hdrs = [
         "kernel_util.h",
     ],
+    compatible_with = get_compatible_with_portable(),
     copts = tflite_copts() + micro_copts(),
     deps = [
         "//tensorflow/lite/c:common",
@@ -697,20 +700,22 @@ cc_test(
 
 cc_library(
     name = "custom_ops",
-    srcs = ["rfft2d.cc"],
+    srcs = [
+        "complex_support.cc",
+        "cumsum.cc",
+        "rfft2d.cc",
+    ],
     hdrs = ["custom_ops_register.h"],
     copts = tflite_copts(),
     deps = [
         ":kernel_util",
-        ":op_macros",
-        "//tensorflow/lite:context",
         "//tensorflow/lite/c:common",
-        "//tensorflow/lite/kernels/hashtable:hashtable_op_kernels",
-        "//tensorflow/lite/kernels/internal:kernel_utils",
+        "//tensorflow/lite/kernels/internal:optimized_base",
         "//tensorflow/lite/kernels/internal:tensor",
         "//tensorflow/lite/kernels/internal:types",
         "//third_party/fft2d:fft2d_headers",
         "@fft2d",
+        "@flatbuffers",
         "@ruy//ruy/profiler:instrumentation",
     ],
 )
@@ -757,6 +762,7 @@ cc_library(
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -774,6 +780,7 @@ cc_library(
     deps = [
         ":builtin_op_kernels",
         "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -791,6 +798,7 @@ cc_library(
     deps = [
         ":builtin_op_kernels_ruy_and_caching",
         "//tensorflow/lite:framework_lib",
+        "//tensorflow/lite:tflite_with_xnnpack_optional",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/schema:schema_fbs",
     ],
@@ -2282,6 +2290,36 @@ cc_test(
         ":test_util",
         "//tensorflow/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_test(
+    name = "complex_support_test",
+    srcs = ["complex_support_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+cc_test(
+    name = "cumsum_test",
+    srcs = ["cumsum_test.cc"],
+    deps = [
+        ":custom_ops",
+        ":test_main",
+        ":test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/schema:schema_fbs",
+        "//tensorflow/lite/testing:util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 

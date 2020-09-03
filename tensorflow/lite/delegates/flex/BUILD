@@ -177,8 +177,8 @@ tf_cc_test(
     srcs = ["kernel_test.cc"],
     tags = ["no_gpu"],  # GPU + flex is not officially supported.
     deps = [
+        ":delegate",
         ":delegate_data",
-        ":delegate_only_runtime",
         ":test_util",
         "@com_google_googletest//:gtest",
     ],

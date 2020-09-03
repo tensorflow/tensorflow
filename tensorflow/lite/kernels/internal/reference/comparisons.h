@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-#include "tensorflow/lite/string_util.h"
 
 namespace tflite {
 
@@ -51,18 +50,6 @@ inline bool LessEqualFn(T lhs, T rhs) {
   return lhs <= rhs;
 }
 
-inline bool StringRefEqualFn(const StringRef& lhs, const StringRef& rhs) {
-  if (lhs.len != rhs.len) return false;
-  for (int i = 0; i < lhs.len; ++i) {
-    if (lhs.str[i] != rhs.str[i]) return false;
-  }
-  return true;
-}
-
-inline bool StringRefNotEqualFn(const StringRef& lhs, const StringRef& rhs) {
-  return !StringRefEqualFn(lhs, rhs);
-}
-
 template <typename T>
 using ComparisonFn = bool (*)(T, T);
 
@@ -75,22 +62,6 @@ inline void ComparisonImpl(
       MatchingFlatSize(input1_shape, input2_shape, output_shape);
   for (int64_t i = 0; i < flatsize; ++i) {
     output_data[i] = F(input1_data[i], input2_data[i]);
-  }
-}
-
-inline void ComparisonStringImpl(bool (*F)(const StringRef&, const StringRef&),
-                                 const RuntimeShape& input1_shape,
-                                 const TfLiteTensor* input1,
-                                 const RuntimeShape& input2_shape,
-                                 const TfLiteTensor* input2,
-                                 const RuntimeShape& output_shape,
-                                 bool* output_data) {
-  const int64_t flatsize =
-      MatchingFlatSize(input1_shape, input2_shape, output_shape);
-  for (int64_t i = 0; i < flatsize; ++i) {
-    const auto lhs = GetString(input1, i);
-    const auto rhs = GetString(input2, i);
-    output_data[i] = F(lhs, rhs);
   }
 }
 
@@ -174,31 +145,6 @@ inline void BroadcastComparison4DSlowImpl(
           output_data[Offset(dims.output_shape, b, y, x, c)] =
               F(input1_data[SubscriptToIndex(dims.desc1, b, y, x, c)],
                 input2_data[SubscriptToIndex(dims.desc2, b, y, x, c)]);
-        }
-      }
-    }
-  }
-}
-
-inline void BroadcastComparison4DSlowStringImpl(
-    bool (*F)(const StringRef&, const StringRef&),
-    const RuntimeShape& unextended_input1_shape, const TfLiteTensor* input1,
-    const RuntimeShape& unextended_input2_shape, const TfLiteTensor* input2,
-    const RuntimeShape& unextended_output_shape, bool* output_data) {
-  const BroadcastComparison4DSlowCommon dims =
-      BroadcastComparison4DSlowPreprocess(unextended_input1_shape,
-                                          unextended_input2_shape,
-                                          unextended_output_shape);
-
-  for (int b = 0; b < dims.output_shape.Dims(0); ++b) {
-    for (int y = 0; y < dims.output_shape.Dims(1); ++y) {
-      for (int x = 0; x < dims.output_shape.Dims(2); ++x) {
-        for (int c = 0; c < dims.output_shape.Dims(3); ++c) {
-          const auto lhs =
-              GetString(input1, SubscriptToIndex(dims.desc1, b, y, x, c));
-          const auto rhs =
-              GetString(input2, SubscriptToIndex(dims.desc2, b, y, x, c));
-          output_data[Offset(dims.output_shape, b, y, x, c)] = F(lhs, rhs);
         }
       }
     }

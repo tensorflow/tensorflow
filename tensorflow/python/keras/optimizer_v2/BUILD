@@ -16,6 +16,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 py_library(
     name = "optimizer_v2",
     srcs = [
@@ -49,6 +55,7 @@ py_library(
         "//tensorflow/python/keras:backend_config",
         "//tensorflow/python/keras:initializers",
         "//tensorflow/python/keras/engine:base_layer_utils",
+        "//tensorflow/python/keras/utils:layer_utils",
         "//tensorflow/python/keras/utils:tf_utils",
     ],
 )

@@ -38,6 +38,10 @@ namespace {
 
 struct ShapeToDescriptorsPass
     : public ShapeToDescriptorsPassBase<ShapeToDescriptorsPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<scf::SCFDialect>();
+  }
+
  public:
   void runOnOperation() override {
     MLIRContext &ctx = getContext();

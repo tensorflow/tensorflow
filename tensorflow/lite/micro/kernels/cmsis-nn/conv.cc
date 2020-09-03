@@ -240,6 +240,8 @@ TfLiteStatus EvalQuantizedPerChannel(
     const OpData& data, const TfLiteEvalTensor* input,
     const TfLiteEvalTensor* filter, const TfLiteEvalTensor* bias,
     TfLiteEvalTensor* output, TfLiteEvalTensor* im2col) {
+#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
+
   // Initialize cmsis-nn convolution parameters
   cmsis_nn_conv_params conv_params;
   conv_params.input_offset = -data.input_zero_point;
@@ -259,7 +261,6 @@ TfLiteStatus EvalQuantizedPerChannel(
       const_cast<int32_t*>(data.per_channel_output_multiplier);
   quant_params.shift = const_cast<int32_t*>(data.per_channel_output_shift);
 
-#if defined(__ARM_FEATURE_DSP) || defined(__ARM_FEATURE_MVE)
   RuntimeShape filter_shape = tflite::micro::GetTensorShape(filter);
   RuntimeShape input_shape = tflite::micro::GetTensorShape(input);
   RuntimeShape output_shape = tflite::micro::GetTensorShape(output);
@@ -338,20 +339,18 @@ TfLiteStatus EvalQuantizedPerChannel(
     "CMSIS-NN optimization for conv not available for this target. Using reference kernel.")
 
   ConvParams op_params;
-  conv_params.input_offset = -data.input_zero_point;
-  conv_params.output_offset = data.output_zero_point;
   op_params.stride_height = params->stride_height;
   op_params.stride_width = params->stride_width;
   op_params.dilation_height_factor = params->dilation_height_factor;
   op_params.dilation_width_factor = params->dilation_width_factor;
   op_params.padding_values.height = data.padding.height;
   op_params.padding_values.width = data.padding.width;
-  op_params.quantized_activation_min = data->output_activation_min;
-  op_params.quantized_activation_max = data->output_activation_max;
+  op_params.quantized_activation_min = data.output_activation_min;
+  op_params.quantized_activation_max = data.output_activation_max;
 
   reference_integer_ops::ConvPerChannel(
-      op_params, data->per_channel_output_multiplier,
-      data->per_channel_output_shift, tflite::micro::GetTensorShape(input),
+      op_params, data.per_channel_output_multiplier,
+      data.per_channel_output_shift, tflite::micro::GetTensorShape(input),
       tflite::micro::GetTensorData<int8_t>(input),
       tflite::micro::GetTensorShape(filter),
       tflite::micro::GetTensorData<int8_t>(filter),

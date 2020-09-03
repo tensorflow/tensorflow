@@ -282,7 +282,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     class SleepCallback(keras.callbacks.Callback):
 
       def on_train_batch_end(self, batch, logs=None):
-        time.sleep(1)
+        time.sleep(0.1)
 
     model = sequential.Sequential()
     model.add(keras.layers.Dense(1))
@@ -298,17 +298,17 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with test.mock.patch.object(logging, 'warning', warning):
       model.fit(
-          np.ones((20, 1), 'float32'),
-          np.ones((20, 1), 'float32'),
+          np.ones((16, 1), 'float32'),
+          np.ones((16, 1), 'float32'),
           batch_size=3,
-          epochs=10,
+          epochs=1,
           callbacks=[SleepCallback()])
     warning_msg = ('Callback method `on_train_batch_end` is slow compared '
                    'to the batch time')
     self.assertIn(warning_msg, '\n'.join(warning_messages))
 
   @keras_parameterized.run_all_keras_modes
-  def test__default_callbacks_no_warning(self):
+  def test_default_callbacks_no_warning(self):
     # Test that without the callback no warning is raised
     model = sequential.Sequential()
     model.add(keras.layers.Dense(1))
@@ -324,10 +324,10 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with test.mock.patch.object(logging, 'warning', warning):
       model.fit(
-          np.ones((20, 1), 'float32'),
-          np.ones((20, 1), 'float32'),
+          np.ones((16, 1), 'float32'),
+          np.ones((16, 1), 'float32'),
           batch_size=3,
-          epochs=10)
+          epochs=1)
     self.assertListEqual(warning_messages, [])
 
   @keras_parameterized.run_with_all_model_types(exclude_models='functional')
@@ -935,7 +935,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
                                            verbose=0)
 
     with context.eager_mode():
-      tensor = ops.convert_to_tensor(1.)
+      tensor = ops.convert_to_tensor_v2_with_dispatch(1.)
 
     def mock_numpy():
       raise RuntimeError(
@@ -975,7 +975,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
                                            verbose=2)
 
     with context.eager_mode():
-      tensor = ops.convert_to_tensor(1.)
+      tensor = ops.convert_to_tensor_v2_with_dispatch(1.)
 
     def mock_numpy():
       raise RuntimeError(
@@ -2193,7 +2193,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
                                            steps=100,
                                            verbose=0)
 
-    tensor = ops.convert_to_tensor(1.)
+    tensor = ops.convert_to_tensor_v2_with_dispatch(1.)
 
     def mock_numpy():
       raise RuntimeError(

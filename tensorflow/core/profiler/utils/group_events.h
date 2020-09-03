@@ -89,8 +89,8 @@ class EventNode {
 
   bool IsNestedIn(EventNode* parent);
 
-  // Returns the closest parent of the given event type.
-  EventNode* FindParent(int64 event_type) const;
+  // Returns the closest parent (including itself) of the given event type.
+  const EventNode* FindParent(int64 event_type) const;
 
   absl::optional<ContextInfo> GetProducerContext() const {
     return producer_context_;

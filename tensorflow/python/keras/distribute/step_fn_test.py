@@ -24,10 +24,10 @@ from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute.single_loss_example import single_loss_example
 from tensorflow.python.eager import context
-from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.distribute import optimizer_combinations
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 
 
 @test_util.with_control_flow_v2

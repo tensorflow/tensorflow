@@ -226,5 +226,30 @@ class MultiHeadAttentionTest(keras_parameterized.TestCase):
         model.predict([query, value, null_mask_data]))
 
 
+class SubclassAttention(multi_head_attention.MultiHeadAttention):
+
+  def _build_attention(self, qkv_rank):
+    pass
+
+  def _compute_attention(self,
+                         query_tensor,
+                         key_tensor,
+                         value_tensor,
+                         attention_mask=None):
+    return value_tensor, None
+
+
+@keras_parameterized.run_all_keras_modes
+class AttentionSubclassTest(keras_parameterized.TestCase):
+
+  def test_initializer(self):
+    """Test with a specified initializer."""
+    test_layer = SubclassAttention(num_heads=12, key_dim=64)
+    # Create a 3-dimensional input (the first dimension is implicit).
+    query = keras.Input(shape=(40, 80))
+    output = test_layer(query, query)
+    self.assertEqual(output.shape.as_list(), [None, 40, 80])
+
+
 if __name__ == "__main__":
   test.main()

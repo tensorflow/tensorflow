@@ -2825,6 +2825,38 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   return output_shape;
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferDynamicReshapeShape(
+    const Shape& operand, absl::Span<const Shape* const> dim_size_shapes,
+    absl::Span<const int64> new_size_bounds,
+    const std::vector<bool>& dims_are_dynamic) {
+  if (new_size_bounds.size() != dims_are_dynamic.size()) {
+    return InvalidArgument(
+        "DynamicReshape has to have the same number of elements in new_sizes "
+        "(%d) and dims_are_dynamic (%d)",
+        new_size_bounds.size(), dims_are_dynamic.size());
+  }
+
+  for (const Shape* dim_size_shape : dim_size_shapes) {
+    if (dim_size_shape->element_type() != S32 && dim_size_shape->rank() != 0) {
+      return InvalidArgument(
+          "DynamicReshape's dim size has to be scalar S32, got (%s): ",
+          dim_size_shape->ToString());
+    }
+  }
+
+  Shape inferred_shape = ShapeUtil::MakeShape(
+      operand.element_type(), new_size_bounds, dims_are_dynamic);
+  if (ShapeUtil::ElementsIn(operand) != ShapeUtil::ElementsIn(inferred_shape)) {
+    return InvalidArgument(
+        "Reshape operation has mismatched element counts: from=%d (%s) "
+        "to=%d (%s).",
+        ShapeUtil::ElementsIn(operand), ShapeUtil::HumanString(operand),
+        ShapeUtil::ElementsIn(inferred_shape),
+        ShapeUtil::HumanString(inferred_shape));
+  }
+  return inferred_shape;
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferReshapeShape(
     const Shape& operand, absl::Span<const int64> dimensions,
     absl::Span<const int64> new_sizes, int64 inferred_dimension) {

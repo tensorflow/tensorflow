@@ -102,7 +102,7 @@ class ResourceAliasAnalysis : public detail::PerFunctionAggregateAnalysis<
                                   detail::ResourceAliasAnalysisInfo> {
  public:
   // Constructs analysis by analyzing the given module operation.
-  explicit ResourceAliasAnalysis(Operation* op);
+  explicit ResourceAliasAnalysis(ModuleOp module);
 };
 
 // Returns a range with just resource type values from the input range

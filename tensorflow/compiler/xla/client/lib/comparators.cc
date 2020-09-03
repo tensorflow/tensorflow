@@ -84,7 +84,12 @@ XlaComputation CreateScalarComparisonComputation(
 
   CHECK_NE(parameter_count, 0);
 
-  Shape shape = b->GetShape(lhs_params[0]).ValueOrDie();
+  auto shape_or = b->GetShape(lhs_params[0]);
+  if (!shape_or.ok()) {
+    b->ReportError(shape_or.status());
+    return {};
+  }
+  Shape shape = shape_or.ValueOrDie();
   shape.set_element_type(PRED);
   XlaOp param_equal = Broadcast(One(b.get(), shape.element_type()),
                                 AsInt64Slice(shape.dimensions()));

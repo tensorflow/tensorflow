@@ -30,80 +30,66 @@ stream_executor::port::StatusOr<ConstantOp> CreateConstOpWithSingleValue(
   Type element_type = shaped_type.getElementType();
   ShapedType scalar_type = RankedTensorType::get({}, element_type);
   Attribute attr;
-  switch (element_type.getKind()) {
-    case mlir::StandardTypes::F16: {
-      auto floatType = mlir::FloatType::getF16(element_type.getContext());
-      auto floatAttr =
-          mlir::FloatAttr::get(floatType, static_cast<float>(value));
-      std::vector<Attribute> floatValues({floatAttr});
-      attr = DenseElementsAttr::get(scalar_type, floatValues);
-      break;
-    }
-    case mlir::StandardTypes::BF16: {
-      auto floatType = mlir::FloatType::getBF16(element_type.getContext());
-      auto floatAttr =
-          mlir::FloatAttr::get(floatType, static_cast<float>(value));
-      std::vector<Attribute> floatValues({floatAttr});
-      attr = DenseElementsAttr::get(scalar_type, floatValues);
-      break;
-    }
-    case mlir::StandardTypes::F32: {
-      attr =
-          DenseElementsAttr::get<float>(scalar_type, static_cast<float>(value));
-      break;
-    }
-    case mlir::StandardTypes::Complex: {
-      auto etype = element_type.cast<mlir::ComplexType>().getElementType();
-      if (etype.isF32()) {
-        auto dialect = etype.getContext()->getRegisteredDialect("tf");
-        tensorflow::TensorProto repr;
-        repr.set_dtype(tensorflow::DT_COMPLEX64);
+  if (element_type.isF16()) {
+    auto floatType = mlir::FloatType::getF16(element_type.getContext());
+    auto floatAttr = mlir::FloatAttr::get(floatType, static_cast<float>(value));
+    std::vector<Attribute> floatValues({floatAttr});
+    attr = DenseElementsAttr::get(scalar_type, floatValues);
+  } else if (element_type.isBF16()) {
+    auto floatType = mlir::FloatType::getBF16(element_type.getContext());
+    auto floatAttr = mlir::FloatAttr::get(floatType, static_cast<float>(value));
+    std::vector<Attribute> floatValues({floatAttr});
+    attr = DenseElementsAttr::get(scalar_type, floatValues);
+  } else if (element_type.isF32()) {
+    attr =
+        DenseElementsAttr::get<float>(scalar_type, static_cast<float>(value));
+  } else if (auto complex_type = element_type.dyn_cast<mlir::ComplexType>()) {
+    auto etype = complex_type.getElementType();
+    if (etype.isF32()) {
+      auto dialect = etype.getContext()->getLoadedDialect("tf");
+      tensorflow::TensorProto repr;
+      repr.set_dtype(tensorflow::DT_COMPLEX64);
 
-        tensorflow::TensorShapeProto* shape = repr.mutable_tensor_shape();
-        shape->set_unknown_rank(false);
-        shape->add_dim()->set_size(int64_t{1});
-        std::string content;
-        auto complex_value =
-            std::complex<float>(static_cast<float>(value), 0.0f);
-        content.assign(reinterpret_cast<const char*>(&complex_value),
-                       sizeof(complex_value));
-        repr.set_tensor_content(content);
-        std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
+      tensorflow::TensorShapeProto* shape = repr.mutable_tensor_shape();
+      shape->set_unknown_rank(false);
+      shape->add_dim()->set_size(int64_t{1});
+      std::string content;
+      auto complex_value = std::complex<float>(static_cast<float>(value), 0.0f);
+      content.assign(reinterpret_cast<const char*>(&complex_value),
+                     sizeof(complex_value));
+      repr.set_tensor_content(content);
+      std::string mangled = tensorflow::mangling_util::MangleTensor(repr);
 
-        attr = mlir::OpaqueElementsAttr::get(dialect, scalar_type, mangled);
+      attr = mlir::OpaqueElementsAttr::get(dialect, scalar_type, mangled);
+    } else {
+      return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+                                "Unsupported type");
+    }
+  } else if (auto itype = element_type.dyn_cast<mlir::IntegerType>()) {
+    switch (itype.getWidth()) {
+      case 8:
+        attr = DenseElementsAttr::get<int8_t>(scalar_type,
+                                              static_cast<int8_t>(value));
         break;
-      }
-      return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
-                                "Unsupported type");
+      case 16:
+        attr = DenseElementsAttr::get<int16_t>(scalar_type,
+                                               static_cast<int16_t>(value));
+        break;
+      case 32:
+        attr = DenseElementsAttr::get<int32_t>(scalar_type,
+                                               static_cast<int32_t>(value));
+        break;
+      case 64:
+        attr = DenseElementsAttr::get<int64_t>(scalar_type,
+                                               static_cast<int64_t>(value));
+        break;
+      default:
+        return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+                                  "Unsupported type");
     }
-    case mlir::StandardTypes::Integer: {
-      const auto& itype = element_type.cast<mlir::IntegerType>();
-      switch (itype.getWidth()) {
-        case 8:
-          attr = DenseElementsAttr::get<int8_t>(scalar_type,
-                                                static_cast<int8_t>(value));
-          break;
-        case 16:
-          attr = DenseElementsAttr::get<int16_t>(scalar_type,
-                                                 static_cast<int16_t>(value));
-          break;
-        case 32:
-          attr = DenseElementsAttr::get<int32_t>(scalar_type,
-                                                 static_cast<int32_t>(value));
-          break;
-        case 64:
-          attr = DenseElementsAttr::get<int64_t>(scalar_type,
-                                                 static_cast<int64_t>(value));
-          break;
-        default:
-          return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
-                                    "Unsupported type");
-      }
-      break;
-    }
-    default:
-      return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
-                                "Unsupported type");
+  } else {
+    return tensorflow::Status(tensorflow::error::INVALID_ARGUMENT,
+                              "Unsupported type");
   }
   return rewriter->create<ConstantOp>(loc, scalar_type, attr);
 }

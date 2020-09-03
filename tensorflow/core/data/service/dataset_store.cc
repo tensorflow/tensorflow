@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/utils.h"
 #include "tensorflow/core/lib/io/record_reader.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/platform/env.h"
@@ -39,10 +40,7 @@ Status FileSystemDatasetStore::Put(const std::string& key,
   if (Env::Default()->FileExists(path_to_write).ok()) {
     return errors::AlreadyExists("File ", path_to_write, " already exists");
   }
-  std::unique_ptr<WritableFile> file;
-  TF_RETURN_IF_ERROR(Env::Default()->NewWritableFile(path_to_write, &file));
-  io::RecordWriter writer(file.get());
-  TF_RETURN_IF_ERROR(writer.WriteRecord(dataset.SerializeAsString()));
+  TF_RETURN_IF_ERROR(WriteDatasetDef(path_to_write, dataset));
   return Status::OK();
 }
 
@@ -50,18 +48,9 @@ Status FileSystemDatasetStore::Get(
     const std::string& key, std::shared_ptr<const DatasetDef>& dataset_def) {
   std::string path = io::JoinPath(datasets_dir_, key);
   TF_RETURN_IF_ERROR(Env::Default()->FileExists(path));
-  std::unique_ptr<RandomAccessFile> file;
-  TF_RETURN_IF_ERROR(Env::Default()->NewRandomAccessFile(path, &file));
-  io::RecordReader reader(file.get());
-  uint64 offset = 0;
-  tstring record;
-  TF_RETURN_IF_ERROR(reader.ReadRecord(&offset, &record));
-  dataset_def = std::make_shared<const DatasetDef>();
-  auto def = std::make_shared<DatasetDef>();
-  if (!def->ParseFromString(record)) {
-    return errors::DataLoss("Failed to parse dataset definition");
-  }
-  dataset_def = std::move(def);
+  DatasetDef def;
+  TF_RETURN_IF_ERROR(ReadDatasetDef(path, def));
+  dataset_def = std::make_shared<const DatasetDef>(def);
   return Status::OK();
 }
 

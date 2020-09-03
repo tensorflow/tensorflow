@@ -85,7 +85,11 @@ class GraphOperation : public TracingOperation {
       return errors::FailedPrecondition(
           "GraphOperation::Reset must be called before calling SetOpName.");
     }
-    op_.reset(TF_NewOperation(g_, op_type_.c_str(), op_name));
+    // TODO(b/145674566): We use Graph::NewName to get a unique name here but
+    // this may not be consistent with python's naming policy.
+    mutex_lock l(g_->mu);
+    op_.reset(new TF_OperationDescription(g_, op_type_.c_str(),
+                                          g_->graph.NewName(op_name).c_str()));
     return Status::OK();
   }
   const string& Name() const override { return op_type_; }

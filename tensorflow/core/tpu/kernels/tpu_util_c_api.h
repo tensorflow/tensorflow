@@ -56,6 +56,9 @@ TFTPU_CAPI_EXPORT bool TpuCompile_ShouldTpuCompileOpIgnoreCancellation();
 TFTPU_CAPI_EXPORT int TpuTopology_AvailableCoreCount(
     const XLA_TpuMeshState* mesh_state, TpuCoreTypeEnum tpu_core_type);
 
+// Recycle unused service port.
+TFTPU_CAPI_EXPORT void TpuNetUtil_RecycleUnusedPort(int port);
+
 // Creates a unique compilation cache `key` used for `put` and `get` operations.
 // Returned buffers are heap-allocated and must be owned.
 TFTPU_CAPI_EXPORT CompilationCacheKeyResult
@@ -79,6 +82,7 @@ struct TfTpu_UtilApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_IsTpuCompilationEnabled);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_ShouldTpuCompileOpIgnoreCancellation);
   TFTPU_ADD_FN_IN_STRUCT(TpuTopology_AvailableCoreCount);
+  TFTPU_ADD_FN_IN_STRUCT(TpuNetUtil_RecycleUnusedPort);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_DestroyCompilationCacheKey);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompile_CreateGuaranteedConstFingerprint);

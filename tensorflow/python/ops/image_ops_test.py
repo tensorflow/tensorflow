@@ -34,6 +34,7 @@ from tensorflow.python.client import session
 from tensorflow.python.compat import compat
 from tensorflow.python.data.experimental.ops import get_single_element
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -97,6 +98,8 @@ class RGBToHSVTest(test_util.TensorFlowTestCase):
 
 class RGBToYIQTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_without_tensor_float_32(
+      "Calls rgb_to_yiq and yiq_to_rgb, which use matmul")
   def testBatch(self):
     # Build an arbitrary RGB image
     np.random.seed(7)
@@ -127,6 +130,8 @@ class RGBToYIQTest(test_util.TensorFlowTestCase):
 
 class RGBToYUVTest(test_util.TensorFlowTestCase):
 
+  @test_util.run_without_tensor_float_32(
+      "Calls rgb_to_yuv and yuv_to_rgb, which use matmul")
   def testBatch(self):
     # Build an arbitrary RGB image
     np.random.seed(7)
@@ -249,36 +254,36 @@ class GrayscaleToRGBTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegex(ValueError, err_msg):
         image_ops.grayscale_to_rgb(x_tf)
 
-  @test_util.run_deprecated_v1
   def testShapeInference(self):
-    # Shape inference works and produces expected output where possible
-    rgb_shape = [7, None, 19, 3]
-    gray_shape = rgb_shape[:-1] + [1]
-    with self.cached_session(use_gpu=True):
-      rgb_tf = array_ops.placeholder(dtypes.uint8, shape=rgb_shape)
-      gray = image_ops.rgb_to_grayscale(rgb_tf)
-      self.assertEqual(gray_shape, gray.get_shape().as_list())
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      # Shape inference works and produces expected output where possible
+      rgb_shape = [7, None, 19, 3]
+      gray_shape = rgb_shape[:-1] + [1]
+      with self.cached_session(use_gpu=True):
+        rgb_tf = array_ops.placeholder(dtypes.uint8, shape=rgb_shape)
+        gray = image_ops.rgb_to_grayscale(rgb_tf)
+        self.assertEqual(gray_shape, gray.get_shape().as_list())
 
-    with self.cached_session(use_gpu=True):
-      gray_tf = array_ops.placeholder(dtypes.uint8, shape=gray_shape)
-      rgb = image_ops.grayscale_to_rgb(gray_tf)
-      self.assertEqual(rgb_shape, rgb.get_shape().as_list())
+      with self.cached_session(use_gpu=True):
+        gray_tf = array_ops.placeholder(dtypes.uint8, shape=gray_shape)
+        rgb = image_ops.grayscale_to_rgb(gray_tf)
+        self.assertEqual(rgb_shape, rgb.get_shape().as_list())
 
-    # Shape inference does not break for unknown shapes
-    with self.cached_session(use_gpu=True):
-      rgb_tf_unknown = array_ops.placeholder(dtypes.uint8)
-      gray_unknown = image_ops.rgb_to_grayscale(rgb_tf_unknown)
-      self.assertFalse(gray_unknown.get_shape())
+      # Shape inference does not break for unknown shapes
+      with self.cached_session(use_gpu=True):
+        rgb_tf_unknown = array_ops.placeholder(dtypes.uint8)
+        gray_unknown = image_ops.rgb_to_grayscale(rgb_tf_unknown)
+        self.assertFalse(gray_unknown.get_shape())
 
-    with self.cached_session(use_gpu=True):
-      gray_tf_unknown = array_ops.placeholder(dtypes.uint8)
-      rgb_unknown = image_ops.grayscale_to_rgb(gray_tf_unknown)
-      self.assertFalse(rgb_unknown.get_shape())
+      with self.cached_session(use_gpu=True):
+        gray_tf_unknown = array_ops.placeholder(dtypes.uint8)
+        rgb_unknown = image_ops.grayscale_to_rgb(gray_tf_unknown)
+        self.assertFalse(rgb_unknown.get_shape())
 
 
 class AdjustGamma(test_util.TensorFlowTestCase):
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_float32(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
@@ -288,10 +293,10 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegex(ValueError, err_msg):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_uint8(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
@@ -301,10 +306,10 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
 
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegex(ValueError, err_msg):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         image_ops.adjust_gamma(x, gamma=-1)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_zero_tensor(self):
     """White image should be returned for gamma equal to zero"""
     with self.cached_session():
@@ -314,10 +319,10 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = constant_op.constant(-1.0, dtype=dtypes.float32)
 
-      image = image_ops.adjust_gamma(x, gamma=y)
-
       err_msg = "Gamma should be a non-negative real number"
-      with self.assertRaisesRegex(errors.InvalidArgumentError, err_msg):
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
+        image = image_ops.adjust_gamma(x, gamma=y)
         self.evaluate(image)
 
   def _test_adjust_gamma_uint8(self, gamma):
@@ -329,7 +334,7 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x_np = np.random.uniform(0, 255, (8, 8)).astype(np.uint8)
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_gamma(x, gamma=gamma)
-      y_tf = np.trunc(y.eval())
+      y_tf = np.trunc(self.evaluate(y))
 
       # calculate gamma correction using numpy
       # firstly, transform uint8 to float representation
@@ -349,22 +354,19 @@ class AdjustGamma(test_util.TensorFlowTestCase):
       x_np = np.random.uniform(0, 1.0, (8, 8))
       x = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.adjust_gamma(x, gamma=gamma)
-      y_tf = y.eval()
+      y_tf = self.evaluate(y)
 
       y_np = np.clip(np.power(x_np, gamma), 0, 1.0)
 
       self.assertAllClose(y_tf, y_np, 1e-6)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_one_float32(self):
     """Same image should be returned for gamma equal to one"""
     self._test_adjust_gamma_float32(1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_one_uint8(self):
     self._test_adjust_gamma_uint8(1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_zero_uint8(self):
     """White image should be returned for gamma equal
 
@@ -372,7 +374,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_uint8(gamma=0.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_one_uint8(self):
     """Verifying the output with expected results for gamma
 
@@ -380,7 +381,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_uint8(gamma=0.5)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_greater_one_uint8(self):
     """Verifying the output with expected results for gamma
 
@@ -388,7 +388,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_uint8(gamma=1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_less_one_float32(self):
     """Verifying the output with expected results for gamma
 
@@ -396,7 +395,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_float32(0.5)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_greater_one_float32(self):
     """Verifying the output with expected results for gamma
 
@@ -404,7 +402,6 @@ class AdjustGamma(test_util.TensorFlowTestCase):
     """
     self._test_adjust_gamma_float32(1.0)
 
-  @test_util.run_deprecated_v1
   def test_adjust_gamma_zero_float32(self):
     """White image should be returned for gamma equal
 
@@ -964,7 +961,6 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
       y_v[i][2] = b
     return y_v.reshape(x_np.shape)
 
-  @test_util.run_deprecated_v1
   def testAdjustRandomSaturation(self):
     x_shapes = [
         [2, 2, 3],
@@ -999,7 +995,7 @@ class AdjustSaturationTest(test_util.TensorFlowTestCase):
           else:
             raise AssertionError("Invalid test style: %s" % (test_style))
           y_baseline = self._adjustSaturationNp(x_np, scale)
-          y_fused = image_ops.adjust_saturation(x_np, scale).eval()
+          y_fused = self.evaluate(image_ops.adjust_saturation(x_np, scale))
           self.assertAllClose(y_fused, y_baseline, rtol=2e-5, atol=1e-5)
 
 
@@ -1024,7 +1020,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
-  @test_util.run_deprecated_v1
   def testLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1032,7 +1027,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_left_right(x_tf)
-      self.assertTrue(y.op.name.startswith("flip_left_right"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -1050,21 +1044,46 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
-  @test_util.run_deprecated_v1
+  def testRandomFlipLeftRightStateful(self):
+    # Test random flip with single seed (stateful).
+    with ops.Graph().as_default():
+      x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+      y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
+      seed = 42
+
+      with self.cached_session(use_gpu=True):
+        x_tf = constant_op.constant(x_np, shape=x_np.shape)
+        y = image_ops.random_flip_left_right(x_tf, seed=seed)
+        self.assertTrue(y.op.name.startswith("random_flip_left_right"))
+
+        count_flipped = 0
+        count_unflipped = 0
+        for _ in range(100):
+          y_tf = self.evaluate(y)
+          if y_tf[0][0] == 1:
+            self.assertAllEqual(y_tf, x_np)
+            count_unflipped += 1
+          else:
+            self.assertAllEqual(y_tf, y_np)
+            count_flipped += 1
+
+        # 100 trials
+        # Mean: 50
+        # Std Dev: ~5
+        # Six Sigma: 50 - (5 * 6) = 20
+        self.assertGreaterEqual(count_flipped, 20)
+        self.assertGreaterEqual(count_unflipped, 20)
+
   def testRandomFlipLeftRight(self):
     x_np = np.array([[1, 2, 3], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[3, 2, 1], [3, 2, 1]], dtype=np.uint8).reshape([2, 3, 1])
-    seed = 42
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf, seed=seed)
-      self.assertTrue(y.op.name.startswith("random_flip_left_right"))
-
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(100):
-        y_tf = self.evaluate(y)
+      for seed in range(100):
+        y_tf = self.evaluate(image_ops.random_flip_left_right(x_tf, seed=seed))
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
           count_unflipped += 1
@@ -1072,12 +1091,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
           self.assertAllEqual(y_tf, y_np)
           count_flipped += 1
 
-      # 100 trials
-      # Mean: 50
-      # Std Dev: ~5
-      # Six Sigma: 50 - (5 * 6) = 20
-      self.assertGreaterEqual(count_flipped, 20)
-      self.assertGreaterEqual(count_unflipped, 20)
+      self.assertEqual(count_flipped, 45)
+      self.assertEqual(count_unflipped, 55)
 
   # TODO(b/162345082): stateless random op generates different random number
   # with xla_gpu. Update tests such that there is a single ground truth result
@@ -1182,7 +1197,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
         self.assertAllEqual(flip_counts[0], flip_counts[i])
         self.assertAllEqual(flip_sequences[0], flip_sequences[i])
 
-  @test_util.run_deprecated_v1
   def testRandomFlipLeftRightWithBatch(self):
     batch_size = 16
     seed = 42
@@ -1201,13 +1215,10 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_left_right(x_tf, seed=seed)
-      self.assertTrue(y.op.name.startswith("random_flip_left_right"))
-
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(100):
-        y_tf = self.evaluate(y)
+      for seed in range(100):
+        y_tf = self.evaluate(image_ops.random_flip_left_right(x_tf, seed=seed))
 
         # check every element of the batch
         for i in range(batch_size):
@@ -1218,14 +1229,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
             self.assertAllEqual(y_tf[i], y_np[i])
             count_flipped += 1
 
-      # 100 trials, each containing batch_size elements
-      # Mean: 50 * batch_size
-      # Std Dev: ~5 * sqrt(batch_size)
-      # Six Sigma: 50 * batch_size - (5 * 6 * sqrt(batch_size))
-      #          = 50 * batch_size - 30 * sqrt(batch_size) = 800 - 30 * 4 = 680
-      six_sigma = 50 * batch_size - 30 * np.sqrt(batch_size)
-      self.assertGreaterEqual(count_flipped, six_sigma)
-      self.assertGreaterEqual(count_unflipped, six_sigma)
+      self.assertEqual(count_flipped, 772)
+      self.assertEqual(count_unflipped, 828)
 
   def testInvolutionUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1247,7 +1252,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
-  @test_util.run_deprecated_v1
   def testUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1255,7 +1259,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.flip_up_down(x_tf)
-      self.assertTrue(y.op.name.startswith("flip_up_down"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -1273,21 +1276,45 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
-  @test_util.run_deprecated_v1
+  def testRandomFlipUpDownStateful(self):
+    # Test random flip with single seed (stateful).
+    with ops.Graph().as_default():
+      x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
+      y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
+      seed = 42
+
+      with self.cached_session(use_gpu=True):
+        x_tf = constant_op.constant(x_np, shape=x_np.shape)
+        y = image_ops.random_flip_up_down(x_tf, seed=seed)
+        self.assertTrue(y.op.name.startswith("random_flip_up_down"))
+        count_flipped = 0
+        count_unflipped = 0
+        for _ in range(100):
+          y_tf = self.evaluate(y)
+          if y_tf[0][0] == 1:
+            self.assertAllEqual(y_tf, x_np)
+            count_unflipped += 1
+          else:
+            self.assertAllEqual(y_tf, y_np)
+            count_flipped += 1
+
+        # 100 trials
+        # Mean: 50
+        # Std Dev: ~5
+        # Six Sigma: 50 - (5 * 6) = 20
+        self.assertGreaterEqual(count_flipped, 20)
+        self.assertGreaterEqual(count_unflipped, 20)
+
   def testRandomFlipUpDown(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[4, 5, 6], [1, 2, 3]], dtype=np.uint8).reshape([2, 3, 1])
 
-    seed = 42
-
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf, seed=seed)
-      self.assertTrue(y.op.name.startswith("random_flip_up_down"))
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(100):
-        y_tf = self.evaluate(y)
+      for seed in range(100):
+        y_tf = self.evaluate(image_ops.random_flip_up_down(x_tf, seed=seed))
         if y_tf[0][0] == 1:
           self.assertAllEqual(y_tf, x_np)
           count_unflipped += 1
@@ -1295,14 +1322,9 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
           self.assertAllEqual(y_tf, y_np)
           count_flipped += 1
 
-      # 100 trials
-      # Mean: 50
-      # Std Dev: ~5
-      # Six Sigma: 50 - (5 * 6) = 20
-      self.assertGreaterEqual(count_flipped, 20)
-      self.assertGreaterEqual(count_unflipped, 20)
+      self.assertEqual(count_flipped, 45)
+      self.assertEqual(count_unflipped, 55)
 
-  @test_util.run_deprecated_v1
   def testRandomFlipUpDownWithBatch(self):
     batch_size = 16
     seed = 42
@@ -1321,13 +1343,10 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
 
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
-      y = image_ops.random_flip_up_down(x_tf, seed=seed)
-      self.assertTrue(y.op.name.startswith("random_flip_up_down"))
-
       count_flipped = 0
       count_unflipped = 0
-      for _ in range(100):
-        y_tf = self.evaluate(y)
+      for seed in range(100):
+        y_tf = self.evaluate(image_ops.random_flip_up_down(x_tf, seed=seed))
 
         # check every element of the batch
         for i in range(batch_size):
@@ -1338,14 +1357,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
             self.assertAllEqual(y_tf[i], y_np[i])
             count_flipped += 1
 
-      # 100 trials, each containing batch_size elements
-      # Mean: 50 * batch_size
-      # Std Dev: ~5 * sqrt(batch_size)
-      # Six Sigma: 50 * batch_size - (5 * 6 * sqrt(batch_size))
-      #          = 50 * batch_size - 30 * sqrt(batch_size) = 800 - 30 * 4 = 680
-      six_sigma = 50 * batch_size - 30 * np.sqrt(batch_size)
-      self.assertGreaterEqual(count_flipped, six_sigma)
-      self.assertGreaterEqual(count_unflipped, six_sigma)
+      self.assertEqual(count_flipped, 772)
+      self.assertEqual(count_unflipped, 828)
 
   def testInvolutionTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
@@ -1367,7 +1380,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, x_np)
 
-  @test_util.run_deprecated_v1
   def testTranspose(self):
     x_np = np.array([[1, 2, 3], [4, 5, 6]], dtype=np.uint8).reshape([2, 3, 1])
     y_np = np.array([[1, 4], [2, 5], [3, 6]], dtype=np.uint8).reshape([3, 2, 1])
@@ -1375,7 +1387,6 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
     with self.cached_session(use_gpu=True):
       x_tf = constant_op.constant(x_np, shape=x_np.shape)
       y = image_ops.transpose(x_tf)
-      self.assertTrue(y.op.name.startswith("transpose"))
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
@@ -1394,48 +1405,49 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
       y_tf = self.evaluate(y)
       self.assertAllEqual(y_tf, y_np)
 
-  @test_util.run_deprecated_v1
   def testPartialShapes(self):
-    p_unknown_rank = array_ops.placeholder(dtypes.uint8)
-    p_unknown_dims_3 = array_ops.placeholder(
-        dtypes.uint8, shape=[None, None, None])
-    p_unknown_dims_4 = array_ops.placeholder(
-        dtypes.uint8, shape=[None, None, None, None])
-    p_unknown_width = array_ops.placeholder(dtypes.uint8, shape=[64, None, 3])
-    p_unknown_batch = array_ops.placeholder(
-        dtypes.uint8, shape=[None, 64, 64, 3])
-    p_wrong_rank = array_ops.placeholder(dtypes.uint8, shape=[None, None])
-    p_zero_dim = array_ops.placeholder(dtypes.uint8, shape=[64, 0, 3])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      p_unknown_rank = array_ops.placeholder(dtypes.uint8)
+      p_unknown_dims_3 = array_ops.placeholder(
+          dtypes.uint8, shape=[None, None, None])
+      p_unknown_dims_4 = array_ops.placeholder(
+          dtypes.uint8, shape=[None, None, None, None])
+      p_unknown_width = array_ops.placeholder(dtypes.uint8, shape=[64, None, 3])
+      p_unknown_batch = array_ops.placeholder(
+          dtypes.uint8, shape=[None, 64, 64, 3])
+      p_wrong_rank = array_ops.placeholder(dtypes.uint8, shape=[None, None])
+      p_zero_dim = array_ops.placeholder(dtypes.uint8, shape=[64, 0, 3])
 
-    #Ops that support 3D input
-    for op in [
-        image_ops.flip_left_right, image_ops.flip_up_down,
-        image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose, image_ops.rot90
-    ]:
-      transformed_unknown_rank = op(p_unknown_rank)
-      self.assertIsNone(transformed_unknown_rank.get_shape().ndims)
-      transformed_unknown_dims_3 = op(p_unknown_dims_3)
-      self.assertEqual(3, transformed_unknown_dims_3.get_shape().ndims)
-      transformed_unknown_width = op(p_unknown_width)
-      self.assertEqual(3, transformed_unknown_width.get_shape().ndims)
+      #Ops that support 3D input
+      for op in [
+          image_ops.flip_left_right, image_ops.flip_up_down,
+          image_ops.random_flip_left_right, image_ops.random_flip_up_down,
+          image_ops.transpose, image_ops.rot90
+      ]:
+        transformed_unknown_rank = op(p_unknown_rank)
+        self.assertIsNone(transformed_unknown_rank.get_shape().ndims)
+        transformed_unknown_dims_3 = op(p_unknown_dims_3)
+        self.assertEqual(3, transformed_unknown_dims_3.get_shape().ndims)
+        transformed_unknown_width = op(p_unknown_width)
+        self.assertEqual(3, transformed_unknown_width.get_shape().ndims)
 
-      with self.assertRaisesRegex(ValueError, "must be > 0"):
-        op(p_zero_dim)
+        with self.assertRaisesRegex(ValueError, "must be > 0"):
+          op(p_zero_dim)
 
-    #Ops that support 4D input
-    for op in [
-        image_ops.flip_left_right, image_ops.flip_up_down,
-        image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-        image_ops.transpose, image_ops.rot90
-    ]:
-      transformed_unknown_dims_4 = op(p_unknown_dims_4)
-      self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
-      transformed_unknown_batch = op(p_unknown_batch)
-      self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
-      with self.assertRaisesRegex(ValueError,
-                                  "must be at least three-dimensional"):
-        op(p_wrong_rank)
+      #Ops that support 4D input
+      for op in [
+          image_ops.flip_left_right, image_ops.flip_up_down,
+          image_ops.random_flip_left_right, image_ops.random_flip_up_down,
+          image_ops.transpose, image_ops.rot90
+      ]:
+        transformed_unknown_dims_4 = op(p_unknown_dims_4)
+        self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
+        transformed_unknown_batch = op(p_unknown_batch)
+        self.assertEqual(4, transformed_unknown_batch.get_shape().ndims)
+        with self.assertRaisesRegex(ValueError,
+                                    "must be at least three-dimensional"):
+          op(p_wrong_rank)
 
   def testRot90GroupOrder(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
@@ -1453,25 +1465,21 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase,
         rotated = image_ops.rot90(rotated)
       self.assertAllEqual(image, self.evaluate(rotated))
 
-  @test_util.run_deprecated_v1
   def testRot90NumpyEquivalence(self):
     image = np.arange(24, dtype=np.uint8).reshape([2, 4, 3])
     with self.cached_session(use_gpu=True):
-      k_placeholder = array_ops.placeholder(dtypes.int32, shape=[])
-      y_tf = image_ops.rot90(image, k_placeholder)
       for k in xrange(4):
         y_np = np.rot90(image, k=k)
-        self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
+        self.assertAllEqual(
+            y_np, self.evaluate(image_ops.rot90(image, k)))
 
-  @test_util.run_deprecated_v1
   def testRot90NumpyEquivalenceWithBatch(self):
     image = np.arange(48, dtype=np.uint8).reshape([2, 2, 4, 3])
     with self.cached_session(use_gpu=True):
-      k_placeholder = array_ops.placeholder(dtypes.int32, shape=[])
-      y_tf = image_ops.rot90(image, k_placeholder)
       for k in xrange(4):
         y_np = np.rot90(image, k=k, axes=(1, 2))
-        self.assertAllEqual(y_np, y_tf.eval({k_placeholder: k}))
+        self.assertAllEqual(
+            y_np, self.evaluate(image_ops.rot90(image, k)))
 
   def testFlipImageUnknownShape(self):
     expected_output = constant_op.constant([[[[3, 4, 5], [0, 1, 2]],
@@ -1572,12 +1580,12 @@ class AdjustContrastTest(test_util.TensorFlowTestCase):
       y_tf = self._adjustContrastTf(x_np, contrast_factor)
       self.assertAllClose(y_tf, y_np, rtol=1e-5, atol=1e-5)
 
-  @test_util.run_deprecated_v1
   def testContrastFactorShape(self):
     x_shape = [1, 2, 2, 3]
     x_data = [0, 5, 13, 54, 135, 226, 37, 8, 234, 90, 255, 1]
     x_np = np.array(x_data, dtype=np.uint8).reshape(x_shape)
-    with self.assertRaisesRegex(ValueError,
+    with self.assertRaisesRegex((ValueError, errors.InvalidArgumentError),
+                                "contrast_factor must be scalar|"
                                 "Shape must be rank 0 but is rank 1"):
       image_ops.adjust_contrast(x_np, [2.0])
 
@@ -1645,7 +1653,6 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
     y /= stddev
     return y
 
-  @test_util.run_deprecated_v1
   def testBasic(self):
     x_shape = [13, 9, 3]
     x_np = np.arange(0, np.prod(x_shape), dtype=np.float32).reshape(x_shape)
@@ -1654,7 +1661,6 @@ class PerImageWhiteningTest(test_util.TensorFlowTestCase):
     with self.cached_session(use_gpu=True):
       x = constant_op.constant(x_np, shape=x_shape)
       y = image_ops.per_image_standardization(x)
-      self.assertTrue(y.op.name.startswith("per_image_standardization"))
       y_tf = self.evaluate(y)
       self.assertAllClose(y_tf, y_np, atol=1e-4)
 
@@ -1697,19 +1703,15 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
       offset_width = ops.convert_to_tensor(offset_width)
       target_height = ops.convert_to_tensor(target_height)
       target_width = ops.convert_to_tensor(target_width)
-      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
-      feed_dict = {x_tensor: x}
+      x_tensor = ops.convert_to_tensor(x)
     else:
       x_tensor = x
-      feed_dict = {}
 
     y = image_ops.crop_to_bounding_box(x_tensor, offset_height, offset_width,
                                        target_height, target_width)
-    if not use_tensor_inputs:
-      self.assertTrue(y.get_shape().is_fully_defined())
 
     with self.cached_session(use_gpu=True):
-      return y.eval(feed_dict=feed_dict)
+      return self.evaluate(y)
 
   def _assertReturns(self,
                      x,
@@ -1743,27 +1745,21 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
     x = np.array(x).reshape(x_shape)
 
     for use_tensor_inputs in use_tensor_inputs_options:
-      try:
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         self._CropToBoundingBox(x, offset_height, offset_width, target_height,
                                 target_width, use_tensor_inputs)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   def _assertShapeInference(self, pre_shape, height, width, post_shape):
     image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
     y = image_ops.crop_to_bounding_box(image, 0, 0, height, width)
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
-  @test_util.run_deprecated_v1
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
     self._assertReturns(x, x_shape, 0, 0, x, x_shape)
 
-  @test_util.run_deprecated_v1
   def testCrop(self):
     x = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     x_shape = [3, 3, 1]
@@ -1788,21 +1784,21 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
     y = [1, 2, 4, 5, 7, 8]
     self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-  @test_util.run_deprecated_v1
   def testShapeInference(self):
-    self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([59, 69, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, 69, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([59, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([59, 69, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
-    self._assertShapeInference(None, 55, 66, [55, 66, None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([59, 69, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 69, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([59, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([59, 69, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+      self._assertShapeInference(None, 55, 66, [55, 66, None])
 
-  @test_util.run_deprecated_v1
   def testNon3DInput(self):
     # Input image is not 3D
     x = [0] * 15
@@ -1814,7 +1810,6 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
                          target_width,
                          "must have either 3 or 4 dimensions.")
 
-  @test_util.run_deprecated_v1
   def testZeroLengthInput(self):
     # Input image has 0-length dimension(s).
     # Each line is a test configuration:
@@ -1843,32 +1838,32 @@ class CropToBoundingBoxTest(test_util.TensorFlowTestCase):
           offset_width,
           target_height,
           target_width,
-          "assertion failed:",
+          "inner 3 dims of 'image.shape' must be > 0",
           use_tensor_inputs_options=[True])
 
-  @test_util.run_deprecated_v1
   def testBadParams(self):
     x_shape = [4, 4, 1]
     x = np.zeros(x_shape)
 
     # Each line is a test configuration:
     #   (offset_height, offset_width, target_height, target_width), err_msg
-    test_config = (([-1, 0, 3, 3], "offset_height must be >= 0"), ([
-        0, -1, 3, 3
-    ], "offset_width must be >= 0"), ([0, 0, 0, 3],
-                                      "target_height must be > 0"),
-                   ([0, 0, 3, 0], "target_width must be > 0"),
-                   ([2, 0, 3, 3], "height must be >= target + offset"),
-                   ([0, 2, 3, 3], "width must be >= target + offset"))
+    test_config = (
+        ([-1, 0, 3, 3], "offset_height must be >= 0"),
+        ([0, -1, 3, 3], "offset_width must be >= 0"),
+        ([0, 0, 0, 3], "target_height must be > 0"),
+        ([0, 0, 3, 0], "target_width must be > 0"),
+        ([2, 0, 3, 3], r"height must be >= target \+ offset"),
+        ([0, 2, 3, 3], r"width must be >= target \+ offset"))
 
     for params, err_msg in test_config:
       self._assertRaises(x, x_shape, *params, err_msg=err_msg)
 
-  @test_util.run_deprecated_v1
   def testNameScope(self):
-    image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
-    y = image_ops.crop_to_bounding_box(image, 0, 0, 55, 66)
-    self.assertTrue(y.name.startswith("crop_to_bounding_box"))
+    # Testing name scope requires a graph.
+    with ops.Graph().as_default():
+      image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
+      y = image_ops.crop_to_bounding_box(image, 0, 0, 55, 66)
+      self.assertTrue(y.name.startswith("crop_to_bounding_box"))
 
 
 class CentralCropTest(test_util.TensorFlowTestCase):
@@ -1881,7 +1876,6 @@ class CentralCropTest(test_util.TensorFlowTestCase):
     else:
       self.assertEqual(y.get_shape().as_list(), post_shape)
 
-  @test_util.run_deprecated_v1
   def testNoOp(self):
     x_shapes = [[13, 9, 3], [5, 13, 9, 3]]
     for x_shape in x_shapes:
@@ -1892,7 +1886,6 @@ class CentralCropTest(test_util.TensorFlowTestCase):
           y = image_ops.central_crop(x, 1.0)
           y_tf = self.evaluate(y)
           self.assertAllEqual(y_tf, x_np)
-          self.assertEqual(y.op.name, x.op.name)
 
   def testCropping(self):
     x_shape = [4, 8, 1]
@@ -1925,7 +1918,6 @@ class CentralCropTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(y_tf, y_np)
       self.assertAllEqual(y_tf.shape, y_np.shape)
 
-  @test_util.run_deprecated_v1
   def testCropping2(self):
     # Test case for 10315
     x_shapes = [[240, 320, 3], [5, 240, 320, 3]]
@@ -1936,51 +1928,50 @@ class CentralCropTest(test_util.TensorFlowTestCase):
       y_np = np.zeros(y_shape, dtype=np.int32)
       for use_gpu in [True, False]:
         with self.cached_session(use_gpu=use_gpu):
-          x = array_ops.placeholder(shape=x_shape, dtype=dtypes.int32)
-          y = image_ops.central_crop(x, 0.33)
-          y_tf = y.eval(feed_dict={x: x_np})
+          y_tf = self.evaluate(image_ops.central_crop(x_np, 0.33))
           self.assertAllEqual(y_tf, y_np)
           self.assertAllEqual(y_tf.shape, y_np.shape)
 
-  @test_util.run_deprecated_v1
   def testShapeInference(self):
-    # Test no-op fraction=1.0, with 3-D tensors.
-    self._assertShapeInference([50, 60, 3], 1.0, [50, 60, 3])
-    self._assertShapeInference([None, 60, 3], 1.0, [None, 60, 3])
-    self._assertShapeInference([50, None, 3], 1.0, [50, None, 3])
-    self._assertShapeInference([None, None, 3], 1.0, [None, None, 3])
-    self._assertShapeInference([50, 60, None], 1.0, [50, 60, None])
-    self._assertShapeInference([None, None, None], 1.0, [None, None, None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      # Test no-op fraction=1.0, with 3-D tensors.
+      self._assertShapeInference([50, 60, 3], 1.0, [50, 60, 3])
+      self._assertShapeInference([None, 60, 3], 1.0, [None, 60, 3])
+      self._assertShapeInference([50, None, 3], 1.0, [50, None, 3])
+      self._assertShapeInference([None, None, 3], 1.0, [None, None, 3])
+      self._assertShapeInference([50, 60, None], 1.0, [50, 60, None])
+      self._assertShapeInference([None, None, None], 1.0, [None, None, None])
 
-    # Test no-op fraction=0.5, with 3-D tensors.
-    self._assertShapeInference([50, 60, 3], 0.5, [26, 30, 3])
-    self._assertShapeInference([None, 60, 3], 0.5, [None, 30, 3])
-    self._assertShapeInference([50, None, 3], 0.5, [26, None, 3])
-    self._assertShapeInference([None, None, 3], 0.5, [None, None, 3])
-    self._assertShapeInference([50, 60, None], 0.5, [26, 30, None])
-    self._assertShapeInference([None, None, None], 0.5, [None, None, None])
+      # Test no-op fraction=0.5, with 3-D tensors.
+      self._assertShapeInference([50, 60, 3], 0.5, [26, 30, 3])
+      self._assertShapeInference([None, 60, 3], 0.5, [None, 30, 3])
+      self._assertShapeInference([50, None, 3], 0.5, [26, None, 3])
+      self._assertShapeInference([None, None, 3], 0.5, [None, None, 3])
+      self._assertShapeInference([50, 60, None], 0.5, [26, 30, None])
+      self._assertShapeInference([None, None, None], 0.5, [None, None, None])
 
-    # Test no-op fraction=1.0, with 4-D tensors.
-    self._assertShapeInference([5, 50, 60, 3], 1.0, [5, 50, 60, 3])
-    self._assertShapeInference([5, None, 60, 3], 1.0, [5, None, 60, 3])
-    self._assertShapeInference([5, 50, None, 3], 1.0, [5, 50, None, 3])
-    self._assertShapeInference([5, None, None, 3], 1.0, [5, None, None, 3])
-    self._assertShapeInference([5, 50, 60, None], 1.0, [5, 50, 60, None])
-    self._assertShapeInference([5, None, None, None], 1.0,
-                               [5, None, None, None])
-    self._assertShapeInference([None, None, None, None], 1.0,
-                               [None, None, None, None])
+      # Test no-op fraction=1.0, with 4-D tensors.
+      self._assertShapeInference([5, 50, 60, 3], 1.0, [5, 50, 60, 3])
+      self._assertShapeInference([5, None, 60, 3], 1.0, [5, None, 60, 3])
+      self._assertShapeInference([5, 50, None, 3], 1.0, [5, 50, None, 3])
+      self._assertShapeInference([5, None, None, 3], 1.0, [5, None, None, 3])
+      self._assertShapeInference([5, 50, 60, None], 1.0, [5, 50, 60, None])
+      self._assertShapeInference([5, None, None, None], 1.0,
+                                 [5, None, None, None])
+      self._assertShapeInference([None, None, None, None], 1.0,
+                                 [None, None, None, None])
 
-    # Test no-op fraction=0.5, with 4-D tensors.
-    self._assertShapeInference([5, 50, 60, 3], 0.5, [5, 26, 30, 3])
-    self._assertShapeInference([5, None, 60, 3], 0.5, [5, None, 30, 3])
-    self._assertShapeInference([5, 50, None, 3], 0.5, [5, 26, None, 3])
-    self._assertShapeInference([5, None, None, 3], 0.5, [5, None, None, 3])
-    self._assertShapeInference([5, 50, 60, None], 0.5, [5, 26, 30, None])
-    self._assertShapeInference([5, None, None, None], 0.5,
-                               [5, None, None, None])
-    self._assertShapeInference([None, None, None, None], 0.5,
-                               [None, None, None, None])
+      # Test no-op fraction=0.5, with 4-D tensors.
+      self._assertShapeInference([5, 50, 60, 3], 0.5, [5, 26, 30, 3])
+      self._assertShapeInference([5, None, 60, 3], 0.5, [5, None, 30, 3])
+      self._assertShapeInference([5, 50, None, 3], 0.5, [5, 26, None, 3])
+      self._assertShapeInference([5, None, None, 3], 0.5, [5, None, None, 3])
+      self._assertShapeInference([5, 50, 60, None], 0.5, [5, 26, 30, None])
+      self._assertShapeInference([5, None, None, None], 0.5,
+                                 [5, None, None, None])
+      self._assertShapeInference([None, None, None, None], 0.5,
+                                 [None, None, None, None])
 
   def testErrorOnInvalidCentralCropFractionValues(self):
     x_shape = [13, 9, 3]
@@ -2003,14 +1994,15 @@ class CentralCropTest(test_util.TensorFlowTestCase):
           with self.assertRaises(ValueError):
             _ = image_ops.central_crop(x, 0.5)
 
-  @test_util.run_deprecated_v1
   def testNameScope(self):
-    x_shape = [13, 9, 3]
-    x_np = np.ones(x_shape, dtype=np.float32)
-    for use_gpu in [True, False]:
-      with self.cached_session(use_gpu=use_gpu):
-        y = image_ops.central_crop(x_np, 1.0)
-        self.assertTrue(y.op.name.startswith("central_crop"))
+    # Testing name scope requires a graph.
+    with ops.Graph().as_default():
+      x_shape = [13, 9, 3]
+      x_np = np.ones(x_shape, dtype=np.float32)
+      for use_gpu in [True, False]:
+        with self.cached_session(use_gpu=use_gpu):
+          y = image_ops.central_crop(x_np, 1.0)
+          self.assertTrue(y.op.name.startswith("central_crop"))
 
 
 class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
@@ -2022,19 +2014,17 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
       offset_width = ops.convert_to_tensor(offset_width)
       target_height = ops.convert_to_tensor(target_height)
       target_width = ops.convert_to_tensor(target_width)
-      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
-      feed_dict = {x_tensor: x}
+      x_tensor = ops.convert_to_tensor(x)
     else:
       x_tensor = x
-      feed_dict = {}
 
-    y = image_ops.pad_to_bounding_box(x_tensor, offset_height, offset_width,
-                                      target_height, target_width)
-    if not use_tensor_inputs:
-      self.assertTrue(y.get_shape().is_fully_defined())
+    @def_function.function
+    def pad_bbox(*args):
+      return image_ops.pad_to_bounding_box(*args)
 
     with self.cached_session(use_gpu=True):
-      return y.eval(feed_dict=feed_dict)
+      return self.evaluate(pad_bbox(x_tensor, offset_height, offset_width,
+                                    target_height, target_width))
 
   def _assertReturns(self,
                      x,
@@ -2068,14 +2058,10 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     x = np.array(x).reshape(x_shape)
 
     for use_tensor_inputs in use_tensor_inputs_options:
-      try:
+      with self.assertRaisesRegex(
+          (ValueError, errors.InvalidArgumentError), err_msg):
         self._PadToBoundingBox(x, offset_height, offset_width, target_height,
                                target_width, use_tensor_inputs)
-      except Exception as e:
-        if err_msg not in str(e):
-          raise
-      else:
-        raise AssertionError("Exception not raised: %s" % err_msg)
 
   def _assertShapeInference(self, pre_shape, height, width, post_shape):
     image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
@@ -2096,14 +2082,12 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     with self.cached_session(use_gpu=True):
       self.assertAllClose(y, self.evaluate(y_tf))
 
-  @test_util.run_deprecated_v1
   def testNoOp(self):
     x_shape = [10, 10, 10]
     x = np.random.uniform(size=x_shape)
     offset_height, offset_width = [0, 0]
     self._assertReturns(x, x_shape, offset_height, offset_width, x, x_shape)
 
-  @test_util.run_deprecated_v1
   def testPadding(self):
     x = [1, 2, 3, 4, 5, 6, 7, 8, 9]
     x_shape = [3, 3, 1]
@@ -2128,21 +2112,21 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
     y_shape = [3, 4, 1]
     self._assertReturns(x, x_shape, offset_height, offset_width, y, y_shape)
 
-  @test_util.run_deprecated_v1
   def testShapeInference(self):
-    self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
-    self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
-    self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
-    self._assertShapeInference(None, 55, 66, [55, 66, None])
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      self._assertShapeInference([55, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 66, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, 60, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([50, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([None, None, 3], 55, 66, [55, 66, 3])
+      self._assertShapeInference([55, 66, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([50, 60, None], 55, 66, [55, 66, None])
+      self._assertShapeInference([None, None, None], 55, 66, [55, 66, None])
+      self._assertShapeInference(None, 55, 66, [55, 66, None])
 
-  @test_util.run_deprecated_v1
   def testNon3DInput(self):
     # Input image is not 3D
     x = [0] * 15
@@ -2154,7 +2138,6 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
                          target_width,
                          "must have either 3 or 4 dimensions.")
 
-  @test_util.run_deprecated_v1
   def testZeroLengthInput(self):
     # Input image has 0-length dimension(s).
     # Each line is a test configuration:
@@ -2187,26 +2170,31 @@ class PadToBoundingBoxTest(test_util.TensorFlowTestCase):
           "inner 3 dims of \\'image.shape\\' must be > 0",
           use_tensor_inputs_options=[True])
 
-  @test_util.run_deprecated_v1
   def testBadParams(self):
     x_shape = [3, 3, 1]
     x = np.zeros(x_shape)
 
     # Each line is a test configuration:
     #   offset_height, offset_width, target_height, target_width, err_msg
-    test_config = ((-1, 0, 4, 4, "offset_height must be >= 0"),
-                   (0, -1, 4, 4, "offset_width must be >= 0"),
-                   (2, 0, 4, 4, "height must be <= target - offset"),
-                   (0, 2, 4, 4, "width must be <= target - offset"))
+    test_config = (
+        (-1, 0, 4, 4,
+         "offset_height must be >= 0"),
+        (0, -1, 4, 4,
+         "offset_width must be >= 0"),
+        (2, 0, 4, 4,
+         "height must be <= target - offset"),
+        (0, 2, 4, 4,
+         "width must be <= target - offset"))
 
     for config_item in test_config:
       self._assertRaises(x, x_shape, *config_item)
 
-  @test_util.run_deprecated_v1
   def testNameScope(self):
-    image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
-    y = image_ops.pad_to_bounding_box(image, 0, 0, 55, 66)
-    self.assertTrue(y.op.name.startswith("pad_to_bounding_box"))
+    # Testing name scope requires a graph.
+    with ops.Graph().as_default():
+      image = array_ops.placeholder(dtypes.float32, shape=[55, 66, 3])
+      y = image_ops.pad_to_bounding_box(image, 0, 0, 55, 66)
+      self.assertTrue(y.op.name.startswith("pad_to_bounding_box"))
 
 
 class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
@@ -2255,19 +2243,17 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
         fraction_object_covered.append(float(np.sum(y_tf)) / bounding_box_area)
 
       # min_object_covered as tensor
-      min_object_covered_placeholder = array_ops.placeholder(dtypes.float32)
+      min_object_covered_t = ops.convert_to_tensor(min_object_covered)
       begin, size, _ = image_ops.sample_distorted_bounding_box(
           image_size=image_size_tf,
           bounding_boxes=bounding_box_tf,
-          min_object_covered=min_object_covered_placeholder,
+          min_object_covered=min_object_covered_t,
           aspect_ratio_range=aspect_ratio_range,
           area_range=area_range)
       y = array_ops.strided_slice(image_tf, begin, begin + size)
 
       for _ in xrange(num_iter):
-        y_tf = y.eval(feed_dict={
-            min_object_covered_placeholder: min_object_covered
-        })
+        y_tf = self.evaluate(y)
         crop_height = y_tf.shape[0]
         crop_width = y_tf.shape[1]
         aspect_ratio = float(crop_width) / float(crop_height)
@@ -2310,7 +2296,6 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
     # TODO(wicke, shlens, dga): Restore this test so that it is no longer flaky.
     # self.assertGreaterEqual(min(fraction_object_covered), min_object_covered)
 
-  @test_util.run_deprecated_v1
   def testWholeImageBoundingBox(self):
     height = 40
     width = 50
@@ -2325,7 +2310,6 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
         aspect_ratio_range=(0.75, 1.33),
         area_range=(0.05, 1.0))
 
-  @test_util.run_deprecated_v1
   def testWithBoundingBox(self):
     height = 40
     width = 50
@@ -2356,43 +2340,44 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
         aspect_ratio_range=(0.75, 1.33),
         area_range=(0.05, 1.0))
 
-  @test_util.run_deprecated_v1
   def testSampleDistortedBoundingBoxShape(self):
-    with self.cached_session(use_gpu=True):
-      image_size = constant_op.constant(
-          [40, 50, 1], shape=[3], dtype=dtypes.int32)
-      bounding_box = constant_op.constant(
-          [[[0.0, 0.0, 1.0, 1.0]]],
-          shape=[1, 1, 4],
-          dtype=dtypes.float32,
-      )
-      begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
-          image_size=image_size,
-          bounding_boxes=bounding_box,
-          min_object_covered=0.1,
-          aspect_ratio_range=(0.75, 1.33),
-          area_range=(0.05, 1.0))
+    # Shape function requires placeholders and a graph.
+    with ops.Graph().as_default():
+      with self.cached_session(use_gpu=True):
+        image_size = constant_op.constant(
+            [40, 50, 1], shape=[3], dtype=dtypes.int32)
+        bounding_box = constant_op.constant(
+            [[[0.0, 0.0, 1.0, 1.0]]],
+            shape=[1, 1, 4],
+            dtype=dtypes.float32,
+        )
+        begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
+            image_size=image_size,
+            bounding_boxes=bounding_box,
+            min_object_covered=0.1,
+            aspect_ratio_range=(0.75, 1.33),
+            area_range=(0.05, 1.0))
 
-      # Test that the shapes are correct.
-      self.assertAllEqual([3], begin.get_shape().as_list())
-      self.assertAllEqual([3], end.get_shape().as_list())
-      self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
-      # Actual run to make sure shape is correct inside Compute().
-      begin = self.evaluate(begin)
-      end = self.evaluate(end)
-      bbox_for_drawing = self.evaluate(bbox_for_drawing)
+        # Test that the shapes are correct.
+        self.assertAllEqual([3], begin.get_shape().as_list())
+        self.assertAllEqual([3], end.get_shape().as_list())
+        self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+        # Actual run to make sure shape is correct inside Compute().
+        begin = self.evaluate(begin)
+        end = self.evaluate(end)
+        bbox_for_drawing = self.evaluate(bbox_for_drawing)
 
-      begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
-          image_size=image_size,
-          bounding_boxes=bounding_box,
-          min_object_covered=array_ops.placeholder(dtypes.float32),
-          aspect_ratio_range=(0.75, 1.33),
-          area_range=(0.05, 1.0))
+        begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
+            image_size=image_size,
+            bounding_boxes=bounding_box,
+            min_object_covered=array_ops.placeholder(dtypes.float32),
+            aspect_ratio_range=(0.75, 1.33),
+            area_range=(0.05, 1.0))
 
-      # Test that the shapes are correct.
-      self.assertAllEqual([3], begin.get_shape().as_list())
-      self.assertAllEqual([3], end.get_shape().as_list())
-      self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+        # Test that the shapes are correct.
+        self.assertAllEqual([3], begin.get_shape().as_list())
+        self.assertAllEqual([3], end.get_shape().as_list())
+        self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
 
   def testDefaultMinObjectCovered(self):
     # By default min_object_covered=0.1 if not provided

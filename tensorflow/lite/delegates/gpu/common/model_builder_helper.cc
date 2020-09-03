@@ -15,19 +15,27 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 
+#include <stddef.h>
+#include <stdint.h>
+#include <string.h>
+
+#include <any>
+#include <limits>
 #include <string>
+#include <vector>
 
 #include <fp16.h>
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/lite/builtin_ops.h"
+#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
-#include "tensorflow/lite/context.h"
 #include "tensorflow/lite/context_util.h"
+#include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
-#include "tensorflow/lite/delegates/utils.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {

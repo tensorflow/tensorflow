@@ -580,6 +580,254 @@ ENTRY main {
   HloInstruction* root = module->entry_computation()->root_instruction();
   EXPECT_THAT(root, AllOf(op::GetTupleElement(op::Conditional())));
 }
+
+TEST_F(ConditionalCodeMotionTest, NoMoveInWithMultipleGTE) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+on_true {
+  arg_tuple.1 = (f32[10]) parameter(0)
+  get-tuple-element.1 = f32[10] get-tuple-element(arg_tuple.1), index=0
+  add.1 = f32[10] add(get-tuple-element.1, get-tuple-element.1)
+  ROOT tuple.3 = (f32[10]) tuple(add.1)
+}
+
+on_false {
+  arg_tuple.2 = (f32[10]) parameter(0)
+  get-tuple-element.2 = f32[10] get-tuple-element(arg_tuple.2), index=0
+  mul.1 = f32[10] multiply(get-tuple-element.2, get-tuple-element.2)
+  ROOT tuple.4 = (f32[10]) tuple(mul.1)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (f32[10]) parameter(1)
+  tuple.2 = (f32[10]) parameter(2)
+  conditional = (f32[10])
+    conditional(pred.1, tuple.1, tuple.2), true_computation=on_true,
+    false_computation=on_false
+  get-first-index = f32[10] get-tuple-element(conditional), index=0
+  get-first-index.2 = f32[10] get-tuple-element(conditional), index=0
+  pow.1 = f32[10] power(get-first-index, get-first-index)
+  ROOT tuple.3 = (f32[10], f32[10]) tuple(pow.1, get-first-index.2)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              op::Tuple(op::Power(), op::GetTupleElement(op::Conditional())));
+}
+
+TEST_F(ConditionalCodeMotionTest, MovePowInWithSharedBranch) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+branch {
+  arg_tuple.1 = (f32[10]) parameter(0)
+  get-tuple-element.1 = f32[10] get-tuple-element(arg_tuple.1), index=0
+  add.1 = f32[10] add(get-tuple-element.1, get-tuple-element.1)
+  ROOT tuple.3 = (f32[10]) tuple(add.1)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (f32[10]) parameter(1)
+  tuple.2 = (f32[10]) parameter(2)
+  conditional = (f32[10])
+    conditional(pred.1, tuple.1, tuple.2), true_computation=branch,
+    false_computation=branch
+  get-first-index = f32[10] get-tuple-element(conditional), index=0
+  ROOT pow.1 = f32[10] power(get-first-index, get-first-index)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  const HloComputation* on_true = conditional->branch_computation(0);
+  ASSERT_EQ(on_true->instruction_count(), 5);
+  const HloComputation* on_false = conditional->branch_computation(1);
+  ASSERT_EQ(on_false->instruction_count(), 5);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::Conditional())));
+}
+
+TEST_F(ConditionalCodeMotionTest, MovePowInWithNonTupleRoot) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+branch {
+  arg_tuple.1 = (f32[10]) parameter(0)
+  get-tuple-element.1 = f32[10] get-tuple-element(arg_tuple.1), index=0
+  ROOT add.1 = f32[10] add(get-tuple-element.1, get-tuple-element.1)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (f32[10]) parameter(1)
+  tuple.2 = (f32[10]) parameter(2)
+  conditional = f32[10]
+    conditional(pred.1, tuple.1, tuple.2), true_computation=branch,
+    false_computation=branch
+  ROOT pow.1 = f32[10] power(conditional, conditional)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  const HloComputation* on_true = conditional->branch_computation(0);
+  ASSERT_EQ(on_true->instruction_count(), 5);
+  const HloComputation* on_false = conditional->branch_computation(1);
+  ASSERT_EQ(on_false->instruction_count(), 5);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::Conditional())));
+}
+
+TEST_F(ConditionalCodeMotionTest, MovePowInWithEmptyBranch) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+branch1 {
+  arg_tuple.1 = (f32[10]) parameter(0)
+  get-tuple-element.1 = f32[10] get-tuple-element(arg_tuple.1), index=0
+  add.1 = f32[10] add(get-tuple-element.1, get-tuple-element.1)
+  ROOT tuple.3 = (f32[10]) tuple(add.1)
+}
+
+branch2 {
+  ROOT arg_tuple.1 = (f32[10]) parameter(0)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = (f32[10]) parameter(1)
+  tuple.2 = (f32[10]) parameter(2)
+  conditional = (f32[10])
+    conditional(pred.1, tuple.1, tuple.2), true_computation=branch1,
+    false_computation=branch2
+  get-first-index = f32[10] get-tuple-element(conditional), index=0
+  ROOT pow.1 = f32[10] power(get-first-index, get-first-index)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  const HloComputation* on_true = conditional->branch_computation(0);
+  ASSERT_EQ(on_true->instruction_count(), 5);
+  const HloComputation* on_false = conditional->branch_computation(1);
+  ASSERT_EQ(on_false->instruction_count(), 4);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::Conditional())));
+}
+
+TEST_F(ConditionalCodeMotionTest, MovePowInWithNonTupleParameter) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+branch {
+  arg.1 = f32[10] parameter(0)
+  ROOT add.1 = f32[10] add(arg.1, arg.1)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.1 = f32[10] parameter(1)
+  tuple.2 = f32[10] parameter(2)
+  conditional = f32[10]
+    conditional(pred.1, tuple.1, tuple.2), true_computation=branch,
+    false_computation=branch
+  ROOT pow.1 = f32[10] power(conditional, conditional)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  const HloComputation* on_true = conditional->branch_computation(0);
+  ASSERT_EQ(on_true->instruction_count(), 4);
+  const HloComputation* on_false = conditional->branch_computation(1);
+  ASSERT_EQ(on_false->instruction_count(), 4);
+
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root, AllOf(op::GetTupleElement(op::Conditional())));
+}
+
+TEST_F(ConditionalCodeMotionTest, MoveCopyInBranch) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+branch1 {
+  arg_tuple.1 = (s32[], f32[10,3]{0,1}) parameter(0)
+  constant.1 = s32[] constant(4)
+  get-tuple-element.1 = s32[] get-tuple-element(arg_tuple.1), index=0
+  add.1 = s32[] add(get-tuple-element.1, constant.1)
+  get-tuple-element.2 = f32[10,3]{0,1} get-tuple-element(arg_tuple.1), index=1
+  slice.1 = f32[4,3]{0,1} slice(get-tuple-element.2),
+   slice={[0:4:1], [0:3:1]}
+  constant.2 = f32[] constant(0.0)
+  ROOT tuple.1 = (f32[4,3]{0,1}, s32[],f32[]) tuple(slice.1, add.1, constant.2)
+}
+
+branch2 {
+  arg_tuple.2 = (s32[], f32[4,3]{1,0}) parameter(0)
+  get-tuple-element.3 = s32[] get-tuple-element(arg_tuple.2), index=0
+  copy.1 = s32[] copy(get-tuple-element.3)
+  get-tuple-element.4 = f32[4,3]{1,0} get-tuple-element(arg_tuple.2), index=1
+  copy.2 = f32[4,3]{0,1} copy(get-tuple-element.4)
+  constant.2 = f32[] constant(0.0)
+  ROOT tuple.2 = (f32[4,3]{0,1}, s32[], f32[]) tuple(copy.2, copy.1, constant.2)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  tuple.3 = (s32[], f32[10,3]{0,1}) parameter(1)
+  tuple.4 = (s32[], f32[4,3]{1,0}) parameter(2)
+  conditional = (f32[4,3]{0,1}, s32[], f32[])
+    conditional(pred.1, tuple.3, tuple.4), true_computation=branch1,
+    false_computation=branch2
+  get-zero-index = f32[4,3]{0,1} get-tuple-element(conditional), index=0
+  get-first-index = s32[] get-tuple-element(conditional), index=1
+  get-second-index = f32[] get-tuple-element(conditional), index=2
+  copy.3 = f32[4,3]{1,0} copy(get-zero-index)
+  ROOT tuple.5 = (f32[4,3]{0,1}, s32[], f32[]) tuple(copy.3, get-first-index,
+                 get-second-index)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  VLOG(1) << module->ToString();
+
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  const HloComputation* on_true = conditional->branch_computation(0);
+  ASSERT_EQ(on_true->instruction_count(), 9);
+  const HloComputation* on_false = conditional->branch_computation(1);
+  ASSERT_EQ(on_false->instruction_count(), 8);
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(root,
+              AllOf(op::Tuple(op::GetTupleElement(op::Conditional(), 2),
+                              op::GetTupleElement(op::Conditional(), 0),
+                              op::GetTupleElement(op::Conditional(), 1))));
+}
+
 }  // namespace conditional_opt
 
 }  // namespace xla

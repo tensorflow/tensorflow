@@ -95,6 +95,8 @@ std::string CompilerOptionToString(const CLDevice& device,
       return "-cl-opt-disable";
     case CompilerOptions::CL_2_0:
       return "-cl-std=CL2.0";
+    case CompilerOptions::CL_3_0:
+      return "-cl-std=CL3.0";
   }
 }
 

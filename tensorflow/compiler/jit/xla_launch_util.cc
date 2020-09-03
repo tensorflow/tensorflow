@@ -44,12 +44,6 @@ namespace {
 using xla::ScopedShapedBuffer;
 using xla::ShapedBuffer;
 
-const char kPossibleNonVariableResourceHintMessage[] =
-    "If the error is similar to `Trying to access resource using the wrong "
-    "type`, this is likely because XLA only accepts Resource Variables as "
-    "inputs by snapshotting their values. Other TensorFlow resource types like "
-    "TensorList/TensorArray/Stack are not supported. Try removing non-variable "
-    "resource inputs to XLA.";
 }  // anonymous namespace
 
 VariableInfo::VariableInfo(int index, absl::string_view name, Var* var)
@@ -357,9 +351,6 @@ static Status SetOutputForConstant(
     // No copy required.
     ctx->set_output(output_num, const_tensor);
     output_tensor = ctx->mutable_output(output_num);
-  }
-  if (XlaTensor* xla_tensor = XlaTensor::FromTensor(output_tensor)) {
-    xla_tensor->set_host_tensor(const_tensor);
   }
   return Status::OK();
 }

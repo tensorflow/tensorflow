@@ -81,6 +81,8 @@ def LHLO_ConstOp : LHLO_Op<"constant", []>, BASE_HLO_ConstOp {
     ElementsAttr:$value,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
+
+  let hasCanonicalizer = 1;
 }
 
 def LHLO_IotaOp : LHLO_Op<"iota", []>, BASE_HLO_IotaOp {

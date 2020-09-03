@@ -74,3 +74,16 @@ tf_cc_test(
         "//tensorflow/core:test",
     ],
 )
+
+cc_library(
+    name = "schedule_aware_all_gather_cse",
+    srcs = ["schedule_aware_all_gather_cse.cc"],
+    hdrs = ["schedule_aware_all_gather_cse.h"],
+    deps = [
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_casting_utils",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/stream_executor/lib",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)

@@ -557,7 +557,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
     auto* add_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(add_op, "Add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-    TF_AbstractOpSetOpName(add_op, "my_add1", s);
+    TF_AbstractOpSetOpName(add_op, "my_add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_AbstractTensor* inputs[2] = {arg0, arg1};
     TF_OutputList* add_outputs = TF_NewOutputList();
@@ -579,7 +579,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
     auto* add_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(add_op, "Add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-    TF_AbstractOpSetOpName(add_op, "my_add2", s);
+    TF_AbstractOpSetOpName(add_op, "my_add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_AbstractTensor* inputs[2] = {arg1, arg1};
     TF_OutputList* add_outputs = TF_NewOutputList();

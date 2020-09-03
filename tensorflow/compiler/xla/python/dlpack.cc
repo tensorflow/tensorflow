@@ -193,7 +193,7 @@ StatusOr<std::vector<int64>> StridesToLayout(absl::Span<int64 const> dims,
   return minor_to_major;
 }
 
-StatusOr<DLDeviceType> DLDeviceTypeForDevice(const Device& device) {
+StatusOr<DLDeviceType> DLDeviceTypeForDevice(const PjRtDevice& device) {
   const se::Platform* platform =
       device.local_device_state()->executor()->platform();
   if (platform->id() == se::host::kHostPlatformId) {
@@ -205,15 +205,15 @@ StatusOr<DLDeviceType> DLDeviceTypeForDevice(const Device& device) {
                          device.DebugString());
 }
 
-StatusOr<DLContext> DLContextForDevice(const Device& device) {
+StatusOr<DLContext> DLContextForDevice(const PjRtDevice& device) {
   DLContext context;
   TF_ASSIGN_OR_RETURN(context.device_type, DLDeviceTypeForDevice(device));
   context.device_id = device.local_device_state()->device_ordinal();
   return context;
 }
 
-StatusOr<Device*> DeviceForDLContext(const PjRtClient& client,
-                                     const DLContext& context) {
+StatusOr<PjRtDevice*> DeviceForDLContext(const PjRtClient& client,
+                                         const DLContext& context) {
   se::Platform::Id platform_id;
   switch (context.device_type) {
     case kDLCPU:
@@ -226,7 +226,7 @@ StatusOr<Device*> DeviceForDLContext(const PjRtClient& client,
       return InvalidArgument("Unknown/unsupported DLPack device type %d",
                              context.device_type);
   }
-  auto it = absl::c_find_if(client.local_devices(), [&](Device* device) {
+  auto it = absl::c_find_if(client.local_devices(), [&](PjRtDevice* device) {
     return device->local_device_state()->executor()->platform()->id() ==
                platform_id &&
            device->local_device_state()->device_ordinal() == context.device_id;
@@ -313,7 +313,7 @@ StatusOr<std::unique_ptr<PyBuffer>> DLPackManagedTensorToBuffer(
         dlmt->dl_tensor.ndim);
   }
   TF_ASSIGN_OR_RETURN(
-      Device * device,
+      PjRtDevice * device,
       DeviceForDLContext(*client->pjrt_client(), dlmt->dl_tensor.ctx));
   absl::Span<int64 const> dimensions(
       reinterpret_cast<int64*>(dlmt->dl_tensor.shape), dlmt->dl_tensor.ndim);

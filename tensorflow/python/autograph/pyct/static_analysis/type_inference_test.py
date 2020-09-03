@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from typing import Any, Callable
+from typing import Any, Callable, Tuple
 
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
@@ -43,7 +43,7 @@ class BasicTestResolver(type_inference.Resolver):
   def res_value(self, ns, value):
     return {type(value)}
 
-  def res_arg(self, ns, types_ns, f_name, name, type_anno):
+  def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
     if type_anno is None:
       return None
     return {str(type_anno)}
@@ -87,7 +87,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
     class Resolver(type_inference.Resolver):
 
-      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
         return None
 
     def test_fn(a, b):
@@ -106,7 +106,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
     class Resolver(type_inference.Resolver):
 
-      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
         return 1
 
     def test_fn(a):
@@ -122,7 +122,8 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
     class Resolver(type_inference.Resolver):
 
-      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+        test_self.assertFalse(f_is_local)
         if name == qual_names.QN('a'):
           test_self.assertEqual(type_anno, qual_names.QN('int'))
         return {str(name) + '_type'}
@@ -138,19 +139,41 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
   def test_argument_of_local_function(self):
 
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+        if f_name == 'test_fn':
+          test_self.assertFalse(f_is_local)
+          test_self.assertEqual(name, qual_names.QN('a'))
+          test_self.assertEqual(type_anno, qual_names.QN('int'))
+        elif f_name == 'foo':
+          test_self.assertTrue(f_is_local)
+          if name == qual_names.QN('x'):
+            test_self.assertEqual(type_anno, qual_names.QN('float'))
+          elif name == qual_names.QN('y'):
+            test_self.assertIsNone(type_anno)
+          else:
+            test_self.fail('unexpected argument {} for {}'.format(name, f_name))
+        else:
+          test_self.fail('unexpected function name {}'.format(f_name))
+        return {str(name) + '_type'}
+
     def test_fn(a: int):
 
-      def foo(x: float):
-        return x
+      def foo(x: float, y):
+        return x, y
 
-      return foo(a)
+      return foo(a, a)
 
-    tr = TestTranspiler(BasicTestResolver)
+    tr = TestTranspiler(Resolver)
     node, _ = tr.transform(test_fn, None)
     fn_body = node.body
 
-    self.assertTypes(fn_body[0].body[0].value, 'float')
-    self.assertClosureTypes(fn_body[0], {'a': {'int'}})
+    self.assertTypes(fn_body[0].body[0].value, Tuple)
+    self.assertTypes(fn_body[0].body[0].value.elts[0], 'x_type')
+    self.assertTypes(fn_body[0].body[0].value.elts[1], 'y_type')
 
   def test_assign_straightline(self):
 
@@ -434,7 +457,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
         test_self.assertEqual(name, qual_names.QN('g'))
         return None, g
 
-      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
         return {str(type_anno)}
 
       def res_call(self, ns, types_ns, node, f_type, args, keywords):
@@ -591,7 +614,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
         test_self.assertEqual(value, 1.0)
         return {float}
 
-      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
         return {str(type_anno)}
 
       def res_call(self, ns, types_ns, node, f_type, args, keywords):
@@ -627,7 +650,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
     class Resolver(type_inference.Resolver):
 
-      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
         return {list}
 
       def res_value(self, ns, value):
@@ -648,13 +671,45 @@ class TypeInferenceAnalyzerTest(test.TestCase):
     self.assertTypes(fn_body[0].value.value, list)
     self.assertTypes(fn_body[0].value.slice.value, int)
 
+  def test_tuple_unpacking(self):
+
+    test_self = self
+
+    class Resolver(type_inference.Resolver):
+
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
+        return {list}
+
+      def res_value(self, ns, value):
+        return {int}
+
+      def res_subscript(self, ns, types_ns, node_or_slice, value, slice_):
+        test_self.assertIn(node_or_slice, (0, 1))
+        test_self.assertSetEqual(value, {list})
+        test_self.assertSetEqual(slice_, {int})
+        if node_or_slice == 0:
+          return {float}
+        else:
+          return {str}
+
+    def test_fn(t):
+      a, b = t
+      return a, b
+
+    node, _ = TestTranspiler(Resolver).transform(test_fn, None)
+    fn_body = node.body
+
+    self.assertTypes(fn_body[1].value, Tuple)
+    self.assertTypes(fn_body[1].value.elts[0], float)
+    self.assertTypes(fn_body[1].value.elts[1], str)
+
   def test_compare(self):
 
     test_self = self
 
     class Resolver(type_inference.Resolver):
 
-      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
         return {int}
 
       def res_compare(self, ns, types_ns, node, left, right):
@@ -678,7 +733,7 @@ class TypeInferenceAnalyzerTest(test.TestCase):
 
     class Resolver(type_inference.Resolver):
 
-      def res_arg(self, ns, types_ns, f_name, name, type_anno):
+      def res_arg(self, ns, types_ns, f_name, name, type_anno, f_is_local):
         return {list}
 
       def res_binop(self, ns, types_ns, node, left, right):

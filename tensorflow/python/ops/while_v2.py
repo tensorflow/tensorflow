@@ -520,6 +520,12 @@ def _preprocess_grad(grad, body_graph_output, while_op_input, while_op_output):
       default_gradient.supports_default_grad(while_op_input) and grad is None):
     return _zeros_like(while_op_input, while_op_output)
 
+  # Convert IndexedSlices to dense tensors since it is unlikely that downstream
+  # gradient functions with properly handle indexed slices. This is similar to
+  # what we do in tf.function gradients.
+  if isinstance(grad, ops.IndexedSlices):
+    return ops.convert_to_tensor(grad)
+
   return grad
 
 

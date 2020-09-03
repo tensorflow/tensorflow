@@ -30,8 +30,8 @@ namespace gpu {
 namespace cl {
 namespace {
 absl::Status TryDepthwiseConvPlus1x1Conv(
-    const CreationContext& creation_context, CalculationsPrecision precision,
-    const GraphFloat32& graph, NodeId first_node_id,
+    CalculationsPrecision precision, const GraphFloat32& graph,
+    NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
   auto* dw_node = graph.GetNode(first_node_id);
@@ -71,16 +71,13 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
   if (it != tensor_descriptors.end()) {
     op_def.dst_tensors.push_back(it->second);
   }
-  if (!IsDepthwiseConvPlus1x1ConvSupported(*creation_context.device, op_def,
-                                           dw_attr, conv_attr)) {
+  if (!IsDepthwiseConvPlus1x1ConvSupported(op_def, dw_attr, conv_attr)) {
     return absl::NotFoundError("DepthwiseConvPlus1x1Conv not suitable.");
   }
   std::unique_ptr<GPUOperation>* gpu_op =
       InitSingleOpSubgraph(dw_inputs, conv_outputs, gpu_subgraph);
-  DepthwiseConvPlus1x1Conv operation;
-  RETURN_IF_ERROR(CreateDepthwiseConvPlus1x1Conv(
-      creation_context, op_def, dw_attr, conv_attr, &operation));
-  *gpu_op = absl::make_unique<DepthwiseConvPlus1x1Conv>(std::move(operation));
+  auto operation = CreateDepthwiseConvPlus1x1Conv(op_def, dw_attr, conv_attr);
+  *gpu_op = absl::make_unique<GPUOperation>(std::move(operation));
   consumed_nodes->insert(dw_node->id);
   consumed_nodes->insert(conv_node->id);
   return absl::OkStatus();
@@ -88,18 +85,18 @@ absl::Status TryDepthwiseConvPlus1x1Conv(
 }  // namespace
 
 absl::Status GPUSubgraphFromGraph(
-    const CreationContext& creation_context, CalculationsPrecision precision,
+    const DeviceInfo& device_info, CalculationsPrecision precision,
     const GraphFloat32& graph, NodeId first_node_id,
     const std::map<ValueId, TensorDescriptor>& tensor_descriptors,
     std::set<NodeId>* consumed_nodes, GPUOperationsSubgraph* gpu_subgraph) {
-  if (!creation_context.device->IsNvidia()) {
+  if (!device_info.IsNvidia()) {
     return absl::NotFoundError(
         "Experimental feature, enabled for NVidia only, but device is not "
         "nvidia gpu.");
   }
-  if (TryDepthwiseConvPlus1x1Conv(creation_context, precision, graph,
-                                  first_node_id, tensor_descriptors,
-                                  consumed_nodes, gpu_subgraph)
+  if (TryDepthwiseConvPlus1x1Conv(precision, graph, first_node_id,
+                                  tensor_descriptors, consumed_nodes,
+                                  gpu_subgraph)
           .ok()) {
     return absl::OkStatus();
   }

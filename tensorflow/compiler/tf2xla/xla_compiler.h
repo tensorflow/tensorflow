@@ -129,8 +129,6 @@ class XlaCompiler {
 
     // Resource updates are converted into input / output of xla. The two
     // buffers are aliased with other if this option is true.
-    //
-    // Currently only supports TPU.
     bool alias_resource_update = false;
   };
 

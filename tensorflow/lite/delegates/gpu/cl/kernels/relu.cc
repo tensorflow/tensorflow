@@ -21,8 +21,7 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-GPUOperation CreateReLU(const CreationContext& creation_context,
-                        const OperationDef& definition,
+GPUOperation CreateReLU(const OperationDef& definition,
                         const ReLUAttributes& attr) {
   GPUOperation op(definition);
   op.elementwise_ = true;

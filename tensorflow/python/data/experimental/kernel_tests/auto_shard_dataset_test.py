@@ -255,6 +255,23 @@ class AutoShardDatasetTest(reader_dataset_ops_test_base.TFRecordDatasetTestBase,
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
+          combinations.combine(sharding_policy=[
+              distribute_options.AutoShardPolicy.DATA,
+              distribute_options.AutoShardPolicy.AUTO
+          ])))
+  def testShardByDataBeforePrefetch(self, sharding_policy):
+    dataset = dataset_ops.Dataset.range(4)
+    dataset = dataset.apply(testing.assert_next(["Shard", "Prefetch"]))
+    dataset = dataset.prefetch(1)
+    options = dataset_ops.Options()
+    options.experimental_distribute.auto_shard_policy = sharding_policy
+    dataset = dataset.with_options(options)
+    dataset = distribute._AutoShardDataset(dataset, 2, 0)
+    self.assertDatasetProduces(dataset, [0, 2])
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
           combinations.times(combinations.combine(
               sharding_policy=[distribute_options.AutoShardPolicy.DATA,
                                distribute_options.AutoShardPolicy.FILE]),
@@ -544,11 +561,13 @@ class AutoShardWithRebatchDatasetTest(
   @combinations.generate(
       combinations.times(
           test_base.default_test_combinations(),
-          combinations.combine(sharding_policy=[
-              distribute_options.AutoShardPolicy.DATA,
-              distribute_options.AutoShardPolicy.AUTO
-          ])))
-  def testUseLegacyRebatchWithDataSharding(self, sharding_policy):
+          combinations.times(
+              combinations.combine(sharding_policy=[
+                  distribute_options.AutoShardPolicy.DATA,
+                  distribute_options.AutoShardPolicy.AUTO
+              ]), combinations.combine(with_prefetch=[True, False]))))
+  def testUseLegacyRebatchWithDataSharding(self, sharding_policy,
+                                           with_prefetch):
     # This test simulates a distributed environment with 3 workers, each with
     # 1 replica.
     dataset = dataset_ops.Dataset.range(8)
@@ -561,6 +580,8 @@ class AutoShardWithRebatchDatasetTest(
     # of the dataset.
     worker_a_dataset = distribute._RebatchDataset(
         dataset, batch_sizes=[2, 1, 1])
+    if with_prefetch:
+      worker_a_dataset = worker_a_dataset.prefetch(1)
     worker_a_dataset = distribute._AutoShardDataset(
         worker_a_dataset, 3, 0, num_replicas=3)
     expected = [[0, 1], [4, 5]]
@@ -568,6 +589,8 @@ class AutoShardWithRebatchDatasetTest(
 
     worker_b_dataset = distribute._RebatchDataset(
         dataset, batch_sizes=[1, 1, 2])
+    if with_prefetch:
+      worker_b_dataset = worker_b_dataset.prefetch(1)
     worker_b_dataset = distribute._AutoShardDataset(
         worker_b_dataset, 3, 1, num_replicas=3)
     expected = [[2, 3], [6, 7]]
@@ -575,6 +598,8 @@ class AutoShardWithRebatchDatasetTest(
 
     worker_c_dataset = distribute._RebatchDataset(
         dataset, batch_sizes=[1, 2, 1])
+    if with_prefetch:
+      worker_c_dataset = worker_c_dataset.prefetch(1)
     worker_c_dataset = distribute._AutoShardDataset(
         worker_c_dataset, 3, 2, num_replicas=3)
     expected = [[], []]

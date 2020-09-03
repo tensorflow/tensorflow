@@ -23,24 +23,8 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-
-Reshape::Reshape(const OperationDef& definition) : GPUOperation(definition) {
-  code_ = GetReshapeCode(definition_);
-}
-
-Reshape::Reshape(Reshape&& operation) : GPUOperation(std::move(operation)) {}
-
-Reshape& Reshape::operator=(Reshape&& operation) {
-  if (this != &operation) {
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-std::string Reshape::GetReshapeCode(const OperationDef& op_def) {
-  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
-  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-
+namespace {
+std::string GetReshapeCode(const OperationDef& op_def) {
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
@@ -96,15 +80,15 @@ std::string Reshape::GetReshapeCode(const OperationDef& op_def) {
   return c;
 }
 
-int3 Reshape::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Slices();
-  return int3(grid_x, grid_y, grid_z);
-}
+}  // namespace
 
-Reshape CreateReshape(const OperationDef& definition) {
-  return Reshape(definition);
+GPUOperation CreateReshape(const OperationDef& definition) {
+  GPUOperation op(definition);
+  op.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  op.code_ = GetReshapeCode(definition);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  return op;
 }
 
 }  // namespace cl

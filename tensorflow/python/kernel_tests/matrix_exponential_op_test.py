@@ -24,7 +24,6 @@ import numpy as np
 
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -140,10 +139,9 @@ class ExponentialOpTest(test.TestCase):
 
   def testInfinite(self):
     # Check that the op does not loop forever on infinite inputs. (b/158433036)
-    in_tensor = np.random.rand(100, 100).astype(np.float)
-    in_tensor[0][0] = np.inf
-    with self.assertRaises(errors_impl.InvalidArgumentError):
-      self.evaluate(linalg_impl.matrix_exponential(in_tensor))
+    in_tensor = [[np.inf, 1.], [1., 1.]]
+    result = self.evaluate(linalg_impl.matrix_exponential(in_tensor))
+    self.assertTrue(np.all(np.isnan(result)))
 
   def testEmpty(self):
     self._verifyExponentialReal(np.empty([0, 2, 2]))

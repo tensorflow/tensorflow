@@ -30,3 +30,5 @@ add_llvm_executable(mlir-hlo-opt mlir-hlo-opt.cpp
 )
 llvm_update_compile_flags(mlir-hlo-opt)
 target_link_libraries(mlir-hlo-opt PRIVATE ${LIBS})
+
+mlir_check_all_link_libraries(mlir-hlo-opt)

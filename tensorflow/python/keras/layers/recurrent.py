@@ -925,10 +925,17 @@ class RNN(Layer):
                        '`batch_shape` argument to your Input layer.')
     # initialize state if None
     if nest.flatten(self.states)[0] is None:
-      def create_state_variable(state):
-        return K.zeros([batch_size] + tensor_shape.TensorShape(state).as_list())
-      self.states = nest.map_structure(
-          create_state_variable, self.cell.state_size)
+      if getattr(self.cell, 'get_initial_state', None):
+        flat_init_state_values = nest.flatten(self.cell.get_initial_state(
+            inputs=None, batch_size=batch_size,
+            dtype=self.dtype or K.floatx()))
+      else:
+        flat_init_state_values = nest.flatten(_generate_zero_filled_state(
+            batch_size, self.cell.state_size, self.dtype or K.floatx()))
+      flat_states_variables = nest.map_structure(
+          K.variable, flat_init_state_values)
+      self.states = nest.pack_sequence_as(self.cell.state_size,
+                                          flat_states_variables)
       if not nest.is_nested(self.states):
         self.states = [self.states]
     elif states is None:

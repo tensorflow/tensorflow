@@ -428,7 +428,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
       def call(self, inputs):
         return inputs + self.b + self.c
 
-    x = ops.convert_to_tensor_v2(np.ones((10, 10), 'float32'))
+    x = ops.convert_to_tensor_v2_with_dispatch(np.ones((10, 10), 'float32'))
     model = MyModel()
     model(x)
     self.assertEqual(1, len(model.trainable_weights))
@@ -444,7 +444,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
       def call(self, inputs):
         return inputs + self.b + self.c
 
-    x = ops.convert_to_tensor_v2(np.ones((10, 10), 'float32'))
+    x = ops.convert_to_tensor_v2_with_dispatch(np.ones((10, 10), 'float32'))
     model = MyModelCustomBuild()
     model(x)
     self.assertEqual(1, len(model.trainable_weights))
@@ -467,7 +467,7 @@ class ModelSubclassingTest(keras_parameterized.TestCase):
         self.add_update(self.c.assign(inputs[1, :]))
         return inputs + self.b + self.c
 
-    x = ops.convert_to_tensor_v2(np.ones((10, 10), 'float32'))
+    x = ops.convert_to_tensor_v2_with_dispatch(np.ones((10, 10), 'float32'))
     model = MyModel()
     model(x)
 

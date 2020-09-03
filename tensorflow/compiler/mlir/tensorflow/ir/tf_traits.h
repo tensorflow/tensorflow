@@ -33,7 +33,7 @@ namespace TF {
 static inline LogicalResult VerifyRefTypeMatch(mlir::Type type,
                                                mlir::Type maybe_ref_type) {
   if (auto ref_type = maybe_ref_type.dyn_cast<mlir::TF::TensorFlowRefType>())
-    return success(ref_type.RemoveRef().getKind() == type.getKind());
+    return success(ref_type.RemoveRef().getTypeID() == type.getTypeID());
   return failure();
 }
 

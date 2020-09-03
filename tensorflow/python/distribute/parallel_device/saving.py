@@ -47,21 +47,31 @@ class _ParallelComponentSaveable(saveable_object.SaveableObject):
         resource=self._handle, value=restored_tensor)
 
 
-class ParallelVariable(resource_variable_ops.ResourceVariable):
-  """Overrides checkpointing behavior to save each component separately."""
+class ParallelSavingMixin(resource_variable_ops.BaseResourceVariable):
+  """Mixin to to override variable checkpointing, saving each component."""
 
-  def __init__(self, parallel_device, **kwargs):
+  def __init__(self, parallel_device, expected_shape=None, use_resource=None,
+               **kwargs):
+    del expected_shape, use_resource
     self._parallel_device = parallel_device
-    super(ParallelVariable, self).__init__(**kwargs)
+    super(ParallelSavingMixin, self).__init__(**kwargs)
 
   # TODO(allenl): Consider either adding a boolean argument for
   # save-primary-only or looking at synchronization/aggregation properties.
   def _gather_saveables_for_checkpoint(self):
+    """Generate SaveableObjects for each component device."""
     component_saveables = {}
     # Create one SaveableObject per device, each one of which looks like a
     # regular ResourceVariable saveable.
     for index, handle in enumerate(self._parallel_device.unpack(self.handle)):
-      component_saveables["parallel_component_{}".format(index)] = (
+      if index == 0:
+        # This is the name regular tf.Variables use to save. Using it for the
+        # component on the first device means non-parallel tf.Variable objects
+        # will use this value when pointed at a parallel checkpoint.
+        attribute = "VARIABLE_VALUE"
+      else:
+        attribute = "parallel_component_{}".format(index)
+      component_saveables[attribute] = (
           functools.partial(
               _ParallelComponentSaveable,
               handle=handle,
@@ -70,9 +80,26 @@ class ParallelVariable(resource_variable_ops.ResourceVariable):
     return component_saveables
 
 
-def _variable_creator(next_creator, parallel_device, **kwargs):
+class ParallelVariable(
+    ParallelSavingMixin, resource_variable_ops.ResourceVariable):
+  pass
+
+
+class UninitializedParallelVariable(
+    ParallelSavingMixin, resource_variable_ops.UninitializedVariable):
+  pass
+
+
+def _variable_creator(next_creator, parallel_device, initial_value=None,
+                      **kwargs):
   del next_creator
-  return ParallelVariable(parallel_device=parallel_device, **kwargs)
+  if initial_value is not None:
+    return ParallelVariable(
+        parallel_device=parallel_device, initial_value=initial_value, **kwargs)
+  else:
+    # SavedModel loading does not pass an initial value.
+    return UninitializedParallelVariable(
+        parallel_device=parallel_device, **kwargs)
 
 
 @contextlib.contextmanager

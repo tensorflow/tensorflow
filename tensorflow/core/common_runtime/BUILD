@@ -14,9 +14,6 @@ load(
 load("//tensorflow:tensorflow.bzl", "tf_cc_test_gpu")
 
 # buildifier: disable=same-origin-load
-load("//tensorflow:tensorflow.bzl", "tf_cc_tests_gpu")
-
-# buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 
 # For platform specific build config
@@ -299,6 +296,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
     ],
 )
@@ -382,7 +380,6 @@ cc_library(
     hdrs = ["collective_param_resolver_local.h"],
     copts = tf_copts(),
     deps = [
-        ":device",
         ":device_mgr",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -665,6 +662,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/profiler/lib:connected_traceme",
         "//tensorflow/core/profiler/lib:traceme",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -1912,9 +1910,9 @@ tf_cc_tests(
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "ring_reducer_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "ring_reducer_test.cc",
     ],
@@ -1927,7 +1925,6 @@ tf_cc_tests_gpu(
         "//tensorflow/core:all_kernels",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
-        "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:ops",
@@ -1935,14 +1932,13 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/memory",
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "ring_gatherer_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "ring_gatherer_test.cc",
     ],
@@ -1962,15 +1958,13 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-        "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/memory",
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "hierarchical_tree_broadcaster_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "hierarchical_tree_broadcaster_test.cc",
     ],
@@ -1990,20 +1984,18 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-        "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/memory",
     ],
 )
 
-tf_cc_tests_gpu(
+tf_cuda_cc_test(
     name = "permuter_test",
-    size = "medium",
+    size = "small",
     srcs = [
         "permuter_test.cc",
     ],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["notap"],  # b/163417734
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":core",
         ":core_cpu",
@@ -2018,8 +2010,6 @@ tf_cc_tests_gpu(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/common_runtime/gpu:gpu_runtime",
-        "//tensorflow/core/util:protos_test_cc",
         "@com_google_absl//absl/memory",
     ],
 )

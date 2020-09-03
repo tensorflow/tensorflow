@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/platform/refcount.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/connected_traceme.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
 #define VALUE_IN_DEBUG_STRING false
@@ -279,16 +280,17 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   // Run on an unbounded work queue that can handle blocking work so as to not
   // starve executor threads.
   col_impl->Ref();
-  remote_access_->RunClosure([col_impl, col_ctx, done_safe, ctx]() {
+  profiler::TraceMeProducer producer("BaseCollectiveExecutor::ExecuteAsync");
+  RunClosure([col_impl, col_ctx, done_safe, ctx, &producer]() {
     core::ScopedUnref unref(col_impl);
-    profiler::TraceMe activity(
+    profiler::TraceMeConsumer consumer(
         [ctx] {
           string op = profiler::TraceMeOp(ctx->op_kernel().name_view(),
                                           ctx->op_kernel().type_string_view());
           return profiler::TraceMeEncode(std::move(op),
                                          {{"id", ctx->step_id()}});
         },
-        profiler::TraceMeLevel::kInfo);
+        producer.GetContextId());
     col_impl->Ref();
     col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
       core::ScopedUnref unref(col_impl);
@@ -298,8 +300,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 }
 
 void BaseCollectiveExecutor::CompleteParamsAsync(
-    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
-    StatusCallback done) {
+    const DeviceAttributes& device, CollectiveParams* cp,
+    CancellationManager* cancel_mgr, StatusCallback done) {
   cp->instance.gpu_ring_order = *gpu_ring_order_;
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
   auto done_with_timeout = done;

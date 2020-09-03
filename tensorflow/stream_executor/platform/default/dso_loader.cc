@@ -136,6 +136,10 @@ port::StatusOr<void*> GetRocrandDsoHandle() {
   return GetDsoHandle("rocrand", "");
 }
 
+port::StatusOr<void*> GetHipsparseDsoHandle() {
+  return GetDsoHandle("hipsparse", "");
+}
+
 port::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("hip_hcc", ""); }
 
 }  // namespace DsoLoader
@@ -203,6 +207,11 @@ port::StatusOr<void*> GetRocfftDsoHandle() {
 
 port::StatusOr<void*> GetRocrandDsoHandle() {
   static auto result = new auto(DsoLoader::GetRocrandDsoHandle());
+  return *result;
+}
+
+port::StatusOr<void*> GetHipsparseDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipsparseDsoHandle());
   return *result;
 }
 

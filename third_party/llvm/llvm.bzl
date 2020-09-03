@@ -190,6 +190,7 @@ posix_cmake_vars = {
     "HAVE_PTHREAD_H": 1,
     "HAVE_SIGNAL_H": 1,
     "HAVE_STDINT_H": 1,
+    "HAVE_SYSEXITS_H": 1,
     "HAVE_SYS_IOCTL_H": 1,
     "HAVE_SYS_MMAN_H": 1,
     "HAVE_SYS_PARAM_H": 1,

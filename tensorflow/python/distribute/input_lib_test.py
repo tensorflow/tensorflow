@@ -992,8 +992,7 @@ class DistributedIteratorMultiWorkerTest(
 
     strategy = mirrored_strategy.MirroredStrategy(
         devices=(self._cpu_devices()[0][1] + self._cpu_devices()[1][1]),
-        cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce(
-            ["/job:worker/task:0", "/job:worker/task:1"], 1))
+        cross_device_ops=cross_device_ops_lib.ReductionToOneDevice())
     worker_devices = self._cpu_devices()
     with context.graph_mode(), self.cached_session() as sess:
       if auto_shard_policy == AutoShardPolicy.AUTO:
@@ -1022,8 +1021,7 @@ class DistributedIteratorMultiWorkerTest(
 
     strategy = mirrored_strategy.MirroredStrategy(
         devices=(self._cpu_devices()[0][1] + self._cpu_devices()[1][1]),
-        cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce(
-            ["/job:worker/task:0", "/job:worker/task:1"], 1))
+        cross_device_ops=cross_device_ops_lib.ReductionToOneDevice())
     worker_devices = self._cpu_devices()
     with context.graph_mode(), strategy.scope(), self.cached_session() as sess:
 
@@ -1064,8 +1062,7 @@ class DistributedIteratorMultiWorkerTest(
     strategy = mirrored_strategy.MirroredStrategy(
         devices=(self._cpu_and_one_gpu_devices()[0][1] +
                  self._cpu_and_one_gpu_devices()[1][1]),
-        cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce(
-            ["/job:worker/task:0", "/job:worker/task:1"], 2))
+        cross_device_ops=cross_device_ops_lib.ReductionToOneDevice())
     worker_devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode(), strategy.scope(), self.cached_session() as sess:
 
@@ -1097,8 +1094,7 @@ class DistributedIteratorMultiWorkerTest(
                        enable_get_next_as_optional):
     strategy = mirrored_strategy.MirroredStrategy(
         devices=(self._cpu_devices()[0][1] + self._cpu_devices()[1][1]),
-        cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce(
-            ["/job:worker/task:0", "/job:worker/task:1"], 1))
+        cross_device_ops=cross_device_ops_lib.ReductionToOneDevice())
     worker_devices = self._cpu_devices()
 
     def dataset_fn(ctx):
@@ -1144,8 +1140,7 @@ class DistributedIteratorMultiWorkerTest(
     strategy = mirrored_strategy.MirroredStrategy(
         devices=(self._cpu_and_one_gpu_devices()[0][1] +
                  self._cpu_and_one_gpu_devices()[1][1]),
-        cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce(
-            ["/job:worker/task:0", "/job:worker/task:1"], 2))
+        cross_device_ops=cross_device_ops_lib.ReductionToOneDevice())
     if tf2.enabled():
       dataset_fn = lambda _: dataset_ops.DatasetV2.range(9).batch(2)
     else:
@@ -1263,8 +1258,7 @@ class DistributedIteratorMultiWorkerTest(
     strategy = mirrored_strategy.MirroredStrategy(
         devices=(self._cpu_and_one_gpu_devices()[0][1] +
                  self._cpu_and_one_gpu_devices()[1][1]),
-        cross_device_ops=cross_device_ops_lib.MultiWorkerAllReduce(
-            ["/job:worker/task:0", "/job:worker/task:1"], 2))
+        cross_device_ops=cross_device_ops_lib.ReductionToOneDevice())
     worker_devices = self._cpu_and_one_gpu_devices()
     with context.graph_mode(), strategy.scope(), self.cached_session() as sess:
 

@@ -882,6 +882,7 @@ REGISTER_OP("ModelDataset")
     .Output("handle: variant")
     .Attr("algorithm: int = 0")
     .Attr("cpu_budget: int = 0")
+    .Attr("ram_budget: int = 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);

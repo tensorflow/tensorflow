@@ -106,7 +106,7 @@ class MemorySpaceAssignmentCostAnalysis {
   // BufferInterval.  The larger this number, the higher priority it will be
   // placed in the alternate memory.
   float GetMemoryBoundedness(
-      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval,
+      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval,
       Cache* cache = nullptr) const;
 
   // Returns the elapsed time in seconds due to compute only.
@@ -200,8 +200,15 @@ class PrefetchIntervalPicker {
                                          int64 latest_end_time) const = 0;
 
   // Returns the latest time that a prefetch can start.
-  virtual int64 LatestPrefetchStartTime(const HloUse& use, int64 start_time,
-                                        int64 end_time) const = 0;
+  virtual int64 LatestPrefetchStartTime(const Shape& shape, int64 start_time,
+                                        int64 end_time,
+                                        const HloUse* use) const = 0;
+
+  // Returns the preferred time that a prefetch can start.
+  virtual int64 PreferredPrefetchStartTime(const Shape& shape,
+                                           int64 earliest_prefetch_start_time,
+                                           int64 latest_prefetch_start_time,
+                                           int64 prefetch_end_time) const = 0;
 
   // Returns the latest time that a prefetch can end that is less than or equal
   // to proposed_prefetch_end_time.
@@ -235,7 +242,8 @@ class PrefetchIntervalPicker {
   // of placing the BufferInterval in the alternate memory. The larger value,
   // the more beneficial.
   virtual absl::optional<float> BufferIntervalAlternateMemoryBenefit(
-      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval) const {
+      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
+      const {
     return absl::nullopt;
   }
 
@@ -268,8 +276,14 @@ class InstructionCountPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64 PreferredEvictionEndTime(const Shape& shape, int64 start_time,
                                  int64 latest_end_time) const override;
 
-  int64 LatestPrefetchStartTime(const HloUse& use, int64 start_time,
-                                int64 end_time) const override;
+  int64 LatestPrefetchStartTime(const Shape& shape, int64 start_time,
+                                int64 end_time,
+                                const HloUse* use) const override;
+
+  int64 PreferredPrefetchStartTime(const Shape& shape,
+                                   int64 earliest_prefetch_start_time,
+                                   int64 latest_prefetch_start_time,
+                                   int64 prefetch_end_time) const override;
 
   void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
 
@@ -307,10 +321,17 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
   int64 PreferredEvictionEndTime(const Shape& shape, int64 start_time,
                                  int64 latest_end_time) const override;
 
-  int64 LatestPrefetchStartTime(const HloUse& use, int64 start_time,
-                                int64 end_time) const override;
   int64 LatestPrefetchEndTime(int64 original_prefetch_end_time,
                               int64 proposed_prefetch_end_time) const override;
+
+  int64 LatestPrefetchStartTime(const Shape& shape, int64 start_time,
+                                int64 end_time,
+                                const HloUse* use) const override;
+
+  int64 PreferredPrefetchStartTime(const Shape& shape,
+                                   int64 earliest_prefetch_start_time,
+                                   int64 latest_prefetch_start_time,
+                                   int64 prefetch_end_time) const override;
 
   void Begin(const HloUse& use, int64 start_time, int64 end_time) override;
 
@@ -324,7 +345,7 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
                                   int64 end_time) const override;
 
   absl::optional<float> BufferIntervalAlternateMemoryBenefit(
-      const GlobalDecreasingSizeBestFitHeap::BufferInterval& interval)
+      const GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval& interval)
       const override;
 
  private:
@@ -370,9 +391,10 @@ class CostAnalysisPrefetchIntervalPicker : public PrefetchIntervalPicker {
 class MemorySpaceAssignment {
  public:
   using Chunk = HeapSimulator::Chunk;
-  using BufferInterval = GlobalDecreasingSizeBestFitHeap::BufferInterval;
+  using BufferInterval =
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferInterval;
   using BufferIntervalCompare =
-      GlobalDecreasingSizeBestFitHeap::BufferIntervalCompare;
+      GlobalDecreasingSizeBestFitHeap<HloValue>::BufferIntervalCompare;
   using IsAllowedInAlternateMemoryFunction =
       std::function<bool(const HloValue&)>;
 
@@ -435,7 +457,7 @@ class MemorySpaceAssignment {
 
     // The repacking algorithm to reduce fragmentation. Must be non-null if
     // max_repacks is greater than 0.
-    MemorySpaceAssignmentRepacker<Allocation*>* repacker = nullptr;
+    MemorySpaceAssignmentRepacker* repacker = nullptr;
 
     // If true, tries allocating buffers across (e.g., before and inside a while
     // loop body) sequential calls (kWhile, kCall, and kConditional).
@@ -559,12 +581,14 @@ class MemorySpaceAssignment {
    public:
     CopyAllocation(const Allocation& prev_allocation, MemorySpace memory_space,
                    absl::optional<Chunk> chunk, int64 start_time,
-                   int64 end_time, int64 copy_done_schedule_before_time)
+                   int64 end_time, int64 copy_done_schedule_before_time,
+                   bool is_cross_program_prefetch = false)
         : Allocation(/*defining_position=*/{nullptr, {}}, memory_space, chunk,
                      start_time, end_time),
           prev_allocation_(prev_allocation),
           copy_start_schedule_after_(start_time),
-          copy_done_schedule_before_(copy_done_schedule_before_time) {}
+          copy_done_schedule_before_(copy_done_schedule_before_time),
+          is_cross_program_prefetch_(is_cross_program_prefetch) {}
 
     bool is_copy_allocation() const override { return true; }
 
@@ -604,6 +628,10 @@ class MemorySpaceAssignment {
       copy_start_schedule_after_ = copy_start_schedule_after;
     }
 
+    bool is_cross_program_prefetch() const {
+      return is_cross_program_prefetch_;
+    }
+
     bool operator==(const CopyAllocation& other) const;
     std::string ToString() const override;
 
@@ -615,6 +643,7 @@ class MemorySpaceAssignment {
     // is before copy_done_schedule_before_.
     int64 copy_start_schedule_after_;
     int64 copy_done_schedule_before_;
+    bool is_cross_program_prefetch_;
     HloInstruction* copy_start_;
     HloInstruction* copy_done_;
   };
@@ -913,7 +942,8 @@ class AsynchronousCopyOrdering {
 
 // This class inherits from GlobalDecreasingSizeBestFitHeap with a notion of
 // maximum size.
-class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
+class AlternateMemoryBestFitHeap
+    : public GlobalDecreasingSizeBestFitHeap<HloValue> {
  public:
   using MemorySpace = MemorySpaceAssignment::MemorySpace;
   using AllocationValue = MemorySpaceAssignment::AllocationValue;
@@ -940,11 +970,15 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   void AllocateCrossProgramPrefetchBuffer(
       HloModule* module, absl::optional<BufferInterval> prefetch_candidate);
 
-  HeapSimulator::Result Finish() override;
+  HeapSimulator::Result<HloValue> Finish() override;
 
  private:
-  using RepackAllocationBlock = MemorySpaceAssignmentRepacker<
-      MemorySpaceAssignment::Allocation*>::AllocationBlock;
+  // We inherit AllocationBlock struct to attach the Allocation information to
+  // make importing repacked offsets easier.
+  struct RepackAllocationBlock
+      : MemorySpaceAssignmentRepacker::AllocationBlock {
+    MemorySpaceAssignment::Allocation* allocation;
+  };
 
   // An allocation request for a use segment. A use segment is the time segment
   // between the definition and the first use, and the time segment between the
@@ -1169,19 +1203,20 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // Exports the allocations for repacking and puts them into the vector in the
   // parameter.
   void ExportAllocationsForRepacking(
-      std::vector<RepackAllocationBlock*>& allocations);
+      std::vector<MemorySpaceAssignmentRepacker::AllocationBlock*>&
+          allocations);
 
   // Imports repacked allocations and updates the internal data structures
   // consistent with the new packing.
-  void ImportRepackedAllocations(
-      absl::Span<RepackAllocationBlock*> repacked_allocations);
+  void ImportRepackedAllocations();
 
   // Adds an asynchronous copy to the allocations.
   void AddAsyncCopy(const MemorySpaceAssignment::Allocation& prev_allocation,
                     MemorySpace memory_space, absl::optional<Chunk> chunk,
                     int64 start_time, int64 end_time,
                     int64 copy_done_schedule_before_time,
-                    MemorySpaceAssignment::AllocationSequence* allocations);
+                    MemorySpaceAssignment::AllocationSequence* allocations,
+                    bool is_cross_program_prefetch = false);
 
   // This method is used for committing the chunk candidate but adding it to
   // pending_chunks_ so that we can "uncommit" them in case we need to roll back
@@ -1213,6 +1248,22 @@ class AlternateMemoryBestFitHeap : public GlobalDecreasingSizeBestFitHeap {
   // Returns the available heap size in the alternate memory.
   int64 available_heap_size() const {
     return options_.max_size_in_bytes - reserved_in_bytes_;
+  }
+
+  // Creates and returns a RepackAllocationBlock.
+  static RepackAllocationBlock MakeRepackAllocationBlock(
+      int64 start_time, int64 end_time, int64 size, int64 initial_offset,
+      int64 id, MemorySpaceAssignment::Allocation* allocation) {
+    RepackAllocationBlock allocation_block;
+    allocation_block.start_time = start_time;
+    allocation_block.end_time = end_time;
+    allocation_block.size = size;
+    allocation_block.offset = -1;
+    allocation_block.initial_offset = initial_offset;
+    allocation_block.id = id;
+    allocation_block.colocations = {};
+    allocation_block.allocation = allocation;
+    return allocation_block;
   }
 
   MemorySpaceAssignment::AllocationSequence* allocations_;

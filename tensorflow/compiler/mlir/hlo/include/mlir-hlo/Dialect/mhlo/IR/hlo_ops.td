@@ -1079,6 +1079,8 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
   // XLA semantics is available. This limitation is because of the current XLA
   // implementation.
   let results = (outs I32Tensor);
+
+  let hasFolder = 1;
 }
 
 def HLO_MapOp: HLO_Op<"map",
@@ -1151,6 +1153,8 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, DeclareOpInterfaceMethods<Infe
   );
 
   let results = (outs HLO_Tensor);
+
+  let hasFolder = 1;
 }
 
 def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",

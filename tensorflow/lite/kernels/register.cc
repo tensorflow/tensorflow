@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/builtin_op_kernels.h"
 #include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tflite_with_xnnpack_optional.h"
 
 namespace tflite {
 namespace ops {
@@ -33,7 +34,8 @@ TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 namespace builtin {
 
 BuiltinOpResolver::BuiltinOpResolver() {
-  AddBuiltin(BuiltinOperator_ABS, Register_ABS());
+  AddBuiltin(BuiltinOperator_ABS, Register_ABS(), /* min_version = */ 1,
+             /* max_version = */ 2);
   AddBuiltin(BuiltinOperator_HARD_SWISH, Register_HARD_SWISH());
   AddBuiltin(BuiltinOperator_RELU, Register_RELU(), /* min_version = */ 1,
              /* max_version = */ 2);
@@ -300,6 +302,21 @@ BuiltinOpResolver::BuiltinOpResolver() {
             tflite::ops::custom::Register_AUDIO_SPECTROGRAM());
   AddCustom("TFLite_Detection_PostProcess",
             tflite::ops::custom::Register_DETECTION_POSTPROCESS());
+}
+
+OpResolver::TfLiteDelegatePtrVector BuiltinOpResolver::GetDelegates(
+    int num_threads) const {
+  OpResolver::TfLiteDelegatePtrVector delegates;
+  auto xnnpack_delegate = tflite::MaybeCreateXNNPACKDelegate(num_threads);
+  if (xnnpack_delegate != nullptr) {
+    delegates.push_back(std::move(xnnpack_delegate));
+  }
+  return delegates;
+}
+
+OpResolver::TfLiteDelegatePtrVector
+BuiltinOpResolverWithoutDefaultDelegates::GetDelegates(int num_threads) const {
+  return OpResolver::TfLiteDelegatePtrVector();
 }
 
 }  // namespace builtin

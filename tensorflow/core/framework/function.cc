@@ -1454,6 +1454,12 @@ Status FunctionLibraryDefinition::RemoveFunctionHelper(const string& func) {
   return Status::OK();
 }
 
+void FunctionLibraryDefinition::Clear() {
+  mutex_lock l(mu_);
+  function_defs_.clear();
+  func_grad_.clear();
+}
+
 Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
   if (i == func_grad_.end()) {

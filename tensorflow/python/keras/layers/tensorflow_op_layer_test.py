@@ -637,7 +637,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllEqual(model(ones), 3.0 * ones)
 
   def test_numerical_correctness_simple(self):
-    x = ops.convert_to_tensor_v2([[-1., 0., -2., 1.]])
+    x = ops.convert_to_tensor_v2_with_dispatch([[-1., 0., -2., 1.]])
     inputs = keras.Input(shape=(4,))
     outputs = gen_nn_ops.relu(inputs)
     model = keras.Model(inputs, outputs)
@@ -645,7 +645,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllClose(y, [[0., 0., 0., 1.]])
 
   def test_numerical_correctness_with_attrs(self):
-    x = ops.convert_to_tensor_v2([[1.5, 1.5], [2.5, 3.5]])
+    x = ops.convert_to_tensor_v2_with_dispatch([[1.5, 1.5], [2.5, 3.5]])
     inputs = keras.Input(shape=(2,))
     outputs = math_ops.reduce_mean(inputs, axis=1)
     model = keras.Model(inputs, outputs)
@@ -653,7 +653,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllClose(y, [1.5, 3.])
 
   def test_numerical_correctness_serialization(self):
-    x = ops.convert_to_tensor_v2([[-1., 0., -2., 1.]])
+    x = ops.convert_to_tensor_v2_with_dispatch([[-1., 0., -2., 1.]])
     inputs = keras.Input(shape=(4,))
     outputs = gen_nn_ops.relu(inputs)
     model1 = keras.Model(inputs, outputs)

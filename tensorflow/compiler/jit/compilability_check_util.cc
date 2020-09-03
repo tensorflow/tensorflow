@@ -518,10 +518,15 @@ RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
   }
 }
 
+// Returns `true` iff node has a given `attr` set to `true`. Returns `false`
+// both for the missing attr, and the attr set to `false`.
+static bool HasBoolAttr(const NodeDef& node, const char* attr) {
+  const auto& it = node.attr().find(attr);
+  return it != node.attr().end() && it->second.b();
+}
+
 bool CanCreateXlaKernel(const NodeDef& node_def) {
-  // If kXlaMustCompileAttr is set on the node_def, use its value.
-  const auto& it = node_def.attr().find(kXlaMustCompileAttr);
-  return it != node_def.attr().end() && it->second.b();
+  return HasBoolAttr(node_def, kXlaMustCompileAttr);
 }
 
 Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
@@ -562,6 +567,60 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
   }
 
   return Status::OK();
+}
+
+static auto const ops_triggering_xla_compilation =
+    new absl::flat_hash_set<std::string>{"XlaBroadcastHelper",
+                                         "XlaConv",
+                                         "XlaDequantize",
+                                         "XlaDot",
+                                         "XlaDynamicSlice",
+                                         "XlaDynamicUpdateSlice",
+                                         "XlaEinsum",
+                                         "XlaGather",
+                                         "XlaIf",
+                                         "XlaKeyValueSort",
+                                         "XlaPad",
+                                         "XlaRecv",
+                                         "XlaReduce",
+                                         "XlaReduceWindow",
+                                         "XlaReplicaId",
+                                         "XlaScatter",
+                                         "XlaSelectAndScatter",
+                                         "XlaSelfAdjointEig",
+                                         "XlaSend",
+                                         "XlaSharding",
+                                         "XlaSort",
+                                         "XlaSpmdFullToShardShape",
+                                         "XlaSpmdShardToFullShape",
+                                         "XlaSvd",
+                                         "XlaWhile"};
+
+static bool NodeCanTriggerXlaCompilation(const NodeDef& node) {
+  return node.attr().find(kXlaClusterIdAttr) != node.attr().end() ||
+         HasBoolAttr(node, kXlaMustCompileAttr) ||
+         HasBoolAttr(node, kXlaCompileAttr) ||
+         HasBoolAttr(node, kXlaScopeAttr) ||
+         HasBoolAttr(node, kXlaInternalScopeAttr) ||
+         ops_triggering_xla_compilation->count(node.op());
+}
+
+bool CanTriggerXlaCompilation(const GraphDef& graph) {
+  for (const FunctionDef& function : graph.library().function()) {
+    for (const NodeDef& node : function.node_def()) {
+      if (NodeCanTriggerXlaCompilation(node)) {
+        return true;
+      }
+    }
+  }
+
+  for (const NodeDef& node : graph.node()) {
+    if (NodeCanTriggerXlaCompilation(node)) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 }  // namespace tensorflow
