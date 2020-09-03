@@ -1922,16 +1922,3 @@ cc_library(
         "@llvm-project//mlir:LLVMDialect",
     ],
 )
-
-# Library with XLA thunks dialect static initialization.
-cc_library(
-    name = "xla_thunks_dialect_registration",
-    srcs = [
-        "ir/dialect_registration.cc",
-    ],
-    deps = [
-        ":xla_thunks_ops",
-        "@llvm-project//mlir:IR",
-    ],
-    alwayslink = 1,
-)
