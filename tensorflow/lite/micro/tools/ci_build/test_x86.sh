@@ -36,3 +36,7 @@ readable_run make -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=re
 # debugging info on failures.
 readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
 readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile test
+
+# Also repeat for the debug build.
+readable_run make -f tensorflow/lite/micro/tools/make/Makefile clean
+readable_run make -s -j8 -f tensorflow/lite/micro/tools/make/Makefile BUILD_TYPE=debug test
