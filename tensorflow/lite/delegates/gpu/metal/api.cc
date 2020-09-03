@@ -404,6 +404,7 @@ absl::Status RegisterPrimaryOps(const GraphFloat32& graph, const Node* node,
     } break;
     case OperationType::BATCH_NORMALIZATION:
     case OperationType::BATCH_TO_SPACE:
+    case OperationType::BATCHED_MATMUL:
     case OperationType::CONST:
     case OperationType::LSTM:
     // TODO(b/162763635): implement MeanStddevNormalization for Metal.
