@@ -100,12 +100,22 @@ std::string ToString(enum OperationType op) {
       return "div";
     case OperationType::ELU:
       return "elu";
+    case OperationType::EQUAL:
+      return "equal";
     case OperationType::EXP:
       return "exp";
     case OperationType::FULLY_CONNECTED:
       return "fully_connected";
+    case OperationType::GREATER:
+      return "greater";
+    case OperationType::GREATER_EQUAL:
+      return "greater_equal";
     case OperationType::HARD_SWISH:
       return "hard_swish";
+    case OperationType::LESS:
+      return "less";
+    case OperationType::LESS_EQUAL:
+      return "less_equal";
     case OperationType::LOG:
       return "log";
     case OperationType::LSTM:
@@ -122,6 +132,8 @@ std::string ToString(enum OperationType op) {
       return "minimum";
     case OperationType::MUL:
       return "mul";
+    case OperationType::NOT_EQUAL:
+      return "not_equal";
     case OperationType::PAD:
       return "pad";
     case OperationType::POOLING_2D:
@@ -192,9 +204,14 @@ OperationType OperationTypeFromString(const std::string& name) {
           {"depthwise_convolution", OperationType::DEPTHWISE_CONVOLUTION},
           {"div", OperationType::DIV},
           {"elu", OperationType::ELU},
+          {"equal", OperationType::EQUAL},
           {"exp", OperationType::EXP},
           {"fully_connected", OperationType::FULLY_CONNECTED},
+          {"greater", OperationType::GREATER},
+          {"greater_equal", OperationType::GREATER_EQUAL},
           {"hard_swish", OperationType::HARD_SWISH},
+          {"less", OperationType::LESS},
+          {"less_equal", OperationType::LESS_EQUAL},
           {"log", OperationType::LOG},
           {"lstm", OperationType::LSTM},
           {"maximum", OperationType::MAXIMUM},
@@ -204,6 +221,7 @@ OperationType OperationTypeFromString(const std::string& name) {
            OperationType::MEAN_STDDEV_NORMALIZATION},
           {"minimum", OperationType::MINIMUM},
           {"mul", OperationType::MUL},
+          {"not_equal", OperationType::NOT_EQUAL},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
           {"pow", OperationType::POW},
