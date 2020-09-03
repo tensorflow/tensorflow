@@ -491,9 +491,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 
 def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect]>,
       BASE_HLO_ReplicaIdOp {
-  // TODO(prakalps): The output should unsigned 32-bit integer but mlir does
-  // not differentiate between signed and unsigned int.
-  let results = (outs I32Tensor);
+  let results = (outs TensorOf<[UI32]>);
 }
 
 //===----------------------------------------------------------------------===//
