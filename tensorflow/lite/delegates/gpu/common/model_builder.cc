@@ -1993,29 +1993,18 @@ class TransposeOperationParser : public TFLiteOperationParser {
     if (perm.data.size() == 4) {
       attr.perm = BHWC(perm.data[0], perm.data[1], perm.data[2], perm.data[3]);
     } else if (perm.data.size() == 3) {
-      std::vector<Axis> index_to_axis = {Axis::CHANNELS, Axis::WIDTH,
-                                         Axis::BATCH};
-      std::map<Axis, Axis> remap = {
-          {Axis::HEIGHT, Axis::HEIGHT},
-          {index_to_axis[perm.data[2]], Axis::BATCH},
-          {index_to_axis[perm.data[1]], Axis::WIDTH},
-          {index_to_axis[perm.data[0]], Axis::CHANNELS}};
-      attr.perm.b = axis_to_index[remap[Axis::BATCH]];
-      attr.perm.h = axis_to_index[remap[Axis::HEIGHT]];
-      attr.perm.w = axis_to_index[remap[Axis::WIDTH]];
-      attr.perm.c = axis_to_index[remap[Axis::CHANNELS]];
-
+      std::vector<Axis> index_to_axis = {Axis::BATCH, Axis::WIDTH,
+                                         Axis::CHANNELS};
+      attr.perm.b = axis_to_index[index_to_axis[perm.data[0]]];
+      attr.perm.h = 1;
+      attr.perm.w = axis_to_index[index_to_axis[perm.data[1]]];
+      attr.perm.c = axis_to_index[index_to_axis[perm.data[2]]];
     } else if (perm.data.size() == 2) {
-      std::vector<Axis> index_to_axis = {Axis::CHANNELS, Axis::BATCH};
-      std::map<Axis, Axis> remap = {
-          {Axis::HEIGHT, Axis::HEIGHT},
-          {Axis::WIDTH, Axis::WIDTH},
-          {index_to_axis[perm.data[1]], Axis::BATCH},
-          {index_to_axis[perm.data[0]], Axis::CHANNELS}};
-      attr.perm.b = axis_to_index[remap[Axis::BATCH]];
-      attr.perm.h = axis_to_index[remap[Axis::HEIGHT]];
-      attr.perm.w = axis_to_index[remap[Axis::WIDTH]];
-      attr.perm.c = axis_to_index[remap[Axis::CHANNELS]];
+      std::vector<Axis> index_to_axis = {Axis::BATCH, Axis::CHANNELS};
+      attr.perm.b = axis_to_index[index_to_axis[perm.data[0]]];
+      attr.perm.h = 1;
+      attr.perm.w = 2;
+      attr.perm.c = axis_to_index[index_to_axis[perm.data[1]]];
     } else {
       return absl::InvalidArgumentError(
           "Permutation for transpose is invalid.");
