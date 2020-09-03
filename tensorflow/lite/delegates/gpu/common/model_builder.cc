@@ -1192,6 +1192,67 @@ class MulOperationParser : public TFLiteOperationParser {
   }
 };
 
+class PackOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    const TfLitePackParams* tf_options;
+    return RetrieveBuiltinData(tflite_node, &tf_options);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    if (tflite_node->inputs->size == 1) {
+      // Pack with single input can be replaced with Reshape
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::RESHAPE);
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+      // New shape comes from output shape.
+      ReshapeAttributes attr;
+      attr.new_shape = graph->FindOutputs(node->id)[0]->tensor.shape;
+      node->operation.attributes = attr;
+      return absl::OkStatus();
+    } else {
+      // Pack with few inputs can be replaced with Concat
+      const TfLitePackParams* tf_options;
+      RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+
+      // Read inputs first to make sure const node is added to a graph before
+      // concat node to ensure topological order.
+      std::vector<const Value*> inputs;
+      for (uint32_t idx = 0; idx < tflite_node->inputs->size; ++idx) {
+        Value* value;
+        const auto status = reader->ReadValue(idx, &value);
+        if (status.ok()) {
+          inputs.push_back(value);
+        } else {
+          TensorFloat32 tensor;
+          RETURN_IF_ERROR(reader->ReadTensor(idx, &tensor));
+          Value* value;
+          RETURN_IF_ERROR(NewConstNode(std::move(tensor), graph, &value));
+          inputs.push_back(value);
+        }
+      }
+
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::CONCAT);
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+      for (const Value* input : inputs) {
+        RETURN_IF_ERROR(graph->AddConsumer(node->id, input->id));
+      }
+      const TfLiteTensor* output = reader->GetOutputTensor(0);
+      ConcatAttributes attr;
+      RETURN_IF_ERROR(
+          ExtractAxisFromIndex(*output, tf_options->axis, &attr.axis));
+      node->operation.attributes = attr;
+      return absl::OkStatus();
+    }
+  }
+};
+
 class PReLUOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -1417,40 +1478,11 @@ class ReduceOperationParser : public TFLiteOperationParser {
     const TfLiteReducerParams* tf_options;
     RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
 
-    Tensor<Linear, DataType::INT32> axes;
+    Tensor<Scalar, DataType::INT32> axes;
     RETURN_IF_ERROR(reader->ReadTensor(1, &axes));
-
     const TfLiteTensor* input = reader->GetInputTensor(0);
-    const int axis_index =
-        axes.data[0] == -1 ? input->dims->size - 1 : axes.data[0];
-    if (axis_index < 0 || axis_index >= input->dims->size) {
-      return absl::UnimplementedError(
-          "Unknown reduce axis for Reduce operation");
-    }
-    std::vector<Axis> index_to_axis;
-    switch (input->dims->size) {
-      case 1:
-        // B layout
-        index_to_axis = {Axis::BATCH};
-        break;
-      case 2:
-        // BC layout
-        index_to_axis = {Axis::BATCH, Axis::CHANNELS};
-        break;
-      case 3:
-        // BWC layout
-        index_to_axis = {Axis::BATCH, Axis::WIDTH, Axis::CHANNELS};
-        break;
-      case 4:
-        // BHWC layout
-        index_to_axis = {Axis::BATCH, Axis::HEIGHT, Axis::WIDTH,
-                         Axis::CHANNELS};
-        break;
-      default:
-        return absl::UnavailableError("Unknown layout in Reduce op input.");
-    }
     ReduceAttributes attr;
-    attr.axis = index_to_axis[axis_index];
+    RETURN_IF_ERROR(ExtractAxisFromIndex(*input, axes.data[0], &attr.axis));
     node->operation.attributes = attr;
     return absl::OkStatus();
   }
@@ -2577,6 +2609,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<MulOperationParser>();
     case kTfLiteBuiltinNeg:
       return std::make_unique<ElementwiseOperationParser>(OperationType::NEG);
+    case kTfLiteBuiltinPack:
+      return std::make_unique<PackOperationParser>();
     case kTfLiteBuiltinPad:
       return std::make_unique<PadOperationParser>(/*mirror_pad=*/false);
     case kTfLiteBuiltinPow:
