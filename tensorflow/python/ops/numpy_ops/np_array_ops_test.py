@@ -19,8 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
-import numpy as np
 import sys
+import numpy as np
 from six.moves import range
 from six.moves import zip
 
