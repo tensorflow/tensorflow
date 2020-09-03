@@ -25,12 +25,14 @@ from six.moves import range
 from six.moves import zip
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.numpy_ops import np_array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
@@ -821,6 +823,13 @@ class ArrayMethodsTest(test.TestCase):
     run_test(constant_op.constant([1, 1, 1]))
     self.assertRaises(NotImplementedError, np_array_ops.size,
                       np.ones((2, 2)), 1)
+
+    @def_function.function(input_signature=[tensor_spec.TensorSpec(shape=None)])
+    def f(arr):
+      arr = np_array_ops.asarray(arr)
+      return np_array_ops.size(arr)
+
+    self.assertEqual(f(np_array_ops.ones((3, 2))).numpy(), 6)
 
   def testRavel(self):
 
