@@ -28,12 +28,11 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 
 template <typename T>
-__global__ void ApplyAdamKernel(int32 data_dim, T* var, T* m, T* v,
-                                const T* const beta1_power_,
-                                const T* const beta2_power_, const T* const lr_,
-                                const T* const beta1_, const T* const beta2_,
-                                const T* const epsilon_, const T* grad,
-                                bool use_nesterov) {
+__global__ __launch_bounds__(1024) void ApplyAdamKernel(
+    int32 data_dim, T* var, T* m, T* v, const T* const beta1_power_,
+    const T* const beta2_power_, const T* const lr_, const T* const beta1_,
+    const T* const beta2_, const T* const epsilon_, const T* grad,
+    bool use_nesterov) {
   eigen_assert(blockDim.y == 1);
   eigen_assert(blockDim.z == 1);
   eigen_assert(gridDim.y == 1);
@@ -68,7 +67,7 @@ __global__ void ApplyAdamKernel(int32 data_dim, T* var, T* m, T* v,
 }
 
 template <typename T, typename Tindex>
-__global__ void SparseApplyKerasMomentumKernel(
+__global__ __launch_bounds__(1024) void SparseApplyKerasMomentumKernel(
     T* var, T* accum, const T* lr, const T* grad, const Tindex* indices,
     const T* momentum, bool use_nesterov, Tindex param_rows,
     Tindex updates_size, Tindex indices_size) {
@@ -186,9 +185,11 @@ __device__ std::complex<T> impl_rsqrt(std::complex<T> x) {
 }
 
 template <typename T>
-__global__ void ApplyAdagradKernel(GpuLaunchConfig cfg, T* var, T* accum,
-                                   const T* lr, const T* grad,
-                                   bool update_slots) {
+__global__ __launch_bounds__(1024) void ApplyAdagradKernel(GpuLaunchConfig cfg,
+                                                           T* var, T* accum,
+                                                           const T* lr,
+                                                           const T* grad,
+                                                           bool update_slots) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     if (update_slots) accum[i] += grad[i] * grad[i];
     var[i] -= lr[0] * grad[i] * impl_rsqrt(accum[i]);
@@ -196,9 +197,9 @@ __global__ void ApplyAdagradKernel(GpuLaunchConfig cfg, T* var, T* accum,
 }
 
 template <typename T>
-__global__ void ApplyAdagradV2Kernel(GpuLaunchConfig cfg, T* var, T* accum,
-                                     const T* lr, const T* epsilon,
-                                     const T* grad, bool update_slots) {
+__global__ __launch_bounds__(1024) void ApplyAdagradV2Kernel(
+    GpuLaunchConfig cfg, T* var, T* accum, const T* lr, const T* epsilon,
+    const T* grad, bool update_slots) {
   GPU_1D_KERNEL_LOOP(i, cfg.virtual_thread_count) {
     if (update_slots) accum[i] += grad[i] * grad[i];
     T update = grad[i] / (impl_sqrt(accum[i]) + epsilon[0]);
@@ -207,10 +208,9 @@ __global__ void ApplyAdagradV2Kernel(GpuLaunchConfig cfg, T* var, T* accum,
 }
 
 template <typename T>
-__global__ void ApplyAdadeltaKernel(GpuLaunchConfig cfg, T* var, T* accum,
-                                    T* accum_update, const T* plr,
-                                    const T* prho, const T* peps,
-                                    const T* grad) {
+__global__ __launch_bounds__(1024) void ApplyAdadeltaKernel(
+    GpuLaunchConfig cfg, T* var, T* accum, T* accum_update, const T* plr,
+    const T* prho, const T* peps, const T* grad) {
   T rho = prho[0];
   T eps = peps[0];
   T lr = plr[0];
@@ -224,10 +224,9 @@ __global__ void ApplyAdadeltaKernel(GpuLaunchConfig cfg, T* var, T* accum,
 }
 
 template <typename T>
-__global__ void ApplyRMSPropKernel(GpuLaunchConfig cfg, T* var, T* ms, T* mom,
-                                   const T* plr, const T* prho,
-                                   const T* pmomentum, const T* peps,
-                                   const T* grad) {
+__global__ __launch_bounds__(1024) void ApplyRMSPropKernel(
+    GpuLaunchConfig cfg, T* var, T* ms, T* mom, const T* plr, const T* prho,
+    const T* pmomentum, const T* peps, const T* grad) {
   T rho = prho[0];
   T eps = peps[0];
   T lr = plr[0];
@@ -240,10 +239,9 @@ __global__ void ApplyRMSPropKernel(GpuLaunchConfig cfg, T* var, T* ms, T* mom,
 }
 
 template <typename T>
-__global__ void ApplyCenteredRMSPropKernel(GpuLaunchConfig cfg, T* var, T* mg,
-                                           T* ms, T* mom, const T* plr,
-                                           const T* prho, const T* pmomentum,
-                                           const T* peps, const T* grad) {
+__global__ __launch_bounds__(1024) void ApplyCenteredRMSPropKernel(
+    GpuLaunchConfig cfg, T* var, T* mg, T* ms, T* mom, const T* plr,
+    const T* prho, const T* pmomentum, const T* peps, const T* grad) {
   T rho = prho[0];
   T eps = peps[0];
   T lr = plr[0];

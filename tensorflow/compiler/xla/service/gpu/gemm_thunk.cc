@@ -83,24 +83,28 @@ static bool DoGemmWithAlgorithm(
   // Converts from an XLA PrimitiveType to a blas::ComputationType, which is
   // used to specify the precision with which matmul computations should be
   // performed, separately from the precision of the inputs and result.
-  se::blas::ComputationType computation_type = [&](PrimitiveType type) {
-    switch (type) {
-      case F16:
-        // Use F32 as computation type for F16 as we currently only implement
-        // the cuDNN pseudo half configuration for half precision.
-        return se::blas::ComputationType::kF32;
-      case F32:
-        return se::blas::ComputationType::kF32;
-      case F64:
-        return se::blas::ComputationType::kF64;
-      case C64:
-        return se::blas::ComputationType::kComplexF32;
-      case C128:
-        return se::blas::ComputationType::kComplexF64;
-      default:
-        LOG(FATAL) << "Unsupported type.";
-    }
-  }(type);
+  se::blas::ComputationType computation_type;
+  switch (type) {
+    case F16:
+      // Use F32 as computation type for F16 as we currently only implement
+      // the cuDNN pseudo half configuration for half precision.
+      computation_type = se::blas::ComputationType::kF32;
+      break;
+    case F32:
+      computation_type = se::blas::ComputationType::kF32;
+      break;
+    case F64:
+      computation_type = se::blas::ComputationType::kF64;
+      break;
+    case C64:
+      computation_type = se::blas::ComputationType::kComplexF32;
+      break;
+    case C128:
+      computation_type = se::blas::ComputationType::kComplexF64;
+      break;
+    default:
+      return false;
+  }
 
   se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
@@ -297,7 +301,7 @@ Status RunGemm(const HloInstruction *gemm,
             stream, best_algorithm,
             /*output_profile_result=*/profile_result);
       default:
-        LOG(FATAL) << "Unsupported type.";
+        return false;
     }
   }();
 

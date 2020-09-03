@@ -137,9 +137,8 @@ DEF_TL_TEST(8, 7, 7, -1, V(0, 1))
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
   FailTestRMA(const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-              std::shared_ptr<UnboundedWorkQueue> work_queue, int64 step_id,
-              int fail_after)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
+              int64 step_id, int fail_after)
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
         fail_after_(fail_after) {}
 
   bool MaybeFail(const StatusCallback& done) {
@@ -253,10 +252,11 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     }
     dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
     work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
-    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), work_queue_,
-                           kStepId, fail_after);
-    col_exec_ = new BaseCollectiveExecutor(
-        &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
+    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
+                           fail_after);
+    col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
+                                           dev_mgr_.get(),
+                                           gpu_ring_order_.get(), work_queue_);
     col_params_.name = "test_collective";
     col_params_.instance.data_type = dtype;
     static const int kGroupKey = 6;
@@ -518,8 +518,9 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     cp->subdiv_rank.clear();
     cp->instance.impl_details.subdiv_source_rank.clear();
     // Create a stub broadcaster only for testing param initialization.
-    HierarchicalTreeBroadcaster broadcaster;
-    TF_CHECK_OK(broadcaster.InitializeCollectiveParams(cp));
+    HierarchicalTreeBroadcaster* broadcaster = new HierarchicalTreeBroadcaster;
+    core::ScopedUnref unref(broadcaster);
+    TF_CHECK_OK(broadcaster->InitializeCollectiveParams(cp));
     EXPECT_EQ(expected_subdiv_perms,
               cp->instance.impl_details.subdiv_permutations);
     EXPECT_EQ(expected_subdiv_rank, cp->subdiv_rank);
@@ -669,14 +670,16 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
       // Prepare a Broadcaster instance.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      HierarchicalTreeBroadcaster broadcaster;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                &ctx, &op_params, col_params_, exec_key,
-                                kStepId, input_tensor_ptr, output_tensor_ptr);
-      TF_CHECK_OK(broadcaster.InitializeCollectiveContext(&col_ctx));
+      HierarchicalTreeBroadcaster* broadcaster =
+          new HierarchicalTreeBroadcaster;
+      core::ScopedUnref unref(broadcaster);
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
+          col_params_, exec_key, kStepId, input_tensor_ptr, output_tensor_ptr);
+      TF_CHECK_OK(broadcaster->InitializeCollectiveContext(col_ctx));
 
       // Run the broadcast.
-      broadcaster.Run([this](Status s) { status_ = s; });
+      broadcaster->Run([this](Status s) { status_ = s; });
       if (status_.ok()) {
         CHECK(tensor_.CopyFrom(*ctx.mutable_output(0), tensor_.shape()));
       }

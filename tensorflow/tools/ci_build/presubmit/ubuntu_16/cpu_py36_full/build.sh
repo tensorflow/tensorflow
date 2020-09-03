@@ -46,7 +46,7 @@ function run_build () {
   tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test""$(maybe_skip_v1)"
 
   # Get the default test targets for bazel.
-  source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
+  source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
   # Run bazel test command. Double test timeouts to avoid flakes.
   # //tensorflow/core/platform:setround_test is not supported. See b/64264700

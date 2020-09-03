@@ -1,3 +1,4 @@
+load("@bazel_skylib//:bzl_library.bzl", "bzl_library")
 load(
     "//tensorflow/lite/micro/testing:micro_test.bzl",
     "tflite_micro_cc_test",
@@ -77,4 +78,11 @@ py_binary(
         "//third_party/py/numpy",
         "@absl_py//absl:app",
     ],
+)
+
+bzl_library(
+    name = "micro_test_bzl",
+    srcs = ["micro_test.bzl"],
+    visibility = ["//visibility:private"],
+    deps = ["//tensorflow/lite/micro:build_def_bzl"],
 )

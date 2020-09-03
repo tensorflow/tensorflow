@@ -36,6 +36,7 @@ message XPlane {
   map<int64, XStatMetadata> stat_metadata = 5;
 
   // XStats associated with this plane, e.g. device capabilities.
+  // Each of these XStats should have a different metadata_id.
   repeated XStat stats = 6;
 }
 
@@ -89,6 +90,7 @@ message XEvent {
   int64 duration_ps = 3;
 
   // XStats associated with the event.
+  // Each of these XStats should have a different metadata_id.
   repeated XStat stats = 4;
 }
 
@@ -112,8 +114,9 @@ message XStat {
   }
 }
 
-// Metadata for an XEvent, shared by all instances of the same event.
-// Next ID: 5
+// Metadata for an XEvent, corresponds to an event type and is shared by
+// all XEvents with the same metadata_id.
+// Next ID: 6
 message XEventMetadata {
   // XPlane.event_metadata map key.
   int64 id = 1;
@@ -126,15 +129,21 @@ message XEventMetadata {
 
   // Additional metadata in serialized format.
   bytes metadata = 3;
+
+  // XStats that are constant for all XEvents with the same metadata_id.
+  // Each of these XStats should have a different metadata_id.
+  repeated XStat stats = 5;
 }
 
-// Metadata for an XStat, shared by all instances of the same stat.
+// Metadata for an XStat, corresponds to a stat type and is shared by all
+// XStats with the same metadata_id.
 // Next ID: 4
 message XStatMetadata {
   // XPlane.stat_metadata map key.
   int64 id = 1;
 
   // Name of the stat (should be short).
+  // Two XStatMetadata with different id should have different names.
   string name = 2;
 
   // Description of the stat (might be long).

@@ -31,48 +31,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class PReLU : public ElementwiseOperation {
- public:
-  PReLU() = default;
-  // Move only
-  PReLU(PReLU&& operation);
-  PReLU& operator=(PReLU&& operation);
-  PReLU(const PReLU&) = delete;
-  PReLU& operator=(const PReLU&) = delete;
-
-  friend absl::Status CreatePReLU(const CreationContext& creation_context,
-                                  const OperationDef& definition,
-                                  const PReLUAttributes& attr, PReLU* result);
-
- private:
-  PReLU(const OperationDef& definition, const PReLUAttributes& attr,
-        CalculationsPrecision scalar_precision);
-
-  template <DataType T>
-  absl::Status UploadParameters(
-      const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context);
-};
-
-absl::Status CreatePReLU(const CreationContext& creation_context,
+GPUOperation CreatePReLU(const DeviceInfo& device_info,
                          const OperationDef& definition,
-                         const PReLUAttributes& attr, PReLU* result);
-
-template <DataType T>
-absl::Status PReLU::UploadParameters(
-    const tflite::gpu::Tensor<Linear, T>& parameters, CLContext* context) {
-  TensorLinearDescriptor desc;
-  desc.storage_type =
-      DeduceLinearStorageType(definition_.GetPrimaryStorageType());
-  desc.element_type = definition_.GetPrimaryDataType();
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(CreateLinearStorage(desc, parameters, context, &lt));
-  args_.AddObject("alpha", AccessType::READ,
-                  absl::make_unique<LinearStorage>(std::move(lt)),
-                  absl::make_unique<TensorLinearDescriptor>(desc));
-
-  return absl::OkStatus();
-}
+                         const PReLUAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

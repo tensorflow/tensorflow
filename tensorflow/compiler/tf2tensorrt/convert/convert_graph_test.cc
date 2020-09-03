@@ -71,7 +71,7 @@ class FakeCluster : public grappler::Cluster {
   }
 
  private:
-  const DeviceSet* device_set_;
+  const DeviceSet* device_set_ = nullptr;
 };
 
 TEST(ConvertGraphTest, GetDeviceAndAllocator) {

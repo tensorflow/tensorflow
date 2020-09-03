@@ -1,5 +1,3 @@
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
-
 package(
     default_visibility = [
         "//visibility:public",

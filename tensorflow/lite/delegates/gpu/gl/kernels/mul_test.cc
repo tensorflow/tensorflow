@@ -41,7 +41,7 @@ TEST(MulTest, Scalar) {
   output.ref = 1;
   output.shape = BHWC(1, 2, 2, 1);
 
-  MultiplyAttributes attr;
+  ElementwiseAttributes attr;
   attr.param = 2.f;
 
   SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
@@ -61,7 +61,7 @@ TEST(MulTest, Linear) {
   output.ref = 1;
   output.shape = BHWC(1, 1, 2, 2);
 
-  MultiplyAttributes attr;
+  ElementwiseAttributes attr;
   Tensor<Linear, DataType::FLOAT32> tensor;
   tensor.shape.v = 2;
   tensor.id = 1;
@@ -72,6 +72,32 @@ TEST(MulTest, Linear) {
   ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
   ASSERT_OK(model.Invoke(*NewMultiplyNodeShader()));
   EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {2, 6, 6, 12}));
+}
+
+TEST(MulTest, ConstTensor3D) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 1, 2, 2);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 1;
+  output.shape = BHWC(1, 1, 2, 2);
+
+  ElementwiseAttributes attr;
+  Tensor<HWC, DataType::FLOAT32> tensor_3d;
+  tensor_3d.shape.h = 1;
+  tensor_3d.shape.w = 2;
+  tensor_3d.shape.c = 2;
+  tensor_3d.id = 2;
+  tensor_3d.data = {-2, 2, -3, 3};
+  attr.param = std::move(tensor_3d);
+
+  SingleOpModel model({ToString(OperationType::MUL), attr}, {input}, {output});
+  ASSERT_TRUE(model.PopulateTensor(0, {1, 2, 3, 4}));
+  ASSERT_OK(model.Invoke(*NewMultiplyNodeShader()));
+  EXPECT_THAT(model.GetOutput(0), Pointwise(FloatNear(1e-6), {-2, 4, -9, 12}));
 }
 
 TEST(MulTest, MaskChannel1) {

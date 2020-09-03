@@ -68,17 +68,6 @@ cc_library(
     alwayslink = 1,
 )
 
-cc_library(
-    name = "tensorflow_js_dialect_registration",
-    srcs = [
-        "ir/dialect_registration.cc",
-    ],
-    deps = [
-        ":tensorflow_js",
-    ],
-    alwayslink = 1,
-)
-
 gentbl(
     name = "tfjs_optimize_inc_gen",
     tbl_outs = [
@@ -107,7 +96,6 @@ cc_library(
     ],
     deps = [
         ":tensorflow_js",
-        ":tensorflow_js_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
@@ -149,7 +137,6 @@ cc_library(
     ],
     deps = [
         ":tensorflow_js",
-        ":tensorflow_js_dialect_registration",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/tensorflow:convert_graphdef",
         "//tensorflow/compiler/mlir/tensorflow:export_utils",
@@ -234,5 +221,22 @@ tf_cc_binary(
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
+    ],
+)
+
+tf_cc_binary(
+    name = "tfjs-opt",
+    srcs = [
+        "tfjs_opt.cc",
+    ],
+    deps = [
+        ":tensorflow_js",
+        ":tensorflow_js_passes",
+        "//tensorflow/compiler/mlir:init_mlir",
+        "//tensorflow/compiler/mlir/lite:tensorflow_lite_legalize_tf",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
+        "@llvm-project//mlir:MlirOptLib",
+        "@llvm-project//mlir:StandardOps",
     ],
 )

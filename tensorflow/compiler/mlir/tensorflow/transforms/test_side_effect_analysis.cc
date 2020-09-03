@@ -39,11 +39,13 @@ namespace {
 // A pass that adds "Predecessors" and "Successors" remarks for each op based on
 // SideEffectAnalysis result. For testing purpose only.
 struct TestSideEffectAnalysis
-    : public mlir::PassWrapper<TestSideEffectAnalysis, FunctionPass> {
-  void runOnFunction() override {
+    : public TF::PerFunctionAggregateAnalysisConsumerPass<
+          TestSideEffectAnalysis, TF::SideEffectAnalysis> {
+  void runOnFunction(FuncOp func,
+                     const TF::SideEffectAnalysis::Info& analysis) {
     int64_t next_id = 0;
     llvm::SmallDenseMap<Operation*, int64_t, 8> ids;
-    getFunction().walk([&](Operation* op) {
+    func.walk([&](Operation* op) {
       ids[op] = next_id++;
       op->emitRemark("ID: ") << ids[op];
     });
@@ -53,8 +55,7 @@ struct TestSideEffectAnalysis
       for (auto op : ops) id_vec.push_back(std::to_string(ids[op]));
       return llvm::join(id_vec, ",");
     };
-    auto& analysis = getAnalysis<TF::SideEffectAnalysis>();
-    getFunction().walk([&](Operation* op) {
+    func.walk([&](Operation* op) {
       if (!analysis.DirectControlPredecessors(op).empty()) {
         op->emitRemark("Predecessors: ")
             << "{" << join_ids(analysis.DirectControlPredecessors(op)) << "}";

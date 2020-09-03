@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
 from tensorflow.python.keras.layers.preprocessing import category_encoding_v1
 from tensorflow.python.keras.layers.preprocessing import string_lookup_v1
@@ -75,6 +76,20 @@ class TextVectorization(text_vectorization.TextVectorization,
       outputs padded to max_tokens, even if the number of unique tokens in the
       vocabulary is less than max_tokens.
   """
+
+  def __init__(self,
+               max_tokens=None,
+               standardize=text_vectorization.LOWER_AND_STRIP_PUNCTUATION,
+               split=text_vectorization.SPLIT_ON_WHITESPACE,
+               ngrams=None,
+               output_mode=text_vectorization.INT,
+               output_sequence_length=None,
+               pad_to_max_tokens=True,
+               **kwargs):
+    super(TextVectorization,
+          self).__init__(max_tokens, standardize, split, ngrams, output_mode,
+                         output_sequence_length, pad_to_max_tokens, **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell("V1").set("TextVectorization")
 
   def _get_vectorization_class(self):
     return category_encoding_v1.CategoryEncoding

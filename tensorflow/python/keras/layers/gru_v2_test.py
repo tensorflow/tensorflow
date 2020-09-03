@@ -34,7 +34,6 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -82,7 +81,7 @@ class GRUV2Test(keras_parameterized.TestCase):
                     reset_after=reset_after)
     self.assertFalse(layer._could_use_gpu_kernel)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_use_on_default_activation_with_gpu_kernel(self):
     layer = rnn.GRU(1, activation=nn.tanh)
     self.assertTrue(layer._could_use_gpu_kernel)
@@ -149,7 +148,7 @@ class GRUV2Test(keras_parameterized.TestCase):
       l2 = layer_class.from_config(l1.get_config())
       assert l1.get_config() == l2.get_config()
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_gru_v2_feature_parity_with_canonical_gru(self):
     if test.is_built_with_rocm():
       self.skipTest('Skipping the test as ROCm MIOpen does not '
@@ -186,7 +185,7 @@ class GRUV2Test(keras_parameterized.TestCase):
     gru_model.fit(x_train, y_train)
     y_2 = gru_model.predict(x_train)
 
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       cudnn_layer = rnn.GRU(rnn_state_size,
                             recurrent_activation='sigmoid',
                             reset_after=True)
@@ -249,14 +248,14 @@ class GRUV2Test(keras_parameterized.TestCase):
 
     inputs = keras.layers.Input(
         shape=[timestep, input_shape], dtype=dtypes.float32)
-    with test_util.device(use_gpu=False):
+    with testing_utils.device(should_use_gpu=False):
       layer = rnn.GRU(rnn_state_size)
       output = layer(inputs)
       cpu_model = keras.models.Model(inputs, output)
       weights = cpu_model.get_weights()
       y_1 = cpu_model.predict(x_train)
 
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       layer = rnn.GRU(rnn_state_size)
       output = layer(inputs)
       gpu_model = keras.models.Model(inputs, output)
@@ -266,7 +265,7 @@ class GRUV2Test(keras_parameterized.TestCase):
     # Note that CuDNN uses 'sigmoid' as activation, so the GRU V2 uses
     # 'sigmoid' as default. Construct the canonical GRU with sigmoid to achieve
     # the same output.
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       layer = rnn_v1.GRU(rnn_state_size,
                          recurrent_activation='sigmoid',
                          reset_after=True)
@@ -366,7 +365,7 @@ class GRUV2Test(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_float64_GRU(self):
     if test.is_built_with_rocm():
       self.skipTest('Double type is yet not supported in ROCm')
@@ -566,7 +565,7 @@ class GRUV2Test(keras_parameterized.TestCase):
         run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, epochs=1, shuffle=False)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_explicit_device_with_go_backward_and_mask(self):
     if test.is_built_with_rocm():
       self.skipTest('Skipping the test as ROCm MIOpen does not '
@@ -583,14 +582,14 @@ class GRUV2Test(keras_parameterized.TestCase):
 
     # Test for V1 behavior.
     lstm_v1 = rnn_v1.GRU(units, return_sequences=True, go_backwards=True)
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       outputs_masked_v1 = lstm_v1(inputs, mask=constant_op.constant(mask))
       outputs_trimmed_v1 = lstm_v1(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked_v1[:, -masksteps:], outputs_trimmed_v1)
 
     # Test for V2 behavior.
     lstm = rnn.GRU(units, return_sequences=True, go_backwards=True)
-    with test_util.device(use_gpu=True):
+    with testing_utils.device(should_use_gpu=True):
       outputs_masked = lstm(inputs, mask=constant_op.constant(mask))
       outputs_trimmed = lstm(inputs[:, :masksteps])
     self.assertAllClose(outputs_masked[:, -masksteps:], outputs_trimmed)
@@ -704,7 +703,7 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     else:
       self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_GRU_runtime(self):
     layer = rnn.GRU(self.rnn_state_size, return_runtime=True)
 
@@ -720,7 +719,7 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[outputs, runtime])
     self._test_runtime_with_model(model)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_GRU_runtime_with_mask(self):
     if test.is_built_with_rocm():
       self.skipTest('Skipping the test as ROCm MIOpen does not '
@@ -779,7 +778,7 @@ class GRUGraphRewriteTest(keras_parameterized.TestCase):
     _, runtime_value = model.predict(x_train)
     self.assertEqual(runtime_value[0], rnn._RUNTIME_CPU)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_GRU_runtime_with_cond(self):
     # This test is to demonstrate the graph rewrite of grappler plugin under
     # the condition that the function returns different number of internal

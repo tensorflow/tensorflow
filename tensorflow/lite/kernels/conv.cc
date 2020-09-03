@@ -888,13 +888,16 @@ void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
       GetTemporary(context, node, data->scaling_factors_index));
 
   // Per-batch input quantization for higher accuracy.
-  for (int b = 0; b < batch_size; ++b) {
-    float unused_min, unused_max;
-    const int offset = b * input_size;
-    tensor_utils::SymmetricQuantizeFloats(
-        input_ptr + offset, input_size, quantized_input_ptr_batch + offset,
-        &unused_min, &unused_max, &scaling_factors_ptr[b]);
-    scaling_factors_ptr[b] *= filter->params.scale;
+  {
+    ruy::profiler::ScopeLabel label("ConvHybridQuantizeInputs");
+    for (int b = 0; b < batch_size; ++b) {
+      float unused_min, unused_max;
+      const int offset = b * input_size;
+      tensor_utils::SymmetricQuantizeFloats(
+          input_ptr + offset, input_size, quantized_input_ptr_batch + offset,
+          &unused_min, &unused_max, &scaling_factors_ptr[b]);
+      scaling_factors_ptr[b] *= filter->params.scale;
+    }
   }
 
   switch (kernel_type) {
@@ -902,8 +905,7 @@ void EvalHybrid(TfLiteContext* context, TfLiteNode* node,
     case kGenericOptimized:
     case kMultithreadOptimized:
     case kCblasOptimized: {
-      // There is only one implementation for hybrid kernel. Note
-      // this does not make use of gemmlowp nor supports multithreading.
+      // There is only one implementation for hybrid kernel.
       ConvParams op_params;
       op_params.padding_type = PaddingType::kSame;
       op_params.padding_values.width = data->padding.width;

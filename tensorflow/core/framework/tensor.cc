@@ -1007,9 +1007,9 @@ inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a,
 }
 inline string PrintOneElement(const tstring& a, bool print_v2) {
   if (print_v2) {
-    return "\"" + absl::CEscape(a) + "\"";
+    return "\"" + absl::Utf8SafeCEscape(a) + "\"";
   } else {
-    return absl::CEscape(a);
+    return absl::Utf8SafeCEscape(a);
   }
 }
 inline float PrintOneElement(const Eigen::half& h, bool print_v2) {

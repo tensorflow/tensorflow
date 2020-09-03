@@ -66,6 +66,8 @@ def LHLO_PredOrIntBuffer : MemRefOf<[HLO_Int, HLO_Pred]>;
 
 def LHLO_Buffer : MemRefOf<[AnyFloat, AnySignlessInteger, AnyComplex]>;
 
+def LHLO_ExtentBuffer : MemRefRankOf<[AnySignlessInteger, Index], [1]>;
+
 //===----------------------------------------------------------------------===//
 // LMHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -79,6 +81,8 @@ def LHLO_ConstOp : LHLO_Op<"constant", []>, BASE_HLO_ConstOp {
     ElementsAttr:$value,
     Arg<LHLO_Buffer, "", [MemWrite]>:$output
   );
+
+  let hasCanonicalizer = 1;
 }
 
 def LHLO_IotaOp : LHLO_Op<"iota", []>, BASE_HLO_IotaOp {
@@ -467,7 +471,7 @@ def ReshapeMemRefCastOp: Op<LHLO_Dialect, "reshape_memref_cast", [
 
   let arguments = (ins
     AnyRankedOrUnrankedMemRef:$operand,
-    MemRefRankOf<[AnySignlessInteger], [1]>:$shape
+    LHLO_ExtentBuffer:$shape
   );
   let results = (outs AnyRankedOrUnrankedMemRef:$result);
 

@@ -32,6 +32,7 @@ from tensorflow.python.framework import function as framework_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.lib.io import file_io
@@ -629,6 +630,15 @@ class LoadTest(test.TestCase):
         self.evaluate(
             imported.signatures["serving_default"](constant_op.constant(2.))),
         {"y": [10, 8, 6, 4, 2, 0]})
+
+  def test_structured_input_signature(self):
+    path = self._v1_single_metagraph_saved_model(False)
+    imported = load.load(path)
+    args, kwargs = (
+        imported.signatures["serving_default"].structured_input_signature)
+    self.assertEqual(args, ())
+    self.assertAllEqual(
+        kwargs, {"start": tensor_spec.TensorSpec(shape=None, name="start")})
 
 
 if __name__ == "__main__":

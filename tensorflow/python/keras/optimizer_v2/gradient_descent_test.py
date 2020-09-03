@@ -702,6 +702,25 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
     self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
+  def testMinimizeLossTensor(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
+      var1 = variables.Variable([3.0], dtype=dtype)
+      x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+
+      tape = backprop.GradientTape()
+      with tape:
+        loss = math_ops.matmul(var0, x) + var1
+      sgd = gradient_descent.SGD(1.0)
+      with self.assertRaisesRegex(ValueError, "`tape` is required"):
+        sgd.minimize(loss, [var0, var1])
+      sgd.minimize(loss, [var0, var1], tape=tape)
+
+      self.assertAllCloseAccordingToType([[1.0 - 4.0, 2.0 - 5.0]],
+                                         self.evaluate(var0))
+      self.assertAllCloseAccordingToType([3.0 - 1.0], self.evaluate(var1))
+
 
 if __name__ == "__main__":
   test.main()

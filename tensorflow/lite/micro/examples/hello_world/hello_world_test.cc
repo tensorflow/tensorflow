@@ -26,13 +26,12 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // Set up logging
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model = ::tflite::GetModel(g_model);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    TF_LITE_REPORT_ERROR(error_reporter,
+    TF_LITE_REPORT_ERROR(&micro_error_reporter,
                          "Model provided is schema version %d not equal "
                          "to supported version %d.\n",
                          model->version(), TFLITE_SCHEMA_VERSION);
@@ -52,8 +51,8 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   uint8_t tensor_arena[tensor_arena_size];
 
   // Build an interpreter to run the model with
-  tflite::MicroInterpreter interpreter(model, resolver, tensor_arena,
-                                       tensor_arena_size, error_reporter);
+  tflite::MicroInterpreter interpreter(
+      model, resolver, tensor_arena, tensor_arena_size, &micro_error_reporter);
   // Allocate memory from the tensor_arena for the model's tensors
   TF_LITE_MICRO_EXPECT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
 
@@ -95,7 +94,7 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   // Obtain the output value from the tensor
   float value = output->data.f[0];
   // Check that the output value is within 0.05 of the expected value
-  TF_LITE_MICRO_EXPECT_NEAR(0., value, 0.05);
+  TF_LITE_MICRO_EXPECT_NEAR(0.f, value, 0.05f);
 
   // Run inference on several more values and confirm the expected outputs
   input->data.f[0] = 1.;
@@ -103,21 +102,21 @@ TF_LITE_MICRO_TEST(LoadModelAndPerformInference) {
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
   value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(0.841, value, 0.05);
+  TF_LITE_MICRO_EXPECT_NEAR(0.841f, value, 0.05f);
 
-  input->data.f[0] = 3.;
+  input->data.f[0] = 3.f;
   invoke_status = interpreter.Invoke();
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
   value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(0.141, value, 0.05);
+  TF_LITE_MICRO_EXPECT_NEAR(0.141f, value, 0.05f);
 
-  input->data.f[0] = 5.;
+  input->data.f[0] = 5.f;
   invoke_status = interpreter.Invoke();
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
   value = output->data.f[0];
-  TF_LITE_MICRO_EXPECT_NEAR(-0.959, value, 0.05);
+  TF_LITE_MICRO_EXPECT_NEAR(-0.959f, value, 0.05f);
 }
 
 TF_LITE_MICRO_TESTS_END

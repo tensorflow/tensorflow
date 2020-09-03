@@ -82,6 +82,9 @@ class ExecutableBuildOptions {
   bool use_spmd_partitioning() const { return use_spmd_partitioning_; }
   ExecutableBuildOptions& set_use_spmd_partitioning(bool use_spmd_partitioning);
 
+  bool deduplicate_hlo() const { return deduplicate_hlo_; }
+  ExecutableBuildOptions& set_deduplicate_hlo(bool deduplicate_hlo);
+
   // If set, this specifies a static device assignment for the computation.
   // Otherwise, the computation will be compiled generically and can be run with
   // any device assignment compatible with the computation's replica and
@@ -110,6 +113,7 @@ class ExecutableBuildOptions {
   int num_replicas_ = 1;
   int num_partitions_ = 1;
   bool use_spmd_partitioning_ = false;
+  bool deduplicate_hlo_ = false;
   absl::optional<DeviceAssignment> device_assignment_;
   bool alias_passthrough_params_ = false;
 };

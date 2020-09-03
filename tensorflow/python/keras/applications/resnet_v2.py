@@ -15,7 +15,7 @@
 # pylint: disable=invalid-name
 """ResNet v2 models for Keras.
 
-Reference paper:
+Reference:
   - [Identity Mappings in Deep Residual Networks]
     (https://arxiv.org/abs/1603.05027) (CVPR 2016)
 """

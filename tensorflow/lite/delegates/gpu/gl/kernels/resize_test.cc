@@ -180,6 +180,58 @@ TEST(ResizeTest, Nearest1x2x1To2x4x1) {
       Pointwise(FloatNear(1e-6), {1.0, 1.0, 2.0, 2.0, 1.0, 1.0, 2.0, 2.0}));
 }
 
+TEST(ResizeTest, NearestAlignCorners) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 3, 3, 1);
+
+  Resize2DAttributes attr;
+  attr.align_corners = true;
+  attr.half_pixel_centers = false;
+  attr.new_shape = HW(3, 3);
+  attr.type = SamplingType::NEAREST;
+
+  SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input},
+                      {output});
+  ASSERT_TRUE(model.PopulateTensor(0, {3.0f, 6.0f, 9.0f, 12.0f}));
+  ASSERT_OK(model.Invoke(*NewResizeNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {3.0f, 6.0f, 6.0f, 9.0f, 12.0f, 12.0f,
+                                          9.0f, 12.0f, 12.0f}));
+}
+
+TEST(ResizeTest, NearestHalfPixelCenters) {
+  TensorRef<BHWC> input;
+  input.type = DataType::FLOAT32;
+  input.ref = 0;
+  input.shape = BHWC(1, 2, 2, 1);
+
+  TensorRef<BHWC> output;
+  output.type = DataType::FLOAT32;
+  output.ref = 2;
+  output.shape = BHWC(1, 3, 3, 1);
+
+  Resize2DAttributes attr;
+  attr.align_corners = false;
+  attr.half_pixel_centers = true;
+  attr.new_shape = HW(3, 3);
+  attr.type = SamplingType::NEAREST;
+
+  SingleOpModel model({ToString(OperationType::RESIZE), attr}, {input},
+                      {output});
+  ASSERT_TRUE(model.PopulateTensor(0, {3.0f, 6.0f, 9.0f, 12.0f}));
+  ASSERT_OK(model.Invoke(*NewResizeNodeShader()));
+  EXPECT_THAT(model.GetOutput(0),
+              Pointwise(FloatNear(1e-6), {3.0f, 6.0f, 6.0f, 9.0f, 12.0f, 12.0f,
+                                          9.0f, 12.0f, 12.0f}));
+}
+
 }  // namespace
 }  // namespace gl
 }  // namespace gpu

@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
 #include "mlir/Interfaces/SideEffectInterfaces.h"  // from @llvm-project
 #include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/c/eager/c_api.h"
@@ -68,7 +69,7 @@ static bool ShouldBeFolded(Operation* inst) {
 
 LogicalResult ConstantFoldFallbackHook(
     Operation* inst, ArrayRef<Attribute> operands,
-    SmallVectorImpl<Attribute>& results) {  // NOLINT
+    SmallVectorImpl<OpFoldResult>& results) {  // NOLINT
   // Instructions with side effects should not be constant folded to preserve
   // the original semantics.
   if (inst->getNumRegions() != 0 || !MemoryEffectOpInterface::hasNoEffect(inst))
@@ -126,8 +127,16 @@ LogicalResult ConstantFoldFallbackHook(
   // TODO(jpienaar): Avoid using global context & mutex here.
   static auto* mu = new tensorflow::mutex();
   tensorflow::mutex_lock l(*mu);
-  return tensorflow::EvaluateOperation(inst, inputs, ctx, &results);
+  SmallVector<Attribute, 8> constants;
+  LogicalResult status =
+      tensorflow::EvaluateOperation(inst, inputs, ctx, &constants);
+  results.assign(constants.begin(), constants.end());
+  return status;
 }
+
+static bool init_hooks = ([] () {
+  TensorFlowDialect::RegisterConstantFoldHook(ConstantFoldFallbackHook);
+}(), true);
 
 }  // namespace TF
 }  // namespace mlir

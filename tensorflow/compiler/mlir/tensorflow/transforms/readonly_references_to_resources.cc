@@ -160,7 +160,7 @@ void ConvertReadonlyReferenceVariablesToResourceVariablesPass::runOnFunction() {
       builder.setInsertionPoint(user);
       ReadVariableOp read_variable_op = builder.create<ReadVariableOp>(
           user->getLoc(), ArrayRef<Type>{tensor_type},
-          ArrayRef<Value>{var_handle_op}, ArrayRef<NamedAttribute>{});
+          ArrayRef<Value>{var_handle_op});
       user->getResult(0).replaceAllUsesWith(read_variable_op.getResult());
       user->erase();
     }

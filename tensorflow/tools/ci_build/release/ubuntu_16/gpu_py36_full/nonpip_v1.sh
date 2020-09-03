@@ -35,12 +35,12 @@ export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.6)
 export PROJECT_NAME="tensorflow_gpu"
 export LD_LIBRARY_PATH="/usr/local/cuda:/usr/local/cuda/lib64:/usr/local/cuda/extras/CUPTI/lib64:$TENSORRT_INSTALL_PATH/lib"
-export TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_37,sm_52,sm_60,sm_61,compute_70
+export TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_50,sm_60,sm_70,sm_75,compute_80
 
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Get the default test targets for bazel.
-source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
+source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 tag_filters="gpu,requires-gpu,-no_gpu,-no_oss,-oss_serial,-no_oss_py36"
 

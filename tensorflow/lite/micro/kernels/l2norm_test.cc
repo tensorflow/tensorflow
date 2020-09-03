@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/micro/all_ops_resolver.h"
+#include "tensorflow/lite/micro/kernels/kernel_runner.h"
 #include "tensorflow/lite/micro/testing/micro_test.h"
 #include "tensorflow/lite/micro/testing/test_utils.h"
 
@@ -23,7 +24,7 @@ namespace tflite {
 namespace testing {
 namespace {
 
-// used to set the quantization parameters for the int8 and uint8 tests
+// used to set the quantization parameters for the int8_t and uint8_t tests
 constexpr float kInputMin = -2.0;
 constexpr float kInputMax = 2.0;
 constexpr float kOutputMin = -1.0;
@@ -50,7 +51,7 @@ TfLiteTensor CreateL2NormTensor(const float* data, TfLiteIntArray* dims,
   return CreateFloatTensor(data, dims);
 }
 
-TfLiteTensor CreateL2NormTensor(const uint8* data, TfLiteIntArray* dims,
+TfLiteTensor CreateL2NormTensor(const uint8_t* data, TfLiteIntArray* dims,
                                 bool is_input) {
   TfLiteTensor tensor;
 
@@ -64,7 +65,7 @@ TfLiteTensor CreateL2NormTensor(const uint8* data, TfLiteIntArray* dims,
   return tensor;
 }
 
-TfLiteTensor CreateL2NormTensor(const int8* data, TfLiteIntArray* dims,
+TfLiteTensor CreateL2NormTensor(const int8_t* data, TfLiteIntArray* dims,
                                 bool is_input) {
   TfLiteTensor tensor;
 
@@ -97,31 +98,23 @@ void TestL2Normalization(const int* input_dims_data, const T* input_data,
       CreateL2NormTensor(output_data, dims, false),
   };
 
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, micro_test::reporter, &context);
-  ::tflite::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_L2_NORMALIZATION);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
-
-  TfLiteL2NormParams builtin_data = {
-      .activation = kTfLiteActNone,
-  };
-
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.user_data = nullptr;
-  node.builtin_data = reinterpret_cast<void*>(&builtin_data);
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  TfLiteL2NormParams builtin_data = {
+      .activation = kTfLiteActNone,
+  };
+
+  const TfLiteRegistration registration =
+      ops::micro::Register_L2_NORMALIZATION();
+  micro::KernelRunner runner(
+      registration, tensors, tensors_size, inputs_array, outputs_array,
+      reinterpret_cast<void*>(&builtin_data), micro_test::reporter);
+
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   // Compare the results from dequantization and expected outputs, and make
   // sure the difference is within a threshold.

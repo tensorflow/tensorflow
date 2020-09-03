@@ -86,6 +86,17 @@ class AlgebraicSimplifierOptions {
   }
   bool enable_conv_operand_swap() const { return enable_conv_operand_swap_; }
 
+  // Move constant scalar multiply to one operand or output of convolutions with
+  // the smallest tensor size, to reduce the number of scalar multiply.
+  void set_enable_scalar_multiply_reduction(
+      bool enable_scalar_multiply_reduction) {
+    enable_scalar_multiply_reduction_ = enable_scalar_multiply_reduction;
+  }
+
+  bool enable_scalar_multiply_reduction() const {
+    return enable_scalar_multiply_reduction_;
+  }
+
   // If enable_window_reduce_replacement is true, the kReduceWindow instruction
   // can be optimized by replacement with simpler operations.
   void set_enable_window_reduce_to_reduce_replacement(
@@ -146,6 +157,7 @@ class AlgebraicSimplifierOptions {
   bool enable_dot_to_multiply_rewrite_{true};
   bool enable_conv_simplification_{true};
   bool enable_conv_operand_swap_{true};
+  bool enable_scalar_multiply_reduction_{false};
   bool enable_window_reduce_to_reduce_replacement_{true};
   bool enable_reduce_of_reshape_{true};
   bool replace_transpose_with_bitcast_{true};

@@ -33,7 +33,6 @@ limitations under the License.
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -162,11 +161,7 @@ std::unique_ptr<ProfilerInterface> CreateHostTracer(
 }
 
 auto register_host_tracer_factory = [] {
-  bool enable;
-  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_OSS_CPU_PROFILER", true, &enable));
-  if (enable) {
-    RegisterProfilerFactory(&CreateHostTracer);
-  }
+  RegisterProfilerFactory(&CreateHostTracer);
   return 0;
 }();
 

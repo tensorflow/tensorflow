@@ -151,7 +151,7 @@ int main() {
   // Output scale of 50 is needed to accomodate a float range of [-6400, 6350]
   float output_scale = 50.0f;
 
-  // Create per-tensor quantized int8 input tensor.
+  // Create per-tensor quantized int8_t input tensor.
   int8_t input_quantized[32];
   TfLiteTensor input_tensor = tflite::testing::CreateQuantizedTensor(
       input_values, input_quantized, input_dims, input_scale, input_zero_point);
@@ -163,7 +163,7 @@ int main() {
       tflite::testing::IntArrayFromInts(input_zero_points)};
   input_tensor.quantization = {kTfLiteAffineQuantization, &input_quant};
 
-  // Create per-tensor quantized int8 filter tensor.
+  // Create per-tensor quantized int8_t filter tensor.
   int8_t filter_quantized[32 * 32];
   TfLiteTensor filter_tensor = tflite::testing::CreateQuantizedTensor(
       filter_values, filter_quantized, filter_dims, filter_scale,
@@ -176,7 +176,7 @@ int main() {
       tflite::testing::IntArrayFromInts(filter_zero_points)};
   filter_tensor.quantization = {kTfLiteAffineQuantization, &filter_quant};
 
-  // Create per-tensor quantized int32 bias tensor.
+  // Create per-tensor quantized int32_t bias tensor.
   int32_t bias_quantized[32];
   tflite::SymmetricQuantize(bias_values, bias_quantized, 32,
                             input_scale * output_scale);
@@ -192,7 +192,7 @@ int main() {
       tflite::testing::IntArrayFromInts(bias_zero_points)};
   bias_tensor.quantization = {kTfLiteAffineQuantization, &bias_quant};
 
-  // Create per-tensor quantized int8 output tensor.
+  // Create per-tensor quantized int8_t output tensor.
   int8_t output_quantized[32];
   TfLiteTensor output_tensor = tflite::testing::CreateQuantizedTensor(
       output_quantized, output_dims, output_scale, output_zero_point);

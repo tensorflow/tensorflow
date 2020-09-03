@@ -1856,5 +1856,104 @@ TEST_F(XlaCompilerTest, DoNotConstantFoldShapeOp) {
   EXPECT_TRUE(xla::LiteralTestUtil::Equal(expected_literal, actual_literal));
 }
 
+TEST_F(XlaCompilerTest, AliasResourceUpdates) {
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::Const<int32>(scope.WithOpName("A"), {1, 2});
+  auto var = ops::_Arg(scope.WithOpName("V"), DT_RESOURCE, 1);
+  auto write = ops::AssignAddVariableOp(scope, var, a);
+  auto read = ops::ReadVariableOp(
+      scope.WithControlDependencies(std::vector<Operation>{write}), var,
+      DT_INT32);
+  auto d = ops::_Retval(scope.WithOpName("D"), read, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kConstant;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+  args[0].constant_value = Tensor(DT_INT32, {1, 1});
+  args[0].initialized = true;
+
+  args[1].kind = XlaCompiler::Argument::kResource;
+  args[1].resource_kind = XlaResource::kVariable;
+  args[1].initialized = true;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({2});
+
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompileOptions compile_options;
+  compile_options.alias_resource_update = true;
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
+                                     args, &result));
+
+  const xla::HloInputOutputAliasProto& alias =
+      result.computation->proto().input_output_alias();
+  EXPECT_EQ(alias.entries_size(), 1);
+  EXPECT_EQ(alias.entries(0).parameter_number(), 0);
+}
+
+// Tests that passing in an exact duplicate input to SetDeviceToHostMeatadata
+// is not an error.
+TEST_F(XlaCompilerTest, SetDeviceToHostMetadataExactDuplicate) {
+  XlaCompiler compiler(DefaultOptions());
+
+  const string& key = "comm_key";
+  std::vector<DataType> types{DT_INT32};
+  std::vector<TensorShape> shapes{TensorShape({2})};
+
+  TF_ASSERT_OK(compiler.SetDeviceToHostMetadata(key, types, shapes));
+  TF_ASSERT_OK(compiler.SetDeviceToHostMetadata(key, types, shapes));
+}
+
+// Tests that passing in a mismatched duplicate input to
+// SetDeviceToHostMeatadata is not an error.
+TEST_F(XlaCompilerTest, SetDeviceToHostMetadataMismatchedDuplicate) {
+  XlaCompiler compiler(DefaultOptions());
+
+  const string& key = "comm_key";
+  std::vector<DataType> types{DT_INT32};
+  std::vector<TensorShape> shapes{TensorShape({2})};
+  std::vector<DataType> types2{DT_FLOAT};
+  std::vector<TensorShape> shapes2{TensorShape({1})};
+
+  TF_ASSERT_OK(compiler.SetDeviceToHostMetadata(key, types, shapes));
+  Status status = compiler.SetDeviceToHostMetadata(key, types2, shapes2);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+}
+
+// Tests that passing in an exact duplicate input to SetHostToDeviceMeatadata
+// is not an error.
+TEST_F(XlaCompilerTest, SetHostToDeviceMetadataExactDuplicate) {
+  XlaCompiler compiler(DefaultOptions());
+
+  const string& key = "comm_key";
+  std::vector<DataType> types{DT_INT32};
+  std::vector<TensorShape> shapes{TensorShape({2})};
+
+  TF_ASSERT_OK(compiler.SetHostToDeviceMetadata(key, types, shapes));
+  TF_ASSERT_OK(compiler.SetHostToDeviceMetadata(key, types, shapes));
+}
+
+// Tests that passing in a mismatched duplicate input to
+// SetHostToDeviceMeatadata is not an error.
+TEST_F(XlaCompilerTest, SetHostToDeviceMetadataMismatchedDuplicate) {
+  XlaCompiler compiler(DefaultOptions());
+
+  const string& key = "comm_key";
+  std::vector<DataType> types{DT_INT32};
+  std::vector<TensorShape> shapes{TensorShape({2})};
+  std::vector<DataType> types2{DT_FLOAT};
+  std::vector<TensorShape> shapes2{TensorShape({1})};
+
+  TF_ASSERT_OK(compiler.SetHostToDeviceMetadata(key, types, shapes));
+  Status status = compiler.SetHostToDeviceMetadata(key, types2, shapes2);
+  EXPECT_EQ(status.code(), error::Code::INVALID_ARGUMENT);
+}
+
 }  // namespace
 }  // namespace tensorflow

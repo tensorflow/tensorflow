@@ -168,7 +168,11 @@ Status MatrixDiagV2Shape(shape_inference::InferenceContext* c);
 // Shape function for MatrixSetDiagV2 and MatrixSetDiagV3 operations.
 Status MatrixSetDiagV2Shape(shape_inference::InferenceContext* c);
 
-// Shape function for MaxPool-like operations.
+// Shape function for MaxPool-like operations that support explicit padding.
+Status MaxPoolShapeWithExplicitPadding(shape_inference::InferenceContext* c);
+
+// Shape function for MaxPool-like operations that do not support explicit
+// padding.
 Status MaxPoolShape(shape_inference::InferenceContext* c);
 
 // Shape function for MaxPoolV2-like operations.
@@ -241,8 +245,9 @@ Status ValidateVariableResourceHandle(
 // Shape function for GatherNd operations.
 Status GatherNdShape(InferenceContext* c);
 
-// Shape function for ScatterNd update/add/sub/... operations.
-Status ScatterNdUpdateShape(InferenceContext* c);
+// Helper shape function for ScatterNd.../TensorScatter... operations.
+Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
+                            ShapeHandle updates_shape, ShapeHandle input_shape);
 
 // Shape function for ops with an explicit "shape" attribute.
 Status ExplicitShape(InferenceContext* c);

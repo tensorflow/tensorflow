@@ -157,7 +157,7 @@ void ImportOperators(
       }
     }
     auto outputs = input_op->outputs();
-    for (int i = 0; i < outputs->Length(); i++) {
+    for (int i = 0, end = outputs->Length(); i < end; i++) {
       auto output_index = outputs->Get(i);
       const std::string& output_name = tensors_table.at(output_index);
       op->outputs.push_back(output_name);

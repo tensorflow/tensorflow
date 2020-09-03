@@ -35,7 +35,8 @@ from tensorflow.python.training import checkpoint_ops
 from tensorflow.python.training import saver as saver_lib
 
 
-@test_util.run_v1_only('b/120545219')
+@test_util.run_v1_only(
+    'This is to test V1 name-based checkpoints which is not supported in V2.')
 class LoadAndRemapWrappersTest(test.TestCase):
   """Tests for the functionality of the Python wrappers."""
 

@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/profiling/buffered_profiler.h"
-#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -224,9 +223,3 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
 }  // namespace
 }  // namespace profiling
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

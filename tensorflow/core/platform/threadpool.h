@@ -108,22 +108,22 @@ class ThreadPool {
   // operations like I/O the hint should be set to false.
   //
   // REQUIRES: num_threads > 0
-  ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
-             int num_threads, bool low_latency_hint,
+  ThreadPool(Env* env, const ThreadOptions& thread_options,
+             const std::string& name, int num_threads, bool low_latency_hint,
              Eigen::Allocator* allocator = nullptr);
 
   // Constructs a pool for low-latency ops that contains "num_threads" threads
   // with specified "name". env->StartThread() is used to create individual
   // threads.
   // REQUIRES: num_threads > 0
-  ThreadPool(Env* env, const string& name, int num_threads);
+  ThreadPool(Env* env, const std::string& name, int num_threads);
 
   // Constructs a pool for low-latency ops that contains "num_threads" threads
   // with specified "name". env->StartThread() is used to create individual
   // threads with the given ThreadOptions.
   // REQUIRES: num_threads > 0
-  ThreadPool(Env* env, const ThreadOptions& thread_options, const string& name,
-             int num_threads);
+  ThreadPool(Env* env, const ThreadOptions& thread_options,
+             const std::string& name, int num_threads);
 
   // Constructs a pool that wraps around the thread::ThreadPoolInterface
   // instance provided by the caller. Caller retains ownership of

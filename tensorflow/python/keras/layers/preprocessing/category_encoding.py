@@ -131,6 +131,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
         compute_max_element=max_tokens is None,
         compute_idf=output_mode == TFIDF)
     super(CategoryEncoding, self).__init__(combiner=combiner, **kwargs)
+    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("CategoryEncoding")
 
     self._max_tokens = max_tokens
     self._output_mode = output_mode
@@ -268,7 +269,7 @@ class CategoryEncoding(base_preprocessing_layer.CombinerPreprocessingLayer):
 
   def call(self, inputs, count_weights=None):
     if isinstance(inputs, (list, np.ndarray)):
-      inputs = ops.convert_to_tensor_v2(inputs)
+      inputs = ops.convert_to_tensor_v2_with_dispatch(inputs)
     if inputs.shape.rank == 1:
       inputs = array_ops.expand_dims(inputs, 1)
 

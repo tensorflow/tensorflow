@@ -633,10 +633,14 @@ TfLiteStatus ParseOpDataTfLite(const Operator* op, BuiltinOperator op_type,
       TF_LITE_ENSURE(error_reporter, params != nullptr);
       if (const auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
         const auto* squeeze_dims = schema_params->squeeze_dims();
-        TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
-            sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
-            error_reporter, "squeeze"));
-        params->num_squeeze_dims = squeeze_dims->size();
+        if (squeeze_dims != nullptr) {
+          TF_LITE_ENSURE_STATUS(FlatBufferIntVectorToArray(
+              sizeof(params->squeeze_dims), squeeze_dims, params->squeeze_dims,
+              error_reporter, "squeeze"));
+          params->num_squeeze_dims = squeeze_dims->size();
+        } else {
+          params->num_squeeze_dims = 0;
+        }
       }
       *builtin_data = params.release();
       return kTfLiteOk;
@@ -896,6 +900,7 @@ TfLiteStatus ParseAdd(const Operator* op, ErrorReporter* error_reporter,
   if (schema_params != nullptr) {
     params->activation =
         ConvertActivation(schema_params->fused_activation_function());
+    params->pot_scale_int16 = schema_params->pot_scale_int16();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we
@@ -1631,6 +1636,7 @@ TfLiteStatus ParseSub(const Operator* op, ErrorReporter* error_reporter,
   if (schema_params != nullptr) {
     params->activation =
         ConvertActivation(schema_params->fused_activation_function());
+    params->pot_scale_int16 = schema_params->pot_scale_int16();
   } else {
     // TODO(b/157480169): We should either return kTfLiteError or fill in some
     // reasonable defaults in the params struct. We are not doing so until we

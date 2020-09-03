@@ -21,11 +21,15 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations
 from tensorflow.python.eager import context
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import keras_correctness_test_base
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.platform import test
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul. Even if Dense layers run in '
+    'float64, the test sometimes fails with tf32 enabled for unknown reasons')
 class DistributionStrategyCnnCorrectnessTest(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 

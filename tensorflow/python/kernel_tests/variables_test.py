@@ -170,7 +170,7 @@ class VariablesTestCase(test.TestCase, parameterized.TestCase):
   def testAssignDifferentShapesEagerNotAllowed(self):
     with context.eager_mode():
       var = variables.Variable(np.zeros(shape=[1, 1]))
-      with self.assertRaisesRegex(ValueError, "Shapes.*and.*are incompatible"):
+      with self.assertRaisesRegex(ValueError, "shape.*and.*are incompatible"):
         var.assign(np.zeros(shape=[2, 2]))
 
   @test_util.disable_tfrt("Graph is not supported yet. b/156187905")
@@ -656,14 +656,14 @@ class IsInitializedTest(test.TestCase):
       self.assertAllEqual(np.array([b"v", b"w"]), self.evaluate(uninited))
       self.evaluate(w.initializer)
       self.assertAllEqual(np.array([b"v"]), self.evaluate(uninited))
-      v.initializer.run()
+      self.evaluate(v.initializer)
       self.assertEqual(0, self.evaluate(uninited).size)
 
   def testZeroSizeVarInitialized(self):
     with ops.Graph().as_default(), self.cached_session() as sess:
       v = variables.Variable(array_ops.zeros([0, 2]), name="v")
       uninited = variables.report_uninitialized_variables()
-      v.initializer.run()  # not strictly necessary
+      self.evaluate(v.initializer)  # not strictly necessary
       self.assertEqual(0, self.evaluate(uninited).size)
 
   def testTrainingWithZeroSizeVar(self):
@@ -707,7 +707,7 @@ class ObsoleteIsInitializedTest(test.TestCase):
       self.evaluate(w.initializer)
       with self.assertRaisesOpError("Attempting to use uninitialized value"):
         inited.op.run()
-      v.initializer.run()
+      self.evaluate(v.initializer)
       inited.op.run()
 
 

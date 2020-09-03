@@ -42,6 +42,7 @@ from tensorflow.python.util import tf_decorator
 ASYNC_STATEFUL_OPS = [
     "CollectiveGather",
     "CollectiveReduce",
+    "CollectiveReduceV2",
     "CollectiveBcastSend",
     "CollectiveBcastRecv",
     "NcclAllReduce",
@@ -74,13 +75,13 @@ LEGACY_RANDOM_OPS = [
     # random OpKernel instantiation is reused across multiple steps
     # of the loop.  Since legacy Random OpKernels have an internal rng state,
     # automatic dependency tracking across loop steps would likely
-    # fix this race; and for that case this blacklist is problematic.
+    # fix this race; and for that case this denylist is problematic.
     # However, since automatic dependency tracking inside while loops is not
     # currently supported, and there are no other examples of OpKernel reuse
     # (each OpKernel is associated with a unique op in graph mode),
-    # this blacklist has no effect on the aforementioned behavior.
+    # this denylist has no effect on the aforementioned behavior.
     #
-    # TODO(ebrevdo,skyewm): Modify the check against this blacklist to
+    # TODO(ebrevdo,skyewm): Modify the check against this denylist to
     # only occur when the op is inside a "variable initialization scope"; and
     # add proper autodeps inside while_loops that respects this updated check.
     "RandomUniform",
@@ -97,14 +98,15 @@ LEGACY_RANDOM_OPS = [
 ]
 
 _ORDER_INSENSITIVE_STATEFUL_OPS = [
-    "CudnnRNNV2", "CudnnRNNV3", "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
+    "CudnnRNN", "CudnnRNNBackprop", "CudnnRNNV2", "CudnnRNNV3",
+    "CudnnRNNBackpropV2", "CudnnRNNBackpropV3",
     "EnqueueTPUEmbeddingSparseBatch", "EnqueueTPUEmbeddingIntegerBatch",
     "EnqueueTPUEmbeddingSparseTensorBatch",
     "EnqueueTPUEmbeddingRaggedTensorBatch", "RestoreV2", "SaveV2"
 ]
 # LINT.ThenChange(//tensorflow/core/grappler/optimizers/function_optimizer.cc)
 
-_ALL_BLACKLISTED_OPS = (
+_ALL_DENYLISTED_OPS = (
     set(ASYNC_STATEFUL_OPS) | set(LEGACY_RANDOM_OPS)
     | set(_ORDER_INSENSITIVE_STATEFUL_OPS))
 
@@ -124,7 +126,7 @@ _ALLOWLIST_STATELESS_OPS = [
 
 def op_is_stateful(op):
   # pylint: disable=protected-access
-  return (op._is_stateful and op.type not in _ALL_BLACKLISTED_OPS) or (
+  return (op._is_stateful and op.type not in _ALL_DENYLISTED_OPS) or (
       op.type in _ALLOWLIST_STATELESS_OPS)
 
 

@@ -40,7 +40,7 @@ class OutfeedReceiverForPython {
  public:
   // A callback to Python takes: consumer id, received literal.
   using CallbackToPython =
-      std::function<void(ClientAndPtr<Device>, uint32_t, pybind11::object)>;
+      std::function<void(ClientAndPtr<PjRtDevice>, uint32_t, pybind11::object)>;
 
   OutfeedReceiverForPython(CallbackToPython callback_python,
                            std::vector<std::shared_ptr<PyClient>> clients,
@@ -48,7 +48,7 @@ class OutfeedReceiverForPython {
       : callback_python_(std::move(callback_python)),
         clients_(std::move(clients)) {
     OutfeedReceiver::Callback callback =
-        [this](Device* device, uint32_t consumer_id,
+        [this](PjRtDevice* device, uint32_t consumer_id,
                std::shared_ptr<Literal> literal) {
           this->Callback(device, consumer_id, std::move(literal));
         };
@@ -86,7 +86,7 @@ class OutfeedReceiverForPython {
                                                   arrays);
   }
 
-  void Callback(Device* device, uint32_t consumer_id,
+  void Callback(PjRtDevice* device, uint32_t consumer_id,
                 std::shared_ptr<Literal> literal) {
     {
       absl::MutexLock lock(&mu_);
@@ -106,7 +106,7 @@ class OutfeedReceiverForPython {
         LiteralToPython(std::move(literal)).ValueOrDie();
     // The callback_ should handle all exceptions in user-code. If we get
     // an exception here, it is a bug in the callback and we should stop.
-    callback_python_(WrapWithClient<Device>(*it, device), consumer_id,
+    callback_python_(WrapWithClient<PjRtDevice>(*it, device), consumer_id,
                      std::move(literal_python));
   }
 

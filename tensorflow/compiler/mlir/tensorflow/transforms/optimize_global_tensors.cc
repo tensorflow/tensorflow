@@ -68,9 +68,8 @@ bool IsResource(Value value) { return IsResourceType(value.getType()); }
 class ResourceAnalyzer {
  public:
   explicit ResourceAnalyzer(ModuleOp module) {
-    SymbolTable symbol_table(module);
     for (auto func : module.getOps<FuncOp>()) {
-      AnalyzeFunc(func, symbol_table);
+      AnalyzeFunc(func);
     }
   }
 
@@ -89,7 +88,7 @@ class ResourceAnalyzer {
   // written". Do this recursively across the chain of funcs via call or control
   // flow ops.
   // TODO(ashwinm): Move to iterative traversal.
-  LogicalResult AnalyzeFunc(FuncOp func, const SymbolTable& symbol_table) {
+  LogicalResult AnalyzeFunc(FuncOp func) {
     // Avoid infinite recursion.
     if (!discovered_.insert(func).second) {
       return success();
@@ -104,24 +103,20 @@ class ResourceAnalyzer {
         return;
       }
       if (auto call = dyn_cast<CallOpInterface>(op)) {
-        if (auto sym = op->getAttrOfType<SymbolRefAttr>("f")) {
-          PropagatePotentiallyWrittenUpFromCallee(
-              sym.cast<FlatSymbolRefAttr>().getValue(), call.getArgOperands(),
-              symbol_table);
+        if (auto func = dyn_cast<FuncOp>(call.resolveCallable())) {
+          PropagatePotentiallyWrittenUpFromCallee(func, call.getArgOperands());
         }
         return;
       }
       if (auto if_op = dyn_cast<TF::IfOp>(op)) {
-        for (auto callee : {if_op.then_branch(), if_op.else_branch()}) {
-          PropagatePotentiallyWrittenUpFromCallee(callee, if_op.input(),
-                                                  symbol_table);
+        for (auto callee : {if_op.then_func(), if_op.else_func()}) {
+          PropagatePotentiallyWrittenUpFromCallee(callee, if_op.input());
         }
         return;
       }
       if (auto while_op = dyn_cast<TF::WhileOp>(op)) {
-        for (auto callee : {while_op.cond(), while_op.body()}) {
-          PropagatePotentiallyWrittenUpFromCallee(callee, while_op.input(),
-                                                  symbol_table);
+        for (auto callee : {while_op.cond_func(), while_op.body_func()}) {
+          PropagatePotentiallyWrittenUpFromCallee(callee, while_op.input());
         }
         return;
       }
@@ -149,15 +144,13 @@ class ResourceAnalyzer {
     });
   }
 
-  // Given a funcOp associated with the callee and operands from the
+  // Given a FuncOp associated with the callee and operands from the
   // corresponding callOp, propagate the potentially written decision to the
   // callOp's operands, if the corresponding func's arguments are potentially
   // written resources.
   void PropagatePotentiallyWrittenUpFromCallee(
-      StringRef callee, Operation::operand_range propagate_to,
-      const SymbolTable& symbol_table) {
-    auto func = symbol_table.lookup<FuncOp>(callee);
-    AnalyzeFunc(func, symbol_table);
+      FuncOp func, Operation::operand_range propagate_to) {
+    AnalyzeFunc(func);
     for (auto t : llvm::zip(func.getArguments(), propagate_to)) {
       if (!IsResource(std::get<0>(t))) {
         continue;

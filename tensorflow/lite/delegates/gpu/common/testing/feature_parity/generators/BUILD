@@ -20,11 +20,8 @@ cc_library(
     srcs = ["add.cc"],
     hdrs = ["add.h"],
     deps = [
-        "//tensorflow/lite:framework",
         "//tensorflow/lite:schema_fbs_version",
-        "//tensorflow/lite/delegates/gpu/common:shape",
         "//tensorflow/lite/delegates/gpu/common/testing/feature_parity:utils",
-        "//tensorflow/lite/kernels:builtin_ops",
         "@flatbuffers",
     ],
 )

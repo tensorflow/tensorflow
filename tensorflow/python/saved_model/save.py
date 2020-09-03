@@ -757,6 +757,11 @@ def _write_object_proto(obj, proto, asset_file_def_index, function_name_map):
     proto.variable.synchronization = obj.synchronization.value
     proto.variable.aggregation = obj.aggregation.value
     proto.variable.shape.CopyFrom(obj.shape.as_proto())
+    options = save_context.get_save_options()
+    if options.experimental_variable_policy._save_variable_devices(  # pylint: disable=protected-access
+    ):
+      if hasattr(obj, "device"):
+        proto.variable.device = obj.device
   elif isinstance(obj, def_function.Function):
     proto.function.CopyFrom(function_serialization.serialize_function(
         obj, function_name_map))
@@ -960,15 +965,16 @@ def save(obj, export_dir, signatures=None, options=None):
   Args:
     obj: A trackable object to export.
     export_dir: A directory in which to write the SavedModel.
-    signatures: Optional, either a `tf.function` with an input signature
-      specified or the result of `f.get_concrete_function` on a
-      `@tf.function`-decorated function `f`, in which case `f` will be used to
-      generate a signature for the SavedModel under the default serving
-      signature key. `signatures` may also be a dictionary, in which case it
-      maps from signature keys to either `tf.function` instances with input
-      signatures or concrete functions. The keys of such a dictionary may be
-      arbitrary strings, but will typically be from the
-      `tf.saved_model.signature_constants` module.
+    signatures: Optional, one of three types:
+      * a `tf.function` with an input signature specified, which will use the
+        default serving signature key,
+      * the result of `f.get_concrete_function` on a `@tf.function`-decorated
+        function `f`, in which case `f` will be used to generate a signature for
+        the SavedModel under the default serving signature key,
+      * a dictionary, which maps signature keys to either `tf.function`
+        instances with input signatures or concrete functions. Keys of such a
+        dictionary may be arbitrary strings, but will typically be from the
+        `tf.saved_model.signature_constants` module.
     options: Optional, `tf.saved_model.SaveOptions` object that specifies
       options for saving.
 
@@ -1004,8 +1010,8 @@ def save(obj, export_dir, signatures=None, options=None):
   utils_impl.get_or_create_variables_dir(export_dir)
   ckpt_options = checkpoint_options.CheckpointOptions(
       experimental_io_device=options.experimental_io_device)
-  object_saver.save(utils_impl.get_variables_path(export_dir),
-                    options=ckpt_options)
+  object_saver.save(
+      utils_impl.get_variables_path(export_dir), options=ckpt_options)
   builder_impl.copy_assets_to_destination_dir(asset_info.asset_filename_map,
                                               export_dir)
   # Note that this needs to be the last file operation when saving the
@@ -1142,6 +1148,6 @@ def _build_meta_graph(obj,
                       options,
                       meta_graph_def=None):
   """Creates a MetaGraph under a SaveContext."""
-  with save_context.save_context():
+  with save_context.save_context(options):
     return _build_meta_graph_impl(obj, export_dir, signatures, options,
                                   meta_graph_def)

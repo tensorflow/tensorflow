@@ -70,7 +70,7 @@ Status InjectPrefetch::OptimizeAndCollectStats(Cluster* cluster,
     graph_utils::SetUniqueGraphNodeName(
         strings::StrCat("inject/prefetch_", async_dataset_node->name()),
         graph.graph(), &prefetch_node);
-    prefetch_node.set_op("PrefetchDataset");
+    prefetch_node.set_op(kPrefetchDataset);
     // `input_dataset` input
     *prefetch_node.mutable_input()->Add() = async_dataset_node->name();
     // `buffer_size` input

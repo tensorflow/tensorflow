@@ -185,8 +185,8 @@ IslandOp CreateNewIsland(IslandOp parent, IslandOp child,
 
   Operation* old_island = insert_position == kParentIsland ? parent : child;
   OpBuilder builder(old_island);
-  auto new_island = builder.create<IslandOp>(
-      old_island->getLoc(), result_types, operands, ArrayRef<NamedAttribute>{});
+  auto new_island =
+      builder.create<IslandOp>(old_island->getLoc(), result_types, operands);
   new_island.body().push_back(new Block);
   return new_island;
 }

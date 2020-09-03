@@ -16,27 +16,28 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
+#include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dump.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/tpu/kernels/tpu_compilation_cache_key.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
 #include "tensorflow/stream_executor/tpu/proto_helper.h"
 
 namespace tensorflow {
 namespace tpu {
-
-using stream_executor::port::Status;
-using stream_executor::port::StatusOr;
-using xla::ComputationLayout;
-using xla::DebugOptions;
-using xla::DeviceAssignment;
-using xla::HloModuleConfig;
-using xla::HloSharding;
-using xla::InvalidArgument;
-using xla::ProgramShape;
-using xla::Shape;
-using xla::ShapeTree;
-using xla::ShapeUtil;
+using ::stream_executor::port::Status;
+using ::stream_executor::port::StatusOr;
+using ::xla::ComputationLayout;
+using ::xla::DebugOptions;
+using ::xla::DeviceAssignment;
+using ::xla::HloModuleConfig;
+using ::xla::HloSharding;
+using ::xla::InvalidArgument;
+using ::xla::ProgramShape;
+using ::xla::Shape;
+using ::xla::ShapeTree;
+using ::xla::ShapeUtil;
 
 Status ValidateResultShape(const Shape& client_shape,
                            const Shape& result_shape) {
@@ -484,6 +485,98 @@ StatusOr<TpuCompilationRequestProto> CreateTpuCompilationRequest(
 
   VLOG(1) << "TpuCompilationRequest:\n" << compilation_request.DebugString();
   return compilation_request;
+}
+
+Status CompileOpMetadataFromContext(OpKernelConstruction* ctx,
+                                    TPUCompileMetadataProto* metadata,
+                                    NameAttrList* function_name,
+                                    std::string* mlir_module) {
+  CHECK_NE(metadata, nullptr);
+
+  int num_computations;
+  TF_RETURN_IF_ERROR(ctx->GetAttr("num_computations", &num_computations));
+
+  std::string metadata_string;
+  TF_RETURN_IF_ERROR(ctx->GetAttr("metadata", &metadata_string));
+  if (!metadata->ParsePartialFromString(metadata_string)) {
+    return errors::InvalidArgument("Unable to parse TPUCompileMetadataProto");
+  }
+
+  if (function_name != nullptr) {
+    TF_RETURN_IF_ERROR(ctx->GetAttr("function", function_name));
+  }
+
+  if (mlir_module != nullptr) {
+    TF_RETURN_IF_ERROR(ctx->GetAttr("mlir_module", mlir_module));
+  }
+
+  if (num_computations != metadata->num_cores_per_replica()) {
+    return errors::InvalidArgument(
+        "num_computations must be equal to "
+        "num_cores_per_replica in the 'metadata' "
+        "attribute (",
+        num_computations, " vs ", metadata->num_cores_per_replica(), ")");
+  }
+
+  if (metadata->has_device_assignment()) {
+    StatusOr<std::unique_ptr<DeviceAssignment>> device_assignment_or_error =
+        DeviceAssignment::Deserialize(metadata->device_assignment());
+    TF_RETURN_IF_ERROR(device_assignment_or_error.status());
+    const DeviceAssignment& device_assignment =
+        *device_assignment_or_error.ValueOrDie();
+    const int num_replicas = metadata->num_replicas();
+    if (device_assignment.replica_count() != num_replicas) {
+      return errors::InvalidArgument(
+          "Device assignment replica_count != num_replicas; ",
+          device_assignment.replica_count(), " vs ", num_replicas);
+    }
+    if (device_assignment.computation_count() !=
+        metadata->num_cores_per_replica()) {
+      return errors::InvalidArgument(
+          "Device assignment computation_count != num_cores_per_replica; ",
+          device_assignment.computation_count(), " vs ",
+          metadata->num_cores_per_replica());
+    }
+  }
+  return Status::OK();
+}
+
+Status ComputeArgumentShapes(const tpu::TPUCompileMetadataProto& metadata,
+                             const std::vector<TensorShape>& dynamic_shapes,
+                             std::vector<TensorShape>* arg_shapes) {
+  arg_shapes->resize(metadata.args_size());
+  int dynamic_shape_pos = 0;
+  for (int i = 0; i < metadata.args_size(); ++i) {
+    const tpu::TPUCompileMetadataProto::Arg& arg = metadata.args(i);
+    // The XLA compiler determines the shape of each constant by inspecting the
+    // value of its corresponding host-memory tensor. As a result, we don't need
+    // to give the compiler graph-inferred shapes for constant arguments.
+    if (arg.kind() == tpu::TPUCompileMetadataProto::Arg::GUARANTEED_CONSTANT) {
+      continue;
+    }
+    TF_RETURN_IF_ERROR(PartialTensorShape::IsValidShape(arg.shape()));
+    PartialTensorShape static_shape(arg.shape());
+
+    TensorShape& shape = (*arg_shapes)[i];
+    if (static_shape.IsFullyDefined()) {
+      TF_RET_CHECK(static_shape.AsTensorShape(&shape));
+    } else {
+      TF_RET_CHECK(dynamic_shape_pos < dynamic_shapes.size())
+          << "Too few dynamic shapes";
+      shape = dynamic_shapes[dynamic_shape_pos++];
+      if (!static_shape.IsCompatibleWith(shape)) {
+        return errors::InvalidArgument(
+            "Mismatch between static and dynamic shape for argument. Static "
+            "shape: ",
+            static_shape.DebugString(),
+            "; dynamic shape: ", shape.DebugString());
+      }
+    }
+  }
+  // Checks we consumed all of the dynamic shapes.
+  TF_RET_CHECK(dynamic_shape_pos == dynamic_shapes.size())
+      << "Too many dynamic shapes";
+  return Status::OK();
 }
 }  // namespace tpu
 }  // namespace tensorflow

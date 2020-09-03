@@ -231,6 +231,15 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
       ValueError:  If `operators` is empty, contains an erroneous number of
         elements, or contains operators with incompatible shapes.
     """
+    parameters = dict(
+        operators=operators,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
+
     # Validate operators.
     check_ops.assert_proper_iterable(operators)
     for row in operators:
@@ -256,6 +265,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
 
   def _validate_num_operators(self):
@@ -366,7 +376,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
   def _shape_tensor(self):
     # Avoid messy broadcasting if possible.
     if self.shape.is_fully_defined():
-      return ops.convert_to_tensor(
+      return ops.convert_to_tensor_v2_with_dispatch(
           self.shape.as_list(), dtype=dtypes.int32, name="shape")
 
     domain_dimension = sum(self._block_domain_dimension_tensors())
@@ -433,12 +443,12 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
       if linear_operator_util.arg_is_blockwise(block_dimensions, x, arg_dim):
         for i, block in enumerate(x):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor(block)
+            block = ops.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[arg_dim])
             x[i] = block
       else:
-        x = ops.convert_to_tensor(x, name="x")
+        x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
         self._check_input_dtype(x)
         op_dimension = (self.range_dimension if adjoint
                         else self.domain_dimension)
@@ -543,7 +553,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
       if linear_operator_util.arg_is_blockwise(block_dimensions, x, -1):
         for i, block in enumerate(x):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor(block)
+            block = ops.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[-1])
             x[i] = block
@@ -551,7 +561,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
         y_mat = self.matmul(x_mat, adjoint=adjoint)
         return [array_ops.squeeze(y, axis=-1) for y in y_mat]
 
-      x = ops.convert_to_tensor(x, name="x")
+      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       op_dimension = (self.range_dimension if adjoint
                       else self.domain_dimension)
@@ -674,7 +684,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
       if blockwise_arg:
         for i, block in enumerate(rhs):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor(block)
+            block = ops.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[arg_dim])
             rhs[i] = block
@@ -684,7 +694,7 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
           split_rhs = rhs
 
       else:
-        rhs = ops.convert_to_tensor(rhs, name="rhs")
+        rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
         self._check_input_dtype(rhs)
         op_dimension = (self.domain_dimension if adjoint
                         else self.range_dimension)
@@ -795,14 +805,14 @@ class LinearOperatorBlockLowerTriangular(linear_operator.LinearOperator):
       if linear_operator_util.arg_is_blockwise(block_dimensions, rhs, -1):
         for i, block in enumerate(rhs):
           if not isinstance(block, linear_operator.LinearOperator):
-            block = ops.convert_to_tensor(block)
+            block = ops.convert_to_tensor_v2_with_dispatch(block)
             self._check_input_dtype(block)
             block_dimensions[i].assert_is_compatible_with(block.shape[-1])
             rhs[i] = block
         rhs_mat = [array_ops.expand_dims(block, axis=-1) for block in rhs]
         solution_mat = self.solve(rhs_mat, adjoint=adjoint)
         return [array_ops.squeeze(x, axis=-1) for x in solution_mat]
-      rhs = ops.convert_to_tensor(rhs, name="rhs")
+      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
       self._check_input_dtype(rhs)
       op_dimension = (self.domain_dimension if adjoint
                       else self.range_dimension)

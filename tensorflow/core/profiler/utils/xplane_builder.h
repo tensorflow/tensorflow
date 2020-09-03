@@ -44,13 +44,21 @@ class XStatsBuilder {
   void AddStatValue(const XStatMetadata& metadata, uint32 value) {
     AddStat(metadata)->set_uint64_value(value);
   }
-  void AddStatValue(const XStatMetadata& metadata, uint64 value) {
+  void AddStatValue(const XStatMetadata& metadata,
+                    unsigned long value) {  // NOLINT
+    AddStat(metadata)->set_uint64_value(value);
+  }
+  void AddStatValue(const XStatMetadata& metadata,
+                    unsigned long long value) {  // NOLINT
     AddStat(metadata)->set_uint64_value(value);
   }
   void AddStatValue(const XStatMetadata& metadata, int32 value) {
     AddStat(metadata)->set_int64_value(value);
   }
-  void AddStatValue(const XStatMetadata& metadata, int64 value) {
+  void AddStatValue(const XStatMetadata& metadata, long value) {  // NOLINT
+    AddStat(metadata)->set_int64_value(value);
+  }
+  void AddStatValue(const XStatMetadata& metadata, long long value) {  // NOLINT
     AddStat(metadata)->set_int64_value(value);
   }
   void AddStatValue(const XStatMetadata& metadata, double value) {

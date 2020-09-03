@@ -32,7 +32,6 @@ from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -75,8 +74,7 @@ class _TestExtended(distribute_lib.StrategyExtendedV1):
 
   def _call_for_each_replica(self, fn, args, kwargs):
     with _TestReplicaContext(
-        self._container_strategy(),
-        replica_id_in_sync_group=constant_op.constant(0, dtypes.int32)):
+        self._container_strategy(), replica_id_in_sync_group=0):
       return fn(*args, **kwargs)
 
   def _create_variable(self, next_creator, **kwargs):

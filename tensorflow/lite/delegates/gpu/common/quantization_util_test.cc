@@ -15,8 +15,18 @@ limitations under the License.
 
 #include "tensorflow/lite/delegates/gpu/common/quantization_util.h"
 
+#include <stdint.h>
+
+#include <algorithm>
+#include <limits>
+#include <memory>
+#include <vector>
+
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "absl/container/flat_hash_map.h"
+#include "absl/status/status.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/util.h"
 
 using ::testing::Eq;
@@ -151,7 +161,7 @@ TEST(DequantizeInputs, Int8) {
   PopulateContext(tensors, context);
 
   std::vector<uint32_t> input_indices = {1};
-  std::unordered_map<int, int> quant_conversion_map = {{1, 0}};
+  absl::flat_hash_map<int, int> quant_conversion_map = {{1, 0}};
 
   auto status = DequantizeInputs(&context, input_indices, quant_conversion_map);
   EXPECT_TRUE(status.ok());
@@ -176,7 +186,7 @@ TEST(DequantizeInputs, UInt8) {
   PopulateContext(tensors, context);
 
   std::vector<int64_t> input_indices = {1};
-  std::unordered_map<int, int> quant_conversion_map = {{1, 0}};
+  absl::flat_hash_map<int, int> quant_conversion_map = {{1, 0}};
 
   auto status = DequantizeInputs(&context, input_indices, quant_conversion_map);
   EXPECT_TRUE(status.ok());
@@ -199,7 +209,7 @@ TEST(QuantizeOutputs, Int8) {
   PopulateContext(tensors, context);
 
   std::vector<uint32_t> output_indices = {0};
-  std::unordered_map<int, int> quant_conversion_map = {{0, 1}};
+  absl::flat_hash_map<int, int> quant_conversion_map = {{0, 1}};
 
   auto status = QuantizeOutputs(&context, output_indices, quant_conversion_map);
   EXPECT_TRUE(status.ok());
@@ -221,7 +231,7 @@ TEST(QuantizeOutputs, UInt8) {
   PopulateContext(tensors, context);
 
   std::vector<int64_t> output_indices = {0};
-  std::unordered_map<int, int> quant_conversion_map = {{0, 1}};
+  absl::flat_hash_map<int, int> quant_conversion_map = {{0, 1}};
 
   auto status = QuantizeOutputs(&context, output_indices, quant_conversion_map);
   EXPECT_TRUE(status.ok());

@@ -55,7 +55,7 @@ constexpr int kOutputTensor = 0;
 bool IsMliApplicable(TfLiteContext* context, const TfLiteTensor* input,
                      const TfLiteTensor* filter, const TfLiteTensor* bias,
                      const TfLiteFullyConnectedParams* params) {
-  // MLI optimized version only supports int8 dataype and no fused Relu and
+  // MLI optimized version only supports int8_t dataype and no fused Relu and
   // symmetric per-tensor quantization of weights (not per-axis)
   bool ret_val = (filter->type == kTfLiteInt8) &&
                  (input->type == kTfLiteInt8) && (bias->type == kTfLiteInt32) &&

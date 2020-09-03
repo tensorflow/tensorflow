@@ -18,23 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.util import tf_export
+
 
 def public_name(np_fun_name):
   return "experimental.numpy." + np_fun_name
 
 
 def np_export(np_fun_name):
-  # TODO(wangpeng): Remove the following two lines and do actual exporting using
-  #   this:
-  #   return tf_export.tf_export(public_name(np_fun_name), v1=[])
-  del np_fun_name
-  return lambda f: f
+  return tf_export.tf_export(public_name(np_fun_name), v1=[])
 
 
 def np_export_constant(module_name, name, value):
-  # TODO(wangpeng): Remove the following two lines and do actual exporting using
-  #   this:
-  #   np_export(name).export_constant(module_name, name)
-  del module_name
-  del name
+  np_export(name).export_constant(module_name, name)
   return value

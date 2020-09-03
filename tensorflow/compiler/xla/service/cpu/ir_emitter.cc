@@ -1397,6 +1397,7 @@ Status IrEmitter::HandleAllToAll(HloInstruction* instruction) {
 
 Status IrEmitter::HandleCollectivePermute(HloInstruction* crs) {
   auto* instr = Cast<HloCollectivePermuteInstruction>(crs);
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(instr));
   std::string source_target_pairs = absl::StrJoin(
       instr->source_target_pairs(), ",", absl::PairFormatter("="));
   llvm::Value* source_target_pairs_v =
@@ -1639,7 +1640,7 @@ IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
 
     if (current_size_fragment >= vector_register_size_in_elements) {
       auto vector_type = llvm::VectorType::get(
-          element_ir_type, vector_register_size_in_elements);
+          element_ir_type, vector_register_size_in_elements, false);
       sharded_vector_type.insert(
           sharded_vector_type.end(),
           current_size_fragment / vector_register_size_in_elements,
@@ -1655,7 +1656,7 @@ IrEmitter::ShardedVectorType IrEmitter::CreateShardedVectorType(
     // of two are all legal vector sizes (or at least can be lowered easily by
     // LLVM).
     sharded_vector_type.push_back(
-        llvm::VectorType::get(element_ir_type, current_size_fragment));
+        llvm::VectorType::get(element_ir_type, current_size_fragment, false));
   }
   return sharded_vector_type;
 }
@@ -2386,12 +2387,54 @@ Status IrEmitter::HandlePadToStatic(HloInstruction* hlo) {
   return Status::OK();
 }
 
+Status IrEmitter::HandleTopK(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(hlo));
+  const HloInstruction* input = hlo->operand(0);
+  const int64 k = hlo->shape().tuple_shapes(0).dimensions().back();
+  const bool has_batch = hlo->shape().tuple_shapes(0).dimensions_size() == 2;
+  TF_RET_CHECK(input->shape().element_type() == F32);
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
+      hlo->shape().tuple_shapes(0).layout()));
+  TF_RET_CHECK(LayoutUtil::IsMonotonicWithDim0Major(
+      hlo->shape().tuple_shapes(1).layout()));
+  TF_RET_CHECK(
+      LayoutUtil::IsMonotonicWithDim0Major(hlo->operand(0)->shape().layout()));
+
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice values_slice,
+                      assignment_.GetUniqueSlice(hlo->operand(0), {}));
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_values_slice,
+                      assignment_.GetUniqueSlice(hlo, {0}));
+  TF_ASSIGN_OR_RETURN(const BufferAllocation::Slice out_indices_slice,
+                      assignment_.GetUniqueSlice(hlo, {1}));
+  llvm::Value* values_ptr =
+      EmitBufferPointer(values_slice, hlo->operand(0)->shape());
+  llvm::Value* out_values_ptr =
+      EmitBufferPointer(out_values_slice, hlo->shape().tuple_shapes(0));
+  llvm::Value* out_indices_ptr =
+      EmitBufferPointer(out_indices_slice, hlo->shape().tuple_shapes(1));
+  EmitCallToFunc(
+      runtime::kTopKF32SymbolName,
+      {b_.getInt64(has_batch ? input->shape().dimensions(0) : 1),
+       b_.getInt64(input->shape().dimensions().back()), b_.getInt64(k),
+       BitCast(values_ptr, b_.getFloatTy()->getPointerTo()),
+       BitCast(out_values_ptr, b_.getFloatTy()->getPointerTo()),
+       BitCast(out_indices_ptr, b_.getInt32Ty()->getPointerTo())},
+      b_.getVoidTy());
+
+  llvm_ir::EmitTuple(GetIrArrayFor(hlo), {out_values_ptr, out_indices_ptr},
+                     &b_);
+  return Status::OK();
+}
+
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
   if (custom_call->custom_call_target() == "PadToStatic") {
     return HandlePadToStatic(custom_call);
   }
   if (custom_call->custom_call_target() == "SliceToDynamic") {
     return HandleSliceToDynamic(custom_call);
+  }
+  if (custom_call->custom_call_target() == "TopK") {
+    return HandleTopK(custom_call);
   }
   absl::Span<HloInstruction* const> operands(custom_call->operands());
   llvm::Type* i8_ptr_type = b_.getInt8PtrTy();
@@ -3037,10 +3080,21 @@ void IrEmitter::TracingState::EmitTracingEnd(llvm::IRBuilder<>* b,
                 {b->CreateBitCast(run_options, void_ptr_type), activity_id});
 }
 
+namespace {
+bool IsHloVeryCheap(const HloInstruction* hlo) {
+  return hlo->opcode() == HloOpcode::kBitcast ||
+         hlo->opcode() == HloOpcode::kTuple ||
+         hlo->opcode() == HloOpcode::kGetTupleElement ||
+         hlo->opcode() == HloOpcode::kParameter ||
+         hlo->opcode() == HloOpcode::kConstant;
+}
+}  // namespace
+
 Status IrEmitter::Preprocess(HloInstruction* hlo) {
   VLOG(3) << "Visiting: " << hlo->ToString();
-  if (instruction_to_profile_idx_.count(hlo)) {
-    // Only trace the same HLOs that the profiler does.
+  // When profiling is enabled, trace the same HLOs that the profiler does.
+  if (instruction_to_profile_idx_.count(hlo) ||
+      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
     tracing_state_.EmitTracingStart(&b_, hlo,
                                     GetExecutableRunOptionsArgument());
     profiling_state_.RecordCycleStart(&b_, hlo);
@@ -3052,8 +3106,9 @@ Status IrEmitter::Postprocess(HloInstruction* hlo) {
   if (auto* prof_counter = GetProfileCounterFor(*hlo)) {
     profiling_state_.RecordCycleDelta(&b_, hlo, prof_counter);
   }
-  // Only trace the same HLOs that the profiler does.
-  if (instruction_to_profile_idx_.count(hlo)) {
+  // When profiling is enabled, trace the same HLOs that the profiler does.
+  if (instruction_to_profile_idx_.count(hlo) ||
+      (hlo_module_config_.cpu_traceme_enabled() && !IsHloVeryCheap(hlo))) {
     tracing_state_.EmitTracingEnd(&b_, hlo, GetExecutableRunOptionsArgument());
   }
   return Status::OK();

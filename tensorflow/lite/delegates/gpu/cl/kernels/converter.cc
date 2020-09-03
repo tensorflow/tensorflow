@@ -136,8 +136,6 @@ class FromTensorConverter : public OpenClConverterImpl {
         R"(
 #pragma OPENCL EXTENSION cl_khr_fp16 : enable
 
-const sampler_t smp_none = CLK_NORMALIZED_COORDS_FALSE | CLK_ADDRESS_NONE | CLK_FILTER_NEAREST;
-
 __kernel void from_tensor()" +
         params_kernel.first + R"(, $0) {
   int linear_id = get_global_id(0);
@@ -154,8 +152,8 @@ __kernel void from_tensor()" +
     context_ = &environment->context();
     shape_ = BHWC(input_def.dimensions.b, input_def.dimensions.h,
                   input_def.dimensions.w, input_def.dimensions.c);
-    RETURN_IF_ERROR(args_.TransformToCLCode(environment->device().GetInfo(), {},
-                                            &shader_src));
+    RETURN_IF_ERROR(
+        args_.TransformToCLCode(environment->device().info_, {}, &shader_src));
     return environment->program_cache()->GetOrCreateCLKernel(
         shader_src, "from_tensor", environment->context(),
         environment->device(), &kernel_);
@@ -274,8 +272,8 @@ __kernel void to_tensor()" +
     context_ = &environment->context();
     shape_ = BHWC(output_def.dimensions.b, output_def.dimensions.h,
                   output_def.dimensions.w, output_def.dimensions.c);
-    RETURN_IF_ERROR(args_.TransformToCLCode(environment->device().GetInfo(), {},
-                                            &shader_src));
+    RETURN_IF_ERROR(
+        args_.TransformToCLCode(environment->device().info_, {}, &shader_src));
     return environment->program_cache()->GetOrCreateCLKernel(
         shader_src, "to_tensor", environment->context(), environment->device(),
         &kernel_);

@@ -1886,7 +1886,7 @@ Stream *Stream::GetOrCreateSubStream() {
 
   // Look for the first reusable sub_stream that is ok, dropping !ok sub_streams
   // we encounter along the way.
-  for (int64 index = 0; index < sub_streams_.size();) {
+  for (size_t index = 0; index < sub_streams_.size();) {
     std::pair<std::unique_ptr<Stream>, bool> &pair = sub_streams_[index];
     if (pair.second) {
       // The sub_stream is reusable.
@@ -1937,7 +1937,7 @@ void Stream::ReturnSubStream(Stream *sub_stream) {
   absl::MutexLock lock(&mu_);
 
   // Look for the sub-stream.
-  for (int64 index = 0; index < sub_streams_.size(); ++index) {
+  for (int64 index = 0, end = sub_streams_.size(); index < end; ++index) {
     std::pair<std::unique_ptr<Stream>, bool> &pair = sub_streams_[index];
     if (pair.first.get() != sub_stream) {
       continue;

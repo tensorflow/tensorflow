@@ -24,6 +24,9 @@ namespace flex {
 // Return the list of allowlisted flex ops.
 const std::set<std::string>& GetFlexAllowlist();
 
+// Return true if op_name is a tf.text op need to be supported by flex delegate.
+bool IsAllowedTFTextOpForFlex(const std::string& op_name);
+
 }  // namespace flex
 }  // namespace tflite
 

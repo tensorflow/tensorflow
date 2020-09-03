@@ -147,7 +147,7 @@ TF_AbstractOp* TF_NewAbstractOp(TF_ExecutionContext* c) {
 
 void TF_DeleteAbstractOp(TF_AbstractOp* op) { unwrap(op)->Release(); }
 
-void TF_DeleteAbstractTensor(TF_AbstractTensor* t) { unwrap(t)->Release(); }
+void TF_DeleteAbstractTensor(TF_AbstractTensor* t) { unwrap(t)->Unref(); }
 
 TF_OutputList* TF_NewOutputList() { return wrap(new OutputList); }
 void TF_DeleteOutputList(TF_OutputList* o) { delete unwrap(o); }

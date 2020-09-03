@@ -52,17 +52,16 @@ from tensorflow.python.platform import googletest
 
 class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
   def test_assert_ops_in_graph(self):
-    with self.test_session():
+    with ops.Graph().as_default():
       constant_op.constant(["hello", "taffy"], name="hello")
       test_util.assert_ops_in_graph({"hello": "Const"}, ops.get_default_graph())
 
-    self.assertRaises(ValueError, test_util.assert_ops_in_graph,
-                      {"bye": "Const"}, ops.get_default_graph())
+      self.assertRaises(ValueError, test_util.assert_ops_in_graph,
+                        {"bye": "Const"}, ops.get_default_graph())
 
-    self.assertRaises(ValueError, test_util.assert_ops_in_graph,
-                      {"hello": "Variable"}, ops.get_default_graph())
+      self.assertRaises(ValueError, test_util.assert_ops_in_graph,
+                        {"hello": "Variable"}, ops.get_default_graph())
 
   @test_util.run_deprecated_v1
   def test_session_functions(self):
@@ -571,7 +570,6 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(AssertionError):
       self.assertAllLessEqual(x, 95.0)
 
-  @test_util.run_deprecated_v1
   def testAssertAllInRangeWithNonNumericValuesFails(self):
     s1 = constant_op.constant("Hello, ", name="s1")
     c = constant_op.constant([1 + 2j, -3 + 5j], name="c")
@@ -635,25 +633,23 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaises(AssertionError):
       self.assertAllInSet(x, (42,))
 
-  @test_util.run_deprecated_v1
   def testRandomSeed(self):
     # Call setUp again for WithCApi case (since it makes a new default graph
     # after setup).
     # TODO(skyewm): remove this when C API is permanently enabled.
-    self.setUp()
-    a = random.randint(1, 1000)
-    a_np_rand = np.random.rand(1)
-    with self.test_session():
-      a_rand = random_ops.random_normal([1]).eval()
-    # ensure that randomness in multiple testCases is deterministic.
-    self.setUp()
-    b = random.randint(1, 1000)
-    b_np_rand = np.random.rand(1)
-    with self.test_session():
-      b_rand = random_ops.random_normal([1]).eval()
-    self.assertEqual(a, b)
-    self.assertEqual(a_np_rand, b_np_rand)
-    self.assertEqual(a_rand, b_rand)
+    with context.eager_mode():
+      self.setUp()
+      a = random.randint(1, 1000)
+      a_np_rand = np.random.rand(1)
+      a_rand = random_ops.random_normal([1])
+      # ensure that randomness in multiple testCases is deterministic.
+      self.setUp()
+      b = random.randint(1, 1000)
+      b_np_rand = np.random.rand(1)
+      b_rand = random_ops.random_normal([1])
+      self.assertEqual(a, b)
+      self.assertEqual(a_np_rand, b_np_rand)
+      self.assertAllEqual(a_rand, b_rand)
 
   @test_util.run_in_graph_and_eager_modes
   def test_callable_evaluate(self):
@@ -729,7 +725,6 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     test_util.run_in_graph_and_eager_modes(_test)(self)
     self.assertEqual(modes, ["graph"])
 
-  @test_util.run_deprecated_v1
   def test_run_in_graph_and_eager_modes_setup_in_same_mode(self):
     modes = []
     mode_name = lambda: "eager" if context.executing_eagerly() else "graph"
@@ -750,7 +745,7 @@ class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     e.setUp()
     e.testBody()
 
-    self.assertEqual(modes[0:2], ["setup_graph", "run_graph"])
+    self.assertEqual(modes[1:2], ["run_graph"])
     self.assertEqual(modes[2:], ["setup_eager", "run_eager"])
 
   @parameterized.named_parameters(dict(testcase_name="argument",

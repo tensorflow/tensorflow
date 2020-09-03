@@ -362,7 +362,9 @@ func @main(%arg0: tensor<2x3xf32>, %arg1: tensor<5x5xf32>) -> tensor<1x2x3xf32> 
 // CHECK:  [[VAL_1:%.*]] = f32[2,3] parameter(0)
 // CHECK:  [[VAL_2:%.*]] = f32[5,5] parameter(1)
 // CHECK:  ROOT
-// CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]]), custom_call_target="foo", backend_config="bar"
+// CHECK-SAME:  f32[1,2,3] custom-call(f32[2,3] [[VAL_1]], f32[5,5] [[VAL_2]])
+// CHECK-SAME:  custom_call_target="foo"
+// CHECK-SAME:  backend_config="bar"
 
 // -----
 
@@ -1087,3 +1089,15 @@ func @main(%arg: tensor<3x4xf32>, %token: !mhlo.token) -> !mhlo.token {
 }
 
 // CHECK-NOT:  frontend_attributes
+
+// -----
+
+// Checks exporting rng-bit-generator.
+
+// CHECK:  HloModule
+func @main(%arg: tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>> {
+// CHECK: %[[ARG0:.*]] = u64[3] parameter(0)
+// CHECK: ROOT %[[RESULT:.*]] = (u64[3], u32[2,2]) rng-bit-generator(u64[3] %[[ARG0]]), algorithm=rng_philox
+  %0 = "mhlo.rng_bit_generator"(%arg) {rng_algorithm = 2 : i32} : (tensor<3xui64>) -> tuple<tensor<3xui64>, tensor<2x2xui32>>
+  return %0 : tuple<tensor<3xui64>, tensor<2x2xui32>>
+}

@@ -331,6 +331,55 @@ func @mirrored_variables(%arg0: tensor<!tf.resource<tensor<32xf32>>>, %arg1: ten
 // CHECK-SAME: _replicated_input_indices = [0, 1, 2]
 
 
+// Test resource usage after resource use in cluster is moved to after the
+// cluster.
+// CHECK-LABEL: func @resource_after_cluster
+// CHECK-SAME:  ([[USED_RESOURCE:%.*]]: tensor<*x!tf.resource<tensor<f32>>>, [[UNUSED_RESOURCE:%.*]]: tensor<*x!tf.resource<tensor<f32>>>)
+func @resource_after_cluster(%arg0: tensor<*x!tf.resource<tensor<f32>>>, %arg1: tensor<*x!tf.resource<tensor<f32>>>) {
+  // CHECK-NEXT: [[CONST:%.*]] = "tf.Const"
+  %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+
+  // CHECK-NEXT: "tf.AssignSubVariableOp"([[UNUSED_RESOURCE]], [[CONST]])
+
+  // CHECK:      "tf_device.cluster"
+  // CHECK-NEXT:   "tf.ReadVariableOp"([[USED_RESOURCE]])
+  // CHECK-NEXT:   "tf.NoOp"
+  // CHECK-NEXT:   tf_device.return
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_test_fn", allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
+  %1 = "tf.ReadVariableOp"(%arg0) {_tpu_replicate = "cluster_test_fn"} : (tensor<*x!tf.resource<tensor<f32>>>) -> tensor<f32>
+
+  "tf.AssignSubVariableOp"(%arg1, %0) : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+
+  // CHECK:       "tf.AssignAddVariableOp"([[USED_RESOURCE]], [[CONST]])
+  "tf.AssignAddVariableOp"(%arg0, %0) : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+
+  "tf.NoOp"() {_tpu_replicate = "cluster_test_fn"} : () -> ()
+  return
+}
+
+
+// Test resource not used by cluster is moved to before the cluster.
+// CHECK-LABEL: func @resource_before_cluster
+func @resource_before_cluster() {
+  // CHECK-NEXT: [[CONST:%.*]] = "tf.Const"
+  %0 = "tf.Const"() {value = dense<1.000000e+00> : tensor<f32>} : () -> tensor<f32>
+
+  // CHECK-NEXT: [[UNUSED_RESOURCE:%.*]] = "tf.VarHandleOp"
+  // CHECK-NEXT: "tf.AssignAddVariableOp"([[UNUSED_RESOURCE]], [[CONST]])
+
+  // CHECK:      "tf_device.cluster"
+  // CHECK-NEXT:   "tf.NoOp"
+  // CHECK-NEXT:   tf_device.return
+  "tf.TPUReplicateMetadata"() {_tpu_replicate = "cluster_test_fn", allow_soft_placement = false, computation_shape = [], device_assignment = [], host_compute_core = [], num_cores_per_replica = 1 : i64, num_replicas = 1 : i64, padding_map = [], step_marker_location = "STEP_MARK_AT_ENTRY", topology = "", use_spmd_for_xla_partitioning = false, use_tpu = true} : () -> ()
+
+  %1 = "tf.VarHandleOp"() {container = "", shape = #tf.shape<>, shared_name = "x"} : () -> tensor<*x!tf.resource<tensor<f32>>>
+  "tf.AssignAddVariableOp"(%1, %0) : (tensor<*x!tf.resource<tensor<f32>>>, tensor<f32>) -> ()
+
+  "tf.NoOp"() {_tpu_replicate = "cluster_test_fn"} : () -> ()
+  return
+}
+
+
 // -----
 
 

@@ -17,7 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_TIMELINE_H_
 
 #include "absl/strings/str_cat.h"
-#include "include/json/json.h"
+#include "json/json.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"

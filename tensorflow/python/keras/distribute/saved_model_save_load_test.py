@@ -18,14 +18,24 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.python.distribute import combinations
-from tensorflow.python.eager import test
+from tensorflow.python.distribute import strategy_combinations
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
+from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.distribute import model_combinations
 from tensorflow.python.keras.distribute import saved_model_test_base as test_base
 from tensorflow.python.ops import array_ops
+from tensorflow.python.platform import test
+from tensorflow.python.saved_model import load_options as load_options_lib
+from tensorflow.python.saved_model import save_options as save_options_lib
 from tensorflow.python.saved_model import saved_model
 
 
+@testing_utils.run_all_without_tensor_float_32(
+    'Uses Dense layers, which call matmul')
 class SavedModelKerasModelTest(test_base.TestSavedModelBase):
 
   def setUp(self):
@@ -146,6 +156,30 @@ class SavedModelTFModuleTest(test_base.TestSavedModelBase):
                                                  distribution_for_restoring,
                                                  save_in_scope)
 
+  @combinations.generate(
+      combinations.combine(
+          model_and_input=[model_combinations.simple_tfmodule_model],
+          distribution=test_base.strategies +
+          [strategy_combinations.cloud_tpu_strategy]))
+  def test_save_load_io_device(self, model_and_input, distribution):
+    saved_dir = os.path.join(self.get_temp_dir(), 'io_device')
+    with distribution.scope():
+      model = model_and_input.get_model()
+      x_train, y_train, _ = model_and_input.get_data()
+      batch_size = model_and_input.get_batch_size()
+      self._train_model(model, x_train, y_train, batch_size)
+    call = model.__call__.get_concrete_function(tensor_spec.TensorSpec(None))
+    save_options = save_options_lib.SaveOptions(
+        experimental_io_device='/job:localhost')
+    saved_model.save(model, saved_dir, signatures=call, options=save_options)
+    load_options = load_options_lib.LoadOptions(
+        experimental_io_device='/job:localhost')
+    # Check that the model can be loaded and training continued without error.
+    with distribution.scope():
+      loaded_model = saved_model.load(saved_dir, options=load_options)
+      self._train_model(loaded_model, x_train, y_train, batch_size)
+
 
 if __name__ == '__main__':
+  ops.enable_eager_execution()
   test.main()

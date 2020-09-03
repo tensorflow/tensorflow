@@ -4743,22 +4743,29 @@ flatbuffers::Offset<ConcatenationOptions> CreateConcatenationOptions(flatbuffers
 struct AddOptionsT : public flatbuffers::NativeTable {
   typedef AddOptions TableType;
   tflite::ActivationFunctionType fused_activation_function;
+  bool pot_scale_int16;
   AddOptionsT()
-      : fused_activation_function(tflite::ActivationFunctionType_NONE) {
+      : fused_activation_function(tflite::ActivationFunctionType_NONE),
+        pot_scale_int16(true) {
   }
 };
 
 struct AddOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef AddOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_FUSED_ACTIVATION_FUNCTION = 4
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_POT_SCALE_INT16 = 6
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  bool pot_scale_int16() const {
+    return GetField<uint8_t>(VT_POT_SCALE_INT16, 1) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
            verifier.EndTable();
   }
   AddOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -4771,6 +4778,9 @@ struct AddOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(AddOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_pot_scale_int16(bool pot_scale_int16) {
+    fbb_.AddElement<uint8_t>(AddOptions::VT_POT_SCALE_INT16, static_cast<uint8_t>(pot_scale_int16), 1);
   }
   explicit AddOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -4786,8 +4796,10 @@ struct AddOptionsBuilder {
 
 inline flatbuffers::Offset<AddOptions> CreateAddOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    bool pot_scale_int16 = true) {
   AddOptionsBuilder builder_(_fbb);
+  builder_.add_pot_scale_int16(pot_scale_int16);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
 }
@@ -5908,22 +5920,29 @@ flatbuffers::Offset<DepthToSpaceOptions> CreateDepthToSpaceOptions(flatbuffers::
 struct SubOptionsT : public flatbuffers::NativeTable {
   typedef SubOptions TableType;
   tflite::ActivationFunctionType fused_activation_function;
+  bool pot_scale_int16;
   SubOptionsT()
-      : fused_activation_function(tflite::ActivationFunctionType_NONE) {
+      : fused_activation_function(tflite::ActivationFunctionType_NONE),
+        pot_scale_int16(true) {
   }
 };
 
 struct SubOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef SubOptionsT NativeTableType;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
-    VT_FUSED_ACTIVATION_FUNCTION = 4
+    VT_FUSED_ACTIVATION_FUNCTION = 4,
+    VT_POT_SCALE_INT16 = 6
   };
   tflite::ActivationFunctionType fused_activation_function() const {
     return static_cast<tflite::ActivationFunctionType>(GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
   }
+  bool pot_scale_int16() const {
+    return GetField<uint8_t>(VT_POT_SCALE_INT16, 1) != 0;
+  }
   bool Verify(flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           VerifyField<uint8_t>(verifier, VT_POT_SCALE_INT16) &&
            verifier.EndTable();
   }
   SubOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -5936,6 +5955,9 @@ struct SubOptionsBuilder {
   flatbuffers::uoffset_t start_;
   void add_fused_activation_function(tflite::ActivationFunctionType fused_activation_function) {
     fbb_.AddElement<int8_t>(SubOptions::VT_FUSED_ACTIVATION_FUNCTION, static_cast<int8_t>(fused_activation_function), 0);
+  }
+  void add_pot_scale_int16(bool pot_scale_int16) {
+    fbb_.AddElement<uint8_t>(SubOptions::VT_POT_SCALE_INT16, static_cast<uint8_t>(pot_scale_int16), 1);
   }
   explicit SubOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
@@ -5951,8 +5973,10 @@ struct SubOptionsBuilder {
 
 inline flatbuffers::Offset<SubOptions> CreateSubOptions(
     flatbuffers::FlatBufferBuilder &_fbb,
-    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE) {
+    tflite::ActivationFunctionType fused_activation_function = tflite::ActivationFunctionType_NONE,
+    bool pot_scale_int16 = true) {
   SubOptionsBuilder builder_(_fbb);
+  builder_.add_pot_scale_int16(pot_scale_int16);
   builder_.add_fused_activation_function(fused_activation_function);
   return builder_.Finish();
 }
@@ -11391,6 +11415,7 @@ inline void AddOptions::UnPackTo(AddOptionsT *_o, const flatbuffers::resolver_fu
   (void)_o;
   (void)_resolver;
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = pot_scale_int16(); _o->pot_scale_int16 = _e; }
 }
 
 inline flatbuffers::Offset<AddOptions> AddOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const AddOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11402,9 +11427,11 @@ inline flatbuffers::Offset<AddOptions> CreateAddOptions(flatbuffers::FlatBufferB
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const AddOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _pot_scale_int16 = _o->pot_scale_int16;
   return tflite::CreateAddOptions(
       _fbb,
-      _fused_activation_function);
+      _fused_activation_function,
+      _pot_scale_int16);
 }
 
 inline MulOptionsT *MulOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11907,6 +11934,7 @@ inline void SubOptions::UnPackTo(SubOptionsT *_o, const flatbuffers::resolver_fu
   (void)_o;
   (void)_resolver;
   { auto _e = fused_activation_function(); _o->fused_activation_function = _e; }
+  { auto _e = pot_scale_int16(); _o->pot_scale_int16 = _e; }
 }
 
 inline flatbuffers::Offset<SubOptions> SubOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SubOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
@@ -11918,9 +11946,11 @@ inline flatbuffers::Offset<SubOptions> CreateSubOptions(flatbuffers::FlatBufferB
   (void)_o;
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SubOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   auto _fused_activation_function = _o->fused_activation_function;
+  auto _pot_scale_int16 = _o->pot_scale_int16;
   return tflite::CreateSubOptions(
       _fbb,
-      _fused_activation_function);
+      _fused_activation_function,
+      _pot_scale_int16);
 }
 
 inline DivOptionsT *DivOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {

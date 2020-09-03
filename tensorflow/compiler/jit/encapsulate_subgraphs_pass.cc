@@ -1132,7 +1132,8 @@ static Status GetArgTypes(const Graph& graph, DataTypeVector* types) {
     if (n->type_string() == kArgOp) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
-      if (index < 0 || index >= types->size()) {
+      const int num_types = types->size();
+      if (index < 0 || index >= num_types) {
         return errors::InvalidArgument("Invalid argument number");
       }
       (*types)[index] = n->output_type(0);
@@ -1149,7 +1150,8 @@ static Status RenumberArguments(Graph* graph,
     if (n->type_string() == kArgOp) {
       int index;
       TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
-      if (index < 0 || index >= permutation.size()) {
+      const int permutation_size = permutation.size();
+      if (index < 0 || index >= permutation_size) {
         return errors::InvalidArgument("Invalid argument number");
       }
       n->AddAttr("index", permutation[index]);

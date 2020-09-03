@@ -27,7 +27,7 @@ limitations under the License.
 namespace mlir {
 
 // TensorFlow's Status is used for error reporting back to callers.
-using tensorflow::Status;
+using ::tensorflow::Status;
 
 // Diagnostic handler that collects all the diagnostics reported and can produce
 // a Status to return to callers. This is for the case where MLIR functions are

@@ -335,6 +335,9 @@ def flatten(structure, expand_composites=False):
   Raises:
     TypeError: The nest is or contains a dict with non-sortable keys.
   """
+  if structure is None:
+    return [None]
+  expand_composites = bool(expand_composites)
   return _pywrap_utils.Flatten(structure, expand_composites)
 
 
@@ -392,6 +395,10 @@ def assert_same_structure(nest1, nest2, check_types=True,
     TypeError: If the two structures differ in the type of sequence in any of
       their substructures. Only possible if `check_types` is `True`.
   """
+  # Convert to bool explicitly as otherwise pybind will not be able# to handle
+  # type mismatch message correctly. See GitHub issue 42329 for details.
+  check_types = bool(check_types)
+  expand_composites = bool(expand_composites)
   try:
     _pywrap_utils.AssertSameStructure(nest1, nest2, check_types,
                                       expand_composites)
