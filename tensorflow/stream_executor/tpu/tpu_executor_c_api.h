@@ -180,6 +180,9 @@ void TpuTransferManager_TransferLiteralFromDevice(
     XLA_StatusCallbackFn callback, void* ctx);
 int64_t TpuTransferManager_GetByteSizeRequirement(XLA_TransferManager* manager,
                                                   XLA_Shape* shape);
+bool TpuTransferManager_CanShapedBufferBeAccessedNow(
+    XLA_TransferManager* manager, SE_StreamExecutor* executor,
+    XLA_ShapedBuffer* device_buffer);
 void TpuTransferManager_WriteSingleTupleIndexTable(
     XLA_TransferManager* manager, SE_Stream* stream,
     SE_DeviceMemoryBase* elements, size_t elements_len, XLA_Shape* shape,
@@ -383,6 +386,7 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralToDeviceAsync);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_TransferLiteralFromDevice);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetByteSizeRequirement);
+  TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_CanShapedBufferBeAccessedNow);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_WriteSingleTupleIndexTable);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_GetInfeedLayout);
   TFTPU_ADD_FN_IN_STRUCT(TpuTransferManager_LinearizeToBuffers);
