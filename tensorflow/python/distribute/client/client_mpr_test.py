@@ -35,7 +35,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 
 
-class ParameterServerClientMprTest(test.TestCase):
+class ClientMprTest(test.TestCase):
 
   def testScheduleTranslatePSFailureError(self):
     self._test_translate_ps_failure_error(test_schedule=True)
