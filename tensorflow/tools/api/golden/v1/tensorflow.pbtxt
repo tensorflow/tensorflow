@@ -1126,7 +1126,7 @@ tf_module {
   }
   member_method {
     name: "diag_part"
-    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'tensor_diag_part\'], "
   }
   member_method {
     name: "digamma"
