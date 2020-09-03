@@ -514,3 +514,7 @@ Status SoftmaxModel(AbstractContext* ctx,
 }
 
 // ============================= End Models ================================
+
+} // internal
+} // gradients
+} // tensorflow

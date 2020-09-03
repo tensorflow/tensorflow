@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/container/flat_hash_set.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
+#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
@@ -29,39 +30,32 @@ limitations under the License.
 #include "tensorflow/c/tf_tensor.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
-#include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/core/platform/types.h"
-
-
-// using namespace std;
-// using namespace tensorflow;
-// using namespace tensorflow::gradients;
-// using namespace tensorflow::gradients::internal;
 
 namespace tensorflow {
 namespace gradients {
 
 TFE_TensorHandle* ScalarTensorHandleHelper(TFE_Context* ctx, float value);
 
-TFE_TensorHandle* TensorHandleWithDimsFloatHelper(TFE_Context* ctx, float data[],
-                                                int64_t dims[], int num_dims);
+TFE_TensorHandle* TensorHandleWithDimsFloatHelper(TFE_Context* ctx,
+                                                  float data[], int64_t dims[],
+                                                  int num_dims);
 
 TFE_TensorHandle* TensorHandleWithDimsIntHelper(TFE_Context* ctx, int data[],
-                                              int64_t dims[], int num_dims);
+                                                int64_t dims[], int num_dims);
 
 // Get a scalar TensorHandle with given value
 Status ScalarTensorHandle(AbstractContext* ctx, float value,
-                              AbstractTensorHandle** tensor);
+                          AbstractTensorHandle** tensor);
 
 // Get a TensorHandle with given float values and dimensions
 Status TensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
-                                     int64_t dims[], int num_dims,
-                                     AbstractTensorHandle** tensor);
+                                 int64_t dims[], int num_dims,
+                                 AbstractTensorHandle** tensor);
 
 // Get a TensorHandle with given int values and dimensions
-Status TensorHandleWithDimsInt(AbstractContext* ctx, int data[],
-                                   int64_t dims[], int num_dims,
-                                   AbstractTensorHandle** tensor);
+Status TensorHandleWithDimsInt(AbstractContext* ctx, int data[], int64_t dims[],
+                               int num_dims, AbstractTensorHandle** tensor);
 
 // Places data from `t` into *result_tensor.
 Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor);
@@ -80,7 +74,8 @@ AbstractTensorHandlePtr GetScalarTensorHandleUtil(AbstractContext* ctx,
                                                   float val);
 
 // Performs gradient update for each weight using given learning rate.
-Status UpdateWeights(AbstractContext* ctx, std::vector<AbstractTensorHandle*>& grads,
+Status UpdateWeights(AbstractContext* ctx,
+                     std::vector<AbstractTensorHandle*>& grads,
                      std::vector<AbstractTensorHandle*>& weights,
                      AbstractTensorHandle* learning_rate);
 

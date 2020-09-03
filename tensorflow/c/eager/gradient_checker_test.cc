@@ -10,7 +10,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/eager/gradient_checker.h"
-#include "tensorflow/c/eager/gradients_util.h"
 
 #include <memory>
 
@@ -21,6 +20,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients.h"
 #include "tensorflow/c/eager/gradients_internal.h"
+#include "tensorflow/c/eager/gradients_util.h"
 #include "tensorflow/c/eager/mnist_gradients_testutil.h"
 #include "tensorflow/c/experimental/gradients/math_grad.h"
 #include "tensorflow/c/experimental/gradients/nn_grad.h"
@@ -79,18 +79,23 @@ TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
   inputs.push_back(A.get());
   inputs.push_back(B.get());
 
-  float dapprox[4] = {0};
-  Status s = CalcNumericalGrad(ctx.get(), MatMulModel, inputs, dapprox,
-                               /*input_index=*/0,
-                               /*use_function=*/!std::get<2>(GetParam()), 
-                               /*is_scalar_out=*/false);
+  AbstractTensorHandle* grad_approx;
+  Status s = CalcNumericalGrad(
+      ctx.get(), MatMulModel, inputs, /*input_index=*/0,
+      /*use_function=*/!std::get<2>(GetParam()), &grad_approx);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  TF_Tensor* gt;
+  GetValue(grad_approx, &gt);
+  float result_data[4] = {0};
+  memcpy(&result_data[0], TF_TensorData(gt), TF_TensorByteSize(gt));
 
   float expected_dA[4] = {-.5f, 2.0f, -.5f, 2.0f};
   float tolerance = 1e-2;
   for (int j = 0; j < 4; j++) {
-    ASSERT_NEAR(dapprox[j], expected_dA[j], tolerance);
+    ASSERT_NEAR(expected_dA[j], result_data[j], tolerance);
   }
+  TF_DeleteTensor(gt);
 }
 
 TEST_P(GradientCheckerTest, TestGradCheckMul) {
@@ -129,13 +134,19 @@ TEST_P(GradientCheckerTest, TestGradCheckMul) {
   inputs.push_back(x.get());
   inputs.push_back(y.get());
   float dapprox[1] = {0};
-  Status s =
-      CalcNumericalGrad(ctx.get(), MulModel, inputs, dapprox, /*input_index=*/0,
-                        /*use_function=*/!std::get<2>(GetParam()),
-                        /*is_scalar_out=*/true);
+  AbstractTensorHandle* g;
 
+  Status s = CalcNumericalGrad(ctx.get(), MulModel, inputs, /*input_index=*/0,
+                               /*use_function=*/!std::get<2>(GetParam()), &g);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
-  ASSERT_NEAR(dapprox[0], 7.0f, /*tolerance=*/1e-3);
+
+  TF_Tensor* gt;
+  GetValue(g, &gt);
+  float result_data[1] = {0};
+  memcpy(&result_data[0], TF_TensorData(gt), TF_TensorByteSize(gt));
+
+  ASSERT_NEAR(result_data[0], 7.0f, /*tolerance=*/1e-3);
+  TF_DeleteTensor(gt);
 }
 
 TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
@@ -201,21 +212,25 @@ TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
          TF_TensorByteSize(dX_tensor));
 
   // Run numerical gradient approximation using the GradientChecker API.
-  float dapprox[9] = {0};  // Will contain numerical approximation data.
-  s = CalcNumericalGrad(ctx.get(), SoftmaxModel, inputs, dapprox,
-                        /*input_index=*/0,
-                        /*use_function=*/!std::get<2>(GetParam()), 
-                        /*is_scalar_out=*/false);
+  AbstractTensorHandle* g;  // Will contain numerical approximation data.
+  s = CalcNumericalGrad(ctx.get(), SoftmaxModel, inputs, /*input_index=*/0,
+                        /*use_function=*/!std::get<2>(GetParam()), &g);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  TF_Tensor* gt;
+  GetValue(g, &gt);
+  float dnumerical[9] = {0};
+  memcpy(&dnumerical[0], TF_TensorData(gt), TF_TensorByteSize(gt));
 
   // Now compare the two implementations:
   for (int j = 0; j < 9; j++) {
-    ASSERT_NEAR(dapprox[j], danalytical[j], /*tolerance=*/1e-3);
+    ASSERT_NEAR(dnumerical[j], danalytical[j], /*tolerance=*/1e-3);
   }
 
   // Only Unref() first output as 2nd is nullptr grad for labels
   outputs[0]->Unref();
   TF_DeleteTensor(dX_tensor);
+  TF_DeleteTensor(gt);
 }
 
 #ifdef PLATFORM_GOOGLE
