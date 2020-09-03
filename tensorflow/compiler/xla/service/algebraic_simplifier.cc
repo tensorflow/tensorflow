@@ -5260,10 +5260,10 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   if (!reverse_dimensions.empty()) {
     TF_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
   }
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * new_convolution,
-      MakeConvolveHlo(kernel, input, /*feature_group_count=*/1, swapped_window,
-                      swapped_dnums, precision_config));
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_convolution,
+                      MakeConvolveHlo(kernel, input, /*feature_group_count=*/1,
+                                      /*batch_group_count=*/1, swapped_window,
+                                      swapped_dnums, precision_config));
 
   convolution->SetupDerivedInstruction(new_convolution);
   TF_RETURN_IF_ERROR(ReplaceInstruction(convolution, new_convolution));
