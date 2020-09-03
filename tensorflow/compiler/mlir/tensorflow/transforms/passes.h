@@ -299,6 +299,12 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPURewritePass();
 // computation.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass();
 
+// Creates a pass that moves `tf.AssignVariableOp` into a
+// `tf_device.parallel_execute` region if the `tf.AssignVariableOp` is the
+// only consumer of a `tf_device.parallel_execute` result.
+std::unique_ptr<OperationPass<FuncOp>>
+CreateTPUParallelExecuteSinkResourceWritePass();
+
 // Creates a pass that merges device variable reads/updates into the surrounded
 // TPUExecute node. This allows the execute node to perform in-place variable
 // updates.
