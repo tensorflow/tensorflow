@@ -255,6 +255,12 @@ int TpuCoreLocation_Index(SE_TpuTopology_Core* tpu_core_location);
 int TpuCoreLocation_Id(SE_TpuTopology_Core* tpu_core_location);
 
 int TpuHostLocation_Id(SE_TpuTopology_Host* tpu_host_location);
+int TpuHostLocation_NumCores(SE_TpuTopology_Host* tpu_host_location,
+                             TpuCoreTypeEnum tpu_core_type);
+// 'cores' should be a preallocated array of size TpuHostLocation_NumCores.
+void TpuHostLocation_Cores(SE_TpuTopology_Host* tpu_host_location,
+                           TpuCoreTypeEnum tpu_core_type,
+                           SE_TpuTopology_Core** cores);
 
 // C API for XLA::Compiler interface
 
@@ -419,6 +425,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuCoreLocation_Id);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuHostLocation_Id);
+  TFTPU_ADD_FN_IN_STRUCT(TpuHostLocation_NumCores);
+  TFTPU_ADD_FN_IN_STRUCT(TpuHostLocation_Cores);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_New);
   TFTPU_ADD_FN_IN_STRUCT(TpuCompiler_Free);
