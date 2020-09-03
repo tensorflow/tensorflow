@@ -27,10 +27,7 @@ std::pair<EdgeSet::const_iterator, bool> EdgeSet::insert(value_type value) {
       if (ptrs_[i] == value) {
         ci.array_iter_ = &ptrs_[i];
         return std::make_pair(ci, false);
-      }
-    }
-    for (int i = 0; i < kInline; i++) {
-      if (ptrs_[i] == nullptr) {
+      } else if (ptrs_[i] == nullptr) {
         ptrs_[i] = value;
         ci.array_iter_ = &ptrs_[i];
         return std::make_pair(ci, true);
