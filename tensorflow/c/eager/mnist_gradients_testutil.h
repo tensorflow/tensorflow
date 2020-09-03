@@ -135,3 +135,7 @@ Status SoftmaxModel(AbstractContext* ctx,
                     absl::Span<AbstractTensorHandle* const> inputs,
                     absl::Span<AbstractTensorHandle*> outputs,
                     const GradientRegistry& registry);
+
+} // internal
+} // gradients
+} // tensorflow

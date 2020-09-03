@@ -37,7 +37,7 @@ using Model = std::function<Status(
     AbstractContext*, absl::Span<AbstractTensorHandle* const>,
     absl::Span<AbstractTensorHandle*>, const GradientRegistry&)>;
 
-/** Returns numerical grad inside `dtheta_approx` given `forward` model and
+/* Returns numerical grad inside `dtheta_approx` given `forward` model and
  * parameter specified by `input_index`.
  *
  * I.e. if y = <output of the forward model> and w = inputs[input_index],
@@ -45,15 +45,13 @@ using Model = std::function<Status(
  *
  * `use_function` indicates whether to use graph mode(true) or eager(false).
  *
- * `is_scalar_out` is an optional parameter defaulting to true,
- *  meaning it assumes that `forward` returns a scalar TensorHandle;
- *  else this function will reduce_sum the tensor to get a scalar to estimate
- *  the gradient with.
+ * `numerical_grad` is the pointer to the AbstractTensorHandle* which will
+ * hold the numerical gradient data at the end of the function.
  */
 Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
                          std::vector<AbstractTensorHandle*> inputs,
-                         float* dtheta_approx, int input_index,
-                         bool use_function, bool is_scalar_out = true);
+                         int input_index, bool use_function,
+                         AbstractTensorHandle** numerical_grad);
 
 }  // namespace gradients
 }  // namespace tensorflow

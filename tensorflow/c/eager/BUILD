@@ -355,7 +355,6 @@ tf_cuda_cc_test(
         "gradient_checker_test.cc",
     ],
     args = ["--heap_check=local"],
-    extra_copts = tfe_xla_copts(),
     linkstatic = tf_kernel_tests_linkstatic(),
     tags = tf_cuda_tests_tags() + ["nomac"],
     deps = [

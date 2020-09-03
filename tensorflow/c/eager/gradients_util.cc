@@ -48,8 +48,9 @@ TFE_TensorHandle* ScalarTensorHandleHelper(TFE_Context* ctx, float value) {
   return th;
 }
 
-TFE_TensorHandle* TensorHandleWithDimsFloatHelper(TFE_Context* ctx, float data[],
-                                                int64_t dims[], int num_dims) {
+TFE_TensorHandle* TensorHandleWithDimsFloatHelper(TFE_Context* ctx,
+                                                  float data[], int64_t dims[],
+                                                  int num_dims) {
   TF_Status* status = TF_NewStatus();
   TF_Tensor* t =
       TFE_AllocateHostTensor(ctx, TF_FLOAT, &dims[0], num_dims, status);
@@ -62,7 +63,7 @@ TFE_TensorHandle* TensorHandleWithDimsFloatHelper(TFE_Context* ctx, float data[]
 }
 
 TFE_TensorHandle* TensorHandleWithDimsIntHelper(TFE_Context* ctx, int data[],
-                                              int64_t dims[], int num_dims) {
+                                                int64_t dims[], int num_dims) {
   TF_Status* status = TF_NewStatus();
   TF_Tensor* t =
       TFE_AllocateHostTensor(ctx, TF_INT32, &dims[0], num_dims, status);
@@ -76,7 +77,7 @@ TFE_TensorHandle* TensorHandleWithDimsIntHelper(TFE_Context* ctx, int data[],
 
 // Get a scalar TensorHandle with given value
 Status ScalarTensorHandle(AbstractContext* ctx, float value,
-                              AbstractTensorHandle** tensor) {
+                          AbstractTensorHandle** tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_Context* eager_ctx =
@@ -90,8 +91,8 @@ Status ScalarTensorHandle(AbstractContext* ctx, float value,
 
 // Get a TensorHandle with given float values and dimensions
 Status TensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
-                                     int64_t dims[], int num_dims,
-                                     AbstractTensorHandle** tensor) {
+                                 int64_t dims[], int num_dims,
+                                 AbstractTensorHandle** tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_Context* eager_ctx =
@@ -105,9 +106,8 @@ Status TensorHandleWithDimsFloat(AbstractContext* ctx, float data[],
 }
 
 // Get a TensorHandle with given int values and dimensions
-Status TensorHandleWithDimsInt(AbstractContext* ctx, int data[],
-                                   int64_t dims[], int num_dims,
-                                   AbstractTensorHandle** tensor) {
+Status TensorHandleWithDimsInt(AbstractContext* ctx, int data[], int64_t dims[],
+                               int num_dims, AbstractTensorHandle** tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_Context* eager_ctx =
