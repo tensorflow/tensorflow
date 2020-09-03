@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import itertools
 import numpy as np
+import sys
 from six.moves import range
 from six.moves import zip
 
-import tensorflow as tf
 from tensorflow.python.eager import context
 from tensorflow.python.framework import config
 from tensorflow.python.framework import constant_op
@@ -817,8 +817,8 @@ class ArrayMethodsTest(test.TestCase):
     run_test(np_array_ops.zeros((5, 6, 7)))
     run_test(1)
     run_test(np_array_ops.ones((3, 2, 1)))
-    run_test(tf.constant(5))
-    run_test(tf.constant([1, 1, 1]))
+    run_test(constant_op.constant(5))
+    run_test(constant_op.constant([1, 1, 1]))
     self.assertRaises(NotImplementedError, np_array_ops.size,
                       np.ones((2, 2)), 1)
 

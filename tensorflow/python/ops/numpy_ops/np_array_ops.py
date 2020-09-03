@@ -24,11 +24,11 @@ import numbers
 import numpy as np
 import six
 
-import tensorflow as tf
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
@@ -564,15 +564,19 @@ def _reduce(tf_fn,
 # TODO (DarrenZhang01): Add `axis` support to the `size` API.
 @np_utils.np_doc('size')
 def size(x, axis=None):   # pylint: disable=missing-docstring
-  x = asarray(x).data
   if axis is not None:
     raise NotImplementedError("axis argument is not supported in the current "
                               "`np.size` implementation")
   if isinstance(x, (int, float, np.int32, np.int64,
                     np.float32, np.float64)):
     return 1
-  elif isinstance(x, (np_arrays.ndarray, np.ndarray)) or tf.is_tensor(x):
-    return prod(tuple(x.shape))
+  # Turn possible graph tensors into non-graph tensors.
+  x = asarray(x).data
+  if isinstance(x, (np_arrays.ndarray, np.ndarray)) or tensor_util.is_tensor(x):
+    if x.shape.is_fully_defined():
+      return prod(tuple(x.shape))
+    else:
+      return array_ops.size_v2(x)
   else:
     raise TypeError("The inputs must be one of types {int, float, numpy array"
                     ", TensorFlow Tensor, TensorFlow ndarray} object.")
