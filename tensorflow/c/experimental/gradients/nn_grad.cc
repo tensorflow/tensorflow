@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/c/experimental/ops/nn_ops.h"
 #include "tensorflow/core/lib/llvm_rtti/llvm_rtti.h"
 #include "tensorflow/core/platform/errors.h"
+#include "tensorflow/c/eager/gradients_util.h"
 
 using std::vector;
 using tensorflow::ops::Mul;
@@ -91,7 +92,7 @@ class SparseSoftmaxCrossEntropyWithLogitsGradientFunction
   Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
                  vector<AbstractTensorHandle*>* grad_outputs) override {
     grad_outputs->resize(2);
-
+    
     // Grad for Softmax Input
     vector<AbstractTensorHandle*> mul_outputs(1);
     TF_RETURN_IF_ERROR(BroadcastMul(

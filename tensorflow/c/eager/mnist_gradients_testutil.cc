@@ -158,6 +158,26 @@ Status SparseSoftmaxCrossEntropyWithLogits(
                  registry);
 }
 
+Status Pad(AbstractContext* ctx, Tape* tape,
+            absl::Span<AbstractTensorHandle* const> inputs,
+            absl::Span<AbstractTensorHandle*> outputs, const char* name,
+            const GradientRegistry& registry) {
+  AbstractOperationPtr pad_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx;
+  TF_RETURN_IF_ERROR(
+      Reset(pad_op.get(), "Pad", /*raw_device_name=*/nullptr, &forward_op));
+  if (isa<TracingOperation>(pad_op.get())) {
+    TF_RETURN_IF_ERROR(
+        dyn_cast<TracingOperation>(pad_op.get())->SetOpName(name));
+  }
+  TF_RETURN_IF_ERROR(AddInput(pad_op.get(), inputs[0], &forward_op)); //inputs
+  TF_RETURN_IF_ERROR(AddInput(pad_op.get(), inputs[0], &forward_op)); //paddings
+  int num_retvals = 1;
+  return Execute(pad_op.get(), ctx, outputs, &num_retvals, &forward_op, tape,
+                 registry);
+}
+
 //===================== Test Models to run =========================
 
 // Computes

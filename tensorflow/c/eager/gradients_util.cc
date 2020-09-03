@@ -130,7 +130,7 @@ Status GetValue(AbstractTensorHandle* t, TF_Tensor** result_tensor) {
   std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
       TF_NewStatus(), TF_DeleteStatus);
   TFE_TensorHandle* result_t =
-      TF_AbstractTensorGetEagerTensor(wrap(t), status.get());
+      TF_AbstractTensorGetEagerTensor(wrap(t), status.get());  
   TF_RETURN_IF_ERROR(StatusFromTF_Status(status.get()));
   *result_tensor = TFE_TensorHandleResolve(result_t, status.get());
   return StatusFromTF_Status(status.get());

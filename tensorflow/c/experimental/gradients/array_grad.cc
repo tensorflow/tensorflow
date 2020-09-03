@@ -13,6 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/gradients/array_grad.h"
+#include "tensorflow/c/eager/gradients_util.h"
+#include "tensorflow/c/experimental/ops/array_ops.h"
+#include "tensorflow/c/experimental/ops/math_ops.h"
+#include "tensorflow/c/experimental/ops/nn_ops.h"
 
 namespace tensorflow {
 namespace gradients {
@@ -36,10 +40,34 @@ class IdentityNGradientFunction : public GradientFunction {
   }
   ~IdentityNGradientFunction() override {}
 };
+
+class PadGradientFunction : public GradientFunction {
+ public:
+  explicit PadGradientFunction(vector<AbstractTensorHandle*> f_inputs)
+       : forward_inputs(f_inputs) {}
+  Status Compute(Context* ctx, const IncomingGradients& grad_inputs,
+                 vector<AbstractTensorHandle*>* grad_outputs) override {
+    grad_outputs->resize(2);
+    //   float vals[] = {1,1,1,1};
+    //   int64_t dims[] = {2,2};
+    //   int num_dims = 2;
+    //   AbstractTensorHandlePtr p = GetTensorHandleUtilFloat(ctx->ctx, vals, dims, num_dims);
+    return Status::OK();
+  }
+  ~PadGradientFunction() override {}
+ private:
+  vector<AbstractTensorHandle*> forward_inputs; 
+};
 }  // namespace
 
 BackwardFunction* IdentityNRegisterer(const ForwardOperation& op) {
   auto gradient_function = new IdentityNGradientFunction;
+  auto default_gradients = new PassThroughDefaultGradients(op);
+  return new BackwardFunction(gradient_function, default_gradients);
+}
+
+BackwardFunction* PadRegisterer(const ForwardOperation& op) {
+  auto gradient_function = new PadGradientFunction(op.inputs);
   auto default_gradients = new PassThroughDefaultGradients(op);
   return new BackwardFunction(gradient_function, default_gradients);
 }

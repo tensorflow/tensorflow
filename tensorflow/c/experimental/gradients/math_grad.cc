@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/gradients.h"
+#include "tensorflow/c/eager/gradients_util.h"
 #include "tensorflow/c/experimental/ops/array_ops.h"
 #include "tensorflow/c/experimental/ops/math_ops.h"
 #include "tensorflow/c/experimental/ops/nn_ops.h"
