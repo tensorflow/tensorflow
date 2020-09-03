@@ -31,6 +31,7 @@ import flatbuffers
 from tensorflow.core.protobuf import config_pb2 as _config_pb2
 from tensorflow.core.protobuf import graph_debug_info_pb2
 from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
+from tensorflow.lite.python import lite_constants as _lite_constants
 from tensorflow.lite.python import schema_py_generated as schema_fb
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
@@ -76,7 +77,8 @@ _MAP_TFLITE_ENUM_TO_TF_TYPES = {
 
 _TFLITE_FILE_IDENTIFIER = b"TFL3"
 
-_TFLITE_MODEL_INPUT_OUTPUT_TYPES = (dtypes.float32, dtypes.int8, dtypes.uint8)
+_TFLITE_MODEL_INPUT_OUTPUT_TYPES = (_lite_constants.FLOAT, _lite_constants.INT8,
+                                    _lite_constants.QUANTIZED_UINT8)
 
 
 def convert_dtype_to_tflite_type(tf_dtype):
@@ -682,8 +684,8 @@ def _validate_and_find_int8_quantized_inputs_outputs(model):
 
 
 def modify_integer_quantized_model_io_type(
-    model, inference_input_type=dtypes.float32,
-    inference_output_type=dtypes.float32):
+    model, inference_input_type=_lite_constants.FLOAT,
+    inference_output_type=_lite_constants.FLOAT):
   """Modify the float input/output type of an integer quantized model.
 
   Args:
@@ -703,8 +705,8 @@ def modify_integer_quantized_model_io_type(
 
   """
   # Return if input and output types default to float
-  if inference_input_type == dtypes.float32 and \
-      inference_output_type == dtypes.float32:
+  if inference_input_type == _lite_constants.FLOAT and \
+      inference_output_type == _lite_constants.FLOAT:
     return model
 
   # Validate input and output types
@@ -736,7 +738,7 @@ def modify_integer_quantized_model_io_type(
   remove_tensors_idxs = set()
 
   # Modify model input type
-  if inference_input_type == dtypes.uint8:
+  if inference_input_type == _lite_constants.QUANTIZED_UINT8:
     # Change quant op (float to int8) to quant op (uint8 to int8)
     for op in input_quant_ops:
       int8_quantization = tensors[op.outputs[0]].quantization
@@ -745,7 +747,7 @@ def modify_integer_quantized_model_io_type(
       uint8_quantization.zeroPoint = [int8_quantization.zeroPoint[0] + 128]
       tensors[op.inputs[0]].quantization = uint8_quantization
       tensors[op.inputs[0]].type = schema_fb.TensorType.UINT8
-  elif inference_input_type == dtypes.int8:
+  elif inference_input_type == _lite_constants.INT8:
     # Remove the inputs and the quant operator
     for op in input_quant_ops:
       subgraph.inputs[subgraph.inputs == op.inputs[0]] = op.outputs[0]
@@ -753,7 +755,7 @@ def modify_integer_quantized_model_io_type(
       operators.remove(op)
 
   # Modify model output type
-  if inference_output_type == dtypes.uint8:
+  if inference_output_type == _lite_constants.QUANTIZED_UINT8:
     # Change dequant op (int8 to float) to quant op (int8 to uint8)
     for op in output_dequant_ops:
       op.opcodeIndex = input_quant_ops[0].opcodeIndex
@@ -763,7 +765,7 @@ def modify_integer_quantized_model_io_type(
       uint8_quantization.zeroPoint = [int8_quantization.zeroPoint[0] + 128]
       tensors[op.outputs[0]].quantization = uint8_quantization
       tensors[op.outputs[0]].type = schema_fb.TensorType.UINT8
-  elif inference_output_type == dtypes.int8:
+  elif inference_output_type == _lite_constants.INT8:
     # Remove the outputs and the dequant operator
     for op in output_dequant_ops:
       subgraph.outputs[subgraph.outputs == op.outputs[0]] = op.inputs[0]

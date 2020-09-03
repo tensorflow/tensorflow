@@ -32,7 +32,6 @@ from tensorflow.lite.python import lite_v2_test_util
 from tensorflow.lite.python.convert import mlir_quantize
 from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.lite.toco import types_pb2 as _types_pb2
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.layers import recurrent
@@ -75,9 +74,9 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertEqual(expected_value.numpy(), actual_value)
 
   @parameterized.named_parameters(
-      ('_INT8InputOutput', dtypes.int8),
-      ('_UINT8InputOutput', dtypes.uint8),
-      ('_INT16InputOutput', dtypes.int16))
+      ('_INT8InputOutput', lite.constants.INT8),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8),
+      ('_INT16InputOutput', lite.constants.INT16))
   @test_util.run_v2_only
   def testInvalidFloat(self, inference_input_output_type):
     root = self._getSimpleVariableModel()
@@ -195,9 +194,9 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertLess(len(quantized_tflite_model), len(float_tflite_model))
 
   @parameterized.named_parameters(
-      ('_INT8InputOutput', dtypes.int8),
-      ('_UINT8InputOutput', dtypes.uint8),
-      ('_INT16InputOutput', dtypes.int16))
+      ('_INT8InputOutput', lite.constants.INT8),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8),
+      ('_INT16InputOutput', lite.constants.INT16))
   @test_util.run_v2_only
   def testInvalidPostTrainingDynamicRangeQuantization(
       self, inference_input_output_type):
@@ -220,18 +219,18 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
         'must be tf.float32.', str(error.exception))
 
   @parameterized.named_parameters(
-      ('_Default', False, False, dtypes.float32),
-      ('_INT8InputOutput', False, False, dtypes.int8),
-      ('_UINT8InputOutput', False, False, dtypes.uint8),
-      ('_INT16Quantize', False, True, dtypes.float32),
-      ('_INT16Quantize_INT16InputOutput', False, True, dtypes.int16),
-      ('_IntOnly', True, False, dtypes.float32),
-      ('_IntOnly_INT8InputOutput', True, False, dtypes.int8),
+      ('_Default', False, False, lite.constants.FLOAT),
+      ('_INT8InputOutput', False, False, lite.constants.INT8),
+      ('_UINT8InputOutput', False, False, lite.constants.QUANTIZED_UINT8),
+      ('_INT16Quantize', False, True, lite.constants.FLOAT),
+      ('_INT16Quantize_INT16InputOutput', False, True, lite.constants.INT16),
+      ('_IntOnly', True, False, lite.constants.FLOAT),
+      ('_IntOnly_INT8InputOutput', True, False, lite.constants.INT8),
       ('_IntOnly_UINT8InputOutput', True, False,
-       dtypes.uint8),
-      ('_IntOnly_INT16Quantize', True, True, dtypes.float32),
+       lite.constants.QUANTIZED_UINT8),
+      ('_IntOnly_INT16Quantize', True, True, lite.constants.FLOAT),
       ('_IntOnly_INT16Quantize_INT16InputOutput', True, True,
-       dtypes.int16))
+       lite.constants.INT16))
   def testIntegerQuantization(self, is_int_only, is_int16_quantize,
                               inference_input_output_type):
     func, calibration_gen = self._getIntegerQuantizeModel()
@@ -282,7 +281,7 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     self.assertLess(len(quantized_tflite_model), len(tflite_model))
 
   @parameterized.named_parameters(
-      ('_INT16Quantize_INT8InputOutput', True, dtypes.int8))
+      ('_INT16Quantize_INT8InputOutput', True, lite.constants.INT8))
   def testInvalidIntegerQuantization(self, is_int16_quantize,
                                      inference_input_output_type):
     func, calibration_gen = self._getIntegerQuantizeModel()
@@ -298,8 +297,8 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
           lite.OpsSet.TFLITE_BUILTINS
       ]
     with self.assertRaises(ValueError) as error:
-      quantized_converter.inference_input_type = dtypes.int8
-      quantized_converter.inference_output_type = dtypes.int8
+      quantized_converter.inference_input_type = lite.constants.INT8
+      quantized_converter.inference_output_type = lite.constants.INT8
       quantized_converter.convert()
     self.assertEqual(
         "The inference_input_type and inference_output_type "
@@ -378,9 +377,9 @@ class FromConcreteFunctionTest(lite_v2_test_util.ModelTest):
     return tf.keras.Sequential(QLinear(3, input_shape=(2,)))
 
   @parameterized.named_parameters(
-      ('_DefaultFLOAT32InputOutput', dtypes.float32),
-      ('_INT8InputOutput', dtypes.int8),
-      ('_UINT8InputOutput', dtypes.uint8))
+      ('_DefaultFLOAT32InputOutput', lite.constants.FLOAT),
+      ('_INT8InputOutput', lite.constants.INT8),
+      ('_UINT8InputOutput', lite.constants.QUANTIZED_UINT8))
   @test_util.run_v2_only
   def testTrainingTimeQuantization(self, inference_input_output_type):
     model = self._getTrainingTimeQuantizedModel()

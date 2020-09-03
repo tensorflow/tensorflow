@@ -35,7 +35,6 @@ from tensorflow.lite.python import wrap_toco
 from tensorflow.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco import types_pb2 as _types_pb2
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util import deprecation
@@ -291,7 +290,7 @@ Alternative, use virtualenv.""")
 
 def build_toco_convert_protos(input_tensors,
                               output_tensors,
-                              inference_type=dtypes.float32,
+                              inference_type=lite_constants.FLOAT,
                               inference_input_type=None,
                               input_format=lite_constants.TENSORFLOW_GRAPHDEF,
                               input_shapes=None,

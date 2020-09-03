@@ -28,11 +28,11 @@ import six
 from six.moves import zip
 
 from tensorflow.lite.python import lite
+from tensorflow.lite.python import lite_constants
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.lite.toco.logging import gen_html
 from tensorflow.python import keras
 from tensorflow.python import tf2
-from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import app
 
 
@@ -62,13 +62,13 @@ def _parse_inference_type(value, flag):
     ValueError: Unsupported value.
   """
   if value == "FLOAT":
-    return dtypes.float32
+    return lite_constants.FLOAT
+  if value == "QUANTIZED_UINT8":
+    return lite_constants.QUANTIZED_UINT8
   if value == "INT8":
-    return dtypes.int8
-  if value == "UINT8" or value == "QUANTIZED_UINT8":
-    return dtypes.uint8
-  raise ValueError("Unsupported value for --{0}. Value must be in "
-                   "(FLOAT, INT8, UINT8)".format(flag))
+    return lite_constants.INT8
+  raise ValueError("Unsupported value for --{0}. Only FLOAT and "
+                   "QUANTIZED_UINT8 are supported.".format(flag))
 
 
 def _get_tflite_converter(flags):
@@ -146,10 +146,10 @@ def _convert_tf1_model(flags):
 
     # In quantized inference, mean_value has to be integer so that the real
     # value 0.0 is exactly representable.
-    if converter.inference_type == dtypes.float32:
-      mean_values = _parse_array(flags.mean_values, type_fn=float)
-    else:
+    if converter.inference_type == lite_constants.QUANTIZED_UINT8:
       mean_values = _parse_array(flags.mean_values, type_fn=int)
+    else:
+      mean_values = _parse_array(flags.mean_values, type_fn=float)
     quant_stats = list(zip(mean_values, std_dev_values))
     if ((not flags.input_arrays and len(input_arrays) > 1) or
         (len(input_arrays) != len(quant_stats))):
@@ -189,13 +189,13 @@ def _convert_tf1_model(flags):
 
   if flags.post_training_quantize:
     converter.optimizations = [lite.Optimize.DEFAULT]
-    if converter.inference_type != dtypes.float32:
+    if converter.inference_type == lite_constants.QUANTIZED_UINT8:
       print("--post_training_quantize quantizes a graph of inference_type "
-            "FLOAT. Overriding inference type to FLOAT.")
-      converter.inference_type = dtypes.float32
+            "FLOAT. Overriding inference type QUANTIZED_UINT8 to FLOAT.")
+      converter.inference_type = lite_constants.FLOAT
 
   if flags.quantize_to_float16:
-    converter.target_spec.supported_types = [dtypes.float16]
+    converter.target_spec.supported_types = [lite.constants.FLOAT16]
     if not flags.post_training_quantize:
       print("--quantize_to_float16 will only take effect with the "
             "--post_training_quantize flag enabled.")
@@ -354,16 +354,14 @@ def _get_tf1_flags(parser):
   parser.add_argument(
       "--inference_type",
       type=str.upper,
-      default="FLOAT",
-      help=("Target data type of real-number arrays in the output file. "
-            "Must be either FLOAT, INT8 or UINT8."))
+      choices=["FLOAT", "QUANTIZED_UINT8", "INT8"],
+      help="Target data type of real-number arrays in the output file.")
   parser.add_argument(
       "--inference_input_type",
       type=str.upper,
-      default="FLOAT",
+      choices=["FLOAT", "QUANTIZED_UINT8", "INT8"],
       help=("Target data type of real-number input arrays. Allows for a "
-            "different type for input arrays in the case of quantization. "
-            "Must be either FLOAT, INT8 or UINT8."))
+            "different type for input arrays in the case of quantization."))
 
   # Input and output arrays flags.
   parser.add_argument(

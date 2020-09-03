@@ -52,7 +52,7 @@ py_library(
     name = "modify_model_interface_constants",
     srcs = ["modify_model_interface_constants.py"],
     srcs_version = "PY3",
-    deps = ["//tensorflow/python:dtypes"],
+    deps = ["//tensorflow/lite/python:lite_constants"],
 )
 
 pybind_extension(

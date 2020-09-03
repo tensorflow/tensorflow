@@ -28,11 +28,11 @@ from google.protobuf.message import DecodeError
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
 from tensorflow.lite.python import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python import lite as _lite
+from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python import util as _util
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.keras.preprocessing import image
@@ -97,7 +97,7 @@ def _convert(converter, **kwargs):
   if "post_training_quantize" in kwargs:
     converter.optimizations = [_lite.Optimize.DEFAULT]
   if kwargs.get("quantize_to_float16", False):
-    converter.target_spec.supported_types = [dtypes.float16]
+    converter.target_spec.supported_types = [constants.FLOAT16]
   if kwargs.get("post_training_quantize_16x8", False):
     input_size = kwargs.get("model_input_size")
 
