@@ -30,7 +30,8 @@ namespace cl {
 class MeanStdDevNormalization : public GPUOperation {
  public:
   explicit MeanStdDevNormalization(const OperationDef& definition,
-                                   const DeviceInfo& device_info);
+                                   const DeviceInfo& device_info,
+                                   const int tensor_slices);
 
   void GetPossibleKernelWorkGroups(
       TuningType tuning_type, const DeviceInfo& device_info,
@@ -52,7 +53,8 @@ class MeanStdDevNormalization : public GPUOperation {
 };
 
 MeanStdDevNormalization CreateMeanStdDevNormalization(
-    const OperationDef& definition, const DeviceInfo& device_info);
+    const OperationDef& definition, const DeviceInfo& device_info,
+    const int tensor_slices);
 
 }  // namespace cl
 }  // namespace gpu
