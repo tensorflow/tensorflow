@@ -367,10 +367,12 @@ class BatchNormalizationBase(Layer):
       self.fused = self._fused_can_be_used()
 
     axis_to_dim = {x: input_shape.dims[x].value for x in self.axis}
+    self.depth = 1
     for x in axis_to_dim:
       if axis_to_dim[x] is None:
         raise ValueError('Input has undefined `axis` dimension. Input shape: ',
                          input_shape)
+      self.depth *= axis_to_dim[x]
     self.input_spec = InputSpec(ndim=ndims, axes=axis_to_dim)
 
     if len(axis_to_dim) == 1 and self.virtual_batch_size is None:
@@ -525,6 +527,16 @@ class BatchNormalizationBase(Layer):
     original_shape = None
     fused_axis = self.axis[0]
     input_shape = array_ops.shape(inputs)
+
+    # The use of Bessel's correction in training mode imposes the requirement
+    # that the number of elements in the reduced dimensions is > 1.
+    check = control_flow_ops.Assert(
+          training == False or math_ops.reduce_prod(input_shape) > self.depth,
+          ["Number of normalized-over elements must be > 1 (due to use of "
+           "Bessel's correction in training mode).",
+           input_shape, self.depth])
+    input_shape = control_flow_ops.with_dependencies([check], input_shape)
+
     ndims = len(inputs.shape)
     if self.axis[0] not in (1, ndims - 1) or ndims != 4:
       # The fused implementation only supports NCHW or NHWC, so we reshape the

@@ -120,7 +120,7 @@ class LayerCorrectnessTest(keras_parameterized.TestCase):
       ('GaussianNoise', lambda: noise.GaussianNoise(0.5), (2, 2)),
       ('GaussianDropout', lambda: noise.GaussianDropout(0.5), (2, 2)),
       ('AlphaDropout', lambda: noise.AlphaDropout(0.5), (2, 2)),
-      ('BatchNormalization', normalization_v2.BatchNormalization, (2, 2),
+      ('BatchNormalization', normalization_v2.BatchNormalization, (4, 2),
        1e-2, 1e-2),
       ('LayerNormalization', normalization.LayerNormalization, (2, 2)),
       ('LayerNormalizationUnfused',
