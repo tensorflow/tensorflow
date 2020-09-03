@@ -829,7 +829,7 @@ class ArrayMethodsTest(test.TestCase):
       arr = np_array_ops.asarray(arr)
       return np_array_ops.size(arr)
 
-    self.assertEqual(f(np_array_ops.ones((3, 2))).numpy(), 6)
+    self.assertEqual(f(np_array_ops.ones((3, 2))).data.numpy(), 6)
 
   def testRavel(self):
 

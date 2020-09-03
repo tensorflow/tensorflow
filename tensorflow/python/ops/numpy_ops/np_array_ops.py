@@ -570,16 +570,11 @@ def size(x, axis=None):   # pylint: disable=missing-docstring
   if isinstance(x, (int, float, np.int32, np.int64,
                     np.float32, np.float64)):
     return 1
-  # Turn possible graph tensors into non-graph tensors.
   x = asarray(x).data
-  if isinstance(x, (np_arrays.ndarray, np.ndarray)) or tensor_util.is_tensor(x):
-    if x.shape.is_fully_defined():
-      return prod(tuple(x.shape))
-    else:
-      return array_ops.size_v2(x)
+  if x.shape.is_fully_defined():
+    return prod(tuple(x.shape))
   else:
-    raise TypeError("The inputs must be one of types {int, float, numpy array"
-                    ", TensorFlow Tensor, TensorFlow ndarray} object.")
+    return np_utils.tensor_to_ndarray(array_ops.size_v2(x))
 
 
 @np_utils.np_doc('sum')
