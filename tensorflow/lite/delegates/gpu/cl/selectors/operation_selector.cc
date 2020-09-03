@@ -191,6 +191,10 @@ absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
         }
       } else {
         auto weights_shape = inputs[1]->tensor.shape;
+        if (attr.bias.data.empty()) {
+          attr.bias.shape = Linear(weights_shape.b);
+          attr.bias.data.resize(weights_shape.b, 0.0f);
+        }
         TensorDescriptor weights_desc = {op_def.src_tensors[1].data_type,
                                          TensorStorageType::BUFFER,
                                          Layout::BHWC};

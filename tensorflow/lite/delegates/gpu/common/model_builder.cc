@@ -857,9 +857,9 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
       return absl::UnimplementedError(
           "Unsupported FullyConnected weights format.");
     }
-    if (GetNumberOfRuntimeInputsForNode(context, tflite_node) != 1) {
+    if (GetNumberOfRuntimeInputsForNode(context, tflite_node) > 2) {
       return absl::UnimplementedError(
-          "FullyConnected doesn't support dynamic weights or biases.");
+          "FullyConnected doesn't support more than 2 runtime inputs.");
     }
     // TODO(eignasheva): check input shape
     return absl::OkStatus();
@@ -868,11 +868,31 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
   absl::Status Parse(const TfLiteNode* tflite_node,
                      const TfLiteRegistration* registration,
                      GraphFloat32* graph, ObjectReader* reader) final {
+    const TfLiteFullyConnectedParams* tf_options;
+    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
+
+    if (reader->GetNumberOfRuntimeInputs() == 2) {
+      // Create Convolution2D, so as it supports runtime weights.
+      Node* node = graph->NewNode();
+      node->operation.type = ToString(OperationType::CONVOLUTION_2D);
+      RETURN_IF_ERROR(reader->AddInput(node, 0));
+      RETURN_IF_ERROR(reader->AddInput(node, 1));
+      RETURN_IF_ERROR(reader->AddOutputs(node));
+
+      Convolution2DAttributes attr;
+      reader->ReadTensor(2, &attr.bias).IgnoreError();  // bias is optional
+
+      attr.strides = HW(1, 1);
+      attr.dilations = HW(1, 1);
+      attr.padding.appended = HW(0, 0);
+      attr.padding.prepended = HW(0, 0);
+      RETURN_IF_ERROR(MaybeFuseActivation(tf_options->activation, graph, node));
+      node->operation.attributes = std::move(attr);
+      return absl::OkStatus();
+    }
     Node* node = graph->NewNode();
     RETURN_IF_ERROR(reader->AddInput(node, 0));
 
-    const TfLiteFullyConnectedParams* tf_options;
-    RETURN_IF_ERROR(RetrieveBuiltinData(tflite_node, &tf_options));
     if (tf_options->weights_format !=
         kTfLiteFullyConnectedWeightsFormatDefault) {
       return absl::UnimplementedError(
