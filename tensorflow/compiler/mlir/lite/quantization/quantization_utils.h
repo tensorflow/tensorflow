@@ -119,7 +119,7 @@ struct ConvertStatsToQDQs : public OpRewritePattern<quant::StatisticsOp> {
       return failure();
     }
 
-    rewriter.setInsertionPointAfter(op);
+    rewriter.setInsertionPointAfter(op.getOperation());
     Type result_type = quant_type.castFromExpressedType(op.getType());
     auto q = rewriter.create<Q>(op.getLoc(), result_type, op.arg());
     auto dq = rewriter.create<DQ>(op.getLoc(), op.getType(), q);

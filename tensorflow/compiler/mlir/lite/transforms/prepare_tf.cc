@@ -215,7 +215,7 @@ struct InsertTFLQuantOpsAfterTFFakeQuantOp
     }
     // Use the min/max from the operands and the num_bits and narrow_range
     // attribute to create the quantization parameter for the new quantize op.
-    rewriter.setInsertionPointAfter(tf_op);
+    rewriter.setInsertionPointAfter(tf_op.getOperation());
     IntegerAttr num_bits = rewriter.getI64IntegerAttr(tf_op.num_bits());
     BoolAttr narrow_range = rewriter.getBoolAttr(tf_op.narrow_range());
     Type res_type = tf_op.getType();
