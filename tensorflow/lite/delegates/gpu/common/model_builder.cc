@@ -801,6 +801,7 @@ class ElementwiseOperationParser : public TFLiteOperationParser {
       case OperationType::ELU:
       case OperationType::EXP:
       case OperationType::LOG:
+      case OperationType::NEG:
       case OperationType::RSQRT:
       case OperationType::SIGMOID:
       case OperationType::SIN:
@@ -2574,6 +2575,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<PadOperationParser>(/*mirror_pad=*/true);
     case kTfLiteBuiltinMul:
       return std::make_unique<MulOperationParser>();
+    case kTfLiteBuiltinNeg:
+      return std::make_unique<ElementwiseOperationParser>(OperationType::NEG);
     case kTfLiteBuiltinPad:
       return std::make_unique<PadOperationParser>(/*mirror_pad=*/false);
     case kTfLiteBuiltinPow:

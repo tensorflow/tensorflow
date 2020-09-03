@@ -63,6 +63,7 @@ enum class OperationType {
   MEAN_STDDEV_NORMALIZATION,
   MINIMUM,
   MUL,
+  NEG,
   NOT_EQUAL,
   PAD,
   POOLING_2D,

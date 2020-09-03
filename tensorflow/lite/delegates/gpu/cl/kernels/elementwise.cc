@@ -58,6 +58,9 @@ std::string GetOneInputCode(const OperationType& op_type,
     case OperationType::LOG:
       result = "$0 = log($0);\n";
       break;
+    case OperationType::NEG:
+      result = "$0 = -($0);\n";
+      break;
     case OperationType::RSQRT:
       result = "$0 = rsqrt($0);\n";
       break;

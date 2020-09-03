@@ -134,6 +134,8 @@ std::string ToString(enum OperationType op) {
       return "minimum";
     case OperationType::MUL:
       return "mul";
+    case OperationType::NEG:
+      return "neg";
     case OperationType::NOT_EQUAL:
       return "not_equal";
     case OperationType::PAD:
@@ -224,6 +226,7 @@ OperationType OperationTypeFromString(const std::string& name) {
            OperationType::MEAN_STDDEV_NORMALIZATION},
           {"minimum", OperationType::MINIMUM},
           {"mul", OperationType::MUL},
+          {"neg", OperationType::NEG},
           {"not_equal", OperationType::NOT_EQUAL},
           {"pad", OperationType::PAD},
           {"pooling_2d", OperationType::POOLING_2D},
