@@ -65,10 +65,10 @@ def enable_tensor_float_32_execution(enabled):
   print(tf.linalg.matmul(x, y))  # [[2.0002, 2.0002], [2.0002, 2.0002]]
   ```
 
-  We soon will create an RFC proposing that TensorFloat-32 remain enabled by
-  default in stable versions of TensorFlow. We expect the RFC to be accepted,
-  but if it isn't, TensorFloat-32 will be disabled by default in TensorFlow
-  2.4.
+  There is [an RFC](https://github.com/tensorflow/community/pull/287) proposing
+  that TensorFloat-32 remain enabled by default in stable versions of
+  TensorFlow. We expect the RFC to be accepted, but if it isn't, TensorFloat-32
+  will be disabled by default in TensorFlow 2.4.
 
   To check whether TensorFloat-32 execution is currently enabled, use
   `tf.config.experimental.tensor_float_32_execution_enabled`.
