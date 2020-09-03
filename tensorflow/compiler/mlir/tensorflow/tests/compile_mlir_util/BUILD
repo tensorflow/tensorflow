@@ -7,7 +7,10 @@ glob_lit_tests(
         ":test_utilities",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
-    test_file_exts = ["mlir"],
+    test_file_exts = [
+        "mlir",
+        "pbtxt",
+    ],
 )
 
 # Bundle together all of the test utilities that are used by tests.

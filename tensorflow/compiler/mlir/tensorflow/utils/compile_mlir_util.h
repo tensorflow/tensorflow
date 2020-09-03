@@ -87,6 +87,18 @@ Status CompileSerializedMlirToXlaHlo(
     XlaCompilationResult* compilation_result,
     std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes = {});
 
+// Compiles a TensorFlow Graph (already converted to MLIR, imported with
+// tf_executor dialect still present) into XLA HLO, generates all accompanying
+// metadata and stores them in CompilationResult. This will rewrite arguments
+// and run the TensorFlow standard pipeline prior to invoking
+// `CompileMlirToXlaHlo`.
+Status CompileGraphToXlaHlo(
+    mlir::ModuleOp module_op, llvm::ArrayRef<XlaArgument> args,
+    llvm::StringRef device_type, bool use_tuple_args, bool use_return_tuple,
+    const XlaHelpers::ShapeRepresentationFn shape_representation_fn,
+    XlaCompilationResult* compilation_result,
+    std::vector<std::unique_ptr<mlir::Pass>> custom_legalization_passes);
+
 // Compiles a TensorFlow Graph into XLA HLO, generates all accompanying metadata
 // and stores them in CompilationResult.
 // TODO(lyandy): Allow populating of targets/control outputs.
