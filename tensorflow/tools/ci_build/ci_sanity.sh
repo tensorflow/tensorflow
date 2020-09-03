@@ -126,6 +126,22 @@ do_pylint() {
 
   PYLINT_BIN="python3 -m pylint"
 
+  echo ""
+  echo "check whether pylint is available or not."
+  echo ""
+  ${PYLINT_BIN} --version
+  if [ $? -eq 0 ]
+  then
+    echo ""
+    echo "pylint available, proceeding with pylint sanity check."
+    echo ""
+  else
+    echo ""
+    echo "pylint not available." >&2
+    echo ""
+    return 1
+  fi
+
   if [[ "$1" == "--incremental" ]]; then
     PYTHON_SRC_FILES=$(get_py_files_to_check --incremental)
 
