@@ -857,6 +857,10 @@ class FullyConnectedOperationParser : public TFLiteOperationParser {
       return absl::UnimplementedError(
           "Unsupported FullyConnected weights format.");
     }
+    if (GetNumberOfRuntimeInputsForNode(context, tflite_node) != 1) {
+      return absl::UnimplementedError(
+          "FullyConnected doesn't support dynamic weights or biases.");
+    }
     // TODO(eignasheva): check input shape
     return absl::OkStatus();
   }
