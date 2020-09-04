@@ -350,11 +350,11 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
     if input_shape is None:
       raise ValueError('Input shape must be defined when calling build on a '
                        'model subclass network.')
-    valid_types = (tuple, list, tensor_shape.TensorShape)
+    valid_types = (tuple, list, dict, tensor_shape.TensorShape)
     if not isinstance(input_shape, valid_types):
       raise ValueError('Specified input shape is not one of the valid types. '
-                       'Please specify a batch input shape of type tuple or '
-                       'list of input shapes. User provided '
+                       'Please specify a batch input shape of type tuple, '
+                       'dict, or list of input shapes. User provided '
                        'input type: {}'.format(type(input_shape)))
 
     if input_shape and not self.inputs:
