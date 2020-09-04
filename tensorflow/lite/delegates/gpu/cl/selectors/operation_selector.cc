@@ -348,9 +348,15 @@ absl::Status GPUOperationFromNode(const DeviceInfo& device_info,
       return absl::OkStatus();
     }
     case OperationType::DIV:
+    case OperationType::EQUAL:
+    case OperationType::GREATER:
+    case OperationType::GREATER_EQUAL:
+    case OperationType::LESS:
+    case OperationType::LESS_EQUAL:
     case OperationType::MAXIMUM:
     case OperationType::MINIMUM:
     case OperationType::MUL:
+    case OperationType::NOT_EQUAL:
     case OperationType::POW:
     case OperationType::SQUARED_DIFF:
     case OperationType::SUB: {
