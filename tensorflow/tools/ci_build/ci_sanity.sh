@@ -130,7 +130,7 @@ do_pylint() {
   echo "check whether pylint is available or not."
   echo ""
   ${PYLINT_BIN} --version
-  if [ $? -eq 0 ]
+  if [[ $? -eq 0 ]]
   then
     echo ""
     echo "pylint available, proceeding with pylint sanity check."
