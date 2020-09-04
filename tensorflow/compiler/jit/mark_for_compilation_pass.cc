@@ -32,12 +32,12 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -2079,6 +2079,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSelectAndScatter",
                                      "XlaSelfAdjointEig",
                                      "XlaSend",
+                                     "XlaSetBound",
                                      "XlaSharding",
                                      "XlaSort",
                                      "XlaSpmdFullToShardShape",

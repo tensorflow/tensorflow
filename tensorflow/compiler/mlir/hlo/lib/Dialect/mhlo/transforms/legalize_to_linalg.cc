@@ -704,7 +704,7 @@ class IotaConverter : public OpConversionPattern<OpTy> {
         [&](OpBuilder& nestedBuilder, Location nestedLoc, ValueRange ivs,
             ValueRange args) {
           Value castOp = nestedBuilder.create<IndexCastOp>(
-              nestedLoc, ivs[iotaOp.iota_dimension().getZExtValue()],
+              nestedLoc, ivs[iotaOp.iota_dimension()],
               nestedBuilder.getIntegerType(
                   resultElementType.getIntOrFloatBitWidth()));
           if (resultElementType.template isa<FloatType>()) {

@@ -784,7 +784,7 @@ static StatusOr<FuncOp> PostProcessFuncOp(FuncOp func) {
         auto new_output_type = new_qtype.castFromExpressedType(
             mlir::quant::UniformQuantizedType::castToExpressedType(
                 value.getType()));
-        builder.setInsertionPointAfter(cst);
+        builder.setInsertionPointAfter(cst.getOperation());
         auto new_op = builder.create<tfl::QConstOp>(
             cst.getLoc(), new_output_type, mlir::TypeAttr::get(new_output_type),
             cst.valueAttr());

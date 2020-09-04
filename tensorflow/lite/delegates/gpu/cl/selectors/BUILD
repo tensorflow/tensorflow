@@ -111,6 +111,7 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
         "//tensorflow/lite/delegates/gpu/cl/kernels:mean_stddev_normalization",
         "//tensorflow/lite/delegates/gpu/cl/kernels:reduce",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:transpose",
         "//tensorflow/lite/delegates/gpu/cl/selectors:default_selector",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:model",

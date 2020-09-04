@@ -233,9 +233,7 @@ upper_tabs:
       - title: "API Reference"
         path: /lite/api_docs/
       - heading: "Python"
-      - title: "Overview"
-        status: external
-        path: /api_docs/python/tf/lite
+      - include: /lite/api_docs/python/_toc.yaml
       - heading: "Android (Java)"
       - include: /lite/api_docs/java/_toc.yaml
       - heading: "C++"

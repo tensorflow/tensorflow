@@ -84,7 +84,7 @@ void OptimizeDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase* input,
     // of the jobs, the experiments will be randomly turned on.
     // clang-format off
     absl::flat_hash_map<string, uint64> live_experiments = {
-        {"disable_intra_op_parallelism", 5}
+        {"disable_intra_op_parallelism", 20}
     };
     // clang-format on
     auto hash_func = [](const string& str) { return Hash64(str); };

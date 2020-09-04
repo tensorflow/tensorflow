@@ -25081,6 +25081,13 @@ op {
     }
   }
   attr {
+    name: "ram_budget"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
     name: "output_types"
     type: "list(type)"
     has_minimum: true

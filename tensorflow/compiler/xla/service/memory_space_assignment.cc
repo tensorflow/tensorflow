@@ -1166,7 +1166,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
   // Data structure to contain the preferred offset for a given computation.
   // We ensure that the same offset will be allocated outside the while loop
   // as well as inside the while loop.
-  absl::flat_hash_map<const HloComputation*, int64>
+  absl::flat_hash_map<const HloComputation*, AliasedOffset*>
       preferred_offset_for_computation;
 
   Result result = Result::kSuccess;
@@ -1174,7 +1174,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
     int64 definition_time =
         instruction_schedule.at(allocation_value.defining_instruction());
 
-    absl::optional<int64> preferred_offset;
+    AliasedOffset* preferred_offset = nullptr;
     auto preferred_offset_it =
         preferred_offset_for_computation.find(allocation_value.computation());
     if (preferred_offset_it != preferred_offset_for_computation.end()) {
@@ -1322,7 +1322,7 @@ AlternateMemoryBestFitHeap::AllocateAllocationValues(
       if (hlo_use.instruction->opcode() == HloOpcode::kWhile &&
           aliased_allocation->memory_space() == MemorySpace::kAlternate) {
         preferred_offset_for_computation[hlo_use.instruction->while_body()] =
-            aliased_allocation->chunk().offset;
+            GetAliasedOffset(*aliased_allocation);
       }
     }
   }
@@ -1361,6 +1361,28 @@ absl::optional<AsynchronousCopy> AsynchronousCopyOrdering::ViolatesOrdering(
     return *copy_it;
   }
   return absl::nullopt;
+}
+
+AlternateMemoryBestFitHeap::AliasedOffset*
+AlternateMemoryBestFitHeap::GetAliasedOffset(
+    const MemorySpaceAssignment::Allocation& allocation) {
+  auto aliased_offset_it = aliased_offset_map_.find(&allocation);
+  CHECK(aliased_offset_it != aliased_offset_map_.end());
+  return aliased_offset_it->second;
+}
+
+void AlternateMemoryBestFitHeap::CreateOrAddToAliasedOffset(
+    const MemorySpaceAssignment::Allocation& allocation,
+    AlternateMemoryBestFitHeap::AliasedOffset* aliased_offset) {
+  CHECK(allocation.memory_space() == MemorySpace::kAlternate);
+  CHECK(!aliased_offset_map_.contains(&allocation));
+  if (!aliased_offset) {
+    aliased_offsets_.push_back({allocation.chunk().offset});
+    aliased_offset = &aliased_offsets_.back();
+  }
+  CHECK_EQ(allocation.chunk().offset, aliased_offset->offset);
+  CHECK(aliased_offset->allocations.insert(&allocation).second);
+  aliased_offset_map_[&allocation] = aliased_offset;
 }
 
 /*static*/ MemorySpaceAssignment::Allocation*
@@ -1438,10 +1460,11 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   AddAsyncCopy(*allocations.back(), MemorySpace::kAlternate,
                chunk_candidate.chunk, prefetch_candidate->start,
                cross_program_prefetch_end_time, latest_prefetch_time,
-               &allocations,
+               &allocations, /*aliased_offset=*/nullptr,
                /*is_cross_program_prefetch=*/true);
   absl::c_for_each(uses, [&](auto& use) { allocations.back()->AddUse(use); });
-  int64 cross_program_prefetch_offset = allocations.back()->chunk().offset;
+  AliasedOffset* cross_program_prefetch_offset =
+      GetAliasedOffset(*allocations.back());
 
   if (free_buffer) {
     VLOG(2) << "Adding an end-of-program prefetch for freed "
@@ -1449,8 +1472,10 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
     AddAsyncCopy(*allocations.front(), MemorySpace::kAlternate,
                  chunk_candidate.chunk, end_of_program_prefetch_start_time,
                  end_of_program_prefetch_end_time,
-                 end_of_program_prefetch_end_time, &allocations);
-    CHECK_EQ(cross_program_prefetch_offset, allocations.back()->chunk().offset);
+                 end_of_program_prefetch_end_time, &allocations,
+                 cross_program_prefetch_offset);
+    CHECK_EQ(cross_program_prefetch_offset->offset,
+             allocations.back()->chunk().offset);
   }
 
   for (auto& allocation : allocations) {
@@ -1480,7 +1505,7 @@ void AlternateMemoryBestFitHeap::AllocateCrossProgramPrefetchBuffer(
   ClearPendingChunks();
 }
 
-absl::optional<RequiredMemoryAssignment>
+absl::optional<AlternateMemoryBestFitHeap::RequiredMemoryAssignment>
 AlternateMemoryBestFitHeap::RequiredMemoryAssignmentAt(const HloValue* buffer,
                                                        int64 time) const {
   auto required_assignment_it = required_assignments_.find(buffer);
@@ -1498,7 +1523,7 @@ AlternateMemoryBestFitHeap::RequiredMemoryAssignmentAt(const HloValue* buffer,
   return required_assignment_at_time;
 }
 
-absl::optional<RequiredMemoryAssignment>
+absl::optional<AlternateMemoryBestFitHeap::RequiredMemoryAssignment>
 AlternateMemoryBestFitHeap::AliasedRequiredAssignmentForUse(
     const AllocationValue::Use& use) const {
   absl::optional<RequiredMemoryAssignment> required_assignment;
@@ -1524,26 +1549,26 @@ AlternateMemoryBestFitHeap::AliasedRequiredAssignmentForUse(
 void AlternateMemoryBestFitHeap::AddAliasedRequiredAssignment(
     const HloInstruction* instruction, ShapeIndex index,
     const MemorySpaceAssignment::Allocation* aliased_allocation) {
-  absl::optional<Chunk> chunk;
+  AliasedOffset* offset = nullptr;
   if (aliased_allocation->memory_space() == MemorySpace::kAlternate) {
-    chunk = aliased_allocation->chunk();
+    offset = GetAliasedOffset(*aliased_allocation);
   }
   AddRequiredAssignment(instruction, index, aliased_allocation->memory_space(),
-                        chunk);
+                        offset);
 }
 
 void AlternateMemoryBestFitHeap::AddRequiredAssignment(
     const HloValue* value, const HloInstruction* instruction,
     MemorySpaceAssignment::MemorySpace memory_space, int64 time,
-    absl::optional<HeapSimulator::Chunk> chunk) {
+    AliasedOffset* offset) {
   // Check for existing required assignment at this time and make sure it is the
   // same as this if there is one.
   auto existing_required_assignment = RequiredMemoryAssignmentAt(value, time);
   if (existing_required_assignment) {
     CHECK(memory_space == existing_required_assignment->memory_space)
         << "inst = " << instruction->ToString() << " at " << time;
-    CHECK((!chunk && !existing_required_assignment->chunk) ||
-          chunk->offset == existing_required_assignment->chunk->offset);
+    CHECK((!offset && !existing_required_assignment->offset) ||
+          offset == existing_required_assignment->offset);
     VLOG(3) << "Not adding required assignment because there is one already: "
             << value->ToShortString() << " at " << time << " at "
             << (memory_space == MemorySpace::kDefault ? "def" : "alt");
@@ -1551,7 +1576,7 @@ void AlternateMemoryBestFitHeap::AddRequiredAssignment(
     VLOG(3) << "Adding required assignment: " << value->ToShortString()
             << " at " << time << " at "
             << (memory_space == MemorySpace::kDefault ? "def" : "alt");
-    RequiredMemoryAssignment required_assignment{memory_space, time, chunk};
+    RequiredMemoryAssignment required_assignment{memory_space, time, offset};
     required_assignments_[value].push_back(required_assignment);
     pending_required_assignments_.push_back({value, required_assignment});
   }
@@ -1559,13 +1584,13 @@ void AlternateMemoryBestFitHeap::AddRequiredAssignment(
 
 void AlternateMemoryBestFitHeap::AddRequiredAssignment(
     const HloInstruction* instruction, ShapeIndex index,
-    MemorySpace memory_space, absl::optional<Chunk> chunk) {
+    MemorySpace memory_space, AliasedOffset* offset) {
   const HloValue* value =
       &alias_analysis_.dataflow_analysis().GetUniqueValueAt(instruction, index);
   int64 instruction_time =
       hlo_live_range_.instruction_schedule().at(instruction);
   AddRequiredAssignment(value, instruction, memory_space, instruction_time,
-                        chunk);
+                        offset);
 }
 
 void AlternateMemoryBestFitHeap::AddInputAndOutputRequiredAssignments() {
@@ -1714,8 +1739,8 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks(
                     ? "def"
                     : "alt")
             << " time = " << required_assignment.time << " off = "
-            << (required_assignment.chunk ? required_assignment.chunk->offset
-                                          : -1);
+            << (required_assignment.offset ? required_assignment.offset->offset
+                                           : -1);
     for (auto it = required_assignment_vector.begin();
          it != required_assignment_vector.end(); ++it) {
       if (*it == value_and_required_assignment.second) {
@@ -1729,7 +1754,8 @@ void AlternateMemoryBestFitHeap::UncommitPendingChunks(
 
 void AlternateMemoryBestFitHeap::FinalizeAllocations(
     absl::Span<AllocationValue> allocation_values) {
-  absl::flat_hash_map<int64, std::vector<MemorySpaceAssignment::Allocation*>>
+  absl::flat_hash_map<const AliasedOffset*,
+                      std::vector<MemorySpaceAssignment::Allocation*>>
       colocation_map;
   for (AllocationValue& allocation_value : allocation_values) {
     for (auto& allocation : *allocation_value.allocation_sequence()) {
@@ -1739,12 +1765,12 @@ void AlternateMemoryBestFitHeap::FinalizeAllocations(
       MemorySpaceAssignment::Allocation* inserted_allocation =
           allocations_->back().get();
       if (inserted_allocation->memory_space() == MemorySpace::kAlternate) {
-        colocation_map[inserted_allocation->chunk().offset].push_back(
+        colocation_map[GetAliasedOffset(*inserted_allocation)].push_back(
             inserted_allocation);
       }
     }
   }
-  // Assume allocations that received the same offset need to be colocated.
+  // The allocations that have the same AliasedOffset need to be colocated.
   // Export these to repack_allocation_blocks_ so that we can repack them to
   // reduce fragmentation.
   for (auto& colocation : colocation_map) {
@@ -1771,6 +1797,8 @@ void AlternateMemoryBestFitHeap::ClearPendingChunks() {
   pending_chunks_.clear();
   pending_async_copies_.clear();
   pending_required_assignments_.clear();
+  aliased_offset_map_.clear();
+  aliased_offsets_.clear();
 }
 
 void AlternateMemoryBestFitHeap::AddToPendingChunks(
@@ -1846,15 +1874,25 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::AllocateSegment(
       const auto& prev_allocation = allocation_sequence->back();
       CHECK(prev_allocation->memory_space() ==
             required_assignment_at_start->memory_space);
-      CHECK_EQ(prev_allocation->chunk().offset,
-               required_assignment_at_start->chunk->offset);
+      CHECK_EQ(GetAliasedOffset(*prev_allocation),
+               required_assignment_at_start->offset);
       prev_allocation->Extend(request.start_time);
     } else {
+      absl::optional<Chunk> aliased_chunk = absl::nullopt;
+      if (required_assignment_at_start->memory_space ==
+          MemorySpace::kAlternate) {
+        aliased_chunk =
+            Chunk{required_assignment_at_start->offset->offset, request.size};
+      }
       allocation_sequence->push_back(
           absl::make_unique<MemorySpaceAssignment::Allocation>(
               defining_position, required_assignment_at_start->memory_space,
-              required_assignment_at_start->chunk, request.start_time,
-              request.start_time));
+              aliased_chunk, request.start_time, request.start_time));
+      if (required_assignment_at_start->memory_space ==
+          MemorySpace::kAlternate) {
+        CreateOrAddToAliasedOffset(*allocation_sequence->back(),
+                                   required_assignment_at_start->offset);
+      }
     }
   }
 
@@ -1938,7 +1976,7 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
     MemorySpace memory_space, absl::optional<Chunk> chunk, int64 start_time,
     int64 end_time, int64 copy_done_schedule_before_time,
     MemorySpaceAssignment::AllocationSequence* allocations,
-    bool is_cross_program_prefetch) {
+    AliasedOffset* aliased_offset, bool is_cross_program_prefetch) {
   VLOG(3) << "Copy to "
           << (memory_space == MemorySpaceAssignment::MemorySpace::kDefault
                   ? "default"
@@ -1960,6 +1998,7 @@ void AlternateMemoryBestFitHeap::AddAsyncCopy(
     prefetch_interval_tree_.Add(start_time, copy_done_schedule_before_time,
                                 kDummyChunk);
     async_copy_ordering_.AddCopy(pending_async_copies_.back());
+    CreateOrAddToAliasedOffset(*allocations->back(), aliased_offset);
   } else {
     eviction_interval_tree_.Add(start_time, copy_done_schedule_before_time,
                                 kDummyChunk);
@@ -2036,9 +2075,9 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
   alternate_mem_interval.start = request.start_time;
 
   // Prefer the offset that was previously used for the previous allocation.
-  absl::optional<int64> preferred_offset;
+  AliasedOffset* preferred_offset = nullptr;
   if (prev_allocation != nullptr) {
-    preferred_offset = prev_allocation->chunk().offset;
+    preferred_offset = GetAliasedOffset(*prev_allocation);
     // If there is a previous allocation, set the start time one after the end
     // of the previous allocation's end.
     alternate_mem_interval.start = prev_allocation->end_time() + 1;
@@ -2048,13 +2087,13 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
     // Sanity check that if there is a preferred offset provided in the request,
     // it matches with the previous allocation.
     CHECK(!preferred_offset || request.preferred_offset == preferred_offset)
-        << "preferred_offset = " << *preferred_offset
-        << ", request.preferred_offset = " << *request.preferred_offset;
+        << "preferred_offset = " << preferred_offset->offset
+        << ", request.preferred_offset = " << request.preferred_offset->offset;
     preferred_offset = request.preferred_offset;
   }
 
   VLOG(3) << "We can eliminate copy to alternate memory. Preferred offset = "
-          << (preferred_offset ? *preferred_offset : -1);
+          << (preferred_offset ? preferred_offset->offset : -1);
   // In case there are additional uses after this use, we rely on the last use
   // time to try to reserve a chunk in the heap simulator. This is to prevent
   // the following scenario:
@@ -2102,6 +2141,9 @@ AlternateMemoryBestFitHeap::AllocateInAlternateMemoryNoCopy(
           absl::make_unique<MemorySpaceAssignment::Allocation>(
               defining_position, MemorySpace::kAlternate,
               chunk_candidate->chunk, request.start_time, request.end_time));
+      CreateOrAddToAliasedOffset(
+          *request.allocation_value->allocation_sequence()->back(),
+          preferred_offset);
     }
     request.allocation_value->allocation_sequence()->back()->AddUse(
         request.use->hlo_use);
@@ -2165,7 +2207,8 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Evict(
     AddAsyncCopy(*prev_allocation, MemorySpace::kDefault,
                  /*chunk=*/absl::nullopt, eviction_start_time,
                  prev_allocation->end_time(), eviction_end_time,
-                 request.allocation_value->allocation_sequence());
+                 request.allocation_value->allocation_sequence(),
+                 /*aliased_offset=*/nullptr);
   } else {
     if (eviction_violates_outstanding_copies) {
       VLOG(3) << "This violates the maximum async copies.";
@@ -2183,7 +2226,8 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Evict(
         VLOG(3) << "Eviction successful.";
         AddAsyncCopy(*prev_allocation, MemorySpace::kDefault,
                      /*chunk=*/absl::nullopt, time, time + 1, time + 1,
-                     request.allocation_value->allocation_sequence());
+                     request.allocation_value->allocation_sequence(),
+                     /*aliased_offset=*/nullptr);
         eviction_scheduled = true;
         break;
       }
@@ -2335,7 +2379,8 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
       AddAsyncCopy(prev_allocation_in_default_mem, MemorySpace::kAlternate,
                    chunk_candidate->chunk, alternate_mem_interval.start,
                    request.end_time, prefetch_end_time,
-                   request.allocation_value->allocation_sequence());
+                   request.allocation_value->allocation_sequence(),
+                   request.preferred_offset);
 
       request.allocation_value->allocation_sequence()->back()->AddUse(
           request.use->hlo_use);
@@ -2354,7 +2399,7 @@ AlternateMemoryBestFitHeap::Result AlternateMemoryBestFitHeap::Prefetch(
 
 absl::optional<AlternateMemoryBestFitHeap::ChunkCandidate>
 AlternateMemoryBestFitHeap::FindBestChunkCandidate(
-    const AllocationRequest& request, absl::optional<int64> preferred_offset,
+    const AllocationRequest& request, const AliasedOffset* preferred_offset,
     BufferInterval* alternate_mem_interval) const {
   int64 end_time = request.end_time;
   if (!preferred_offset) {
@@ -2400,8 +2445,8 @@ AlternateMemoryBestFitHeap::FindBestChunkCandidate(
   // only.
   alternate_mem_interval->end = end_time;
   ChunkCandidate chunk_candidate =
-      FindChunkCandidate(*alternate_mem_interval, *preferred_offset);
-  if (chunk_candidate.chunk.offset == *preferred_offset) {
+      FindChunkCandidate(*alternate_mem_interval, preferred_offset->offset);
+  if (chunk_candidate.chunk.offset == preferred_offset->offset) {
     return chunk_candidate;
   }
   return absl::nullopt;
@@ -2750,15 +2795,21 @@ HloInstruction* MemorySpaceAssignment::Allocation::AddGetTupleElements() {
 }
 
 std::string MemorySpaceAssignment::Allocation::ToString() const {
-  return absl::StrCat("Allocation in ",
-                      memory_space_ == MemorySpace::kDefault ? "def" : "alt",
-                      " defined at ", defining_position_.ToString());
+  std::string memory_space_str = "def";
+  if (memory_space_ == MemorySpace::kAlternate) {
+    memory_space_str = absl::StrCat("alt (off: ", chunk_->offset, ")");
+  }
+  return absl::StrCat("Allocation in ", memory_space_str, " defined at ",
+                      defining_position_.ToString());
 }
 
 std::string MemorySpaceAssignment::CopyAllocation::ToString() const {
-  return absl::StrCat("Copy Allocation in ",
-                      memory_space_ == MemorySpace::kDefault ? "def" : "alt",
-                      " from ", prev_allocation_.ToString());
+  std::string memory_space_str = "def";
+  if (memory_space_ == MemorySpace::kAlternate) {
+    memory_space_str = absl::StrCat("alt (off: ", chunk_->offset, ")");
+  }
+  return absl::StrCat("Copy Allocation in ", memory_space_str, " from ",
+                      prev_allocation_.ToString());
 }
 
 Status MemorySpaceAssignment::CopyAllocation::Process(

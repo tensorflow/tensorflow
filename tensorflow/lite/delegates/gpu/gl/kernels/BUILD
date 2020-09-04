@@ -673,6 +673,8 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/gl:request_gpu_info",
         "//tensorflow/lite/delegates/gpu/gl:runtime_options",
         "//tensorflow/lite/delegates/gpu/gl/workgroups:default_calculator",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_googletest//:gtest",
         "@com_google_googletest//:gtest_main",
     ],

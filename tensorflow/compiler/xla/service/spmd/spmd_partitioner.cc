@@ -2895,18 +2895,37 @@ Status SpmdPartitioningVisitor::HandleRng(HloInstruction* hlo) {
   }
 
   TF_RET_CHECK(!hlo->sharding().IsTileMaximal());
-  SetPartitionedHlo(hlo, [&] {
-    // Replicate the operands and run partitioned Rng on all devices.
-    std::vector<HloInstruction*> new_operands;
-    for (int64 i = 0; i < hlo->operand_count(); ++i) {
-      new_operands.push_back(GetPartitionedHlo(hlo->operand(i))
-                                 .Reshard(HloSharding::Replicate())
-                                 .hlo());
-    }
-    return b_.AddInstruction(HloInstruction::CreateRng(
+  // Replicate the operands and run partitioned Rng on all devices.
+  std::vector<HloInstruction*> new_operands;
+  for (int64 i = 0; i < hlo->operand_count(); ++i) {
+    new_operands.push_back(GetPartitionedHlo(hlo->operand(i))
+                               .Reshard(HloSharding::Replicate())
+                               .hlo());
+  }
+
+  if (!hlo->sharding().ReplicateOnLastTileDim()) {
+    SetPartitionedHlo(hlo, [&] {
+      return b_.AddInstruction(HloInstruction::CreateRng(
+          MakePartitionedShape(hlo->shape(), hlo->sharding()),
+          hlo->random_distribution(), new_operands));
+    });
+  } else {
+    std::vector<int64> group_dims(
+        hlo->sharding().tile_assignment().num_dimensions() - 1);
+    std::iota(group_dims.begin(), group_dims.end(), 0);
+    auto sharding_grouped = GroupShardingOnDims(hlo->sharding(), group_dims);
+    auto per_group_state = CreatePerGroupPartitioningState(
+        MakePartitioningState(), sharding_grouped.device_groups, &b_);
+    auto rng = b_.AddInstruction(HloInstruction::CreateRng(
         MakePartitionedShape(hlo->shape(), hlo->sharding()),
         hlo->random_distribution(), new_operands));
-  });
+    rng->set_sharding(HloSharding::AssignDevice(0));
+    SetPartitionedHlo(hlo, [&]() {
+      return PartitionedHlo(rng, rng->shape(), per_group_state)
+          .Replicate()
+          .hlo();
+    });
+  }
   return Status::OK();
 }
 

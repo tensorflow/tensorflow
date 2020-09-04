@@ -4232,13 +4232,50 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
 
       @def_function.function
       @module.Module.with_name_scope
-      def bar(self, x, y):
+      def add(self, x, y, z=1):
         if self.var is None:
-          return x
+          return x + y + z
+
+    foo = Foo()
+    self.assertEqual(foo.add(2, 3), 6)
+
+  def testWithModuleNameScopeRedundantArgs(self):
+    self.skipTest('b/166158748:function does not handle this case correctly.')
+
+    class Foo(module.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.var = None
+
+      @def_function.function
+      @module.Module.with_name_scope
+      def add(self, x, y):
+        if self.var is None:
+          return x + y
 
     foo = Foo()
     with self.assertRaisesRegex(TypeError, 'got two values for argument'):
-      foo.bar(2, x=3)  # pylint: disable=redundant-keyword-arg
+      foo.add(2, x=3)  # pylint: disable=redundant-keyword-arg,no-value-for-parameter
+
+  def testWithModuleNameScopeMissingArgs(self):
+    self.skipTest('b/166158748:function does not handle this case correctly.')
+
+    class Foo(module.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.var = None
+
+      @def_function.function
+      @module.Module.with_name_scope
+      def add(self, x, y):
+        if self.var is None:
+          return x + y
+
+    foo = Foo()
+    with self.assertRaisesRegex(TypeError, 'missing required arguments: y'):
+      foo.add(2)  # pylint: disable=no-value-for-parameter
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

@@ -1300,7 +1300,15 @@ Status AlgebraicSimplifierVisitor::HandleConcatenate(
       auto replacement =
           computation_->AddInstruction(concatenate->CloneWithNewOperands(
               concatenate->shape(), new_operands));
-      ReplaceInstructionIfSameShape(concatenate, replacement);
+
+      // Recurse to handle multiple disjoint sequence of inputs. The
+      // logic above merge only 1 sequential series of
+      // inputs. Otherwise, it can lead to the FixPass optimization
+      // hitting its threshold.
+      if (ReplaceInstructionIfSameShape(concatenate, replacement)) {
+        return HandleConcatenate(replacement);
+      }
+
       return Status::OK();
     }
   }
@@ -5252,10 +5260,10 @@ StatusOr<bool> AlgebraicSimplifierVisitor::SwapConvOperands(
   if (!reverse_dimensions.empty()) {
     TF_ASSIGN_OR_RETURN(kernel, MakeReverseHlo(kernel, reverse_dimensions));
   }
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * new_convolution,
-      MakeConvolveHlo(kernel, input, /*feature_group_count=*/1, swapped_window,
-                      swapped_dnums, precision_config));
+  TF_ASSIGN_OR_RETURN(HloInstruction * new_convolution,
+                      MakeConvolveHlo(kernel, input, /*feature_group_count=*/1,
+                                      /*batch_group_count=*/1, swapped_window,
+                                      swapped_dnums, precision_config));
 
   convolution->SetupDerivedInstruction(new_convolution);
   TF_RETURN_IF_ERROR(ReplaceInstruction(convolution, new_convolution));

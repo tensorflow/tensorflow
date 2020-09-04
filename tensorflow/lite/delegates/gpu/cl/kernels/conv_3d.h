@@ -83,10 +83,6 @@ class Conv3D : public GPUOperation {
   template <DataType T>
   void UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights);
 
-  template <DataType S, typename T>
-  void RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
-                            absl::Span<T> dst);
-
   friend Conv3D CreateConv3D(const DeviceInfo& device_info,
                              const OperationDef& definition,
                              const Convolution3DAttributes& attr);
@@ -138,8 +134,6 @@ void Conv3D::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
   const int kernel_x = kernel_size_.x;
   const int kernel_y = kernel_size_.y;
   const int kernel_z = kernel_size_.z;
-  const int texture_width = dst_slices;
-  const int texture_height = src_slices * kernel_x * kernel_y * kernel_z;
 
   const int elements_count =
       kernel_x * kernel_y * kernel_z * src_slices * dst_slices * 4;
@@ -151,10 +145,22 @@ void Conv3D::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
 
   if (f32_weights) {
     float4* ptr = reinterpret_cast<float4*>(data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
+    if (conv_params_.AreWeightsBuffer()) {
+      RearrangeWeightsToODHWIOGroupI4O4(weights, conv_params_.block_size.w,
+                                        absl::MakeSpan(ptr, elements_count));
+    } else {
+      RearrangeWeightsToI4DHWIOOGroupO4(weights, conv_params_.block_size.w,
+                                        absl::MakeSpan(ptr, elements_count));
+    }
   } else {
     half4* ptr = reinterpret_cast<half4*>(data.data());
-    RearrangeWeightsData(weights, absl::MakeSpan(ptr, elements_count));
+    if (conv_params_.AreWeightsBuffer()) {
+      RearrangeWeightsToODHWIOGroupI4O4(weights, conv_params_.block_size.w,
+                                        absl::MakeSpan(ptr, elements_count));
+    } else {
+      RearrangeWeightsToI4DHWIOOGroupO4(weights, conv_params_.block_size.w,
+                                        absl::MakeSpan(ptr, elements_count));
+    }
   }
 
   if (conv_params_.AreWeightsBuffer()) {
@@ -166,94 +172,18 @@ void Conv3D::UploadWeights(const tflite::gpu::Tensor<OHWDI, T>& weights) {
     args_.AddObject("weights",
                     absl::make_unique<BufferDescriptor>(std::move(desc)));
   } else {
-    int sub_size = float4_size * elements_count / 4;
-    Texture2DDescriptor desc0;
-    desc0.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc0.size = int2(texture_width, texture_height);
-    desc0.data.resize(sub_size);
-    memcpy(desc0.data.data(), data.data(), sub_size);
-    args_.AddObject("weights0",
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc0)));
-
-    Texture2DDescriptor desc1;
-    desc1.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc1.size = int2(texture_width, texture_height);
-    desc1.data.resize(sub_size);
-    memcpy(desc1.data.data(), data.data() + sub_size, sub_size);
-    args_.AddObject("weights1",
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc1)));
-
-    Texture2DDescriptor desc2;
-    desc2.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc2.size = int2(texture_width, texture_height);
-    desc2.data.resize(sub_size);
-    memcpy(desc2.data.data(), data.data() + sub_size * 2, sub_size);
-    args_.AddObject("weights2",
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc2)));
-
-    Texture2DDescriptor desc3;
-    desc3.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
-    desc3.size = int2(texture_width, texture_height);
-    desc3.data.resize(sub_size);
-    memcpy(desc3.data.data(), data.data() + sub_size * 3, sub_size);
-    args_.AddObject("weights3",
-                    absl::make_unique<Texture2DDescriptor>(std::move(desc3)));
-  }
-}
-
-template <DataType S, typename T>
-void Conv3D::RearrangeWeightsData(const tflite::gpu::Tensor<OHWDI, S>& weights,
-                                  absl::Span<T> dst) {
-  const int block_size = conv_params_.block_size.w;
-  const int dst_slices =
-      AlignByN(DivideRoundUp(weights.shape.o, 4), block_size);
-  const int src_slices = DivideRoundUp(weights.shape.i, 4);
-  const int kernel_x = kernel_size_.x;
-  const int kernel_y = kernel_size_.y;
-  const int kernel_z = kernel_size_.z;
-  const int texture_width = dst_slices;
-  const int texture_height = src_slices * kernel_x * kernel_y * kernel_z;
-
-  int counter = 0;
-  for (int d = 0; d < dst_slices / block_size; ++d) {
-    for (int z = 0; z < kernel_z; ++z) {
-      for (int y = 0; y < kernel_y; ++y) {
-        for (int x = 0; x < kernel_x; ++x) {
-          for (int s = 0; s < src_slices; ++s) {
-            for (int sub_d = 0; sub_d < block_size; ++sub_d) {
-              T filters[4];
-              for (int i = 0; i < 4; ++i) {
-                for (int j = 0; j < 4; ++j) {
-                  const int s_ch = s * 4 + j;
-                  const int d_ch = (d * block_size + sub_d) * 4 + i;
-                  if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
-                    const int f_index =
-                        weights.shape.LinearIndex({d_ch, y, x, z, s_ch});
-                    filters[j][i] = weights.data[f_index];
-                  } else {
-                    filters[j][i] = 0.0f;
-                  }
-                }
-              }
-              if (conv_params_.AreWeightsBuffer()) {
-                dst[counter++] = filters[0];
-                dst[counter++] = filters[1];
-                dst[counter++] = filters[2];
-                dst[counter++] = filters[3];
-              } else {
-                int x_coord = d * block_size + sub_d;
-                int y_coord =
-                    ((z * kernel_y + y) * kernel_x + x) * src_slices + s;
-                int offset = y_coord * dst_slices + x_coord;
-                dst[offset + texture_width * texture_height * 0] = filters[0];
-                dst[offset + texture_width * texture_height * 1] = filters[1];
-                dst[offset + texture_width * texture_height * 2] = filters[2];
-                dst[offset + texture_width * texture_height * 3] = filters[3];
-              }
-            }
-          }
-        }
-      }
+    const int texture_width = dst_slices;
+    const int texture_height = src_slices * kernel_x * kernel_y * kernel_z;
+    int sub_size = float4_size * texture_width * texture_height;
+    for (int i = 0; i < 4; ++i) {
+      Texture2DDescriptor desc;
+      desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
+      desc.size = int2(texture_width, texture_height);
+      desc.data.resize(sub_size);
+      memcpy(desc.data.data(), data.data() + sub_size * i, sub_size);
+      const std::string name = "weights" + std::to_string(i);
+      args_.AddObject(name,
+                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
     }
   }
 }

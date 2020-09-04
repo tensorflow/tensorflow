@@ -17,10 +17,9 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
-#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
-#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -182,7 +181,7 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
           if (gr->devices.size() == gr->group.group_size) {
             // The group is full after adding this device, calculate the number
             // of tasks.
-            absl::flat_hash_set<string> tasks;
+            std::unordered_set<string> tasks;
             for (const auto& item : gr->devices) {
               tasks.insert(TaskNameFromDeviceName(item.first));
             }

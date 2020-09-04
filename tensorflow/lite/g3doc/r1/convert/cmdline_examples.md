@@ -129,13 +129,43 @@ tflite_convert \
   --output_arrays=MobilenetV1/Predictions/Reshape_1 \
   --inference_type=INT8 \
   --mean_values=-0.5 \
-  --std_dev_values=127.7
+  --std_dev_values=127.7 \
   --default_ranges_min=0 \
-  --default_ranges_max=6 \
+  --default_ranges_max=6
 ```
 
 *If you're setting `--inference_type=QUANTIZED_UINT8` then update
 `--mean_values=128` and `--std_dev_values=127`*
+
+#### Convert a model with select TensorFlow operators.
+
+Since TensorFlow Lite only supports a limited number of TensorFlow operators,
+not every model is convertible. For details, refer to
+[operator compatibility](https://www.tensorflow.org/lite/guide/ops_compatibility).
+To allow conversion, users can enable the usage of
+[certain TensorFlow ops](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/flex/allowlisted_flex_ops.cc)
+in their TensorFlow Lite model, as shown in the following example.
+
+```
+tflite_convert \
+  --graph_def_file=/tmp/foo.pb \
+  --output_file=/tmp/foo.tflite \
+  --input_arrays=input \
+  --output_arrays=MobilenetV1/Predictions/Reshape_1 \
+  --target_ops=TFLITE_BUILTINS,SELECT_TF_OPS
+```
+
+When building and running `tflite_convert` with `bazel`, please pass
+`--define=tflite_convert_with_select_tf_ops=true` as an additional argument.
+
+```
+bazel run --define=tflite_convert_with_select_tf_ops=true tflite_convert -- \
+  --graph_def_file=/tmp/foo.pb \
+  --output_file=/tmp/foo.tflite \
+  --input_arrays=input \
+  --output_arrays=MobilenetV1/Predictions/Reshape_1 \
+  --target_ops=TFLITE_BUILTINS,SELECT_TF_OPS
+```
 
 #### Convert a model with multiple input arrays
 

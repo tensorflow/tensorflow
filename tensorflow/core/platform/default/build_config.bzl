@@ -1,7 +1,7 @@
 # Platform-specific build configurations.
 
 load("@com_google_protobuf//:protobuf.bzl", "proto_gen")
-load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows")
+load("//tensorflow:tensorflow.bzl", "clean_dep", "if_not_windows", "if_tpu")
 load("//tensorflow/core/platform:build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
@@ -800,3 +800,6 @@ def if_llvm_system_z_available(then, otherwise = []):
         "//tensorflow:linux_s390x": then,
         "//conditions:default": otherwise,
     })
+
+def tf_tpu_dependencies():
+    return if_tpu(["//tensorflow/core/tpu/kernels"])

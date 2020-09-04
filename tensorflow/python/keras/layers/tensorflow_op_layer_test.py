@@ -731,7 +731,8 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     model.summary()
 
 
-class InputInEagerTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class InputInEagerTest(keras_parameterized.TestCase):
   """Tests ops on keras inputs in Eager runtime.
 
   Input returns graph/symbolic tensors in the Eager runtime (this
@@ -740,21 +741,19 @@ class InputInEagerTest(test.TestCase):
   """
 
   def test_identity(self):
-    with context.eager_mode():
-      x = keras.Input(shape=(1,))
-      ident = array_ops.identity(x)
+    x = keras.Input(shape=(1,))
+    ident = array_ops.identity(x)
 
-      # This is now a graph tensor, and should be able to continue in graphland
-      self.assertIn('Identity', ident.name)
+    # This is now a graph tensor, and should be able to continue in graphland
+    self.assertIn('Identity', ident.name)
 
   def test_size(self):
-    with context.eager_mode():
-      x = keras.Input(shape=(3,))
-      self.assertAllEqual(x.get_shape().as_list(), [None, 3])
-      sz = array_ops.size(x)
+    x = keras.Input(shape=(3,))
+    self.assertAllEqual(x.get_shape().as_list(), [None, 3])
+    sz = array_ops.size(x)
 
-      # This is now a graph tensor, and should be able to continue in graphland
-      self.assertIn('Size', sz.name)
+    # This is now a graph tensor, and should be able to continue in graphland
+    self.assertIn('Size', sz.name)
 
 
 if __name__ == '__main__':

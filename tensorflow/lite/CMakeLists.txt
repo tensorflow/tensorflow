@@ -175,6 +175,9 @@ if(CMAKE_SYSTEM_NAME MATCHES "Windows")
   # use of std::min std::max.
   # Use NOGDI to ERROR macro which breaks TensorFlow logging.
   list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "-DNOMINMAX" "-DNOGDI")
+  # lite/kernels/conv.cc has more than 64k sections so enable /bigobj to
+  # support compilation with MSVC2015.
+  list(APPEND TFLITE_TARGET_PRIVATE_OPTIONS "/bigobj")
 endif()
 # Build a list of source files to compile into the TF Lite library.
 populate_tflite_source_vars("." TFLITE_SRCS)

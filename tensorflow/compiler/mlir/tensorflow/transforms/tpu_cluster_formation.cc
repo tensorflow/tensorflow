@@ -322,8 +322,7 @@ LogicalResult SortTPUReplicatedInputsByIndex(
     llvm::SmallVectorImpl<Operation*>* sorted_inputs) {
   llvm::SmallDenseSet<int64_t, 8> unique_indices;
   for (Operation* input : inputs) {
-    int64_t index =
-        llvm::cast<TF::TPUReplicatedInputOp>(input).index().getSExtValue();
+    int64_t index = llvm::cast<TF::TPUReplicatedInputOp>(input).index();
     if (index < -1)
       return input->emitOpError()
              << "requires index to be at least -1, but got " << index;
@@ -342,10 +341,8 @@ LogicalResult SortTPUReplicatedInputsByIndex(
   std::stable_sort(
       sorted_inputs->begin(), sorted_inputs->end(),
       [](Operation* l, Operation* r) {
-        int64_t l_index =
-            llvm::cast<TF::TPUReplicatedInputOp>(l).index().getSExtValue();
-        int64_t r_index =
-            llvm::cast<TF::TPUReplicatedInputOp>(r).index().getSExtValue();
+        int64_t l_index = llvm::cast<TF::TPUReplicatedInputOp>(l).index();
+        int64_t r_index = llvm::cast<TF::TPUReplicatedInputOp>(r).index();
         if (l_index == -1 && r_index != -1) return false;
         if (r_index == -1 && l_index != -1) return true;
         return l_index < r_index;
@@ -401,8 +398,7 @@ LogicalResult ReplicateCluster(tf_device::ClusterOp cluster, int num_replicas) {
       return input->emitOpError() << "requires " << num_inputs << " operands";
 
     auto tpu_replicated_input = llvm::cast<TF::TPUReplicatedInputOp>(input);
-    int64_t tpu_replicated_input_index =
-        tpu_replicated_input.index().getSExtValue();
+    int64_t tpu_replicated_input_index = tpu_replicated_input.index();
     if (is_packed) {
       packed_inputs.push_back(input->getOperand(0));
       packed_input_indices.push_back(tpu_replicated_input_index);
