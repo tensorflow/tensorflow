@@ -28,18 +28,17 @@ namespace split_v {
 template <typename T>
 TfLiteStatus SplitImpl(TfLiteContext* context, TfLiteNode* node,
                        const TfLiteEvalTensor* input, int axis_value) {
-  const int output_count = NumOutputs(node);
   const TfLiteIntArray* input_dims = input->dims;
   const TfLiteEvalTensor* output0 =
       tflite::micro::GetEvalOutput(context, node, 0);
-  const TfLiteIntArray* output_dims = output0->dims;
 
   const int split_dimensions = input_dims->size;
 
   TFLITE_DCHECK_LT(axis_value, split_dimensions);
-  TFLITE_DCHECK_EQ(output_dims->size, split_dimensions);
+  TFLITE_DCHECK_EQ(output0->dims->size, split_dimensions);
 
   int64_t split_size = 0;
+  const int output_count = NumOutputs(node);
   for (int i = 0; i < output_count; i++) {
     split_size +=
         tflite::micro::GetEvalOutput(context, node, i)->dims->data[axis_value];
@@ -58,10 +57,11 @@ TfLiteStatus SplitImpl(TfLiteContext* context, TfLiteNode* node,
   const T* input_ptr = tflite::micro::GetTensorData<T>(input);
   for (int k = 0; k < outer_size; ++k) {
     for (int i = 0; i < output_count; ++i) {
-      TfLiteEvalTensor* t = tflite::micro::GetEvalOutput(context, node, i);
-      T* output_data = tflite::micro::GetTensorData<T>(t);
-      output_dims = t->dims;
-      const int copy_size = output_dims->data[axis_value] * base_inner_size;
+      TfLiteEvalTensor* output_tensor =
+          tflite::micro::GetEvalOutput(context, node, i);
+      T* output_data = tflite::micro::GetTensorData<T>(output_tensor);
+      const int copy_size =
+          output_tensor->dims->data[axis_value] * base_inner_size;
       T* output_ptr = output_data + k * copy_size;
       for (int j = 0; j < copy_size; ++j) output_ptr[j] = input_ptr[j];
       input_ptr += copy_size;
