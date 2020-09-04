@@ -299,6 +299,27 @@ class AddOperationParser : public TFLiteOperationParser {
   }
 };
 
+class BatchedMatMulOperationParser : public TFLiteOperationParser {
+ public:
+  absl::Status IsSupported(const TfLiteContext* context,
+                           const TfLiteNode* tflite_node,
+                           const TfLiteRegistration* registration) final {
+    return CheckInputsOutputs(context, tflite_node,
+                              /*runtime_inputs=*/2, /*outputs=*/1);
+  }
+
+  absl::Status Parse(const TfLiteNode* tflite_node,
+                     const TfLiteRegistration* registration,
+                     GraphFloat32* graph, ObjectReader* reader) final {
+    Node* node = graph->NewNode();
+    node->operation.type = ToString(OperationType::BATCHED_MATMUL);
+    RETURN_IF_ERROR(reader->AddInput(node, 0));
+    RETURN_IF_ERROR(reader->AddInput(node, 1));
+    RETURN_IF_ERROR(reader->AddOutputs(node));
+    return absl::OkStatus();
+  }
+};
+
 class ConcatenationOperationParser : public TFLiteOperationParser {
  public:
   absl::Status IsSupported(const TfLiteContext* context,
@@ -2563,6 +2584,8 @@ std::unique_ptr<TFLiteOperationParser> NewOperationParser(
       return std::make_unique<AddOperationParser>();
     case kTfLiteBuiltinAveragePool2d:
       return std::make_unique<Pooling2DOperationParser>(PoolingType::AVERAGE);
+    case kTfLiteBuiltinBatchMatmul:
+      return std::make_unique<BatchedMatMulOperationParser>();
     case kTfLiteBuiltinConcatenation:
       return std::make_unique<ConcatenationOperationParser>();
     case kTfLiteBuiltinConv2d:
