@@ -28,23 +28,6 @@ namespace tensorflow {
 const char kTpuPodStateResourceName[] = "tpu_pod_state";
 
 namespace {
-Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
-  TF_Status* status = TF_NewStatus();
-  char* server_address_output = nullptr;
-  auto cleanup = xla::MakeCleanup([&status, &server_address_output]() {
-    TF_DeleteStatus(status);
-    tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(
-        server_address_output);
-  });
-  size_t server_address_output_size;
-  *serving_port = -1;
-  tpu::ConfigApiFn()->TpuConfigurationApi_GetServerAddressAndPortFn(
-      &server_address_output_size, &server_address_output, serving_port,
-      status);
-  CHECK_NE(*serving_port, -1);
-  TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
-  return Status::OK();
-}
 
 // Attempt to delete resource_name from resource_manager's default_container.
 // Returns OK if the deletion succeeded, or if the resource was not found. Else
@@ -85,6 +68,26 @@ ConstructCacheService(ResourceMgr* rmgr, int serving_port,
   return cache_service;
 }
 }  // namespace
+
+Status GetServerAddressAndPort(std::string* server_address, int* serving_port) {
+  TF_Status* status = TF_NewStatus();
+  char* server_address_output = nullptr;
+  auto cleanup = xla::MakeCleanup([&status, &server_address_output]() {
+    TF_DeleteStatus(status);
+    tpu::ConfigApiFn()->TpuConfigurationApi_FreeCharArrayFn(
+        server_address_output);
+  });
+  size_t server_address_output_size;
+  *serving_port = -1;
+  tpu::ConfigApiFn()->TpuConfigurationApi_GetServerAddressAndPortFn(
+      &server_address_output_size, &server_address_output, serving_port,
+      status);
+  TF_RETURN_IF_ERROR(StatusFromTF_Status(status));
+  *server_address =
+      std::string(server_address_output, server_address_output_size);
+  CHECK_NE(*serving_port, -1);
+  return Status::OK();
+}
 
 TpuPodState::TpuPodState(
     int service_port, std::unique_ptr<TpuCompilationCacheService> cache_service)
