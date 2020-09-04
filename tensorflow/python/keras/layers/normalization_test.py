@@ -319,7 +319,7 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
     norm = normalization_v2.BatchNormalization(fused=True)
     self.assertEqual(norm.fused, True)
     inp = keras.layers.Input(shape=(4, 4))
-    with self.assertRaisesRegex(ValueError, '4D input tensors'):
+    with self.assertRaisesRegex(ValueError, '4D or 5D input tensors'):
       norm(inp)
 
   def test_updates_in_wrap_function(self):

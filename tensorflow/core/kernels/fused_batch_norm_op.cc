@@ -1248,8 +1248,8 @@ class FusedBatchNormOpBase : public OpKernel {
     const Tensor& estimated_variance = context->input(4);
     const Tensor* side_input = has_side_input_ ? &context->input(5) : nullptr;
 
-    OP_REQUIRES(context, x.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
+    OP_REQUIRES(context, x.dims() == 4 or x.dims() == 5,
+                errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         x.shape().DebugString()));
     OP_REQUIRES(context, scale.dims() == 1,
                 errors::InvalidArgument("scale must be 1-dimensional",
@@ -1264,26 +1264,52 @@ class FusedBatchNormOpBase : public OpKernel {
         context, estimated_variance.dims() == 1,
         errors::InvalidArgument("estimated_variance must be 1-dimensional",
                                 estimated_variance.shape().DebugString()));
+    bool use_reshape = (x.dims() == 5);
+    auto x_shape = x.shape();
+    TensorShape dest_shape;
+    Tensor reshaped_x;
+    if (use_reshape) {
+      const int64 in_batch = GetTensorDim(x, tensor_format_, 'N');
+      int64 in_planes = GetTensorDim(x, tensor_format_, '0');
+      int64 in_rows = GetTensorDim(x, tensor_format_, '1');
+      int64 in_cols = GetTensorDim(x, tensor_format_, '2');
+      const int64 in_depth = GetTensorDim(x, tensor_format_, 'C');
+      dest_shape = ShapeFromFormat(
+          tensor_format_, in_batch, {{in_planes, in_rows * in_cols}}, in_depth);
+      OP_REQUIRES_OK(context, context->allocate_temp(
+          DataTypeToEnum<T>::value, dest_shape, &reshaped_x));
+      CHECK(reshaped_x.CopyFrom(x, dest_shape));
+    } else {
+      reshaped_x = x;
+    }
+
     if (has_side_input_) {
-      OP_REQUIRES(context, side_input->shape() == x.shape(),
+      OP_REQUIRES(context, side_input->shape() == reshaped_x.shape(),
                   errors::InvalidArgument(
                       "side_input shape must be equal to input shape: ",
                       side_input->shape().DebugString(),
-                      " != ", x.shape().DebugString()));
+                      " != ", reshaped_x.shape().DebugString()));
     }
 
     if (activation_mode_ != FbnActivationMode::kIdentity) {
       // NOTE(ezhulenev): This requirement is coming from implementation
       // details of cudnnBatchNormalizationForwardTrainingEx.
       OP_REQUIRES(
-          context, !is_training_ || x.dim_size(3) % 4 == 0,
+          context, !is_training_ || reshaped_x.dim_size(3) % 4 == 0,
           errors::InvalidArgument("FusedBatchNorm with activation requires "
                                   "channel dimension to be a multiple of 4."));
     }
 
     Tensor* y = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
-                                {0}, 0, x.shape(), &y));
+                                {0}, 0, x_shape, &y));
+    Tensor reshaped_y;
+    if (use_reshape) {
+      OP_REQUIRES_OK(context, context->allocate_temp(
+          DataTypeToEnum<T>::value, dest_shape, &reshaped_y));
+    } else {
+      reshaped_y = *y;
+    }
     Tensor* batch_mean = nullptr;
     OP_REQUIRES_OK(context, context->forward_input_or_allocate_output(
                                 {3}, 1, scale.shape(), &batch_mean));
@@ -1299,16 +1325,19 @@ class FusedBatchNormOpBase : public OpKernel {
 
     if (is_training_) {
       functor::FusedBatchNorm<Device, T, U, true>()(
-          context, x, scale, offset, estimated_mean, estimated_variance,
-          side_input, epsilon_, exponential_avg_factor_, activation_mode_, y,
-          batch_mean, batch_var, saved_mean, saved_maybe_inv_var,
-          tensor_format_, use_reserved_space);
+          context, reshaped_x, scale, offset, estimated_mean,
+          estimated_variance, side_input, epsilon_, exponential_avg_factor_,
+          activation_mode_, &reshaped_y, batch_mean, batch_var, saved_mean,
+          saved_maybe_inv_var, tensor_format_, use_reserved_space);
     } else {
       functor::FusedBatchNorm<Device, T, U, false>()(
-          context, x, scale, offset, estimated_mean, estimated_variance,
-          side_input, epsilon_, exponential_avg_factor_, activation_mode_, y,
-          batch_mean, batch_var, saved_mean, saved_maybe_inv_var,
-          tensor_format_, use_reserved_space);
+          context, reshaped_x, scale, offset, estimated_mean,
+          estimated_variance, side_input, epsilon_, exponential_avg_factor_,
+          activation_mode_, &reshaped_y, batch_mean, batch_var, saved_mean,
+          saved_maybe_inv_var, tensor_format_, use_reserved_space);
+    }
+    if (use_reshape) {
+      CHECK(y->CopyFrom(reshaped_y, x_shape));
     }
   }
 
@@ -1387,11 +1416,11 @@ class FusedBatchNormGradOpBase : public OpKernel {
     // saves inverted variance.
     const Tensor& saved_maybe_inv_var_or_pop_var = context->input(4);
 
-    OP_REQUIRES(context, y_backprop.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
+    OP_REQUIRES(context, y_backprop.dims() == 4 or y_backprop.dims() == 5,
+                errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         y_backprop.shape().DebugString()));
-    OP_REQUIRES(context, x.dims() == 4,
-                errors::InvalidArgument("input must be 4-dimensional",
+    OP_REQUIRES(context, x.dims() == 4 or x.dims() == 5,
+                errors::InvalidArgument("input must be 4 or 5-dimensional",
                                         x.shape().DebugString()));
     OP_REQUIRES(context, scale.dims() == 1,
                 errors::InvalidArgument("scale must be 1-dimensional",
@@ -1404,10 +1433,40 @@ class FusedBatchNormGradOpBase : public OpKernel {
                 errors::InvalidArgument(
                     "saved variance must be 1-dimensional",
                     saved_maybe_inv_var_or_pop_var.shape().DebugString()));
+    bool use_reshape = (x.dims() == 5);
+    auto x_shape = x.shape();
+    TensorShape dest_shape;
+    Tensor reshaped_x;
+    Tensor reshaped_y_backprop;
+    if (use_reshape) {
+      const int64 in_batch = GetTensorDim(x, tensor_format_, 'N');
+      int64 in_planes = GetTensorDim(x, tensor_format_, '0');
+      int64 in_rows = GetTensorDim(x, tensor_format_, '1');
+      int64 in_cols = GetTensorDim(x, tensor_format_, '2');
+      const int64 in_depth = GetTensorDim(x, tensor_format_, 'C');
+      dest_shape = ShapeFromFormat(
+          tensor_format_, in_batch, {{in_planes, in_rows * in_cols}}, in_depth);
+      OP_REQUIRES_OK(context, context->allocate_temp(
+          DataTypeToEnum<T>::value, dest_shape, &reshaped_x));
+      OP_REQUIRES_OK(context, context->allocate_temp(
+          DataTypeToEnum<T>::value, dest_shape, &reshaped_y_backprop));
+      CHECK(reshaped_x.CopyFrom(x, dest_shape));
+      CHECK(reshaped_y_backprop.CopyFrom(y_backprop, dest_shape));
+    } else {
+      reshaped_x = x;
+      reshaped_y_backprop = y_backprop ;
+    }
 
     Tensor* x_backprop = nullptr;
     OP_REQUIRES_OK(context,
-                   context->allocate_output(0, x.shape(), &x_backprop));
+                   context->allocate_output(0, x_shape, &x_backprop));
+    Tensor reshaped_x_backprop;
+    if (use_reshape) {
+      OP_REQUIRES_OK(context, context->allocate_temp(
+          DataTypeToEnum<T>::value, dest_shape, &reshaped_x_backprop));
+    } else {
+      reshaped_x_backprop = *x_backprop;
+    }
 
     const TensorShape& scale_offset_shape = scale.shape();
     Tensor* scale_backprop = nullptr;
@@ -1427,7 +1486,7 @@ class FusedBatchNormGradOpBase : public OpKernel {
         context, context->allocate_output(4, TensorShape({0}), &placeholder_2));
 
     // If input is empty, set gradients w.r.t scale/offset to zero.
-    if (x.shape().num_elements() == 0) {
+    if (reshaped_x.shape().num_elements() == 0) {
       functor::SetZeroFunctor<Device, U> f;
       f(context->eigen_device<Device>(), scale_backprop->flat<U>());
       f(context->eigen_device<Device>(), offset_backprop->flat<U>());
@@ -1436,9 +1495,10 @@ class FusedBatchNormGradOpBase : public OpKernel {
 
     if (is_training_) {
       functor::FusedBatchNormGrad<Device, T, U>()(
-          context, y_backprop, x, scale, saved_mean_or_pop_mean,
-          saved_maybe_inv_var_or_pop_var, epsilon_, x_backprop, scale_backprop,
-          offset_backprop, use_reserved_space, tensor_format_);
+          context, reshaped_y_backprop, reshaped_x, scale,
+          saved_mean_or_pop_mean, saved_maybe_inv_var_or_pop_var, epsilon_,
+          &reshaped_x_backprop, scale_backprop, offset_backprop, use_reserved_space,
+          tensor_format_);
     } else {
       // Necessary layout conversion is currently done in python.
       CHECK(tensor_format_ == FORMAT_NHWC)
@@ -1446,9 +1506,12 @@ class FusedBatchNormGradOpBase : public OpKernel {
              "only support "
           << "NHWC tensor format for now.";
       functor::FusedBatchNormFreezeGrad<Device, T, U>()(
-          context, y_backprop, x, scale, saved_mean_or_pop_mean,
-          saved_maybe_inv_var_or_pop_var, epsilon_, x_backprop, scale_backprop,
-          offset_backprop);
+          context, reshaped_y_backprop, reshaped_x, scale,
+          saved_mean_or_pop_mean, saved_maybe_inv_var_or_pop_var, epsilon_,
+          &reshaped_x_backprop, scale_backprop, offset_backprop);
+    }
+    if (use_reshape) {
+      CHECK(x_backprop->CopyFrom(reshaped_x_backprop, x_shape));
     }
   }
 
