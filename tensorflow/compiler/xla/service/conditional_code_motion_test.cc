@@ -828,6 +828,99 @@ ENTRY main {
                               op::GetTupleElement(op::Conditional(), 1))));
 }
 
+TEST_F(ConditionalCodeMotionTest, MoveReplicatedTupleEntryOut) {
+  absl::string_view hlo_string =
+      R"(
+HloModule RemoveIdenticalInstruction
+
+%add.64 (x.139: bf16[], y.139: bf16[]) -> bf16[] {
+  %x.139 = bf16[]{:T(512)} parameter(0)
+  %y.139 = bf16[]{:T(512)} parameter(1)
+  ROOT %add.44073 = bf16[]{:T(512)} add(bf16[]{:T(512)} %x.139, bf16[]{:T(512)} %y.139)
+}
+
+%add.181 (x.256: bf16[], y.256: bf16[]) -> bf16[] {
+  %x.256 = bf16[]{:T(512)} parameter(0)
+  %y.256 = bf16[]{:T(512)} parameter(1)
+  ROOT %add.44842 = bf16[]{:T(512)} add(bf16[]{:T(512)} %x.256, bf16[]{:T(512)} %y.256)
+}
+
+on_true {
+  arg_tuple.1 = (bf16[2,54,168,128], bf16[2,52,168,128]) parameter(0)
+  get-tuple-element.11 = bf16[2,54,168,128] get-tuple-element(arg_tuple.1), index=0
+  get-tuple-element.12 = bf16[2,52,168,128] get-tuple-element(arg_tuple.1), index=1
+  convolution.1 = bf16[3,3,128,128] convolution(bf16[2,54,168,128]
+    get-tuple-element.11, bf16[2,52,168,128]
+    get-tuple-element.12), window={size=52x168 pad=0_0x1_1},
+    dim_labels=f01b_i01o->01bf
+  all-reduce.1 = bf16[3,3,128,128]
+    all-reduce(bf16[3,3,128,128] %convolution.1),
+    channel_id=188, replica_groups={{0,1}}, use_global_device_ids=true,
+    to_apply=%add.64
+  convert.1 = f32[3,3,128,128] convert(bf16[3,3,128,128] %all-reduce.1)
+  all-reduce.3 = bf16[3,3,128,128]
+    all-reduce(bf16[3,3,128,128] %convolution.1),
+    channel_id=188, replica_groups={{0,1}}, use_global_device_ids=true,
+    to_apply=%add.64
+  convert.3 = f32[3,3,128,128] convert(bf16[3,3,128,128] %all-reduce.3)
+  ROOT tuple.1 = (f32[3,3,128,128], f32[3,3,128,128]) tuple(convert.1, convert.3)
+}
+
+on_false {
+  arg_tuple.2 = (bf16[2,86,104,128], bf16[2,84,104,128]) parameter(0)
+  get-tuple-element.21 = bf16[2,86,104,128]
+    get-tuple-element(arg_tuple.2), index=0
+  get-tuple-element.22 = bf16[2,84,104,128]
+    get-tuple-element(arg_tuple.2), index=1
+  convolution.2 = bf16[3,3,128,128]
+    convolution(bf16[2,86,104,128] get-tuple-element.21, bf16[2,84,104,128]
+    get-tuple-element.22), window={size=84x104 pad=0_0x1_1},
+    dim_labels=f01b_i01o->01bf
+  all-reduce.2 = bf16[3,3,128,128]
+    all-reduce(bf16[3,3,128,128] %convolution.2),
+    channel_id=485, replica_groups={{0,1}}, use_global_device_ids=true,
+    to_apply=%add.181
+  convert.2 = f32[3,3,128,128]
+    convert(bf16[3,3,128,128] %all-reduce.2)
+  ROOT tuple.2 = (f32[3,3,128,128], f32[3,3,128,128]) tuple(convert.2, convert.2)
+}
+
+ENTRY main {
+  pred.1 = pred[] parameter(0)
+  arg_tuple.3 = (bf16[2,54,168,128], bf16[2,52,168,128]) parameter(1)
+  arg_tuple.4 = (bf16[2,86,104,128], bf16[2,84,104,128]) parameter(2)
+  conditional = (f32[3,3,128,128], f32[3,3,128,128])
+    conditional(pred.1, arg_tuple.3, arg_tuple.4), true_computation=on_true,
+    false_computation=on_false
+  get-first-index = f32[3,3,128,128]
+    get-tuple-element(conditional), index=0
+  add.1 = f32[3,3,128,128] add(f32[3,3,128,128] get-first-index, f32[3,3,128,128] get-first-index)
+  ROOT result = (f32[3,3,128,128]) tuple(add.1)
+}
+)";
+  auto module = ParseAndReturnVerifiedModule(hlo_string).ValueOrDie();
+  ConditionalCodeMotion pass(true, true);
+  ASSERT_TRUE(pass.Run(&*module).ValueOrDie());
+  const HloInstruction* conditional =
+      FindInstruction(module.get(), "conditional");
+  const HloComputation* on_true = conditional->branch_computation(0);
+  ASSERT_EQ(on_true->instruction_count(), 5);
+  const HloComputation* on_false = conditional->branch_computation(1);
+  ASSERT_EQ(on_false->instruction_count(), 5);
+
+  // Checks if conditional shape has changed.
+  ASSERT_TRUE(ShapeUtil::Compatible(
+      conditional->shape(), ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(
+                                BF16, {3, 3, 128, 128})})));
+  HloInstruction* root = module->entry_computation()->root_instruction();
+  EXPECT_THAT(
+      root,
+      AllOf(op::Tuple(op::Add(
+          op::Convert(op::AllReduce(op::GetTupleElement(op::Conditional()))),
+          op::Convert(
+              op::AllReduce(op::GetTupleElement(op::Conditional())))))));
+}
+
 }  // namespace conditional_opt
 
 }  // namespace xla
