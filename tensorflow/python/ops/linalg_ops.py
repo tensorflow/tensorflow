@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
 from tensorflow.python.ops import map_fn
@@ -731,9 +732,11 @@ def norm(tensor,
             lambda i: control_flow_ops.cond(i >= 0, lambda: i, lambda: i + rank),
             ops.convert_to_tensor(axis))
         axes = math_ops.range(rank)
-        perm_before = array_ops.concat(
-            [array_ops.setdiff1d(axes, positive_axis)[0], positive_axis],
-            axis=0)
+        perm_before = array_ops.concat([
+            gen_array_ops.list_diff(axes, positive_axis, dtypes.int32)[0],
+            positive_axis
+        ],
+                                       axis=0)
         perm_after = map_fn.map_fn(
             lambda i: math_ops.cast(
                 array_ops.squeeze(
