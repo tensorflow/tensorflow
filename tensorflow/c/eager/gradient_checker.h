@@ -33,10 +33,6 @@ limitations under the License.
 namespace tensorflow {
 namespace gradients {
 
-using Model = std::function<Status(
-    AbstractContext*, absl::Span<AbstractTensorHandle* const>,
-    absl::Span<AbstractTensorHandle*>, const GradientRegistry&)>;
-
 /* Returns numerical grad inside `dtheta_approx` given `forward` model and
  * parameter specified by `input_index`.
  *
@@ -49,7 +45,7 @@ using Model = std::function<Status(
  * hold the numerical gradient data at the end of the function.
  */
 Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
-                         std::vector<AbstractTensorHandle*> inputs,
+                         absl::Span<AbstractTensorHandle*> inputs,
                          int input_index, bool use_function,
                          AbstractTensorHandle** numerical_grad);
 

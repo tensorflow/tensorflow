@@ -106,10 +106,9 @@ Status RunAndMaybeSum(AbstractContext* ctx, Model forward,
 // ========================= End Helper Functions==============================
 
 Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
-                         std::vector<AbstractTensorHandle*> inputs,
+                         absl::Span<AbstractTensorHandle*> inputs,
                          int input_index, bool use_function,
                          AbstractTensorHandle** numerical_grad) {
-  GradientRegistry registry;
   AbstractTensorHandle* theta =
       inputs[input_index];  // parameter we are grad checking
 
@@ -123,15 +122,15 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
   memcpy(&theta_data[0], TF_TensorData(theta_tensor),
          TF_TensorByteSize(theta_tensor));
 
-  // Initialize space for the numerical gradient
+  // Initialize space for the numerical gradient.
   float dtheta_approx[num_elems];
 
-  // Get theta shape and store in theta_dims
+  // Get theta shape and store in theta_dims.
   int num_dims = TF_NumDims(theta_tensor);
   int64_t theta_dims[num_dims];
   GetDims(theta_tensor, theta_dims);
 
-  // Initialize auxilary data structures
+  // Initialize auxilary data structures.
   float thetaPlus_data[num_elems];
   float thetaMinus_data[num_elems];
   std::vector<AbstractTensorHandle*> f_outputs(1);
@@ -160,13 +159,13 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
 
     // Get f(theta + eps):
     inputs[input_index] = thetaPlus.get();
-    TF_RETURN_IF_ERROR(RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs),
+    TF_RETURN_IF_ERROR(RunAndMaybeSum(ctx, forward, inputs,
                                       absl::MakeSpan(f_outputs), use_function));
     AbstractTensorHandle* fPlus = f_outputs[0];
 
     // Get f(theta - eps):
     inputs[input_index] = thetaMinus.get();
-    TF_RETURN_IF_ERROR(RunAndMaybeSum(ctx, forward, absl::MakeSpan(inputs),
+    TF_RETURN_IF_ERROR(RunAndMaybeSum(ctx, forward, inputs,
                                       absl::MakeSpan(f_outputs), use_function));
     AbstractTensorHandle* fMinus = f_outputs[0];
 
@@ -191,7 +190,7 @@ Status CalcNumericalGrad(AbstractContext* ctx, Model forward,
     dtheta_approx[i] = grad_data[0];
   }
 
-  // Populate *numerical_grad with the data from dtheta_approx
+  // Populate *numerical_grad with the data from dtheta_approx.
   TF_RETURN_IF_ERROR(TensorHandleWithDimsFloat(ctx, dtheta_approx, theta_dims,
                                                num_dims, numerical_grad));
   return Status::OK();
