@@ -1102,14 +1102,7 @@ void ProcessFunctionLibraryRuntime::RunMultiDevice(
     cm = local_cm.get();
   }
 
-  auto* refcounted_done = new ReffedStatusCallback(
-      [done = std::move(done),
-       &fname = static_cast<const string&>(data->function_name_)](
-           const Status& status) {
-    VLOG(1) << "Completed multi-device function " << fname
-            << " with status " << status;
-    done(status);
-  });
+  auto* refcounted_done = new ReffedStatusCallback(std::move(done));
   for (int i = 0; i < data->glue_.size(); ++i) {
     refcounted_done->Ref();
   }
