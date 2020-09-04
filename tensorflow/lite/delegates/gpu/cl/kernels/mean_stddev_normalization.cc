@@ -45,19 +45,30 @@ std::string GetReduceCode() {
 #endif
 
 #ifdef __opencl_c_work_group_collective_functions
-#define local_reduce(input, tmp) work_group_reduce_add(input)
+#define local_reduce(item, tmp) work_group_reduce_add(item)
 #else  // !defined(__opencl_c_work_group_collective_functions)
-static inline float local_reduce(float input, __local float* tmp) {
+static inline float local_reduce(float item, __local float* tmp) {
   const int local_id = get_local_id(0);
-  tmp[local_id] = input;
+  tmp[local_id] = item;
   barrier(CLK_LOCAL_MEM_FENCE);
-  int reduction_size = get_local_size(0) / 2;
-  while (reduction_size > 0) {
-    if (local_id < reduction_size) {
-      tmp[local_id] += tmp[local_id + reduction_size];
+  // The number of items still need to be summed
+  int reduction_size = get_local_size(0);
+  while (reduction_size > 1) {
+    // Reduction step: add upper half of the still-to-be-summed vector to the
+    // lower half, while taking care of odd sizes and rounding. E.g.:
+    // Number of items still to be summed before: 5
+    // Local memory before: [a, b, c, d, e];
+    // Local memory after: [a+d, b+e, c, d, e];
+    // Threads doing work: id < 2 = floor(5/2)
+    // Offset to the added items: 3 = ceil(5/2)
+    // Number of items still to be summed after: 3 = ceil(5/2)
+    const int active_thread_limit = reduction_size / 2;
+    const int offset = (reduction_size + 1) / 2;
+    if (local_id < active_thread_limit) {
+      tmp[local_id] += tmp[local_id + offset];
     }
     barrier(CLK_LOCAL_MEM_FENCE);
-    reduction_size /=  2;
+    reduction_size = offset;
   }
   return tmp[0];
 }
