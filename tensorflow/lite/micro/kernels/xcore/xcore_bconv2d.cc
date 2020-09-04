@@ -114,12 +114,12 @@ void *Init(TfLiteContext *context, const char *buffer, size_t length) {
   TFLITE_DCHECK(buffer != nullptr);
   TFLITE_DCHECK(length > 0); //in fact it must be at least 6x uint32_t big
 
-  op->common.k.stride.horizontal = named_uint32_custom_option(context, buffer, length, "h_stride");
-  op->common.k.stride.vertical = named_uint32_custom_option(context, buffer, length, "v_stride");
-  op->common.k.dilation.horizontal = named_uint32_custom_option(context, buffer, length, "h_dilation");
-  op->common.k.dilation.vertical = named_uint32_custom_option(context, buffer, length, "v_dilation");
-  op->n_threads = named_uint32_custom_option(context, buffer, length, "n_threads");
-  op->n_regions = named_uint32_custom_option(context, buffer, length, "n_regions");
+  op->common.k.stride.horizontal = get_named_uint32_custom_option(context, buffer, length, "h_stride");
+  op->common.k.stride.vertical = get_named_uint32_custom_option(context, buffer, length, "v_stride");
+  op->common.k.dilation.horizontal = get_named_uint32_custom_option(context, buffer, length, "h_dilation");
+  op->common.k.dilation.vertical = get_named_uint32_custom_option(context, buffer, length, "v_dilation");
+  op->n_threads = get_named_uint32_custom_option(context, buffer, length, "n_threads");
+  op->n_regions = get_named_uint32_custom_option(context, buffer, length, "n_regions");
 
   TFLITE_DCHECK(op->n_threads > 0);
   TFLITE_DCHECK(op->n_regions > 0);
@@ -199,7 +199,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
   op->common.y.width = (uint32_t)output->dims->data[2];
   op->common.y.channels = (uint32_t)output->dims->data[0];
 
-  assert((uint32_t)kernel->dims->data[0] == (uint32_t)output->dims->data[3]);
+  TF_LITE_ENSURE_EQ(context, (uint32_t)kernel->dims->data[0], (uint32_t)output->dims->data[3]);
 
   op->common.K = (nn_tensor_t *) kernel->data.int8;
   op->common.k.shape.height = (uint32_t)kernel->dims->data[1];
@@ -213,7 +213,7 @@ TfLiteStatus Prepare(TfLiteContext *context, TfLiteNode *node) {
       context, op->stack_size * op->n_threads,
       &op->stack_scratch_index));
 
-  TFLITE_DCHECK(op->stack_scratch_index != -1);
+  TF_LITE_ENSURE(context, op->stack_scratch_index != -1);
 
   return kTfLiteOk;
 }
@@ -229,7 +229,7 @@ TfLiteStatus Eval(TfLiteContext *context, TfLiteNode *node) {
   char *stack = static_cast<char *>(
       context->GetScratchBuffer(context, op->stack_scratch_index));
 
-  TFLITE_DCHECK(stack != nullptr);
+  TF_LITE_ENSURE(context, stack != nullptr);
   dispatcher->InitializeTasks(bconv2d_thread_generator, stack,
                               op->stack_size);
 

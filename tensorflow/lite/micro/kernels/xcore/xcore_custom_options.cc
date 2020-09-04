@@ -7,8 +7,8 @@ namespace ops {
 namespace micro {
 namespace xcore {
 
-uint32_t named_uint32_custom_option(TfLiteContext *context, const char *buffer, 
-    size_t length, std::string named_key){
+uint32_t get_named_uint32_custom_option(TfLiteContext *context, const char *buffer, 
+    const size_t length, const std::string named_key){
 
   const uint8_t *buffer_t = reinterpret_cast<const uint8_t *>(buffer);
 
