@@ -1366,13 +1366,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
       if return_dict:
         return logs
       else:
-        results = []
-        for name in self.metrics_names:
-          if name in logs:
-            results.append(logs[name])
-        for key in sorted(logs.keys()):
-          if key not in self.metrics_names:
-            results.append(logs[key])
+        results = [logs.get(name, None) for name in self.metrics_names]
         if len(results) == 1:
           return results[0]
         return results
