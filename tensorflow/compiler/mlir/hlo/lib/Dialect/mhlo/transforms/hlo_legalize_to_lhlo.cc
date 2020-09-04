@@ -500,6 +500,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::SqrtOp>,
       HloToLhloOpConverter<mhlo::SubOp>,
       HloToLhloOpConverter<mhlo::TanhOp>,
+      HloToLhloOpConverter<mhlo::TransposeOp>,
       HloToLhloReduceOpConverter,
       HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,

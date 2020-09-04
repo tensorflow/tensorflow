@@ -72,6 +72,7 @@ MAP_HLO_TO_LHLO(SinOp);
 MAP_HLO_TO_LHLO(SqrtOp);
 MAP_HLO_TO_LHLO(SubOp);
 MAP_HLO_TO_LHLO(TanhOp);
+MAP_HLO_TO_LHLO(TransposeOp);
 
 #undef MAP_HLO_TO_LHLO
 

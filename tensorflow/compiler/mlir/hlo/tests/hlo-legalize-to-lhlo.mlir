@@ -525,3 +525,16 @@ func @reduce(%arg0: tensor<1x8xf32>, %arg1: tensor<f32>) -> tensor<1xf32> {
       : (tensor<1x8xf32>, tensor<f32>) -> tensor<1xf32>
   return %0 : tensor<1xf32>
 }
+
+// -----
+
+// BOTH-LABEL: func @transpose
+func @transpose(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "mhlo.transpose"(%tensor_operand) {permutation = dense<[1, 0]> : tensor<2xi64>}
+                    : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // BOTH: "lmhlo.transpose"(%{{.*}}, %{{.*}}) {permutation = dense<[1, 0]> : tensor<2xi64>}
+  // BOTH-NOT: tensor_store
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
