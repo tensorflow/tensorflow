@@ -1040,8 +1040,11 @@ OpFoldResult SizeOp::fold(ArrayRef<Attribute> operands) {
 //   of elements in operands begin and size.
 // - if begin are constants, that
 //   0 <= begin[i] <= begin[i] + size[i] <= input_ty.getShape()[i]
+//   and
+//   size[i] == output_ty.getShape()[i]
 // - if begins aren't constant but the input is a ranked tensor, that
 //   size[i] <= input_ty.getShape()[i]
+// - output rank is the same as input rank
 //
 static LogicalResult Verify(SliceOp op) {
   RankedTensorType begin_ty = GetRankedTensorTypeForOperand(op.begin());
@@ -1069,20 +1072,39 @@ static LogicalResult Verify(SliceOp op) {
                                "are equal to input rank";
   }
 
+  auto output_ty = op.output().getType().dyn_cast<RankedTensorType>();
+  if (output_ty && input_ty && output_ty.getRank() != input_ty.getRank()) {
+    return op.emitOpError()
+           << "requires output to have the same rank as input, but got input "
+              "rank "
+           << input_ty.getRank() << " and output rank " << output_ty.getRank();
+  }
+
   DenseIntElementsAttr begin_indices;
   if (matchPattern(op.begin(), m_Constant(&begin_indices))) {
     DenseIntElementsAttr slice_sizes;
     bool constant_slice_sizes =
         matchPattern(op.size(), m_Constant(&slice_sizes));
     int dim = 0;
+    // TODO(jpienaar): Reformulate the shape verification below to not use magic
+    // constants.
     for (const APInt &raw_begin_index : begin_indices.getValues<APInt>()) {
       int64_t begin_index = raw_begin_index.getSExtValue();
       int64_t input_size = input_ty ? input_ty.getShape()[dim] : -1;
       int64_t slice_size = constant_slice_sizes
                                ? slice_sizes.getValue<APInt>(dim).getSExtValue()
                                : 0;
+      int64_t output_size = output_ty ? output_ty.getShape()[dim] : -1;
+
       if (slice_size == -1 && input_size != -1) {
         slice_size = input_size - begin_index;
+      }
+      if (output_size != -1 && constant_slice_sizes &&
+          output_size != slice_size) {
+        return op.emitOpError()
+               << "requires output size to have the same size of slice, got "
+                  "slice size "
+               << slice_size << " and output size " << output_size;
       }
       if (begin_index < 0 ||
           (input_size != -1 && begin_index + slice_size > input_size)) {
