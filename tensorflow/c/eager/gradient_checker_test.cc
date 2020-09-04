@@ -81,7 +81,7 @@ TEST_P(GradientCheckerTest, TestGradCheckMatMul) {
 
   AbstractTensorHandle* grad_approx;
   Status s = CalcNumericalGrad(
-      ctx.get(), MatMulModel, inputs, /*input_index=*/0,
+      ctx.get(), MatMulModel, absl::MakeSpan(inputs), /*input_index=*/0,
       /*use_function=*/!std::get<2>(GetParam()), &grad_approx);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
@@ -136,7 +136,8 @@ TEST_P(GradientCheckerTest, TestGradCheckMul) {
   float dapprox[1] = {0};
   AbstractTensorHandle* g;
 
-  Status s = CalcNumericalGrad(ctx.get(), MulModel, inputs, /*input_index=*/0,
+  Status s = CalcNumericalGrad(ctx.get(), MulModel, absl::MakeSpan(inputs),
+                               /*input_index=*/0,
                                /*use_function=*/!std::get<2>(GetParam()), &g);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 
@@ -213,7 +214,8 @@ TEST_P(GradientCheckerTest, TestGradCheckSoftmax) {
 
   // Run numerical gradient approximation using the GradientChecker API.
   AbstractTensorHandle* g;  // Will contain numerical approximation data.
-  s = CalcNumericalGrad(ctx.get(), SoftmaxModel, inputs, /*input_index=*/0,
+  s = CalcNumericalGrad(ctx.get(), SoftmaxModel, absl::MakeSpan(inputs),
+                        /*input_index=*/0,
                         /*use_function=*/!std::get<2>(GetParam()), &g);
   ASSERT_EQ(errors::OK, s.code()) << s.error_message();
 

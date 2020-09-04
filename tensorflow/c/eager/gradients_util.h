@@ -35,15 +35,6 @@ limitations under the License.
 namespace tensorflow {
 namespace gradients {
 
-TFE_TensorHandle* ScalarTensorHandleHelper(TFE_Context* ctx, float value);
-
-TFE_TensorHandle* TensorHandleWithDimsFloatHelper(TFE_Context* ctx,
-                                                  float data[], int64_t dims[],
-                                                  int num_dims);
-
-TFE_TensorHandle* TensorHandleWithDimsIntHelper(TFE_Context* ctx, int data[],
-                                                int64_t dims[], int num_dims);
-
 // Get a scalar TensorHandle with given value
 Status ScalarTensorHandle(AbstractContext* ctx, float value,
                           AbstractTensorHandle** tensor);
@@ -79,14 +70,6 @@ Status UpdateWeights(AbstractContext* ctx,
                      std::vector<AbstractTensorHandle*>& weights,
                      AbstractTensorHandle* learning_rate);
 
-// Helper function for RunModel to build the function for graph mode.
-AbstractContext* BuildFunction(const char* fn_name);
-
-// Helper function for RunModel to add params for graph mode.
-Status CreateParamsForInputs(AbstractContext* ctx,
-                             absl::Span<AbstractTensorHandle* const> inputs,
-                             std::vector<AbstractTensorHandle*>* params);
-
 using Model = std::function<Status(
     AbstractContext*, absl::Span<AbstractTensorHandle* const>,
     absl::Span<AbstractTensorHandle*>, const GradientRegistry&)>;
@@ -98,6 +81,7 @@ Status RunModel(Model model, AbstractContext* ctx,
                 absl::Span<AbstractTensorHandle*> outputs, bool use_function,
                 const GradientRegistry& registry);
 
+// Builds context and returns inside *ctx.
 Status BuildImmediateExecutionContext(bool use_tfrt, AbstractContext** ctx);
 
 }  // namespace gradients
