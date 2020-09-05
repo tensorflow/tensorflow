@@ -35,6 +35,10 @@ static const py::object* create_constant_tensor = new py::object(
 
 namespace tensorflow {
 
+py::object AsNdarray(py::handle value);
+bool IsNdarray(py::handle value);
+py::tuple ConvertNumpyInputs(py::object inputs);
+
 class PyConcreteFunction {
  public:
   PyConcreteFunction() {}
