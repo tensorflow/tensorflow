@@ -43,6 +43,51 @@ class PyConcreteFunction {
                               bool _ndarrays_list, bool _ndarray_singleton);
 };
 
+namespace {
+
+std::string JoinVector(const char* delimiter, std::vector<std::string>& vec) {
+  auto it = vec.begin();
+  std::string result = *it;
+  ++it;
+  while (it != vec.end()) {
+    tensorflow::strings::StrAppend(&result, delimiter, *it);
+    ++it;
+  }
+  return result;
+}
+
+std::string JoinPyDict(const char* delimiter, py::dict dict) {
+  auto it = dict.begin();
+  std::string result = std::string((py::str) it->first);
+  ++it;
+  while (it != dict.end()) {
+    tensorflow::strings::StrAppend(
+        &result, delimiter, std::string((py::str) it->first));
+    ++it;
+  }
+  return result;
+}
+
+std::string PyObjectToString(PyObject* o) {
+  if (o == nullptr) {
+    return "";
+  }
+  PyObject* str = PyObject_Str(o);
+  if (str) {
+#if PY_MAJOR_VERSION < 3
+    std::string s(PyString_AS_STRING(str));
+#else
+    std::string s(PyUnicode_AsUTF8(str));
+#endif
+    Py_DECREF(str);
+    return s;
+  } else {
+    return "<failed to execute str() on object>";
+  }
+}
+
+} // namespace
+
 // TODO(jlchu): Migrate Python characteristics to C++; call this version from
 // function.py when performance is improved
 py::object PyConcreteFunction::BuildCallOutputs(
