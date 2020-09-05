@@ -22,6 +22,10 @@ limitations under the License.
 #include "tensorflow/python/util/util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 
+#include <vector>
+#include <map>
+#include <unordered_map>
+
 namespace py = pybind11;
 
 static const py::module* nest = new py::module(
@@ -45,6 +49,30 @@ class PyConcreteFunction {
   py::object BuildCallOutputs(py::object result,
                               py::object structured_outputs,
                               bool _ndarrays_list, bool _ndarray_singleton);
+};
+
+// TODO(jlchu): Add Pickling support; see
+// https://pybind11.readthedocs.io/en/stable/advanced/classes.html#pickling-support
+class FunctionSpec {
+ public:
+  py::object fullargspec_;
+  bool is_method_;
+  bool is_pure_;
+  bool experimental_follow_type_hints_;
+  std::string name_;
+
+  py::list arg_names_;
+  py::list kwonlyargs_;
+  py::dict kwonlydefaults_;
+  py::dict annotations_;
+  std::unordered_map<std::string, int> args_to_indices_;
+  std::map<int, py::object> arg_indices_to_default_values_;
+
+  bool input_signature_is_none_;
+  py::tuple input_signature_;
+  py::tuple flat_input_signature_;
+
+  FunctionSpec() {}
 };
 
 namespace {
