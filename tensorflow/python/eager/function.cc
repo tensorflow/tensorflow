@@ -73,6 +73,12 @@ class FunctionSpec {
   py::tuple flat_input_signature_;
 
   FunctionSpec() {}
+  FunctionSpec(py::object fullargspec,
+               bool is_method,
+               py::handle input_signature,
+               bool is_pure,
+               bool experimental_follow_type_hints,
+               py::str name);
 };
 
 namespace {
@@ -159,6 +165,82 @@ py::object PyConcreteFunction::BuildCallOutputs(
     }
   }
   return nest->attr("pack_sequence_as")(structured_outputs, outputs_list, true);
+}
+
+FunctionSpec::FunctionSpec(py::object fullargspec,
+                           bool is_method,
+                           py::handle input_signature,
+                           bool is_pure,
+                           bool experimental_follow_type_hints,
+                           py::str name)
+    : fullargspec_(fullargspec),
+      is_method_(is_method),
+      is_pure_(is_pure),
+      experimental_follow_type_hints_(experimental_follow_type_hints),
+      // # TODO(edloper): Include name when serializing for SavedModel?
+      name_(PyObject_IsTrue(name.ptr()) ? name : "f"),
+      arg_names_(fullargspec.attr("args")),
+      kwonlyargs_(fullargspec.attr("kwonlyargs")),
+      annotations_(fullargspec.attr("annotations")),
+      input_signature_is_none_(input_signature.is_none()) {
+  if (is_method_) {
+    // Remove `self`: default arguments shouldn't be matched to it.
+    // TODO(b/127938157): Should this error out if there is no arg to
+    // be removed?
+    py::list sliced_args = py::list(arg_names_.size() - 1);
+    for (int i = 0; i < sliced_args.size(); ++i) {
+      sliced_args[i] = arg_names_[i + 1];
+    }
+    arg_names_ = sliced_args;
+  }
+
+  py::object kwonlydefaults_or_none = fullargspec.attr("kwonlydefaults");
+  if (!kwonlydefaults_or_none.is_none()) {
+    kwonlydefaults_ = kwonlydefaults_or_none;
+  }
+
+  // A cache mapping from argument name to index, for canonicalizing
+  // arguments that are called in a keyword-like fashion.
+  for (int i = 0; i < arg_names_.size(); ++i) {
+    std::string argname_string = PyObjectToString(arg_names_[i].ptr());
+    args_to_indices_[argname_string] = i;
+  }
+
+  // A cache mapping from arg index to default value, for canonicalization.
+  py::object defaults_or_none = fullargspec.attr("defaults");
+  if (!defaults_or_none.is_none()) {
+    py::tuple default_values = py::cast<py::tuple>(defaults_or_none);
+    int offset = arg_names_.size();
+    if (!default_values.empty()) {
+      offset -= default_values.size();
+      for (int i = 0; i < default_values.size(); ++i) {
+        arg_indices_to_default_values_[offset + i] = default_values[i];
+      }
+    }
+  }
+
+  if (!input_signature_is_none_) {
+    py::set kwonly_nodefaults = py::set(kwonlyargs_);
+    if (!kwonlydefaults_.empty()) {
+      kwonly_nodefaults -= py::set(kwonlydefaults_);
+    }
+    if (!kwonly_nodefaults.empty()) {
+      throw py::value_error("Cannot define a TensorFlow function from a Python "
+                            "function with keyword-only arguments when "
+                            "input_signature is provided.");
+    }
+
+    if (!py::isinstance<py::tuple>(input_signature) &&
+        !py::isinstance<py::list>(input_signature)) {
+      throw py::type_error(tensorflow::strings::StrCat(
+          "input_signature must be either a tuple or a list, received ",
+          Py_TYPE(input_signature.ptr())->tp_name));
+    }
+
+    input_signature_ = py::cast<py::tuple>(input_signature);
+    flat_input_signature_ = py::tuple(
+        PyoOrThrow(swig::Flatten(input_signature.ptr(), true)));
+  }
 }
 
 py::object AsNdarray(py::handle value) {
