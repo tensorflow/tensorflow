@@ -497,6 +497,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloOpConverter<mhlo::ReshapeOp>,
       HloToLhloOpConverter<mhlo::SelectOp>,
       HloToLhloOpConverter<mhlo::SignOp>,
+      HloToLhloOpConverter<mhlo::SliceOp>,
       HloToLhloOpConverter<mhlo::SqrtOp>,
       HloToLhloOpConverter<mhlo::SubOp>,
       HloToLhloOpConverter<mhlo::TanhOp>,
