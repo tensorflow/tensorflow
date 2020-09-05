@@ -80,6 +80,7 @@ class FunctionSpec {
                bool experimental_follow_type_hints,
                py::str name);
   std::string SignatureSummary(bool default_values = false);
+  py::tuple ConvertVariablesToTensors(py::tuple args, py::dict kwargs);
 };
 
 namespace {
@@ -269,6 +270,23 @@ std::string FunctionSpec::SignatureSummary(bool default_values) {
   }
 
   return tensorflow::strings::StrCat(name_, "(", JoinVector(", ", args), ")");
+}
+
+py::tuple FunctionSpec::ConvertVariablesToTensors(py::tuple args,
+                                                  py::dict kwargs) {
+  static const py::object* convert_to_tensor = new py::object(
+      py::module::import("tensorflow.python.framework.ops")
+          .attr("convert_to_tensor"));
+
+  py::list converted_args;
+  for (const auto& item : args) {
+    converted_args.append((*convert_to_tensor)(item));
+  }
+  py::dict converted_kwargs;
+  for (const auto& item : kwargs) {
+    converted_kwargs[item.first] = (*convert_to_tensor)(item.second);
+  }
+  return py::make_tuple(py::tuple(converted_args), converted_kwargs);
 }
 
 py::object AsNdarray(py::handle value) {
