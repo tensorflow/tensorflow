@@ -428,6 +428,14 @@ PYBIND11_MODULE(_concrete_function, m) {
   py::class_<PyConcreteFunction>(m, "ConcreteFunction")
       .def(py::init<>())
       .def("_build_call_outputs", &PyConcreteFunction::BuildCallOutputs);
+  py::class_<FunctionSpec>(m, "FunctionSpec")
+      .def(py::init<py::object, bool, py::handle, bool, bool, py::str>())
+      .def("signature_summary", &FunctionSpec::SignatureSummary)
+      .def("_convert_variables_to_tensors",
+           &FunctionSpec::ConvertVariablesToTensors)
+      .def("_convert_annotated_args_to_tensors",
+           &FunctionSpec::ConvertAnnotatedArgsToTensors,
+           "Attempts to autobox arguments annotated as tf.Tensor.")
   m.def("_as_ndarray", &AsNdarray,
         "Converts value to an ndarray, assumes _is_ndarray(value).");
   m.def(
