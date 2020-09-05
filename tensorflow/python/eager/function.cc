@@ -81,6 +81,7 @@ class FunctionSpec {
                py::str name);
   std::string SignatureSummary(bool default_values = false);
   py::tuple ConvertVariablesToTensors(py::tuple args, py::dict kwargs);
+  py::tuple ConvertAnnotatedArgsToTensors(py::tuple oargs, py::dict kwargs);
 };
 
 namespace {
@@ -287,6 +288,72 @@ py::tuple FunctionSpec::ConvertVariablesToTensors(py::tuple args,
     converted_kwargs[item.first] = (*convert_to_tensor)(item.second);
   }
   return py::make_tuple(py::tuple(converted_args), converted_kwargs);
+}
+
+// TODO(jlchu): Simplify logic by looking for .get equivalent in PyBind or C API
+py::tuple FunctionSpec::ConvertAnnotatedArgsToTensors(py::tuple oargs,
+                                                      py::dict kwargs) {
+  static const py::object* convert_to_tensor = new py::object(
+      py::module::import("tensorflow.python.framework.ops")
+          .attr("convert_to_tensor"));
+  static const py::object Tensor =
+      py::module::import("tensorflow.python.framework.ops").attr("Tensor");
+
+  py::list args = py::list(oargs);
+
+  for (int i = 0; i < args.size(); ++i) {
+    // See
+    // https://docs.python.org/3/library/inspect.html#inspect.getfullargspec
+    if (i < arg_names_.size()) {
+      if (annotations_.contains(arg_names_[i])) {
+        py::handle arg_annotation = annotations_[arg_names_[i]];
+        // TODO(rahulkamat): Change to TensorLike (here ans below).
+        if (arg_annotation.ptr() == Tensor.ptr()) {
+          args[i] = (*convert_to_tensor)(args[i]);
+        }
+      }
+    } else {
+      py::object varargs_string = fullargspec_.attr("varargs");
+      if (!varargs_string.is_none() && annotations_.contains(varargs_string)) {
+        py::handle varargs_annotation = annotations_[varargs_string];
+        if (varargs_annotation.ptr() == Tensor.ptr()) {
+          args[i] = (*convert_to_tensor)(args[i]);
+        }
+      }
+    }
+  }
+
+  py::set kwonlyargs_set = py::set(kwonlyargs_);
+  py::set args_set = py::set(arg_names_);
+  for (auto& item : kwargs) {
+    if (kwonlyargs_set.contains(item.first)) {
+      if (annotations_.contains(item.first)) {
+        py::handle kwonlyarg_annotation = annotations_[item.first];
+        if (kwonlyarg_annotation.ptr() == Tensor.ptr()) {
+          kwargs[item.first] = (*convert_to_tensor)(item.second);
+        }
+      }
+    } else {
+      py::object varkw_string = fullargspec_.attr("varkw");
+      if (!varkw_string.is_none()) {
+        if (args_set.contains(item.first)) {
+          if (annotations_.contains(item.first)) {
+            py::handle arg_annotation = annotations_[item.first];
+            if (arg_annotation.ptr() == Tensor.ptr()) {
+              kwargs[item.first] = (*convert_to_tensor)(item.second);
+            }
+          }
+        } else if (annotations_.contains(varkw_string)) {
+          py::handle varkw_annotation = annotations_[varkw_string];
+          if (varkw_annotation.ptr() == Tensor.ptr()) {
+            kwargs[item.first] = (*convert_to_tensor)(item.second);
+          }
+        }
+      }
+    }
+  }
+
+  return py::make_tuple(py::tuple(args), kwargs);
 }
 
 py::object AsNdarray(py::handle value) {
