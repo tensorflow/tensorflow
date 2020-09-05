@@ -79,6 +79,7 @@ class FunctionSpec {
                bool is_pure,
                bool experimental_follow_type_hints,
                py::str name);
+  std::string SignatureSummary(bool default_values = false);
 };
 
 namespace {
@@ -241,6 +242,33 @@ FunctionSpec::FunctionSpec(py::object fullargspec,
     flat_input_signature_ = py::tuple(
         PyoOrThrow(swig::Flatten(input_signature.ptr(), true)));
   }
+}
+
+std::string FunctionSpec::SignatureSummary(bool default_values) {
+  std::vector<std::string> args;
+  for (const auto& arg : arg_names_) {
+    args.push_back(py::cast<py::str>(arg));
+  }
+
+  if (default_values) {
+    for (const auto& arg : arg_indices_to_default_values_) {
+      tensorflow::strings::StrAppend(
+          &args[arg.first], "=", PyObjectToString(arg.second.ptr()));
+    }
+  }
+  if (!kwonlyargs_.empty()) {
+    args.push_back("*");
+    for (const auto& arg_name : kwonlyargs_) {
+      args.push_back(py::cast<py::str>(arg_name));
+      if (default_values && kwonlydefaults_.contains(arg_name)) {
+        tensorflow::strings::StrAppend(
+            &args[args.size() - 1], "=",
+            std::string(py::cast<py::str>(kwonlydefaults_[arg_name])));
+      }
+    }
+  }
+
+  return tensorflow::strings::StrCat(name_, "(", JoinVector(", ", args), ")");
 }
 
 py::object AsNdarray(py::handle value) {
