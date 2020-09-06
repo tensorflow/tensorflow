@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 
 // clang-format off
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/platform/platform.h"
 // clang-format on
 
@@ -1168,6 +1169,68 @@ TEST(CAPI, StringAttributes) {
   // shouldn't be holding on to it.
   std::strncpy(buffer, "NHWC", BUFFER_SIZE);
   TFE_OpSetAttrString(op, "data_format", buffer, std::strlen(buffer));
+
+  TFE_OpSetAttrType(op, "T", TF_FLOAT);
+
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TFE_TensorHandle* retvals[1];
+  int num_retvals = 1;
+  TFE_Execute(op, &retvals[0], &num_retvals, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  ASSERT_EQ(1, num_retvals);
+
+  tensor = TFE_TensorHandleResolve(retvals[0], status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  EXPECT_EQ(4, TF_TensorByteSize(tensor));
+  TF_DeleteTensor(tensor);
+  TFE_DeleteTensorHandle(retvals[0]);
+
+  TFE_DeleteOp(op);
+
+  TFE_DeleteContext(ctx);
+  TF_DeleteStatus(status);
+}
+
+// Same test as above, expect use SetOpAttrValueScalar to set attrs.
+TEST(CAPI, TestTFE_SetOpAttrs) {
+  // Test that TFE_OpSetAttrString doesn't hold on to the value after it
+  // returns.
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  std::vector<int64_t> dims(4, 1);
+  TFE_Op* op = TFE_NewOp(ctx, "AvgPool", status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+
+  TF_Tensor* tensor =
+      TF_AllocateTensor(TF_FLOAT, dims.data(), dims.size(), sizeof(float));
+  float tensor_data[] = {1};
+  memcpy(TF_TensorData(tensor), tensor_data, TF_TensorByteSize(tensor));
+  TFE_TensorHandle* tensor_handle = TFE_NewTensorHandle(tensor, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_OpAddInput(op, tensor_handle, status);
+  TF_DeleteTensor(tensor);
+  TFE_DeleteTensorHandle(tensor_handle);
+
+  tensorflow::AttrValue i_list_values;
+  for (int i = 0; i < 4; ++i) {
+    i_list_values.mutable_list()->add_i(1);
+  }
+  SetOpAttrValueScalar(ctx, op, i_list_values, "ksize", status);
+  SetOpAttrValueScalar(ctx, op, i_list_values, "strides", status);
+
+  tensorflow::AttrValue padding_value;
+  *padding_value.mutable_s() = "VALID";
+  tensorflow::SetOpAttrValueScalar(ctx, op, padding_value, "padding", status);
+
+  tensorflow::AttrValue data_format_value;
+  *data_format_value.mutable_s() = "NHWC";
+  tensorflow::SetOpAttrValueScalar(ctx, op, data_format_value, "data_format",
+                                   status);
 
   TFE_OpSetAttrType(op, "T", TF_FLOAT);
 

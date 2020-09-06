@@ -404,8 +404,6 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertEqual(y.device, '/job:localhost/replica:0/task:0/device:CPU:0')
 
   @test_util.run_gpu_only
-  @test_util.disable_tfrt('Device name incorrect (known issue for runtime '
-                          'fallback).')
   def testShouldCopy(self):
     with ops.device('GPU:0'):
       x = array_ops.identity(1.0)

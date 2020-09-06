@@ -194,8 +194,9 @@ StatusOr<ExecutionOutput> TpuExecutableInterface::ExecuteAsyncOnStream(
   // Address of the buffer in TPU memory that is being speculated.
   absl::optional<se::DeviceMemoryBase> cross_program_prefetch_addr;
   if (hlo_module_) {
-    for (const auto& [parameter, index] :
-         hlo_module_->CrossProgramPrefetches()) {
+    for (const auto& prefetch : hlo_module_->CrossProgramPrefetches()) {
+      const auto& parameter = prefetch.first;
+      const auto& index = prefetch.second;
       CHECK_LT(parameter, arguments.size());
       // Ensure the cross program prefetched buffer doesn't alias with any
       // program outputs. If the input and output aliased, the buffer could be

@@ -496,6 +496,18 @@ func @sin(%input: memref<2x2xf32>,
 
 // -----
 
+// CHECK-LABEL: func @floor
+func @floor(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  "lmhlo.floor"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()
+  return
+}
+// CHECK: linalg.generic
+// CHECK-NEXT: ^bb0(%[[OPERAND_IN:.*]]: f32, %[[RESULT_OUT:.*]]):
+// CHECK-NEXT:   %[[RESULT:.*]] = floorf %[[OPERAND_IN]] : f32
+// CHECK-NEXT:   linalg.yield %[[RESULT]] : f32
+
+// -----
+
 // CHECK-LABEL: func @negf
 func @negf(%input: memref<2x2xf32>, %result: memref<2x2xf32>) {
   "lmhlo.negate"(%input, %result) : (memref<2x2xf32>, memref<2x2xf32>) -> ()

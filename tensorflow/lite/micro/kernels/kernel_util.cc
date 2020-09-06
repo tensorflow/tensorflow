@@ -27,5 +27,15 @@ bool HaveSameShapes(const TfLiteEvalTensor* input1,
   return TfLiteIntArrayEqual(input1->dims, input2->dims);
 }
 
+const RuntimeShape GetTensorShape(const TfLiteEvalTensor* tensor) {
+  if (tensor == nullptr || tensor->dims == nullptr) {
+    return RuntimeShape();
+  }
+  TfLiteIntArray* dims = tensor->dims;
+  const int dims_size = dims->size;
+  const int32_t* dims_data = reinterpret_cast<const int32_t*>(dims->data);
+  return RuntimeShape(dims_size, dims_data);
+}
+
 }  // namespace micro
 }  // namespace tflite

@@ -1451,10 +1451,23 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
               update_dim_to_index_dim);
       CHECK(new_updates_sharding.has_value());
       updates = updates.Reshard(*new_updates_sharding);
+      // Update collective_ops_creator and partition_id for partial replicate.
+      auto collective_ops_creator = collective_ops_creator_;
+      auto partition_id = partition_id_;
+      if (indices.sharding().ReplicateOnLastTileDim()) {
+        auto sharding_grouped = GroupShardingOnDims(
+            indices.sharding(),
+            {indices.sharding().tile_assignment().num_dimensions() - 1});
+        auto per_group_partitioner_state = CreatePerGroupPartitioningState(
+            indices.state(), sharding_grouped.device_groups, &b_);
+        collective_ops_creator =
+            per_group_partitioner_state.collective_ops_creator;
+        partition_id = per_group_partitioner_state.partition_id;
+      }
       // To avoid accumulating the initial operand multiple times during
       // all-reduce, we use identity operands for all non-zero partitions.
       auto not_partition_zero = b_.AddInstruction(HloInstruction::CreateConvert(
-          ShapeUtil::MakeScalarShape(PRED), partition_id_));
+          ShapeUtil::MakeScalarShape(PRED), partition_id));
       not_partition_zero = b_.AddInstruction(HloInstruction::CreateBroadcast(
           ShapeUtil::ChangeElementType(identity->shape(), PRED),
           not_partition_zero, {}));
@@ -1465,7 +1478,7 @@ Status SpmdPartitioningVisitor::HandleScatter(HloInstruction* hlo) {
       auto pscatter = b_.AddInstruction(scatter->CloneWithNewOperands(
           scatter->shape(), {select_operand, indices.hlo(), updates.hlo()}));
       auto all_reduce =
-          collective_ops_creator_.create_cross_partition_all_reduce(
+          collective_ops_creator.create_cross_partition_all_reduce(
               &b_, pscatter, scatter->to_apply(), {}, NewChannel());
       all_reduce->set_sharding(HloSharding::Replicate());
       SetPartitionedHlo(hlo, [&]() {

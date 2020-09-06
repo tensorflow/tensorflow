@@ -28,4 +28,6 @@ const char* const kXlaScopeAttr = "_XlaScope";
 // only when auto_jit is ON.
 const char* const kXlaInternalScopeAttr = "_XlaInternalScope";
 
+const char* const kXlaClusterIdAttr = "_xla_compile_id";
+
 }  // namespace tensorflow

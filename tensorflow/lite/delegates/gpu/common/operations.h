@@ -63,6 +63,10 @@ enum class OperationType {
   PRELU,
   // Used to accurately run inference on quantized models.
   QUANTIZE_AND_DEQUANTIZE,
+  REDUCE_MAXIMUM,
+  REDUCE_MINIMUM,
+  REDUCE_PRODUCT,
+  REDUCE_SUM,
   RELU,
   RESHAPE,
   RESIZE,
@@ -357,6 +361,10 @@ struct PReLUAttributes {
   absl::variant<Tensor<Linear, DataType::FLOAT32>,
                 Tensor<HWC, DataType::FLOAT32>>
       alpha;
+};
+
+struct ReduceAttributes {
+  Axis axis = Axis::UNKNOWN;
 };
 
 struct SoftmaxAttributes {

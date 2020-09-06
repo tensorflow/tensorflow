@@ -35,6 +35,9 @@ namespace mhlo {
 /// Lowers HLO control flow ops to the Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeControlFlowPass();
 
+/// Lowers MHLO control flow ops to the SCF dialect.
+std::unique_ptr<OperationPass<FuncOp>> createControlFlowToScfPass();
+
 /// Lowers from HLO dialect to Standard dialect.
 std::unique_ptr<OperationPass<FuncOp>> createLegalizeToStdPass();
 

@@ -1324,7 +1324,7 @@ class OnReadPolicy(VariablePolicy):
 
   def _get_cross_replica(self, var):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
-      return var._primary  # pylint: disable=protected-access
+      return var._get_replica(0)  # pylint: disable=protected-access
 
     with ds_context.enter_or_assert_strategy(var.distribute_strategy):
       return  var.distribute_strategy.reduce(
