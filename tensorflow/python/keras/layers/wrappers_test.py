@@ -466,6 +466,13 @@ class TimeDistributedTest(keras_parameterized.TestCase):
         output_ragged, name='tensor')
     self.assertAllEqual(output_ragged.to_tensor(), output_dense)
 
+  def test_TimeDistributed_set_static_shape(self):
+    layer = keras.layers.TimeDistributed(keras.layers.Conv2D(16, (3, 3)))
+    inputs = keras.Input(batch_shape=(1, None, 32, 32, 1))
+    outputs = layer(inputs)
+    # Make sure the batch dim is not lost after array_ops.reshape.
+    self.assertEqual(outputs.shape, [1, None, 30, 30, 16])
+
 
 @combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class BidirectionalTest(test.TestCase, parameterized.TestCase):
