@@ -795,6 +795,7 @@ cc_library(
         "transforms/tpu_identity_pruning.cc",
         "transforms/tpu_merge_variables_with_execute.cc",
         "transforms/tpu_outside_compilation_cluster.cc",
+        "transforms/tpu_parallel_execute_sink_resource_write.cc",
         "transforms/tpu_resource_read_for_write.cc",
         "transforms/tpu_rewrite_pass.cc",
         "transforms/tpu_sharding_identification_pass.cc",
@@ -806,7 +807,6 @@ cc_library(
         "translate/tf_functional_to_executor.cc",
     ],
     hdrs = [
-        "transforms/batchmatmul_to_einsum.h",
         "transforms/bridge.h",
         "transforms/collection_ops_util.h",
         "transforms/einsum.h",
@@ -826,6 +826,7 @@ cc_library(
         ":export_tf_dialect_op",
         ":lower_tf_lib",
         ":mangling_util",
+        ":shape_inference_utils",
         ":tensorflow",
         ":tensorflow_analysis",
         ":tensorflow_optimize_inc_gen",
@@ -856,6 +857,7 @@ cc_library(
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
         "@llvm-project//mlir:Parser",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
@@ -1562,6 +1564,35 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "tf_xla_mlir_translate",
+    srcs = ["utils/tf_xla_mlir_translate.cc"],
+    deps = [
+        "compile_mlir_util",
+        ":mlir_roundtrip_flags",
+        ":tensorflow",
+        ":translate_cl_options",
+        "//tensorflow/compiler/mlir:string_container_utils",
+        "//tensorflow/compiler/mlir/xla:translate_cl_options",
+        "//tensorflow/compiler/tf2xla:xla_argument",
+        "//tensorflow/compiler/tf2xla:xla_helpers",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_module_config",
+        "//tensorflow/compiler/xla/service:hlo_proto_cc",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
+        "//tensorflow/core/platform:status",
+        "@com_google_absl//absl/strings",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:StandardOps",
+        "@llvm-project//mlir:Support",
+        "@llvm-project//mlir:Translation",
+    ],
+    alwayslink = 1,
+)
+
 tf_cc_test(
     name = "compile_mlir_util_test",
     size = "small",
@@ -1840,5 +1871,28 @@ cc_library(
     hdrs = ["utils/attribute_utils.h"],
     deps = [
         "@llvm-project//mlir:IR",
+    ],
+)
+
+cc_library(
+    name = "shape_inference_utils",
+    srcs = ["utils/shape_inference_utils.cc"],
+    hdrs = ["utils/shape_inference_utils.h"],
+    deps = [
+        ":convert_tensor",
+        ":convert_type",
+        ":export_utils",
+        ":tensorflow",
+        ":tensorflow_attributes",
+        ":tensorflow_types",
+        "//tensorflow/compiler/mlir:array_container_utils",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:types",
+        "@llvm-project//llvm:Support",
+        "@llvm-project//mlir:DerivedAttributeOpInterface",
+        "@llvm-project//mlir:IR",
+        "@llvm-project//mlir:InferTypeOpInterface",
+        "@llvm-project//mlir:Support",
     ],
 )

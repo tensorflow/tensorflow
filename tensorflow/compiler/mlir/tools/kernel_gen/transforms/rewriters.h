@@ -21,6 +21,7 @@ limitations under the License.
 namespace mlir {
 
 class BufferAssignmentPlacer;
+class BufferAssignmentTypeConverter;
 class LLVMTypeConverter;
 class MLIRContext;
 class OwningRewritePatternList;
@@ -45,7 +46,7 @@ namespace transforms {
 /// dialect.
 void populateStandardBufferizePattern(MLIRContext *context,
                                       BufferAssignmentPlacer *bufferAssignment,
-                                      TypeConverter *converter,
+                                      BufferAssignmentTypeConverter *converter,
                                       OwningRewritePatternList *patterns);
 }  // namespace transforms
 }  // namespace kernel_gen

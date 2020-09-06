@@ -24,7 +24,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import strategy_combinations
-from tensorflow.python.eager import test
+from tensorflow.python.platform import test
 
 
 class KerasModelsTest(test.TestCase, parameterized.TestCase):

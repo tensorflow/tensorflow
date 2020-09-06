@@ -2130,6 +2130,10 @@ class StrategyExtendedV2(object):
         checkpoint_restore_uid = kwargs[
             "initial_value"].checkpoint_position.restore_uid
         kwargs["initial_value"] = kwargs["initial_value"].wrapped_value
+      elif isinstance(kwargs["initial_value"],
+                      trackable.CheckpointInitialValueCallable):
+        checkpoint_restore_uid = kwargs[
+            "initial_value"].checkpoint_position.restore_uid
       else:
         checkpoint_restore_uid = None
 
@@ -2139,6 +2143,9 @@ class StrategyExtendedV2(object):
         # pylint: disable=protected-access
         # Let the checkpointing infrastructure know that the variable was
         # already restored so it doesn't waste memory loading the value again.
+        # In this case of CheckpointInitialValueCallable this may already be
+        # done by the final variable creator, but it doesn't hurt to do it
+        # again.
         created._maybe_initialize_trackable()
         created._update_uid = checkpoint_restore_uid
         # pylint: enable=protected-access

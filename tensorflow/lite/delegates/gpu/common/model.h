@@ -247,6 +247,10 @@ absl::Status RemoveSimpleNodeKeepOutput(GraphFloat32* graph,
 absl::Status AddOutput(GraphFloat32* graph, const Node* from_node,
                        Value** output);
 
+// Makes a direct connection between from_node and to_node. All input parameters
+// except output are expected to be initialized before passing to the function.
+// If from_node already has an output value, which is not yet consumed by
+// to_node, it may be passed as output parameter.
 absl::Status ConnectTwoNodes(GraphFloat32* graph, const Node* from_node,
                              const Node* to_node, Value** output);
 

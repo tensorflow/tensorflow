@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_CONV_POWERVR_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_KERNELS_CONV_POWERVR_H_
 
+#include <cstring>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/cl/kernels/util.h"
 #include "tensorflow/lite/delegates/gpu/cl/linear_storage.h"
 #include "tensorflow/lite/delegates/gpu/cl/tensor.h"
+#include "tensorflow/lite/delegates/gpu/cl/texture2d.h"
 #include "tensorflow/lite/delegates/gpu/cl/util.h"
 #include "tensorflow/lite/delegates/gpu/common/data_type.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -67,11 +69,8 @@ class ConvPowerVR : public GPUOperation {
     LOCAL_MEM_BY_THREADS,
     GLOBAL_MEM,
     CONSTANT_MEM,
-    PRIVATE_MEM_SIMD8_BROADCAST,
-    PRIVATE_MEM_SIMD16_BROADCAST,
-    PRIVATE_MEM_SIMD32_BROADCAST,
-    PRIVATE_MEM_SIMD64_BROADCAST,
-    PRIVATE_MEM_SIMD128_BROADCAST,
+    PRIVATE_MEM_SIMD_BROADCAST,
+    TEXTURES_MEM_X4,  // 4 textures for weights
   };
 
   struct ConvParams {
@@ -93,37 +92,16 @@ class ConvPowerVR : public GPUOperation {
     bool x_kernel_is_1;
     bool y_kernel_is_1;
 
-    bool IsPrivateMemBroadcast() const {
-      return weights_upload_type ==
-                 WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST ||
-             weights_upload_type ==
-                 WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST ||
-             weights_upload_type ==
-                 WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST ||
-             weights_upload_type ==
-                 WeightsUploadType::PRIVATE_MEM_SIMD64_BROADCAST ||
-             weights_upload_type ==
-                 WeightsUploadType::PRIVATE_MEM_SIMD128_BROADCAST;
+    // used only with PRIVATE_MEM_SIMD_BROADCAST
+    int simd_size = 1;
+
+    bool AreWeightsBuffer() const {
+      return weights_upload_type != WeightsUploadType::TEXTURES_MEM_X4;
     }
 
-    int GetSimdSize() const {
-      if (weights_upload_type ==
-          WeightsUploadType::PRIVATE_MEM_SIMD8_BROADCAST) {
-        return 8;
-      } else if (weights_upload_type ==
-                 WeightsUploadType::PRIVATE_MEM_SIMD16_BROADCAST) {
-        return 16;
-      } else if (weights_upload_type ==
-                 WeightsUploadType::PRIVATE_MEM_SIMD32_BROADCAST) {
-        return 32;
-      } else if (weights_upload_type ==
-                 WeightsUploadType::PRIVATE_MEM_SIMD64_BROADCAST) {
-        return 64;
-      } else if (weights_upload_type ==
-                 WeightsUploadType::PRIVATE_MEM_SIMD128_BROADCAST) {
-        return 128;
-      }
-      return 1;
+    bool IsPrivateMemBroadcast() const {
+      return weights_upload_type ==
+             WeightsUploadType::PRIVATE_MEM_SIMD_BROADCAST;
     }
   };
 
@@ -256,37 +234,64 @@ void ConvPowerVR::UploadBias(const tflite::gpu::Tensor<Linear, T>& bias) {
 
 template <DataType T>
 void ConvPowerVR::UploadWeights(const tflite::gpu::Tensor<OHWI, T>& weights) {
-  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
-  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_slices =
+      AlignByN(DivideRoundUp(weights.shape.o, 4), conv_params_.block_size.z);
+  const int src_slices = DivideRoundUp(weights.shape.i, 4);
 
   const bool f32_weights = conv_params_.weights_data_type == DataType::FLOAT32;
   const int float4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
-  const int dst_depth_aligned = AlignByN(dst_depth, conv_params_.block_size.z);
   const int elements_count =
-      weights.shape.h * weights.shape.w * src_depth * dst_depth_aligned * 4;
+      weights.shape.h * weights.shape.w * src_slices * dst_slices * 4;
 
-  BufferDescriptor desc;
-  desc.element_type = conv_params_.weights_data_type;
-  desc.element_size = 4;
-  desc.memory_type = conv_params_.weights_upload_type ==
-                             ConvPowerVR::WeightsUploadType::CONSTANT_MEM
-                         ? MemoryType::CONSTANT
-                         : MemoryType::GLOBAL;
-  desc.size = float4_size * elements_count;
-  desc.data.resize(desc.size);
+  std::vector<uint8_t> data(float4_size * elements_count);
 
   if (f32_weights) {
-    float4* ptr = reinterpret_cast<float4*>(desc.data.data());
-    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
-                                     absl::MakeSpan(ptr, elements_count));
+    float4* ptr = reinterpret_cast<float4*>(data.data());
+    if (conv_params_.AreWeightsBuffer()) {
+      RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
+                                       absl::MakeSpan(ptr, elements_count));
+    } else {
+      RearrangeWeightsToI4HWIOOGroupO4(weights, conv_params_.block_size.z,
+                                       absl::MakeSpan(ptr, elements_count));
+    }
   } else {
-    half4* ptr = reinterpret_cast<half4*>(desc.data.data());
-    RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
-                                     absl::MakeSpan(ptr, elements_count));
+    half4* ptr = reinterpret_cast<half4*>(data.data());
+    if (conv_params_.AreWeightsBuffer()) {
+      RearrangeWeightsToOHWIOGroupI4O4(weights, conv_params_.block_size.z,
+                                       absl::MakeSpan(ptr, elements_count));
+    } else {
+      RearrangeWeightsToI4HWIOOGroupO4(weights, conv_params_.block_size.z,
+                                       absl::MakeSpan(ptr, elements_count));
+    }
   }
-  args_.AddObject("weights",
-                  absl::make_unique<BufferDescriptor>(std::move(desc)));
+  if (conv_params_.AreWeightsBuffer()) {
+    BufferDescriptor desc;
+    desc.element_type = conv_params_.weights_data_type;
+    desc.element_size = 4;
+    desc.memory_type = conv_params_.weights_upload_type ==
+                               ConvPowerVR::WeightsUploadType::CONSTANT_MEM
+                           ? MemoryType::CONSTANT
+                           : MemoryType::GLOBAL;
+    desc.size = float4_size * elements_count;
+    desc.data = std::move(data);
+    args_.AddObject("weights",
+                    absl::make_unique<BufferDescriptor>(std::move(desc)));
+  } else {
+    const int texture_width = dst_slices;
+    const int texture_height = src_slices * weights.shape.h * weights.shape.w;
+    const int sub_size = float4_size * texture_width * texture_height;
+    for (int i = 0; i < 4; ++i) {
+      Texture2DDescriptor desc;
+      desc.element_type = conv_params_.weights_data_type;
+      desc.size = int2(texture_width, texture_height);
+      desc.data.resize(sub_size);
+      std::memcpy(desc.data.data(), data.data() + sub_size * i, sub_size);
+      const std::string name = "weights" + std::to_string(i);
+      args_.AddObject(name,
+                      absl::make_unique<Texture2DDescriptor>(std::move(desc)));
+    }
+  }
 }
 
 ConvPowerVR CreateConvPowerVR(const DeviceInfo& device_info,

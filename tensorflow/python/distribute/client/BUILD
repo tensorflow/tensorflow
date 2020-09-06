@@ -88,8 +88,8 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "parameter_server_client_mpr_test",
-    srcs = ["parameter_server_client_mpr_test.py"],
+    name = "client_mpr_test",
+    srcs = ["client_mpr_test.py"],
     python_version = "PY3",
     shard_count = 2,
     tags = ["no_oss"],  # TODO(b/162119374)

@@ -80,7 +80,7 @@ void MatchAndRewrite(WhileOp whileOp) {
     // the external value is captured.
     if (auto gte = val.getDefiningOp<GetTupleElementOp>()) {
       if (!gte.getOperand().isa<mlir::BlockArgument>()) return {nullptr, 0};
-      int index = gte.index().getSExtValue();
+      int index = gte.index();
       return {tupleOp.getOperand(index), index};
     }
     return {nullptr, 0};
@@ -154,7 +154,7 @@ void MatchAndRewrite(WhileOp whileOp) {
       use->erase();
       continue;
     }
-    int index = gte.index().getSExtValue();
+    int index = gte.index();
     // If after the loop induction variable, then decrement as we don't include
     // the loop induction variable in the for iter operands.
     if (index > loopIndVar.second) --index;

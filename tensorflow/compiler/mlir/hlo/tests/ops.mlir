@@ -600,6 +600,14 @@ func @recv_non_token_second_result(%token: !mhlo.token) -> tuple<tensor<3x4xi32>
 
 // -----
 
+// CHECK-LABEL: func @replica_id
+func @replica_id() -> tensor<ui32> {
+  %0 = "mhlo.replica_id"() : () -> tensor<ui32>
+  return %0 : tensor<ui32>
+}
+
+// -----
+
 func @rng_uniform_invalid_type(%mu: tensor<complex<f32>>, %sigma: tensor<f32>) -> tensor<2x3x5xf32> {
   %shape = mhlo.constant dense<[2, 3, 5]> : tensor<3xi64>
   // expected-error@+1 {{but got 'tensor<complex<f32>>'}}

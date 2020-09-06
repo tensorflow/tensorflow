@@ -210,8 +210,9 @@ Operation* ReplicateIf(const ControlFlowStackInfo& controlflow_info,
 
 // Creates a WhileRegionOp cond and body regions with yield op and
 // an empty body.
-TF::WhileRegionOp CloneEmptyWhile(bool is_stateless, APInt parallel_iterations,
-                                  Location loc, OpBuilder* builder) {
+TF::WhileRegionOp CloneEmptyWhile(bool is_stateless,
+                                  uint64_t parallel_iterations, Location loc,
+                                  OpBuilder* builder) {
   auto host_side_while = builder->create<TF::WhileRegionOp>(
       loc, /*output=*/ArrayRef<Type>{}, /*input=*/ArrayRef<Value>{},
       is_stateless, parallel_iterations);
@@ -439,9 +440,22 @@ llvm::SmallSetVector<Value, 4> GetExternalOperands(
       } else {
         llvm::SetVector<Value> external_captured_inputs;
         visitUsedValuesDefinedAbove(*region, *region, [&](OpOperand* operand) {
-          Region* parent_region = operand->get().getParentRegion();
-          if (!tpu_cluster.body().isAncestor(parent_region)) return;
-
+          Region* operand_defined_region = operand->get().getParentRegion();
+          if (!tpu_cluster.body().isAncestor(operand_defined_region)) return;
+          // If the host_cluster_op is regional control flow (if, while),
+          // then check if the operand_defined_region is an ancestor of the
+          // control flow regions.
+          if (auto if_op = llvm::dyn_cast<TF::IfRegionOp>(host_cluster_op)) {
+            if (if_op.then_branch().isAncestor(operand_defined_region) ||
+                if_op.else_branch().isAncestor(operand_defined_region))
+              return;
+          }
+          if (auto while_op =
+                  llvm::dyn_cast<TF::WhileRegionOp>(host_cluster_op)) {
+            if (while_op.cond().isAncestor(operand_defined_region) ||
+                while_op.body().isAncestor(operand_defined_region))
+              return;
+          }
           external_captured_inputs.insert(operand->get());
         });
         external_values.insert(external_captured_inputs.begin(),

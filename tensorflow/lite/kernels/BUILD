@@ -2140,6 +2140,7 @@ cc_test(
     srcs = ["rfft2d_test.cc"],
     deps = [
         ":custom_ops",
+        ":test_main",
         ":test_util",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",

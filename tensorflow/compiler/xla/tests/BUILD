@@ -385,7 +385,7 @@ xla_test(
         "gpu",
         "cpu",
     ],
-    shard_count = 6,
+    shard_count = 40,
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:execution_options_util",

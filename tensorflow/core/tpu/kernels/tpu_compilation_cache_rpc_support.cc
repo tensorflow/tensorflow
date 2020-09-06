@@ -39,7 +39,7 @@ Status DeserializeRpcResponseToCacheEntry<GetTpuProgramResponseExternal>(
   CHECK_NE(cache_entry, nullptr);
   *cache_entry = std::make_shared<CacheEntry>();
   CacheEntry& entry = **cache_entry;
-  entry.key = local_proto_key;
+  entry.key = std::string(local_proto_key);
 
   if (response->is_empty()) {
     entry.size = 0;

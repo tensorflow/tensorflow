@@ -25,10 +25,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.distribute import combinations
-from tensorflow.python.eager import test
+from tensorflow.python.framework import ops
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.distribute import saved_model_test_base as test_base
 from tensorflow.python.keras.saving import save
+from tensorflow.python.platform import test
 
 _DEFAULT_FUNCTION_KEY = 'serving_default'
 
@@ -81,4 +82,5 @@ class SavedModelSaveAndLoadTest(test_base.TestSavedModelBase):
 
 
 if __name__ == '__main__':
+  ops.enable_eager_execution()
   test.main()

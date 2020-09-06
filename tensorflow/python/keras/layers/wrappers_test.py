@@ -1154,7 +1154,7 @@ class BidirectionalTest(test.TestCase, parameterized.TestCase):
         epochs=1,
         batch_size=10)
 
-  @tf_test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_wrapped_rnn_cell(self):
     # See https://github.com/tensorflow/tensorflow/issues/26581.
     batch = 20

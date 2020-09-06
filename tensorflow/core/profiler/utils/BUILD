@@ -440,6 +440,5 @@ cc_library(
     hdrs = ["step_interval.h"],
     deps = [
         "//tensorflow/core:lib",
-        "@com_google_absl//absl/base:core_headers",
     ],
 )

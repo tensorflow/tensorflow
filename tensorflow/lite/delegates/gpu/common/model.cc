@@ -476,10 +476,22 @@ absl::Status AddOutput(GraphFloat32* graph, const Node* from_node,
 
 absl::Status ConnectTwoNodes(GraphFloat32* graph, const Node* from_node,
                              const Node* to_node, Value** output) {
-  Value* link;
-  RETURN_IF_ERROR(AddOutput(graph, from_node, &link));
-  RETURN_IF_ERROR(graph->AddConsumer(to_node->id, link->id));
-  *output = link;
+  const Node* output_producer =
+      *output ? graph->FindProducer((*output)->id) : nullptr;
+  // Output is already initialized, but producer is not from_node.
+  if (*output && output_producer && output_producer->id != from_node->id) {
+    return absl::InvalidArgumentError("Wrong output is passed.");
+  }
+  // Output is already initialized, and producer is from_node.
+  if (*output) {
+    RETURN_IF_ERROR(graph->AddConsumer(to_node->id, (*output)->id));
+  } else {
+    // Output is not initialized.
+    Value* link;
+    RETURN_IF_ERROR(AddOutput(graph, from_node, &link));
+    RETURN_IF_ERROR(graph->AddConsumer(to_node->id, link->id));
+    *output = link;
+  }
   return absl::OkStatus();
 }
 

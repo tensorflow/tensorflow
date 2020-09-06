@@ -132,7 +132,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
       fusion_node_evaluations_.emplace(consumer,
                                        FusionNodeIndexingEvaluation(consumer));
     }
-    if (fusion_node_evaluations_.at(consumer).AverageCodeDuplicationTooHigh(
+    if (fusion_node_evaluations_.at(consumer).CodeDuplicationTooHigh(
             producer)) {
       return false;
     }

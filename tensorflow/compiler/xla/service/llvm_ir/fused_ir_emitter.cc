@@ -289,15 +289,9 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
     evaluate_fusion_computation(producer);
   }
 
-  // Sum up the total number of emitted ops.
-  int64 total = 0;
-  for (const auto& entry : index_usage_count) {
-    total += entry.second;
-  }
-
   // Check that the code duplication has at most a factor of 15 (where 15 is an
   // arbitrary constant that seems to work).
-  return total > 15 * index_usage_count.size();
+  return index_usage_count[producer] > 15;
 }
 
 }  // namespace xla

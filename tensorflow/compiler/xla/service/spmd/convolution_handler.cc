@@ -42,6 +42,204 @@ StatusOr<HloInstruction*> PartitionConvolution(
     const SpmdPartitionerOptions& options, HloInstruction* partition_id,
     HloModule* module, SpmdBuilder* b);
 
+// Partition convolution with batch group count.
+StatusOr<HloInstruction*> PartitionConvolutionWithBatchGroupCount(
+    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
+    const HloSharding& output_sharding, const Window& conv_window,
+    HloInstruction* original_hlo, int64 num_partitions, SpmdBuilder* b) {
+  TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
+  if (original_hlo->batch_group_count() == 1 ||
+      original_hlo->batch_group_count() < num_partitions) {
+    return nullptr;
+  }
+
+  const auto& dnums = original_hlo->convolution_dimension_numbers();
+  // Only supports batch_group_size equals input_batch_size case.
+  const int64 input_batch_size =
+      lhs.base_shape().dimensions(dnums.input_batch_dimension());
+  const int64 kernel_output_feature_size =
+      rhs.base_shape().dimensions(dnums.kernel_output_feature_dimension());
+  if (input_batch_size != kernel_output_feature_size ||
+      original_hlo->batch_group_count() != input_batch_size) {
+    return nullptr;
+  }
+
+  // Map RHS indices to LHS indices.
+  std::vector<int64> rhs_to_lhs_indices(output_base_shape.rank());
+  rhs_to_lhs_indices[dnums.kernel_output_feature_dimension()] =
+      dnums.input_batch_dimension();
+  rhs_to_lhs_indices[dnums.kernel_input_feature_dimension()] =
+      dnums.input_feature_dimension();
+  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+    rhs_to_lhs_indices[dnums.kernel_spatial_dimensions(i)] =
+        dnums.input_spatial_dimensions(i);
+  }
+
+  // Map LHS indices to RHS indices.
+  std::vector<int64> lhs_to_rhs_indices(output_base_shape.rank());
+  for (int64 i = 0; i < rhs_to_lhs_indices.size(); ++i) {
+    lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
+  }
+
+  // Map LHS indices to output indices.
+  std::vector<int64> lhs_to_output_indices(lhs.base_shape().rank(), -1);
+  lhs_to_output_indices[dnums.input_batch_dimension()] =
+      dnums.output_feature_dimension();
+  lhs_to_output_indices[dnums.input_feature_dimension()] =
+      dnums.output_batch_dimension();
+  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+    lhs_to_output_indices[dnums.input_spatial_dimensions(i)] =
+        dnums.output_spatial_dimensions(i);
+  }
+
+  // Align LHS or RHS to other operand if input batch dim or kernel output
+  // feature dim is partitioned.
+  auto aligned_rhs_sharding =
+      hlo_sharding_util::TransposeSharding(lhs.sharding(), rhs_to_lhs_indices);
+  auto aligned_lhs_sharding =
+      hlo_sharding_util::TransposeSharding(rhs.sharding(), lhs_to_rhs_indices);
+
+  bool lhs_batch_dim_is_partitioned =
+      (ShardCountAtDim(lhs.sharding(), dnums.input_batch_dimension()) ==
+       num_partitions);
+  bool rhs_output_feature_dim_is_partitioned =
+      (ShardCountAtDim(rhs.sharding(),
+                       dnums.kernel_output_feature_dimension()) ==
+       num_partitions);
+  if (!lhs_batch_dim_is_partitioned && !rhs_output_feature_dim_is_partitioned) {
+    return nullptr;
+  }
+  // Reshard LHS or RHS to partition at batch dimension or output feature
+  // dimension as the other operand.
+  if (lhs_batch_dim_is_partitioned) {
+    rhs = rhs.Reshard(aligned_rhs_sharding);
+  } else {
+    lhs = lhs.Reshard(aligned_lhs_sharding);
+  }
+  // Align output sharding after LHS and RHS sharding are consistent.
+  auto aligned_output_sharding = hlo_sharding_util::TransposeSharding(
+      lhs.sharding(), lhs_to_output_indices);
+
+  // Get LHS and RHS sharded shape.
+  auto lhs_shard_shape = MakePartitionedShape(lhs.base_shape(), lhs.sharding());
+  auto rhs_shard_shape = MakePartitionedShape(rhs.base_shape(), rhs.sharding());
+  const int64 batch_group_count =
+      CeilOfRatio(original_hlo->batch_group_count(), num_partitions);
+  // Create partitioned convolution.
+  TF_ASSIGN_OR_RETURN(
+      Shape sharded_conv_shape,
+      ShapeInference::InferConvolveShape(
+          lhs_shard_shape, rhs_shard_shape, original_hlo->feature_group_count(),
+          batch_group_count, conv_window, dnums));
+  auto sharded_conv = b->AddInstruction(HloInstruction::CreateConvolve(
+      sharded_conv_shape, lhs.hlo(), rhs.hlo(),
+      original_hlo->feature_group_count(), batch_group_count, conv_window,
+      dnums, original_hlo->precision_config()));
+  sharded_conv->set_sharding(aligned_output_sharding);
+  return PartitionedHlo(sharded_conv, output_base_shape, lhs.state())
+      .Reshard(output_sharding)
+      .hlo();
+}
+
+// Partition convolution with feature group count.
+StatusOr<HloInstruction*> PartitionConvolutionWithFeatureGroupCount(
+    PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
+    const HloSharding& output_sharding, const Window& conv_window,
+    HloInstruction* original_hlo, int64 num_partitions, SpmdBuilder* b) {
+  TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
+  if (original_hlo->feature_group_count() == 1 ||
+      original_hlo->feature_group_count() < num_partitions) {
+    return nullptr;
+  }
+
+  const auto& dnums = original_hlo->convolution_dimension_numbers();
+  const int64 input_feature_size =
+      lhs.base_shape().dimensions(dnums.input_feature_dimension());
+  const int64 kernel_output_feature_size =
+      rhs.base_shape().dimensions(dnums.kernel_output_feature_dimension());
+  if (input_feature_size != kernel_output_feature_size ||
+      input_feature_size % original_hlo->feature_group_count() != 0) {
+    return nullptr;
+  }
+
+  // Align RHS indices to LHS.
+  std::vector<int64> rhs_to_lhs_indices(output_base_shape.rank());
+  rhs_to_lhs_indices[dnums.kernel_output_feature_dimension()] =
+      dnums.input_feature_dimension();
+  rhs_to_lhs_indices[dnums.kernel_input_feature_dimension()] =
+      dnums.input_batch_dimension();
+  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+    rhs_to_lhs_indices[dnums.kernel_spatial_dimensions(i)] =
+        dnums.input_spatial_dimensions(i);
+  }
+
+  // Align LHS indices to RHS.
+  std::vector<int64> lhs_to_rhs_indices(output_base_shape.rank());
+  for (int64 i = 0; i < rhs_to_lhs_indices.size(); ++i) {
+    lhs_to_rhs_indices[rhs_to_lhs_indices[i]] = i;
+  }
+
+  // Align LHS indices to output.
+  std::vector<int64> lhs_to_output_indices(output_base_shape.rank());
+  lhs_to_output_indices[dnums.input_feature_dimension()] =
+      dnums.output_feature_dimension();
+  lhs_to_output_indices[dnums.input_batch_dimension()] =
+      dnums.output_batch_dimension();
+  for (int64 i = 0; i < dnums.input_spatial_dimensions_size(); ++i) {
+    lhs_to_output_indices[dnums.input_spatial_dimensions(i)] =
+        dnums.output_spatial_dimensions(i);
+  }
+
+  // Align LHS or RHS if input_feature_dim or kernel_output_feature_dim is
+  // partitioned.
+  auto aligned_rhs_sharding =
+      hlo_sharding_util::TransposeSharding(lhs.sharding(), rhs_to_lhs_indices);
+  auto aligned_lhs_sharding =
+      hlo_sharding_util::TransposeSharding(rhs.sharding(), lhs_to_rhs_indices);
+
+  bool lhs_feature_dim_is_partitioned =
+      (ShardCountAtDim(lhs.sharding(), dnums.input_feature_dimension()) ==
+       num_partitions);
+  bool rhs_output_feature_dim_is_partitioned =
+      (ShardCountAtDim(rhs.sharding(),
+                       dnums.kernel_output_feature_dimension()) ==
+       num_partitions);
+  if (!lhs_feature_dim_is_partitioned &&
+      !rhs_output_feature_dim_is_partitioned) {
+    return nullptr;
+  }
+  // Reshard LHS or RHS to partition at input feature dimension or output
+  // feature dimension as the other operand.
+  if (lhs_feature_dim_is_partitioned) {
+    rhs = rhs.Reshard(aligned_rhs_sharding);
+  } else {
+    lhs = lhs.Reshard(aligned_lhs_sharding);
+  }
+
+  // Align output sharding after LHS and RHS sharding are consistent.
+  auto aligned_output_sharding = hlo_sharding_util::TransposeSharding(
+      lhs.sharding(), lhs_to_output_indices);
+
+  auto lhs_shard_shape = MakePartitionedShape(lhs.base_shape(), lhs.sharding());
+  auto rhs_shard_shape = MakePartitionedShape(rhs.base_shape(), rhs.sharding());
+  int64 feature_group_count =
+      CeilOfRatio(original_hlo->feature_group_count(), num_partitions);
+
+  TF_ASSIGN_OR_RETURN(
+      Shape sharded_conv_shape,
+      ShapeInference::InferConvolveShape(
+          lhs_shard_shape, rhs_shard_shape, feature_group_count,
+          original_hlo->batch_group_count(), conv_window, dnums));
+  auto sharded_conv = b->AddInstruction(HloInstruction::CreateConvolve(
+      sharded_conv_shape, lhs.hlo(), rhs.hlo(), feature_group_count,
+      original_hlo->batch_group_count(), conv_window, dnums,
+      original_hlo->precision_config()));
+  sharded_conv->set_sharding(aligned_output_sharding);
+  return PartitionedHlo(sharded_conv, output_base_shape, lhs.state())
+      .Reshard(output_sharding)
+      .hlo();
+}
+
 // Partition convolution with only paralell dims are tiled
 StatusOr<HloInstruction*> PartitionConvolutionWithParallelDimension(
     PartitionedHlo lhs, PartitionedHlo rhs, const Shape& output_base_shape,
@@ -810,6 +1008,28 @@ StatusOr<HloInstruction*> PartitionConvolutionBaseCase(
     const SpmdPartitionerOptions& options, HloInstruction* partition_id,
     HloModule* module, SpmdBuilder* b) {
   TF_RET_CHECK(original_hlo->opcode() == HloOpcode::kConvolution);
+
+  // Case 0: Handle depthwise convolution with batch group count or
+  // feature group count.
+  if (original_hlo->batch_group_count() > 1) {
+    TF_ASSIGN_OR_RETURN(auto parallel_partitioned_conv,
+                        PartitionConvolutionWithBatchGroupCount(
+                            lhs, rhs, output_base_shape, output_sharding,
+                            conv_window, original_hlo, num_partitions, b));
+    if (parallel_partitioned_conv) {
+      return parallel_partitioned_conv;
+    }
+  }
+
+  if (original_hlo->feature_group_count() > 1) {
+    TF_ASSIGN_OR_RETURN(auto parallel_partitioned_conv,
+                        PartitionConvolutionWithFeatureGroupCount(
+                            lhs, rhs, output_base_shape, output_sharding,
+                            conv_window, original_hlo, num_partitions, b));
+    if (parallel_partitioned_conv) {
+      return parallel_partitioned_conv;
+    }
+  }
 
   // Case 1: Either RHS or LHS is only partitioned at parallel dimensions.
   TF_ASSIGN_OR_RETURN(auto parallel_partitioned_conv,

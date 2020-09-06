@@ -359,10 +359,8 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
                 tensorflow::InputTFE_Context(ctx)));
 
         tensorflow::DeviceNameUtils::ParsedName input_device_name;
-        if (!tensorflow::DeviceNameUtils::ParseFullName(device_name,
-                                                        &input_device_name) &&
-            !tensorflow::DeviceNameUtils::ParseLocalName(device_name,
-                                                         &input_device_name)) {
+        if (!tensorflow::DeviceNameUtils::ParseFullOrLocalName(
+                device_name, &input_device_name)) {
           tensorflow::ThrowValueError(
               absl::StrFormat("Failed parsing device name: '%s'", device_name)
                   .c_str());
@@ -400,7 +398,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
               absl::StrFormat("No matching devices found for '%s'", device_name)
                   .c_str());
         }
-        CHECK(matched_device);
 
         tensorflow::AllocatorAttributes attrs;
         tensorflow::Allocator* allocator = matched_device->GetAllocator(attrs);
@@ -414,7 +411,6 @@ PYBIND11_MODULE(_pywrap_tfe, m) {
             absl::StrFormat("Allocator stats not available for device '%s'",
                             matched_device->name())
                 .c_str());
-        LOG(FATAL) << "Unreachable";
       });
 
   // XLA Eager Logic

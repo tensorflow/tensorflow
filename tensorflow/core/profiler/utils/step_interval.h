@@ -19,7 +19,6 @@ limitations under the License.
 #include <algorithm>
 
 #include "tensorflow/core/platform/logging.h"
-#include "absl/base/integral_types.h"
 
 namespace tensorflow {
 namespace profiler {

@@ -103,34 +103,16 @@ Status XlaCompileOnDemandOp::Compile(
     OpKernelContext* ctx, const XlaCompiler::CompilationResult** result,
     XlaCompilationCache** cache, ResourceVarsSnapshot* variable_args,
     xla::LocalExecutable** executable) {
-  std::map<int, Tensor> constant_arguments;
 
   std::vector<int> constant_input_indices;
   TF_RETURN_IF_ERROR(GetCompileTimeConstInputs(
       &ctx->op_kernel(), &constant_input_indices, ctx->function_library()));
-  CHECK(absl::c_is_sorted(constant_input_indices));
-
-  for (int64 i = 0; i < ctx->num_inputs(); ++i) {
-    const Tensor& device_tensor = ctx->input(i);
-
-    if (const XlaTensor* xla_tensor = XlaTensor::FromTensor(&device_tensor)) {
-      if (xla_tensor->has_host_tensor()) {
-        if (absl::c_binary_search(constant_input_indices, i)) {
-          constant_arguments[i] = xla_tensor->host_tensor();
-        }
-      }
-    }
-
-    if (!constant_arguments.count(i)) {
-      if (absl::c_binary_search(constant_input_indices, i)) {
-        if (ctx->input_memory_type(i) != HOST_MEMORY) {
-          return errors::Internal(
-              "Expected constant argument not in host memory");
-        }
-        constant_arguments[i] = device_tensor;
-      }
-    }
+  if (!absl::c_all_of(constant_input_indices, [&](int idx) {
+        return ctx->input_memory_type(idx) == HOST_MEMORY;
+      })) {
+    return errors::Internal("Unexpected device placement for a constant input");
   }
+  std::vector<const Tensor*> inputs = InputsFromContext(ctx);
 
   // We store information about the JIT-compiled XLA computation
   // in the ResourceMgr.
@@ -158,19 +140,23 @@ Status XlaCompileOnDemandOp::Compile(
   compile_options.always_return_tuple = false;
 
   std::vector<int> variables_indices = GetResourceVariableIndices(ctx);
-  std::vector<XlaCompiler::Argument> args;
+  xla::StatusOr<std::vector<XlaCompiler::Argument>> args;
   {
     std::vector<VariableInfo> variable_infos;
     TF_RETURN_IF_ERROR(
-        GetVariableInfosFromCtxInputs(ctx, variables_indices, &variable_infos));
+        GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
+                                   inputs, variables_indices, &variable_infos));
+
     TF_RETURN_IF_ERROR(LockVariables(absl::MakeSpan(variable_infos)));
     TF_RETURN_IF_ERROR(SnapshotResourceVariables(
         ctx, variables_indices, variable_infos, variable_args));
-    TF_RETURN_IF_ERROR(XlaComputationLaunchContext::BuildXlaCompilerArguments(
-        constant_arguments, variable_infos, ctx, &args));
+
+    args = XlaComputationLaunchContext::BuildXlaCompilerArguments(
+        constant_input_indices, inputs, variable_infos);
+    TF_RETURN_IF_ERROR(args.status());
   }
 
-  return (*cache)->CompileSingleOp(options, args, ctx, compile_options, result,
+  return (*cache)->CompileSingleOp(options, *args, ctx, compile_options, result,
                                    executable);
 }
 
