@@ -101,7 +101,7 @@ class TimeToReadableStrTest(test_util.TensorFlowTestCase):
                      cli_shared.time_to_readable_str(
                          0, force_time_unit=cli_shared.TIME_UNIT_S))
 
-    with self.assertRaisesRegexp(ValueError, r"Invalid time unit: ks"):
+    with self.assertRaisesRegex(ValueError, r"Invalid time unit: ks"):
       cli_shared.time_to_readable_str(100, force_time_unit="ks")
 
 

@@ -35,7 +35,7 @@ namespace tensorflow {
 namespace example {
 
 // FastParseExampleConfig defines how to parse features in Example.
-// Each sub-config is responsible for one feature identified with feautre_name.
+// Each sub-config is responsible for one feature identified with feature_name.
 // FastParseExampleConfig can't have two sub-configs with the same feature_name.
 // dtype identifies the type of output vector and the kind of Feature expected
 // in Example.

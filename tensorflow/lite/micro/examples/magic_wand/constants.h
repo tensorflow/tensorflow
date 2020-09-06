@@ -19,6 +19,20 @@ limitations under the License.
 // The expected accelerometer data sample frequency
 const float kTargetHz = 25;
 
-// The number of expected consecutive inferences for each gesture type
-extern const int kConsecutiveInferenceThresholds[3];
+// What gestures are supported.
+constexpr int kGestureCount = 4;
+constexpr int kWingGesture = 0;
+constexpr int kRingGesture = 1;
+constexpr int kSlopeGesture = 2;
+constexpr int kNoGesture = 3;
+
+// These control the sensitivity of the detection algorithm. If you're seeing
+// too many false positives or not enough true positives, you can try tweaking
+// these thresholds. Often, increasing the size of the training set will give
+// more robust results though, so consider retraining if you are seeing poor
+// predictions.
+constexpr float kDetectionThreshold = 0.8f;
+constexpr int kPredictionHistoryLength = 5;
+constexpr int kPredictionSuppressionDuration = 25;
+
 #endif  // TENSORFLOW_LITE_MICRO_EXAMPLES_MAGIC_WAND_CONSTANTS_H_

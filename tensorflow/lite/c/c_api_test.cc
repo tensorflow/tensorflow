@@ -181,7 +181,7 @@ TEST(CApiSimple, Delegate) {
   // The delegate should have been applied.
   EXPECT_TRUE(delegate_prepared);
 
-  // Subsequent exectuion should behave properly (the delegate is a no-op).
+  // Subsequent execution should behave properly (the delegate is a no-op).
   TfLiteInterpreterOptionsDelete(options);
   TfLiteModelDelete(model);
   EXPECT_EQ(TfLiteInterpreterInvoke(interpreter), kTfLiteOk);

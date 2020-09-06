@@ -315,7 +315,7 @@ def profile(graph=None,
   """Profile model.
 
     Tutorials and examples can be found in:
-    https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/README.md
+    https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/profiler/g3doc/python_api.md
 
   Args:
     graph: tf.Graph. If None and eager execution is not enabled, use

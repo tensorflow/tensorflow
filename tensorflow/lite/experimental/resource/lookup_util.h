@@ -39,7 +39,7 @@ class TensorReader {
   const T* input_data_;
 };
 
-/// Helper class for accesing TFLite tensor data. This specialized class is for
+/// Helper class for accessing TFLite tensor data. This specialized class is for
 /// std::string type.
 template <>
 class TensorReader<std::string> {

@@ -33,13 +33,14 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-GemmThunk::GemmThunk(const BufferAllocation::Slice &lhs_buffer,
+GemmThunk::GemmThunk(ThunkInfo thunk_info,
+                     const BufferAllocation::Slice &lhs_buffer,
                      const BufferAllocation::Slice &rhs_buffer,
                      const BufferAllocation::Slice &output_buffer,
                      bool implements_whole_instruction,
-                     const HloInstruction *hlo_instruction,
                      const GemmBackendConfig &backend_config)
-    : Thunk(Kind::kGemm, hlo_instruction),
+    : Thunk(Kind::kGemm, thunk_info),
+      hlo_instruction_(thunk_info.hlo_instruction),
       lhs_buffer_(lhs_buffer),
       rhs_buffer_(rhs_buffer),
       output_buffer_(output_buffer),
@@ -51,13 +52,13 @@ Status GemmThunk::ExecuteOnStream(const ExecuteParams &params) {
     return params.buffer_allocations->GetDeviceAddress(slice);
   };
 
-  VLOG(3) << "Running GEMM thunk on instruction: " << hlo_instruction();
+  VLOG(3) << "Running GEMM thunk on instruction: " << hlo_instruction_;
   se::DeviceMemoryBase lhs_data = get_device_address(lhs_buffer_);
   se::DeviceMemoryBase rhs_data = get_device_address(rhs_buffer_);
   se::DeviceMemoryBase output_data = get_device_address(output_buffer_);
-  return RunGemm(hlo_instruction(), backend_config_, lhs_data, rhs_data,
+  return RunGemm(hlo_instruction_, backend_config_, lhs_data, rhs_data,
                  output_data, params.stream, implements_whole_instruction_,
-                 params.profiler);
+                 profile_index(), params.profiler);
 }
 
 // This struct contains the metadata of a matrix, e.g., its base address and
@@ -82,24 +83,28 @@ static bool DoGemmWithAlgorithm(
   // Converts from an XLA PrimitiveType to a blas::ComputationType, which is
   // used to specify the precision with which matmul computations should be
   // performed, separately from the precision of the inputs and result.
-  se::blas::ComputationType computation_type = [&](PrimitiveType type) {
-    switch (type) {
-      case F16:
-        // Use F32 as computation type for F16 as we currently only implement
-        // the cuDNN pseudo half configuration for half precision.
-        return se::blas::ComputationType::kF32;
-      case F32:
-        return se::blas::ComputationType::kF32;
-      case F64:
-        return se::blas::ComputationType::kF64;
-      case C64:
-        return se::blas::ComputationType::kComplexF32;
-      case C128:
-        return se::blas::ComputationType::kComplexF64;
-      default:
-        LOG(FATAL) << "Unsupported type.";
-    }
-  }(type);
+  se::blas::ComputationType computation_type;
+  switch (type) {
+    case F16:
+      // Use F32 as computation type for F16 as we currently only implement
+      // the cuDNN pseudo half configuration for half precision.
+      computation_type = se::blas::ComputationType::kF32;
+      break;
+    case F32:
+      computation_type = se::blas::ComputationType::kF32;
+      break;
+    case F64:
+      computation_type = se::blas::ComputationType::kF64;
+      break;
+    case C64:
+      computation_type = se::blas::ComputationType::kComplexF32;
+      break;
+    case C128:
+      computation_type = se::blas::ComputationType::kComplexF64;
+      break;
+    default:
+      return false;
+  }
 
   se::DeviceMemory<Element> lhs_data(lhs_matrix.data);
   se::DeviceMemory<Element> rhs_data(rhs_matrix.data);
@@ -160,6 +165,7 @@ Status RunGemm(const HloInstruction *gemm,
                se::DeviceMemoryBase lhs_buffer, se::DeviceMemoryBase rhs_buffer,
                se::DeviceMemoryBase output_buffer, se::Stream *stream,
                bool implements_whole_instruction,
+               absl::optional<int64> profile_index,
                HloExecutionProfiler *profiler,
                se::blas::ProfileResult *profile_result,
                absl::optional<se::blas::AlgorithmType> algorithm) {
@@ -240,7 +246,7 @@ Status RunGemm(const HloInstruction *gemm,
       rhs_buffer, rhs_shape, dim_nums.rhs_contracting_dimensions(0) == col_dim);
   std::unique_ptr<ScopedInstructionProfiler> op_profiler =
       profiler ? profiler->MakeScopedInstructionProfiler(
-                     implements_whole_instruction ? gemm : nullptr)
+                     implements_whole_instruction ? profile_index : -1)
                : nullptr;
 
   if (LayoutUtil::Minor(output_shape.layout(), row_dim) != 0) {
@@ -295,7 +301,7 @@ Status RunGemm(const HloInstruction *gemm,
             stream, best_algorithm,
             /*output_profile_result=*/profile_result);
       default:
-        LOG(FATAL) << "Unsupported type.";
+        return false;
     }
   }();
 

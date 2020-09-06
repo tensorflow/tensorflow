@@ -40,22 +40,6 @@ def TFL_StatefulOp : OpInterface<"StatefulOpInterface"> {
 }
 
 //===----------------------------------------------------------------------===//
-// TFL op interface for output channel index.
-
-def TFL_ChannelDimIndexInterface : OpInterface<"ChannelDimIndexInterface"> {
-  let description = [{
-    Interface for defining the index of out channel index.
-  }];
-
-  let methods = [
-    InterfaceMethod<
-      [{Returns the dimension index of the output channels.}],
-      "int", "GetChannelDimIndex", (ins)
-    >,
-  ];
-}
-
-//===----------------------------------------------------------------------===//
 // TFL op interface for sparse operands.
 
 def TFL_SparseOp : OpInterface<"SparseOpInterface"> {
@@ -67,6 +51,33 @@ def TFL_SparseOp : OpInterface<"SparseOpInterface"> {
     InterfaceMethod<
       [{Returns the indices of sparse operands.}],
       "std::vector<int>", "GetSparseOperands", (ins)
+    >,
+    InterfaceMethod<
+      [{Returns the supported block size of float sparse operands.}],
+      "std::vector<std::vector<int>>", "GetFloatBlockSize", (ins)
+    >,
+    InterfaceMethod<
+      [{Returns the supported block size of quantized sparse operands.}],
+      "std::vector<std::vector<int>>", "GetQuantizedBlockSize", (ins)
+    >,
+  ];
+}
+
+//===----------------------------------------------------------------------===//
+// TFL runtime type verification of operand/result types.
+
+def TFL_RuntimeVerification : OpInterface<"TflRuntimeVerifyOpInterface"> {
+  let description = [{
+    Interface to verify TFLite runtime op verification.
+
+    This verifies that the converted TFLite ops has operand/result type
+    supported by the TFLite runtime.
+  }];
+
+  let methods = [
+    StaticInterfaceMethod<
+      [{Returns whether the op's operands/results are supported by runtime.}],
+      "LogicalResult", "VerifyTflRuntimeConstraints", (ins "Operation*":$op)
     >,
   ];
 }

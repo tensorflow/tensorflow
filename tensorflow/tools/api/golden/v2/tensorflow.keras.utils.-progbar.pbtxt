@@ -12,6 +12,6 @@ tf_class {
   }
   member_method {
     name: "update"
-    argspec: "args=[\'self\', \'current\', \'values\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'current\', \'values\', \'finalize\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
 }

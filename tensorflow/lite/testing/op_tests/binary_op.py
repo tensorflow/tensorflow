@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -26,10 +26,14 @@ from tensorflow.lite.testing.zip_test_utils import register_make_test_function
 def make_binary_op_tests(options,
                          binary_operator,
                          allow_fully_quantize=False,
-                         expected_tf_failures=0):
+                         expected_tf_failures=0,
+                         test_parameters=None):
   """Make a set of tests to do binary ops with and without broadcast."""
 
-  test_parameters = [
+  if test_parameters is None:
+    test_parameters = []
+
+  test_parameters = test_parameters + [
       # Avoid creating all combinations to keep the test size small.
       {
           "dtype": [tf.float32, tf.int32],
@@ -37,6 +41,7 @@ def make_binary_op_tests(options,
           "input_shape_2": [[1, 3, 4, 3]],
           "activation": [True],
           "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32],
@@ -44,6 +49,7 @@ def make_binary_op_tests(options,
           "input_shape_2": [[5]],
           "activation": [False, True],
           "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32, tf.int32, tf.int64],
@@ -51,6 +57,7 @@ def make_binary_op_tests(options,
           "input_shape_2": [[3]],
           "activation": [True, False],
           "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32, tf.int32],
@@ -58,6 +65,7 @@ def make_binary_op_tests(options,
           "input_shape_2": [[1, 3, 4, 3]],
           "activation": [True, False],
           "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32],
@@ -65,6 +73,7 @@ def make_binary_op_tests(options,
           "input_shape_2": [[]],
           "activation": [False],
           "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32],
@@ -72,6 +81,7 @@ def make_binary_op_tests(options,
           "input_shape_2": [[1]],
           "activation": [False],
           "fully_quantize": [False],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32],
@@ -79,6 +89,7 @@ def make_binary_op_tests(options,
           "input_shape_2": [[1, 3, 4, 3]],
           "activation": [False],
           "fully_quantize": [True],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32],
@@ -86,6 +97,7 @@ def make_binary_op_tests(options,
           "input_shape_2": [[5]],
           "activation": [False],
           "fully_quantize": [True],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32],
@@ -93,6 +105,7 @@ def make_binary_op_tests(options,
           "input_shape_2": [[3]],
           "activation": [False],
           "fully_quantize": [True],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32],
@@ -100,6 +113,7 @@ def make_binary_op_tests(options,
           "input_shape_2": [[1, 3, 4, 3]],
           "activation": [False],
           "fully_quantize": [True],
+          "dynamic_range_quantize": [False],
       },
       {
           "dtype": [tf.float32],
@@ -107,8 +121,62 @@ def make_binary_op_tests(options,
           "input_shape_2": [[]],
           "activation": [False],
           "fully_quantize": [True],
+          "dynamic_range_quantize": [False],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[1, 3, 4, 3]],
+          "input_shape_2": [[1, 3, 4, 3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [True],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[5]],
+          "input_shape_2": [[5]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [True],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[1, 3, 4, 3]],
+          "input_shape_2": [[3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [True],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[3]],
+          "input_shape_2": [[1, 3, 4, 3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [True],
+      },
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[]],
+          "input_shape_2": [[]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [True],
       },
   ]
+
+  # float64 types are supported via flex only.
+  if options.run_with_flex and options.use_experimental_converter:
+    test_parameters = test_parameters + [
+        {
+            "dtype": [tf.float64],
+            "input_shape_1": [[7]],
+            "input_shape_2": [[7]],
+            "activation": [False],
+            "fully_quantize": [False],
+            "dynamic_range_quantize": [False],
+        },
+    ]
 
   # test_parameters include fully_quantize option only when
   # allow_fully_quantize is True.
@@ -180,12 +248,39 @@ def make_add_tests(options):
 
 @register_make_test_function()
 def make_div_tests(options):
-  make_binary_op_tests(options, tf.compat.v1.div)
+  """Make zip tests for div op with 5D case."""
+  test_parameters = [
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[1, 3, 3, 3, 3]],
+          "input_shape_2": [[3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False, True],
+      },
+  ]
+  make_binary_op_tests(
+      options, tf.compat.v1.div, test_parameters=test_parameters)
 
 
 @register_make_test_function()
 def make_sub_tests(options):
-  make_binary_op_tests(options, tf.subtract, allow_fully_quantize=True)
+  """Make zip tests for sub op with additional cases."""
+  test_parameters = [
+      {
+          "dtype": [tf.float32],
+          "input_shape_1": [[1, 3, 3, 3, 3]],
+          "input_shape_2": [[3]],
+          "activation": [False],
+          "fully_quantize": [False],
+          "dynamic_range_quantize": [False, True],
+      },
+  ]
+  make_binary_op_tests(
+      options,
+      tf.subtract,
+      allow_fully_quantize=True,
+      test_parameters=test_parameters)
 
 
 @register_make_test_function()

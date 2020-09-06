@@ -19,8 +19,17 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/util/env_var.h"
 
 namespace tensorflow {
+namespace {
+bool IsAsyncWaitForRemoteFunctionEnabled() {
+  bool enabled = true;
+  TF_CHECK_OK(ReadBoolFromEnvVar("TF_ENABLE_ASYNC_WAIT_FOR_REMOTE_FUNCTION",
+                                 true, &enabled));
+  return enabled;
+}
+}  // namespace
 
 EagerExecutor::EagerExecutor(bool async)
     : next_node_id_(0),
@@ -28,17 +37,24 @@ EagerExecutor::EagerExecutor(bool async)
       thread_(async ? tensorflow::Env::Default()->StartThread(
                           tensorflow::ThreadOptions(), "eager_async_executor",
                           std::bind(&EagerExecutor::Run, this))
-                    : nullptr) {}
+                    : nullptr),
+      last_eager_client_(nullptr),
+      enable_async_wait_for_remote_function_(
+          IsAsyncWaitForRemoteFunctionEnabled()) {}
 
 EagerExecutor::~EagerExecutor() {
   tensorflow::mutex_lock l(node_queue_mutex_);
   state_ = ExecutorState::kShutDown;
   nodes_pending_.notify_all();
+  for (const auto& cleanups_for_key : cleanups_) {
+    for (const std::function<void()>& cleanup : cleanups_for_key.second) {
+      cleanup();
+    }
+  }
 }
 
 Status EagerExecutor::ShutDown() {
   {
-    std::vector<core::RefCountPtr<NodeItem>> items_to_destroy;
     bool has_thread;
     Status status;
     {
@@ -59,9 +75,6 @@ Status EagerExecutor::ShutDown() {
       if (has_thread) {
         nodes_pending_.notify_all();
       }
-    }
-    for (auto& item : items_to_destroy) {
-      item->node->Abort(status);
     }
     if (!has_thread) {
       return status;
@@ -86,7 +99,7 @@ const char* EagerExecutor::StateStringLocked() {
 
 Status EagerExecutor::SyncExecute(EagerNode* node) {
   if (Async()) {
-    return errors::Internal("Executor does not support sync execution");
+    return errors::Internal("Executor does not support async execution");
   }
   if (node->AsAsync() != nullptr) {
     return errors::Internal("Executor does not support executing async nodes");
@@ -194,6 +207,7 @@ void EagerExecutor::ClearError() {
   DCHECK(node_queue_.empty());
   status_ = tensorflow::Status::OK();
   ok_ = true;
+  last_eager_client_ = nullptr;
   nodes_pending_.notify_all();
 }
 
@@ -227,11 +241,20 @@ void EagerExecutor::NodeDone(const core::RefCountPtr<NodeItem>& item,
       // nodes list. However we only notify if we are at the front of the list
       // since we don't want to notify any waiters of earlier nodes.
       need_notification = item->id == unfinished_nodes_.begin()->first;
+      // Remove item if it exists in unfinished_nodes_.
+      // With async execution, if two separate nodes failed and enter this
+      // callback, then the second node might not find itself in
+      // unfinished_nodes_ in the following senario:
+      //   1) Callback of the first failed node clears unfinished_nodes_
+      //   2) ClearError is called and executor status_ is set to OK
+      //   3) Callback of the second failed node is triggered
+      // In this case, do not taint the executor status or other note items
+      // because they are inserted after the ClearError.
       auto result = unfinished_nodes_.erase(item->id);
-      DCHECK_GT(result, 0);
+      if (result == 0) return;
     }
 
-    if (!status.ok()) {
+    if (!status.ok() && item->node->Fatal()) {
       // Since we received an error, broadcast to any waiters.
       need_notification = true;
       status_ = status;
@@ -327,6 +350,33 @@ Status EagerExecutor::RunItem(core::RefCountPtr<NodeItem> item,
                               bool from_queue) {
   DVLOG(3) << "Running Node: [id " << item->id << "] "
            << item->node->DebugString();
+  AsyncRemoteExecuteNode* async_remote_node =
+      item->node->AsAsyncRemoteExecuteNode();
+  if (enable_async_wait_for_remote_function_) {
+    if (async_remote_node != nullptr) {
+      if (last_eager_client_ != nullptr &&
+          async_remote_node->eager_client() != nullptr &&
+          last_eager_client_ != async_remote_node->eager_client()) {
+        // Running a remote function, need to sync if the function is going to
+        // different device than last time we run remote distributed function.
+        DVLOG(3) << "Executing Sync Executor for node" << item->id;
+        tensorflow::Status status = async_remote_node->SyncExecutors();
+        if (!status.ok()) {
+          NodeDone(item, status, from_queue);
+          return status;
+        }
+        last_eager_client_ = nullptr;
+      }
+      if (async_remote_node->eager_client() != nullptr &&
+          async_remote_node->needs_remote_inputs() &&
+          async_remote_node->allow_multiple_pending_requests()) {
+        // We are running remote distributed function, update
+        // last_remote_device_name_.
+        last_eager_client_ = async_remote_node->eager_client();
+      }
+    }
+  }
+
   AsyncEagerNode* async_node = item->node->AsAsync();
   if (async_node == nullptr) {
     tensorflow::Status status = item->node->Run();
@@ -367,5 +417,11 @@ Status EagerExecutor::MoveToUnfinished(core::RefCountPtr<NodeItem> item,
 
   return Status::OK();
 }
+
+void EagerExecutor::AddCleanup(intptr_t key, std::function<void()> callback) {
+  cleanups_[key].push_back(callback);
+}
+
+void EagerExecutor::RemoveCleanups(intptr_t key) { cleanups_.erase(key); }
 
 }  // namespace tensorflow

@@ -29,6 +29,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import googletest
 
@@ -78,6 +79,26 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(v,),
           expected=np.tile(v, (7, 42, 1, 1)))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
+  def testGather(self):
+    operand = np.arange(10, dtype=np.int32).reshape([2, 5])
+    start_indices = np.array([2], np.int32)
+    slice_sizes = np.array([1, 3], np.int32)
+
+    def gather(operand, start_indices):
+      dimension_numbers = xla_data_pb2.GatherDimensionNumbers()
+      dimension_numbers.offset_dims.extend([1])
+      dimension_numbers.collapsed_slice_dims.extend([0])
+      dimension_numbers.start_index_map.extend([0])
+      dimension_numbers.index_vector_dim = 1
+      return xla.gather(operand, start_indices, dimension_numbers, slice_sizes)
+
+    self._assertOpOutputMatchesExpected(
+        gather,
+        args=(operand, start_indices),
+        expected=np.array([[5, 6, 7]]))
+
+  @test_util.disable_mlir_bridge('Dynamic result types not supported')
   def testShiftRightLogical(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_logical,
@@ -89,6 +110,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
         args=(np.array([0xFFFFFFFF, 16], dtype=np.uint32), np.uint32(4)),
         expected=np.array([0x0FFFFFFF, 1], dtype=np.uint32))
 
+  @test_util.disable_mlir_bridge('Dynamic result types not supported')
   def testShiftRightArithmetic(self):
     self._assertOpOutputMatchesExpected(
         xla.shift_right_arithmetic,
@@ -208,6 +230,25 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                [7, 7, 7, 7, 7], [7, 2, 3, 7, 7], [7, 7, 7, 7, 7]],
               dtype=dtype))
 
+  def testPadNegative(self):
+    for dtype in self.numeric_types:
+
+      def pad_fn(x):
+        return xla.pad(
+            x,
+            padding_value=7,
+            padding_low=[0, -1],
+            padding_high=[1, -2],
+            padding_interior=[1, 2])
+
+      self._assertOpOutputMatchesExpected(
+          pad_fn,
+          args=(np.arange(6, dtype=np.int32).astype(dtype).reshape([2, 3]),),
+          expected=np.array(
+              [[7, 7, 1, 7], [7, 7, 7, 7], [7, 7, 4, 7], [7, 7, 7, 7]],
+              dtype=dtype))
+
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testReduce(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -258,6 +299,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
           args=(np.arange(12, dtype=np.int32).astype(dtype).reshape([3, 4]),),
           expected=np.array([0, 45, 120, 231], dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Not supported yet')
   def testSelectAndScatter(self):
     for dtype in set(self.numeric_types).intersection(
         set([dtypes.bfloat16.as_numpy_dtype, np.float32])):
@@ -311,6 +353,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
                         [[673, 674], [683, 684], [693, 694]]]),
               dtype=dtype))
 
+  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectStartIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -319,11 +362,12 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
             np.array([5, 7]), np.array([2, 3, 4]))
       with self.assertRaises(errors.InvalidArgumentError) as invalid_arg_error:
         session.run(output)
-      self.assertRegexpMatches(
+      self.assertRegex(
           invalid_arg_error.exception.message,
           (r'start_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and start_indices has shape \[2\].*'))
 
+  @test_util.disable_mlir_bridge('Error handling')
   def testDynamicSliceWithIncorrectSizeIndicesShape(self):
     with self.session() as session:
       with self.test_scope():
@@ -332,7 +376,7 @@ class XlaOpsNumericalTest(xla_test.XLATestCase, parameterized.TestCase):
             np.array([5, 7, 3]), np.array([2, 3]))
       with self.assertRaises(errors.InvalidArgumentError) as invalid_arg_error:
         session.run(output)
-      self.assertRegexpMatches(
+      self.assertRegex(
           invalid_arg_error.exception.message,
           (r'size_indices must be a vector with length equal to input rank, '
            r'but input rank is 3 and size_indices has shape \[2\].*'))

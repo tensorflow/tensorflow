@@ -412,8 +412,8 @@ class DivNoNanGradientTest(test.TestCase):
     outputs = math_ops.div_no_nan(x, y)
     with self.cached_session():
       dx, dy = gradients.gradients(outputs, [x, y])
-      self.assertAllClose(dx.eval(), np.zeros(x.shape.as_list()))
-      self.assertAllClose(dy.eval(), np.zeros(y.shape.as_list()))
+      self.assertAllClose(dx, np.zeros(x.shape.as_list()))
+      self.assertAllClose(dy, np.zeros(y.shape.as_list()))
 
 
 class MulNoNanGradientTest(test.TestCase):
@@ -437,8 +437,8 @@ class MulNoNanGradientTest(test.TestCase):
     outputs = math_ops.mul_no_nan(x, y)
     with self.cached_session():
       dx, dy = gradients.gradients(outputs, [x, y])
-      self.assertAllClose(dx.eval(), np.zeros(x.shape.as_list()))
-      self.assertAllClose(dy.eval(), x_vals)
+      self.assertAllClose(dx, np.zeros(x.shape.as_list()))
+      self.assertAllClose(dy, x_vals)
 
 
 class XlogyTest(test.TestCase):

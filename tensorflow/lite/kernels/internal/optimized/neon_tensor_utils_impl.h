@@ -34,29 +34,33 @@ namespace tensor_utils {
 // vector.
 void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                              int m_cols, const float* vector,
-                                             int n_batch, float* result,
-                                             int result_stride);
+                                             int n_batch, float* result);
 
 // Matrix multiplication for quantized values using symmetric quantization.
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride);
+void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
+                                             const int m_rows, const int m_cols,
+                                             const int8_t* __restrict__ vectors,
+                                             const float* scaling_factors,
+                                             int n_batch,
+                                             float* __restrict__ result);
 
 // Same as above but with a scratch buffer and CpuBackendContext for the
 // int8 x int8 -> int32 accumulation computation
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, int32_t* scratch, float* __restrict__ result,
-    int result_stride, CpuBackendContext* context);
+void NeonMatrixBatchVectorMultiplyAccumulate(const int8_t* __restrict__ matrix,
+                                             const int m_rows, const int m_cols,
+                                             const int8_t* __restrict__ vectors,
+                                             const float* scaling_factors,
+                                             int n_batch, int32_t* scratch,
+                                             float* __restrict__ result,
+                                             CpuBackendContext* context);
 
 // Matrix multiplication for quantized values using asymmetric quantization.
 void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, int result_stride,
-    const float* per_channel_scale, const int32_t* input_offset);
+    int n_batch, float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, CpuBackendContext* context);
 
 void NeonApplyLayerNorm(const int16_t* input, const int16_t* layer_norm_weights,
                         const int32_t* bias, int32_t layer_norm_scale_a,
@@ -79,11 +83,12 @@ void NeonCwiseMul(const int16_t* input_1, const int16_t* input_2,
 void NeonCwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
                   int n_input, int16_t* output);
 
-void NeonCwiseClipping(int16_t* input, const int16_t clipping_value,
-                       int32_t n_batch, int32_t n_input);
-
-void NeonCwiseClipping(int8_t* input, const int8_t clipping_value,
-                       int32_t n_batch, int32_t n_input);
+void NeonCwiseClipping(float* vector, const int v_size,
+                       const float clipping_value);
+void NeonCwiseClipping(int16_t* vector, const int v_size,
+                       const int16_t clipping_value);
+void NeonCwiseClipping(int8_t* vector, const int v_size,
+                       const int8_t clipping_value);
 
 void NeonMatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
@@ -100,6 +105,11 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
 void NeonMatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
                                         int32_t n_row, int32_t n_col,
                                         int32_t* output);
+
+void NeonSparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result);
 
 // Multiply a matrix by a batch vector, and store results in a batch-size
 // vector. Sparse version.
@@ -123,10 +133,6 @@ float NeonVectorVectorDotProduct(const float* vector1, const float* vector2,
 void NeonSub1Vector(const float* vector, int v_size, float* result);
 
 void NeonSub1Vector(const int16_t* vector, int v_size, int16_t* result);
-
-// Clip elements of a vector using a abs_limit value.
-void NeonClipVector(const float* vector, int v_size, float abs_limit,
-                    float* result);
 
 // Multiply all elements of vector with a scalar.
 void NeonVectorScalarMultiply(const int8_t* vector, int v_size, float scale,
@@ -160,6 +166,9 @@ void NeonAsymmetricQuantizeFloats(const float* values, const int size,
 // reduction_size: number of consecutive elements from input vector which are
 // added to get one element of output.
 void NeonReductionSumVector(const float* input_vector, float* output_vector,
+                            int output_size, int reduction_size);
+
+void NeonReductionSumVector(const int8_t* input_vector, int32_t* output_vector,
                             int output_size, int reduction_size);
 
 #endif  // USE_NEON

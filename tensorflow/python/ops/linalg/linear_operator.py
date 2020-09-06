@@ -146,6 +146,27 @@ class LinearOperator(module.Module):
   * If `is_X == False`, callers should expect the operator to not have `X`.
   * If `is_X == None` (the default), callers should have no expectation either
     way.
+
+  #### Initialization parameters
+
+  All subclasses of `LinearOperator` are expected to pass a `parameters`
+  argument to `super().__init__()`.  This should be a `dict` containing
+  the unadulterated arguments passed to the subclass `__init__`.  For example,
+  `MyLinearOperator` with an initializer should look like:
+
+  ```python
+  def __init__(self, operator, is_square=False, name=None):
+     parameters = dict(
+         operator=operator,
+         is_square=is_square,
+         name=name
+     )
+     ...
+     super().__init__(..., parameters=parameters)
+   ```
+
+   Users can then access `my_linear_operator.parameters` to see all arguments
+   passed to its initializer.
   """
 
   # TODO(b/143910018) Remove graph_parents in V3.
@@ -158,7 +179,8 @@ class LinearOperator(module.Module):
                is_self_adjoint=None,
                is_positive_definite=None,
                is_square=None,
-               name=None):
+               name=None,
+               parameters=None):
     r"""Initialize the `LinearOperator`.
 
     **This is a private method for subclass use.**
@@ -179,6 +201,8 @@ class LinearOperator(module.Module):
         https://en.wikipedia.org/wiki/Positive-definite_matrix#Extension_for_non-symmetric_matrices
       is_square:  Expect that this operator acts like square [batch] matrices.
       name: A name for this `LinearOperator`.
+      parameters: Python `dict` of parameters used to instantiate this
+        `LinearOperator`.
 
     Raises:
       ValueError:  If any member of graph_parents is `None` or not a `Tensor`.
@@ -210,6 +234,8 @@ class LinearOperator(module.Module):
     self._is_non_singular = is_non_singular
     self._is_self_adjoint = is_self_adjoint
     self._is_positive_definite = is_positive_definite
+    self._parameters = self._no_dependency(parameters)
+    self._parameters_sanitized = False
     self._name = name or type(self).__name__
 
   @contextlib.contextmanager
@@ -220,6 +246,11 @@ class LinearOperator(module.Module):
       full_name += "/" + name
     with ops.name_scope(full_name) as scope:
       yield scope
+
+  @property
+  def parameters(self):
+    """Dictionary of parameters used to instantiate this `LinearOperator`."""
+    return dict(self._parameters)
 
   @property
   def dtype(self):
@@ -385,7 +416,7 @@ class LinearOperator(module.Module):
     # `shape` may be passed in if this can be pre-computed in a
     # more efficient manner, e.g. without excessive Tensor conversions.
     if self.tensor_rank is not None:
-      return ops.convert_to_tensor(self.tensor_rank)
+      return ops.convert_to_tensor_v2_with_dispatch(self.tensor_rank)
     else:
       shape = self.shape_tensor() if shape is None else shape
       return array_ops.size(shape)
@@ -429,7 +460,7 @@ class LinearOperator(module.Module):
     # more efficient manner, e.g. without excessive Tensor conversions.
     dim_value = tensor_shape.dimension_value(self.domain_dimension)
     if dim_value is not None:
-      return ops.convert_to_tensor(dim_value)
+      return ops.convert_to_tensor_v2_with_dispatch(dim_value)
     else:
       shape = self.shape_tensor() if shape is None else shape
       return shape[-1]
@@ -473,7 +504,7 @@ class LinearOperator(module.Module):
     # more efficient manner, e.g. without excessive Tensor conversions.
     dim_value = tensor_shape.dimension_value(self.range_dimension)
     if dim_value is not None:
-      return ops.convert_to_tensor(dim_value)
+      return ops.convert_to_tensor_v2_with_dispatch(dim_value)
     else:
       shape = self.shape_tensor() if shape is None else shape
       return shape[-2]
@@ -641,7 +672,7 @@ class LinearOperator(module.Module):
         return linear_operator_algebra.matmul(left_operator, right_operator)
 
     with self._name_scope(name):
-      x = ops.convert_to_tensor(x, name="x")
+      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
 
       self_dim = -2 if adjoint else -1
@@ -664,7 +695,7 @@ class LinearOperator(module.Module):
     """Transform [batch] vector `x` with left multiplication:  `x --> Ax`.
 
     ```python
-    # Make an operator acting like batch matric A.  Assume A.shape = [..., M, N]
+    # Make an operator acting like batch matrix A.  Assume A.shape = [..., M, N]
     operator = LinearOperator(...)
 
     X = ... # shape [..., N], batch vector
@@ -688,7 +719,7 @@ class LinearOperator(module.Module):
       A `Tensor` with shape `[..., M]` and same `dtype` as `self`.
     """
     with self._name_scope(name):
-      x = ops.convert_to_tensor(x, name="x")
+      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       self_dim = -2 if adjoint else -1
       tensor_shape.dimension_at_index(
@@ -751,20 +782,24 @@ class LinearOperator(module.Module):
     with self._name_scope(name):
       return self._log_abs_determinant()
 
-  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
-    """Default implementation of _solve."""
-    if self.is_square is False:
+  def _dense_solve(self, rhs, adjoint=False, adjoint_arg=False):
+    """Solve by conversion to a dense matrix."""
+    if self.is_square is False:  # pylint: disable=g-bool-id-comparison
       raise NotImplementedError(
           "Solve is not yet implemented for non-square operators.")
-    logging.warn(
-        "Using (possibly slow) default implementation of solve."
-        "  Requires conversion to a dense matrix and O(N^3) operations.")
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs
     if self._can_use_cholesky():
       return linalg_ops.cholesky_solve(
           linalg_ops.cholesky(self.to_dense()), rhs)
     return linear_operator_util.matrix_solve_with_broadcast(
         self.to_dense(), rhs, adjoint=adjoint)
+
+  def _solve(self, rhs, adjoint=False, adjoint_arg=False):
+    """Default implementation of _solve."""
+    logging.warn(
+        "Using (possibly slow) default implementation of solve."
+        "  Requires conversion to a dense matrix and O(N^3) operations.")
+    return self._dense_solve(rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
 
   def solve(self, rhs, adjoint=False, adjoint_arg=False, name="solve"):
     """Solve (exact or approx) `R` (batch) systems of equations: `A X = rhs`.
@@ -830,7 +865,7 @@ class LinearOperator(module.Module):
         return linear_operator_algebra.solve(left_operator, right_operator)
 
     with self._name_scope(name):
-      rhs = ops.convert_to_tensor(rhs, name="rhs")
+      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
       self._check_input_dtype(rhs)
 
       self_dim = -1 if adjoint else -2
@@ -887,7 +922,7 @@ class LinearOperator(module.Module):
       NotImplementedError:  If `self.is_non_singular` or `is_square` is False.
     """
     with self._name_scope(name):
-      rhs = ops.convert_to_tensor(rhs, name="rhs")
+      rhs = ops.convert_to_tensor_v2_with_dispatch(rhs, name="rhs")
       self._check_input_dtype(rhs)
       self_dim = -1 if adjoint else -2
       tensor_shape.dimension_at_index(
@@ -1050,7 +1085,7 @@ class LinearOperator(module.Module):
       A `Tensor` with broadcast shape and same `dtype` as `self`.
     """
     with self._name_scope(name):
-      x = ops.convert_to_tensor(x, name="x")
+      x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
       self._check_input_dtype(x)
       return self._add_to_tensor(x)
 

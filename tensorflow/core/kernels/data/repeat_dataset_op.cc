@@ -124,7 +124,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       return Status::OK();
     }
     Status RestoreInternal(IteratorContext* ctx,
@@ -172,13 +173,14 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIteration), i_));
       if (!input_impl_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       } else {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       }
       return Status::OK();
     }
@@ -197,8 +199,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    int64 i_ GUARDED_BY(mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+    int64 i_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
   };
 
   class ForeverIterator : public DatasetIterator<Dataset> {
@@ -249,10 +251,11 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/kKnownRatio);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (!first_call_)
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       else
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kUninitialized), ""));
       return Status::OK();
@@ -275,8 +278,8 @@ class RepeatDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
-    bool first_call_ GUARDED_BY(mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_);
+    bool first_call_ TF_GUARDED_BY(mu_);
   };
 
   const int64 count_;

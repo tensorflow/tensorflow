@@ -76,4 +76,14 @@ message CostGraphDef {
     bool inaccurate = 17;
   }
   repeated Node node = 1;
+
+  // Total cost of this graph, typically used for balancing decisions.
+  message AggregatedCost {
+    // Aggregated cost value.
+    float cost = 1;
+
+    // Aggregated cost dimension (e.g. 'memory', 'compute', 'network').
+    string dimension = 2;
+  }
+  repeated AggregatedCost cost = 2;
 }

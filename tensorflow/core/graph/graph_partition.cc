@@ -189,6 +189,8 @@ void SetSendRecvAttrs(const PartitionOptions& opts, const Edge* edge,
                     opts.get_incarnation(edge->src()->assigned_device_name())));
   builder->Attr("recv_device", edge->dst()->assigned_device_name());
   builder->Attr("client_terminated", false);
+  builder->Attr("_src", edge->src()->name());
+  builder->Attr("_dst", edge->dst()->name());
 }
 
 NodeDef* AddSend(const PartitionOptions& opts, const GraphInfo& g_info,

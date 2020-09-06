@@ -20,9 +20,10 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/graph_runner.h"
 
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/executor.h"
-#include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/common_runtime/single_threaded_cpu_device.h"
@@ -31,11 +32,12 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/graph/subgraph.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
@@ -86,7 +88,7 @@ class SimpleRendezvous : public RendezvousInterface {
   typedef std::unordered_map<string, Tensor> Table;
 
   mutex mu_;
-  Table table_ GUARDED_BY(mu_);
+  Table table_ TF_GUARDED_BY(mu_);
 };
 
 }  // namespace
@@ -157,17 +159,13 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   params.device = device_;
   params.function_library = function_library;
   const int producer = graph_to_run->versions().producer();
-  params.create_kernel = [this, function_library, producer](const NodeDef& ndef,
-                                                            OpKernel** kernel) {
-    return CreateNonCachedKernel(device_, function_library, ndef, producer,
+  params.create_kernel = [this, function_library, producer](
+                             const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+    return CreateNonCachedKernel(device_, function_library, props, producer,
                                  kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
-  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                 Rendezvous** r) {
-    *r = new IntraProcessRendezvous(device_mgr);
-    return Status::OK();
-  };
 
   Executor* executor;
   TF_RETURN_IF_ERROR(NewLocalExecutor(params, *graph_to_run, &executor));

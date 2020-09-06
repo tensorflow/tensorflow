@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python import keras
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.optimizer_v2.rmsprop import RMSprop
@@ -89,7 +90,6 @@ class CuDNNTest(keras_parameterized.TestCase):
     self.assertEqual(len(state), num_states)
     model = keras.models.Model(inputs, state[0])
     model.run_eagerly = testing_utils.should_run_eagerly()
-    model._experimental_run_tf_function = testing_utils.should_run_tf_function()
 
     inputs = np.random.random((num_samples, timesteps, input_size))
     state = model.predict(inputs)
@@ -149,8 +149,7 @@ class CuDNNTest(keras_parameterized.TestCase):
     model.compile(
         loss='categorical_crossentropy',
         optimizer=RMSprop(learning_rate=0.001),
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.random.random((num_samples, timesteps, input_size))
     initial_state = [
@@ -246,7 +245,7 @@ class CuDNNGraphOnlyTest(keras_parameterized.TestCase):
       self.assertNotEqual(out4.max(), out5.max())
 
 
-@test_util.run_all_in_graph_and_eager_modes
+@combinations.generate(combinations.combine(mode=['graph', 'eager']))
 class CuDNNV1OnlyTest(keras_parameterized.TestCase):
 
   @test_util.run_gpu_only
@@ -268,6 +267,7 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
       self.assertEqual(len(layer.trainable_weights), 3)
       self.assertEqual(len(layer.non_trainable_weights), 0)
 
+  # TODO(b/156439419): Reenable after the bug is fixed.
   @parameterized.named_parameters(
       *test_util.generate_combinations_with_testcase_name(
           rnn_type=['LSTM', 'GRU'], to_cudnn=[True, False],
@@ -275,9 +275,9 @@ class CuDNNV1OnlyTest(keras_parameterized.TestCase):
           model_nest_level=[1, 2], model_type=['seq', 'func']))
   @test_util.run_v1_only('b/120911602, b/112083752')
   @test_util.run_gpu_only
-  def test_load_weights_between_noncudnn_rnn(self, rnn_type, to_cudnn,
-                                             bidirectional, implementation,
-                                             model_nest_level, model_type):
+  def DISALBED_test_load_weights_between_noncudnn_rnn(
+      self, rnn_type, to_cudnn, bidirectional, implementation,
+      model_nest_level, model_type):
     input_size = 10
     timesteps = 6
     input_shape = (timesteps, input_size)

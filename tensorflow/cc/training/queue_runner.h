@@ -119,8 +119,8 @@ class QueueRunner : public RunnerInterface {
   std::unique_ptr<thread::ThreadPool> thread_pool_;
   mutex mu_;
   int runs_ = 0;
-  Status status_ GUARDED_BY(mu_);
-  Status enqueue_status_ GUARDED_BY(mu_);
+  Status status_ TF_GUARDED_BY(mu_);
+  Status enqueue_status_ TF_GUARDED_BY(mu_);
   std::unique_ptr<BlockingCounter> counter_;
 
   Coordinator* coord_;
@@ -131,7 +131,7 @@ class QueueRunner : public RunnerInterface {
   std::vector<std::function<void(Status)>> callbacks_;
 
   mutable std::unique_ptr<mutex> cg_mu_;
-  std::unique_ptr<CostGraphDef> cost_graph_ GUARDED_BY(cg_mu_);
+  std::unique_ptr<CostGraphDef> cost_graph_ TF_GUARDED_BY(cg_mu_);
   RunOptions run_options_;
 };
 

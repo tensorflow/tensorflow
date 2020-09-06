@@ -17,7 +17,6 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-set_bazel_outdir
 
 install_ubuntu_16_pip_deps pip3.8
 
@@ -26,18 +25,12 @@ install_bazelisk
 python2.7 tensorflow/tools/ci_build/update_version.py --nightly
 
 # Run configure.
-export TF_NEED_GCP=1
-export TF_NEED_HDFS=1
-export TF_NEED_S3=1
-export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.8)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
-bazel build --config=opt --config=v2 \
-  --crosstool_top=//third_party/toolchains/preconfig/ubuntu16.04/gcc7_manylinux2010-nvcc-cuda10.1:toolchain \
-  tensorflow/tools/pip_package:build_pip_package
+bazel build --config=release_cpu_linux tensorflow/tools/pip_package:build_pip_package
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
 
@@ -57,7 +50,7 @@ for WHL_PATH in $(ls pip_pkg/tf_nightly_cpu-*dev*.whl); do
   # Upload the PIP package if whl test passes.
   if [ ${RETVAL} -eq 0 ]; then
     echo "Basic PIP test PASSED, Uploading package: ${AUDITED_WHL_NAME}"
-    twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}" || echo
+    twine upload -r pypi-warehouse "${AUDITED_WHL_NAME}"
   else
     echo "Basic PIP test FAILED, will not upload ${AUDITED_WHL_NAME} package"
     return 1

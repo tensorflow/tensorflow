@@ -605,7 +605,7 @@ Defined Functions:
         'regress_x_to_y', '--input_examples', 'inputs={"x":8.0,"x2":5.0}',
         '--outdir', output_dir
     ])
-    with self.assertRaisesRegexp(ValueError, 'must be a list'):
+    with self.assertRaisesRegex(ValueError, 'must be a list'):
       saved_model_cli.run(args)
 
   def testRunCommandInputExamplesFeatureValueNotListError(self):
@@ -617,7 +617,7 @@ Defined Functions:
         'regress_x_to_y', '--input_examples', 'inputs=[{"x":8.0,"x2":5.0}]',
         '--outdir', output_dir
     ])
-    with self.assertRaisesRegexp(ValueError, 'feature value must be a list'):
+    with self.assertRaisesRegex(ValueError, 'feature value must be a list'):
       saved_model_cli.run(args)
 
   def testRunCommandInputExamplesFeatureBadType(self):
@@ -629,7 +629,7 @@ Defined Functions:
         'regress_x_to_y', '--input_examples', 'inputs=[{"x":[[1],[2]]}]',
         '--outdir', output_dir
     ])
-    with self.assertRaisesRegexp(ValueError, 'is not supported'):
+    with self.assertRaisesRegex(ValueError, 'is not supported'):
       saved_model_cli.run(args)
 
   def testRunCommandOutputFileExistError(self):
@@ -698,18 +698,18 @@ Defined Functions:
     with captured_output() as (out, _):
       saved_model_cli.scan(args)
     output = out.getvalue().strip()
-    self.assertTrue('does not contain blacklisted ops' in output)
+    self.assertTrue('does not contain denylisted ops' in output)
 
-  def testScanCommandFoundBlacklistedOp(self):
+  def testScanCommandFoundDenylistedOp(self):
     self.parser = saved_model_cli.create_parser()
     base_path = test.test_src_dir_path(SAVED_MODEL_PATH)
     args = self.parser.parse_args(
         ['scan', '--dir', base_path, '--tag_set', 'serve'])
-    op_blacklist = saved_model_cli._OP_BLACKLIST
-    saved_model_cli._OP_BLACKLIST = set(['VariableV2'])
+    op_denylist = saved_model_cli._OP_DENYLIST
+    saved_model_cli._OP_DENYLIST = set(['VariableV2'])
     with captured_output() as (out, _):
       saved_model_cli.scan(args)
-    saved_model_cli._OP_BLACKLIST = op_blacklist
+    saved_model_cli._OP_DENYLIST = op_denylist
     output = out.getvalue().strip()
     self.assertTrue('\'VariableV2\'' in output)
 
@@ -725,7 +725,7 @@ Defined Functions:
          '--output_prefix', output_dir,
          '--cpp_class', 'Compiled',
          '--signature_def_key', 'MISSING'])
-    with self.assertRaisesRegexp(ValueError, 'Unable to find signature_def'):
+    with self.assertRaisesRegex(ValueError, 'Unable to find signature_def'):
       saved_model_cli.aot_compile_cpu(args)
 
   class AOTCompileDummyModel(tracking.AutoTrackable):
@@ -791,7 +791,7 @@ Defined Functions:
     ])  # Use the default seving signature_key.
     with test.mock.patch.object(logging, 'warn') as captured_warn:
       saved_model_cli.aot_compile_cpu(args)
-    self.assertRegexpMatches(
+    self.assertRegex(
         str(captured_warn.call_args),
         'Signature input key \'y\'.*has been pruned while freezing the graph.')
     self.assertTrue(file_io.file_exists('{}.o'.format(output_prefix)))

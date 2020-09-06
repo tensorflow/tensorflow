@@ -112,10 +112,7 @@ class ReduceTest : public ClientLibraryTestBase {
     std::unique_ptr<GlobalData> input_global_data =
         client_->TransferToServer(input_literal).ConsumeValueOrDie();
 
-    float expected = 0.0;
-    for (float item : input_data) {
-      expected += item;
-    }
+    float expected = absl::c_accumulate(input_data, 0.0f);
     ComputeAndCompareR0<float>(&builder, expected, {input_global_data.get()},
                                ErrorSpec(0.001));
   }

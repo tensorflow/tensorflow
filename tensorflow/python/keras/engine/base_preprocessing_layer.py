@@ -21,9 +21,11 @@ import abc
 import collections
 
 import numpy as np
+import six
 
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
+from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
@@ -37,12 +39,17 @@ from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.util.tf_export import keras_export
 
 
+_kpl_gauge = monitoring.StringGauge(
+    '/tensorflow/api/keras/layers/preprocessing',
+    'keras preprocessing layers usage', 'TFVersion')
+
+
 @keras_export('keras.layers.experimental.preprocessing.PreprocessingLayer')
+@six.add_metaclass(abc.ABCMeta)
 class PreprocessingLayer(Layer):
   """Base class for PreprocessingLayers."""
-  __metaclass__ = abc.ABCMeta
+  _must_restore_from_config = True
 
-  @abc.abstractmethod
   def adapt(self, data, reset_state=True):
     # TODO(momernick): Add examples.
     """Fits the state of the preprocessing layer to the data being passed.
@@ -141,11 +148,15 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       accumulator = None
     else:
       accumulator = self._combiner.restore(self._restore_updates())
-
+    if isinstance(data, (list, tuple)):
+      data = ops.convert_to_tensor_v2_with_dispatch(data)
     if not isinstance(data,
-                      (dataset_ops.DatasetV2, np.ndarray, ops.EagerTensor)):
+                      (dataset_ops.DatasetV2,
+                       np.ndarray,
+                       ops.Tensor,
+                       ragged_tensor.RaggedTensor)):
       raise ValueError(
-          '`adapt()` requires a batched Dataset, an EagerTensor, '
+          '`adapt()` requires a batched Dataset, a Tensor, '
           'or a Numpy array as input, '
           'got {}'.format(type(data)))
 
@@ -158,9 +169,14 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
             'elements. Please use `dataset.take(...)` to make the number '
             'of elements finite.')
       next_data = self._get_dataset_iterator(data)
+      # TODO(fchollet): consider checking if the dataset is already batched
+      # and otherwise batching it.
+    elif isinstance(data, (ops.Tensor, ragged_tensor.RaggedTensor)):
+      next_data = self._get_dataset_iterator(
+          dataset_ops.Dataset.from_tensor_slices(data).batch(512))
     else:
       generator, _ = training_generator.convert_to_generator_like(
-          data, batch_size=len(data))
+          data, batch_size=512)
       # If the data is not a dataset, we can iterate over it using next(foo);
       # here, we wrap that into a callable.
       next_data = lambda: next(generator)
@@ -175,12 +191,21 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
       if not self.built:
         try:
           # If this is a Numpy array or tensor, we can get shape from .shape.
-          # If not, an attribute error will be thrown (and we can assume the
-          # input data is a scalar with shape None.
-          shape = data_element.shape
+          # If not, an attribute error will be thrown.
+          data_shape = data_element.shape
+          data_shape_nones = tuple([None]*len(data_element.shape))
         except AttributeError:
-          shape = None
-        self.build(shape)
+          # The input has an unknown number of dimensions.
+          data_shape = None
+          data_shape_nones = None
+
+        # TODO (b/159261555): move this to base layer build.
+        batch_input_shape = getattr(self, '_batch_input_shape', None)
+        if batch_input_shape is None:
+          # Set the number of dimensions.
+          self._batch_input_shape = data_shape_nones
+
+        self.build(data_shape)
 
       # Once we have built the Layer, we can process the input data. We do so
       # until we've gotten an exception indicating that we have no more data.
@@ -220,7 +245,7 @@ class CombinerPreprocessingLayer(PreprocessingLayer):
 
 def convert_to_list(values, sparse_default_value=None):
   """Convert a TensorLike, CompositeTensor, or ndarray into a Python list."""
-  if ragged_tensor.is_ragged(values):
+  if tf_utils.is_ragged(values):
     # There is a corner case when dealing with ragged tensors: if you get an
     # actual RaggedTensor (not a RaggedTensorValue) passed in non-eager mode,
     # you can't call to_list() on it without evaluating it first. However,

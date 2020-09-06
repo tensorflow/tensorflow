@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/aggregate_ops.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/aggregate_ops_cpu.h"
 
@@ -47,11 +48,10 @@ REGISTER_ADDN_CPU(Variant);
 #if (defined(GOOGLE_CUDA) && GOOGLE_CUDA) || \
     (defined(TENSORFLOW_USE_ROCM) && TENSORFLOW_USE_ROCM)
 #define REGISTER_ADDN_GPU(type) REGISTER_ADDN(type, GPU)
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_ADDN_GPU);
 TF_CALL_int64(REGISTER_ADDN_GPU);
-TF_CALL_complex64(REGISTER_ADDN_GPU);
-TF_CALL_complex128(REGISTER_ADDN_GPU);
 TF_CALL_variant(REGISTER_ADDN_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_ADDN_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_ADDN_GPU);
 #undef REGISTER_ADDN_GPU
 
 // A special GPU kernel for int32.

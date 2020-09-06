@@ -39,6 +39,47 @@ HloSharding HloSharding::Tile1D(const Shape& input_shape, int64 num_tiles) {
   return HloSharding(assignment);
 }
 
+HloSharding HloSharding::PartialTile(
+    const Array<int64>& group_tile_assignment,
+    absl::Span<const absl::Span<const int64>> replication_groups) {
+  auto new_tile_dims = group_tile_assignment.dimensions();
+  new_tile_dims.push_back(replication_groups[0].size());
+  auto new_tile_assignment = Array<int64>(new_tile_dims);
+  new_tile_assignment.Each([&](absl::Span<const int64> indices, int64* device) {
+    std::vector<int64> group_index(indices.begin(), indices.end());
+    group_index.pop_back();
+    int64 group = group_tile_assignment(group_index);
+    *device = replication_groups[group][indices.back()];
+  });
+  return PartialTile(new_tile_assignment);
+}
+
+HloSharding HloSharding::PartialTile(
+    const Array<int64>& tile_assignment_last_dim_replicate) {
+  std::vector<std::set<int64>> sorted_groups(
+      tile_assignment_last_dim_replicate.num_elements() /
+      tile_assignment_last_dim_replicate.dimensions().back());
+  auto get_group_id = [&](absl::Span<const int64> indices) {
+    int64 group_id = 0;
+    for (int64 i = 0; i < indices.size() - 1; ++i) {
+      group_id *= tile_assignment_last_dim_replicate.dim(i);
+      group_id += indices[i];
+    }
+    return group_id;
+  };
+  tile_assignment_last_dim_replicate.Each(
+      [&](absl::Span<const int64> indices, const int64 device) {
+        sorted_groups[get_group_id(indices)].insert(device);
+      });
+  Array<int64> sorted_tile(tile_assignment_last_dim_replicate.dimensions());
+  sorted_tile.Each([&](absl::Span<const int64> indices, int64* device) {
+    auto begin = sorted_groups[get_group_id(indices)].begin();
+    *device = *begin;
+    sorted_groups[get_group_id(indices)].erase(begin);
+  });
+  return HloSharding(sorted_tile, /*replicate_on_last_tile_dim=*/true);
+}
+
 HloSharding HloSharding::Tuple(const ShapeTree<HloSharding>& sub_shardings) {
   std::vector<HloSharding> flattened_list;
   flattened_list.reserve(sub_shardings.leaf_count());
@@ -101,8 +142,10 @@ string HloSharding::ToString() const {
     return StrCat(
         "{maximal device=", static_cast<int64>(*tile_assignment_.begin()), "}");
   }
-  return StrCat("{devices=[", StrJoin(tile_assignment_.dimensions(), ","), "]",
-                StrJoin(tile_assignment_, ","), "}");
+  return StrCat(
+      "{devices=[", StrJoin(tile_assignment_.dimensions(), ","), "]",
+      StrJoin(tile_assignment_, ","),
+      replicate_on_last_tile_dim_ ? " last_tile_dim_replicate}" : "}");
 }
 
 bool HloSharding::UsesDevice(int64 device) const {
@@ -148,6 +191,9 @@ std::vector<int64> HloSharding::TileIndexForDevice(int64 device) const {
     }
   });
   CHECK(!ret_index.empty());
+  if (replicate_on_last_tile_dim_) {
+    ret_index.pop_back();
+  }
   return ret_index;
 }
 
@@ -156,6 +202,12 @@ int64 HloSharding::DeviceForTileIndex(absl::Span<const int64> index) const {
   CHECK(!IsTuple());
   if (maximal_) {
     return *tile_assignment_.begin();
+  }
+  if (replicate_on_last_tile_dim_ &&
+      index.size() < tile_assignment().num_dimensions()) {
+    std::vector<int64> first_replicated_index(index.begin(), index.end());
+    first_replicated_index.push_back(0);
+    return tile_assignment_(first_replicated_index);
   }
   return tile_assignment_(index);
 }
@@ -167,8 +219,11 @@ std::vector<int64> HloSharding::TileOffsetForDevice(const Shape& shape,
   if (maximal_) {
     return std::vector<int64>(shape.dimensions_size(), 0);
   }
-
-  CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions());
+  if (replicate_on_last_tile_dim_) {
+    CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions() - 1);
+  } else {
+    CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions());
+  }
   std::vector<int64> index = TileIndexForDevice(device);
   for (int64 i = 0; i < index.size(); ++i) {
     const int64 shape_dim = shape.dimensions(i);
@@ -187,7 +242,8 @@ std::vector<int64> HloSharding::TileLimitForDevice(const Shape& shape,
                               shape.dimensions().end());
   }
 
-  CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions());
+  CHECK_EQ(shape.dimensions_size() + (ReplicateOnLastTileDim() ? 1 : 0),
+           tile_assignment_.num_dimensions());
   std::vector<int64> index = TileIndexForDevice(device);
   for (int64 i = 0; i < index.size(); ++i) {
     const int64 shape_dim = shape.dimensions(i);
@@ -199,10 +255,12 @@ std::vector<int64> HloSharding::TileLimitForDevice(const Shape& shape,
 }
 
 int64 HloSharding::RequiredLeaves(const Shape& shape) {
-  // Empty tuples have no leaf nodes as far as ShapeUtil and ShapeTree are
-  // concerned, but they do have a single tuple_elements_ entry since we want
-  // to allow empty tuple results to have sharding.
-  return ShapeUtil::IsEmptyTuple(shape) ? 1 : ShapeUtil::GetLeafCount(shape);
+  // Empty tuples (with arbitrary nesting) have no leaf nodes as far as
+  // ShapeUtil and ShapeTree are concerned, but they do have a single
+  // tuple_elements_ entry since we want to allow empty tuple results to
+  // have sharding.
+  const int64 leaf_count = ShapeUtil::GetLeafCount(shape);
+  return (leaf_count == 0) ? 1 : leaf_count;
 }
 
 Status HloSharding::CheckLeafCount(const Shape& shape) const {
@@ -339,8 +397,10 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
     return Status::OK();
   }
 
-  // The tile assignment tensor must have the same rank as the input.
-  if (shape.rank() != tile_assignment_.num_dimensions()) {
+  // The tile assignment tensor must have the same rank as the input, or input
+  // rank + 1 for replicate_on_last_tile_dim_.
+  if (shape.rank() + (replicate_on_last_tile_dim_ ? 1 : 0) !=
+      tile_assignment_.num_dimensions()) {
     return tensorflow::errors::InvalidArgument(
         "Number of tile assignment dimensions is different to the input rank. "
         "sharding=",
@@ -401,7 +461,8 @@ Status HloSharding::ValidateNonTuple(const Shape& shape,
                          proto.tile_assignment_dimensions().end()));
   std::copy(proto.tile_assignment_devices().begin(),
             proto.tile_assignment_devices().end(), tile_assignment.begin());
-  return HloSharding(tile_assignment);
+  return proto.replicate_on_last_tile_dim() ? PartialTile(tile_assignment)
+                                            : HloSharding(tile_assignment);
 }
 
 OpSharding HloSharding::ToProto() const {
@@ -427,6 +488,7 @@ OpSharding HloSharding::ToProto() const {
     result.set_type(OpSharding::MAXIMAL);
   } else {
     result.set_type(OpSharding::OTHER);
+    result.set_replicate_on_last_tile_dim(ReplicateOnLastTileDim());
   }
   return result;
 }
@@ -441,6 +503,36 @@ Shape HloSharding::TileShape(const Shape& shape) const {
         i, CeilOfRatio<int64>(shape.dimensions(i), tile_assignment_.dim(i)));
   }
   return result_shape;
+}
+
+Shape HloSharding::TileShape(const Shape& shape, int64 device) const {
+  if (IsTileMaximal()) {
+    return shape;
+  }
+
+  std::vector<int64> index = TileIndexForDevice(device);
+  Shape result_shape = shape;
+  for (int64 i = 0; i < index.size(); ++i) {
+    const int64 shape_dim = shape.dimensions(i);
+    int64 offset = std::min(
+        index[i] * CeilOfRatio(shape_dim, tile_assignment_.dim(i)), shape_dim);
+    int64 limit = std::min(
+        (index[i] + 1) * CeilOfRatio(shape_dim, tile_assignment_.dim(i)),
+        shape_dim);
+    result_shape.set_dimensions(i, limit - offset);
+  }
+  return result_shape;
+}
+
+int64 HloSharding::NumTiles() const {
+  if (IsTileMaximal()) {
+    return 1;
+  }
+  if (ReplicateOnLastTileDim()) {
+    return tile_assignment().num_elements() /
+           tile_assignment().dimensions().back();
+  }
+  return tile_assignment().num_elements();
 }
 
 HloSharding HloSharding::GetSubSharding(const Shape& shape,
@@ -494,6 +586,9 @@ size_t HloSharding::Hash() const {
   size_t h = 0;
   for (uint32 v : tile_assignment_) {
     h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(v));
+  }
+  if (replicate_on_last_tile_dim_) {
+    h = tensorflow::Hash64Combine(h, std::hash<uint32>{}(1));
   }
   return h;
 }

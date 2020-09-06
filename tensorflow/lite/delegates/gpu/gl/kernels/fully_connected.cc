@@ -34,13 +34,13 @@ namespace {
 
 class FullyConnectedBuffers : public NodeShader {
  public:
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
-    auto attr = absl::any_cast<const FullyConnectedAttributes&>(
-        ctx.node->operation.attributes);
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
+    const auto& attr =
+        absl::any_cast<const FullyConnectedAttributes&>(ctx.op_attr);
 
-    const int src_depth = IntegralDivideRoundUp(attr.weights.shape.i, 4);
-    const int dst_depth = IntegralDivideRoundUp(attr.weights.shape.o, 4);
+    const int src_depth = DivideRoundUp(attr.weights.shape.i, 4);
+    const int dst_depth = DivideRoundUp(attr.weights.shape.o, 4);
 
     // This shader can work with any workgroup size, the values below work well
     // for OpenGL.
@@ -92,8 +92,15 @@ class FullyConnectedBuffers : public NodeShader {
     source += "  $output_data_0[0, 0, gid.x] = value_0$;";
 
     std::vector<Variable> shared_variables = {
+#ifdef __APPLE__
+        // MoltenVK has problems with shared memory sized using the workgroup
+        // size. Fortunately with Metal a fixed workgroup size of 32 seems to
+        // give optimal results.
+        {"sh_mem", std::vector<float4>(32)},
+#else
         // The actual size of sh_mem depends on the WorkgroupSize
         {"sh_mem", std::vector<float4>(0)},
+#endif
     };
 
     *generated_code = {
@@ -106,7 +113,7 @@ class FullyConnectedBuffers : public NodeShader {
         /*input=*/IOStructure::ONLY_DEFINITIONS,
         /*output=*/IOStructure::ONLY_DEFINITIONS,
     };
-    return OkStatus();
+    return absl::OkStatus();
   }
 };
 

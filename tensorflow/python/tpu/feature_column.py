@@ -36,13 +36,13 @@ _SUPPORTED_SEQUENCE_COLUMNS = (fc._SequenceCategoricalColumn,
 
 
 # For V2 columns, we support anything that inherits from CategoricalColumn
-# other than those in the blacklist. User-provided columns that inherit from
+# other than those in the denylist. User-provided columns that inherit from
 # CategoricalColumn may or may not be compatible; it is up to the user to
 # manage TPU compatibility for custom columns.
 _SUPPORTED_CATEGORICAL_COLUMNS_V2 = (fc_lib.CategoricalColumn,)
-_BLACKLISTED_CATEGORICAL_COLUMNS_V2 = (fc_lib.HashedCategoricalColumn,
-                                       fc_lib.BucketizedColumn,
-                                       fc_lib.CrossedColumn)
+_DENYLISTED_CATEGORICAL_COLUMNS_V2 = (fc_lib.HashedCategoricalColumn,
+                                      fc_lib.BucketizedColumn,
+                                      fc_lib.CrossedColumn)
 _SUPPORTED_CATEGORICAL_COLUMNS = (fc._IdentityCategoricalColumn,
                                   fc._VocabularyFileCategoricalColumn,
                                   fc._VocabularyListCategoricalColumn,
@@ -86,7 +86,10 @@ def embedding_column(categorical_column,
       and any sequence longer will be truncated. This must be positive for
       sequence features and 0 for non-sequence features.
     learning_rate_fn: A function that takes global step and returns learning
-      rate for the embedding table.
+      rate for the embedding table. If you intend to use the same learning rate
+      for multiple embedding tables, please ensure that you pass the exact same
+      python function to all calls of embedding_column, otherwise performence
+      may suffer.
     use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
       instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
       there are no empty rows and all weights and ids are positive at the
@@ -103,9 +106,9 @@ def embedding_column(categorical_column,
     ValueError: if `initializer` is specified but not callable.
     TypeError: if categorical_column is not a supported type.
   """
-  if isinstance(categorical_column, _BLACKLISTED_CATEGORICAL_COLUMNS_V2):
+  if isinstance(categorical_column, _DENYLISTED_CATEGORICAL_COLUMNS_V2):
     raise TypeError('categorical_column for tpu '
-                    ' embedding_column was blacklisted type %s' %
+                    ' embedding_column was denylisted type %s' %
                     type(categorical_column))
   if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS):
     raise TypeError(
@@ -196,7 +199,10 @@ def shared_embedding_columns(categorical_columns,
       sequence shorter then this will be padded with 0 embeddings and any
       sequence longer will be truncated.
     learning_rate_fn: A function that takes global step and returns learning
-      rate for the embedding table.
+      rate for the embedding table. If you intend to use the same learning rate
+      for multiple embedding tables, please ensure that you pass the exact same
+      python function to all calls of shared_embedding_columns, otherwise
+      performence may suffer.
     use_safe_embedding_lookup: If true, uses safe_embedding_lookup_sparse
       instead of embedding_lookup_sparse. safe_embedding_lookup_sparse ensures
       there are no empty rows and all weights and ids are positive at the
@@ -217,9 +223,9 @@ def shared_embedding_columns(categorical_columns,
       or 0 for a sequence column.
   """
   for categorical_column in categorical_columns:
-    if isinstance(categorical_column, _BLACKLISTED_CATEGORICAL_COLUMNS_V2):
+    if isinstance(categorical_column, _DENYLISTED_CATEGORICAL_COLUMNS_V2):
       raise TypeError('categorical_column for tpu '
-                      ' embedding_column was blacklisted type %s' %
+                      ' embedding_column was denylisted type %s' %
                       type(categorical_column))
     if not isinstance(categorical_column, _SUPPORTED_CATEGORICAL_COLUMNS):
       raise TypeError(
@@ -366,10 +372,12 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
               trainable=True,
               max_sequence_length=0,
               learning_rate_fn=None,
-              use_safe_embedding_lookup=True):
+              use_safe_embedding_lookup=True,
+              bypass_scope_validation=False):
     # Note, args ckpt_to_load_from, tensor_name_in_ckpt, max_norm and trainable
     # are not supported on TPU. They are solely for matching the signature of
     # __new__ of parent class fc._EmbeddingColumn.
+    del bypass_scope_validation
     return fc._EmbeddingColumn.__new__(
         cls,
         categorical_column,
@@ -393,13 +401,18 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
                trainable=True,
                max_sequence_length=0,
                learning_rate_fn=None,
-               use_safe_embedding_lookup=True):
+               use_safe_embedding_lookup=True,
+               bypass_scope_validation=False):
     _TPUBaseEmbeddingColumn.__init__(
         self,
         categorical_column,
         max_sequence_length=max_sequence_length,
         learning_rate_fn=learning_rate_fn)
     self._key = None
+    # If true, scope validation is skipped to allow the same column to be used
+    # in multiple variable scopes. By default, this is False, and we expect a
+    # 1:1 mapping between feature columns and scopes.
+    self._bypass_scope_validation = bypass_scope_validation
 
   def get_combiner(self):
     return self.combiner
@@ -453,8 +466,10 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
     tensor = inputs.get(self.get_feature_key_name())
 
     # Add to collection for _create_tpu_embedding_variables_and_ops
-    _record_variable_scope_and_name(self.get_embedding_var_name(),
-                                    'embedding_weights')
+    _record_variable_scope_and_name(
+        self.get_embedding_var_name(),
+        'embedding_weights',
+        bypass_scope_validation=self._bypass_scope_validation)
 
     return tensor
 
@@ -478,8 +493,10 @@ class _TPUEmbeddingColumn(_TPUBaseEmbeddingColumn, fc._EmbeddingColumn):
     tensor_lengths = array_ops.squeeze(tensor_lengths, -1)
 
     # Add to collection for _create_tpu_embedding_variables_and_ops
-    _record_variable_scope_and_name(self.get_embedding_var_name(),
-                                    'embedding_weights')
+    _record_variable_scope_and_name(
+        self.get_embedding_var_name(),
+        'embedding_weights',
+        bypass_scope_validation=self._bypass_scope_validation)
 
     return fc._SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=tensor, sequence_length=tensor_lengths)
@@ -621,7 +638,8 @@ class _TPUSharedEmbeddingColumn(_TPUBaseEmbeddingColumn,
 
 def _record_variable_scope_and_name(embedding_var_name,
                                     embedding_var_name_in_fc,
-                                    is_shared_embedding=False):
+                                    is_shared_embedding=False,
+                                    bypass_scope_validation=False):
   """Add embedding variable name and scope to collection."""
   g = ops.get_default_graph()
   collection = g.get_collection_ref(_TPU_FC_TO_SCOPE)
@@ -634,8 +652,8 @@ def _record_variable_scope_and_name(embedding_var_name,
   captured_scope_name = captured_scope.name
 
   if embedding_var_name in var_def_dict:
-    if (var_def_dict[embedding_var_name][0] != captured_scope_name
-        and not is_shared_embedding):
+    if (var_def_dict[embedding_var_name][0] != captured_scope_name and
+        not is_shared_embedding and not bypass_scope_validation):
       raise ValueError(
           'For embedding var name {}, the variable scope name is different, '
           'got {}; expected {}'.format(embedding_var_name,

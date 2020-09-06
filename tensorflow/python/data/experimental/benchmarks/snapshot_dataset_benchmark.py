@@ -51,7 +51,8 @@ class SnapshotDatasetBenchmark(benchmark_base.DatasetBenchmarkBase):
     dataset = dataset.map(
         lambda x: gen_array_ops.broadcast_to(x, [50, 50, 3]))
     dataset = dataset.repeat(num_elems)
-    dataset = dataset.apply(snapshot.snapshot(tmp_dir, compression=compression))
+    dataset = dataset.apply(
+        snapshot.legacy_snapshot(tmp_dir, compression=compression))
 
     return dataset
 

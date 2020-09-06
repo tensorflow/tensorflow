@@ -28,12 +28,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_TESTS_TEST_MACROS_H_
 #define TENSORFLOW_COMPILER_XLA_TESTS_TEST_MACROS_H_
 
-#include <string>
-
-#include "absl/strings/string_view.h"
-#include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/platform/test.h"
-
 #define DISABLED_ON_CPU(X) X
 #define DISABLED_ON_GPU(X) X
 #define DISABLED_ON_GPU_ROCM(X) X
@@ -79,117 +73,22 @@ limitations under the License.
 
 namespace xla {
 
-// Reads a disabled manifest file to resolve whether test cases should be
-// disabled on a particular platform. For a test that should be disabled,
-// returns DISABLED_ prepended to its name; otherwise returns the test name
-// unmodified.
-std::string PrependDisabledIfIndicated(absl::string_view test_case_name,
-                                       absl::string_view test_name);
+inline const char** DisabledManifestPath() {
+  static const char* disabled_manifest_path = nullptr;
+  return &disabled_manifest_path;
+}
+
+inline const char** TestPlatform() {
+  static const char* test_platform = nullptr;
+  return &test_platform;
+}
 
 }  // namespace xla
 
-// This is the internal "gtest" class instantiation -- it is identical to the
-// GTEST_TEST_ macro, except that we intercept the test name for potential
-// modification by PrependDisabledIfIndicated. That file can use an arbitrary
-// heuristic to decide whether the test case should be disabled, and we
-// determine whether the test case should be disabled by resolving the (test
-// case name, test name) in a manifest file.
-#define XLA_GTEST_TEST_(test_case_name, test_name, parent_class)             \
-  class GTEST_TEST_CLASS_NAME_(test_case_name, test_name)                    \
-      : public parent_class {                                                \
-   public:                                                                   \
-    GTEST_TEST_CLASS_NAME_(test_case_name, test_name)() {}                   \
-                                                                             \
-   private:                                                                  \
-    virtual void TestBody();                                                 \
-    static ::testing::TestInfo* const test_info_ GTEST_ATTRIBUTE_UNUSED_;    \
-    GTEST_DISALLOW_COPY_AND_ASSIGN_(GTEST_TEST_CLASS_NAME_(test_case_name,   \
-                                                           test_name));      \
-  };                                                                         \
-                                                                             \
-  ::testing::TestInfo* const GTEST_TEST_CLASS_NAME_(test_case_name,          \
-                                                    test_name)::test_info_ = \
-      ::testing::RegisterTest(                                               \
-          #test_case_name,                                                   \
-          ::xla::PrependDisabledIfIndicated(#test_case_name, #test_name)     \
-              .c_str(),                                                      \
-          nullptr, nullptr, __FILE__, __LINE__, []() -> parent_class* {      \
-            return new GTEST_TEST_CLASS_NAME_(test_case_name, test_name)();  \
-          });                                                                \
-  void GTEST_TEST_CLASS_NAME_(test_case_name, test_name)::TestBody()
+#define XLA_TEST_F(test_fixture, test_name) TEST_F(test_fixture, test_name)
 
-// This is identical to the TEST_F macro from "gtest", but it potentially
-// disables the test based on an external manifest file, DISABLED_MANIFEST.
-//
-// Per usual, you can see what tests are available via --gunit_list_tests and
-// choose to run tests that have been disabled via the manifest via
-// --gunit_also_run_disabled_tests.
-#define XLA_TEST_F(test_fixture, test_name) \
-  XLA_GTEST_TEST_(test_fixture, test_name, test_fixture)
+#define XLA_TEST_P(test_case_name, test_name) TEST_P(test_case_name, test_name)
 
-// Likewise, this is identical to the TEST_P macro from "gtest", but
-// potentially disables the test based on the DISABLED_MANIFEST file.
-//
-// We have to wrap this in an outer layer so that any DISABLED_ON_* macros will
-// be properly expanded before the stringification occurs.
-#define XLA_TEST_P_IMPL_(test_case_name, test_name)                            \
-  class GTEST_TEST_CLASS_NAME_(test_case_name, test_name)                      \
-      : public test_case_name {                                                \
-   public:                                                                     \
-    GTEST_TEST_CLASS_NAME_(test_case_name, test_name)() {}                     \
-    virtual void TestBody();                                                   \
-                                                                               \
-   private:                                                                    \
-    static int AddToRegistry() {                                               \
-      ::testing::UnitTest::GetInstance()                                       \
-          ->parameterized_test_registry()                                      \
-          .GetTestCasePatternHolder<test_case_name>(                           \
-              #test_case_name,                                                 \
-              ::testing::internal::CodeLocation(__FILE__, __LINE__))           \
-          ->AddTestPattern(                                                    \
-              #test_case_name,                                                 \
-              ::xla::PrependDisabledIfIndicated(#test_case_name, #test_name)   \
-                  .c_str(),                                                    \
-              new ::testing::internal::TestMetaFactory<GTEST_TEST_CLASS_NAME_( \
-                  test_case_name, test_name)>());                              \
-      return 0;                                                                \
-    }                                                                          \
-    static int gtest_registering_dummy_ GTEST_ATTRIBUTE_UNUSED_;               \
-    GTEST_DISALLOW_COPY_AND_ASSIGN_(GTEST_TEST_CLASS_NAME_(test_case_name,     \
-                                                           test_name));        \
-  };                                                                           \
-  int GTEST_TEST_CLASS_NAME_(test_case_name,                                   \
-                             test_name)::gtest_registering_dummy_ =            \
-      GTEST_TEST_CLASS_NAME_(test_case_name, test_name)::AddToRegistry();      \
-  void GTEST_TEST_CLASS_NAME_(test_case_name, test_name)::TestBody()
-
-#define XLA_TEST_P(test_case_name, test_name) \
-  XLA_TEST_P_IMPL_(test_case_name, test_name)
-
-// This is identical to the TEST_F macro from "gtest", but it potentially
-// disables the test based on an external manifest file, DISABLED_MANIFEST.
-#define XLA_TYPED_TEST(CaseName, TestName)                                     \
-  template <typename gtest_TypeParam_>                                         \
-  class GTEST_TEST_CLASS_NAME_(CaseName, TestName)                             \
-      : public CaseName<gtest_TypeParam_> {                                    \
-   private:                                                                    \
-    typedef CaseName<gtest_TypeParam_> TestFixture;                            \
-    typedef gtest_TypeParam_ TypeParam;                                        \
-    virtual void TestBody();                                                   \
-  };                                                                           \
-  bool gtest_##CaseName##_##TestName##_registered_ GTEST_ATTRIBUTE_UNUSED_ =   \
-      ::testing::internal::TypeParameterizedTest<                              \
-          CaseName,                                                            \
-          ::testing::internal::TemplateSel<GTEST_TEST_CLASS_NAME_(CaseName,    \
-                                                                  TestName)>,  \
-          GTEST_TYPE_PARAMS_(CaseName)>::                                      \
-          Register(                                                            \
-              "", ::testing::internal::CodeLocation(__FILE__, __LINE__),       \
-              #CaseName,                                                       \
-              ::xla::PrependDisabledIfIndicated(#CaseName, #TestName).c_str(), \
-              0);                                                              \
-  template <typename gtest_TypeParam_>                                         \
-  void GTEST_TEST_CLASS_NAME_(CaseName,                                        \
-                              TestName)<gtest_TypeParam_>::TestBody()
+#define XLA_TYPED_TEST(CaseName, TestName) TYPED_TEST(CaseName, TestName)
 
 #endif  // TENSORFLOW_COMPILER_XLA_TESTS_TEST_MACROS_H_

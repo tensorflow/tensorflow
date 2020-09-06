@@ -112,6 +112,13 @@ ExecutionOptions CreateExecutionOptions(
   }
   execution_options.set_num_replicas(build_options.num_replicas());
   execution_options.set_num_partitions(build_options.num_partitions());
+  execution_options.set_use_spmd_partitioning(
+      build_options.use_spmd_partitioning());
+  execution_options.set_deduplicate_hlo(build_options.deduplicate_hlo());
+  if (build_options.has_device_assignment()) {
+    TF_CHECK_OK(build_options.device_assignment().Serialize(
+        execution_options.mutable_device_assignment()));
+  }
   execution_options.set_alias_passthrough_params(
       build_options.alias_passthrough_params());
   return execution_options;

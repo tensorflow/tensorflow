@@ -13,8 +13,24 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "disable_mlir_graph_optimization"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "enable_mlir_bridge"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_mlir_graph_optimization"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enable_tensor_float_32_execution"
+    argspec: "args=[\'enabled\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_device_details"
+    argspec: "args=[\'device\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_device_policy"
@@ -63,5 +79,9 @@ tf_module {
   member_method {
     name: "set_visible_devices"
     argspec: "args=[\'devices\', \'device_type\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_float_32_execution_enabled"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
 }

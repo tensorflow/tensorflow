@@ -53,12 +53,13 @@ namespace gl_call_internal {
 template <typename T>
 struct Caller {
   template <typename F, typename ErrorF, typename... Params>
-  Status operator()(const std::string& context, F func, ErrorF error_func,
-                    T* result, Params&&... params) {
+  absl::Status operator()(const std::string& context, F func, ErrorF error_func,
+                          T* result, Params&&... params) {
     *result = func(std::forward<Params>(params)...);
     const auto status = error_func();
-    if (status.ok()) return OkStatus();
-    return Status(status.code(), status.error_message() + ": " + context);
+    if (status.ok()) return absl::OkStatus();
+    return absl::Status(status.code(),
+                        std::string(status.message()) + ": " + context);
   }
 };
 
@@ -66,25 +67,27 @@ struct Caller {
 template<>
 struct Caller<void> {
   template <typename F, typename ErrorF, typename... Params>
-  Status operator()(const std::string& context, F func, ErrorF error_func,
-                    Params&&... params) {
+  absl::Status operator()(const std::string& context, F func, ErrorF error_func,
+                          Params&&... params) {
     func(std::forward<Params>(params)...);
     const auto status = error_func();
-    if (status.ok()) return OkStatus();
-    return Status(status.code(), status.error_message() + ": " + context);
+    if (status.ok()) return absl::OkStatus();
+    return absl::Status(status.code(),
+                        std::string(status.message()) + ": " + context);
   }
 };
 
 template <typename F, typename ErrorF, typename ResultT, typename... ParamsT>
-Status CallAndCheckError(const std::string& context, F func, ErrorF error_func,
-                         ResultT* result, ParamsT&&... params) {
+absl::Status CallAndCheckError(const std::string& context, F func,
+                               ErrorF error_func, ResultT* result,
+                               ParamsT&&... params) {
   return Caller<ResultT>()(context, func, error_func, result,
                            std::forward<ParamsT>(params)...);
 }
 
 template <typename F, typename ErrorF, typename... Params>
-Status CallAndCheckError(const std::string& context, F func, ErrorF error_func,
-                         Params&&... params) {
+absl::Status CallAndCheckError(const std::string& context, F func,
+                               ErrorF error_func, Params&&... params) {
   return Caller<void>()(context, func, error_func,
                         std::forward<Params>(params)...);
 }

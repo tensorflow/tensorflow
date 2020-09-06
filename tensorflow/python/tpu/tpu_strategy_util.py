@@ -20,10 +20,11 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_lib
-from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
+from tensorflow.python.distribute.cluster_resolver.tpu_cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import device
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import topology
@@ -47,8 +48,8 @@ def initialize_tpu_system(cluster_resolver=None):
     The tf.tpu.Topology object for the topology of the TPU cluster.
 
   Raises:
-    RuntimeError: If no TPU devices found for eager execution or if run in a
-        tf.function.
+    RuntimeError: If running inside a tf.function.
+    NotFoundError: If no TPU devices found in eager mode.
   """
   job = None
   if cluster_resolver is None:
@@ -93,18 +94,21 @@ def initialize_tpu_system(cluster_resolver=None):
     # The TPU_SYSTEM device must match the device used in tpu.initialize_system
     # exactly, otherwise you can get errors if there are multiple TPU_SYSTEM
     # devices available.
-    with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
-      output = _tpu_init_fn()
+    try:
+      with ops.device(tpu._tpu_system_device_name(job)):  # pylint: disable=protected-access
+        output = _tpu_init_fn()
+      context.async_wait()
+    except errors.InvalidArgumentError as e:
+      raise errors.NotFoundError(
+          None, None,
+          "TPUs not found in the cluster. Failed in initialization: "
+          + str(e))
 
     # Clear out the eager context caches since the memory is invalid now.
     logging.info("Clearing out eager caches")
     context.context()._clear_caches()  # pylint: disable=protected-access
 
     serialized_topology = output.numpy()
-
-    # TODO(b/134094971): Remove this when lazy tensor copy in multi-device
-    # function has been implemented.
-    context.context().mirroring_policy = context.MIRRORING_ALL
   elif not ops.executing_eagerly_outside_functions():
     master = cluster_resolver.master()
     cluster_spec = cluster_resolver.cluster_spec()

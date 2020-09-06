@@ -20,6 +20,8 @@ limitations under the License.
 #include <functional>
 #include <queue>
 
+#include "tensorflow/lite/c/common.h"
+
 namespace tflite {
 namespace label_image {
 
@@ -30,19 +32,29 @@ extern bool input_floating;
 template <class T>
 void get_top_n(T* prediction, int prediction_size, size_t num_results,
                float threshold, std::vector<std::pair<float, int>>* top_results,
-               bool input_floating) {
+               TfLiteType input_type) {
   // Will contain top N results in ascending order.
   std::priority_queue<std::pair<float, int>, std::vector<std::pair<float, int>>,
                       std::greater<std::pair<float, int>>>
       top_result_pq;
 
   const long count = prediction_size;  // NOLINT(runtime/int)
+  float value = 0.0;
+
   for (int i = 0; i < count; ++i) {
-    float value;
-    if (input_floating)
-      value = prediction[i];
-    else
-      value = prediction[i] / 255.0;
+    switch (input_type) {
+      case kTfLiteFloat32:
+        value = prediction[i];
+        break;
+      case kTfLiteInt8:
+        value = (prediction[i] + 128) / 256.0;
+        break;
+      case kTfLiteUInt8:
+        value = prediction[i] / 255.0;
+        break;
+      default:
+        break;
+    }
     // Only add it if it beats the threshold and has a chance at being in
     // the top N.
     if (value < threshold) {

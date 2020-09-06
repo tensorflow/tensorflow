@@ -56,27 +56,28 @@ the 100 % MobileNet on various input sizes:
 |  1.0 MobileNet-128  |    64.4 %    |        529        |     4.2     |
 ------------------------------------------------------------------------
 
-Reference paper:
-  - [MobileNets: Efficient Convolutional Neural Networks for
-     Mobile Vision Applications](https://arxiv.org/abs/1704.04861)
+Reference:
+  - [MobileNets: Efficient Convolutional Neural Networks
+     for Mobile Vision Applications](
+      https://arxiv.org/abs/1704.04861)
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
 BASE_WEIGHT_PATH = ('https://storage.googleapis.com/tensorflow/'
                     'keras-applications/mobilenet/')
+layers = None
 
 
 @keras_export('keras.applications.mobilenet.MobileNet',
@@ -90,16 +91,21 @@ def MobileNet(input_shape=None,
               input_tensor=None,
               pooling=None,
               classes=1000,
+              classifier_activation='softmax',
               **kwargs):
   """Instantiates the MobileNet architecture.
 
-  Reference paper:
-  - [MobileNets: Efficient Convolutional Neural Networks for Mobile Vision
-    Applications](https://arxiv.org/abs/1704.04861)
+  Reference:
+  - [MobileNets: Efficient Convolutional Neural Networks
+     for Mobile Vision Applications](
+      https://arxiv.org/abs/1704.04861)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in the `tf.keras.backend.image_data_format()`.
+
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.mobilenet.preprocess_input` for an example.
 
   Arguments:
     input_shape: Optional shape tuple, only to be specified if `include_top`
@@ -138,21 +144,27 @@ def MobileNet(input_shape=None,
     classes: Optional number of classes to classify images into, only to be
       specified if `include_top` is True, and if no `weights` argument is
       specified. Defaults to 1000.
+    classifier_activation: A `str` or callable. The activation function to use
+      on the "top" layer. Ignored unless `include_top=True`. Set
+      `classifier_activation=None` to return the logits of the "top" layer.
     **kwargs: For backwards compatibility only.
-
   Returns:
-    A `tf.keras.Model` instance.
+    A `keras.Model` instance.
 
   Raises:
     ValueError: in case of invalid argument for `weights`,
       or invalid input shape.
+    ValueError: if `classifier_activation` is not `softmax` or `None` when
+      using a pretrained top layer.
   """
+  global layers
   if 'layers' in kwargs:
-    global layers
     layers = kwargs.pop('layers')
+  else:
+    layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -252,7 +264,9 @@ def MobileNet(input_shape=None,
     x = layers.Dropout(dropout, name='dropout')(x)
     x = layers.Conv2D(classes, (1, 1), padding='same', name='conv_preds')(x)
     x = layers.Reshape((classes,), name='reshape_2')(x)
-    x = layers.Activation('softmax', name='act_softmax')(x)
+    imagenet_utils.validate_activation(classifier_activation, weights)
+    x = layers.Activation(activation=classifier_activation,
+                          name='predictions')(x)
   else:
     if pooling == 'avg':
       x = layers.GlobalAveragePooling2D()(x)
@@ -335,15 +349,13 @@ def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
   """
   channel_axis = 1 if backend.image_data_format() == 'channels_first' else -1
   filters = int(filters * alpha)
-  x = layers.ZeroPadding2D(padding=((0, 1), (0, 1)), name='conv1_pad')(inputs)
   x = layers.Conv2D(
       filters,
       kernel,
-      padding='valid',
+      padding='same',
       use_bias=False,
       strides=strides,
-      name='conv1')(
-          x)
+      name='conv1')(inputs)
   x = layers.BatchNormalization(axis=channel_axis, name='conv1_bn')(x)
   return layers.ReLU(6., name='conv1_relu')(x)
 
@@ -435,3 +447,10 @@ def preprocess_input(x, data_format=None):
 @keras_export('keras.applications.mobilenet.decode_predictions')
 def decode_predictions(preds, top=5):
   return imagenet_utils.decode_predictions(preds, top=top)
+
+
+preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
+    mode='',
+    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF,
+    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
+decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

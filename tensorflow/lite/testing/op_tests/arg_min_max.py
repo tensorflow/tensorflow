@@ -19,8 +19,7 @@ from __future__ import print_function
 
 import random
 
-import tensorflow as tf
-
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -35,6 +34,7 @@ def make_arg_min_max_tests(options):
       "input_shape": [[], [1, 1, 1, 3], [2, 3, 4, 5], [2, 3, 3], [5, 5], [10]],
       "output_type": [tf.int32, tf.int64],
       "is_arg_max": [True],
+      "dynamic_range_quantize": [False, True],
   }]
 
   def build_graph(parameters):
@@ -63,4 +63,4 @@ def make_arg_min_max_tests(options):
       test_parameters,
       build_graph,
       build_inputs,
-      expected_tf_failures=4)
+      expected_tf_failures=8)

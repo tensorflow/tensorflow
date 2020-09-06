@@ -46,12 +46,12 @@ class CopyArrayDataTest : public ::testing::Test {
                       int src_dim_1, int src_dim_2,
                       std::initializer_list<float> dst_data, int dst_dim_1,
                       int dst_dim_2) {
-    string src_array = "src_array";
+    std::string src_array = "src_array";
     src_buffer_ = CreateFloatArrayBuffer(
         model, &src_array,
         src_dim_2 == 1 ? Shape({src_dim_1}) : Shape({src_dim_1, src_dim_2}));
     PopulateBuffer(src_buffer_, src_data);
-    string dst_array = "dst_array";
+    std::string dst_array = "dst_array";
     dst_buffer_ = CreateFloatArrayBuffer(
         model, &dst_array,
         dst_dim_2 == 1 ? Shape({dst_dim_1}) : Shape({dst_dim_1, dst_dim_2}));

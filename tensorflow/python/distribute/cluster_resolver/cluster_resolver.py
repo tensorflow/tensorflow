@@ -63,17 +63,30 @@ class ClusterResolver(object):
 
   This defines the skeleton for all implementations of ClusterResolvers.
   ClusterResolvers are a way for TensorFlow to communicate with various cluster
-  management systems (e.g. GCE, AWS, etc...).
+  management systems (e.g. GCE, AWS, etc...) and gives TensorFlow necessary
+  information to set up distributed training.
 
   By letting TensorFlow communicate with these systems, we will be able to
   automatically discover and resolve IP addresses for various TensorFlow
   workers. This will eventually allow us to automatically recover from
   underlying machine failures and scale TensorFlow worker clusters up and down.
 
-  Note to Implementors: In addition to these abstract methods, you must also
-  implement the task_type, task_id, and rpc_layer attributes. You may choose
-  to implement them either as properties with getters or setters or directly
-  set the attributes.
+  Note to Implementors of `tf.distribute.cluster_resolver.ClusterResolver`
+  subclass: In addition to these abstract methods, when task_type, task_id, and
+  rpc_layer attributes are applicable, you should also implement them either as
+  properties with getters or setters, or directly set the attributes
+  `self._task_type`, `self._task_id`, or `self._rpc_layer` so the base class'
+  getters and setters are used. See
+  `tf.distribute.cluster_resolver.SimpleClusterResolver.__init__` for an
+  example.
+
+  In general, multi-client tf.distribute strategies such as
+  `tf.distribute.experimental.MultiWorkerMirroredStrategy` require task_type and
+  task_id properties to be available in the `ClusterResolver` they are using. On
+  the other hand, these concepts are not applicable in single-client strategies,
+  such as `tf.distribute.experimental.TPUStrategy`, because the program is only
+  expected to be run on one task, so there should not be a need to have code
+  branches according to task type and task id.
 
   - task_type is the name of the server's current named job (e.g. 'worker',
      'ps' in a distributed parameterized training job).
@@ -84,11 +97,11 @@ class ClusterResolver(object):
 
   @abc.abstractmethod
   def cluster_spec(self):
-    """Retrieve the current state of the cluster and return a ClusterSpec.
+    """Retrieve the current state of the cluster and return a `tf.train.ClusterSpec`.
 
     Returns:
-      A ClusterSpec representing the state of the cluster at the moment this
-      function is called.
+      A `tf.train.ClusterSpec` representing the state of the cluster at the
+      moment this function is called.
 
     Implementors of this function must take care in ensuring that the
     ClusterSpec returned is up-to-date at the time of calling this function.
@@ -101,6 +114,8 @@ class ClusterResolver(object):
   @abc.abstractmethod
   def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Retrieves the name or URL of the session master.
+
+    Note: this is only useful for TensorFlow 1.x.
 
     Args:
       task_type: (Optional) The type of the TensorFlow task of the master.
@@ -126,7 +141,7 @@ class ClusterResolver(object):
     available per worker.
 
     Optionally, we allow callers to specify the task_type, and task_id, for
-    if they want to target a specific TensorFlow process to query
+    if they want to target a specific TensorFlow task to query
     the number of accelerators. This is to support heterogenous environments,
     where the number of accelerators cores per host is different.
 
@@ -142,6 +157,8 @@ class ClusterResolver(object):
       A map of accelerator types to number of cores.
     """
     master = self.master(task_type, task_id)
+    # TODO(b/126786766): in eager mode, we should check whether
+    # `tf.config.experimental_connect_to_cluster` is called or not.
     devices = get_accelerator_devices(master, config_proto)
     mapping = collections.defaultdict(int)
     for device in devices:
@@ -171,10 +188,138 @@ class ClusterResolver(object):
     """
     return ''
 
+  @property
+  def task_type(self):
+    """Returns the task type this `ClusterResolver` indicates.
+
+    In TensorFlow distributed environment, each job may have an applicable
+    task type. Valid task types in TensorFlow include
+    'chief': a worker that is designated with more responsibility,
+    'worker': a regular worker for training/evaluation,
+    'ps': a parameter server, or
+    'evaluator': an evaluator that evaluates the checkpoints for metrics.
+
+    See [Multi-worker configuration](
+    https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras#multi-worker_configuration)
+    for more information about 'chief' and 'worker' task type, which are most
+    commonly used.
+
+    Having access to such information is useful when user needs to run specific
+    code according to task types. For example,
+
+    ```python
+    cluster_spec = tf.train.ClusterSpec({
+        "ps": ["localhost:2222", "localhost:2223"],
+        "worker": ["localhost:2224", "localhost:2225", "localhost:2226"]
+    })
+
+    # SimpleClusterResolver is used here for illustration; other cluster
+    # resolvers may be used for other source of task type/id.
+    simple_resolver = SimpleClusterResolver(cluster_spec, task_type="worker",
+                                            task_id=1)
+
+    ...
+
+    if cluster_resolver.task_type == 'worker':
+      # Perform something that's only applicable on workers. This block
+      # will run on this particular instance since we've specified this task to
+      # be a worker in above cluster resolver.
+    elif cluster_resolver.task_type == 'ps':
+      # Perform something that's only applicable on parameter servers. This
+      # block will not run on this particular instance.
+    ```
+
+    Returns `None` if such information is not available or is not applicable
+    in the current distributed environment, such as training with
+    `tf.distribute.experimental.TPUStrategy`.
+
+    For more information, please see
+    `tf.distribute.cluster_resolver.ClusterResolver`'s class doc.
+    """
+    return getattr(self, '_task_type', None)
+
+  @property
+  def task_id(self):
+    """Returns the task id this `ClusterResolver` indicates.
+
+    In TensorFlow distributed environment, each job may have an applicable
+    task id, which is the index of the instance within its task type. This is
+    useful when user needs to run specific code according to task index. For
+    example,
+
+    ```python
+    cluster_spec = tf.train.ClusterSpec({
+        "ps": ["localhost:2222", "localhost:2223"],
+        "worker": ["localhost:2224", "localhost:2225", "localhost:2226"]
+    })
+
+    # SimpleClusterResolver is used here for illustration; other cluster
+    # resolvers may be used for other source of task type/id.
+    simple_resolver = SimpleClusterResolver(cluster_spec, task_type="worker",
+                                            task_id=0)
+
+    ...
+
+    if cluster_resolver.task_type == 'worker' and cluster_resolver.task_id == 0:
+      # Perform something that's only applicable on 'worker' type, id 0. This
+      # block will run on this particular instance since we've specified this
+      # task to be a 'worker', id 0 in above cluster resolver.
+    else:
+      # Perform something that's only applicable on other ids. This block will
+      # not run on this particular instance.
+    ```
+
+    Returns `None` if such information is not available or is not applicable
+    in the current distributed environment, such as training with
+    `tf.distribute.cluster_resolver.TPUClusterResolver`.
+
+    For more information, please see
+    `tf.distribute.cluster_resolver.ClusterResolver`'s class docstring.
+    """
+    return getattr(self, '_task_id', None)
+
+  @task_type.setter
+  def task_type(self, task_type):
+    """Setter of `task_type` property. See `task_type` property doc."""
+    self._task_type = task_type
+
+  @task_id.setter
+  def task_id(self, task_id):
+    """Setter of `task_id` property. See `task_type` property doc."""
+    self._task_id = task_id
+
 
 @tf_export('distribute.cluster_resolver.SimpleClusterResolver')
 class SimpleClusterResolver(ClusterResolver):
-  """Simple implementation of ClusterResolver that accepts a ClusterSpec."""
+  """Simple implementation of ClusterResolver that accepts all attributes.
+
+  Please see the base class for documentation of arguments of its constructor.
+
+  It is useful if you want to specify some or all attributes.
+
+  Usage example with `tf.distribute.Strategy`:
+
+    ```Python
+    cluster = tf.train.ClusterSpec({"worker": ["worker0.example.com:2222",
+                                               "worker1.example.com:2222"]})
+
+    # On worker 0
+    cluster_resolver = SimpleClusterResolver(cluster, task_type="worker",
+                                             task_id=0,
+                                             num_accelerators={"GPU": 8},
+                                             rpc_layer="grpc")
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=cluster_resolver)
+
+    # On worker 1
+    cluster_resolver = SimpleClusterResolver(cluster, task_type="worker",
+                                             task_id=1,
+                                             num_accelerators={"GPU": 8},
+                                             rpc_layer="grpc")
+    strategy = tf.distribute.experimental.MultiWorkerMirroredStrategy(
+        cluster_resolver=cluster_resolver)
+    ```
+  """
 
   def __init__(self, cluster_spec, master='', task_type=None, task_id=None,
                environment='', num_accelerators=None,
@@ -190,7 +335,7 @@ class SimpleClusterResolver(ClusterResolver):
     self._rpc_layer = rpc_layer
 
     if not isinstance(cluster_spec, ClusterSpec):
-      raise TypeError('cluster_spec must be a ClusterSpec.')
+      raise TypeError('cluster_spec must be a `tf.train.ClusterSpec`.')
     self._cluster_spec = cluster_spec
 
     if not isinstance(master, str):
@@ -203,6 +348,8 @@ class SimpleClusterResolver(ClusterResolver):
 
   def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Returns the master address to use when creating a session.
+
+    Note: this is only useful for TensorFlow 1.x.
 
     Args:
       task_type: (Optional) The type of the TensorFlow task of the master.
@@ -249,9 +396,8 @@ class SimpleClusterResolver(ClusterResolver):
     """Returns the number of accelerator cores per worker.
 
     The SimpleClusterResolver does not do automatic detection of accelerators,
-    so a TensorFlow session will never be created, and thus all arguments are
-    unused and we simply assume that the type of accelerator is a GPU and return
-    the value in provided to us in the constructor.
+    and thus all arguments are unused and we simply return the value provided
+    in the constructor.
 
     Args:
       task_type: Unused.
@@ -285,6 +431,36 @@ class UnionClusterResolver(ClusterResolver):
   For additional ClusterResolver properties such as task type, task index,
   rpc layer, environment, etc..., we will return the value from the first
   ClusterResolver in the union.
+
+  An example to combine two cluster resolvers:
+
+    ```Python
+    cluster_0 = tf.train.ClusterSpec({"worker": ["worker0.example.com:2222",
+                                                 "worker1.example.com:2222"]})
+    cluster_resolver_0 = SimpleClusterResolver(cluster, task_type="worker",
+                                               task_id=0,
+                                               rpc_layer="grpc")
+
+    cluster_1 = tf.train.ClusterSpec({"ps": ["ps0.example.com:2222",
+                                             "ps1.example.com:2222"]})
+    cluster_resolver_1 = SimpleClusterResolver(cluster, task_type="ps",
+                                               task_id=0,
+                                               rpc_layer="grpc")
+
+    # Its task type would be "worker".
+    cluster_resolver = UnionClusterResolver(cluster_resolver_0,
+                                            cluster_resolver_1)
+    ```
+
+  An example to override the number of GPUs in a TFConfigClusterResolver
+  instance:
+
+    ```Python
+    tf_config = TFConfigClusterResolver()
+    gpu_override = SimpleClusterResolver(tf_config.cluster_spec(),
+                                         num_accelerators={"GPU": 1})
+    cluster_resolver = UnionResolver(gpu_override, tf_config)
+    ```
   """
 
   def __init__(self, *args, **kwargs):
@@ -399,6 +575,8 @@ class UnionClusterResolver(ClusterResolver):
 
     This usually returns the master from the first ClusterResolver passed in,
     but you can override this by specifying the task_type and task_id.
+
+    Note: this is only useful for TensorFlow 1.x.
 
     Args:
       task_type: (Optional) The type of the TensorFlow task of the master.

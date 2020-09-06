@@ -23,11 +23,14 @@ from __future__ import print_function
 import keras_preprocessing
 
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.preprocessing import image
+from tensorflow.python.keras.preprocessing import sequence
+from tensorflow.python.keras.preprocessing import text
+from tensorflow.python.keras.preprocessing import timeseries
 from tensorflow.python.keras.utils import all_utils as utils
 
 # This exists for compatibility with prior version of keras_preprocessing.
 keras_preprocessing.set_keras_submodules(backend=backend, utils=utils)
-
 
 del absolute_import
 del division

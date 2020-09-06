@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradient_checker
@@ -255,6 +256,17 @@ class SegmentReductionOpTest(SegmentReductionHelper):
             delta=1)
       self.assertAllClose(jacob_t, jacob_n)
 
+  def testDataInvalid(self):
+    # Test case for GitHub issue 40653.
+    for use_gpu in [True, False]:
+      with self.cached_session(use_gpu=use_gpu):
+        with self.assertRaisesRegex(
+            (ValueError, errors_impl.InvalidArgumentError),
+            "must be at least rank 1"):
+          s = math_ops.segment_mean(
+              data=np.uint16(10), segment_ids=np.array([]).astype("int64"))
+          self.evaluate(s)
+
 
 class UnsortedSegmentTest(SegmentReductionHelper):
 
@@ -464,7 +476,7 @@ class UnsortedSegmentTest(SegmentReductionHelper):
           data = np.zeros((2, 0), dtype=dtype)
           segment_ids = np.array([0, 1], dtype=itype)
           unsorted = math_ops.unsorted_segment_sum(data, segment_ids, 2)
-          self.assertAllEqual(unsorted.eval(), np.zeros((2, 0), dtype=dtype))
+          self.assertAllEqual(unsorted, np.zeros((2, 0), dtype=dtype))
 
   def testDropNegatives(self):
     # Note: the test is done by replacing segment_ids with 8 to -1
@@ -516,6 +528,9 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         dtypes_lib.int32
     ]
 
+    index_dtypes = [dtypes_lib.int32, dtypes_lib.int64]
+    segment_ids_dtypes = [dtypes_lib.int32, dtypes_lib.int64]
+
     mean_dtypes = [dtypes_lib.float32, dtypes_lib.float64]
 
     # Each item is np_op1, np_op2, tf_op
@@ -531,22 +546,29 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
         segment_indices.append(i)
     num_indices = len(segment_indices)
     for dtype in dtypes:
-      with self.cached_session(use_gpu=False):
-        tf_indices, np_indices, tf_x, np_x = self._sparse_input(
-            shape, num_indices, dtype=dtype)
-        for np_op1, np_op2, tf_op in ops_list:
-          if tf_op == math_ops.sparse_segment_mean and dtype not in mean_dtypes:
-            continue
-          np_ans = self._sparseSegmentReduce(np_x, np_indices, segment_indices,
-                                             np_op1, np_op2)
-          s = tf_op(data=tf_x, indices=tf_indices, segment_ids=segment_indices)
-          tf_ans = self.evaluate(s)
-          self.assertAllClose(np_ans, tf_ans)
-          # NOTE(mrry): The static shape inference that computes
-          # `tf_ans.shape` can only infer that sizes from dimension 1
-          # onwards, because the size of dimension 0 is data-dependent
-          # and may therefore vary dynamically.
-          self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
+      for index_dtype in index_dtypes:
+        for segment_ids_dtype in segment_ids_dtypes:
+          with self.cached_session(use_gpu=False):
+            tf_indices, np_indices, tf_x, np_x = self._sparse_input(
+                shape, num_indices, dtype=dtype)
+            for np_op1, np_op2, tf_op in ops_list:
+              if (tf_op == math_ops.sparse_segment_mean
+                  and dtype not in mean_dtypes):
+                continue
+              np_ans = self._sparseSegmentReduce(np_x, np_indices,
+                                                 segment_indices, np_op1,
+                                                 np_op2)
+              s = tf_op(
+                  data=tf_x,
+                  indices=math_ops.cast(tf_indices, index_dtype),
+                  segment_ids=math_ops.cast(segment_indices, segment_ids_dtype))
+              tf_ans = self.evaluate(s)
+              self.assertAllClose(np_ans, tf_ans)
+              # NOTE(mrry): The static shape inference that computes
+              # `tf_ans.shape` can only infer that sizes from dimension 1
+              # onwards, because the size of dimension 0 is data-dependent
+              # and may therefore vary dynamically.
+              self.assertAllEqual(np_ans.shape[1:], tf_ans.shape[1:])
 
   def testSegmentIdsHole(self):
     tf_x, np_x = self._input([10, 4], dtype=dtypes_lib.float32)
@@ -772,7 +794,7 @@ class SparseSegmentReductionOpTest(SparseSegmentReductionHelper):
     tf_indices = [8, 3, 0, 9]
     with self.session(use_gpu=False):
       for tf_op in ops_list:
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             ValueError, "Cannot specify a negative value for num_segments"):
           tf_op(
               data=tf_x,
@@ -959,7 +981,7 @@ class SegmentReductionOpBenchmark(test.Benchmark):
       vc = variables.Variable(const.astype(dtype))
     name, op = op_functor(vc, vs, seg_ids)
     with session.Session() as sess:
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       r = self.run_op_benchmark(
           sess,
           op,

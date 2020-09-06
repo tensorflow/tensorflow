@@ -577,5 +577,37 @@ XLA_TEST_F(TupleHloTest,
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, literal));
 }
 
+XLA_TEST_F(TupleHloTest, TupleSelectOfSort) {
+  const char* testcase = R"(
+    HloModule sort
+
+    compare {
+      p.1.lhs = s32[] parameter(2)
+      p.1.rhs = s32[] parameter(3)
+      p.0.lhs = f32[] parameter(0)
+      p.0.rhs = f32[] parameter(1)
+      ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
+    }
+
+    ENTRY Sort {
+      keys = f32[2]{0} iota(), iota_dimension=0
+      values = s32[2]{0} iota(), iota_dimension=0
+      preds = pred[] constant(true)
+      alt = (f32[2], s32[2]) parameter(0)
+
+      sorted = (f32[2]{0}, s32[2]{0}) sort(keys, values), dimensions={0},
+               to_apply=compare
+      ROOT selected = (f32[2], s32[2]) tuple-select(preds, sorted, alt)
+    }
+  )";
+  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto param = LiteralUtil::MakeTupleOwned(LiteralUtil::CreateR1<float>({2, 3}),
+                                           LiteralUtil::CreateR1<int>({3, 4}));
+  auto expected = LiteralUtil::MakeTupleOwned(
+      LiteralUtil::CreateR1<float>({0, 1}), LiteralUtil::CreateR1<int>({0, 1}));
+  auto result = ExecuteAndTransfer(std::move(module), {&param});
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
 }  // namespace
 }  // namespace xla

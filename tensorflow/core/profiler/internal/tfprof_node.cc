@@ -153,7 +153,7 @@ void ExecStep::AddMemoryStats(const string& dev,
   // TODO(xpan): Make this more accurate:
   // High level: Memory tracking is suspicious and requires large scale
   // clean up.
-  // Investigte the memory usage difference between CPU/GPU with OpViewTest.
+  // Investigate the memory usage difference between CPU/GPU with OpViewTest.
   //
   // 1. OpKernelConstruction::allocate_xxx is not traced. Below, we only
   //    discuss OpKernelContext-related allocations.

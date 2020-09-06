@@ -15,8 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_REFERENCE_REDUCE_H_
 
-#include "tensorflow/lite/experimental/ruy/profiler/instrumentation.h"
+#include "ruy/profiler/instrumentation.h"  // from @ruy
 #include "tensorflow/lite/kernels/internal/common.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
+#include "tensorflow/lite/kernels/internal/max.h"
+#include "tensorflow/lite/kernels/internal/min.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
@@ -183,11 +186,11 @@ inline bool Mean(const T* input_data, const int* input_dims,
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
-  U num_elements_in_axis = 1;
+  size_t num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
     // Overflow prevention.
-    if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
+    if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
       return false;
     }
     num_elements_in_axis *= current;
@@ -248,9 +251,9 @@ inline void Mean(const tflite::MeanParams& op_params,
 
 inline void Mean(const tflite::MeanParams& op_params,
                  const RuntimeShape& unextended_input_shape,
-                 const uint8_t* input_data, int32 input_zero_point,
+                 const uint8_t* input_data, int32_t input_zero_point,
                  float input_scale, const RuntimeShape& unextended_output_shape,
-                 uint8_t* output_data, int32 output_zero_point,
+                 uint8_t* output_data, int32_t output_zero_point,
                  float output_scale) {
   ruy::profiler::ScopeLabel label("Mean4D/Uint8");
 
@@ -279,9 +282,9 @@ inline void Mean(const tflite::MeanParams& op_params,
   constexpr int32_t kMinValue = std::numeric_limits<uint8_t>::min();
   constexpr int32_t kMaxValue = std::numeric_limits<uint8_t>::max();
 
-  int32 bias =
+  int32_t bias =
       output_zero_point -
-      static_cast<int32>(input_zero_point * input_scale / output_scale);
+      static_cast<int32_t>(input_zero_point * input_scale / output_scale);
   double real_scale =
       static_cast<double>(input_scale / (num_elements_in_axis * output_scale));
 
@@ -290,7 +293,7 @@ inline void Mean(const tflite::MeanParams& op_params,
   QuantizeMultiplier(real_scale, &multiplier, &shift);
   for (int out_b = 0; out_b < output_batch; ++out_b) {
     for (int out_d = 0; out_d < output_depth; ++out_d) {
-      int32 acc = 0;
+      int32_t acc = 0;
       for (int in_h = 0; in_h < input_height; ++in_h) {
         for (int in_w = 0; in_w < input_width; ++in_w) {
           acc += input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
@@ -309,18 +312,21 @@ inline void Mean(const tflite::MeanParams& op_params,
 // It does so in two stages, first calculates the sum of elements along the axis
 // then divides it by the number of element in axis for quantized values.
 template <typename T, typename U>
-inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
+inline bool QuantizedMeanOrSum(const T* input_data, int32_t input_zero_point,
                                float input_scale, const int* input_dims,
                                const int input_num_dims, T* output_data,
-                               int32 output_zero_point, float output_scale,
+                               int32_t output_zero_point, float output_scale,
                                const int* output_dims,
                                const int output_num_dims, const int* axis,
                                const int num_axis_dimensions, bool keep_dims,
                                int* temp_index, int* resolved_axis, U* temp_sum,
                                bool compute_sum) {
-  const bool uint8_case = std::is_same<T, int8_t>::value;
+  const bool uint8_case = std::is_same<T, uint8_t>::value;
+  const bool int16_case = std::is_same<T, int16_t>::value;
   if (uint8_case) {
     ruy::profiler::ScopeLabel label(compute_sum ? "Sum/Uint8" : "Mean/Uint8");
+  } else if (int16_case) {
+    ruy::profiler::ScopeLabel label(compute_sum ? "Sum/Int16" : "Mean/Int16");
   } else {
     ruy::profiler::ScopeLabel label(compute_sum ? "Sum/Int8" : "Mean/Int8");
   }
@@ -353,11 +359,11 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
   }
 
   // Calculate mean by dividing output_data by num of aggregated element.
-  U num_elements_in_axis = 1;
+  size_t num_elements_in_axis = 1;
   for (int idx = 0; idx < num_resolved_axis; ++idx) {
     size_t current = static_cast<size_t>(input_dims[resolved_axis[idx]]);
     // Overflow prevention.
-    if (current > (std::numeric_limits<U>::max() / num_elements_in_axis)) {
+    if (current > (std::numeric_limits<size_t>::max() / num_elements_in_axis)) {
       return false;
     }
     num_elements_in_axis *= current;
@@ -371,7 +377,7 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
           -input_zero_point * scale * num_elements_in_axis + 0.5f;
       for (size_t idx = 0; idx < num_outputs; ++idx) {
         const U value =
-            static_cast<U>(std::round(temp_sum[idx] * scale + bias)) +
+            static_cast<U>(TfLiteRound(temp_sum[idx] * scale + bias)) +
             output_zero_point;
         output_data[idx] = static_cast<T>(value);
       }
@@ -380,11 +386,11 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
       for (size_t idx = 0; idx < num_outputs; ++idx) {
         float float_mean = static_cast<float>(temp_sum[idx]) /
                            static_cast<float>(num_elements_in_axis);
-        float result =
-            std::min(std::round(float_mean * scale + bias) + output_zero_point,
-                     static_cast<float>(std::numeric_limits<T>::max()));
-        result =
-            std::max(result, static_cast<float>(std::numeric_limits<T>::min()));
+        float result = TfLiteMin(
+            TfLiteRound(float_mean * scale + bias) + output_zero_point,
+            static_cast<float>(std::numeric_limits<T>::max()));
+        result = TfLiteMax(result,
+                           static_cast<float>(std::numeric_limits<T>::min()));
         output_data[idx] = static_cast<T>(result);
       }
     }

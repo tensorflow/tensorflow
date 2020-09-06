@@ -58,7 +58,7 @@ END
 Provide a basic summary of numeric value types, range and distribution.
 
 output: A double tensor of shape [14 + nDimensions], where nDimensions is the
-  the number of dimensions of the tensor's shape. The elements of output are:
+  number of dimensions of the tensor's shape. The elements of output are:
   [0]: is initialized (1.0) or not (0.0).
   [1]: total number of elements
   [2]: NaN element count
@@ -68,7 +68,7 @@ output: A double tensor of shape [14 + nDimensions], where nDimensions is the
     -inf. Otherwise, this is the count of elements > lower_bound and < 0.
   [5]: zero element count
   [6]: positive element count (excluding +inf), if upper_bound is the default
-    -inf. Otherwise, this is the count of elements < upper_bound and > 0.
+    +inf. Otherwise, this is the count of elements < upper_bound and > 0.
   [7]: generalized +inf count, elements >= upper_bound. upper_bound is +inf by
     default.
 Output elements [1:8] are all zero, if the tensor is uninitialized.

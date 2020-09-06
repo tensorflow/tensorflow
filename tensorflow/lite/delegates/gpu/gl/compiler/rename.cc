@@ -16,10 +16,10 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/compiler/rename.h"
 
 #include <algorithm>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
@@ -86,7 +86,7 @@ class VariableRewriter : public InlineRewrite {
   const std::string inline_delimiter_;
   const NameFunctor name_func_;
 
-  std::unordered_map<std::string, Variable> name_to_variable_;
+  absl::flat_hash_map<std::string, Variable> name_to_variable_;
 };
 
 // Rewrites names of all objects according to returned values from the
@@ -168,23 +168,23 @@ class ObjectRewriter : public InlineRewrite {
   const std::string inline_delimiter_;
   const NameFunctor name_func_;
 
-  std::unordered_map<std::string, std::pair<std::string, Object>>
+  absl::flat_hash_map<std::string, std::pair<std::string, Object>>
       name_to_object_;
 };
 
 }  // namespace
 
-Status Rename(const NameFunctor& name_func, GeneratedCode* code) {
+absl::Status Rename(const NameFunctor& name_func, GeneratedCode* code) {
   VariableRewriter variable_rewriter("$", name_func);
   ObjectRewriter object_rewriter("$", name_func);
   for (auto&& uniform_parameter : code->parameters) {
     if (!variable_rewriter.AddVariable(std::move(uniform_parameter))) {
-      return InternalError("Variable name already exists");
+      return absl::InternalError("Variable name already exists");
     }
   }
   for (auto&& object : code->objects) {
     if (!object_rewriter.AddObject(object.first, std::move(object.second))) {
-      return InternalError("Object name already exists");
+      return absl::InternalError("Object name already exists");
     }
   }
   TextPreprocessor preprocessor('$', /*keep_unknown_rewrites=*/true);
@@ -195,7 +195,7 @@ Status Rename(const NameFunctor& name_func, GeneratedCode* code) {
   code->source_code = source_code;
   code->parameters = variable_rewriter.GetUniformParameters();
   code->objects = object_rewriter.GetObjects();
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace gl

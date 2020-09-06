@@ -174,12 +174,9 @@ def model_iteration(model,
       steps_per_epoch=steps_per_epoch,
       batch_size=batch_size,
       samples=num_samples_or_steps,
-      verbose=0,  # Handle ProgBar as part of Callbacks once hooks are ready.
+      count_mode=count_mode,
+      verbose=verbose,
       mode=mode)
-  # TODO(omalleyt): Handle ProgBar as part of Callbacks once hooks are ready.
-  progbar = training_utils.get_progbar(model, count_mode)
-  progbar.params = callbacks.params
-  progbar.params['verbose'] = verbose
 
   if mode == ModeKeys.PREDICT:
     aggregator = training_utils.OutputsAggregator(True, steps=steps_per_epoch)
@@ -194,7 +191,6 @@ def model_iteration(model,
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
-  progbar.on_train_begin()
 
   initial_epoch = model._maybe_load_initial_epoch_from_ckpt(initial_epoch, mode)
 
@@ -207,7 +203,6 @@ def model_iteration(model,
     epoch_logs = {}
     if mode == ModeKeys.TRAIN:
       callbacks.on_epoch_begin(epoch, epoch_logs)
-    progbar.on_epoch_begin(epoch, epoch_logs)
 
     if steps_per_epoch is None:
       # Loop over dataset until `OutOfRangeError` is raised.
@@ -237,9 +232,6 @@ def model_iteration(model,
           elif step > 0:
             steps_per_epoch = step
             aggregator.steps = steps_per_epoch
-            if mode == ModeKeys.TRAIN:
-              progbar.params['steps'] = steps_per_epoch
-              progbar.progbar.target = steps_per_epoch
         else:
           # We ran out of batches while the user passed an iterator (legacy).
           callbacks.model.stop_training = True
@@ -259,7 +251,6 @@ def model_iteration(model,
       # Callbacks batch begin.
       batch_logs = {'batch': step, 'size': batch_size}
       callbacks._call_batch_hook(mode, 'begin', step, batch_logs)
-      progbar.on_batch_begin(step, batch_logs)
 
       is_deferred = not model._is_compiled
       batch_outs = batch_function(*batch_data)
@@ -283,16 +274,12 @@ def model_iteration(model,
               verbose=verbose,
               mode=mode)
 
-          progbar.params = callbacks.params
-          progbar.params['verbose'] = verbose
-
       # Aggregate results.
       aggregator.aggregate(batch_outs)
 
       # Callbacks batch end.
       batch_logs = cbks.make_logs(model, batch_logs, batch_outs, mode)
       callbacks._call_batch_hook(mode, 'end', step, batch_logs)
-      progbar.on_batch_end(step, batch_logs)
       step += 1
 
       if callbacks.model.stop_training:
@@ -330,7 +317,6 @@ def model_iteration(model,
     if mode == ModeKeys.TRAIN:
       # Epochs only apply to `fit`.
       callbacks.on_epoch_end(epoch, epoch_logs)
-    progbar.on_epoch_end(epoch, epoch_logs)
 
     # Recreate dataset iterator for the next epoch.
     if reset_dataset_after_each_epoch and epoch < epochs - 1:

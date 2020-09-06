@@ -21,8 +21,8 @@ limitations under the License.
 namespace stream_executor {
 namespace port {
 
-string Hostname();
-bool GetCurrentDirectory(string* dir);
+std::string Hostname();
+bool GetCurrentDirectory(std::string* dir);
 
 }  // namespace port
 }  // namespace stream_executor

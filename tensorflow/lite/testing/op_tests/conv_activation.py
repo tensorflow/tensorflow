@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -40,6 +40,7 @@ def make_conv_activation_tests(activation_op):
             "constant_filter": [True, False],
             "channel_multiplier": [1, 2],
             "fully_quantize": [False],
+            "dynamic_range_quantize": [False],
         },
         # TODO(b/134702301): The fully_quantize param is just ignored by the
         # MLIR testing path now, resulting in duplicate tests. Either ignore
@@ -54,7 +55,20 @@ def make_conv_activation_tests(activation_op):
             "constant_filter": [True],
             "channel_multiplier": [1, 2],
             "fully_quantize": [True],
-        }
+            "dynamic_range_quantize": [False],
+        },
+        {
+            "input_shape": [[1, 3, 4, 3]],
+            "filter_shape": [[1, 1], [2, 3], [3, 3]],
+            "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+            "dilations": [[1, 1, 1, 1]],
+            "padding": ["SAME", "VALID"],
+            "data_format": ["NHWC"],
+            "constant_filter": [True],
+            "channel_multiplier": [1, 2],
+            "fully_quantize": [False],
+            "dynamic_range_quantize": [True],
+        },
     ]
 
     def get_tensor_shapes(parameters):

@@ -55,13 +55,13 @@ class GrapplerTest : public ::testing::Test {
   // with the same inputs and attributes. Nodes can be in different order.
   //
   // NOTE: This function uses EXPECT/ASSERT macros to check node properties
-  // equality, and adds all failuires to the current test.
+  // equality, and adds all failures to the current test.
   void CompareGraphs(GraphDef want, GraphDef got) const;
 
   // Checks if two nodes have the same name, op, inputs and attributes.
   //
   // NOTE: This function uses EXPECT/ASSERT macros to check node properties
-  // equality, and adds all failuires to the current test.
+  // equality, and adds all failures to the current test.
   void CompareNodes(const NodeDef& want, const NodeDef& got) const;
 
   // Checks if two functions are equal. Both functions must have the same set of
@@ -86,6 +86,15 @@ class GrapplerTest : public ::testing::Test {
     Tensor tensor(DTYPE, shape);
     for (auto i = 0; i < tensor.NumElements(); i++)
       tensor.flat<T>()(i) = i + random::New64() % 10;
+    return tensor;
+  }
+
+  // Creates a random tensor with given shape using `setRandom`.
+  template <DataType DTYPE>
+  Tensor GenerateTensorWithSetRandom(const TensorShape& shape) const {
+    typedef typename EnumToDataType<DTYPE>::Type T;
+    Tensor tensor(DTYPE, shape);
+    tensor.flat<T>().setRandom();
     return tensor;
   }
 

@@ -1,0 +1,29 @@
+path: "tensorflow.experimental.Optional"
+tf_class {
+  is_instance: "<class \'tensorflow.python.data.ops.optional_ops.Optional\'>"
+  is_instance: "<class \'tensorflow.python.framework.composite_tensor.CompositeTensor\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "element_spec"
+    mtype: "<class \'abc.abstractproperty\'>"
+  }
+  member_method {
+    name: "__init__"
+  }
+  member_method {
+    name: "empty"
+    argspec: "args=[\'element_spec\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "from_value"
+    argspec: "args=[\'value\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_value"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "has_value"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

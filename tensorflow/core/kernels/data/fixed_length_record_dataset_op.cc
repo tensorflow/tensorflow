@@ -138,8 +138,9 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
             string record;
             TF_RETURN_IF_ERROR(
                 input_buffer_->ReadNBytes(dataset()->record_bytes_, &record));
-            metrics::RecordTFDataBytesRead(kDatasetType,
-                                           dataset()->record_bytes_);
+            static monitoring::CounterCell* bytes_counter =
+                metrics::GetTFDataBytesReadCounter(kDatasetType);
+            bytes_counter->IncrementBy(dataset()->record_bytes_);
 
             // Produce the record as output.
             Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
@@ -190,7 +191,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     }
 
    protected:
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurrentFileIndex),
                                              current_file_index_));
@@ -235,11 +237,11 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    size_t current_file_index_ GUARDED_BY(mu_) = 0;
+    size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
     std::unique_ptr<RandomAccessFile> file_
-        GUARDED_BY(mu_);  // must outlive input_buffer_
-    std::unique_ptr<io::InputBuffer> input_buffer_ GUARDED_BY(mu_);
-    int64 file_pos_limit_ GUARDED_BY(mu_) = -1;
+        TF_GUARDED_BY(mu_);  // must outlive input_buffer_
+    std::unique_ptr<io::InputBuffer> input_buffer_ TF_GUARDED_BY(mu_);
+    int64 file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
   };
 
   class CompressedIterator : public DatasetIterator<Dataset> {
@@ -250,6 +252,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
     Status GetNextInternal(IteratorContext* ctx,
                            std::vector<Tensor>* out_tensors,
                            bool* end_of_sequence) override {
+      static monitoring::CounterCell* bytes_counter =
+          metrics::GetTFDataBytesReadCounter(kDatasetType);
       mutex_lock l(mu_);
       do {
         // We are currently processing a file, so try to read the next record.
@@ -261,8 +265,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
               tstring record;
               TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
                   dataset()->record_bytes_, &record));
-              metrics::RecordTFDataBytesRead(kDatasetType,
-                                             dataset()->record_bytes_);
+              bytes_counter->IncrementBy(dataset()->record_bytes_);
 
               // Produce the record as output.
               Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
@@ -276,8 +279,7 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
             Status s = buffered_input_stream_->ReadNBytes(
                 dataset()->record_bytes_, &record);
             if (s.ok()) {
-              metrics::RecordTFDataBytesRead(kDatasetType,
-                                             dataset()->record_bytes_);
+              bytes_counter->IncrementBy(dataset()->record_bytes_);
               lookahead_cache_.append(record);
               StringPiece lookahead_cache_view(lookahead_cache_);
               record = tstring(
@@ -374,7 +376,8 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurrentFileIndex),
                                              current_file_index_));
@@ -427,15 +430,15 @@ class FixedLengthRecordDatasetOp::Dataset : public DatasetBase {
 
    private:
     mutex mu_;
-    size_t current_file_index_ GUARDED_BY(mu_) = 0;
+    size_t current_file_index_ TF_GUARDED_BY(mu_) = 0;
     std::unique_ptr<RandomAccessFile> file_
-        GUARDED_BY(mu_);  // must outlive buffered_input_stream_
+        TF_GUARDED_BY(mu_);  // must outlive buffered_input_stream_
     std::unique_ptr<io::RandomAccessInputStream>
         file_stream_;  // must outlive buffered_input_stream_
     std::unique_ptr<io::InputStreamInterface> buffered_input_stream_
-        GUARDED_BY(mu_);
-    int64 file_pos_limit_ GUARDED_BY(mu_) = -1;
-    tstring lookahead_cache_ GUARDED_BY(mu_);
+        TF_GUARDED_BY(mu_);
+    int64 file_pos_limit_ TF_GUARDED_BY(mu_) = -1;
+    tstring lookahead_cache_ TF_GUARDED_BY(mu_);
   };
 
   const std::vector<string> filenames_;

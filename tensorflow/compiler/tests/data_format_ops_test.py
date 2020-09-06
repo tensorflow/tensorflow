@@ -81,10 +81,20 @@ class XlaPermuteOpTest(xla_test.XLATestCase):
       x = np.array([7, 4, 9, 3], dtype=dtype)
       self._runPermuteAndCompare(x, "NHWC", "NCHW", [7, 3, 4, 9])
 
+  def testNHWCToNCHW_Size2(self):
+    for dtype in {np.int32, np.int64}:
+      x = np.array([4, 9], dtype=dtype)
+      self._runPermuteAndCompare(x, "NHWC", "NCHW", [4, 9])
+
   def testNCHWToNHWC(self):
     for dtype in {np.int32, np.int64}:
       x = np.array([7, 4, 9, 3], dtype=dtype)
       self._runPermuteAndCompare(x, "NCHW", "NHWC", [7, 9, 3, 4])
+
+  def testNCHWToNHWC_Size2(self):
+    for dtype in {np.int32, np.int64}:
+      x = np.array([9, 3], dtype=dtype)
+      self._runPermuteAndCompare(x, "NCHW", "NHWC", [9, 3])
 
   def testNHWCToHWNC(self):
     for dtype in {np.int32, np.int64}:

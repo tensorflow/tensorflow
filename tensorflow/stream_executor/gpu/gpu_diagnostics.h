@@ -60,7 +60,7 @@ class Diagnostician {
   // This is solely used for more informative log messages when the user is
   // running on a machine that happens to have a libcuda/kernel driver mismatch.
   static port::StatusOr<DriverVersion> FindKernelModuleVersion(
-      const string& driver_version_file_contents);
+      const std::string& driver_version_file_contents);
 
   // Extracts the kernel driver version from the current host.
   static port::StatusOr<DriverVersion> FindKernelDriverVersion();
@@ -88,7 +88,7 @@ class Diagnostician {
   // existence, permissions, accessibility from this uid/gid.
   static void LogDevNodeDiagnosticInformation();
 
-  static string GetDevNodePath(int dev_node_ordinal);
+  static std::string GetDevNodePath(int dev_node_ordinal);
 
   SE_DISALLOW_COPY_AND_ASSIGN(Diagnostician);
 };

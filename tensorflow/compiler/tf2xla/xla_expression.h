@@ -99,10 +99,21 @@ class XlaExpression {
   xla::StatusOr<absl::optional<Tensor>> ResolveConstant(
       xla::Client* client, bool dynamic_dimension_is_minus_one = false) const;
 
+  // ResolveDynamism computes where a value inside this op is dynamic or can be
+  // inferred at compile time.
+  xla::StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
+
   // Returns the shape of the tensor.
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),
   // not the shape of the resource's value.
   xla::StatusOr<TensorShape> GetShape() const;
+
+  // Retrieves an XlaExpression that was allocated by a previous Op.
+  static const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);
+
+  // Assigns an XlaExpression to a tensor on an XLA compilation device.
+  static void AssignExpressionToTensor(const XlaExpression& value,
+                                       Tensor* tensor);
 
  private:
   Kind kind_ = Kind::kInvalid;

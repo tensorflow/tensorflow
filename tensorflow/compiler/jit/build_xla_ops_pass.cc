@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/framework/memory_types.h"
@@ -41,7 +42,6 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/public/version.h"
@@ -452,7 +452,7 @@ Status PredicateInt32Inputs(const Scope& root, Node* n,
   root.graph()->AddControlEdge(predicate_as_control.node(),
                                identity_n.operation.node());
 
-  for (int i = 0; i < int32_inputs.size(); i++) {
+  for (int i = 0, end = int32_inputs.size(); i < end; i++) {
     TF_RETURN_IF_ERROR(root.graph()->UpdateEdge(identity_n[i].node(), i, n,
                                                 int32_inputs_input_idxs[i]));
   }

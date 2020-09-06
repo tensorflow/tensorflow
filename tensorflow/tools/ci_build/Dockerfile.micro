@@ -5,5 +5,5 @@ FROM python:3.5-stretch
 
 LABEL maintainer="Pete Warden <petewarden@google.com>"
 
-RUN apt-get update && apt-get install -y zip
+RUN apt-get update && apt-get install -y zip xxd
 RUN pip install six

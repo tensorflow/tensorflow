@@ -12,17 +12,25 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
+#include <stddef.h>
+
 #include <cstdint>
 #include <initializer_list>
+#include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
+#include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 
@@ -71,7 +79,11 @@ class BaseDepthwiseConvolutionOpModel : public SingleOpModel {
               input.scale * filter.per_channel_quantization_scales[i];
           bias_zero_points[i] = 0;
         }
-        TensorData bias{TensorType_INT32,
+        tflite::TensorType bias_type = TensorType_INT32;
+        if (input.type == TensorType_INT16) {
+          bias_type = TensorType_INT64;
+        }
+        TensorData bias{bias_type,
                         {bias_size},
                         /*min=*/0,
                         /*max=*/0,
@@ -1617,10 +1629,6 @@ class PerChannelQuantizedDepthwiseConvolutionOpTest : public SingleOpTest {
 };
 
 TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, SimplePerTensorTest) {
-  // TODO(b/138722124): Enable these tests on NNAPI.
-  if (SingleOpModel::GetForceUseNnapi()) {
-    return;
-  }
   PerChannelQuantizedDepthwiseConvolutionOpModel m(
       GetRegistration(), {TensorType_INT8, {1, 2, 3, 2}, -63.5, 64, 0.5, -1},
       {TensorType_INT8,
@@ -1820,7 +1828,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {
        0,
        /*per_channel_quantization=*/true,
        /*per_channel_quantization_scales=*/
-       {1, 2, 3, 4, 4, 3, 2, 1},
+       {0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1},
        /*per_channel_quantization_offsets=*/{0, 0, 0, 0, 0, 0, 0, 0},
        /*channel_index=*/3},
       {TensorType_INT8, {}, -63.5, 64, 0.5, -1}, Padding_VALID);
@@ -1840,7 +1848,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest, Simple3x3FilterTest) {
   // Invoke and verify output.
   m.Invoke();
   EXPECT_THAT(m.GetDequantizedOutput(),
-              ElementsAreArray(ArrayFloatNear({9, 18, 0, 0, 36, 54, 0, 0})));
+              ElementsAreArray(ArrayFloatNear({9, 18, 0, 0, 47, 54, 0, 0})));
 }
 
 TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
@@ -1856,7 +1864,7 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
        0,
        /*per_channel_quantization=*/true,
        /*per_channel_quantization_scales=*/
-       {1, 2, 3, 4, 4, 3, 2, 1},
+       {0.1, 0.2, 0.3, 0.4, 0.4, 0.3, 0.2, 0.1},
        /*per_channel_quantization_offsets=*/{0, 0, 0, 0, 0, 0, 0, 0},
        /*channel_index=*/3},
       {TensorType_INT8, {}, -63.5, 64, 0.5, -1}, Padding_SAME);
@@ -1875,15 +1883,15 @@ TEST_P(PerChannelQuantizedDepthwiseConvolutionOpTest,
 
   // Invoke and verify output.
   m.Invoke();
-  EXPECT_THAT(
-      m.GetDequantizedOutput(),
-      ElementsAreArray(ArrayFloatNear({
-          // array of 9 x 8 => [1, 3, 3, 8]
-          4,  8,  0, 0, 16, 24, 0, 0, 6,  12, 0, 0, 24, 36, 0, 0, 4,  8,  0, 0,
-          16, 24, 0, 0, 6,  12, 0, 0, 24, 36, 0, 0, 9,  18, 0, 0, 36, 54, 0, 0,
-          6,  12, 0, 0, 24, 36, 0, 0, 4,  8,  0, 0, 16, 24, 0, 0, 6,  12, 0, 0,
-          24, 36, 0, 0, 4,  8,  0, 0, 16, 24, 0, 0,
-      })));
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({
+                  // array of 9 x 8 => [1, 3, 3, 8]
+                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  9, 18, 0, 0, 47, 54, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  4, 8,  0, 0, 21, 24, 0, 0, 6, 12, 0, 0, 31.5, 36, 0, 0,
+                  4, 8,  0, 0, 21, 24, 0, 0,
+              })));
 }
 
 INSTANTIATE_TEST_SUITE_P(

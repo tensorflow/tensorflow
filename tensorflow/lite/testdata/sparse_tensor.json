@@ -25,8 +25,10 @@
               },
               {
                 "format": "SPARSE_CSR",
-                "array_segments": [0, 2, 3],
-                "array_indices": [0, 1, 1]
+                "array_segments_type": "Uint8Vector",
+                "array_segments": {"values": [0, 2, 3]},
+                "array_indices_type": "Uint8Vector",
+                "array_indices": {"values": [0, 1, 1]}
               },
               {
                 "format": "DENSE",
@@ -38,11 +40,19 @@
               }
             ]
           }
+        },
+        {
+          "shape": [
+            4,
+            4
+          ],
+          "name": "output_tensor",
+          "type": "INT8"
         }
       ],
       "inputs": [0],
       "outputs": [0],
-      "operators": [{"inputs":[-1], "outputs":[-1]}]
+      "operators": [{"inputs":[-1], "outputs":[1]}]
     }
   ],
   "buffers": [

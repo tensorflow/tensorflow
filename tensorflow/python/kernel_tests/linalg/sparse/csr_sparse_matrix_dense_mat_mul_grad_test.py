@@ -106,10 +106,7 @@ class CSRSparseMatrixDenseMatMulGradTest(test.TestCase):
 
 # These tests are refactored from sparse_csr_matrix_grad_test to keep its size
 # "medium".
-dtypes_to_test = [np.float32]
-if not test.is_built_with_rocm:
-  # complex type is not supported on the ROCm platform
-  dtypes_to_test += [np.complex64]
+dtypes_to_test = [np.float32, np.complex64]
 for dtype in dtypes_to_test:
   for (t_a, t_b, adj_a, adj_b, t_out,
        conj_out) in itertools.product(*(([False, True],) * 6)):

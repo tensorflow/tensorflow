@@ -56,7 +56,7 @@ static int PrintStrings(const std::string file_name) {
   return rc;
 }
 
-// Return whether str[] conatins a string with prefix "macro_name="; if so,
+// Return whether str[] contains a string with prefix "macro_name="; if so,
 // set *pvalue to the suffix.
 static bool GetValue(const string_vec &str, const std::string &macro_name,
                      std::string *pvalue) {

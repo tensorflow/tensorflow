@@ -20,7 +20,7 @@ import tempfile
 
 import numpy as np
 from six.moves import range
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
 from tensorflow.lite.experimental.examples.lstm.rnn import bidirectional_dynamic_rnn
@@ -32,13 +32,11 @@ from tensorflow.python.platform import test
 # initial values. This can help make the test smaller.
 TRAIN_STEPS = 0
 
-CONFIG = tf.ConfigProto(device_count={"GPU": 0})
-
 
 class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    tf.reset_default_graph()
+    tf.compat.v1.reset_default_graph()
     # Import MNIST dataset
     self.mnist = input_data.read_data_sets(
         "/tmp/data/", fake_data=True, one_hot=True)
@@ -59,17 +57,17 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
   def buildLstmLayer(self):
     return tf.keras.layers.StackedRNNCells([
-        tf.lite.experimental.nn.TFLiteLSTMCell(
+        tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units, use_peepholes=True, forget_bias=0, name="rnn1"),
-        tf.lite.experimental.nn.TFLiteLSTMCell(
+        tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units, num_proj=8, forget_bias=0, name="rnn2"),
-        tf.lite.experimental.nn.TFLiteLSTMCell(
+        tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units // 2,
             use_peepholes=True,
             num_proj=8,
             forget_bias=0,
             name="rnn3"),
-        tf.lite.experimental.nn.TFLiteLSTMCell(
+        tf.compat.v1.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units, forget_bias=0, name="rnn4")
     ])
 
@@ -96,7 +94,7 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     out_bias = tf.Variable(tf.random.normal([self.n_classes]))
 
     # input image placeholder
-    x = tf.placeholder(
+    x = tf.compat.v1.placeholder(
         "float", [None, self.time_steps, self.n_input], name="INPUT_IMAGE")
 
     if is_dynamic_rnn:
@@ -113,7 +111,7 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
       output = output[-1]
     else:
       lstm_input = tf.unstack(x, self.time_steps, 1)
-      outputs, _, _ = tf.nn.static_bidirectional_rnn(
+      outputs, _, _ = tf.compat.v1.nn.static_bidirectional_rnn(
           fw_lstm_layer, bw_lstm_layer, lstm_input, dtype="float32")
       output = outputs[-1]
 
@@ -140,11 +138,11 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     loss = tf.reduce_mean(
         tf.nn.softmax_cross_entropy_with_logits(logits=prediction, labels=y))
     # Optimization
-    opt = tf.train.AdamOptimizer(
+    opt = tf.compat.v1.train.AdamOptimizer(
         learning_rate=self.learning_rate).minimize(loss)
 
     # Initialize variables
-    init = tf.global_variables_initializer()
+    init = tf.compat.v1.global_variables_initializer()
     sess.run(init)
     for _ in range(TRAIN_STEPS):
       batch_x, batch_y = self.mnist.train.next_batch(
@@ -182,12 +180,12 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     saver.save(sess, model_dir)
 
     # Reset the graph.
-    tf.reset_default_graph()
+    tf.compat.v1.reset_default_graph()
     x, prediction, output_class = self.buildModel(fw_lstm_layer, bw_lstm_layer,
                                                   is_dynamic_rnn)
 
-    new_sess = tf.compat.v1.Session(config=CONFIG)
-    saver = tf.train.Saver()
+    new_sess = tf.compat.v1.Session()
+    saver = tf.compat.v1.train.Saver()
     saver.restore(new_sess, model_dir)
     return x, prediction, output_class, new_sess
 
@@ -235,8 +233,8 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     Returns:
       The tflite inference result.
     """
-    converter = tf.lite.TFLiteConverter.from_session(sess, [input_tensor],
-                                                     [output_tensor])
+    converter = tf.compat.v1.lite.TFLiteConverter.from_session(
+        sess, [input_tensor], [output_tensor])
     converter.experimental_new_converter = use_mlir_converter
     tflite = converter.convert()
 
@@ -257,13 +255,13 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     return result
 
   def testStaticRnnMultiRnnCell(self):
-    sess = tf.compat.v1.Session(config=CONFIG)
+    sess = tf.compat.v1.Session()
 
     x, prediction, output_class = self.buildModel(self.buildLstmLayer(),
                                                   self.buildLstmLayer(), False)
     self.trainModel(x, prediction, output_class, sess)
 
-    saver = tf.train.Saver()
+    saver = tf.compat.v1.train.Saver()
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
         self.buildLstmLayer(), self.buildLstmLayer(), sess, saver, False)
 
@@ -276,13 +274,13 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
   @test_util.enable_control_flow_v2
   def testDynamicRnnMultiRnnCell(self):
-    sess = tf.compat.v1.Session(config=CONFIG)
+    sess = tf.compat.v1.Session()
 
     x, prediction, output_class = self.buildModel(self.buildLstmLayer(),
                                                   self.buildLstmLayer(), True)
     self.trainModel(x, prediction, output_class, sess)
 
-    saver = tf.train.Saver()
+    saver = tf.compat.v1.train.Saver()
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
         self.buildLstmLayer(),
         self.buildLstmLayer(),
@@ -299,4 +297,5 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == "__main__":
+  tf.disable_v2_behavior()
   test.main()

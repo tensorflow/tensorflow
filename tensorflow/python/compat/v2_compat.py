@@ -90,6 +90,7 @@ def disable_v2_behavior():
   User can call this function to disable 2.x behavior during complex migrations.
   """
   _v2_behavior_usage_gauge.get_cell("disable").set(True)
+  tf2.disable()
   ops.disable_eager_execution()
   tensor_shape.disable_v2_tensorshape()  # Also switched by tf2
   variable_scope.disable_resource_variables()

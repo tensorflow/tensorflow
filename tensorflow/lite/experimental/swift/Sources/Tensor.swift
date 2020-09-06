@@ -73,6 +73,8 @@ extension Tensor {
     case float16
     /// A 32-bit single precision floating point.
     case float32
+    /// A 64-bit double precision floating point.
+    case float64
 
     /// Creates a new instance from the given `TfLiteType` or `nil` if the data type is unsupported
     /// or could not be determined because there was an error.
@@ -94,6 +96,8 @@ extension Tensor {
         self = .float16
       case kTfLiteFloat32:
         self = .float32
+      case kTfLiteFloat64:
+        self = .float64
       case kTfLiteNoType:
         fallthrough
       default:

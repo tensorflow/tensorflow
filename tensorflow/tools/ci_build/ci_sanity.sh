@@ -96,8 +96,8 @@ do_pylint() {
   #   --incremental  Performs check on only the python files changed in the
   #                  last non-merge git commit.
 
-  # Use this list to whitelist pylint errors
-  ERROR_WHITELIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
+  # Use this list to allowlist pylint errors
+  ERROR_ALLOWLIST="^tensorflow/python/framework/function_test\.py.*\[E1123.*noinline "\
 "^tensorflow/python/platform/default/_gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/platform/default/_googletest\.py.*\[E0102.*function\salready\sdefined "\
 "^tensorflow/python/feature_column/feature_column_test\.py.*\[E0110.*abstract-class-instantiated "\
@@ -109,13 +109,14 @@ do_pylint() {
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
 "^tensorflow/python/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
 "^tensorflow/python/keras/engine/base_layer.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/keras/engine/base_layer.py.*\[E1102.*not-callable "\
 "^tensorflow/python/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
 "^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned "\
 "^tensorflow/python/keras/utils/data_utils.py.*\[E1102.*not-callable "\
 "^tensorflow/python/autograph/.*_py3_test\.py.*\[E0001.*syntax-error "\
 "^tensorflow/python/keras/preprocessing/image\.py.*\[E0240.*Inconsistent method resolution "
 
-  echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
+  echo "ERROR_ALLOWLIST=\"${ERROR_ALLOWLIST}\""
 
   if [[ $# != "0" ]]  && [[ $# != "1" ]]; then
     echo "Invalid syntax when invoking do_pylint"
@@ -195,16 +196,16 @@ do_pylint() {
 
   N_ERRORS=0
   while read -r LINE; do
-    IS_WHITELISTED=0
-    for WL_REGEX in ${ERROR_WHITELIST}; do
+    IS_ALLOWLISTED=0
+    for WL_REGEX in ${ERROR_ALLOWLIST}; do
       if echo ${LINE} | grep -q "${WL_REGEX}"; then
-        echo "Found a whitelisted error:"
+        echo "Found a allowlisted error:"
         echo "  ${LINE}"
-        IS_WHITELISTED=1
+        IS_ALLOWLISTED=1
       fi
     done
 
-    if [[ ${IS_WHITELISTED} == "0" ]]; then
+    if [[ ${IS_ALLOWLISTED} == "0" ]]; then
       echo "${LINE}" >> ${NONWL_ERRORS_FILE}
       echo "" >> ${NONWL_ERRORS_FILE}
       ((N_ERRORS++))
@@ -213,11 +214,11 @@ do_pylint() {
 
   echo ""
   if [[ ${N_ERRORS} != 0 ]]; then
-    echo "FAIL: Found ${N_ERRORS} non-whitelisted pylint errors:"
+    echo "FAIL: Found ${N_ERRORS} non-allowlisted pylint errors:"
     cat "${NONWL_ERRORS_FILE}"
     return 1
   else
-    echo "PASS: No non-whitelisted pylint errors were found."
+    echo "PASS: No non-allowlisted pylint errors were found."
     return 0
   fi
 }
@@ -328,7 +329,7 @@ do_external_licenses_check(){
   TMP_FILE="$(mktemp)_tmp.log"
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
- bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
+ bazel cquery "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -339,7 +340,7 @@ do_external_licenses_check(){
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
-  bazel query "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
+  bazel cquery "deps(${LICENSES_TARGET})" --keep_going > "${TMP_FILE}" 2>&1
  cat "${TMP_FILE}" \
   | grep -e "^\/\/" -e "^@" \
   | grep -E -v "^//tensorflow" \
@@ -355,14 +356,37 @@ do_external_licenses_check(){
 
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
-  # Blacklist
+  # Denylist
   echo ${MISSING_LICENSES_FILE}
-  grep -e "@bazel_tools//third_party/" -e "@bazel_tools//tools" -e "@local" -e "@com_google_absl//absl" -e "@org_tensorflow//" -e "@com_github_googlecloudplatform_google_cloud_cpp//google" -v ${MISSING_LICENSES_FILE} > temp.txt
+  grep \
+    -e "@bazel_tools//third_party/" \
+    -e "@bazel_tools//tools" \
+    -e "@local" \
+    -e "@com_google_absl//absl" \
+    -e "@org_tensorflow//" \
+    -e "@com_github_googlecloudplatform_google_cloud_cpp//google" \
+    -e "@com_github_grpc_grpc//src/compiler" \
+    -e "@platforms//os" \
+    -e "@ruy//" \
+    -v ${MISSING_LICENSES_FILE} > temp.txt
   mv temp.txt ${MISSING_LICENSES_FILE}
 
-  # Whitelist
+  # Allowlist
   echo ${EXTRA_LICENSE_FILE}
-  grep -e "//third_party/mkl_dnn" -e "@bazel_tools//src" -e "@bazel_tools//tools/" -e "@org_tensorflow//tensorflow" -e "@com_google_absl//" -e "//external" -e "@local" -e "@com_github_googlecloudplatform_google_cloud_cpp//" -e "@embedded_jdk//" -e "^//$" -v ${EXTRA_LICENSES_FILE} > temp.txt
+  grep \
+    -e "//third_party/mkl" \
+    -e "//third_party/mkl_dnn" \
+    -e "@bazel_tools//src" \
+    -e "@bazel_tools//tools/" \
+    -e "@org_tensorflow//tensorflow" \
+    -e "@com_google_absl//" \
+    -e "//external" \
+    -e "@local" \
+    -e "@com_github_googlecloudplatform_google_cloud_cpp//" \
+    -e "@embedded_jdk//" \
+    -e "^//$" \
+    -e "@ruy//" \
+    -v ${EXTRA_LICENSES_FILE} > temp.txt
   mv temp.txt ${EXTRA_LICENSES_FILE}
 
 
@@ -376,9 +400,10 @@ do_external_licenses_check(){
     if [[ -s ${MISSING_LICENSES_FILE} ]] ; then
       echo "Missing the licenses for the following external dependencies:"
       cat ${MISSING_LICENSES_FILE}
+      echo "Please add the license(s) to ${LICENSES_TARGET}."
     fi
     if [[ -s ${EXTRA_LICENSES_FILE} ]] ; then
-      echo "Please remove the licenses for the following external dependencies:"
+      echo "Please remove the licenses for the following external dependencies from target ${LICENSES_TARGET}."
       cat ${EXTRA_LICENSES_FILE}
     fi
     rm -rf ${EXTERNAL_DEPENDENCIES_FILE}
@@ -435,14 +460,9 @@ cmd_status(){
 }
 
 # Run bazel build --nobuild to test the validity of the BUILD files
-# TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
-# necessary since the @androidsdk WORKSPACE dependency is commented
-# out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/delegates/gpu/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/java/demo/app/..."
-  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/schema/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/lite/..."
   BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
@@ -683,22 +703,36 @@ done
 # Print summary of build results
 COUNTER=0
 echo "==== Summary of sanity check results ===="
+TESTCASE_XML=''
 while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
   INDEX=COUNTER
   ((INDEX++))
 
   echo "${INDEX}. ${SANITY_STEPS[COUNTER]}: ${SANITY_STEPS_DESC[COUNTER]}"
+  TESTCASE_XML="${TESTCASE_XML} <testcase name=\"${SANITY_STEPS_DESC[COUNTER]}\" status=\"run\" classname=\"\" time=\"0\">"
+
   if [[ ${STEP_EXIT_CODES[COUNTER]} == "0" ]]; then
     printf "  ${COLOR_GREEN}PASS${COLOR_NC}\n"
   else
     printf "  ${COLOR_RED}FAIL${COLOR_NC}\n"
+    TESTCASE_XML="${TESTCASE_XML} <failure message=\"\" type=\"\"/>"
   fi
+
+  TESTCASE_XML="${TESTCASE_XML} </testcase>"
 
   ((COUNTER++))
 done
 
 echo
 echo "${FAIL_COUNTER} failed; ${PASS_COUNTER} passed."
+
+mkdir -p "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary"
+echo '<?xml version="1.0" encoding="UTF-8"?>'\
+  '<testsuites name="1"  tests="1" failures="0" errors="0" time="0">'\
+  '<testsuite name="Kokoro Summary" tests="'"$((FAIL_COUNTER + PASS_COUNTER))"\
+  '" failures="'"${FAIL_COUNTER}"'" errors="0" time="0">'\
+  "${TESTCASE_XML}"'</testsuite></testsuites>'\
+  > "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary/sponge_log.xml"
 
 echo
 if [[ ${FAIL_COUNTER} == "0" ]]; then

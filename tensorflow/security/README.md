@@ -1,5 +1,7 @@
 # TensorFlow Security Advisories
 
+[![Fuzzing Status](https://oss-fuzz-build-logs.storage.googleapis.com/badges/tensorflow.svg)](https://bugs.chromium.org/p/oss-fuzz/issues/list?sort=-opened&can=1&q=proj:tensorflow)
+
 We regularly publish security advisories about using TensorFlow.
 
 *Note*: In conjunction with these security advisories, we strongly encourage
@@ -8,7 +10,7 @@ in [SECURITY.md](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.m
 
 | Advisory Number | Type               | Versions affected | Reported by           | Additional Information      |
 |-----------------|--------------------|:-----------------:|-----------------------|-----------------------------|
-| [TFSA-2020-001](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2020-001.md)   | Segmentation fault when converting a Python string to `tf.float16` | >= 12.0, <= 2.1 | (found internally) |  |
+| [TFSA-2020-001](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2020-001.md)   | Segmentation fault when converting a Python string to `tf.float16` | >= 1.12.0, <= 2.1 | (found internally) |  |
 | [TFSA-2019-002](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2019-002.md)   | Heap buffer overflow in `UnsortedSegmentSum` | <= 1.14 | (found internally) |  |
 | [TFSA-2019-001](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2019-001.md)   | Null Pointer Dereference Error in Decoding GIF Files | <= 1.12 | Baidu Security Lab |  |
 | [TFSA-2018-006](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/security/advisory/tfsa-2018-006.md)   | Crafted Configuration File results in Invalid Memory Access | <= 1.7 | Blade Team of Tencent |  |

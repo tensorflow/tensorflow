@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 include "mlir/IR/OpBase.td"
-include "mlir/Dialect/StandardOps/Ops.td"
+include "mlir/Dialect/StandardOps/IR/Ops.td"
 include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.td"
 
 // Here, the element type can be any integer or float type. But, note that only
@@ -122,7 +122,7 @@ def LowerSparseSoftmaxCrossEntropyWithLogitsOp : Pattern<
 //===----------------------------------------------------------------------===//
 
 def ComplexTensor   : TensorOf<[AnyComplex]>;
-def RealTensor   : TensorOf<[AnyInteger, AnyFloat]>;
+def RealTensor   : TensorOf<[AnySignlessInteger, AnyFloat]>;
 
 def : Pat<(TF_SquareOp $val), (TF_MulOp $val, $val)>;
 
@@ -155,6 +155,14 @@ def LowerFillOp : Pat<(TF_FillOp $dims, $value),
                       (TF_BroadcastToOp $value, $dims)>;
 
 //===----------------------------------------------------------------------===//
+// NaN op patterns.
+//===----------------------------------------------------------------------===//
+
+def LowerIsNanOp : Pat<(TF_IsNanOp $x),
+                     (TF_EqualOp $x, (TF_ConstOp:$nan (GetScalarNanOfType $x)),
+                      /*incompatible_shape_error*/ConstBoolAttrTrue)>;
+
+//===----------------------------------------------------------------------===//
 // L2Loss op patterns.
 //===----------------------------------------------------------------------===//
 
@@ -179,7 +187,7 @@ def LowerL2LossOp :
 // Pad op patterns.
 //===----------------------------------------------------------------------===//
 
-def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
+def : Pat<(TF_PadOp TensorOf<[AnySignlessInteger, AnyFloat]>:$input, $paddings),
           (TF_PadV2Op $input, $paddings,
              (TF_ConstOp (GetScalarOfType<0> $input)))>;
 
@@ -187,8 +195,7 @@ def : Pat<(TF_PadOp TensorOf<[AnyInteger, AnyFloat]>:$input, $paddings),
 // Reciprocal op patterns.
 //===----------------------------------------------------------------------===//
 
-// TODO(hinsu): Support complex and unsigned input types.
-def LowerReciprocal : Pat<(TF_ReciprocalOp TF_SintOrFpTensor:$x),
+def LowerReciprocal : Pat<(TF_ReciprocalOp $x),
                           (TF_DivOp (TF_ConstOp (GetScalarOfType<1> $x)), $x)>;
 
 //===----------------------------------------------------------------------===//
@@ -224,6 +231,13 @@ def CreateTFShapeOp : NativeCodeCall<
 
 // TODO(hinsu): Support inputs of TensorList types.
 def LowerZerosLikeOp :
-  Pat<(TF_ZerosLikeOp:$src_op TensorOf<[AnyInteger, AnyFloat]>:$input),
+  Pat<(TF_ZerosLikeOp:$src_op TensorOf<[AnySignlessInteger, AnyFloat]>:$input),
       (TF_BroadcastToOp (TF_ConstOp (GetScalarOfType<0> $input)),
                         (CreateTFShapeOp $src_op, $input, /*use 32bit*/ConstBoolAttrFalse))>;
+
+def LowerScatterNdOp :
+  Pat<(TF_ScatterNdOp $indices,
+       TensorOf<[AnySignlessInteger, AnyFloat]>:$updates, $shape),
+      (TF_TensorScatterUpdateOp
+       (TF_FillOp $shape, (TF_ConstOp (GetScalarOfType<0> $updates))),
+       $indices, $updates)>;

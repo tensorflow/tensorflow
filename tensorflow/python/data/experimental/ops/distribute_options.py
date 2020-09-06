@@ -77,14 +77,6 @@ class DistributeOptions(options.OptionsBase):
       "files to shard.",
       default_factory=lambda: AutoShardPolicy.AUTO)
 
-  _make_stateless = options.create_option(
-      name="_make_stateless",
-      ty=bool,
-      docstring=
-      "Determines whether the input pipeline should be rewritten to not "
-      "contain stateful transformations (so that its graph can be moved "
-      "between devices).")
-
   num_devices = options.create_option(
       name="num_devices",
       ty=int,

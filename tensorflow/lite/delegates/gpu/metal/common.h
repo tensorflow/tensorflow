@@ -39,10 +39,9 @@ id<MTLDevice> GetBestSupportedMetalDevice();
 ///     both.
 /// @discussion The function autoselects the maximum shader language version supported by the target
 ///     OS. FastMath is enabled.
-::tflite::gpu::Status CreateComputeProgram(id<MTLDevice> device, NSString* code,
-                                           NSString* functionName,
-                                           NSDictionary<NSString*, NSString*>* macros,
-                                           id<MTLComputePipelineState>* program);
+absl::Status CreateComputeProgram(id<MTLDevice> device, NSString* code, NSString* functionName,
+                                  NSDictionary<NSString*, NSString*>* macros,
+                                  id<MTLComputePipelineState>* program);
 
 }  // namespace metal
 }  // namespace gpu

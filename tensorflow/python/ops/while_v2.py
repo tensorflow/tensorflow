@@ -26,6 +26,7 @@ from __future__ import print_function
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.client import pywrap_tf_session as c_api
 from tensorflow.python.eager import backprop_util
+from tensorflow.python.framework import auto_control_deps_utils as acd
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import func_graph as func_graph_module
@@ -275,13 +276,8 @@ def while_loop(cond,
       # This is needed so we do not compute derivative wrt these extra outputs.
       outputs[0].op._set_attr("_num_original_outputs",
                               attr_value_pb2.AttrValue(i=num_original_outputs))
-
     outputs[0].op._cond_graph = cond_graph
     outputs[0].op._body_graph = body_graph
-    _copy_handle_data(body_graph.outputs, outputs)
-    util.maybe_set_lowering_attr(outputs[0].op)
-    util.maybe_propagate_compile_time_consts_in_xla(outputs[0].op)
-
     if not ops.get_default_graph().building_function:
       # In V1 graph mode, return identities for each output of the While op,
       # rather than the output of the While op directly. This makes pruning work
@@ -338,6 +334,14 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
           while_op.inputs[:num_original_outputs],
           while_op.outputs[:num_original_outputs])
   ] + [None] * num_intermediates
+
+  # Skip gradients with respect to the captures whenever possible.
+  if "skip_input_indices" in op.__dict__ and op.skip_input_indices is not None:
+    captures_start_index = (
+        len(body_graph.inputs) - len(body_graph.internal_captures))
+    for i in op.skip_input_indices:
+      if i >= captures_start_index:
+        grads[i] = None
 
   # We compute the gradient for the sub-graph between trainable ys and xs
   # with non-None incoming gradients. We later pad the None's to the list of
@@ -401,11 +405,6 @@ def _WhileGrad(op, *grads):  # pylint: disable=invalid-name
       output_shapes=[t.shape for t in body_grad_graph.outputs],
       parallel_iterations=parallel_iterations,
       name="%s_grad" % while_op.name)
-  grad_op = outputs[0].op
-
-  _copy_handle_data(body_grad_graph.outputs, outputs)
-  util.maybe_set_lowering_attr(grad_op)
-  util.maybe_propagate_compile_time_consts_in_xla(grad_op)
 
   # See comment in while_loop.
   outputs = [array_ops.identity(t) for t in outputs]
@@ -426,13 +425,19 @@ def _build_while_op(loop_vars, cond_graph, body_graph, output_shapes,
   else:
     op_fn = gen_functional_ops.stateless_while
 
-  return op_fn(
+  outputs = op_fn(
       loop_vars,
       util.create_new_tf_function(cond_graph),
       util.create_new_tf_function(body_graph),
       output_shapes=output_shapes,
       parallel_iterations=parallel_iterations,
       name=name)
+  while_op = outputs[0].op
+  _copy_handle_data(body_graph.outputs, outputs)
+  util.maybe_set_lowering_attr(while_op)
+  util.maybe_propagate_compile_time_consts_in_xla(while_op)
+  _set_read_only_resource_inputs_attr(while_op, [cond_graph, body_graph])
+  return outputs
 
 
 def _get_intermediates(func_graph):
@@ -514,6 +519,12 @@ def _preprocess_grad(grad, body_graph_output, while_op_input, while_op_output):
   if (while_op_output.dtype in (dtypes.resource, dtypes.variant) and
       default_gradient.supports_default_grad(while_op_input) and grad is None):
     return _zeros_like(while_op_input, while_op_output)
+
+  # Convert IndexedSlices to dense tensors since it is unlikely that downstream
+  # gradient functions with properly handle indexed slices. This is similar to
+  # what we do in tf.function gradients.
+  if isinstance(grad, ops.IndexedSlices):
+    return ops.convert_to_tensor(grad)
 
   return grad
 
@@ -860,7 +871,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
   This only allows capturing tensors in the forward graph. A ValueError is
   raised if an attempt is made to capture a tensor not in the forward graph.
   To manually capture capture a tensor that is not in the forward graph, call
-  `capture` with `whitelisted=True`.
+  `capture` with `allowlisted=True`.
 
   Note: The `captures` dict does not contain the forward tensor since it is not
   directly captured. It contains the accumulator corresponding to this forward
@@ -963,16 +974,16 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         op_def=op_def,
         compute_device=compute_device)
 
-  def capture(self, tensor, name=None, whitelisted=False):
+  def capture(self, tensor, name=None, allowlisted=False):
     """Selectively captures external tensors.
 
-    If `whitelisted` is False only allows capturing tensors in the
+    If `allowlisted` is False only allows capturing tensors in the
     `_forward_graph`.
 
     Args:
       tensor: Tensor. May be from this FuncGraph or a different graph.
       name: Optional name if a placeholder is created.
-      whitelisted: If False (default), only allows capturing tensors from the
+      allowlisted: If False (default), only allows capturing tensors from the
         forward graph.
 
     Returns:
@@ -980,9 +991,9 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
 
     Raises:
       ValueError: If attempting to capture an external tensor not in the forward
-        graph with `whitelisted` set to False.
+        graph with `allowlisted` set to False.
     """
-    if not whitelisted and (isinstance(tensor, ops.EagerTensor) or
+    if not allowlisted and (isinstance(tensor, ops.EagerTensor) or
                             (tensor.graph is not self and
                              tensor.graph != self._forward_graph)):
       with self._forward_cond_graph.as_default():
@@ -1131,7 +1142,7 @@ class _WhileBodyGradFuncGraph(util.WhileBodyFuncGraph):
         "Resource tensors must be loop invariants %s." % tensor_in_outer_graph)
 
     self._indirect_captures[ops.tensor_id(tensor)] = self.capture(
-        tensor_in_outer_graph, whitelisted=True)
+        tensor_in_outer_graph, allowlisted=True)
     return self._indirect_captures[ops.tensor_id(tensor)]
 
 
@@ -1293,5 +1304,25 @@ class _OperationWithOutputs(ops.Operation):
     self._id_value = g._add_op(self, self.name)
     self._is_stateful = False
 
+
+def _set_read_only_resource_inputs_attr(op, branch_graphs):
+  """Sets the list of resource inputs which are read-only.
+
+  This is used by AutomaticControlDependencies.
+
+  Args:
+    op: While Operation.
+    branch_graphs: List of branch FuncGraphs.
+  """
+  read_only_indices = set(range(len(op.inputs)))
+  for branch_graph in branch_graphs:
+    if not read_only_indices:
+      break
+    branch_read_only_indices = acd.get_read_only_resource_input_indices_graph(
+        branch_graph)
+    read_only_indices = read_only_indices.intersection(branch_read_only_indices)
+
+  ops.set_int_list_attr(op, acd.READ_ONLY_RESOURCE_INPUTS_ATTR,
+                        sorted(read_only_indices))
 
 # pylint: enable=protected-access

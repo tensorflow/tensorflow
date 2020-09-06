@@ -20,9 +20,9 @@ from __future__ import print_function
 
 from tensorflow.python import framework
 from tensorflow.python.client import session
-from tensorflow.python.distribute.cluster_resolver import ClusterResolver
-from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.distribute.cluster_resolver import UnionClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import SimpleClusterResolver
+from tensorflow.python.distribute.cluster_resolver.cluster_resolver import UnionClusterResolver
 from tensorflow.python.eager.context import LogicalDevice
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test

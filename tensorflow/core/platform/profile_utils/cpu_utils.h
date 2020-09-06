@@ -138,9 +138,10 @@ class CpuUtils {
   // clock cycle counters from overflowing on some platforms.
   static void ResetClockCycle();
 
-  // Enable clock cycle profile
+  // Enable/Disable clock cycle profile
   // You can enable / disable profile if it's supported by the platform
-  static void EnableClockCycleProfiling(bool enable);
+  static void EnableClockCycleProfiling();
+  static void DisableClockCycleProfiling();
 
   // Return chrono::duration per each clock
   static std::chrono::duration<double> ConvertClockCycleToTime(
@@ -152,7 +153,8 @@ class CpuUtils {
     DefaultCpuUtilsHelper() = default;
     void ResetClockCycle() final {}
     uint64 GetCurrentClockCycle() final { return DUMMY_CYCLE_CLOCK; }
-    void EnableClockCycleProfiling(bool /* enable */) final {}
+    void EnableClockCycleProfiling() final {}
+    void DisableClockCycleProfiling() final {}
     int64 CalculateCpuFrequency() final { return INVALID_FREQUENCY; }
 
    private:
@@ -160,7 +162,7 @@ class CpuUtils {
   };
 
   // Return cpu frequency.
-  // CAVEAT: as this method calls system call and parse the mssage,
+  // CAVEAT: as this method calls system call and parse the message,
   // this call may be slow. This is why this class caches the value by
   // StaticVariableInitializer.
   static int64 GetCycleCounterFrequencyImpl();

@@ -40,23 +40,48 @@ cc_library(
     hdrs = ["utils.h"],
     copts = tflite_copts(),
     deps = [
-        "//tensorflow/lite:context",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
+        "//tensorflow/lite/c:common",
     ] + select({
-        "//tensorflow:android": [
+        "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
             "//tensorflow/lite/delegates/gpu:delegate",
         ],
         "//conditions:default": [],
     }) + select({
-        "//tensorflow:android_arm": [
-            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
-        ],
-        "//tensorflow:android_arm64": [
-            "//tensorflow/lite/experimental/delegates/hexagon:hexagon_delegate",
+        "//tensorflow:android": [
+            "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         ],
         "//conditions:default": [],
+    }) + select({
+        "//tensorflow:android_arm": [
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        ],
+        "//tensorflow:android_arm64": [
+            "//tensorflow/lite/delegates/hexagon:hexagon_delegate",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:fuchsia": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": [
+            "//tensorflow/lite/delegates/xnnpack:xnnpack_delegate",
+        ],
     }),
+)
+
+cc_library(
+    name = "evaluation_delegate_provider",
+    srcs = ["evaluation_delegate_provider.cc"],
+    hdrs = ["evaluation_delegate_provider.h"],
+    copts = tflite_copts(),
+    deps = [
+        ":utils",
+        "//tensorflow/lite/tools:command_line_flags",
+        "//tensorflow/lite/tools:logging",
+        "//tensorflow/lite/tools:tool_params",
+        "//tensorflow/lite/tools/delegates:delegate_provider_hdr",
+        "//tensorflow/lite/tools/delegates:tflite_execution_providers",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
+    ],
 )
 
 cc_test(
@@ -71,6 +96,18 @@ cc_test(
     deps = [
         ":utils",
         "//tensorflow/lite:context",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "evaluation_delegate_provider_test",
+    srcs = ["evaluation_delegate_provider_test.cc"],
+    linkopts = tflite_linkopts(),
+    deps = [
+        ":evaluation_delegate_provider",
+        "//tensorflow/lite/tools:tool_params",
+        "//tensorflow/lite/tools/evaluation/proto:evaluation_stages_cc_proto",
         "@com_google_googletest//:gtest_main",
     ],
 )

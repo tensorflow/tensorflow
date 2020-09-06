@@ -608,8 +608,22 @@ def _GradientsHelper(ys,
           except LookupError:
             if is_func_call:
               if is_partitioned_call:
+                func_name = compat.as_bytes(op.get_attr("f").name)
                 func_call = src_graph._get_function(  # pylint: disable=protected-access
-                    compat.as_bytes(op.get_attr("f").name))
+                    func_name)
+                # When a graph is imported, the FunctionDefs are not copied over
+                # to each sub-graph so we recursively search the outer graphs
+                # for the FunctionDef.
+                if not func_call and hasattr(src_graph, "outer_graph"):
+                  graph = src_graph.outer_graph
+                  while graph is not None:
+                    func_call = graph._get_function(func_name)  # pylint: disable=protected-access
+                    if func_call  is not None:
+                      break
+                    if hasattr(graph, "outer_graph"):
+                      graph = graph.outer_graph
+                    else:
+                      break
               else:
                 func_call = src_graph._get_function(op.type)  # pylint: disable=protected-access
               # Note that __defun is not set if the graph is
@@ -781,18 +795,22 @@ def _SetGrad(grads, t, grad):
     op_grads[t.value_index] = grad
 
 
+def _ZerosLike(t):
+  t_dtype = default_gradient.get_zeros_dtype(t)
+  if t.dtype == dtypes.resource:
+    return array_ops.zeros(
+        resource_variable_ops.variable_shape(t), dtype=t_dtype)
+  else:
+    return array_ops.zeros_like(t, dtype=t_dtype)
+
+
 def _GetGrad(grads, t, unconnected_gradients):
   """Gets gradient for tensor "t"."""
   op = t.op
   op_grads = grads.get(op)
   if not op_grads:
     if unconnected_gradients == UnconnectedGradients.ZERO:
-      t_dtype = default_gradient.get_zeros_dtype(t)
-      if t.dtype == dtypes.resource:
-        return array_ops.zeros(
-            resource_variable_ops.variable_shape(t), dtype=t_dtype)
-      else:
-        return array_ops.zeros_like(t, dtype=t_dtype)
+      return _ZerosLike(t)
     elif unconnected_gradients == UnconnectedGradients.NONE:
       return None
     else:
@@ -800,6 +818,10 @@ def _GetGrad(grads, t, unconnected_gradients):
           "Unknown value for unconnected_gradients: %r" % unconnected_gradients)
 
   t_grad = op_grads[t.value_index]
+  # This can happen if some other output of `t.op` has non-None grad.
+  if unconnected_gradients == UnconnectedGradients.ZERO and t_grad is None:
+    return _ZerosLike(t)
+
   assert not isinstance(
       t_grad, list), ("gradients list should have been aggregated by now.")
   return t_grad

@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_ARITHMETIC_OPTIMIZER_TEST_UTILS_H_
 
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/common_subgraph_elimination.h"
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils/grappler_test.h"
@@ -27,9 +28,9 @@ namespace grappler {
 
 class ArithmeticOptimizerTest : public GrapplerTest {
  protected:
-  // Optimize a graph using ArithmeticOptimizer and prune all the nodes that no
+  // Optimize a graph using optimizer and prune all the nodes that no
   // longer have any output consumers.
-  void OptimizeAndPrune(ArithmeticOptimizer* optimizer, GrapplerItem* item,
+  void OptimizeAndPrune(GraphOptimizer* optimizer, GrapplerItem* item,
                         GraphDef* output) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
     item->graph.Swap(output);
@@ -37,8 +38,23 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
   }
 
-  // Run ArithmeticOptimizer twice to make sure the rewrite is idempotent.
-  void OptimizeTwice(ArithmeticOptimizer* optimizer, GrapplerItem* item,
+  // Run optimizer twice to make sure the rewrite is idempotent.
+  void DedupAndOptimizeTwiceAndPrune(GraphOptimizer* optimizer,
+                                     GrapplerItem* item, GraphDef* output) {
+    TF_EXPECT_OK(CommonSubgraphElimination().Optimize(nullptr, *item, output));
+    item->graph.Swap(output);
+    output->Clear();
+    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+    item->graph.Swap(output);
+    output->Clear();
+    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
+    item->graph.Swap(output);
+    output->Clear();
+    TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
+  }
+
+  // Run optimizer twice to make sure the rewrite is idempotent.
+  void OptimizeTwice(GraphOptimizer* optimizer, GrapplerItem* item,
                      GraphDef* output) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
     item->graph.Swap(output);
@@ -46,9 +62,9 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
   }
 
-  // Run ArithmeticOptimizer twice to make sure the rewrite is idempotent.
+  // Run optimizer twice to make sure the rewrite is idempotent.
   // Optionally run a constant folding pass before pruning.
-  void OptimizeTwiceAndPrune(ArithmeticOptimizer* optimizer, GrapplerItem* item,
+  void OptimizeTwiceAndPrune(GraphOptimizer* optimizer, GrapplerItem* item,
                              GraphDef* output, bool const_folding = false) {
     TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
 
@@ -202,10 +218,20 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.unary_ops_composition = true;
   }
 
-  void EnableOnlyRemoveStackStridedSliceSameAxis(
+  void EnableOnlyRemoveStackSliceSameAxis(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.remove_stack_slice_same_axis = true;
+  }
+
+  void EnableOnlySimplifyEmbeddingLookup(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.simplify_embedding_lookup = true;
+  }
+
+  void EnableOnlyRemoveCastIntoSegmentReduction(
       ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
-    optimizer->options_.remove_stack_strided_slice_same_axis = true;
+    optimizer->options_.remove_cast_into_segment_reduction = true;
   }
 
  private:
@@ -235,6 +261,8 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     options.replace_mul_with_square = false;
     options.simplify_aggregation = false;
     options.unary_ops_composition = false;
+    options.simplify_embedding_lookup = false;
+    options.remove_cast_into_segment_reduction = false;
     optimizer->options_ = options;
   }
 };

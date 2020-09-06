@@ -77,7 +77,7 @@ class SessionRef : public Session {
  private:
   mutex run_lock_;
   condition_variable run_finished_;
-  uint64 run_count_ GUARDED_BY(run_lock_) = {0};
+  uint64 run_count_ TF_GUARDED_BY(run_lock_) = {0};
   std::shared_ptr<Session> session_;
 
   // Borrowed reference to global session logger.

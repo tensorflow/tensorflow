@@ -16,8 +16,18 @@ limitations under the License.
 
 #include <stddef.h>
 
+#include <algorithm>
+#include <atomic>
+#include <new>
+#include <utility>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -196,12 +206,12 @@ class TraceMeRecorder::ThreadLocalRecorder {
   return singleton;
 }
 
-void TraceMeRecorder::RegisterThread(int32 tid, ThreadLocalRecorder* thread) {
+void TraceMeRecorder::RegisterThread(uint32 tid, ThreadLocalRecorder* thread) {
   mutex_lock lock(mutex_);
   threads_.emplace(tid, thread);
 }
 
-void TraceMeRecorder::UnregisterThread(int32 tid) {
+void TraceMeRecorder::UnregisterThread(uint32 tid) {
   mutex_lock lock(mutex_);
   auto it = threads_.find(tid);
   if (it != threads_.end()) {

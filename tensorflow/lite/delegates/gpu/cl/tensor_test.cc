@@ -30,8 +30,9 @@ namespace gpu {
 namespace cl {
 namespace {
 
-Status TensorGenericTest(const BHWC& shape, const TensorDescriptor& descriptor,
-                         Environment* env) {
+absl::Status TensorGenericTest(const BHWC& shape,
+                               const TensorDescriptor& descriptor,
+                               Environment* env) {
   TensorFloat32 tensor_cpu;
   tensor_cpu.shape = shape;
   tensor_cpu.data.resize(shape.DimensionsProduct());
@@ -46,22 +47,21 @@ Status TensorGenericTest(const BHWC& shape, const TensorDescriptor& descriptor,
   }
 
   Tensor tensor;
-  RETURN_IF_ERROR(
-      CreateTensor(env->context(), env->device(), shape, descriptor, &tensor));
+  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
-      return InternalError("Wrong value.");
+      return absl::InternalError("Wrong value.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status Tensor5DGenericTest(const BHWDC& shape,
-                           const TensorDescriptor& descriptor,
-                           Environment* env) {
+absl::Status Tensor5DGenericTest(const BHWDC& shape,
+                                 const TensorDescriptor& descriptor,
+                                 Environment* env) {
   Tensor5DFloat32 tensor_cpu;
   tensor_cpu.shape = shape;
   tensor_cpu.data.resize(shape.DimensionsProduct());
@@ -76,21 +76,20 @@ Status Tensor5DGenericTest(const BHWDC& shape,
   }
 
   Tensor tensor;
-  RETURN_IF_ERROR(
-      CreateTensor(env->context(), env->device(), shape, descriptor, &tensor));
+  RETURN_IF_ERROR(CreateTensor(env->context(), shape, descriptor, &tensor));
   RETURN_IF_ERROR(tensor.WriteData(env->queue(), tensor_cpu));
   RETURN_IF_ERROR(tensor.ReadData(env->queue(), &tensor_gpu));
 
   for (int i = 0; i < tensor_gpu.data.size(); ++i) {
     if (tensor_gpu.data[i] != tensor_cpu.data[i]) {
-      return InternalError("Wrong value.");
+      return absl::InternalError("Wrong value.");
     }
   }
-  return OkStatus();
+  return absl::OkStatus();
 }
 
-Status TensorTests(DataType data_type, TensorStorageType storage_type,
-                   Environment* env) {
+absl::Status TensorTests(DataType data_type, TensorStorageType storage_type,
+                         Environment* env) {
   RETURN_IF_ERROR(TensorGenericTest(
       BHWC(1, 6, 7, 3), {data_type, storage_type, Layout::HWC}, env));
   RETURN_IF_ERROR(TensorGenericTest(
@@ -125,7 +124,7 @@ Status TensorTests(DataType data_type, TensorStorageType storage_type,
       BHWDC(7, 6, 1, 3, 7), {data_type, storage_type, Layout::BHWDC}, env));
   RETURN_IF_ERROR(Tensor5DGenericTest(
       BHWDC(13, 7, 3, 4, 3), {data_type, storage_type, Layout::BHWDC}, env));
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 TEST_F(OpenCLTest, BufferF32) {

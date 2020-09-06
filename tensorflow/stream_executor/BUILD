@@ -67,7 +67,6 @@ cc_library(
         "plugin.h",
         "plugin_registry.h",
         "rng.h",
-        "shared_memory_config.h",
         "stream_executor_pimpl.h",
         "temporary_device_memory.h",
         "temporary_memory_manager.h",
@@ -123,7 +122,6 @@ cc_library(
         "multi_platform_manager.h",
         "platform.h",
         "plugin_registry.h",
-        "shared_memory_config.h",
         "stream_executor.h",
         "stream_executor_internal.h",
         "timer.h",
@@ -171,11 +169,6 @@ cc_library(
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
     ],
-)
-
-cc_library(
-    name = "shared_memory_config",
-    hdrs = ["shared_memory_config.h"],
 )
 
 # Aliases for backwards compatibility.
@@ -343,7 +336,6 @@ cc_library(
         "kernel_cache_config.h",
         "kernel_spec.h",
         "platform.h",
-        "shared_memory_config.h",
         "stream.h",
         "stream_executor_internal.h",
         "trace_listener.h",
@@ -373,9 +365,9 @@ cc_library(
     deps = [
         ":platform",
         ":stream_executor_headers",
+        "//tensorflow/core/platform:thread_annotations",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
-        "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -455,7 +447,6 @@ cc_library(
         "stream_executor_internal.cc",
     ],
     hdrs = [
-        "shared_memory_config.h",
         "stream_executor_internal.h",
     ],
     deps = [
@@ -484,7 +475,6 @@ cc_library(
         "dnn.h",
         "kernel.h",
         "kernel_cache_config.h",
-        "shared_memory_config.h",
         "stream_executor_pimpl.h",
     ],
     visibility = ["//visibility:public"],
@@ -569,7 +559,6 @@ cc_library(
         "plugin.h",
         "plugin_registry.h",
         "rng.h",
-        "shared_memory_config.h",
         "stream.h",
         "stream_executor.h",
         "stream_executor_internal.h",
@@ -619,7 +608,6 @@ cc_library(
         "plugin.h",
         "plugin_registry.h",
         "rng.h",
-        "shared_memory_config.h",
         "stream.h",
         "stream_executor.h",
         "stream_executor_internal.h",

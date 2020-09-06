@@ -15,53 +15,26 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/micro_error_reporter.h"
 
+#include <cstdarg>
+
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+#include "tensorflow/lite/micro/debug_log.h"
+#include "tensorflow/lite/micro/micro_string.h"
+#endif
+
 namespace tflite {
-namespace {
-void DebugLogPrintf(const char* format, va_list args) {
-  const int output_cache_size = 64;
-  char output_cache[output_cache_size + 1];
-  int output_cache_index = 0;
-  const char* current = format;
-  while (*current != 0) {
-    if (*current == '%') {
-      const char next = *(current + 1);
-      if ((next == 'd') || (next == 's') || (next == 'f')) {
-        current += 1;
-        if (output_cache_index > 0) {
-          output_cache[output_cache_index] = 0;
-          DebugLog(output_cache);
-          output_cache_index = 0;
-        }
-        if (next == 'd') {
-          DebugLogInt32(va_arg(args, int));
-        } else if (next == 's') {
-          DebugLog(va_arg(args, char*));
-        } else if (next == 'f') {
-          DebugLogFloat(va_arg(args, double));
-        }
-      }
-    } else {
-      output_cache[output_cache_index] = *current;
-      output_cache_index += 1;
-    }
-    if (output_cache_index >= output_cache_size) {
-      output_cache[output_cache_index] = 0;
-      DebugLog(output_cache);
-      output_cache_index = 0;
-    }
-    current += 1;
-  }
-  if (output_cache_index > 0) {
-    output_cache[output_cache_index] = 0;
-    DebugLog(output_cache);
-    output_cache_index = 0;
-  }
-  DebugLog("\r\n");
-}
-}  // namespace
 
 int MicroErrorReporter::Report(const char* format, va_list args) {
-  DebugLogPrintf(format, args);
+#ifndef TF_LITE_STRIP_ERROR_STRINGS
+  // Only pulling in the implementation of this function for builds where we
+  // expect to make use of it to be extra cautious about not increasing the code
+  // size.
+  static constexpr int kMaxLogLen = 256;
+  char log_buffer[kMaxLogLen];
+  MicroVsnprintf(log_buffer, kMaxLogLen, format, args);
+  DebugLog(log_buffer);
+  DebugLog("\r\n");
+#endif
   return 0;
 }
 

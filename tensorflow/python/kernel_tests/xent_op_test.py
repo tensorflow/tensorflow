@@ -117,9 +117,9 @@ class XentTest(test.TestCase):
                                                     4.]]]).astype(dtype)
       np_labels = np.array([[[0., 0., 0., 1.]], [[0., .5, .5,
                                                   0.]]]).astype(dtype)
-      self.assertRaisesRegexp(ValueError, "rank 2, but is rank 3",
-                              gen_nn_ops.softmax_cross_entropy_with_logits,
-                              np_features, np_labels)
+      self.assertRaisesRegex(ValueError, "rank 2, but is rank 3",
+                             gen_nn_ops.softmax_cross_entropy_with_logits,
+                             np_features, np_labels)
 
   def testNpXent(self):
     # We create 2 batches of logits for testing.

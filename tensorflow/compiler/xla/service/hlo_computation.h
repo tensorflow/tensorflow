@@ -390,7 +390,8 @@ class HloComputation {
                           std::unique_ptr<HloInstruction>>
           replacements,
       absl::Span<const HloInstruction* const> extra_parameters = {},
-      HloCloneContext* context = nullptr, const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const string& suffix = "clone",
+      const HloInstruction* new_root = nullptr);
 
   // Convenience overloads for CloneWithReplacements.  You want to do
   //
@@ -469,6 +470,15 @@ class HloComputation {
 
   int64 unique_id() const { return unique_id_; }
 
+  // Deallocate instructions that are marked by "RemoveInstruction". The two
+  // stage clean up process is designed such that HloPass can have stable
+  // internal pointers to HloInstructions while we create and remove
+  // HloInstructions in a pass.
+  void Cleanup() { to_be_deleted_.clear(); }
+
+  // Returns true if a given instruction is marked dead in this computation.
+  bool IsMarkedAsDead(const HloInstruction* inst);
+
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
@@ -499,7 +509,7 @@ class HloComputation {
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      const HloComputation::ChannelDependencyGroup& channel_dependency_map,
+      const HloComputation::ChannelDependencyGroup& channel_dependency_group,
       std::vector<HloInstruction*>* post_order, HloInstruction* root,
       absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
 
@@ -526,6 +536,10 @@ class HloComputation {
   InstructionList instructions_;
   absl::flat_hash_map<const HloInstruction*, InstructionList::iterator>
       instruction_iterators_;
+
+  // Removed instructions are moved into to_be_deleted_ first and then
+  // deallocated when Cleanup is called.
+  std::vector<std::unique_ptr<HloInstruction>> to_be_deleted_;
 
   std::vector<HloInstruction*> param_instructions_;
 

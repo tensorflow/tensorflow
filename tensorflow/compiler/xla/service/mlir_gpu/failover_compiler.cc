@@ -32,6 +32,8 @@ StatusOr<std::unique_ptr<HloModule>> FailoverCompiler::RunHloPasses(
   auto result =
       primary_->RunHloPasses(module->Clone(), stream_exec, device_allocator);
   if (IsUnimplemented(result)) {
+    VLOG(2) << "RunHloPasses resulted in " << result.status()
+            << ", falling back to secondary backend";
     return secondary_->RunHloPasses(std::move(module), stream_exec,
                                     device_allocator);
   }
@@ -44,6 +46,8 @@ StatusOr<std::unique_ptr<Executable>> FailoverCompiler::RunBackend(
   auto result =
       primary_->RunBackend(module->Clone(), stream_exec, device_allocator);
   if (IsUnimplemented(result)) {
+    VLOG(2) << "RunBackend resulted in " << result.status()
+            << ", falling back to secondary backend";
     return secondary_->RunBackend(std::move(module), stream_exec,
                                   device_allocator);
   }
@@ -78,6 +82,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> FailoverCompiler::Compile(
     }(modules[i]->Clone());
 
     if (IsUnimplemented(executable)) {
+      VLOG(2) << "Compile resulted in " << executable.status()
+              << ", falling back to secondary backend";
       TF_ASSIGN_OR_RETURN(
           modules[i],
           secondary_->RunHloPasses(std::move(modules[i]), stream_execs[i][0],

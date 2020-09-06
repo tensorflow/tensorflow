@@ -8,6 +8,11 @@ glob_lit_tests(
         ":test_utilities",
     ],
     driver = "@llvm-project//mlir:run_lit.sh",
+    tags_override = {
+        "add.pbtxt": ["no_rocm"],
+        "conv_2d.pbtxt": ["no_rocm"],
+        "fake_quant_per_channel.pbtxt": ["no_rocm"],
+    },
     test_file_exts = [
         "pbtxt",
     ],
@@ -21,6 +26,7 @@ filegroup(
         "//tensorflow/compiler/mlir/lite:flatbuffer_to_string",
         "//tensorflow/compiler/mlir/lite:tf_tfl_translate",
         "@llvm-project//llvm:FileCheck",
+        "@llvm-project//llvm:not",
     ],
 )
 

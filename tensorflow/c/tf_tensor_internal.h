@@ -18,11 +18,12 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/c/tensor_interface.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_interface.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/platform/casts.h"
 
 // Internal structures used by the C API. These are likely to change and should
 // not be depended on.
@@ -31,18 +32,19 @@ limitations under the License.
 // passed to or returned from C functions *by pointer*. Otherwise, changes to
 // its internal structure will break the C API's binary interface.
 typedef struct TF_Tensor {
-  std::unique_ptr<AbstractTensorInterface> tensor;
+  tensorflow::AbstractTensorInterface* tensor;
 } TF_Tensor;
 
 class TF_ManagedBuffer : public tensorflow::TensorBuffer {
  public:
   TF_ManagedBuffer(void* data, size_t len,
                    void (*deallocator)(void* data, size_t len, void* arg),
-                   void* deallocator_arg)
+                   void* deallocator_arg, bool owns_memory)
       : TensorBuffer(data),
         len_(len),
         deallocator_(deallocator),
-        deallocator_arg_(deallocator_arg) {}
+        deallocator_arg_(deallocator_arg),
+        owns_memory_(owns_memory) {}
 
   ~TF_ManagedBuffer() override {
     (*deallocator_)(data(), len_, deallocator_arg_);
@@ -57,13 +59,13 @@ class TF_ManagedBuffer : public tensorflow::TensorBuffer {
     proto->set_allocator_name(tensorflow::cpu_allocator()->Name());
   }
 
-  // Prevents input forwarding from mutating this buffer.
-  bool OwnsMemory() const override { return false; }
+  bool OwnsMemory() const override { return owns_memory_; }
 
  private:
   const size_t len_;
   void (*const deallocator_)(void* data, size_t len, void* arg);
   void* const deallocator_arg_;
+  bool owns_memory_;
 };
 
 namespace tensorflow {
@@ -85,6 +87,41 @@ void* allocate_tensor(const char* operation, size_t len, Allocator* allocator);
 // Defaults to deallocating using CPU allocator. You can pass pointer to
 // a different Allocator as `arg`.
 void deallocate_buffer(void* data, size_t len, void* arg);
+
+class TensorInterface : public AbstractTensorInterface {
+ public:
+  TensorInterface() {}
+  explicit TensorInterface(tensorflow::Tensor t) : tensor_(std::move(t)) {}
+  ~TensorInterface() override {}
+
+  void Release() override;
+
+  DataType Type() const override;
+  int NumDims() const override;
+  int64_t Dim(int dim_index) const override;
+  int64_t NumElements() const override;
+  size_t ByteSize() const override;
+  void* Data() const override;
+  bool IsAligned() const override;
+  bool CanMove() const override;
+
+  Status ToTensor(tensorflow::Tensor* dst) const;
+  Status BitcastFrom(const TensorInterface& from, DataType type,
+                     const int64_t* new_dims, int num_new_dims);
+
+  tensorflow::Tensor& Tensor() { return tensor_; }
+
+ private:
+  tensorflow::Tensor tensor_;
+};
+
+inline Tensor& TensorFromInterface(AbstractTensorInterface* tensor) {
+  return down_cast<TensorInterface*>(tensor)->Tensor();
+}
+
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+
+TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_TF_TENSOR_INTERNAL_H_

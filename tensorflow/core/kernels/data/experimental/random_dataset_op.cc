@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/random/random_distributions.h"
@@ -37,7 +38,7 @@ namespace experimental {
 class RandomDatasetOp::Dataset : public DatasetBase {
  public:
   Dataset(OpKernelContext* ctx, int64 seed, int64 seed2)
-      : DatasetBase(DatasetContext(ctx)), seed_(seed), seed2_(seed2) {}
+      : DatasetBase(DatasetContext(ctx)), seeds_(seed, seed2) {}
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
@@ -57,11 +58,13 @@ class RandomDatasetOp::Dataset : public DatasetBase {
   }
 
   string DebugString() const override {
-    return strings::StrCat("RandomDatasetOp(", seed_, ", ", seed2_,
-                           ")::Dataset");
+    return strings::StrCat("RandomDatasetOp(", seeds_.first, ", ",
+                           seeds_.second, ")::Dataset");
   }
 
   int64 Cardinality() const override { return kInfiniteCardinality; }
+
+  Status CheckExternalState() const override { return Status::OK(); }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -69,8 +72,8 @@ class RandomDatasetOp::Dataset : public DatasetBase {
                             Node** output) const override {
     Node* seed = nullptr;
     Node* seed2 = nullptr;
-    TF_RETURN_IF_ERROR(b->AddScalar(seed_, &seed));
-    TF_RETURN_IF_ERROR(b->AddScalar(seed2_, &seed2));
+    TF_RETURN_IF_ERROR(b->AddScalar(seeds_.first, &seed));
+    TF_RETURN_IF_ERROR(b->AddScalar(seeds_.second, &seed2));
     TF_RETURN_IF_ERROR(b->AddDataset(this, {seed, seed2}, output));
     return Status::OK();
   }
@@ -80,7 +83,8 @@ class RandomDatasetOp::Dataset : public DatasetBase {
    public:
     explicit Iterator(const Params& params)
         : DatasetIterator<Dataset>(params),
-          parent_generator_(dataset()->seed_, dataset()->seed2_),
+          seeds_(MaybeOverrideSeeds(dataset()->seeds_)),
+          parent_generator_(seeds_.first, seeds_.second),
           generator_(&parent_generator_) {}
 
     Status GetNextInternal(IteratorContext* ctx,
@@ -100,7 +104,8 @@ class RandomDatasetOp::Dataset : public DatasetBase {
       return model::MakeSourceNode(std::move(args));
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("num_random_samples"),
                                              num_random_samples_));
@@ -112,8 +117,7 @@ class RandomDatasetOp::Dataset : public DatasetBase {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("num_random_samples"),
                                             &num_random_samples_));
-      parent_generator_ =
-          random::PhiloxRandom(dataset()->seed_, dataset()->seed2_);
+      parent_generator_ = random::PhiloxRandom(seeds_.first, seeds_.second);
       generator_ =
           random::SingleSampleAdapter<random::PhiloxRandom>(&parent_generator_);
       generator_.Skip(num_random_samples_);
@@ -122,20 +126,20 @@ class RandomDatasetOp::Dataset : public DatasetBase {
 
    private:
     random::SingleSampleAdapter<random::PhiloxRandom>::ResultType Random()
-        EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       num_random_samples_++;
       auto out = generator_();
       return out;
     }
+    const std::pair<int64, int64> seeds_;
     mutex mu_;
-    random::PhiloxRandom parent_generator_ GUARDED_BY(mu_);
+    random::PhiloxRandom parent_generator_ TF_GUARDED_BY(mu_);
     random::SingleSampleAdapter<random::PhiloxRandom> generator_
-        GUARDED_BY(mu_);
-    int64 num_random_samples_ GUARDED_BY(mu_) = 0;
+        TF_GUARDED_BY(mu_);
+    int64 num_random_samples_ TF_GUARDED_BY(mu_) = 0;
   };
 
-  const int64 seed_;
-  const int64 seed2_;
+  const std::pair<int64, int64> seeds_;
 };  // RandomDatasetOp::Dataset
 
 RandomDatasetOp::RandomDatasetOp(OpKernelConstruction* ctx)
@@ -147,13 +151,6 @@ void RandomDatasetOp::MakeDataset(OpKernelContext* ctx, DatasetBase** output) {
 
   int64 seed2;
   OP_REQUIRES_OK(ctx, ParseScalarArgument<int64>(ctx, "seed2", &seed2));
-
-  // By TensorFlow convention, passing 0 for both seeds indicates
-  // that the shuffling should be seeded non-deterministically.
-  if (seed == 0 && seed2 == 0) {
-    seed = random::New64();
-    seed2 = random::New64();
-  }
 
   *output = new Dataset(ctx, seed, seed2);
 }

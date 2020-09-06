@@ -29,9 +29,10 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_conversion_registry
-from tensorflow.python.framework import tensor_like
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import type_spec
+from tensorflow.python.types import internal
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
@@ -54,13 +55,10 @@ tensor_util = LazyLoader(
     "tensor_util", globals(),
     "tensorflow.python.framework.tensor_util")
 
-# pylint: disable=protected-access
-_TensorLike = tensor_like._TensorLike
-# pylint: enable=protected-access
 
-
+# TODO(mdan): Should IndexedSlices be a "tensor"?
 @tf_export("IndexedSlices")
-class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
+class IndexedSlices(internal.NativeObject, composite_tensor.CompositeTensor):
   """A sparse representation of a set of tensor slices at given indices.
 
   This class is a simple wrapper for a pair of `Tensor` objects:
@@ -84,7 +82,7 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
   (e.g. `tf.gather`).
 
   Contrast this representation with
-  `tf.SparseTensor`,
+  `tf.sparse.SparseTensor`,
   which uses multi-dimensional indices and scalar values.
   """
 
@@ -150,7 +148,7 @@ class IndexedSlices(_TensorLike, composite_tensor.CompositeTensor):
     return "IndexedSlices(indices=%s, values=%s%s)" % (
         self._indices, self._values,
         (", dense_shape=%s" %
-         self._dense_shape) if self._dense_shape is not None else "")
+         (self._dense_shape,)) if self._dense_shape is not None else "")
 
   def __neg__(self):
     return IndexedSlices(-self.values, self.indices, self.dense_shape)
@@ -309,7 +307,8 @@ def internal_convert_to_tensor_or_indexed_slices(value,
   """
   if isinstance(value, ops.EagerTensor) and not context.executing_eagerly():
     return ops.convert_to_tensor(value, dtype=dtype, name=name, as_ref=as_ref)
-  elif isinstance(value, _TensorLike):
+  # TODO(mdan): Name says tensor_or_indexed_slices. So do explicitly just that?
+  elif isinstance(value, internal.NativeObject):
     if dtype and not dtypes.as_dtype(dtype).is_compatible_with(value.dtype):
       raise ValueError(
           "Tensor conversion requested dtype %s for Tensor with dtype %s: %r" %
@@ -329,8 +328,8 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
   unmodified.
 
   Args:
-    values: A list of `None`, `IndexedSlices`, `SparseTensor`, or objects that
-      can be consumed by `convert_to_tensor()`.
+    values: An iterable of `None`, `IndexedSlices`, `SparseTensor`, or objects
+      that can be consumed by `convert_to_tensor()`.
     dtype: (Optional.) The required `DType` of the returned `Tensor` or
       `IndexedSlices`.
     name: (Optional.) A name prefix to used when a new `Tensor` is created, in
@@ -346,8 +345,8 @@ def internal_convert_n_to_tensor_or_indexed_slices(values,
     RuntimeError: If a registered conversion function returns an invalid
       value.
   """
-  if not isinstance(values, collections.Sequence):
-    raise TypeError("values must be a sequence.")
+  if not isinstance(values, collections_abc.Iterable):
+    raise TypeError("values must be iterable.")
   ret = []
   for i, value in enumerate(values):
     if value is None:
@@ -430,9 +429,12 @@ def _indexed_slices_to_tensor(value, dtype=None, name=None, as_ref=False):
             "elements. This may consume a large amount of memory." %
             num_elements)
     else:
-      warnings.warn(
-          "Converting sparse IndexedSlices to a dense Tensor of unknown shape. "
-          "This may consume a large amount of memory.")
+      if value.dense_shape.op.type != "VariableShape":
+        # VariableShape may hide static shapes behind a resource handle
+        # producing a warning that isn't that useful to users.
+        warnings.warn(
+            "Converting sparse IndexedSlices(%s) to a dense Tensor of unknown "
+            "shape. This may consume a large amount of memory." % value)
   return math_ops.unsorted_segment_sum(
       value.values, value.indices, value.dense_shape[0], name=name)
 

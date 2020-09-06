@@ -12,13 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
+#include <stdint.h>
 
+#include <initializer_list>
+#include <limits>
+#include <type_traits>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -273,7 +278,7 @@ struct ConcatenationOpTestTyped : public testing::Test {
   using TestType = Type;
 
   enum TensorType tensor_type =
-      std::is_same<Type, int16_t>::value ? TensorType_INT16 : TensorType_INT8;
+      (std::is_same<Type, int16_t>::value ? TensorType_INT16 : TensorType_INT8);
 };
 
 using TestTypes = testing::Types<int8_t, int16_t>;

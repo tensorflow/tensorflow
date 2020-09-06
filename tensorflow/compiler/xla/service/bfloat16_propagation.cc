@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/bfloat16_propagation.h"
 
+#include "absl/algorithm/container.h"
 #include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -22,6 +23,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -203,6 +205,33 @@ void BFloat16Propagation::DetermineWhileComputationsPrecision(
   computations_visited_in_backward_pass_.insert(condition);
 }
 
+void BFloat16Propagation::DetermineConditionalComputationsPrecision(
+    HloInstruction* cond) {
+  CHECK_EQ(cond->opcode(), HloOpcode::kConditional);
+  for (int64 i = 0; i < cond->branch_count(); ++i) {
+    auto branch = cond->branch_computation(i);
+    auto root = branch->root_instruction();
+    ShapeUtil::ForEachSubshape(
+        root->shape(), [&](const Shape& subshape, const ShapeIndex& index) {
+          if (subshape.element_type() != F32) {
+            return;
+          }
+          if (OutputTypeAfterChange(cond, index) == BF16) {
+            AddToOrRemoveFromBF16ChangeSet(root, index, BF16);
+            VLOG(2) << "Conditional branch " << i << " root "
+                    << root->ToString() << " at shape index " << index
+                    << " changed to BF16 precision for conditional "
+                    << cond->ToString();
+          }
+        });
+    auto insts = branch->MakeInstructionPostOrder();
+    for (auto inst_it = insts.rbegin(); inst_it != insts.rend(); ++inst_it) {
+      DetermineInstructionPrecision(*inst_it, /*skip_parameters=*/false);
+    }
+    computations_visited_in_backward_pass_.insert(branch);
+  }
+}
+
 bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
                                               const ShapeIndex& index) const {
   // If the subshape isn't floating point then none of the users will be BF16.
@@ -265,6 +294,14 @@ bool BFloat16Propagation::AllUsersConsumeBF16(const HloInstruction& hlo,
           return false;
         }
         continue;
+      } else if (use.instruction->opcode() == HloOpcode::kConditional) {
+        auto* cond_parameter =
+            use.instruction->branch_computation(use.operand_number - 1)
+                ->parameter_instruction(0);
+        if (OutputTypeAfterChange(cond_parameter, use.operand_index) != BF16) {
+          return false;
+        }
+        continue;
       }
       if (bfloat16_support_->EffectiveOperandPrecisionIsBF16(
               *use.instruction, use.operand_number)) {
@@ -323,7 +360,6 @@ bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst) {
   // assumptions for them.
   return inst->opcode() == HloOpcode::kCustomCall ||      //
          inst->opcode() == HloOpcode::kCall ||            //
-         inst->opcode() == HloOpcode::kConditional ||     //
          inst->opcode() == HloOpcode::kBitcastConvert ||  //
          inst->HasSideEffectNoRecurse();
 }
@@ -332,9 +368,10 @@ bool ShouldKeepPrecisionUnchanged(const HloInstruction* inst) {
 
 void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
                                                         bool skip_parameters) {
-  // We handle any fusion computation or while body/condition after the
-  // instruction is handled, because we need to know the output shape of a
-  // fusion or while before propagating inside its  computations.
+  // We handle any fusion computation, while body/condition or conditional
+  // branches after the instruction is handled, because we need to know the
+  // output shape of a fusion or while before propagating inside its
+  // computations.
   bool postpone_processing_called_computations = false;
   auto cleaner = tensorflow::gtl::MakeCleanup(
       [this, hlo, &postpone_processing_called_computations] {
@@ -343,6 +380,8 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
             DetermineFusionComputationPrecision(hlo);
           } else if (hlo->opcode() == HloOpcode::kWhile) {
             DetermineWhileComputationsPrecision(hlo);
+          } else if (hlo->opcode() == HloOpcode::kConditional) {
+            DetermineConditionalComputationsPrecision(hlo);
           }
         }
         instructions_visited_in_backward_pass_.insert(hlo);
@@ -351,6 +390,14 @@ void BFloat16Propagation::DetermineInstructionPrecision(HloInstruction* hlo,
   if (hlo->opcode() == HloOpcode::kWhile &&
       (caller_counts_[hlo->while_condition()] > 1 ||
        caller_counts_[hlo->while_body()] > 1)) {
+    postpone_processing_called_computations = true;
+    return;
+  }
+
+  if (hlo->opcode() == HloOpcode::kConditional &&
+      absl::c_any_of(hlo->branch_computations(), [&](const HloComputation* c) {
+        return caller_counts_[c] > 1;
+      })) {
     postpone_processing_called_computations = true;
     return;
   }
@@ -459,6 +506,12 @@ void BFloat16Propagation::AdjustCalledComputationParameters(
       adjust_computation(hlo->while_condition(), hlo->operands());
       adjust_computation(hlo->while_body(), hlo->operands());
       break;
+    case HloOpcode::kConditional:
+      for (int64 i = 0; i < hlo->branch_count(); ++i) {
+        adjust_computation(hlo->branch_computation(i),
+                           {hlo->mutable_operand(i + 1)});
+      }
+      break;
     default:
       break;
   }
@@ -508,6 +561,11 @@ void BFloat16Propagation::AdjustCalledComputationRoot(HloInstruction* hlo) {
       break;
     case HloOpcode::kWhile:
       adjust_computation(hlo->while_body(), hlo);
+      break;
+    case HloOpcode::kConditional:
+      for (auto* branch : hlo->branch_computations()) {
+        adjust_computation(branch, hlo);
+      }
       break;
     default:
       break;
@@ -590,6 +648,11 @@ bool BFloat16Propagation::ResolveInconsistencyOfAliasingBuffersHelper(
     } else if (hlo->opcode() == HloOpcode::kFusion) {
       ResolveInconsistencyOfAliasingBuffersHelper(
           hlo->fused_instructions_computation(), visited_computations);
+    } else if (hlo->opcode() == HloOpcode::kConditional) {
+      for (auto* branch : hlo->branch_computations()) {
+        ResolveInconsistencyOfAliasingBuffersHelper(branch,
+                                                    visited_computations);
+      }
     }
   }
   // Now adjust parameters of called computations.

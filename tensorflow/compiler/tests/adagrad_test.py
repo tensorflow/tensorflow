@@ -40,7 +40,7 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
         ada_opt = adagrad.AdagradOptimizer(3.0, initial_accumulator_value=0.1)
         ada_update = ada_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
@@ -68,7 +68,7 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
             constant_op.constant(3.0), initial_accumulator_value=0.1)
         ada_update = ada_opt.apply_gradients(
             zip([grads0, grads1], [var0, var1]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         # Fetch params to validate initial values
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))
         self.assertAllClose([3.0, 4.0], self.evaluate(var1))
@@ -104,7 +104,7 @@ class AdagradOptimizerTest(xla_test.XLATestCase):
         self.assertEqual(slot0.get_shape(), var0.get_shape())
         slot1 = ada_opt.get_slot(var1, "accumulator")
         self.assertEqual(slot1.get_shape(), var1.get_shape())
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
         # Fetch params to validate initial values.
         self.assertAllClose([1.0, 2.0], self.evaluate(var0))

@@ -122,7 +122,7 @@ struct LaunchMatMulBase {
   static void launch(
       OpKernelContext* ctx, const Tensor& a, const Tensor& b,
       const Eigen::array<Eigen::IndexPair<Eigen::DenseIndex>, 1>& dim_pair,
-      std::vector<AlgorithmType>* algorithms, bool use_aututone, Tensor* out) {
+      std::vector<AlgorithmType>* algorithms, bool use_autotune, Tensor* out) {
 #ifndef TENSORFLOW_USE_SYCL
     // An explicit vector-matrix multiply is much better optimized than an
     // implicit one and this is a bottleneck during non-batched inference.
@@ -581,21 +581,14 @@ struct MatMulFunctor<SYCLDevice, T> {
                               .Label("cublas"),                    \
                           MatMulOp<GPUDevice, T, true /* cublas */>)
 
-TF_CALL_float(REGISTER_CPU);
-TF_CALL_double(REGISTER_CPU);
-TF_CALL_half(REGISTER_CPU);
-TF_CALL_bfloat16(REGISTER_CPU);
 TF_CALL_int32(REGISTER_CPU);
 TF_CALL_int64(REGISTER_CPU);
-TF_CALL_complex64(REGISTER_CPU);
-TF_CALL_complex128(REGISTER_CPU);
+TF_CALL_FLOAT_TYPES(REGISTER_CPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_CPU);
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
-TF_CALL_float(REGISTER_GPU);
-TF_CALL_double(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
-TF_CALL_half(REGISTER_GPU);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_COMPLEX_TYPES(REGISTER_GPU);
 #endif  // GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 
 #ifdef TENSORFLOW_USE_SYCL

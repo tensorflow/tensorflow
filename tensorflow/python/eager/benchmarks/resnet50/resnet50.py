@@ -286,8 +286,8 @@ class ResNet50(tf.keras.Model):
       if pooling == 'avg':
         self.global_pooling = functools.partial(
             tf.reduce_mean,
-            reduction_indices=reduction_indices,
-            keep_dims=False)
+            axis=reduction_indices,
+            keepdims=False)
       elif pooling == 'max':
         self.global_pooling = functools.partial(
             tf.reduce_max, reduction_indices=reduction_indices, keep_dims=False)

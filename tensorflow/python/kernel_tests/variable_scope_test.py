@@ -415,7 +415,7 @@ class VariableScopeTest(test.TestCase):
     self.evaluate(variables_lib.variables_initializer([w]))
     self.assertAllClose(self.evaluate(w.value()), 0.1)
 
-    with self.assertRaisesRegexp(ValueError, "shape"):
+    with self.assertRaisesRegex(ValueError, "shape"):
       # We disallow explicit shape specification when initializer is constant.
       variable_scope.get_variable("u", [1], initializer=init)
 
@@ -431,7 +431,7 @@ class VariableScopeTest(test.TestCase):
     self.assertEqual(t.dtype.base_dtype, dtypes.int32)
 
     # Raise error if `initializer` dtype and `dtype` are not identical.
-    with self.assertRaisesRegexp(ValueError, "don't match"):
+    with self.assertRaisesRegex(ValueError, "don't match"):
       variable_scope.get_variable("s", initializer=init, dtype=dtypes.float64)
 
   # TODO(mihaimaruseac): Not converted to use wrap_function because of
@@ -449,16 +449,16 @@ class VariableScopeTest(test.TestCase):
             "v1", [1], initializer=init_ops.constant_initializer(1))
         add = v1 + v0
       # v0 should be uninitialized.
-      with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
+      with self.assertRaisesRegex(errors.OpError, "uninitialized"):
         self.evaluate(v0)
       # We should be able to initialize and run v1 without initializing
       # v0, even if the variable was created with a control dep on v0.
       self.evaluate(v1.initializer)
       self.assertEqual(1, self.evaluate(v1))
       # v0 should still be uninitialized.
-      with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
+      with self.assertRaisesRegex(errors.OpError, "uninitialized"):
         self.evaluate(v0)
-      with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
+      with self.assertRaisesRegex(errors.OpError, "uninitialized"):
         self.evaluate(add)
       # If we initialize v0 we should be able to run 'add'.
       self.evaluate(v0.initializer)
@@ -512,10 +512,10 @@ class VariableScopeTest(test.TestCase):
       self.evaluate(v2.initializer)
       self.assertEqual([2], self.evaluate(v2))
       # v0 should still be uninitialized.
-      with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
+      with self.assertRaisesRegex(errors.OpError, "uninitialized"):
         self.evaluate(v0)
       # We should not be able to run 'add' yet.
-      with self.assertRaisesRegexp(errors.OpError, "uninitialized"):
+      with self.assertRaisesRegex(errors.OpError, "uninitialized"):
         self.evaluate(add)
       # If we initialize v0 we should be able to run 'add'.
       self.evaluate(v0.initializer)
@@ -1061,19 +1061,19 @@ class VariableScopeTest(test.TestCase):
   @run_inside_wrap_function_in_eager_mode
   def testAuxiliaryNameScopeIsInvalid(self):
     with self.cached_session():
-      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+      with self.assertRaisesRegex(TypeError, "auxiliary_name_scope"):
         with variable_scope.variable_scope(
             None, default_name="scope", auxiliary_name_scope="invalid"):
           pass
 
-      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+      with self.assertRaisesRegex(TypeError, "auxiliary_name_scope"):
         with variable_scope.variable_scope(
             "scope", auxiliary_name_scope="invalid"):
           pass
 
       with variable_scope.variable_scope("scope") as scope:
         pass
-      with self.assertRaisesRegexp(TypeError, "auxiliary_name_scope"):
+      with self.assertRaisesRegex(TypeError, "auxiliary_name_scope"):
         with variable_scope.variable_scope(
             scope, auxiliary_name_scope="invalid"):
           pass
@@ -1350,7 +1350,7 @@ class VariableScopeTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode
   def testGetVariableWithInitializerWhichTakesUnprovidedArgsAndNoShape(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "The initializer passed is not valid. It should be a callable with no "
         "arguments and the shape should not be provided or an instance of "
@@ -1369,7 +1369,7 @@ class VariableScopeTest(test.TestCase):
           with variable_scope.variable_scope("_"):
             pass
 
-    self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
+    self.assertRaisesRegex(ValueError, "'_' is not a valid scope name", f)
 
 
 def axis0_into1_partitioner(shape=None, **unused_kwargs):
@@ -1415,7 +1415,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
 
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into3_partitioner, reuse=True):
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           "Trying to reuse partitioned variable .* but specified partitions "
           ".* and found partitions .*"):
@@ -1423,7 +1423,7 @@ class VariableScopeWithPartitioningTest(test.TestCase):
 
     with variable_scope.variable_scope(
         "scope0", partitioner=axis0_into1_partitioner, reuse=True):
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError,
           "Trying to reuse partitioned variable .* but specified partitions "
           ".* and found partitions .*"):
@@ -1523,12 +1523,10 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   @run_inside_wrap_function_in_eager_mode
   def testNonCallableGetterFails(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 r"custom_getter .* not callable:"):
+    with self.assertRaisesRegex(ValueError, r"custom_getter .* not callable:"):
       with variable_scope.variable_scope("scope0", custom_getter=3):
         variable_scope.get_variable("name0")
-    with self.assertRaisesRegexp(ValueError,
-                                 r"custom_getter .* not callable:"):
+    with self.assertRaisesRegex(ValueError, r"custom_getter .* not callable:"):
       variable_scope.get_variable("name0", custom_getter=3)
 
   @test_util.run_in_graph_and_eager_modes
@@ -1811,7 +1809,7 @@ class VariableScopeMultithreadedTest(test.TestCase):
         with variable_scope.variable_scope("foo"):
           if i == 0:
             v = variable_scope.get_variable("v", [])
-            self.assertEquals("foo/v:0", v.name)
+            self.assertEqual("foo/v:0", v.name)
           else:
             # Any thread after the first one should fail to create variable
             # with the same name.
@@ -1841,7 +1839,7 @@ class VariableScopeMultithreadedTest(test.TestCase):
         with variable_scope.variable_scope("foo"):
           if i == 0:
             v = variable_scope.get_variable("v", [])
-            self.assertEquals("foo/v:0", v.name)
+            self.assertEqual("foo/v:0", v.name)
           else:
             # Any thread after the first one should fail to create variable
             # with the same name.
@@ -1881,12 +1879,12 @@ class VariableScopeMultithreadedTest(test.TestCase):
         with variable_scope.variable_scope(main_thread_scope):
           with variable_scope.variable_scope("foo"):
             v = variable_scope.get_variable("v", [])
-            self.assertEquals("main/foo/v:0", v.name)
+            self.assertEqual("main/foo/v:0", v.name)
 
         # Variable created outside main scope will not have prefix "main".
         with variable_scope.variable_scope("bar"):
           v = variable_scope.get_variable("v", [])
-          self.assertEquals("bar/v:0", v.name)
+          self.assertEqual("bar/v:0", v.name)
 
     graph = ops.get_default_graph()
     with variable_scope.variable_scope("main") as main_thread_scope:

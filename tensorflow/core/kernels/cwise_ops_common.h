@@ -22,7 +22,7 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 #ifdef TENSORFLOW_USE_SYCL
 #include "tensorflow/core/kernels/cwise_ops_sycl_common.h"
@@ -346,7 +346,7 @@ void Assign(const D& d, Out out, Rhs rhs) {
 }
 
 // Partial specialization of BinaryFunctor<Device=CPUDevice, Functor, NDIMS>
-// for functors with with no error checking.
+// for functors with no error checking.
 template <typename Functor, int NDIMS>
 struct BinaryFunctor<CPUDevice, Functor, NDIMS, false> {
   void operator()(const CPUDevice& d, typename Functor::tout_type out,
@@ -405,7 +405,7 @@ struct BinaryFunctor<CPUDevice, Functor, NDIMS, false> {
 };
 
 // Partial specialization of BinaryFunctor<Device=CPUDevice, Functor, 2>
-// for functors with with no error checking.
+// for functors with no error checking.
 template <typename Functor>
 struct BinaryFunctor<CPUDevice, Functor, 2, false> {
   enum { NDIMS = 2 };
@@ -472,7 +472,7 @@ struct BinaryFunctor<CPUDevice, Functor, 2, false> {
     typename Functor::func func;
     if (Functor::use_bcast_optimization && use_bcast_optimization<T>::value) {
       // Optimize for speed by using Eigen::type2index and avoid
-      // .broadcast() when we know its a no-op.
+      // .broadcast() when we know it's a no-op.
       //
       // Here, we need to handle 6 cases depending on how many "1"
       // exist in in0 and in1's shapes (4 numbers in total). It's not

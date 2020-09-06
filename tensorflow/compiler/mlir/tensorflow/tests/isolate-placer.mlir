@@ -1,5 +1,6 @@
-// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=IsolatePlacerInspectionRequiredOpsPass  | FileCheck %s
+// RUN: tf-opt %s --run-tf-graph-optimization --graph-passes=IsolatePlacerInspectionRequiredOpsPass | FileCheck %s
 
+module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, producer = 130 : i32}} {
 func @main() {
   tf_executor.graph {
     %0:2 = tf_executor.island wraps "tf.VarHandleOp"() {container = "c", shared_name = "n"} : () -> tensor<!tf.resource<tensor<8xf32>>>
@@ -14,6 +15,7 @@ func @foo(%arg0: tensor<!tf.resource>) -> tensor<!tf.resource> {
     tf_executor.fetch %arg0 : tensor<!tf.resource>
   }
   return %graph : tensor<!tf.resource>
+}
 }
 
 // The IsolatePlacerInspectionRequiredOpsPass adds Identities for each input/output of function-calling ops.

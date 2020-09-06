@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_INTERNAL_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_INTERNAL_H_
 
-#include <cstdint>
+#include <stddef.h>
+
 #include <limits>
-#include <memory>
 #include <vector>
 
 #include "absl/memory/memory.h"
@@ -46,7 +46,7 @@ bool CompareBySize(const TensorUsageWithIndex<size_t>& first,
                    const TensorUsageWithIndex<size_t>& second);
 
 // TaskProfile is a vector with information about all intermediate tensors, that
-// should exist in memory during the executon of the task. Elements of the
+// should exist in memory during the execution of the task. Elements of the
 // vector must be sorted in non-increasing order of corresponding tensors sizes.
 using TaskProfile = std::vector<TensorUsageWithIndex<size_t>>;
 

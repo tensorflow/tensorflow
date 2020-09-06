@@ -19,7 +19,9 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/executor_factory.h"
+#include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/local_device.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -62,8 +64,10 @@ Benchmark::Benchmark(const string& device, Graph* g,
   // Allow NewDevice to allocate a new threadpool with different number of
   // threads for each new benchmark.
   LocalDevice::set_use_global_threadpool(false);
-  device_ =
-      DeviceFactory::NewDevice(t, *options, "/job:localhost/replica:0/task:0");
+
+  device_mgr_ = absl::make_unique<StaticDeviceMgr>(
+      DeviceFactory::NewDevice(t, *options, "/job:localhost/replica:0/task:0"));
+  device_ = device_mgr_->ListDevices()[0];
   CHECK(device_) << "Could not create a " << device << " device";
 
   pool_ =
@@ -81,13 +85,24 @@ Benchmark::Benchmark(const string& device, Graph* g,
 
   const int graph_def_version = g->versions().producer();
 
+  flib_def_ = absl::make_unique<FunctionLibraryDefinition>(g->flib_def());
+
+  pflr_ = std::unique_ptr<ProcessFunctionLibraryRuntime>(
+      new ProcessFunctionLibraryRuntime(
+          device_mgr_.get(), Env::Default(), nullptr, graph_def_version,
+          flib_def_.get(), OptimizerOptions(), pool_, nullptr, nullptr, nullptr,
+          Rendezvous::Factory()));
+
+  flr_ = pflr_->GetFLR(device_->name());
+
   LocalExecutorParams params;
-  params.device = device_.get();
-  params.function_library = nullptr;
-  params.create_kernel = [this, graph_def_version](const NodeDef& ndef,
-                                                   OpKernel** kernel) {
-    return CreateNonCachedKernel(device_.get(), nullptr, ndef,
-                                 graph_def_version, kernel);
+  params.device = device_;
+  params.function_library = flr_;
+  params.create_kernel = [this, graph_def_version](
+                             const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+    return CreateNonCachedKernel(device_, flr_, props, graph_def_version,
+                                 kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
@@ -108,11 +123,12 @@ Benchmark::Benchmark(const string& device, Graph* g,
 Benchmark::~Benchmark() {
   if (device_) {
     rendez_->Unref();
-    // We delete `exec_` before `device_` because the `exec_` destructor may
+    // We delete `exec_` before `device_mgr_` because the `exec_` destructor may
     // run kernel destructors that may attempt to access state borrowed from
-    // `device_`, such as the resource manager.
+    // `device_mgr_`, such as the resource manager.
     exec_.reset();
-    device_.reset();
+    pflr_.reset();
+    device_mgr_.reset();
     delete pool_;
   }
 }

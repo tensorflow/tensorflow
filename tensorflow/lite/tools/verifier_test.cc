@@ -428,6 +428,19 @@ TEST(VerifyModel, UseUnsupportedCustomOps) {
                   "Unsupported custom op: Not supported, version: 1"));
 }
 
+TEST(VerifyModel, UseUnnamedCustomOps) {
+  TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"NewOp"});
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output");
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "Invalid custom op name, cannot be null/empty."));
+}
+
 TEST(VerifyModel, UnpopulatedInputToOp) {
   TfLiteFlatbufferModelBuilder builder({}, {"test"});
   builder.AddOperator({1, 2}, {3}, BuiltinOperator_CUSTOM, "test");
@@ -613,7 +626,8 @@ TEST(VerifyModel, InvalidSparseTensorIndexOutOfBound) {
   scoped_model.reset(model->GetModel()->UnPack());
 
   auto* tensor = scoped_model->subgraphs[0]->tensors[0].get();
-  tensor->sparsity->dim_metadata[1]->array_indices[1] = 5;
+  tensor->sparsity->dim_metadata[1]->array_indices.AsUint8Vector()->values[1] =
+      5;
 
   flatbuffers::FlatBufferBuilder builder;
   auto model_ = Model::Pack(builder, scoped_model.get());
@@ -693,8 +707,10 @@ TEST(VerifyModel, ValidSparseTensorBCSC) {
   tensor->sparsity->dim_metadata[0]->dense_size = 2;
 
   tensor->sparsity->dim_metadata[1]->format = DimensionType_SPARSE_CSR;
-  tensor->sparsity->dim_metadata[1]->array_segments = {0, 1, 3};
-  tensor->sparsity->dim_metadata[1]->array_indices = {0, 0, 1};
+  tensor->sparsity->dim_metadata[1]->array_segments.AsUint8Vector()->values = {
+      0, 1, 3};
+  tensor->sparsity->dim_metadata[1]->array_indices.AsUint8Vector()->values = {
+      0, 0, 1};
 
   tensor->sparsity->dim_metadata[2]->format = DimensionType_DENSE;
   tensor->sparsity->dim_metadata[2]->dense_size = 2;

@@ -48,7 +48,7 @@ using reference_ops::BroadcastGreaterEqual;
 using reference_ops::BroadcastLess;
 using reference_ops::BroadcastLessEqual;
 using reference_ops::BroadcastMul4DSlow;
-using reference_ops::BroadcastSub4DSlow;
+using reference_ops::BroadcastSubSlow;
 using reference_ops::Concatenation;
 using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
@@ -512,10 +512,11 @@ struct LegacyPerChannelDepthwiseConvWorkerTask : public gemmlowp::Task {
         thread_dim_(thread_dim) {}
 
   void Run() override {
+    CpuBackendContext backend_context;
     optimized_integer_ops::DepthwiseConvImpl(
         params_, output_multiplier_, output_shift_, input_shape_, input_data_,
         filter_shape_, filter_data_, bias_shape_, bias_data_, output_shape_,
-        output_data_, thread_start_, thread_end_, thread_dim_);
+        output_data_, thread_start_, thread_end_, thread_dim_, backend_context);
   }
 
  private:
@@ -568,11 +569,12 @@ inline void DepthwiseConvPerChannel(
   thread_count = std::max(1, std::min(thread_count, max_threads));
 
   if (thread_count == 1) {
+    CpuBackendContext backend_context;
     optimized_integer_ops::DepthwiseConvImpl(
         params, output_multiplier, output_shift, input_shape, input_data,
         filter_shape, filter_data, bias_shape, bias_data, output_shape,
         output_data, /*thread_start=*/0,
-        /*thread_end=*/output_rows, /*thread_dim=*/1);
+        /*thread_end=*/output_rows, /*thread_dim=*/1, backend_context);
   } else {
     std::vector<gemmlowp::Task*> tasks(thread_count);
     int thread_start = 0;
@@ -2944,6 +2946,18 @@ inline void TransposeConv(const float* input_data, const Dims<4>& input_dims,
                 output_data, DimsToShape(im2col_dims), im2col_data);
 }
 
+inline void TransposeConvV2(
+    const ConvParams& params, const RuntimeShape& input_shape,
+    const float* input_data, const RuntimeShape& hwoi_ordered_filter_shape,
+    const float* hwoi_ordered_filter_data, const RuntimeShape& output_shape,
+    float* output_data, const RuntimeShape& col2im_shape, float* col2im_data,
+    CpuBackendContext* cpu_backend_context) {
+  TransposeConvV2(params, input_shape, input_data, hwoi_ordered_filter_shape,
+                  hwoi_ordered_filter_data, /*bias_shape*/ RuntimeShape(),
+                  /*bias_data*/ nullptr, output_shape, output_data,
+                  col2im_shape, col2im_data, cpu_backend_context);
+}
+
 template <typename T>
 void TransposeIm2col(const T* input_data, const Dims<4>& input_dims,
                      const Dims<4>& filter_dims, int stride_width,
@@ -3427,9 +3441,9 @@ void BroadcastDiv(const T* input1_data, const Dims<4>& input1_dims,
   tflite::ArithmeticParams op_params;
   SetActivationParams(output_activation_min, output_activation_max, &op_params);
 
-  BroadcastDiv4DSlow(op_params, DimsToShape(input1_dims), input1_data,
-                     DimsToShape(input2_dims), input2_data,
-                     DimsToShape(output_dims), output_data);
+  BroadcastDivSlow(op_params, DimsToShape(input1_dims), input1_data,
+                   DimsToShape(input2_dims), input2_data,
+                   DimsToShape(output_dims), output_data);
 }
 
 template <FusedActivationFunctionType Ac>

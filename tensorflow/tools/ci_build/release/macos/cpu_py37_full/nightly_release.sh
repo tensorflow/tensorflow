@@ -17,12 +17,7 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-
-# Install latest bazel
-update_bazel_macos
-which bazel
-
-set_bazel_outdir
+install_bazelisk
 
 # Pick a version of xcode
 export DEVELOPER_DIR=/Applications/Xcode_10.3.app/Contents/Developer
@@ -38,13 +33,12 @@ sudo pip install twine
 ./tensorflow/tools/ci_build/update_version.py --nightly
 
 # Run configure.
-export TF_NEED_CUDA=0
 export CC_OPT_FLAGS='-mavx'
 export PYTHON_BIN_PATH=$(which python3.7)
 yes "" | "$PYTHON_BIN_PATH" configure.py
 
 # Build the pip package
-bazel build --config=opt --config=v2 tensorflow/tools/pip_package:build_pip_package
+bazel build --config=release_cpu_macos tensorflow/tools/pip_package:build_pip_package
 mkdir pip_pkg
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package pip_pkg --cpu --nightly_flag
 

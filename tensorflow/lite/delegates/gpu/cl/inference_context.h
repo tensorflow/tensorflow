@@ -20,9 +20,9 @@ limitations under the License.
 #include <functional>
 #include <map>
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/delegates/gpu/cl/buffer.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_command_queue.h"
 #include "tensorflow/lite/delegates/gpu/cl/environment.h"
@@ -40,14 +40,11 @@ namespace gpu {
 namespace cl {
 
 struct CLNode {
-  std::vector<std::unique_ptr<GPUOperation>> operations;
+  std::unique_ptr<GPUOperation> operation;
   std::vector<ValueId> inputs;
   std::vector<ValueId> outputs;
-  // So as CLNode can have few operations, ranges keep range of ids from inputs,
-  // for every operation.
-  std::vector<int2> ranges;
 
-  // Mostly for debug purposess.
+  // Mostly for debug purposes.
   std::string name;
 
   CLNode() = default;
@@ -65,56 +62,60 @@ class InferenceContext {
     TensorStorageType storage_type;
     ModelHints hints;
   };
-  Status InitFromGraph(const CreateInferenceInfo& create_info,
-                       const GraphFloat32& graph, Environment* env);
+  absl::Status InitFromGraph(const CreateInferenceInfo& create_info,
+                             const GraphFloat32& graph, Environment* env);
 
   // Applies OpenCL-specific transformations to the graph before the
   // initialization. These transformations are either impossible or useless in
   // other backends.
-  Status InitFromGraphWithTransforms(const CreateInferenceInfo& create_info,
-                                     GraphFloat32* graph, Environment* env);
+  absl::Status InitFromGraphWithTransforms(
+      const CreateInferenceInfo& create_info, GraphFloat32* graph,
+      Environment* env);
 
-  Status AddToQueue(CLCommandQueue* queue);
-  Status Profile(ProfilingCommandQueue* queue, ProfilingInfo* result);
+  absl::Status AddToQueue(CLCommandQueue* queue);
+  absl::Status Profile(ProfilingCommandQueue* queue, ProfilingInfo* result);
   // for profiling and memory statistics
   uint64_t GetSizeOfMemoryAllocatedForIntermediateTensors() const;
 
-  Status SetInputTensor(ValueId id, const TensorFloat32& tensor,
-                        CLCommandQueue* queue);
+  absl::Status SetInputTensor(ValueId id, const TensorFloat32& tensor,
+                              CLCommandQueue* queue);
 
   // It will work only with input/output tensor ids. For all other ids we don't
   // have any guarantees.
   Tensor* GetTensor(ValueId id);
 
-  Status GetOutputTensor(ValueId id, CLCommandQueue* queue,
-                         TensorFloat32* result);
+  absl::Status GetOutputTensor(ValueId id, CLCommandQueue* queue,
+                               TensorFloat32* result);
 
  private:
   void CopyInAndOutIds(const GraphFloat32& graph);
-  Status ConvertOperations(const CreationContext& creation_context,
-                           const GraphFloat32& graph, ModelHints hints);
+  absl::Status ConvertOperations(const DeviceInfo& device_info,
+                                 const GraphFloat32& graph, ModelHints hints);
   void CreateLinks();
   void ReserveGraphTensors(const CreateInferenceInfo& create_info,
-                           const CreationContext& creation_context,
+                           const DeviceInfo& device_info,
                            const GraphFloat32& graph);
-  void Merge();
-  Status AllocateMemory(const CLDevice& device, CLContext* context);
+  absl::Status Merge();
+  absl::Status AllocateMemory(CLContext* context);
 
-  Status AllocateMemoryForBuffers(const CLDevice& device, CLContext* context);
+  absl::Status AllocateMemoryForBuffers(CLContext* context);
 
-  Status AllocateMemoryForStrongShapes(const CLDevice& device,
-                                       CLContext* context);
+  absl::Status AllocateMemoryForStrongShapes(CLContext* context);
 
   // utility function
   void GetUsages(const std::function<bool(const TensorDescriptor&)>& functor,
                  std::map<ValueId, int2>* usages);
 
   void BindMemoryToOperations();
-  Status Compile(const CreationContext& creation_context);
-  Status Tune(const TuningParameters& tuning_parameters);
+  absl::Status Compile(const CreationContext& creation_context);
+  absl::Status Tune(const TuningParameters& tuning_parameters);
+  absl::Status UpdateParams();
 
   // performance hacks
   bool need_flush_ = false;
+
+  bool flush_periodically_ = false;
+  int flush_period_ = 1;
 
   // In order to reduce memory leak on Mali a pipeline needs to be synchronized
   // with CPU to prevent growing internal global OpenCL kernel pool. One trick
@@ -126,8 +127,8 @@ class InferenceContext {
   CalculationsPrecision precision_;
   TensorStorageType storage_type_;
 
-  // Directly mapped nodes from graph, but some of them "inactiv" due
-  //  to fusion (inactiv = fused).
+  // Directly mapped nodes from graph, but some of them "inactive" due
+  //  to fusion (inactive = fused).
   // Memory is allocated only once, in ConvertOperations, and is not modified
   //  anywhere.
   std::vector<CLNode> nodes_;
@@ -154,7 +155,7 @@ class InferenceContext {
     DummyTensor Get(ValueId id) { return reservations_[id]; }
 
    private:
-    std::unordered_map<ValueId, DummyTensor> reservations_;
+    absl::flat_hash_map<ValueId, DummyTensor> reservations_;
     ValueId next_;
   };
   TensorReserver tensor_reserver_;
@@ -172,7 +173,7 @@ class InferenceContext {
 };
 
 // Runs OpenCL specific transforms for the graph.
-Status RunGraphTransforms(GraphFloat32* graph);
+absl::Status RunGraphTransforms(GraphFloat32* graph);
 
 }  // namespace cl
 }  // namespace gpu

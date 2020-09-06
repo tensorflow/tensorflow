@@ -109,7 +109,7 @@ class CategoricalOp : public XlaOpKernel {
                                   /*axis=*/class_dimension);
     } else {
       argmax = xla::ArgMax(softmax_entries, xla_output_type,
-                           /*axis=*/class_dimension);
+                           /*axis=*/class_dimension, /*stable=*/true);
     }
 
     if (num_samples == 1) {

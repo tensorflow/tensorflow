@@ -528,9 +528,9 @@ TEST(CommonShapeFnsTest, FusedBatchNormExTest) {
                   .Finalize(&op.node_def));
 
   // Channels are not multiple of 4.
-  INFER_ERROR("must be divisible by 4", op, "[2,2,2,2];[2];[2];[0];[0]");
+  INFER_ERROR("must be divisible by 4", op, "[2,2,2,2];[2];[2];[2];[2]");
 
-  INFER_OK(op, "[2,2,2,4];[4];[4];[0];[0]",
+  INFER_OK(op, "[2,2,2,4];[4];[4];[4];[4]",
            "[d0_0,d0_1,d0_2,d0_3];[d0_3];[d0_3];[d0_3];[d0_3];?");
 }
 

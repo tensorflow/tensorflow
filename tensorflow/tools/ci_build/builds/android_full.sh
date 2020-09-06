@@ -64,6 +64,7 @@ done
 echo "========== Building TensorFlow Android Jar and Demo =========="
 bazel --bazelrc=/dev/null build --config=monolithic --fat_apk_cpu=${CPUS} \
     --compilation_mode=opt --cxxopt=-std=c++14 \
+    --host_crosstool_top=@bazel_tools//tools/cpp:toolchain \
     --spawn_strategy=sandboxed --genrule_strategy=sandboxed \
     //tensorflow/tools/android/inference_interface:android_tensorflow_inference_java \
     //tensorflow/tools/android/inference_interface:android_tensorflow_inference_java.aar \

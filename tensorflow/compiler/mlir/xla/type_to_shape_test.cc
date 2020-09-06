@@ -17,9 +17,10 @@ limitations under the License.
 
 #include <iostream>
 
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/xla/hlo_utils.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -176,6 +177,23 @@ TEST(TypeToShapeTest, ConvertWithShapeRepresentationFn) {
   EXPECT_TRUE(status_or_shape.ok());
   EXPECT_EQ(captured_dtype, tensorflow::DataType::DT_FLOAT);
   EXPECT_EQ(captured_tensor_shape, tensorflow::TensorShape({1, 2, 3}));
+}
+
+TEST(TypeToShapeTest, ConvertMemRefToShape) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(PrimitiveType::F32, {10, 20, 30},
+                                               {2, 0, 1});
+  MLIRContext context;
+  mlir::Builder builder(&context);
+
+  StatusOr<mlir::Type> mlir_type =
+      ConvertShapeToType<MemRefType>(shape, builder);
+  ASSERT_TRUE(mlir_type.ok());
+  mlir::Type type = mlir_type.ConsumeValueOrDie();
+  Shape converted = TypeToShape(type);
+  EXPECT_TRUE(ShapeUtil::Equal(
+      converted, ShapeUtil::MakeShapeWithLayout(PrimitiveType::F32,
+                                                {10, 20, 30}, {2, 0, 1})));
+  EXPECT_TRUE(ShapeUtil::Equal(converted, shape));
 }
 
 }  // namespace

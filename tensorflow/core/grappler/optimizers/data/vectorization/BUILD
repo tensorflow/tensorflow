@@ -52,6 +52,11 @@ cc_library(
 tf_cc_test(
     name = "vectorizer_registry_test",
     srcs = ["vectorizer_registry_test.cc"],
+    tags = [
+        "manual",  # TODO(b/159771496)
+        "no_oss",  # TODO(b/159771496)
+        "notap",  # TODO(b/159771496)
+    ],
     deps = [
         ":vectorizer_registry",
         "//tensorflow/core:test",

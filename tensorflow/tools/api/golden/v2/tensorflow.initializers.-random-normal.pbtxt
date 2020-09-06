@@ -1,7 +1,9 @@
 path: "tensorflow.initializers.RandomNormal"
 tf_class {
+  is_instance: "<class \'tensorflow.python.keras.initializers.initializers_v2.RandomNormal\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops_v2.RandomNormal\'>"
   is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Initializer\'>"
+  is_instance: "<class \'tensorflow.python.keras.initializers.initializers_v2.Initializer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"

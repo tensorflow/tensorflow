@@ -64,8 +64,8 @@ class PreprocessingStageTest(
     self.assertEqual(stage.layers[0].adapt_count, 1)
     self.assertEqual(stage.layers[1].adapt_count, 1)
     self.assertEqual(stage.layers[2].adapt_count, 1)
-    self.assertLess(stage.layers[0].adapt_time, stage.layers[1].adapt_time)
-    self.assertLess(stage.layers[1].adapt_time, stage.layers[2].adapt_time)
+    self.assertLessEqual(stage.layers[0].adapt_time, stage.layers[1].adapt_time)
+    self.assertLessEqual(stage.layers[1].adapt_time, stage.layers[2].adapt_time)
 
     # Check call
     y = stage(array_ops.ones((3, 4)))

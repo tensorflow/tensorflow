@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -72,6 +73,16 @@ double GetFlopMaxThroughputPerSM(const DeviceCapabilities& device_cap) {
   return GetFmaMaxThroughputPerSMPerCycle(device_cap) * 2 *
          device_cap.clock_rate_in_ghz();
 }
+
+HardwareType ParseHardwareType(absl::string_view device_type) {
+  if (device_type == "GPU" || device_type == "Nvidia GPU")
+    return HardwareType::GPU;
+  if (device_type == "CPU") return HardwareType::CPU_ONLY;
+  if (device_type == "TPU") return HardwareType::TPU;
+  return HardwareType::UNKNOWN_HARDWARE;
+}
+
+bool HasDevice(HardwareType x) { return x > tensorflow::profiler::CPU_ONLY; }
 
 }  // namespace profiler
 }  // namespace tensorflow

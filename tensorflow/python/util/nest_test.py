@@ -27,6 +27,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -104,7 +105,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(restructured_from_flat, sample_attr)
 
     # Check that flatten fails if attributes are not iterable
-    with self.assertRaisesRegexp(TypeError, "object is not iterable"):
+    with self.assertRaisesRegex(TypeError, "object is not iterable"):
       flat = nest.flatten(NestTest.BadAttr())
 
   @parameterized.parameters(
@@ -148,11 +149,10 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(
         np.array([5]), nest.pack_sequence_as("scalar", [np.array([5])]))
 
-    with self.assertRaisesRegexp(
-        ValueError, self.unsafe_map_pattern):
+    with self.assertRaisesRegex(ValueError, self.unsafe_map_pattern):
       nest.pack_sequence_as("scalar", [4, 5])
 
-    with self.assertRaisesRegexp(TypeError, self.bad_pack_pattern):
+    with self.assertRaisesRegex(TypeError, self.bad_pack_pattern):
       nest.pack_sequence_as([4, 5], "bad_sequence")
 
     with self.assertRaises(ValueError):
@@ -272,12 +272,11 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(structure, unflattened)
 
   def testPackSequenceAs_notIterableError(self):
-    with self.assertRaisesRegexp(
-        TypeError, self.bad_pack_pattern):
+    with self.assertRaisesRegex(TypeError, self.bad_pack_pattern):
       nest.pack_sequence_as("hi", "bye")
 
   def testPackSequenceAs_wrongLengthsError(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         "Structure had 2 elements, but flat_sequence had 3 elements."):
       nest.pack_sequence_as(["hello", "world"],
@@ -310,13 +309,13 @@ class NestTest(parameterized.TestCase, test.TestCase):
       nest.flatten_dict_items(4)
 
     bad_dictionary = mapping_type({(4, 5, (4, 8)): ("a", "b", ("c", "d"))})
-    with self.assertRaisesRegexp(ValueError, "not unique"):
+    with self.assertRaisesRegex(ValueError, "not unique"):
       nest.flatten_dict_items(bad_dictionary)
 
     another_bad_dictionary = mapping_type({
         (4, 5, (6, 8)): ("a", "b", ("c", ("d", "e")))
     })
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "Key had [0-9]* elements, but value had [0-9]* elements"):
       nest.flatten_dict_items(another_bad_dictionary)
 
@@ -347,7 +346,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     nest.assert_same_structure("abc", np.array([0, 1]))
     nest.assert_same_structure("abc", constant_op.constant([0, 1]))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         ("The two structures don't have the same nested structure\\.\n\n"
          "First structure:.*?\n\n"
@@ -361,7 +360,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
          r"\(\., \.\)")):
       nest.assert_same_structure(structure1, structure_different_num_elements)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         ("The two structures don't have the same nested structure\\.\n\n"
          "First structure:.*?\n\n"
@@ -371,7 +370,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
          "is not")):
       nest.assert_same_structure([0, 1], np.array([0, 1]))
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         ("The two structures don't have the same nested structure\\.\n\n"
          "First structure:.*?\n\n"
@@ -383,10 +382,9 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
     self.assertRaises(TypeError, nest.assert_same_structure, (0, 1), [0, 1])
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        ("don't have the same nested structure\\.\n\n"
-         "First structure: .*?\n\nSecond structure: ")):
+    with self.assertRaisesRegex(ValueError,
+                                ("don't have the same nested structure\\.\n\n"
+                                 "First structure: .*?\n\nSecond structure: ")):
       nest.assert_same_structure(structure1, structure_different_nesting)
 
     self.assertRaises(TypeError, nest.assert_same_structure, (0, 1),
@@ -398,28 +396,24 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertRaises(TypeError, nest.assert_same_structure,
                       NestTest.Named0ab(3, 4), NestTest.Named1ab(3, 4))
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        ("don't have the same nested structure\\.\n\n"
-         "First structure: .*?\n\nSecond structure: ")):
+    with self.assertRaisesRegex(ValueError,
+                                ("don't have the same nested structure\\.\n\n"
+                                 "First structure: .*?\n\nSecond structure: ")):
       nest.assert_same_structure(NestTest.Named0ab(3, 4),
                                  NestTest.Named0ab([3], 4))
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        ("don't have the same nested structure\\.\n\n"
-         "First structure: .*?\n\nSecond structure: ")):
+    with self.assertRaisesRegex(ValueError,
+                                ("don't have the same nested structure\\.\n\n"
+                                 "First structure: .*?\n\nSecond structure: ")):
       nest.assert_same_structure([[3], 4], [3, [4]])
 
     structure1_list = [[[1, 2], 3], 4, [5, 6]]
-    with self.assertRaisesRegexp(TypeError,
-                                 "don't have the same sequence type"):
+    with self.assertRaisesRegex(TypeError, "don't have the same sequence type"):
       nest.assert_same_structure(structure1, structure1_list)
     nest.assert_same_structure(structure1, structure2, check_types=False)
     nest.assert_same_structure(structure1, structure1_list, check_types=False)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "don't have the same set of keys"):
+    with self.assertRaisesRegex(ValueError, "don't have the same set of keys"):
       nest.assert_same_structure({"a": 1}, {"b": 1})
 
     nest.assert_same_structure(NestTest.SameNameab(0, 1),
@@ -432,7 +426,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
         NestTest.SameNameab2(NestTest.SameName1xy2(2, 3), 4))
 
     expected_message = "The two structures don't have the same.*"
-    with self.assertRaisesRegexp(ValueError, expected_message):
+    with self.assertRaisesRegex(ValueError, expected_message):
       nest.assert_same_structure(
           NestTest.SameNameab(0, NestTest.SameNameab2(1, 2)),
           NestTest.SameNameab2(NestTest.SameNameab(0, 1), 2))
@@ -491,41 +485,39 @@ class NestTest(parameterized.TestCase, test.TestCase):
     # This is checking actual equality of types, empty list != empty tuple
     self.assertNotEqual((), nest.map_structure(lambda x: x + 1, []))
 
-    with self.assertRaisesRegexp(TypeError, "callable"):
+    with self.assertRaisesRegex(TypeError, "callable"):
       nest.map_structure("bad", structure1_plus1)
 
-    with self.assertRaisesRegexp(ValueError, "at least one structure"):
+    with self.assertRaisesRegex(ValueError, "at least one structure"):
       nest.map_structure(lambda x: x)
 
-    with self.assertRaisesRegexp(ValueError, "same number of elements"):
+    with self.assertRaisesRegex(ValueError, "same number of elements"):
       nest.map_structure(lambda x, y: None, (3, 4), (3, 4, 5))
 
-    with self.assertRaisesRegexp(ValueError, "same nested structure"):
+    with self.assertRaisesRegex(ValueError, "same nested structure"):
       nest.map_structure(lambda x, y: None, 3, (3,))
 
-    with self.assertRaisesRegexp(TypeError, "same sequence type"):
+    with self.assertRaisesRegex(TypeError, "same sequence type"):
       nest.map_structure(lambda x, y: None, ((3, 4), 5), [(3, 4), 5])
 
-    with self.assertRaisesRegexp(ValueError, "same nested structure"):
+    with self.assertRaisesRegex(ValueError, "same nested structure"):
       nest.map_structure(lambda x, y: None, ((3, 4), 5), (3, (4, 5)))
 
     structure1_list = [[[1, 2], 3], 4, [5, 6]]
-    with self.assertRaisesRegexp(TypeError, "same sequence type"):
+    with self.assertRaisesRegex(TypeError, "same sequence type"):
       nest.map_structure(lambda x, y: None, structure1, structure1_list)
 
     nest.map_structure(lambda x, y: None, structure1, structure1_list,
                        check_types=False)
 
-    with self.assertRaisesRegexp(ValueError, "same nested structure"):
+    with self.assertRaisesRegex(ValueError, "same nested structure"):
       nest.map_structure(lambda x, y: None, ((3, 4), 5), (3, (4, 5)),
                          check_types=False)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Only valid keyword argument.*foo"):
+    with self.assertRaisesRegex(ValueError, "Only valid keyword argument.*foo"):
       nest.map_structure(lambda x: None, structure1, foo="a")
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Only valid keyword argument.*foo"):
+    with self.assertRaisesRegex(ValueError, "Only valid keyword argument.*foo"):
       nest.map_structure(lambda x: None, structure1, check_types=False, foo="a")
 
   ABTuple = collections.namedtuple("ab_tuple", "a, b")  # pylint: disable=invalid-name
@@ -550,30 +542,31 @@ class NestTest(parameterized.TestCase, test.TestCase):
     self.assertEqual(nt.a[1][::-1], rev_nt.a[1])
     self.assertEqual(nt.b[::-1], rev_nt.b)
 
-  @test_util.run_deprecated_v1
   def testMapStructureOverPlaceholders(self):
-    inp_a = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
-             array_ops.placeholder(dtypes.float32, shape=[3, 7]))
-    inp_b = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
-             array_ops.placeholder(dtypes.float32, shape=[3, 7]))
+    # Test requires placeholders and thus requires graph mode
+    with ops.Graph().as_default():
+      inp_a = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
+               array_ops.placeholder(dtypes.float32, shape=[3, 7]))
+      inp_b = (array_ops.placeholder(dtypes.float32, shape=[3, 4]),
+               array_ops.placeholder(dtypes.float32, shape=[3, 7]))
 
-    output = nest.map_structure(lambda x1, x2: x1 + x2, inp_a, inp_b)
+      output = nest.map_structure(lambda x1, x2: x1 + x2, inp_a, inp_b)
 
-    nest.assert_same_structure(output, inp_a)
-    self.assertShapeEqual(np.zeros((3, 4)), output[0])
-    self.assertShapeEqual(np.zeros((3, 7)), output[1])
+      nest.assert_same_structure(output, inp_a)
+      self.assertShapeEqual(np.zeros((3, 4)), output[0])
+      self.assertShapeEqual(np.zeros((3, 7)), output[1])
 
-    feed_dict = {
-        inp_a: (np.random.randn(3, 4), np.random.randn(3, 7)),
-        inp_b: (np.random.randn(3, 4), np.random.randn(3, 7))
-    }
+      feed_dict = {
+          inp_a: (np.random.randn(3, 4), np.random.randn(3, 7)),
+          inp_b: (np.random.randn(3, 4), np.random.randn(3, 7))
+      }
 
-    with self.cached_session() as sess:
-      output_np = sess.run(output, feed_dict=feed_dict)
-    self.assertAllClose(output_np[0],
-                        feed_dict[inp_a][0] + feed_dict[inp_b][0])
-    self.assertAllClose(output_np[1],
-                        feed_dict[inp_a][1] + feed_dict[inp_b][1])
+      with self.cached_session() as sess:
+        output_np = sess.run(output, feed_dict=feed_dict)
+      self.assertAllClose(output_np[0],
+                          feed_dict[inp_a][0] + feed_dict[inp_b][0])
+      self.assertAllClose(output_np[1],
+                          feed_dict[inp_a][1] + feed_dict[inp_b][1])
 
   def testAssertShallowStructure(self):
     inp_ab = ["a", "b"]
@@ -725,14 +718,14 @@ class NestTest(parameterized.TestCase, test.TestCase):
     shallow_tree = ["shallow_tree"]
     expected_message = ("If shallow structure is a sequence, input must also "
                         "be a sequence. Input has type: <(type|class) 'str'>.")
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, shallow_tree)
 
     input_tree = "input_tree"
     shallow_tree = ["shallow_tree_9", "shallow_tree_8"]
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, shallow_tree)
@@ -742,14 +735,14 @@ class NestTest(parameterized.TestCase, test.TestCase):
     shallow_tree = [9]
     expected_message = ("If shallow structure is a sequence, input must also "
                         "be a sequence. Input has type: <(type|class) 'int'>.")
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, shallow_tree)
 
     input_tree = 0
     shallow_tree = [9, 8]
-    with self.assertRaisesRegexp(TypeError, expected_message):
+    with self.assertRaisesRegex(TypeError, expected_message):
       flattened_input_tree = nest.flatten_up_to(shallow_tree, input_tree)
     flattened_shallow_tree = nest.flatten_up_to(shallow_tree, shallow_tree)
     self.assertEqual(flattened_shallow_tree, shallow_tree)
@@ -758,7 +751,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
     shallow_tree = [(1,), (2,)]
     expected_message = nest._STRUCTURES_HAVE_MISMATCHING_LENGTHS.format(
         input_length=len(input_tree), shallow_length=len(shallow_tree))
-    with self.assertRaisesRegexp(ValueError, expected_message):  # pylint: disable=g-error-prone-assert-raises
+    with self.assertRaisesRegex(ValueError, expected_message):  # pylint: disable=g-error-prone-assert-raises
       nest.assert_shallow_structure(shallow_tree, input_tree)
 
   def testFlattenWithTuplePathsUpTo(self):
@@ -1074,14 +1067,14 @@ class NestTest(parameterized.TestCase, test.TestCase):
     nest.assert_shallow_structure(structure_traverse_r,
                                   structure_traverse_input)
 
-    with self.assertRaisesRegexp(TypeError, "returned structure"):
+    with self.assertRaisesRegex(TypeError, "returned structure"):
       nest.get_traverse_shallow_structure(lambda _: [True], 0)
 
-    with self.assertRaisesRegexp(TypeError, "returned a non-bool scalar"):
+    with self.assertRaisesRegex(TypeError, "returned a non-bool scalar"):
       nest.get_traverse_shallow_structure(lambda _: 1, [1])
 
-    with self.assertRaisesRegexp(
-        TypeError, "didn't return a depth=1 structure of bools"):
+    with self.assertRaisesRegex(TypeError,
+                                "didn't return a depth=1 structure of bools"):
       nest.get_traverse_shallow_structure(lambda _: [1], [1])
 
   def testYieldFlatStringPaths(self):
@@ -1214,7 +1207,7 @@ class NestTest(parameterized.TestCase, test.TestCase):
 
   def testFlattenCustomSequenceThatRaisesException(self):  # b/140746865
     seq = _CustomSequenceThatRaisesException()
-    with self.assertRaisesRegexp(ValueError, "Cannot get item"):
+    with self.assertRaisesRegex(ValueError, "Cannot get item"):
       nest.flatten(seq)
 
   def testListToTuple(self):
@@ -1224,6 +1217,18 @@ class NestTest(parameterized.TestCase, test.TestCase):
         nest.list_to_tuple(input_sequence),
         expected,
     )
+
+  def testInvalidCheckTypes(self):
+    with self.assertRaises((ValueError, TypeError)):
+      nest.assert_same_structure(
+          nest1=array_ops.zeros((1)),
+          nest2=array_ops.ones((1, 1, 1)),
+          check_types=array_ops.ones((2)))
+    with self.assertRaises((ValueError, TypeError)):
+      nest.assert_same_structure(
+          nest1=array_ops.zeros((1)),
+          nest2=array_ops.ones((1, 1, 1)),
+          expand_composites=array_ops.ones((2)))
 
 
 class NestBenchmark(test.Benchmark):

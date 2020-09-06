@@ -1,0 +1,20 @@
+op {
+  name: "MultiDeviceIteratorInit"
+  input_arg {
+    name: "dataset"
+    type: DT_VARIANT
+  }
+  input_arg {
+    name: "multi_device_iterator"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "max_buffer_size"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "incarnation_id"
+    type: DT_INT64
+  }
+  is_stateful: true
+}

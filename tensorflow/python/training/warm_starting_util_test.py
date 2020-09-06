@@ -467,7 +467,7 @@ class WarmStartingUtilTest(test.TestCase):
         ws_util.warm_start(self.get_temp_dir(), vars_to_warm_start=[var])
         self.evaluate(variables.global_variables_initializer())
         # Verify weights were correctly warm-started (init overridden to ones).
-        self.assertAllEqual(var.eval(), prev_int_val)
+        self.assertAllEqual(var, prev_int_val)
 
   def testWarmStart_ListOfStrings(self):
     # Save checkpoint from which to warm-start.
@@ -487,7 +487,7 @@ class WarmStartingUtilTest(test.TestCase):
         ws_util.warm_start(self.get_temp_dir(), vars_to_warm_start=["v1"])
         self.evaluate(variables.global_variables_initializer())
         # Verify weights were correctly warm-started (init overridden to ones).
-        self.assertAllEqual(var.eval(), prev_int_val)
+        self.assertAllEqual(var, prev_int_val)
 
   def testWarmStart_ListOfRegexes(self):
     # Save checkpoint from which to warm-start.
@@ -524,10 +524,10 @@ class WarmStartingUtilTest(test.TestCase):
         self.evaluate(variables.global_variables_initializer())
         # Verify the selection of weights were correctly warm-started (init
         # overridden to ones).
-        self.assertAllEqual(v1.eval(), prev_v1_val)
-        self.assertAllEqual(v1_momentum.eval(), prev_v1_momentum_val)
-        self.assertAllEqual(v2.eval(), prev_v2_val)
-        self.assertAllEqual(v2_momentum.eval(), np.zeros([10, 1]))
+        self.assertAllEqual(v1, prev_v1_val)
+        self.assertAllEqual(v1_momentum, prev_v1_momentum_val)
+        self.assertAllEqual(v2, prev_v2_val)
+        self.assertAllEqual(v2_momentum, np.zeros([10, 1]))
 
   def testWarmStart_SparseColumnIntegerized(self):
     # Create feature column.

@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import binascii
 import codecs
+import importlib
 import marshal
 import os
 import re
@@ -44,28 +45,34 @@ _GLOBAL_CUSTOM_NAMES = {}
 _SKIP_FAILED_SERIALIZATION = False
 # If a layer does not have a defined config, then the returned config will be a
 # dictionary with the below key.
-LAYER_UNDEFINED_CONFIG_KEY = 'layer was saved without config'
+_LAYER_UNDEFINED_CONFIG_KEY = 'layer was saved without config'
 
 
-@keras_export('keras.utils.CustomObjectScope')
+@keras_export('keras.utils.custom_object_scope',  # pylint: disable=g-classes-have-attributes
+              'keras.utils.CustomObjectScope')
 class CustomObjectScope(object):
-  """Provides a scope that changes to `_GLOBAL_CUSTOM_OBJECTS` cannot escape.
+  """Exposes custom classes/functions to Keras deserialization internals.
 
-  Code within a `with` statement will be able to access custom objects
-  by name. Changes to global custom objects persist
-  within the enclosing `with` statement. At end of the `with` statement,
-  global custom objects are reverted to state
-  at beginning of the `with` statement.
+  Under a scope `with custom_object_scope(objects_dict)`, Keras methods such
+  as `tf.keras.models.load_model` or `tf.keras.models.model_from_config`
+  will be able to deserialize any custom object referenced by a
+  saved config (e.g. a custom layer or metric).
 
   Example:
 
-  Consider a custom object `MyObject` (e.g. a class):
+  Consider a custom regularizer `my_regularizer`:
 
   ```python
-      with CustomObjectScope({'MyObject':MyObject}):
-          layer = Dense(..., kernel_regularizer='MyObject')
-          # save, load, etc. will recognize custom object by name
+  layer = Dense(3, kernel_regularizer=my_regularizer)
+  config = layer.get_config()  # Config contains a reference to `my_regularizer`
+  ...
+  # Later:
+  with custom_object_scope({'my_regularizer': my_regularizer}):
+    layer = Dense.from_config(config)
   ```
+
+  Arguments:
+      *args: Dictionary or dictionaries of `{name: object}` pairs.
   """
 
   def __init__(self, *args):
@@ -83,50 +90,19 @@ class CustomObjectScope(object):
     _GLOBAL_CUSTOM_OBJECTS.update(self.backup)
 
 
-@keras_export('keras.utils.custom_object_scope')
-def custom_object_scope(*args):
-  """Provides a scope that changes to `_GLOBAL_CUSTOM_OBJECTS` cannot escape.
-
-  Convenience wrapper for `CustomObjectScope`.
-  Code within a `with` statement will be able to access custom objects
-  by name. Changes to global custom objects persist
-  within the enclosing `with` statement. At end of the `with` statement,
-  global custom objects are reverted to state
-  at beginning of the `with` statement.
-
-  Example:
-
-  Consider a custom object `MyObject`
-
-  ```python
-      with custom_object_scope({'MyObject':MyObject}):
-          layer = Dense(..., kernel_regularizer='MyObject')
-          # save, load, etc. will recognize custom object by name
-  ```
-
-  Arguments:
-      *args: Variable length list of dictionaries of name, class pairs to add to
-        custom objects.
-
-  Returns:
-      Object of type `CustomObjectScope`.
-  """
-  return CustomObjectScope(*args)
-
-
 @keras_export('keras.utils.get_custom_objects')
 def get_custom_objects():
   """Retrieves a live reference to the global dictionary of custom objects.
 
   Updating and clearing custom objects using `custom_object_scope`
   is preferred, but `get_custom_objects` can
-  be used to directly access `_GLOBAL_CUSTOM_OBJECTS`.
+  be used to directly access the current collection of custom objects.
 
   Example:
 
   ```python
-      get_custom_objects().clear()
-      get_custom_objects()['MyObject'] = MyObject
+  get_custom_objects().clear()
+  get_custom_objects()['MyObject'] = MyObject
   ```
 
   Returns:
@@ -158,7 +134,7 @@ def register_keras_serializable(package='Custom', name=None):
   Arguments:
     package: The package that this class belongs to.
     name: The name to serialize this class under in this package. If None, the
-      class's name will be used.
+      class' name will be used.
 
   Returns:
     A decorator that registers the decorated class with the passed names.
@@ -259,7 +235,7 @@ def get_registered_object(name, custom_objects=None, module_objects=None):
 
 @keras_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
-  """Serialize Keras object into JSON."""
+  """Serialize a Keras object into a JSON-compatible representation."""
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
     return None
@@ -271,7 +247,7 @@ def serialize_keras_object(instance):
     except NotImplementedError as e:
       if _SKIP_FAILED_SERIALIZATION:
         return serialize_keras_class_and_config(
-            name, {LAYER_UNDEFINED_CONFIG_KEY: True})
+            name, {_LAYER_UNDEFINED_CONFIG_KEY: True})
       raise e
     serialization_config = {}
     for key, item in config.items():
@@ -321,6 +297,15 @@ def class_and_config_for_serialized_keras_object(
     raise ValueError('Unknown ' + printable_module_name + ': ' + class_name)
 
   cls_config = config['config']
+  # Check if `cls_config` is a list. If it is a list, return the class and the
+  # associated class configs for recursively deserialization. This case will
+  # happen on the old version of sequential model (e.g. `keras_version` ==
+  # "2.0.6"), which is serialized in a different structure, for example
+  # "{'class_name': 'Sequential',
+  #   'config': [{'class_name': 'Embedding', 'config': ...}, {}, ...]}".
+  if isinstance(cls_config, list):
+    return (cls, cls_config)
+
   deserialized_objects = {}
   for key, item in cls_config.items():
     if isinstance(item, dict) and '__passive_serialization__' in item:
@@ -352,6 +337,7 @@ def deserialize_keras_object(identifier,
                              module_objects=None,
                              custom_objects=None,
                              printable_module_name='object'):
+  """Turns the serialized form of a Keras object back into an actual object."""
   if identifier is None:
     return None
 
@@ -389,7 +375,8 @@ def deserialize_keras_object(identifier,
     else:
       obj = module_objects.get(object_name)
       if obj is None:
-        raise ValueError('Unknown ' + printable_module_name + ':' + object_name)
+        raise ValueError(
+            'Unknown ' + printable_module_name + ': ' + object_name)
     # Classes passed by name are instantiated with no args, functions are
     # returned as-is.
     if tf_inspect.isclass(obj):
@@ -490,7 +477,7 @@ def has_arg(fn, name, accept_all=False):
   arg_spec = tf_inspect.getfullargspec(fn)
   if accept_all and arg_spec.varkw is not None:
     return True
-  return name in arg_spec.args
+  return name in arg_spec.args or name in arg_spec.kwonlyargs
 
 
 @keras_export('keras.utils.Progbar')
@@ -539,7 +526,9 @@ class Progbar(object):
     self._start = time.time()
     self._last_update = 0
 
-  def update(self, current, values=None):
+    self._time_after_first_step = None
+
+  def update(self, current, values=None, finalize=None):
     """Updates the progress bar.
 
     Arguments:
@@ -547,7 +536,15 @@ class Progbar(object):
         values: List of tuples: `(name, value_for_last_step)`. If `name` is in
           `stateful_metrics`, `value_for_last_step` will be displayed as-is.
           Else, an average of the metric over time will be displayed.
+        finalize: Whether this is the last update for the progress bar. If
+          `None`, defaults to `current >= self.target`.
     """
+    if finalize is None:
+      if self.target is None:
+        finalize = False
+      else:
+        finalize = current >= self.target
+
     values = values or []
     for k, v in values:
       if k not in self._values_order:
@@ -573,8 +570,7 @@ class Progbar(object):
     now = time.time()
     info = ' - %.0fs' % (now - self._start)
     if self.verbose == 1:
-      if (now - self._last_update < self.interval and
-          self.target is not None and current < self.target):
+      if now - self._last_update < self.interval and not finalize:
         return
 
       prev_total_width = self._total_width
@@ -603,11 +599,16 @@ class Progbar(object):
       self._total_width = len(bar)
       sys.stdout.write(bar)
 
-      if current:
-        time_per_unit = (now - self._start) / current
+      time_per_unit = self._estimate_step_duration(current, now)
+
+      if self.target is None or finalize:
+        if time_per_unit >= 1 or time_per_unit == 0:
+          info += ' %.0fs/%s' % (time_per_unit, self.unit_name)
+        elif time_per_unit >= 1e-3:
+          info += ' %.0fms/%s' % (time_per_unit * 1e3, self.unit_name)
+        else:
+          info += ' %.0fus/%s' % (time_per_unit * 1e6, self.unit_name)
       else:
-        time_per_unit = 0
-      if self.target is not None and current < self.target:
         eta = time_per_unit * (self.target - current)
         if eta > 3600:
           eta_format = '%d:%02d:%02d' % (eta // 3600,
@@ -618,13 +619,6 @@ class Progbar(object):
           eta_format = '%ds' % eta
 
         info = ' - ETA: %s' % eta_format
-      else:
-        if time_per_unit >= 1 or time_per_unit == 0:
-          info += ' %.0fs/%s' % (time_per_unit, self.unit_name)
-        elif time_per_unit >= 1e-3:
-          info += ' %.0fms/%s' % (time_per_unit * 1e3, self.unit_name)
-        else:
-          info += ' %.0fus/%s' % (time_per_unit * 1e6, self.unit_name)
 
       for k in self._values_order:
         info += ' - %s:' % k
@@ -641,14 +635,14 @@ class Progbar(object):
       if prev_total_width > self._total_width:
         info += (' ' * (prev_total_width - self._total_width))
 
-      if self.target is not None and current >= self.target:
+      if finalize:
         info += '\n'
 
       sys.stdout.write(info)
       sys.stdout.flush()
 
     elif self.verbose == 2:
-      if self.target is not None and current >= self.target:
+      if finalize:
         numdigits = int(np.log10(self.target)) + 1
         count = ('%' + str(numdigits) + 'd/%d') % (current, self.target)
         info = count + info
@@ -668,6 +662,37 @@ class Progbar(object):
 
   def add(self, n, values=None):
     self.update(self._seen_so_far + n, values)
+
+  def _estimate_step_duration(self, current, now):
+    """Estimate the duration of a single step.
+
+    Given the step number `current` and the corresponding time `now`
+    this function returns an estimate for how long a single step
+    takes. If this is called before one step has been completed
+    (i.e. `current == 0`) then zero is given as an estimate. The duration
+    estimate ignores the duration of the (assumed to be non-representative)
+    first step for estimates when more steps are available (i.e. `current>1`).
+    Arguments:
+      current: Index of current step.
+      now: The current time.
+    Returns: Estimate of the duration of a single step.
+    """
+    if current:
+      # there are a few special scenarios here:
+      # 1) somebody is calling the progress bar without ever supplying step 1
+      # 2) somebody is calling the progress bar and supplies step one mulitple
+      #    times, e.g. as part of a finalizing call
+      # in these cases, we just fall back to the simple calculation
+      if self._time_after_first_step is not None and current > 1:
+        time_per_unit = (now - self._time_after_first_step) / (current - 1)
+      else:
+        time_per_unit = (now - self._start) / current
+
+      if current == 1:
+        self._time_after_first_step = now
+      return time_per_unit
+    else:
+      return 0
 
 
 def make_batches(size, batch_size):
@@ -748,12 +773,6 @@ def to_list(x):
   return [x]
 
 
-def object_list_uid(object_list):
-  """Creates a single string from object ids."""
-  object_list = nest.flatten(object_list)
-  return ', '.join(str(abs(id(x))) for x in object_list)
-
-
 def to_snake_case(name):
   intermediate = re.sub('(.)([A-Z][a-z0-9]+)', r'\1_\2', name)
   insecure = re.sub('([a-z])([A-Z])', r'\1_\2', intermediate).lower()
@@ -788,3 +807,56 @@ def validate_kwargs(kwargs,
   for kwarg in kwargs:
     if kwarg not in allowed_kwargs:
       raise TypeError(error_message, kwarg)
+
+
+def validate_config(config):
+  """Determines whether config appears to be a valid layer config."""
+  return isinstance(config, dict) and _LAYER_UNDEFINED_CONFIG_KEY not in config
+
+
+def default(method):
+  """Decorates a method to detect overrides in subclasses."""
+  method._is_default = True  # pylint: disable=protected-access
+  return method
+
+
+def is_default(method):
+  """Check if a method is decorated with the `default` wrapper."""
+  return getattr(method, '_is_default', False)
+
+
+def populate_dict_with_module_objects(target_dict, modules, obj_filter):
+  for module in modules:
+    for name in dir(module):
+      obj = getattr(module, name)
+      if obj_filter(obj):
+        target_dict[name] = obj
+
+
+class LazyLoader(python_types.ModuleType):
+  """Lazily import a module, mainly to avoid pulling in large dependencies."""
+
+  def __init__(self, local_name, parent_module_globals, name):
+    self._local_name = local_name
+    self._parent_module_globals = parent_module_globals
+    super(LazyLoader, self).__init__(name)
+
+  def _load(self):
+    """Load the module and insert it into the parent's globals."""
+    # Import the target module and insert it into the parent's namespace
+    module = importlib.import_module(self.__name__)
+    self._parent_module_globals[self._local_name] = module
+    # Update this object's dict so that if someone keeps a reference to the
+    #   LazyLoader, lookups are efficient (__getattr__ is only called on lookups
+    #   that fail).
+    self.__dict__.update(module.__dict__)
+    return module
+
+  def __getattr__(self, item):
+    module = self._load()
+    return getattr(module, item)
+
+
+# Aliases
+
+custom_object_scope = CustomObjectScope  # pylint: disable=invalid-name

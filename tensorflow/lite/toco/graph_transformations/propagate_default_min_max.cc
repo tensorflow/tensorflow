@@ -70,7 +70,7 @@ bool SupportsMinMax(const Array& array) {
 
 // Sets the min/max on the given array, adjusting the reference_minmax for the
 // final data type of the array if it is already specified.
-bool PropagateDefaultMinMax::SetArrayMinMax(const string& array_name,
+bool PropagateDefaultMinMax::SetArrayMinMax(const std::string& array_name,
                                             Array* array) {
   CHECK(!array->minmax);
 

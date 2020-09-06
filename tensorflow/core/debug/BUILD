@@ -12,6 +12,7 @@
 #    a watch state.
 # ":debug_node_key" - Defines a struct used for tracking tensors.
 
+load("//tensorflow:tensorflow.bzl", "tf_grpc_cc_dependency")
 load(
     "//tensorflow:tensorflow.bzl",
     "check_deps",
@@ -38,7 +39,7 @@ package(
 # Check that tensorflow/core:tensorflow does not depend on grpc.
 check_deps(
     name = "core_tensorflow_check_deps",
-    disallowed_deps = ["@grpc//:grpc++"],
+    disallowed_deps = ["@com_github_grpc_grpc//:grpc++"],
     deps = ["//tensorflow/core:tensorflow"],
 )
 
@@ -123,7 +124,6 @@ tf_cuda_library(
         ":debug_node_key",
         ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
-        "//tensorflow:grpc++",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
@@ -131,6 +131,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/strings",
+        tf_grpc_cc_dependency(),
     ],
     alwayslink = 1,
 )
@@ -146,11 +147,11 @@ tf_cuda_library(
         ":debug_io_utils",
         ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
-        "//tensorflow:grpc++",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        tf_grpc_cc_dependency(),
     ],
     alwayslink = 1,
 )

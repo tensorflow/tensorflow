@@ -25,7 +25,7 @@ from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.util.tf_export import keras_export
 
 
-@keras_export('keras.mixed_precision.experimental.get_layer_policy')
+@keras_export('keras.mixed_precision.experimental.get_layer_policy', v1=[])
 def get_layer_policy(layer):
   """Returns the dtype policy of a layer.
 

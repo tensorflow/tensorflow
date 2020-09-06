@@ -26,6 +26,7 @@ py_library(
         "//tensorflow/tools/compatibility:tf_upgrade_v2",
     ],
     deps = [
+        ":saved_model_aot_compile",
         ":saved_model_utils",
         # The following py_library are needed because
         # py_binary may not depend on them when --define=no_tensorflow_py_deps=true
@@ -135,6 +136,7 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -322,6 +324,10 @@ py_library(
     srcs = ["saved_model_cli.py"],
     srcs_version = "PY2AND3",
     deps = [
+        # Note: if you make any changes here, make corresponding changes to the
+        # deps of the "tools_pip" target in this file.  Otherwise release builds
+        # (built with --define=no_tensorflow_py_deps=true) may end up with a
+        # broken saved_model_cli.
         ":saved_model_aot_compile",
         ":saved_model_utils",
         "//tensorflow/python",

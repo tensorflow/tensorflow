@@ -75,8 +75,7 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
         loss='categorical_crossentropy',
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -112,11 +111,10 @@ class VectorClassificationIntegrationTest(keras_parameterized.TestCase):
         loss='categorical_crossentropy',
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
-    if not testing_utils.should_run_eagerly():
-      self.assertEqual(len(model.get_losses_for(None)), 2)
-      self.assertEqual(len(model.get_updates_for(x)), 2)
+        run_eagerly=testing_utils.should_run_eagerly())
+    self.assertLen(model.losses, 2)
+    if not context.executing_eagerly():
+      self.assertLen(model.get_updates_for(x), 2)
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -153,31 +151,20 @@ class SequentialIntegrationTest(KerasIntegrationTest):
         loss='categorical_crossentropy',
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x_train, y_train, epochs=1, batch_size=10,
               validation_data=(x_train, y_train),
               verbose=2)
     model = self._save_and_reload_model(model)
 
-    # TODO(b/134537740): model.pop doesn't update model outputs properly when
-    # model.outputs is already defined, so just set to `None` for now.
-    model.inputs = None
-    model.outputs = None
-
     model.pop()
     model.add(keras.layers.Dense(y_train.shape[-1], activation='softmax'))
-
-    # TODO(b/134523282): There is an bug with Sequential models, so the model
-    # must be marked as compiled=False to ensure the next compile goes through.
-    model._is_compiled = False
 
     model.compile(
         loss='categorical_crossentropy',
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -213,8 +200,7 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
         loss='categorical_crossentropy',
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -244,8 +230,7 @@ class TimeseriesClassificationIntegrationTest(keras_parameterized.TestCase):
           loss='categorical_crossentropy',
           optimizer=keras.optimizer_v2.adam.Adam(0.005),
           metrics=['acc'],
-          run_eagerly=testing_utils.should_run_eagerly(),
-          experimental_run_tf_function=testing_utils.should_run_tf_function())
+          run_eagerly=testing_utils.should_run_eagerly())
 
     history = model.fit(x_train, y_train, epochs=15, batch_size=10,
                         validation_data=(x_train, y_train),
@@ -284,8 +269,7 @@ class ImageClassificationIntegrationTest(keras_parameterized.TestCase):
         loss='categorical_crossentropy',
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['acc'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     history = model.fit(x_train, y_train, epochs=10, batch_size=10,
                         validation_data=(x_train, y_train),
                         verbose=2)
@@ -329,8 +313,7 @@ class ActivationV2IntegrationTest(keras_parameterized.TestCase):
         loss='categorical_crossentropy',
         optimizer=keras.optimizer_v2.adam.Adam(0.005),
         metrics=['accuracy'],
-        run_eagerly=testing_utils.should_run_eagerly(),
-        experimental_run_tf_function=testing_utils.should_run_tf_function())
+        run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x_train, y_train, epochs=2, batch_size=10,
               validation_data=(x_train, y_train),
               verbose=2)

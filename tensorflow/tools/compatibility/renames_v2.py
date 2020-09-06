@@ -366,6 +366,8 @@ renames = {
         'tf.compat.v1.estimator.tpu.TPUEstimatorSpec',
     'tf.estimator.tpu.experimental.EmbeddingConfigSpec':
         'tf.compat.v1.estimator.tpu.experimental.EmbeddingConfigSpec',
+    'tf.executing_eagerly_outside_functions':
+        'tf.compat.v1.executing_eagerly_outside_functions',
     'tf.experimental.output_all_intermediates':
         'tf.compat.v1.experimental.output_all_intermediates',
     'tf.expm1':
@@ -522,6 +524,10 @@ renames = {
         'tf.compat.v1.keras.layers.CuDNNGRU',
     'tf.keras.layers.CuDNNLSTM':
         'tf.compat.v1.keras.layers.CuDNNLSTM',
+    'tf.keras.layers.disable_v2_dtype_behavior':
+        'tf.compat.v1.keras.layers.disable_v2_dtype_behavior',
+    'tf.keras.layers.enable_v2_dtype_behavior':
+        'tf.compat.v1.keras.layers.enable_v2_dtype_behavior',
     'tf.keras.losses.cosine':
         'tf.keras.losses.cosine_similarity',
     'tf.keras.losses.cosine_proximity':
@@ -1122,6 +1128,10 @@ renames = {
         'tf.compat.v1.scatter_nd_add',
     'tf.scatter_nd_sub':
         'tf.compat.v1.scatter_nd_sub',
+    'tf.scatter_nd_max':
+        'tf.compat.v1.scatter_nd_max',
+    'tf.scatter_nd_min':
+        'tf.compat.v1.scatter_nd_min',
     'tf.scatter_nd_update':
         'tf.compat.v1.scatter_nd_update',
     'tf.scatter_sub':
@@ -1362,6 +1372,8 @@ renames = {
         'tf.compat.v1.tpu.shard',
     'tf.tpu.shutdown_system':
         'tf.compat.v1.tpu.shutdown_system',
+    'tf.tpu.XLAOptions':
+        'tf.compat.v1.tpu.XLAOptions',
     'tf.trace':
         'tf.linalg.trace',
     'tf.train.AdadeltaOptimizer':

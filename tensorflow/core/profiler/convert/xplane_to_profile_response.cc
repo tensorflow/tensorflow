@@ -14,35 +14,42 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
 
+#include <string>
+
 #include "absl/container/flat_hash_set.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_input_pipeline_analysis.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_overview_page.h"
 #include "tensorflow/core/profiler/convert/op_stats_to_tf_stats.h"
+#include "tensorflow/core/profiler/convert/trace_events_to_json.h"
+#include "tensorflow/core/profiler/convert/xplane_to_memory_profile.h"
 #include "tensorflow/core/profiler/convert/xplane_to_op_stats.h"
 #include "tensorflow/core/profiler/convert/xplane_to_trace_events.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
-#include "tensorflow/core/profiler/protobuf/hardware_types.pb.h"
 #include "tensorflow/core/profiler/protobuf/input_pipeline.pb.h"
-#include "tensorflow/core/profiler/protobuf/op_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/kernel_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/memory_profile.pb.h"
 #include "tensorflow/core/profiler/protobuf/overview_page.pb.h"
 #include "tensorflow/core/profiler/protobuf/tf_stats.pb.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/rpc/client/save_profile.h"
+#include "tensorflow/core/profiler/utils/xplane_schema.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace {
 
+const absl::string_view kTraceViewer = "trace_viewer";
 const absl::string_view kTensorflowStats = "tensorflow_stats";
 const absl::string_view kInputPipeline = "input_pipeline";
 const absl::string_view kOverviewPage = "overview_page";
-
-HardwareType HardwareTypeFromRunEnvironment(const RunEnvironment& run_env) {
-  if (run_env.device_type() == "GPU") return HardwareType::GPU;
-  if (run_env.device_type() == "CPU") return HardwareType::CPU_ONLY;
-  return HardwareType::UNKNOWN_HARDWARE;
-}
+const absl::string_view kKernelStats = "kernel_stats";
+const absl::string_view kMemoryProfile = "memory_profile";
 
 template <typename Proto>
 void AddToolData(absl::string_view tool_name, const Proto& tool_output,
@@ -53,38 +60,61 @@ void AddToolData(absl::string_view tool_name, const Proto& tool_output,
 }
 
 // Returns the tool name with extension.
-string ToolName(absl::string_view tool) { return absl::StrCat(tool, ".pb"); }
+std::string ToolName(absl::string_view tool) {
+  if (tool == kTraceViewer) return "trace.json.gz";
+  if (tool == kMemoryProfile) return "memory_profile.json.gz";
+  return absl::StrCat(tool, ".pb");
+}
 
 }  // namespace
 
-void ConvertXSpaceToProfileResponse(const XSpace& xspace,
-                                    const ProfileRequest& req,
-                                    ProfileResponse* response) {
-  {
-    Trace trace;
-    ConvertXSpaceToTraceEvents(xspace, &trace);
-    trace.SerializeToString(response->mutable_encoded_trace());
-  }
+Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
+                                      const ProfileRequest& req,
+                                      ProfileResponse* response) {
   absl::flat_hash_set<absl::string_view> tools(req.tools().begin(),
                                                req.tools().end());
-  if (tools.empty()) return;
-  OpStats op_stats = ConvertXSpaceToOpStats(xspace);
-  HardwareType hw_type =
-      HardwareTypeFromRunEnvironment(op_stats.run_environment());
-  if (tools.contains(kOverviewPage)) {
-    OverviewPage overview_page_db =
-        ConvertOpStatsToOverviewPage(op_stats, hw_type);
-    AddToolData(ToolName(kOverviewPage), overview_page_db, response);
+  if (tools.empty()) return Status::OK();
+  if (tools.contains(kTraceViewer)) {
+    Trace trace;
+    ConvertXSpaceToTraceEvents(xspace, &trace);
+    if (trace.trace_events().empty()) {
+      response->set_empty_trace(true);
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(SaveGzippedToolData(
+        req.repository_root(), req.session_id(), req.host_name(),
+        ToolName(kTraceViewer), TraceEventsToJson(trace)));
+    // Trace viewer is the only tool, skip OpStats conversion.
+    if (tools.size() == 1) return Status::OK();
   }
-  if (tools.contains(kInputPipeline)) {
-    InputPipelineAnalysisResult input_pipeline_analysis =
-        ConvertOpStatsToInputPipelineAnalysis(op_stats, hw_type);
-    AddToolData(ToolName(kInputPipeline), input_pipeline_analysis, response);
+  OpStats op_stats =
+      ConvertXSpaceToOpStats(xspace, {OP_METRICS_DB, STEP_DB, KERNEL_STATS_DB});
+  if (tools.contains(kOverviewPage)) {
+    OverviewPage overview_page_db = ConvertOpStatsToOverviewPage(op_stats);
+    AddToolData(ToolName(kOverviewPage), overview_page_db, response);
+    if (tools.contains(kInputPipeline)) {
+      AddToolData(ToolName(kInputPipeline), overview_page_db.input_analysis(),
+                  response);
+    }
+  } else if (tools.contains(kInputPipeline)) {
+    AddToolData(ToolName(kInputPipeline),
+                ConvertOpStatsToInputPipelineAnalysis(op_stats), response);
   }
   if (tools.contains(kTensorflowStats)) {
     TfStatsDatabase tf_stats_db = ConvertOpStatsToTfStats(op_stats);
     AddToolData(ToolName(kTensorflowStats), tf_stats_db, response);
   }
+  if (tools.contains(kKernelStats)) {
+    AddToolData(ToolName(kKernelStats), op_stats.kernel_stats_db(), response);
+  }
+  if (tools.contains(kMemoryProfile)) {
+    std::string json_output;
+    TF_RETURN_IF_ERROR(ConvertXSpaceToMemoryProfileJson(xspace, &json_output));
+    TF_RETURN_IF_ERROR(SaveGzippedToolData(
+        req.repository_root(), req.session_id(), req.host_name(),
+        ToolName(kMemoryProfile), json_output));
+  }
+  return Status::OK();
 }
 
 }  // namespace profiler

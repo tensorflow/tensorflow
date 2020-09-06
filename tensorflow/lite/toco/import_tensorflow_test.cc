@@ -163,7 +163,7 @@ void BuildConstNode(std::initializer_list<int64_t> shape,
 TEST(FlexImportTest, ConditionalConst) {
   Model model;
   auto build_and_import_node =
-      [&model](const string& name, std::initializer_list<int64_t> shape,
+      [&model](const std::string& name, std::initializer_list<int64_t> shape,
                tensorflow::DataType dtype, int64_t num_elements) {
         NodeDef node;
         BuildConstNode(shape, dtype, num_elements, &node);
@@ -486,8 +486,8 @@ class TensorContentTest : public ::testing::Test {
         break;
     }
     t.set_tensor_content(
-        string(reinterpret_cast<const char*>(allocated_content.get()),
-               num_elements * sizeof(T)));
+        std::string(reinterpret_cast<const char*>(allocated_content.get()),
+                    num_elements * sizeof(T)));
 
     AttrValue value_attr;
     SetAttrValue(t, &value_attr);

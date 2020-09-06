@@ -72,6 +72,12 @@ class HloModule {
   HloComputation* AddEntryComputation(
       std::unique_ptr<HloComputation> computation);
 
+  // Same as the AddEntryComputation function above but the module's
+  // entry_computation_layout is updated to match the layout of the new entry
+  // computation.
+  HloComputation* AddEntryComputationWithLayouts(
+      std::unique_ptr<HloComputation> computation);
+
   // Replaces the current entry computation with another computation.
   // The new entry computation must be a computation that is already in the
   // module.
@@ -184,10 +190,21 @@ class HloModule {
   // Gets the number of instructions in this module.
   int64 instruction_count() const;
 
+  // Deallocate removed instructions in each computation.
+  void Cleanup() {
+    for (auto& comp : computations_) {
+      comp->Cleanup();
+    }
+  }
+
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.
   std::vector<HloComputation*> MakeComputationPostOrder() const;
+
+  // Same as MakeComputationPostOrder() but sorting the computations by their
+  // contents. The order is longer post order.
+  std::vector<HloComputation*> MakeComputationSorted() const;
 
   // Gets the computations in this module which aren't for fusion nodes.
   //
@@ -200,7 +217,7 @@ class HloModule {
   // MakeNonfusionComputations().
   std::vector<HloComputation*> MakeNonfusionComputations() const;
 
-  // Same as MakeNonfusionComputations() but sorting the computations by names.
+  // Same as MakeNonfusionComputations() but sorting computations by content.
   std::vector<HloComputation*> MakeNonfusionComputationsSorted() const;
 
   const HloModuleConfig& config() const { return config_; }
@@ -297,7 +314,8 @@ class HloModule {
       instruction->ClearUniqueIdInternal();
     }
     return AddComputationInternal(std::move(computation), is_entry,
-                                  /*uniquify_identifiers=*/true);
+                                  /*uniquify_identifiers=*/true,
+                                  /*preserve_entry_layouts=*/true);
   }
 
   Status CheckUniqueNamesAndIdsForComputationsAndInstructions() const;
@@ -334,14 +352,21 @@ class HloModule {
     spmd_output_sharding_ = sharding;
   }
 
+  // Add a program argument to be prefetched across programs.
+  void AddCrossProgramPrefetch(int64 parameter, const ShapeIndex& index) {
+    cross_program_prefetches_.emplace_back(parameter, index);
+  }
+
+  // Get the list of program arguments to be prefetch across programs.
+  const absl::Span<const std::pair<int64, ShapeIndex>> CrossProgramPrefetches()
+      const {
+    return cross_program_prefetches_;
+  }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
-      bool uniquify_identifiers);
-
-  // Same as MakeComputationPostOrder() but sorting the computations by their
-  // contents.
-  std::vector<HloComputation*> MakeComputationSortedByContent() const;
+      bool uniquify_identifiers, bool preserve_entry_layouts);
 
   string name_;
   HloModuleConfig config_;
@@ -385,6 +410,9 @@ class HloModule {
   // The HLO sharding of the entry computation's output (root) for
   // SPMD-partitioned programs.
   absl::optional<HloSharding> spmd_output_sharding_;
+
+  // Arguments to be prefetched across programs.
+  std::vector<std::pair<int64, ShapeIndex>> cross_program_prefetches_;
 };
 
 }  // namespace xla

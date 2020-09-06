@@ -20,7 +20,7 @@ Supported values:
   element is a bit which is set to 1 if the input tensor has an
   infinity or nan value, or zero otherwise.
 
-  3 (CONCISE_HEALTH): Ouput a float32/64 tensor of shape [5]. The 1st
+  3 (CONCISE_HEALTH): Output a float32/64 tensor of shape [5]. The 1st
   element is the tensor_id, if provided, and -1 otherwise. The
   remaining four slots are the total number of elements, -infs,
   +infs, and nans in the input tensor respectively.

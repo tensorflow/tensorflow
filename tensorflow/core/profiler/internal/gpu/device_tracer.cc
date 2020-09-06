@@ -18,6 +18,7 @@ limitations under the License.
 #include <stdlib.h>
 
 #include <memory>
+#include <utility>
 
 #include "absl/container/fixed_array.h"
 #include "absl/container/flat_hash_map.h"
@@ -25,16 +26,22 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/core/common_runtime/step_stats_collector.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "absl/synchronization/mutex.h"
+#include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/platform/abi.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/profiler/internal/annotation_stack.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_tracer.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_wrapper.h"
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -56,9 +63,20 @@ bool IsHostEvent(const CuptiTracerEvent& event) {
 }
 
 void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
-                  XLineBuilder* line) {
+                  uint64 start_gpu_ns, uint64 end_gpu_ns, XLineBuilder* line) {
+  if (event.start_time_ns < start_gpu_ns || event.end_time_ns > end_gpu_ns ||
+      event.start_time_ns > event.end_time_ns) {
+    VLOG(2) << "events have abnormal timestamps:" << event.name
+            << " start time(ns): " << event.start_time_ns
+            << " end time(ns): " << event.end_time_ns;
+    return;
+  }
   std::string kernel_name = port::MaybeAbiDemangle(event.name.c_str());
-  XEventMetadata* event_metadata = plane->GetOrCreateEventMetadata(kernel_name);
+  if (kernel_name.empty()) {
+    kernel_name = GetTraceEventTypeName(event.type);
+  }
+  XEventMetadata* event_metadata =
+      plane->GetOrCreateEventMetadata(std::move(kernel_name));
   XEventBuilder xevent = line->AddEvent(*event_metadata);
   xevent.SetTimestampNs(event.start_time_ns);
   xevent.SetEndTimestampNs(event.end_time_ns);
@@ -70,7 +88,7 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
   if (!event.annotation.empty()) {
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kKernelAnnotation)),
-                        event.annotation);
+                        *plane->GetOrCreateStatMetadata(event.annotation));
   }
   if (event.context_id != CuptiTracerEvent::kInvalidContextId) {
     xevent.AddStatValue(
@@ -87,13 +105,12 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
                         event.kernel_info.block_y, event.kernel_info.block_z);
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kKernelDetails)),
-                        kernel_details);
-  }
-  if (event.type == CuptiTracerEventType::MemcpyH2D ||
-      event.type == CuptiTracerEventType::MemcpyD2H ||
-      event.type == CuptiTracerEventType::MemcpyD2D ||
-      event.type == CuptiTracerEventType::MemcpyP2P ||
-      event.type == CuptiTracerEventType::MemcpyOther) {
+                        *plane->GetOrCreateStatMetadata(kernel_details));
+  } else if (event.type == CuptiTracerEventType::MemcpyH2D ||
+             event.type == CuptiTracerEventType::MemcpyD2H ||
+             event.type == CuptiTracerEventType::MemcpyD2D ||
+             event.type == CuptiTracerEventType::MemcpyP2P ||
+             event.type == CuptiTracerEventType::MemcpyOther) {
     const auto& memcpy_info = event.memcpy_info;
     std::string memcpy_details =
         absl::StrFormat("size:%u dest:%u async:%u", memcpy_info.num_bytes,
@@ -131,7 +148,7 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
   if (!annotation_stack.empty()) {
     xevent.AddStatValue(
         *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
-        annotation_stack.begin()->name);
+        *plane->GetOrCreateStatMetadata(annotation_stack.begin()->name));
   }
 }
 
@@ -175,52 +192,78 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     if (event.device_id >= num_gpus_) return;
     if (event.source == CuptiTracerEventSource::DriverCallback) {
       if (num_callback_events_ > options_.max_callback_api_events) {
-        OnEventsDropped("trace collector", 1);
+        OnEventsDropped("total driver(callback) events reaches max", 1);
         return;
       }
       num_callback_events_++;
     } else {
       if (num_activity_events_ > options_.max_activity_api_events) {
-        OnEventsDropped("trace collector", 1);
+        OnEventsDropped("total device(activity) events reaches max", 1);
         return;
       }
       num_activity_events_++;
     }
     per_device_collector_[event.device_id].AddEvent(std::move(event));
   }
-  void OnEventsDropped(const std::string& reason, uint32 num_events) override {}
+  void OnEventsDropped(const std::string& reason, uint32 num_events) override {
+    absl::MutexLock lock(&mutex_);
+    dropped_events_[reason] += num_events;
+  }
   void Flush() override {}
-  void Export(StepStatsCollector* trace_collector) {
+  void Export(StepStats* step_stats) {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
-              << " activity events.";
+              << " activity events. " << ReportDroppedEvents();
     for (int i = 0; i < num_gpus_; ++i) {
       per_device_collector_[i].Flush(i, start_walltime_ns_, start_gpu_ns_,
-                                     trace_collector);
+                                     step_stats);
     }
   }
   void Export(XSpace* space) {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
-              << " activity events.";
-    XPlaneBuilder host_plane(GetOrCreatePlane(space, kCuptiDriverApiPlaneName));
-    host_plane.SetId(kCuptiDriverApiPlaneId);
+              << " activity events. " << ReportDroppedEvents();
+    uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
+    XPlaneBuilder host_plane(
+        FindOrAddMutablePlaneWithName(space, kCuptiDriverApiPlaneName));
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
-      std::string name = absl::StrCat(kGpuPlanePrefix, device_ordinal);
-      XPlaneBuilder device_plane(GetOrCreatePlane(space, name));
-      device_plane.SetId(kGpuPlaneBaseId + device_ordinal);
-      per_device_collector_[device_ordinal].Flush(start_gpu_ns_, &device_plane,
-                                                  &host_plane);
+      std::string name = GpuPlaneName(device_ordinal);
+      XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
+      device_plane.SetId(device_ordinal);
+      per_device_collector_[device_ordinal].Flush(start_gpu_ns_, end_gpu_ns,
+                                                  &device_plane, &host_plane);
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
           device_ordinal, &device_plane);
       NormalizeTimeStamps(&device_plane, start_walltime_ns_);
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
   }
+  std::string ReportDroppedEvents() {
+    absl::MutexLock lock(&mutex_);
+    string result;
+    for (const auto& dropped : dropped_events_) {
+      absl::StrAppend(&result, " ", dropped.second, " events dropped because ",
+                      dropped.first, ";");
+    }
+    if (!result.empty()) result.back() = '.';
+    return result;
+  }
+  std::string ReportNumEventsIfDropped() {
+    std::string events_dropped = ReportDroppedEvents();
+    if (events_dropped.empty()) return "";
+    return absl::StrCat("Detected GPU events dropped on ", port::Hostname(),
+                        ": Profiler has collected ",
+                        num_callback_events_.load(), " driver events and ",
+                        num_activity_events_.load(), " device events.",
+                        events_dropped);
+  }
 
  private:
   std::atomic<int> num_callback_events_;
   std::atomic<int> num_activity_events_;
+  absl::Mutex mutex_;
+  absl::flat_hash_map<std::string, uint64> dropped_events_
+      ABSL_GUARDED_BY(mutex_);
   uint64 start_walltime_ns_;
   uint64 start_gpu_ns_;
   int num_gpus_;
@@ -232,9 +275,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   // start_walltime_ns to normalize with CPU wall time.
   static void NormalizeTimeStamps(XPlaneBuilder* plane,
                                   uint64 start_walltime_ns) {
-    plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
-      line.SetTimestampNs(start_walltime_ns);
-    });
+    plane->ForEachLine(
+        [&](XLineBuilder line) { line.SetTimestampNs(start_walltime_ns); });
   }
 
   struct CorrelationInfo {
@@ -244,7 +286,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   };
   struct PerDeviceCollector {
     void AddEvent(CuptiTracerEvent&& event) {
-      absl::MutexLock lock(&mutex);
+      mutex_lock l(m);
       if (event.source == CuptiTracerEventSource::DriverCallback) {
         // Cupti api callback events were used to populate launch times etc.
         if (event.correlation_id != CuptiTracerEvent::kInvalidCorrelationId) {
@@ -260,12 +302,16 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
 
     void Flush(int32 device_ordinal, uint64 start_walltime_ns,
-               uint64 start_gpu_ns, StepStatsCollector* collector) {
-      absl::MutexLock lock(&mutex);
-      stream_device = absl::StrCat("/device:GPU:", device_ordinal, "/stream:");
-      memcpy_device = absl::StrCat("/device:GPU:", device_ordinal, "/memcpy");
-      sync_device = absl::StrCat("/device:GPU:", device_ordinal, "/sync");
-      for (auto& event : events) {
+               uint64 start_gpu_ns, StepStats* step_stats) {
+      mutex_lock l(m);
+      absl::flat_hash_map<std::pair<int64 /*stream_id*/, CuptiTracerEventType>,
+                          DeviceStepStats*>
+          stream_dev_stats_map;
+      DeviceStepStats* unknown_stream_dev_stats = nullptr;
+      DeviceStepStats* all_streams_dev_stats = nullptr;
+      DeviceStepStats* memcpy_dev_stats = nullptr;
+      DeviceStepStats* sync_dev_stats = nullptr;
+      for (const CuptiTracerEvent& event : events) {
         NodeExecStats* ns = new NodeExecStats;
         ns->set_all_start_micros(
             (start_walltime_ns + (event.start_time_ns - start_gpu_ns)) / 1000);
@@ -281,7 +327,12 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
             ns->set_node_name(event.name);
             ns->set_timeline_label(absl::StrCat("ThreadId ", event.thread_id));
             ns->set_thread_id(event.thread_id);
-            collector->Save(sync_device, ns);
+            if (sync_dev_stats == nullptr) {
+              sync_dev_stats = step_stats->add_dev_stats();
+              sync_dev_stats->set_device(
+                  absl::StrCat("/device:GPU:", device_ordinal, "/sync"));
+            }
+            sync_dev_stats->add_node_stats()->Swap(ns);
           }
         } else {  // CuptiTracerEventSource::Activity
           // Get launch information if available.
@@ -302,19 +353,30 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
           ns->set_node_name(activity_name);
           switch (event.type) {
             case CuptiTracerEventType::Kernel: {
-              const std::string details = absl::StrFormat(
-                  "regs:%u shm:%u grid:%u,%u,%u block:%u,%u,%u",
-                  event.kernel_info.registers_per_thread,
+              ns->set_timeline_label(absl::StrFormat(
+                  "%s regs:%u shm:%u grid:%u,%u,%u block:%u,%u,%u@@%s",
+                  kernel_name, event.kernel_info.registers_per_thread,
                   event.kernel_info.static_shared_memory_usage,
                   event.kernel_info.grid_x, event.kernel_info.grid_y,
                   event.kernel_info.grid_z, event.kernel_info.block_x,
-                  event.kernel_info.block_y, event.kernel_info.block_z);
-              ns->set_timeline_label(absl::StrCat(kernel_name, " ", details,
-                                                  "@@", event.annotation));
-              auto nscopy = new NodeExecStats(*ns);
-              collector->Save(absl::StrCat(stream_device, "all"), ns);
-              collector->Save(absl::StrCat(stream_device, event.stream_id),
-                              nscopy);
+                  event.kernel_info.block_y, event.kernel_info.block_z,
+                  event.annotation));
+              DeviceStepStats*& stream_dev_stats =
+                  stream_dev_stats_map[std::make_pair(event.stream_id,
+                                                      event.type)];
+              if (stream_dev_stats == nullptr) {
+                stream_dev_stats = step_stats->add_dev_stats();
+                stream_dev_stats->set_device(
+                    absl::StrCat("/device:GPU:", device_ordinal,
+                                 "/stream:", event.stream_id));
+              }
+              *stream_dev_stats->add_node_stats() = *ns;
+              if (all_streams_dev_stats == nullptr) {
+                all_streams_dev_stats = step_stats->add_dev_stats();
+                all_streams_dev_stats->set_device(absl::StrCat(
+                    "/device:GPU:", device_ordinal, "/stream:all"));
+              }
+              all_streams_dev_stats->add_node_stats()->Swap(ns);
               break;
             }
             case CuptiTracerEventType::MemcpyH2D:
@@ -331,27 +393,42 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
                                 " to device:", event.memcpy_info.destination);
               }
               ns->set_timeline_label(std::move(details));
-              auto nscopy = new NodeExecStats(*ns);
-              collector->Save(memcpy_device, ns);
-              collector->Save(
-                  absl::StrCat(stream_device, event.stream_id, "<",
-                               GetTraceEventTypeName(event.type), ">"),
-                  nscopy);
+              DeviceStepStats*& stream_dev_stats =
+                  stream_dev_stats_map[std::make_pair(event.stream_id,
+                                                      event.type)];
+              if (stream_dev_stats == nullptr) {
+                stream_dev_stats = step_stats->add_dev_stats();
+                stream_dev_stats->set_device(absl::StrCat(
+                    "/device:GPU:", device_ordinal, "/stream:", event.stream_id,
+                    "<", GetTraceEventTypeName(event.type), ">"));
+              }
+              *stream_dev_stats->add_node_stats() = *ns;
+              if (memcpy_dev_stats == nullptr) {
+                memcpy_dev_stats = step_stats->add_dev_stats();
+                memcpy_dev_stats->set_device(
+                    absl::StrCat("/device:GPU:", device_ordinal, "/memcpy"));
+              }
+              memcpy_dev_stats->add_node_stats()->Swap(ns);
               break;
             }
             default:
               ns->set_timeline_label(activity_name);
-              collector->Save(stream_device, ns);
+              if (unknown_stream_dev_stats == nullptr) {
+                unknown_stream_dev_stats = step_stats->add_dev_stats();
+                unknown_stream_dev_stats->set_device(
+                    absl::StrCat("/device:GPU:", device_ordinal, "/stream:"));
+              }
+              unknown_stream_dev_stats->add_node_stats()->Swap(ns);
+              break;
           }
         }
       }
       events.clear();
     }
 
-    void Flush(uint64 start_gpu_ns, XPlaneBuilder* device_plane,
-               XPlaneBuilder* host_plane) {
-      absl::MutexLock lock(&mutex);
-
+    void Flush(uint64 start_gpu_ns, uint64 end_gpu_ns,
+               XPlaneBuilder* device_plane, XPlaneBuilder* host_plane) {
+      mutex_lock l(m);
       // Tracking event types per line.
       absl::flat_hash_map<int64, absl::flat_hash_set<CuptiTracerEventType>>
           events_types_per_line;
@@ -365,12 +442,15 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         auto* plane = is_host_event ? host_plane : device_plane;
         XLineBuilder line = plane->GetOrCreateLine(line_id);
         line.SetTimestampNs(start_gpu_ns);
-        CreateXEvent(event, plane, &line);
+        CreateXEvent(event, plane, start_gpu_ns, end_gpu_ns, &line);
         events_types_per_line[line_id].emplace(event.type);
       }
-      device_plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
+      device_plane->ForEachLine([&](XLineBuilder line) {
         line.SetName(
             GetDeviceXLineName(line.Id(), events_types_per_line[line.Id()]));
+      });
+      host_plane->ForEachLine([&](XLineBuilder line) {
+        line.SetName(absl::StrCat("Host Threads/", line.Id()));
       });
       events.clear();
     }
@@ -406,7 +486,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         // Times 2 because HBM is DDR memory; it gets two data bits per each
         // data lane.
         auto memory_bandwidth =
-            2ULL * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
+            uint64{2} * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
         device_plane->AddStatValue(
             *device_plane->GetOrCreateStatMetadata(
                 GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
@@ -439,13 +519,10 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
       }
     }
 
-    absl::Mutex mutex;
-    std::string stream_device GUARDED_BY(mutex);
-    std::string memcpy_device GUARDED_BY(mutex);
-    std::string sync_device GUARDED_BY(mutex);
-    std::vector<CuptiTracerEvent> events GUARDED_BY(mutex);
+    mutex m;
+    std::vector<CuptiTracerEvent> events TF_GUARDED_BY(m);
     absl::flat_hash_map<uint32, CorrelationInfo> correlation_info
-        GUARDED_BY(mutex);
+        TF_GUARDED_BY(m);
   };
   absl::FixedArray<PerDeviceCollector> per_device_collector_;
 
@@ -466,9 +543,6 @@ class GpuTracer : public profiler::ProfilerInterface {
   Status Stop() override;
   Status CollectData(RunMetadata* run_metadata) override;
   Status CollectData(XSpace* space) override;
-  profiler::DeviceType GetDeviceType() override {
-    return profiler::DeviceType::kGpu;
-  }
 
  private:
   Status DoStart();
@@ -485,7 +559,6 @@ class GpuTracer : public profiler::ProfilerInterface {
 
   CuptiTracer* cupti_tracer_;
   CuptiTracerOptions options_;
-  StepStats step_stats_;
   std::unique_ptr<CuptiTraceCollectorImpl> cupti_collector_;
 };
 
@@ -539,8 +612,11 @@ Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY2);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
 
+// CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
 #if CUDA_VERSION < 10000
   if (!trace_concurrent_kernels) options_.cupti_finalize = true;
+#elif CUDA_VERSION >= 11000
+  options_.cupti_finalize = true;
 #endif
 
   CuptiTracerCollectorOptions collector_options;
@@ -595,12 +671,11 @@ Status GpuTracer::CollectData(RunMetadata* run_metadata) {
       return Status::OK();
     case State::kStoppedOk: {
       // Input run_metadata is shared by profiler interfaces, we need append.
-      StepStatsCollector step_stats_collector(&step_stats_);
+      StepStats step_stats;
       if (cupti_collector_) {
-        cupti_collector_->Export(&step_stats_collector);
+        cupti_collector_->Export(&step_stats);
       }
-      step_stats_collector.Finalize();
-      for (auto& dev_stats : *step_stats_.mutable_dev_stats()) {
+      for (auto& dev_stats : *step_stats.mutable_dev_stats()) {
         run_metadata->mutable_step_stats()->add_dev_stats()->Swap(&dev_stats);
       }
       return Status::OK();
@@ -617,12 +692,20 @@ Status GpuTracer::CollectData(XSpace* space) {
     case State::kStartedOk:
       return errors::FailedPrecondition("Cannot collect trace before stopping");
     case State::kStartedError:
-      LOG(ERROR) << "Cannot collect, xprof failed to start";
+      LOG(ERROR) << "Cannot collect, profiler failed to start";
       return Status::OK();
     case State::kStoppedError:
       VLOG(1) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
+      std::string cupti_error = CuptiTracer::ErrorIfAny();
+      if (!cupti_error.empty()) {
+        space->add_errors(std::move(cupti_error));
+      }
+      std::string events_dropped = cupti_collector_->ReportNumEventsIfDropped();
+      if (!events_dropped.empty()) {
+        space->add_warnings(std::move(events_dropped));
+      }
       if (cupti_collector_) {
         cupti_collector_->Export(space);
       }
@@ -634,9 +717,9 @@ Status GpuTracer::CollectData(XSpace* space) {
 
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
-    const profiler::ProfilerOptions& options) {
-  if (options.device_type != profiler::DeviceType::kGpu &&
-      options.device_type != profiler::DeviceType::kUnspecified)
+    const ProfileOptions& options) {
+  if (options.device_type() != ProfileOptions::GPU &&
+      options.device_type() != ProfileOptions::UNSPECIFIED)
     return nullptr;
   profiler::CuptiTracer* cupti_tracer =
       profiler::CuptiTracer::GetCuptiTracerSingleton();

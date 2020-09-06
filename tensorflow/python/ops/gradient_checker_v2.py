@@ -28,7 +28,6 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import tf_export
 
@@ -174,7 +173,6 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
     dy_data_flat[row] = 1
     grad = _to_numpy(grad_fn(dy_data, *xs)[0])
     grad = _eval_indexed_slices(grad)
-    dy_data_flat[row] = 0
     if isinstance(grad, ops.IndexedSlicesValue):
       for i, v in zip(grad.indices, grad.values):
         c_begin = i * x_val_size
@@ -182,6 +180,9 @@ def _compute_theoretical_jacobian(f, y_shape, y_dtype, xs, param):
         jacobian[row, c_begin:c_end] += v.flat
     elif grad is not None:
       jacobian[row, :] = grad.ravel().view(jacobian.dtype)
+    # This reset of `dy_data_flat` needs to happen after `grad` is copied to
+    # `jacobian` because `grad` and `dy_data_flat` may share memory.
+    dy_data_flat[row] = 0
 
   # If the output is empty, run the gradients at least once and make sure
   # they produce zeros.
@@ -215,14 +216,8 @@ def _compute_numeric_jacobian(f, y_size, y_dtype, xs, param, delta):
     and "x_size" columns where "x_size" is the number of elements in xs[param]
     and "y_size" is the number of elements in the result.
   """
-  # bfloat16 doesn't have enough bits to represent high precision numbers such
-  # as delta. Convert to float32 here. Since numeric_jacobian is expected to
-  # be the groundtruth to compare against, it shouldn't lose any information.
   x_shape = xs[param].shape
   x_dtype = xs[param].dtype
-  if y_dtype == dtypes.bfloat16:
-    f = lambda *xs: math_ops.cast(f(*xs), dtypes.float32)
-    y_dtype = dtypes.float32
 
   # To compute the jacobian, we treat x and y as one-dimensional vectors
   x_size = _product(x_shape) * (2 if x_dtype.is_complex else 1)
@@ -284,16 +279,16 @@ def _compute_gradient(f, y_shape, y_dtype, xs, param, delta):
 def _compute_gradient_list(f, xs, delta):
   """Compute gradients for a list of x values."""
   # convert xs to tensors so that dtype and shape have uniform types
-  xs = list(map(ops.convert_to_tensor, xs))
+  xs = [ops.convert_to_tensor(x) for x in xs]
   # run the function to get info of the result
   xs_dtypes = [x.dtype for x in xs]
   xs_shapes = [x.shape for x in xs]
   f_temp = _prepare(f, xs_dtypes, xs_shapes)
   y = f_temp(*xs)
-  return zip(*[
+  return tuple(zip(*[
       _compute_gradient(f, y.shape, dtypes.as_dtype(y.dtype), xs, i, delta)
       for i in range(len(xs))
-  ])
+  ]))
 
 
 @tf_export("test.compute_gradient", v1=[])
@@ -304,7 +299,8 @@ def compute_gradient(f, x, delta=1e-3):
 
   Args:
     f: the function.
-    x: a list arguments for the function
+    x: the arguments for the function as a list or tuple of values convertible
+      to a Tensor.
     delta: (optional) perturbation used to compute numeric Jacobian.
 
   Returns:
@@ -329,9 +325,10 @@ def compute_gradient(f, x, delta=1e-3):
   # ((array([[2.]], dtype=float32),), (array([[2.000004]], dtype=float32),))
   ```
   """
-  if not isinstance(x, list):
+  if not isinstance(x, (list, tuple)):
     raise ValueError(
-        "`x` must be a list of Tensors (arguments to `f`), not a %s" % type(x))
+        "`x` must be a list or tuple of values convertible to a Tensor "
+        "(arguments to `f`), not a %s" % type(x))
   return _compute_gradient_list(f, x, delta)
 
 

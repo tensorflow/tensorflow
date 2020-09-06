@@ -9,6 +9,10 @@ tf_module {
     mtype: "<class \'enum.EnumMeta\'>"
   }
   member {
+    name: "CollectiveHints"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "MultiWorkerMirroredStrategy"
     mtype: "<type \'type\'>"
   }

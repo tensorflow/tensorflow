@@ -236,6 +236,19 @@ XLA_TEST_F(MathTest, SqrtF32) {
   ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
 }
 
+XLA_TEST_F(MathTest, SqrtF64) {
+  XlaBuilder builder(TestName());
+  Literal zero_literal = LiteralUtil::Zero(PrimitiveType::F64);
+
+  std::unique_ptr<GlobalData> zero_data =
+      client_->TransferToServer(zero_literal).ConsumeValueOrDie();
+
+  XlaOp zero = Parameter(&builder, 0, zero_literal.shape(), "zero");
+  Sqrt(zero);
+
+  ComputeAndCompareR0<double>(&builder, 0.0f, {zero_data.get()}, error_spec_);
+}
+
 #ifndef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT64
 XLA_TEST_F(MathTest, ErfInvF64) {
   XlaBuilder builder(TestName());
@@ -295,6 +308,39 @@ XLA_TEST_F(MathTest, SqrtSixValues) {
   Sqrt(x);
 
   std::vector<float> expected = {4, 1, 32, 0.4, 0.4472, 111.1080};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, CbrtSixValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {8.0, 1.0, 4096.0, -64.0, 1.728, 1331});
+  Cbrt(x);
+
+  std::vector<float> expected = {2, 1, 16, -4, 1.2, 11};
+  ComputeAndCompareR1<float>(&builder, expected, {}, ErrorSpec(0.001));
+}
+
+XLA_TEST_F(MathTest, SinhSmallValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {1e-3, 1e-5, 1e-7, 1e-9, 1e-11});
+  Sinh(x);
+  std::vector<float> expected = {1e-3, 1e-5, 1e-7, 1e-9, 1e-11};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, AsinhSmallValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {1e-3, 1e-5, 1e-7, 1e-9, 1e-11});
+  Asinh(x);
+  std::vector<float> expected = {1e-3, 1e-5, 1e-7, 1e-9, 1e-11};
+  ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, AtanhSmallValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<float>(&builder, {1e-8, 1e-9, 1e-10, 1e-11});
+  Atanh(x);
+  std::vector<float> expected = {1e-8, 1e-9, 1e-10, 1e-11};
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
@@ -612,6 +658,20 @@ XLA_TEST_F(MathTest, BesselI1eDouble) {
                                   0.092036796872,
                                   0.0875062221833};
   ComputeAndCompareR1<double>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, AcosComplexValues) {
+  XlaBuilder builder(TestName());
+  auto x = ConstantR1<std::complex<float>>(
+      &builder, {{0, 0}, {0, 1}, {1, 1}, {0.8, 0.2}});
+
+  Acos(x);
+  std::vector<std::complex<float>> expected = {
+      {1.5707963267948966, 0},
+      {1.5707963267948966, -0.881373587019543},
+      {0.9045568943023814, -1.0612750619050357},
+      {0.7011246914497526, -0.30527648462436596}};
+  ComputeAndCompareR1<std::complex<float>>(&builder, expected, {}, error_spec_);
 }
 
 }  // namespace

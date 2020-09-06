@@ -19,6 +19,7 @@ limitations under the License.
 #define SAVED_MODEL_DIALECT
 
 include "mlir/IR/OpBase.td"
+include "mlir/IR/SymbolInterfaces.td"
 
 //===----------------------------------------------------------------------===//
 // Dialect definition
@@ -126,6 +127,52 @@ def TfSavedModel_GlobalTensorOp : TfSavedModel_Op<"global_tensor"> {
   );
 
   let verifier = [{ return Verify(*this); }];
+}
+
+def TfSavedModel_SessionInitializerOp: TfSavedModel_Op<"session_initializer"> {
+  let summary = "Initializes TensorFlow session state.";
+  let description = [{
+    The session initializer op marks a function that must be called by an
+    external agent exactly once to initialize TensorFlow session state, and this
+    must happen before any other exported functions are called. There must be no
+    more than one session initializer in a saved model.
+
+    The `initializer` represents the initialization function. The function have
+    no output and this function should be only called once.
+
+    This is used, for example, to initialize hash tables stored in resources and
+    accessed by resource name (rather than as resource handles or bound inputs
+    which is how `global_tensor`s are referenced)
+  }];
+
+  let arguments = (ins
+    FlatSymbolRefAttr:$initializer
+  );
+
+
+  let verifier = [{ return Verify(*this); }];
+
+  let hasCanonicalizer = 1;
+}
+
+def TfSavedModel_AssetOp: TfSavedModel_Op<"asset", [Symbol]> {
+  let summary = "Represents an asset in saved model.";
+  let description = [{
+    Represents an asset in the saved model that points to an external file. It
+    is a scalar string tensor and it is passed as an argument to the session
+    initializer function.
+
+    The `sym_name` represents the symbol table name used for internal IR
+    references.
+
+    The `filename` attribute contains the file path to the asset file and it is
+    relative to saved model directory.
+  }];
+
+  let arguments = (ins
+    StrAttr:$sym_name,
+    StrAttr:$filename
+  );
 }
 
 #endif // SAVED_MODEL_DIALECT

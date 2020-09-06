@@ -29,6 +29,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_module
+from tensorflow.python.util import nest
 
 
 ################################################################################
@@ -113,7 +114,7 @@ def convert_nonref_to_tensor(value, dtype=None, dtype_hint=None, name=None):
       raise TypeError('Mutable type must be of dtype "{}" but is "{}".'.format(
           dtype_name(dtype_base), dtype_name(value_dtype_base)))
     return value
-  return ops.convert_to_tensor(
+  return ops.convert_to_tensor_v2_with_dispatch(
       value, dtype=dtype, dtype_hint=dtype_hint, name=name)
 
 
@@ -133,6 +134,14 @@ def dtype_name(dtype):
   if hasattr(dtype, "__name__"):
     return dtype.__name__
   return str(dtype)
+
+
+def check_dtype(arg, dtype):
+  """Check that arg.dtype == self.dtype."""
+  if arg.dtype.base_dtype != dtype:
+    raise TypeError(
+        "Expected argument to have dtype %s.  Found: %s in tensor %s" %
+        (dtype, arg.dtype, arg))
 
 
 def is_ref(x):
@@ -180,10 +189,10 @@ def assert_no_entries_with_modulus_zero(
     An `Op` that asserts `x` has no entries with modulus zero.
   """
   with ops.name_scope(name, values=[x]):
-    x = ops.convert_to_tensor(x, name="x")
+    x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
     dtype = x.dtype.base_dtype
     should_be_nonzero = math_ops.abs(x)
-    zero = ops.convert_to_tensor(0, dtype=dtype.real_dtype)
+    zero = ops.convert_to_tensor_v2_with_dispatch(0, dtype=dtype.real_dtype)
     return check_ops.assert_less(zero, should_be_nonzero, message=message)
 
 
@@ -199,13 +208,13 @@ def assert_zero_imag_part(x, message=None, name="assert_zero_imag_part"):
     An `Op` that asserts `x` has no entries with modulus zero.
   """
   with ops.name_scope(name, values=[x]):
-    x = ops.convert_to_tensor(x, name="x")
+    x = ops.convert_to_tensor_v2_with_dispatch(x, name="x")
     dtype = x.dtype.base_dtype
 
     if dtype.is_floating:
       return control_flow_ops.no_op()
 
-    zero = ops.convert_to_tensor(0, dtype=dtype.real_dtype)
+    zero = ops.convert_to_tensor_v2_with_dispatch(0, dtype=dtype.real_dtype)
     return check_ops.assert_equal(zero, math_ops.imag(x), message=message)
 
 
@@ -252,7 +261,7 @@ def shape_tensor(shape, name=None):
     dtype = dtypes.int32
   else:
     dtype = None
-  return ops.convert_to_tensor(shape, dtype=dtype, name=name)
+  return ops.convert_to_tensor_v2_with_dispatch(shape, dtype=dtype, name=name)
 
 
 ################################################################################
@@ -314,7 +323,7 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
     batch_matrices = list(batch_matrices)
 
     for i, mat in enumerate(batch_matrices):
-      batch_matrices[i] = ops.convert_to_tensor(mat)
+      batch_matrices[i] = ops.convert_to_tensor_v2_with_dispatch(mat)
       assert_is_batch_matrix(batch_matrices[i])
 
     if len(batch_matrices) < 2:
@@ -357,8 +366,9 @@ def broadcast_matrix_batch_dims(batch_matrices, name=None):
 def matrix_solve_with_broadcast(matrix, rhs, adjoint=False, name=None):
   """Solve systems of linear equations."""
   with ops.name_scope(name, "MatrixSolveWithBroadcast", [matrix, rhs]):
-    matrix = ops.convert_to_tensor(matrix, name="matrix")
-    rhs = ops.convert_to_tensor(rhs, name="rhs", dtype=matrix.dtype)
+    matrix = ops.convert_to_tensor_v2_with_dispatch(matrix, name="matrix")
+    rhs = ops.convert_to_tensor_v2_with_dispatch(
+        rhs, name="rhs", dtype=matrix.dtype)
 
     # If either matrix/rhs has extra dims, we can reshape to get rid of them.
     matrix, rhs, reshape_inv, still_need_to_transpose = _reshape_for_efficiency(
@@ -500,3 +510,78 @@ def use_operator_or_provided_hint_unless_contradicting(
     return False
   # pylint: enable=g-bool-id-comparison
   return None
+
+
+################################################################################
+# Utilities for blockwise operators.
+################################################################################
+
+
+def arg_is_blockwise(block_dimensions, arg, arg_split_dim):
+  """Detect if input should be interpreted as a list of blocks."""
+  # Tuples and lists of length equal to the number of operators may be
+  # blockwise.
+  if (isinstance(arg, (tuple, list)) and len(arg) == len(block_dimensions)):
+    # If the elements of the iterable are not nested, interpret the input as
+    # blockwise.
+    if not any(nest.is_nested(x) for x in arg):
+      return True
+    else:
+      arg_dims = [ops.convert_to_tensor_v2_with_dispatch(
+          x).shape[arg_split_dim] for x in arg]
+      self_dims = [dim.value for dim in block_dimensions]
+
+      # If none of the operator dimensions are known, interpret the input as
+      # blockwise if its matching dimensions are unequal.
+      if all(self_d is None for self_d in self_dims):
+
+        # A nested tuple/list with a single outermost element is not blockwise
+        if len(arg_dims) == 1:
+          return False
+        elif any(dim != arg_dims[0] for dim in arg_dims):
+          return True
+        else:
+          raise ValueError(
+              "Parsing of the input structure is ambiguous. Please input "
+              "a blockwise iterable of `Tensor`s or a single `Tensor`.")
+
+      # If input dimensions equal the respective (known) blockwise operator
+      # dimensions, then the input is blockwise.
+      if all(self_d == arg_d or self_d is None
+             for self_d, arg_d in zip(self_dims, arg_dims)):
+        return True
+
+      # If input dimensions equals are all equal, and are greater than or equal
+      # to the sum of the known operator dimensions, interpret the input as
+      # blockwise.
+      # input is not blockwise.
+      self_dim = sum(self_d for self_d in self_dims if self_d is not None)
+      if all(s == arg_dims[0] for s in arg_dims) and arg_dims[0] >= self_dim:
+        return False
+
+      # If none of these conditions is met, the input shape is mismatched.
+      raise ValueError("Input dimension does not match operator dimension.")
+  else:
+    return False
+
+
+def split_arg_into_blocks(block_dims, block_dims_fn, arg, axis=-1):
+  """Split `x` into blocks matching `operators`'s `domain_dimension`.
+
+  Specifically, if we have a blockwise lower-triangular matrix, with block
+  sizes along the diagonal `[M_j, M_j] j = 0,1,2..J`,  this method splits `arg`
+  on `axis` into `J` tensors, whose shape at `axis` is `M_j`.
+
+  Args:
+    block_dims: Iterable of `TensorShapes`.
+    block_dims_fn: Callable returning an iterable of `Tensor`s.
+    arg: `Tensor`. `arg` is split into `J` tensors.
+    axis: Python `Integer` representing the axis to split `arg` on.
+
+  Returns:
+    A list of `Tensor`s.
+  """
+  block_sizes = [dim.value for dim in block_dims]
+  if any(d is None for d in block_sizes):
+    block_sizes = block_dims_fn()
+  return array_ops.split(arg, block_sizes, axis=axis)

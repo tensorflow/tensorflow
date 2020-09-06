@@ -21,9 +21,9 @@ limitations under the License.
 #include "absl/container/node_hash_set.h"
 #include "absl/types/optional.h"
 #include "third_party/gpus/cuda/extras/CUPTI/include/cupti.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/gpu/cupti_interface.h"
 
@@ -147,6 +147,8 @@ struct CuptiTracerOptions {
   std::vector<CUpti_ActivityKind> activities_selected;
   // Whether to call cuptiFinalize.
   bool cupti_finalize = false;
+  // Whether to call cuCtxSynchronize for each device before Stop().
+  bool sync_devices_before_stop = false;
 };
 
 struct CuptiTracerCollectorOptions {
@@ -172,7 +174,7 @@ class AnnotationMap {
 
  private:
   struct PerDeviceAnnotationMap {
-    // The population/consuption of annotations might happen from multiple
+    // The population/consumption of annotations might happen from multiple
     // callback/activity api related threads.
     absl::Mutex mutex;
     // Annotation tends to be repetitive, use a hash_set to store the strings,
@@ -219,7 +221,7 @@ class CuptiDriverApiHook {
   virtual Status OnDriverApiExit(int device_id, CUpti_CallbackDomain domain,
                                  CUpti_CallbackId cbid,
                                  const CUpti_CallbackData* callback_info) = 0;
-  virtual Status Flush() = 0;
+  virtual Status SyncAndFlush() = 0;
 
  protected:
   static Status AddDriverApiCallbackEvent(
@@ -239,6 +241,7 @@ class CuptiTracer {
 
   // Only one profile session can be live in the same time.
   bool IsAvailable() const;
+  bool NeedRootAccess() const { return need_root_access_; }
 
   void Enable(const CuptiTracerOptions& option, CuptiTraceCollector* collector);
   void Disable();
@@ -252,6 +255,8 @@ class CuptiTracer {
 
   static uint64 GetTimestamp();
   static int NumGpus();
+  // Returns the error (if any) when using libcupti.
+  static std::string ErrorIfAny();
 
  protected:
   // protected constructor for injecting mock cupti interface for testing.
@@ -270,6 +275,9 @@ class CuptiTracer {
   absl::optional<CuptiTracerOptions> option_;
   CuptiInterface* cupti_interface_ = nullptr;
   CuptiTraceCollector* collector_ = nullptr;
+
+  // CUPTI 10.1 and higher need root access to profile.
+  bool need_root_access_ = false;
 
   bool api_tracing_enabled_ = false;
   // Cupti handle for driver or runtime API callbacks. Cupti permits a single

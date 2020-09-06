@@ -1,4 +1,4 @@
-// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck --dump-input-on-failure %s
+// RUN: flatbuffer_translate -mlir-to-tflite-flatbuffer %s -o - | flatbuffer_to_string - | FileCheck %s
 
 func @main(tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor<384xf32>, tensor<1x96xf32>) -> tensor<1x96xf32> {
 // CHECK: {
@@ -108,6 +108,12 @@ func @main(tensor<1x384xf32>, tensor<1x96xf32>, tensor<384x480xf32>, tensor<384x
 // CHECK-EMPTY:
 // CHECK-NEXT:  }, {
 // CHECK-EMPTY:
+// CHECK-NEXT:  }, {
+// CHECK-NEXT:  data: [ 49, 46, 49, 48, 46, 48, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 ]
+// CHECK-NEXT:  } ],
+// CHECK-NEXT:  metadata: [ {
+// CHECK-NEXT:  name: "min_runtime_version",
+// CHECK-NEXT:  buffer: 10
 // CHECK-NEXT:  } ]
 // CHECK-NEXT:}
 

@@ -23,11 +23,11 @@ import types
 from tensorflow.python.eager import context
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.engine import base_layer_utils
-from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.keras.utils import control_flow_util
+from tensorflow.python.keras.utils.generic_utils import LazyLoader
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-from tensorflow.python.util.lazy_loader import LazyLoader
 
 
 # pylint:disable=g-inconsistent-quotes
@@ -69,7 +69,7 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     inputs = args[inputs_arg_index]
     args = args[inputs_arg_index + 1:]
     outputs, losses = fn(inputs, *args, **kwargs)
-    layer.add_loss(losses, inputs)
+    layer.add_loss(losses, inputs=inputs)
 
     # TODO(kathywu): This is a temporary hack. When a network of layers is
     # revived from SavedModel, only the top-level layer will have losses. This
@@ -79,7 +79,7 @@ def use_wrapped_call(layer, call_fn, default_training_value=None,
     # child layers. This causes `.losses` to only return eager losses.
     # pylint: disable=protected-access
     if context.executing_eagerly():
-      for i in layer._gather_unique_layers():
+      for i in layer._flatten_layers():
         if i is not layer:
           i._eager_losses = [base_layer_utils.REVIVED_LOSS_PLACEHOLDER]
     # pylint: enable=protected-access
@@ -164,9 +164,8 @@ def maybe_add_training_arg(
       set_training_arg(training, training_arg_index, args, kwargs)
       return wrapped_call(*args, **kwargs)
 
-    return tf_utils.smart_cond(
-        training,
-        lambda: replace_training_and_call(True),
+    return control_flow_util.smart_cond(
+        training, lambda: replace_training_and_call(True),
         lambda: replace_training_and_call(False))
 
   # Create arg spec for decorated function. If 'training' is not defined in the

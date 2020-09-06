@@ -43,19 +43,60 @@ std::vector<cl_image_format> GetSupportedImage2DFormats(cl_context context,
   return result;
 }
 
-Status CreateCLContext(const CLDevice& device,
-                       cl_context_properties* properties, CLContext* result) {
+bool IsEqualToImageFormat(cl_image_format image_format, DataType data_type,
+                          int num_channels) {
+  return image_format.image_channel_data_type ==
+             ToImageChannelType(data_type) &&
+         image_format.image_channel_order == ToChannelOrder(num_channels);
+}
+
+void AddSupportedImageFormats(cl_context context, DeviceInfo* info) {
+  auto supported_formats =
+      GetSupportedImage2DFormats(context, CL_MEM_READ_WRITE);
+  for (auto format : supported_formats) {
+    info->supports_r_f16_tex2d =
+        info->supports_r_f16_tex2d ||
+        IsEqualToImageFormat(format, DataType::FLOAT16, 1);
+    info->supports_rg_f16_tex2d =
+        info->supports_rg_f16_tex2d ||
+        IsEqualToImageFormat(format, DataType::FLOAT16, 2);
+    info->supports_rgb_f16_tex2d =
+        info->supports_rgb_f16_tex2d ||
+        IsEqualToImageFormat(format, DataType::FLOAT16, 3);
+    info->supports_rgba_f16_tex2d =
+        info->supports_rgba_f16_tex2d ||
+        IsEqualToImageFormat(format, DataType::FLOAT16, 4);
+    info->supports_r_f32_tex2d =
+        info->supports_r_f32_tex2d ||
+        IsEqualToImageFormat(format, DataType::FLOAT32, 1);
+    info->supports_rg_f32_tex2d =
+        info->supports_rg_f32_tex2d ||
+        IsEqualToImageFormat(format, DataType::FLOAT32, 2);
+    info->supports_rgb_f32_tex2d =
+        info->supports_rgb_f32_tex2d ||
+        IsEqualToImageFormat(format, DataType::FLOAT32, 3);
+    info->supports_rgba_f32_tex2d =
+        info->supports_rgba_f32_tex2d ||
+        IsEqualToImageFormat(format, DataType::FLOAT32, 4);
+  }
+}
+
+absl::Status CreateCLContext(const CLDevice& device,
+                             cl_context_properties* properties,
+                             CLContext* result) {
   int error_code;
   cl_device_id device_id = device.id();
   cl_context context =
       clCreateContext(properties, 1, &device_id, nullptr, nullptr, &error_code);
   if (!context) {
-    return UnknownError(absl::StrCat("Failed to create a compute context - ",
-                                     CLErrorCodeToString(error_code)));
+    return absl::UnknownError(
+        absl::StrCat("Failed to create a compute context - ",
+                     CLErrorCodeToString(error_code)));
   }
+  AddSupportedImageFormats(context, &device.info_);
 
   *result = CLContext(context, true);
-  return OkStatus();
+  return absl::OkStatus();
 }
 
 }  // namespace
@@ -99,15 +140,16 @@ bool CLContext::IsFloatTexture2DSupported(int num_channels, DataType data_type,
   return false;
 }
 
-Status CreateCLContext(const CLDevice& device, CLContext* result) {
+absl::Status CreateCLContext(const CLDevice& device, CLContext* result) {
   return CreateCLContext(device, nullptr, result);
 }
 
-Status CreateCLGLContext(const CLDevice& device,
-                         cl_context_properties egl_context,
-                         cl_context_properties egl_display, CLContext* result) {
+absl::Status CreateCLGLContext(const CLDevice& device,
+                               cl_context_properties egl_context,
+                               cl_context_properties egl_display,
+                               CLContext* result) {
   if (!device.SupportsExtension("cl_khr_gl_sharing")) {
-    return UnavailableError("Device doesn't support CL-GL sharing.");
+    return absl::UnavailableError("Device doesn't support CL-GL sharing.");
   }
   cl_context_properties platform =
       reinterpret_cast<cl_context_properties>(device.platform());

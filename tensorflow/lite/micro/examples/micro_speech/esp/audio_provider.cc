@@ -18,12 +18,17 @@ limitations under the License.
 #include <cstdlib>
 #include <cstring>
 
+// FreeRTOS.h must be included before some of the following dependencies.
+// Solves b/150260343.
+// clang-format off
+#include "freertos/FreeRTOS.h"
+// clang-format on
+
 #include "driver/i2s.h"
 #include "esp_log.h"
 #include "esp_spi_flash.h"
 #include "esp_system.h"
 #include "esp_timer.h"
-#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "ringbuf.h"
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/micro_model_settings.h"

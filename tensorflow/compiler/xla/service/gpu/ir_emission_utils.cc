@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/stream_executor/device_description.h"
 
 namespace xla {
 namespace gpu {
@@ -126,7 +127,9 @@ bool IsCublasGemm(const HloInstruction& hlo) {
 }
 
 std::array<int64, 3> GetReductionTiling(
-    const ReductionDimensions& reduction_dimensions) {
+    const ReductionDimensions& reduction_dimensions,
+    int smallest_input_dtype_bits,
+    absl::optional<CudaComputeCapability> cuda_compute_capability) {
   if (reduction_dimensions.is_row_reduction) {
     int64 tile_z = std::min(reduction_dimensions.dimensions[0], int64{8});
     if (reduction_dimensions.dimensions[1] == 1) {
@@ -137,7 +140,17 @@ std::array<int64, 3> GetReductionTiling(
         0) {
       return {tile_z, 1, 64};
     }
-    return {tile_z, 1, 8};
+    int cc_major = 0;
+    if (cuda_compute_capability) {
+      cc_major = cuda_compute_capability->cc_major;
+    }
+    int unroll_x = 8;
+    if (cc_major >= 6 && smallest_input_dtype_bits == 16) {
+      unroll_x = 16;
+    } else if (cc_major >= 6 && smallest_input_dtype_bits == 8) {
+      unroll_x = 64;
+    }
+    return {tile_z, 1, unroll_x};
   }
 
   // Column reduction.
@@ -213,6 +226,11 @@ bool IsReductionFromOrToContiguousDimensions(const HloInstruction& reduce) {
       dims_to_keep.push_back(dim);
     }
   }
+
+  // We support fast codegen for three cases:
+  // 1) Row reduction: (K, R)
+  // 2) Column reduction: (K, R, K)
+  // 3) "Batched" row reduction: (R, K, R)
   if (!LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
                                             dims_to_keep) &&
       !LayoutUtil::AreDimensionsConsecutive(input->shape().layout(),
@@ -415,7 +433,7 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
       builder->CreateZExt(
           builder->CreateBitCast(value, builder->getIntNTy(bit_width)),
           builder->getIntNTy(32 * num_segments)),
-      llvm::VectorType::get(builder->getInt32Ty(), num_segments));
+      llvm::VectorType::get(builder->getInt32Ty(), num_segments, false));
   for (int i = 0; i < num_segments; ++i) {
     llvm::Value* insert_val;
     if (target_triple.isNVPTX()) {
@@ -507,7 +525,7 @@ llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
           EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)),
       b->CreateICmpEQ(
           b->getInt32(0),
-          EmitCallToTargetIntrinsic(TargetIntrinsicID::kThreadIdx, {}, {}, b)));
+          EmitCallToTargetIntrinsic(TargetIntrinsicID::kBlockIdx, {}, {}, b)));
 }
 
 bool AreFusedReductionOutputsConsistent(

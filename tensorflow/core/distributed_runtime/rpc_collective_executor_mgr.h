@@ -78,7 +78,7 @@ class RpcCollectiveExecutorMgr : public CollectiveExecutorMgr {
 
   mutex sequence_mu_;
   gtl::FlatMap<int64, GraphKeySequence*> sequence_table_
-      GUARDED_BY(sequence_mu_);
+      TF_GUARDED_BY(sequence_mu_);
 };
 
 }  // namespace tensorflow

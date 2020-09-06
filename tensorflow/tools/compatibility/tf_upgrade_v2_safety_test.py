@@ -70,14 +70,12 @@ class TfUpgradeV2SafetyTest(test_util.TensorFlowTestCase):
 
   def testTensorFlowGoogleImport(self):
     text = "import tensorflow.google as tf"
-    expected_text = "import tensorflow.google.compat.v1 as tf"
     _, _, _, new_text = self._upgrade(text)
-    self.assertEqual(expected_text, new_text)
+    self.assertEqual(text, new_text)
 
     text = "import tensorflow.google"
-    expected_text = "import tensorflow.google.compat.v1"
     _, _, _, new_text = self._upgrade(text)
-    self.assertEqual(expected_text, new_text)
+    self.assertEqual(text, new_text)
 
     text = "import tensorflow.google.compat.v1 as tf"
     expected_text = "import tensorflow.google.compat.v1 as tf"

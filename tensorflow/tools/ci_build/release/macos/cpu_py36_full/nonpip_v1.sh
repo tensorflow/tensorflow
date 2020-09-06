@@ -17,12 +17,7 @@ set -e
 set -x
 
 source tensorflow/tools/ci_build/release/common.sh
-
-# Install latest bazel
-update_bazel_macos
-which bazel
-bazel version
-set_bazel_outdir
+install_bazelisk
 
 # Pick a more recent version of xcode
 sudo xcode-select --switch /Applications/Xcode_9.2.app/Contents/Developer
@@ -41,7 +36,7 @@ yes "" | "$PYTHON_BIN_PATH" configure.py
 tag_filters="-no_oss,-oss_serial,-nomac,-no_mac"
 
 # Get the default test targets for bazel.
-source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
+source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
 # Run tests
 bazel test --test_output=errors --config=opt \

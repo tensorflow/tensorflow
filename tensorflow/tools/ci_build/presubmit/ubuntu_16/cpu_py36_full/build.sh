@@ -46,7 +46,7 @@ function run_build () {
   tag_filters="-no_oss,-oss_serial,-gpu,-tpu,-benchmark-test""$(maybe_skip_v1)"
 
   # Get the default test targets for bazel.
-  source tensorflow/tools/ci_build/build_scripts/PRESUBMIT_BUILD_TARGETS.sh
+  source tensorflow/tools/ci_build/build_scripts/DEFAULT_TEST_TARGETS.sh
 
   # Run bazel test command. Double test timeouts to avoid flakes.
   # //tensorflow/core/platform:setround_test is not supported. See b/64264700
@@ -55,9 +55,8 @@ function run_build () {
     --config=rbe \
     --python_path="${PYTHON_BIN_PATH}" \
     --action_env=PATH="${ACTION_PATH}" \
-    --action_env=PYTHON_BIN_PATH="${PYTHON_BIN_PATH}" \
     --action_env=TF2_BEHAVIOR="${TF2_BEHAVIOR}" \
-    --action_env=TF_PYTHON_CONFIG_REPO=@org_tensorflow//third_party/toolchains/preconfig/ubuntu16.04/py3 \
+    --action_env=TF_PYTHON_CONFIG_REPO="@ubuntu16.04-manylinux2010-py3_config_python" \
     --action_env=TF_ENABLE_XLA=1 \
     --test_tag_filters="${tag_filters}" \
     --build_tag_filters="${tag_filters}" \

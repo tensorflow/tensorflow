@@ -29,7 +29,10 @@ limitations under the License.
 namespace tensorflow {
 
 class Device;
+class FunctionLibraryRuntime;
+class ProcessFunctionLibraryRuntime;
 struct SessionOptions;
+class StaticDeviceMgr;
 
 namespace test {
 
@@ -55,9 +58,13 @@ class Benchmark {
       const std::vector<string>& outputs, int iters);
 
  private:
-  thread::ThreadPool* pool_ = nullptr;
-  std::unique_ptr<Device> device_ = nullptr;
+  thread::ThreadPool* pool_ = nullptr;  // Not owned.
+  Device* device_ = nullptr;            // Not owned.
   Rendezvous* rendez_ = nullptr;
+  std::unique_ptr<StaticDeviceMgr> device_mgr_;
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr_;
+  FunctionLibraryRuntime* flr_;  // Not owned.
   std::unique_ptr<Executor> exec_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Benchmark);

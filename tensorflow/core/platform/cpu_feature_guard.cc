@@ -139,16 +139,12 @@ void InfoAboutUnusedCPUFeatures() {
 #endif  // __FMA__
 #endif  // else of if defined(_MSC_VER) && !defined(__clang__)
     if (!missing_instructions.empty()) {
-#ifndef INTEL_MKL
-      LOG(INFO) << "Your CPU supports instructions that this TensorFlow "
-                << "binary was not compiled to use:" << missing_instructions;
-#else
-      LOG(INFO) << "This TensorFlow binary is optimized with Intel(R) MKL-DNN "
-                << "to use the following CPU instructions in performance "
+      LOG(INFO) << "This TensorFlow binary is optimized with "
+                << "oneAPI Deep Neural Network Library (oneDNN) "
+                << "to use the following CPU instructions in performance-"
                 << "critical operations: " << missing_instructions << std::endl
-                << "To enable them in non-MKL-DNN operations, rebuild "
-                << "TensorFlow with the appropriate compiler flags.";
-#endif
+                << "To enable them in other operations, rebuild TensorFlow "
+                << "with the appropriate compiler flags.";
     }
   });
 }

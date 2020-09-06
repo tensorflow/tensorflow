@@ -87,11 +87,11 @@ class RaggedElementwiseOpsTest(test_util.TensorFlowTestCase):
 
   def testDummyOperators(self):
     a = ragged_factory_ops.constant([[True, True], [False]])
-    with self.assertRaisesRegexp(TypeError,
-                                 'RaggedTensor may not be used as a boolean.'):
+    with self.assertRaisesRegex(TypeError,
+                                'RaggedTensor may not be used as a boolean.'):
       bool(a)
-    with self.assertRaisesRegexp(TypeError,
-                                 'RaggedTensor may not be used as a boolean.'):
+    with self.assertRaisesRegex(TypeError,
+                                'RaggedTensor may not be used as a boolean.'):
       if a:
         pass
 

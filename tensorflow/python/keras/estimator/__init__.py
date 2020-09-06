@@ -38,7 +38,9 @@ def model_to_estimator(
     custom_objects=None,
     model_dir=None,
     config=None,
-    checkpoint_format='saver'):
+    checkpoint_format='saver',
+    metric_names_map=None,
+    export_outputs=None):
   """Constructs an `Estimator` instance from given keras model.
 
   If you use infrastructure or other tooling that relies on Estimators, you can
@@ -46,8 +48,8 @@ def model_to_estimator(
   model to an Estimator for use with downstream systems.
 
   For usage example, please see:
-  [Creating estimators from Keras
-  Models](https://www.tensorflow.org/guide/estimators#creating_estimators_from_keras_models).
+  [Creating estimators from Keras Models](
+    https://www.tensorflow.org/guide/estimators#creating_estimators_from_keras_models).
 
   Sample Weights:
   Estimators returned by `model_to_estimator` are configured so that they can
@@ -62,6 +64,28 @@ def model_to_estimator(
   keras_model.compile(...)
 
   estimator = tf.keras.estimator.model_to_estimator(keras_model)
+
+  def input_fn():
+    return dataset_ops.Dataset.from_tensors(
+        ({'features': features, 'sample_weights': sample_weights},
+         targets))
+
+  estimator.train(input_fn, steps=1)
+  ```
+
+  Example with customized export signature:
+  ```python
+  inputs = {'a': tf.keras.Input(..., name='a'),
+            'b': tf.keras.Input(..., name='b')}
+  outputs = {'c': tf.keras.layers.Dense(..., name='c')(inputs['a']),
+             'd': tf.keras.layers.Dense(..., name='d')(inputs['b'])}
+  keras_model = tf.keras.Model(inputs, outputs)
+  keras_model.compile(...)
+  export_outputs = {'c': tf.estimator.export.RegressionOutput,
+                    'd': tf.estimator.export.ClassificationOutput}
+
+  estimator = tf.keras.estimator.model_to_estimator(
+      keras_model, export_outputs=export_outputs)
 
   def input_fn():
     return dataset_ops.Dataset.from_tensors(
@@ -100,6 +124,32 @@ def model_to_estimator(
       `tf.train.Checkpoint`. Currently, saving object-based checkpoints from
       `model_to_estimator` is only supported by Functional and Sequential
       models. Defaults to 'saver'.
+    metric_names_map: Optional dictionary mapping Keras model output metric
+      names to custom names. This can be used to override the default Keras
+      model output metrics names in a multi IO model use case and provide custom
+      names for the `eval_metric_ops` in Estimator.
+      The Keras model metric names can be obtained using `model.metrics_names`
+      excluding any loss metrics such as total loss and output losses.
+      For example, if your Keras model has two outputs `out_1` and `out_2`,
+      with `mse` loss and `acc` metric, then `model.metrics_names` will be
+      `['loss', 'out_1_loss', 'out_2_loss', 'out_1_acc', 'out_2_acc']`.
+      The model metric names excluding the loss metrics will be
+      `['out_1_acc', 'out_2_acc']`.
+    export_outputs: Optional dictionary. This can be used to override the
+      default Keras model output exports in a multi IO model use case and
+      provide custom names for the `export_outputs` in
+      `tf.estimator.EstimatorSpec`. Default is None, which is equivalent to
+      {'serving_default': `tf.estimator.export.PredictOutput`}. If not None,
+      the keys must match the keys of `model.output_names`.
+      A dict `{name: output}` where:
+        * name: An arbitrary name for this output.
+        * output: an `ExportOutput` class such as `ClassificationOutput`,
+          `RegressionOutput`, or `PredictOutput`. Single-headed models only need
+          to specify one entry in this dictionary. Multi-headed models should
+          specify one entry for each head, one of which must be named using
+          `tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`
+          If no entry is provided, a default `PredictOutput` mapping to
+          `predictions` will be created.
 
   Returns:
     An Estimator from given keras model.
@@ -126,17 +176,20 @@ def model_to_estimator(
       model_dir=model_dir,
       config=config,
       checkpoint_format=checkpoint_format,
-      use_v2_estimator=False)
+      use_v2_estimator=False,
+      metric_names_map=metric_names_map,
+      export_outputs=export_outputs)
 
 
 @keras_export('keras.estimator.model_to_estimator', v1=[])
-def model_to_estimator_v2(
-    keras_model=None,
-    keras_model_path=None,
-    custom_objects=None,
-    model_dir=None,
-    config=None,
-    checkpoint_format='checkpoint'):
+def model_to_estimator_v2(keras_model=None,
+                          keras_model_path=None,
+                          custom_objects=None,
+                          model_dir=None,
+                          config=None,
+                          checkpoint_format='checkpoint',
+                          metric_names_map=None,
+                          export_outputs=None):
   """Constructs an `Estimator` instance from given keras model.
 
   If you use infrastructure or other tooling that relies on Estimators, you can
@@ -144,8 +197,8 @@ def model_to_estimator_v2(
   model to an Estimator for use with downstream systems.
 
   For usage example, please see:
-  [Creating estimators from Keras
-  Models](https://www.tensorflow.org/guide/estimators#creating_estimators_from_keras_models).
+  [Creating estimators from Keras Models](
+    https://www.tensorflow.org/guide/estimators#creating_estimators_from_keras_models).
 
   Sample Weights:
   Estimators returned by `model_to_estimator` are configured so that they can
@@ -167,6 +220,68 @@ def model_to_estimator_v2(
          targets))
 
   estimator.train(input_fn, steps=1)
+  ```
+
+  Example with customized export signature:
+  ```python
+  inputs = {'a': tf.keras.Input(..., name='a'),
+            'b': tf.keras.Input(..., name='b')}
+  outputs = {'c': tf.keras.layers.Dense(..., name='c')(inputs['a']),
+             'd': tf.keras.layers.Dense(..., name='d')(inputs['b'])}
+  keras_model = tf.keras.Model(inputs, outputs)
+  keras_model.compile(...)
+  export_outputs = {'c': tf.estimator.export.RegressionOutput,
+                    'd': tf.estimator.export.ClassificationOutput}
+
+  estimator = tf.keras.estimator.model_to_estimator(
+      keras_model, export_outputs=export_outputs)
+
+  def input_fn():
+    return dataset_ops.Dataset.from_tensors(
+        ({'features': features, 'sample_weights': sample_weights},
+         targets))
+
+  estimator.train(input_fn, steps=1)
+  ```
+
+  Note: We do not support creating weighted metrics in Keras and converting them
+  to weighted metrics in the Estimator API using `model_to_estimator`.
+  You will have to create these metrics directly on the estimator spec using the
+  `add_metrics` function.
+
+  To customize the estimator `eval_metric_ops` names, you can pass in the
+  `metric_names_map` dictionary mapping the keras model output metric names
+  to the custom names as follows:
+
+  ```python
+    input_a = tf.keras.layers.Input(shape=(16,), name='input_a')
+    input_b = tf.keras.layers.Input(shape=(16,), name='input_b')
+    dense = tf.keras.layers.Dense(8, name='dense_1')
+    interm_a = dense(input_a)
+    interm_b = dense(input_b)
+    merged = tf.keras.layers.concatenate([interm_a, interm_b], name='merge')
+    output_a = tf.keras.layers.Dense(3, activation='softmax', name='dense_2')(
+            merged)
+    output_b = tf.keras.layers.Dense(2, activation='softmax', name='dense_3')(
+            merged)
+    keras_model = tf.keras.models.Model(
+        inputs=[input_a, input_b], outputs=[output_a, output_b])
+    keras_model.compile(
+        loss='categorical_crossentropy',
+        optimizer='rmsprop',
+        metrics={
+            'dense_2': 'categorical_accuracy',
+            'dense_3': 'categorical_accuracy'
+        })
+
+    metric_names_map = {
+        'dense_2_categorical_accuracy': 'acc_1',
+        'dense_3_categorical_accuracy': 'acc_2',
+    }
+    keras_est = tf.keras.estimator.model_to_estimator(
+        keras_model=keras_model,
+        config=config,
+        metric_names_map=metric_names_map)
   ```
 
   Args:
@@ -197,6 +312,32 @@ def model_to_estimator_v2(
       `tf.train.Checkpoint`. Currently, saving object-based checkpoints from
       `model_to_estimator` is only supported by Functional and Sequential
       models. Defaults to 'checkpoint'.
+    metric_names_map: Optional dictionary mapping Keras model output metric
+      names to custom names. This can be used to override the default Keras
+      model output metrics names in a multi IO model use case and provide custom
+      names for the `eval_metric_ops` in Estimator.
+      The Keras model metric names can be obtained using `model.metrics_names`
+      excluding any loss metrics such as total loss and output losses.
+      For example, if your Keras model has two outputs `out_1` and `out_2`,
+      with `mse` loss and `acc` metric, then `model.metrics_names` will be
+      `['loss', 'out_1_loss', 'out_2_loss', 'out_1_acc', 'out_2_acc']`.
+      The model metric names excluding the loss metrics will be
+      `['out_1_acc', 'out_2_acc']`.
+    export_outputs: Optional dictionary. This can be used to override the
+      default Keras model output exports in a multi IO model use case and
+      provide custom names for the `export_outputs` in
+      `tf.estimator.EstimatorSpec`. Default is None, which is equivalent to
+      {'serving_default': `tf.estimator.export.PredictOutput`}. If not None,
+      the keys must match the keys of `model.output_names`.
+      A dict `{name: output}` where:
+        * name: An arbitrary name for this output.
+        * output: an `ExportOutput` class such as `ClassificationOutput`,
+          `RegressionOutput`, or `PredictOutput`. Single-headed models only need
+          to specify one entry in this dictionary. Multi-headed models should
+          specify one entry for each head, one of which must be named using
+          `tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY`
+          If no entry is provided, a default `PredictOutput` mapping to
+          `predictions` will be created.
 
   Returns:
     An Estimator from given keras model.
@@ -223,5 +364,7 @@ def model_to_estimator_v2(
       model_dir=model_dir,
       config=config,
       checkpoint_format=checkpoint_format,
-      use_v2_estimator=True)
+      use_v2_estimator=True,
+      metric_names_map=metric_names_map,
+      export_outputs=export_outputs)
 # LINT.ThenChange(//tensorflow_estimator/python/estimator/keras.py)

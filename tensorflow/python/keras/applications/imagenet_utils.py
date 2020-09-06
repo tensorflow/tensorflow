@@ -22,6 +22,7 @@ import warnings
 
 import numpy as np
 
+from tensorflow.python.keras import activations
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.util.tf_export import keras_export
@@ -32,17 +33,44 @@ CLASS_INDEX_PATH = ('https://storage.googleapis.com/download.tensorflow.org/'
                     'data/imagenet_class_index.json')
 
 
-@keras_export('keras.applications.imagenet_utils.preprocess_input')
-def preprocess_input(x, data_format=None, mode='caffe'):
-  """Preprocesses a tensor or Numpy array encoding a batch of images.
+PREPROCESS_INPUT_DOC = """
+  Preprocesses a tensor or Numpy array encoding a batch of images.
+
+  Usage example with `applications.MobileNet`:
+
+  ```python
+  i = tf.keras.layers.Input([None, None, 3], dtype = tf.uint8)
+  x = tf.cast(i, tf.float32)
+  x = tf.keras.applications.mobilenet.preprocess_input(x)
+  core = tf.keras.applications.MobileNet()
+  x = core(x)
+  model = tf.keras.Model(inputs=[i], outputs=[x])
+
+  image = tf.image.decode_png(tf.io.read_file('file.png'))
+  result = model(image)
+  ```
 
   Arguments:
-    x: Input Numpy or symbolic tensor, 3D or 4D.
-      The preprocessed data is written over the input data
+    x: A floating point `numpy.array` or a `tf.Tensor`, 3D or 4D with 3 color
+      channels, with values in the range [0, 255].
+      The preprocessed data are written over the input data
       if the data types are compatible. To avoid this
       behaviour, `numpy.copy(x)` can be used.
-    data_format: Data format of the image tensor/array.
-    mode: One of "caffe", "tf" or "torch".
+    data_format: Optional data format of the image tensor/array. Defaults to
+      None, in which case the global setting
+      `tf.keras.backend.image_data_format()` is used (unless you changed it,
+      it defaults to "channels_last").{mode}
+
+  Returns:
+      Preprocessed `numpy.array` or a `tf.Tensor` with type `float32`.
+      {ret}
+
+  Raises:
+      {error}
+  """
+
+PREPROCESS_INPUT_MODE_DOC = """
+    mode: One of "caffe", "tf" or "torch". Defaults to "caffe".
       - caffe: will convert the images from RGB to BGR,
           then will zero-center each color channel with
           respect to the ImageNet dataset,
@@ -52,16 +80,35 @@ def preprocess_input(x, data_format=None, mode='caffe'):
       - torch: will scale pixels between 0 and 1 and then
           will normalize each channel with respect to the
           ImageNet dataset.
-
-  Returns:
-      Preprocessed tensor or Numpy array.
-
-  Raises:
-      ValueError: In case of unknown `data_format` argument.
   """
+
+PREPROCESS_INPUT_DEFAULT_ERROR_DOC = """
+    ValueError: In case of unknown `mode` or `data_format` argument."""
+
+PREPROCESS_INPUT_ERROR_DOC = """
+    ValueError: In case of unknown `data_format` argument."""
+
+PREPROCESS_INPUT_RET_DOC_TF = """
+      The inputs pixel values are scaled between -1 and 1, sample-wise."""
+
+PREPROCESS_INPUT_RET_DOC_TORCH = """
+      The input pixels values are scaled between 0 and 1 and each channel is
+      normalized with respect to the ImageNet dataset."""
+
+PREPROCESS_INPUT_RET_DOC_CAFFE = """
+      The images are converted from RGB to BGR, then each color channel is
+      zero-centered with respect to the ImageNet dataset, without scaling."""
+
+
+@keras_export('keras.applications.imagenet_utils.preprocess_input')
+def preprocess_input(x, data_format=None, mode='caffe'):
+  """Preprocesses a tensor or Numpy array encoding a batch of images."""
+  if mode not in {'caffe', 'tf', 'torch'}:
+    raise ValueError('Unknown mode ' + str(mode))
+
   if data_format is None:
     data_format = backend.image_data_format()
-  if data_format not in {'channels_first', 'channels_last'}:
+  elif data_format not in {'channels_first', 'channels_last'}:
     raise ValueError('Unknown data_format ' + str(data_format))
 
   if isinstance(x, np.ndarray):
@@ -72,13 +119,19 @@ def preprocess_input(x, data_format=None, mode='caffe'):
         x, data_format=data_format, mode=mode)
 
 
+preprocess_input.__doc__ = PREPROCESS_INPUT_DOC.format(
+    mode=PREPROCESS_INPUT_MODE_DOC,
+    ret='',
+    error=PREPROCESS_INPUT_DEFAULT_ERROR_DOC)
+
+
 @keras_export('keras.applications.imagenet_utils.decode_predictions')
 def decode_predictions(preds, top=5):
   """Decodes the prediction of an ImageNet model.
 
   Arguments:
-    preds: Numpy tensor encoding a batch of predictions.
-    top: Integer, how many top-guesses to return.
+    preds: Numpy array encoding a batch of predictions.
+    top: Integer, how many top-guesses to return. Defaults to 5.
 
   Returns:
     A list of lists of top class prediction tuples
@@ -140,8 +193,7 @@ def _preprocess_numpy_input(x, data_format, mode):
     x /= 127.5
     x -= 1.
     return x
-
-  if mode == 'torch':
+  elif mode == 'torch':
     x /= 255.
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
@@ -211,8 +263,7 @@ def _preprocess_symbolic_input(x, data_format, mode):
     x /= 127.5
     x -= 1.
     return x
-
-  if mode == 'torch':
+  elif mode == 'torch':
     x /= 255.
     mean = [0.485, 0.456, 0.406]
     std = [0.229, 0.224, 0.225]
@@ -355,3 +406,27 @@ def correct_pad(inputs, kernel_size):
   correct = (kernel_size[0] // 2, kernel_size[1] // 2)
   return ((correct[0] - adjust[0], correct[0]),
           (correct[1] - adjust[1], correct[1]))
+
+
+def validate_activation(classifier_activation, weights):
+  """validates that the classifer_activation is compatible with the weights.
+
+  Args:
+    classifier_activation: str or callable activation function
+    weights: The pretrained weights to load.
+
+  Raises:
+    ValueError: if an activation other than `None` or `softmax` are used with
+      pretrained weights.
+  """
+  if weights is None:
+    return
+
+  classifier_activation = activations.get(classifier_activation)
+  if classifier_activation not in {
+      activations.get('softmax'),
+      activations.get(None)
+  }:
+    raise ValueError('Only `None` and `softmax` activations are allowed '
+                     'for the `classifier_activation` argument when using '
+                     'pretrained weights, with `include_top=True`')

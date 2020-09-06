@@ -67,7 +67,7 @@ class LinearOperatorToeplitzTest(
     # Skip solve tests, as these could have better stability
     # (currently exercises the base class).
     # TODO(srvasude): Enable these when solve is implemented.
-    return ["cholesky", "inverse", "solve", "solve_with_broadcast"]
+    return ["cholesky", "cond", "inverse", "solve", "solve_with_broadcast"]
 
   @staticmethod
   def operator_shapes_infos():
@@ -130,13 +130,13 @@ class LinearOperatorToeplitzTest(
     return operator, matrix
 
   def test_scalar_row_col_raises(self):
-    with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
+    with self.assertRaisesRegex(ValueError, "must have at least 1 dimension"):
       linear_operator_toeplitz.LinearOperatorToeplitz(1., 1.)
 
-    with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
+    with self.assertRaisesRegex(ValueError, "must have at least 1 dimension"):
       linear_operator_toeplitz.LinearOperatorToeplitz([1.], 1.)
 
-    with self.assertRaisesRegexp(ValueError, "must have at least 1 dimension"):
+    with self.assertRaisesRegex(ValueError, "must have at least 1 dimension"):
       linear_operator_toeplitz.LinearOperatorToeplitz(1., [1.])
 
   def test_tape_safe(self):

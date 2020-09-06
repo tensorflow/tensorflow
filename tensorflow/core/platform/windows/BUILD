@@ -24,6 +24,7 @@ cc_library(
         "//tensorflow/core/platform:env.cc",
         "//tensorflow/core/platform:file_system.cc",
         "//tensorflow/core/platform:file_system_helper.cc",
+        "//tensorflow/core/platform:ram_file_system.h",
         "//tensorflow/core/platform:threadpool.cc",
     ],
     hdrs = [
@@ -234,6 +235,11 @@ cc_library(
         "no_oss",
         "nobuilder",
     ],
+)
+
+filegroup(
+    name = "xla_cpu_runtime_srcs",
+    srcs = ["env_time.cc"],
 )
 
 exports_files(

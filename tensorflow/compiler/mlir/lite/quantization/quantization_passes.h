@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_PASSES_H_
 #define TENSORFLOW_COMPILER_MLIR_LITE_QUANTIZATION_QUANTIZATION_PASSES_H_
 
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
 
 namespace mlir {
 namespace quant {
@@ -27,13 +27,13 @@ using OperationToName = std::function<llvm::StringRef(Operation* op)>;
 // Creates an instance pass to import quantization stats to the operations in
 // the function. A custom method to get the name from the op is used because
 // different dialect ops might have different ways to assign the name.
-std::unique_ptr<OpPassBase<FuncOp>> CreateImportQuantStatsPass(
+std::unique_ptr<OperationPass<FuncOp>> CreateImportQuantStatsPass(
     OperationToName op_to_name, const std::string& stats_str);
 
 // Creates an instance pass to import quantization stats to the operations in
 // the function. A custom method to get the name from the op is used because
 // different dialect ops might have different ways to assign the name.
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateImportQuantStatsPassForTFControlDialect(const std::string& stats_str);
 
 }  // namespace quant

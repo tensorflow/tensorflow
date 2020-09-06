@@ -46,8 +46,10 @@ TfLiteStatus QuantizeAnnotatedModel(llvm::StringRef buffer,
 
   tflite::StderrReporter error_reporter;
   return mlir::lite::QuantizeModel(
-      *model, tflite::TensorType_INT8, tflite::TensorType_INT8, {},
-      /*allow_float=*/false, builder, &error_reporter);
+      *model, tflite::TensorType_INT8, tflite::TensorType_INT8,
+      tflite::TensorType_INT8, {},
+      /*disable_per_channel=*/false,
+      /*fully_quantize=*/true, builder, &error_reporter);
 }
 
 }  // namespace

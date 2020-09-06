@@ -115,6 +115,10 @@ class LinearOperatorDerivedClassTest(test.TestCase):
     return [False, True]
 
   @staticmethod
+  def use_blockwise_arg():
+    return False
+
+  @staticmethod
   def operator_shapes_infos():
     """Returns list of OperatorShapesInfo, encapsulating the shape to test."""
     raise NotImplementedError("operator_shapes_infos has not been implemented.")
@@ -321,6 +325,7 @@ def _test_matmul_base(
     dtype,
     adjoint,
     adjoint_arg,
+    blockwise_arg,
     with_batch):
   # If batch dimensions are omitted, but there are
   # no batch dimensions for the linear operator, then
@@ -346,8 +351,35 @@ def _test_matmul_base(
     if not use_placeholder:
       self.assertAllEqual(op_matmul.shape,
                           mat_matmul.shape)
-    op_matmul_v, mat_matmul_v = sess.run(
-        [op_matmul, mat_matmul])
+
+    # If the operator is blockwise, test both blockwise `x` and `Tensor` `x`;
+    # else test only `Tensor` `x`. In both cases, evaluate all results in a
+    # single `sess.run` call to avoid re-sampling the random `x` in graph mode.
+    if blockwise_arg and len(operator.operators) > 1:
+      split_x = linear_operator_util.split_arg_into_blocks(
+          operator._block_domain_dimensions(),  # pylint: disable=protected-access
+          operator._block_domain_dimension_tensors,  # pylint: disable=protected-access
+          x, axis=-2)
+      if adjoint_arg:
+        split_x = [linalg.adjoint(y) for y in split_x]
+      split_matmul = operator.matmul(
+          split_x, adjoint=adjoint, adjoint_arg=adjoint_arg)
+
+      self.assertEqual(len(split_matmul), len(operator.operators))
+      split_matmul = linear_operator_util.broadcast_matrix_batch_dims(
+          split_matmul)
+      fused_block_matmul = array_ops.concat(split_matmul, axis=-2)
+      op_matmul_v, mat_matmul_v, fused_block_matmul_v = sess.run([
+          op_matmul, mat_matmul, fused_block_matmul])
+
+      # Check that the operator applied to blockwise input gives the same result
+      # as matrix multiplication.
+      self.assertAC(fused_block_matmul_v, mat_matmul_v)
+    else:
+      op_matmul_v, mat_matmul_v = sess.run([op_matmul, mat_matmul])
+
+    # Check that the operator applied to a `Tensor` gives the same result as
+    # matrix multiplication.
     self.assertAC(op_matmul_v, mat_matmul_v)
 
 
@@ -356,7 +388,8 @@ def _test_matmul(
     shapes_info,
     dtype,
     adjoint,
-    adjoint_arg):
+    adjoint_arg,
+    blockwise_arg):
   def test_matmul(self):
     _test_matmul_base(
         self,
@@ -365,6 +398,7 @@ def _test_matmul(
         dtype,
         adjoint,
         adjoint_arg,
+        blockwise_arg,
         with_batch=True)
   return test_matmul
 
@@ -374,7 +408,8 @@ def _test_matmul_with_broadcast(
     shapes_info,
     dtype,
     adjoint,
-    adjoint_arg):
+    adjoint_arg,
+    blockwise_arg):
   def test_matmul_with_broadcast(self):
     _test_matmul_base(
         self,
@@ -383,6 +418,7 @@ def _test_matmul_with_broadcast(
         dtype,
         adjoint,
         adjoint_arg,
+        blockwise_arg,
         with_batch=True)
   return test_matmul_with_broadcast
 
@@ -505,6 +541,7 @@ def _test_solve_base(
     dtype,
     adjoint,
     adjoint_arg,
+    blockwise_arg,
     with_batch):
   # If batch dimensions are omitted, but there are
   # no batch dimensions for the linear operator, then
@@ -532,12 +569,39 @@ def _test_solve_base(
     if not use_placeholder:
       self.assertAllEqual(op_solve.shape,
                           mat_solve.shape)
-    op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve])
+
+    # If the operator is blockwise, test both blockwise rhs and `Tensor` rhs;
+    # else test only `Tensor` rhs. In both cases, evaluate all results in a
+    # single `sess.run` call to avoid re-sampling the random rhs in graph mode.
+    if blockwise_arg and len(operator.operators) > 1:
+      split_rhs = linear_operator_util.split_arg_into_blocks(
+          operator._block_domain_dimensions(),  # pylint: disable=protected-access
+          operator._block_domain_dimension_tensors,  # pylint: disable=protected-access
+          rhs, axis=-2)
+      if adjoint_arg:
+        split_rhs = [linalg.adjoint(y) for y in split_rhs]
+      split_solve = operator.solve(
+          split_rhs, adjoint=adjoint, adjoint_arg=adjoint_arg)
+      self.assertEqual(len(split_solve), len(operator.operators))
+      split_solve = linear_operator_util.broadcast_matrix_batch_dims(
+          split_solve)
+      fused_block_solve = array_ops.concat(split_solve, axis=-2)
+      op_solve_v, mat_solve_v, fused_block_solve_v = sess.run([
+          op_solve, mat_solve, fused_block_solve])
+
+      # Check that the operator and matrix give the same solution when the rhs
+      # is blockwise.
+      self.assertAC(mat_solve_v, fused_block_solve_v)
+    else:
+      op_solve_v, mat_solve_v = sess.run([op_solve, mat_solve])
+
+    # Check that the operator and matrix give the same solution when the rhs is
+    # a `Tensor`.
     self.assertAC(op_solve_v, mat_solve_v)
 
 
 def _test_solve(
-    use_placeholder, shapes_info, dtype, adjoint, adjoint_arg):
+    use_placeholder, shapes_info, dtype, adjoint, adjoint_arg, blockwise_arg):
   def test_solve(self):
     _test_solve_base(
         self,
@@ -546,12 +610,13 @@ def _test_solve(
         dtype,
         adjoint,
         adjoint_arg,
+        blockwise_arg,
         with_batch=True)
   return test_solve
 
 
 def _test_solve_with_broadcast(
-    use_placeholder, shapes_info, dtype, adjoint, adjoint_arg):
+    use_placeholder, shapes_info, dtype, adjoint, adjoint_arg, blockwise_arg):
   def test_solve_with_broadcast(self):
     _test_solve_base(
         self,
@@ -560,6 +625,7 @@ def _test_solve_with_broadcast(
         dtype,
         adjoint,
         adjoint_arg,
+        blockwise_arg,
         with_batch=False)
   return test_solve_with_broadcast
 
@@ -681,7 +747,8 @@ def add_tests(test_cls):
                     shape_info,
                     dtype,
                     adjoint,
-                    adjoint_arg)))
+                    adjoint_arg,
+                    test_cls.use_blockwise_arg())))
       else:
         if hasattr(test_cls, base_test_name):
           raise RuntimeError("Test %s defined more than once" % base_test_name)

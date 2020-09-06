@@ -111,7 +111,6 @@ py_test(
     tags = [
         "no_oss",
         "no_pip",
-        "notap",  # b/141373014
     ],
     deps = [
         ":rnn",

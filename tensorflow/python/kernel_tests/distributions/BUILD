@@ -75,7 +75,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "bernoulli_test",
-    size = "small",
+    size = "medium",
     srcs = ["bernoulli_test.py"],
     deps = [
         "//tensorflow/python:array_ops",
@@ -189,7 +189,6 @@ cuda_py_test(
 cuda_py_test(
     name = "multinomial_test",
     srcs = ["multinomial_test.py"],
-    tags = ["manual"],  # b/69001419
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

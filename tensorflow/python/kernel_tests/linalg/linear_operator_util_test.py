@@ -21,6 +21,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -181,10 +182,10 @@ class BroadcastMatrixBatchDimsTest(test.TestCase):
     x = rng.rand(3)
     y = rng.rand(1, 1)
 
-    with self.assertRaisesRegexp(ValueError, "at least two dimensions"):
+    with self.assertRaisesRegex(ValueError, "at least two dimensions"):
       linear_operator_util.broadcast_matrix_batch_dims([x, y])
 
-    with self.assertRaisesRegexp(ValueError, "at least two dimensions"):
+    with self.assertRaisesRegex(ValueError, "at least two dimensions"):
       linear_operator_util.broadcast_matrix_batch_dims([y, x])
 
 
@@ -336,13 +337,96 @@ class UseOperatorOrProvidedHintUnlessContradictingTest(test.TestCase,
   )
   def test_raises_if_contradicting(self, operator_hint_value,
                                    provided_hint_value):
-    with self.assertRaisesRegexp(ValueError, "my error message"):
+    with self.assertRaisesRegex(ValueError, "my error message"):
       linear_operator_util.use_operator_or_provided_hint_unless_contradicting(
           operator=DummyOperatorWithHint(my_hint=operator_hint_value),
           hint_attr_name="my_hint",
           provided_hint_value=provided_hint_value,
           message="my error message")
 
+
+class BlockwiseTest(test.TestCase, parameterized.TestCase):
+
+  @parameterized.named_parameters(
+      ("split_dim_1", [3, 3, 4], -1),
+      ("split_dim_2", [2, 5], -2),
+      )
+  def test_blockwise_input(self, op_dimension_values, split_dim):
+
+    op_dimensions = [
+        tensor_shape.Dimension(v) for v in op_dimension_values]
+    unknown_op_dimensions = [
+        tensor_shape.Dimension(None) for _ in op_dimension_values]
+
+    batch_shape = [2, 1]
+    arg_dim = 5
+    if split_dim == -1:
+      blockwise_arrays = [np.zeros(batch_shape + [arg_dim, d])
+                          for d in op_dimension_values]
+    else:
+      blockwise_arrays = [np.zeros(batch_shape + [d, arg_dim])
+                          for d in op_dimension_values]
+
+    blockwise_list = [block.tolist() for block in blockwise_arrays]
+    blockwise_tensors = [ops.convert_to_tensor(block)
+                         for block in blockwise_arrays]
+    blockwise_placeholders = [
+        array_ops.placeholder_with_default(block, shape=None)
+        for block in blockwise_arrays]
+
+    # Iterables of non-nested structures are always interpreted as blockwise.
+    # The list of lists is interpreted as blockwise as well, regardless of
+    # whether the operator dimensions are known, since the sizes of its elements
+    # along `split_dim` are non-identical.
+    for op_dims in [op_dimensions, unknown_op_dimensions]:
+      for blockwise_inputs in [
+          blockwise_arrays, blockwise_list,
+          blockwise_tensors, blockwise_placeholders]:
+        self.assertTrue(linear_operator_util.arg_is_blockwise(
+            op_dims, blockwise_inputs, split_dim))
+
+  def test_non_blockwise_input(self):
+    x = np.zeros((2, 3, 4, 6))
+    x_tensor = ops.convert_to_tensor(x)
+    x_placeholder = array_ops.placeholder_with_default(x, shape=None)
+    x_list = x.tolist()
+
+    # For known and matching operator dimensions, interpret all as non-blockwise
+    op_dimension_values = [2, 1, 3]
+    op_dimensions = [tensor_shape.Dimension(d) for d in op_dimension_values]
+    for inputs in [x, x_tensor, x_placeholder, x_list]:
+      self.assertFalse(linear_operator_util.arg_is_blockwise(
+          op_dimensions, inputs, -1))
+
+    # The input is still interpreted as non-blockwise for unknown operator
+    # dimensions (`x_list` has an outermost dimension that does not matcn the
+    # number of blocks, and the other inputs are not iterables).
+    unknown_op_dimensions = [
+        tensor_shape.Dimension(None) for _ in op_dimension_values]
+    for inputs in [x, x_tensor, x_placeholder, x_list]:
+      self.assertFalse(linear_operator_util.arg_is_blockwise(
+          unknown_op_dimensions, inputs, -1))
+
+  def test_ambiguous_input_raises(self):
+    x = np.zeros((3, 4, 2)).tolist()
+    op_dimensions = [tensor_shape.Dimension(None) for _ in range(3)]
+
+    # Since the leftmost dimension of `x` is equal to the number of blocks, and
+    # the operators have unknown dimension, the input is ambiguous.
+    with self.assertRaisesRegex(ValueError, "structure is ambiguous"):
+      linear_operator_util.arg_is_blockwise(op_dimensions, x, -2)
+
+  def test_mismatched_input_raises(self):
+    x = np.zeros((2, 3, 4, 6)).tolist()
+    op_dimension_values = [4, 3]
+    op_dimensions = [tensor_shape.Dimension(v) for v in op_dimension_values]
+
+    # The dimensions of the two operator-blocks sum to 7. `x` is a
+    # two-element list; if interpreted blockwise, its corresponding dimensions
+    # sum to 12 (=6*2). If not interpreted blockwise, its corresponding
+    # dimension is 6. This is a mismatch.
+    with self.assertRaisesRegex(ValueError, "dimension does not match"):
+      linear_operator_util.arg_is_blockwise(op_dimensions, x, -1)
 
 if __name__ == "__main__":
   test.main()

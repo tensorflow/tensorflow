@@ -15,8 +15,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_PROFILE_RESPONSE_H_
 #define TENSORFLOW_CORE_PROFILER_CONVERT_XPLANE_TO_PROFILE_RESPONSE_H_
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
@@ -27,10 +25,11 @@ namespace profiler {
 // Convert collected trace in XSpace format to tools data based on the
 // specified list of tools, and save to ProfileResponse.
 // The accepted tools are:
-//   "overview_page", "input_pipeline" and "tensorflow_stats".
-void ConvertXSpaceToProfileResponse(const XSpace& xspace,
-                                    const ProfileRequest& req,
-                                    ProfileResponse* response);
+//   "overview_page", "input_pipeline", "tensorflow_stats", "kernel_stats"
+//   and "trace_viewer".
+Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
+                                      const ProfileRequest& req,
+                                      ProfileResponse* response);
 
 }  // namespace profiler
 }  // namespace tensorflow

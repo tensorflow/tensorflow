@@ -12,17 +12,19 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <string.h>
+
 #include <cstdint>
 #include <initializer_list>
+#include <vector>
 
 #include <gtest/gtest.h>
 #include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/internal/types.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 
@@ -40,7 +42,7 @@ class NumericVerifyOpModel : public SingleOpModel {
  public:
   NumericVerifyOpModel(TensorType type, std::initializer_list<int> shape,
                        float scale, int32_t zero_point, int version,
-                       float tolerance = 1e-5) {
+                       float tolerance = 5.0) {
     const TensorData input_tensor_data = {type, shape, 0, 0, scale, zero_point};
     input_ = AddInput(input_tensor_data);
     ref_ = AddInput({TensorType_FLOAT32, shape});

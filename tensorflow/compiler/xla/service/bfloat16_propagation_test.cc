@@ -212,7 +212,7 @@ TEST_F(BFloat16PropagationTest, DoNotChangeAllReduce) {
       builder.AddInstruction(HloInstruction::CreateAllReduce(
           ShapeUtil::MakeTupleShape({shape, shape}), {a, b}, reduction,
           /*replica_groups=*/{}, /*constrain_layout=*/false,
-          /*channel_id=*/1));
+          /*channel_id=*/1, /*use_global_device_ids=*/false));
   HloInstruction* gte0 = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(shape, all_reduce, 0));
   HloInstruction* gte1 = builder.AddInstruction(
@@ -1044,6 +1044,116 @@ TEST_F(BFloat16PropagationTest, TupleDomainNoPropagation) {
   EXPECT_FALSE(OutputsBF16(b_gte));
   EXPECT_FALSE(OutputsBF16(domain));
   EXPECT_FALSE(OutputsBF16(param));
+}
+
+TEST_F(BFloat16PropagationTest, ConditionalSeparateBranchOperands) {
+  const string module_str = R"(
+HloModule module
+
+true_branch {
+  true_param = f32[4096,4096] parameter(0)
+  ROOT max = f32[4096,4096] maximum(true_param, true_param)
+}
+
+false_branch {
+  false_param = f32[4096,4096] parameter(0)
+  ROOT add = f32[4096,4096] add(false_param, false_param)
+}
+
+ENTRY entry {
+  param0 = f32[4096,4096] parameter(0)
+  param1 = f32[4096,4096] parameter(1)
+  copy0 = f32[4096,4096] copy(param0)
+  copy1 = f32[4096,4096] copy(param1)
+  param2 = pred[] parameter(2)
+  conditional = f32[4096,4096] conditional(param2, copy0, copy1),
+    true_computation=true_branch, false_computation=false_branch
+  ROOT dot = f32[4096,4096] dot(conditional, conditional),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  auto cond = FindInstruction(module.get(), "conditional");
+  auto copy0 = FindInstruction(module.get(), "copy0");
+  auto copy1 = FindInstruction(module.get(), "copy1");
+  EXPECT_TRUE(OutputsBF16(cond));
+  EXPECT_TRUE(OutputsBF16(copy0));
+  EXPECT_FALSE(OutputsBF16(copy1));
+}
+
+TEST_F(BFloat16PropagationTest, ConditionalSharedBranchOperands) {
+  const string module_str = R"(
+HloModule module
+
+true_branch {
+  true_param = f32[4096,4096] parameter(0)
+  ROOT max = f32[4096,4096] maximum(true_param, true_param)
+}
+
+false_branch {
+  false_param = f32[4096,4096] parameter(0)
+  ROOT add = f32[4096,4096] add(false_param, false_param)
+}
+
+ENTRY entry {
+  param0 = f32[4096,4096] parameter(0)
+  copy0 = f32[4096,4096] copy(param0)
+  param1 = pred[] parameter(1)
+  conditional = f32[4096,4096] conditional(param1, copy0, copy0),
+    true_computation=true_branch, false_computation=false_branch
+  ROOT dot = f32[4096,4096] dot(conditional, conditional),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  EXPECT_TRUE(PropagatePrecision(module.get()));
+
+  auto cond = FindInstruction(module.get(), "conditional");
+  auto copy0 = FindInstruction(module.get(), "copy0");
+  EXPECT_TRUE(OutputsBF16(cond));
+  EXPECT_FALSE(OutputsBF16(copy0));
+}
+
+TEST_F(BFloat16PropagationTest, ConditionalAliasingOutputs) {
+  const string module_str = R"(
+HloModule module
+
+true_branch {
+  true_param = f32[4096,4096] parameter(0)
+  max = f32[4096,4096] maximum(true_param, true_param)
+  ROOT true_tuple = (f32[4096,4096], f32[4096,4096]) tuple(max, max)
+}
+
+false_branch {
+  false_param = f32[4096,4096] parameter(0)
+  min = f32[4096,4096] minimum(false_param, false_param)
+  max2 = f32[4096,4096] maximum(false_param, false_param)
+  ROOT false_tuple = (f32[4096,4096], f32[4096,4096]) tuple(min, max2)
+}
+
+ENTRY entry {
+  param0 = f32[4096,4096] parameter(0)
+  copy0 = f32[4096,4096] copy(param0)
+  param1 = pred[] parameter(1)
+  conditional = (f32[4096,4096], f32[4096,4096]) conditional(param1, copy0, copy0),
+    true_computation=true_branch, false_computation=false_branch
+  gte0 = f32[4096,4096] get-tuple-element(conditional), index=0
+  gte1 = f32[4096,4096] get-tuple-element(conditional), index=1
+  dot = f32[4096,4096] dot(gte0, gte1),
+    lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT tuple = (f32[4096,4096], f32[4096,4096]) tuple(dot, gte1)
+}
+)";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(module_str));
+  EXPECT_FALSE(PropagatePrecision(module.get()));
 }
 
 }  // namespace xla

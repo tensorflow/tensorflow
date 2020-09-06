@@ -38,10 +38,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 
@@ -71,14 +71,14 @@ struct TF_Graph {
   TF_Graph();
 
   tensorflow::mutex mu;
-  tensorflow::Graph graph GUARDED_BY(mu);
+  tensorflow::Graph graph TF_GUARDED_BY(mu);
 
   // Runs shape inference.
-  tensorflow::ShapeRefiner refiner GUARDED_BY(mu);
+  tensorflow::ShapeRefiner refiner TF_GUARDED_BY(mu);
 
   // Maps from name of an operation to the Node* in 'graph'.
   std::unordered_map<tensorflow::string, tensorflow::Node*> name_map
-      GUARDED_BY(mu);
+      TF_GUARDED_BY(mu);
 
   // The keys of this map are all the active sessions using this graph. Each
   // value records whether the graph has been mutated since the corresponding
@@ -94,8 +94,8 @@ struct TF_Graph {
   // TODO(b/74949947): mutations currently trigger a warning instead of a bad
   // status, this should be reverted when possible.
   tensorflow::gtl::FlatMap<TF_Session*, tensorflow::string> sessions
-      GUARDED_BY(mu);
-  bool delete_requested GUARDED_BY(mu);  // set true by TF_DeleteGraph
+      TF_GUARDED_BY(mu);
+  bool delete_requested TF_GUARDED_BY(mu);  // set true by TF_DeleteGraph
 
   // Used to link graphs contained in TF_WhileParams to the parent graph that
   // will eventually contain the full while loop.
@@ -123,7 +123,7 @@ struct TF_Session {
   tensorflow::Session* session;
   TF_Graph* const graph;
 
-  tensorflow::mutex mu ACQUIRED_AFTER(TF_Graph::mu);
+  tensorflow::mutex mu TF_ACQUIRED_AFTER(TF_Graph::mu);
   int last_num_graph_nodes;
 
   // If true, TF_SessionRun and similar methods will call
@@ -169,9 +169,9 @@ struct TF_ApiDefMap {
   }
 
 #if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
-  tensorflow::ApiDefMap api_def_map GUARDED_BY(lock);
+  tensorflow::ApiDefMap api_def_map TF_GUARDED_BY(lock);
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
-  bool update_docs_called GUARDED_BY(lock);
+  bool update_docs_called TF_GUARDED_BY(lock);
   tensorflow::mutex lock;
 };
 
@@ -185,10 +185,6 @@ struct TF_Server {
 #endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 namespace tensorflow {
-
-Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
-
-TF_Tensor* TF_TensorFromTensor(const Tensor& src, Status* status);
 
 Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out);
@@ -210,10 +206,10 @@ void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
 
 void RecordMutation(TF_Graph* graph, const TF_Operation& op,
                     const char* mutation_type)
-    EXCLUSIVE_LOCKS_REQUIRED(graph->mu);
+    TF_EXCLUSIVE_LOCKS_REQUIRED(graph->mu);
 
 bool ExtendSessionGraphHelper(TF_Session* session, TF_Status* status)
-    LOCKS_EXCLUDED(session->graph->mu, session->mu);
+    TF_LOCKS_EXCLUDED(session->graph->mu, session->mu);
 
 std::string getTF_OutputDebugString(TF_Output node);
 

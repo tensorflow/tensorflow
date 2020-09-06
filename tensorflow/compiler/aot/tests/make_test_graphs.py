@@ -30,6 +30,7 @@ from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -156,6 +157,7 @@ def tftop_k(_):
 
 def tfvariable_readonly(_):
   x = variables.Variable(1000.0, name='x')
+  unused_y = variables.Variable(1000.0, name='y')
   old_x = x.value()
   with ops.control_dependencies([old_x]):
     new_value = math_ops.add(old_x, 42.0)
@@ -184,7 +186,22 @@ def tfvariable_sequential_updates(_):
   array_ops.identity(updates, name='result')
 
 
-def write_graph(build_graph, out_dir):
+def export_debug_info(exported_graph):
+  """Exports debug information from a graph.
+
+  Args:
+    exported_graph: A Graph that has been created by tracing a saveable view.
+
+  Returns:
+    Corresponding GraphDebugInfo with traces for all ops in exported_graph.
+  """
+  exported_operations = []
+  for op in exported_graph.get_operations():
+    exported_operations.append(('', op))
+  return error_interpolation.create_graph_debug_info_def(exported_operations)
+
+
+def write_graph(build_graph, out_dir, debug_info=False):
   """Build a graph using build_graph and write it out."""
   g = ops.Graph()
   with g.as_default():
@@ -193,10 +210,19 @@ def write_graph(build_graph, out_dir):
     with open(filename, 'wb') as f:
       f.write(six.ensure_binary(g.as_graph_def().SerializeToString()))
 
+    if debug_info:
+      filename_debuginfo = os.path.join(
+          out_dir, 'test_debuginfo_%s.pb' % build_graph.__name__)
+      test_debuginfo = export_debug_info(g)
+      with open(filename_debuginfo, 'wb') as f:
+        f.write(
+            six.ensure_binary(
+                test_debuginfo.SerializeToString(deterministic=True)))
+
 
 def main(_):
   control_flow_util.enable_control_flow_v2()
-  write_graph(tfadd, FLAGS.out_dir)
+  write_graph(tfadd, FLAGS.out_dir, debug_info=True)
   write_graph(tfadd_with_ckpt, FLAGS.out_dir)
   write_graph(tfadd_with_ckpt_saver, FLAGS.out_dir)
   write_graph(tfassert_eq, FLAGS.out_dir)

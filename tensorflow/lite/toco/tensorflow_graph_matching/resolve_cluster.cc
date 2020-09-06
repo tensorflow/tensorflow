@@ -33,7 +33,8 @@ using tensorflow::GraphDef;
 using tensorflow::NodeDef;
 
 void AddNodeToGraph(const NodeDef& node,
-                    const std::vector<string>& cluster_names, GraphDef* graph) {
+                    const std::vector<std::string>& cluster_names,
+                    GraphDef* graph) {
   NodeDef* new_node = graph->add_node();
   new_node->set_op(node.op());
   new_node->set_name(node.name());
@@ -41,9 +42,9 @@ void AddNodeToGraph(const NodeDef& node,
   // If the inputs are coming from a node which belongs to another cluster, then
   // those inputs are renamed to the source cluster name. Otherwise the original
   // input name is used.
-  for (const string& node_input : node.input()) {
+  for (const std::string& node_input : node.input()) {
     bool input_from_cluster = false;
-    for (const string& cluster_name : cluster_names) {
+    for (const std::string& cluster_name : cluster_names) {
       if (StrContains(node_input, cluster_name) &&
           !StrContains(node.name(), cluster_name)) {
         new_node->add_input(cluster_name);
@@ -62,7 +63,7 @@ void AddNodeToGraph(const NodeDef& node,
 
 bool FindCluster(const ClusterFactoryInterface& cluster_factory,
                  const GraphDef& graph_def,
-                 std::unordered_map<string, bool>* is_node_in_cluster,
+                 std::unordered_map<std::string, bool>* is_node_in_cluster,
                  std::vector<std::unique_ptr<Cluster>>* clusters) {
   for (const NodeDef& node : graph_def.node()) {
     // If the node is not assigned to any cluster, then we check if it belong to
@@ -90,12 +91,12 @@ std::unique_ptr<GraphDef> MaybeResolveClusters(
   std::unique_ptr<GraphDef> pruned_graph(new GraphDef);
   // The structure to keep track of which cluster each node is assigned to, and
   // to initialize them to all un-assigned,
-  std::unordered_map<string, bool> is_node_in_cluster;
+  std::unordered_map<std::string, bool> is_node_in_cluster;
   for (const NodeDef& node : graph_def.node()) {
     is_node_in_cluster[node.name()] = false;
   }
 
-  std::vector<string> cluster_names;
+  std::vector<std::string> cluster_names;
   std::vector<std::unique_ptr<Cluster>> all_clusters;
   // Find the clusters for all available cluster factories.
   for (const ClusterFactoryInterface* cluster_factory : cluster_factories) {

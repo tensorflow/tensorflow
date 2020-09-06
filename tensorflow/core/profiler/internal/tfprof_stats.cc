@@ -33,7 +33,7 @@ namespace {
 const char* const kProfilePrefix = "Profile:\n";
 
 bool CreateRunMetadataNode(const string& name, NodeDef* def) {
-  // TODO(xpan): Better solution than blacklisting this 2 nodes. They
+  // TODO(xpan): Better solution than denylisting this 2 nodes. They
   // actually cost some resources, maybe include them. Some nodes, such
   // as _SOURCE appear in multiple devices, which breaks tfprof's assumption.
   if (name == "RecvTensor" || name == "_SOURCE" ||
@@ -58,7 +58,6 @@ TFStats::TFStats(std::unique_ptr<GraphDef> graph,
       ckpt_reader_(std::move(ckpt_reader)) {
   CHECK(graph) << "Must at least have GraphDef";
 
-  absl::PrintF("Parsing Inputs...\n");
   AddGraph(std::move(graph));
   if (run_meta && run_meta->has_step_stats()) {
     AddRunMeta(0, std::move(run_meta));

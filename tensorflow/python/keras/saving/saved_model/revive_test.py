@@ -24,21 +24,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import shutil
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.saving.saved_model import load as keras_load
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -51,15 +52,18 @@ class SubclassedModelNoConfig(keras.Model):
     self.a = a
     self.b = b
     self.shared = CustomLayerNoConfig(a, b)
-    self.all_layers = [
+    self.all_layers = []
+
+  def build(self, input_shape):
+    self.all_layers.extend([
         self.shared,
-        CustomLayerWithConfig(a + 1, b + 2),
-        CustomLayerNoConfig(a + 3, b + 4),
+        CustomLayerWithConfig(self.a + 1, self.b + 2),
+        CustomLayerNoConfig(self.a + 3, self.b + 4),
         keras.Sequential([
             # TODO(b/145029112): Bug with losses when there are shared layers.
             # self.shared,  <-- Enable when bug is fixed.
-            CustomLayerNoConfig(a + 5, b + 6)
-        ])]
+            CustomLayerNoConfig(self.a + 5, self.b + 6)])])
+    super(SubclassedModelNoConfig, self).build(input_shape)
 
   def call(self, inputs):
     x = inputs
@@ -88,13 +92,18 @@ class CustomLayerNoConfig(keras.layers.Layer):
     def a_regularizer():
       return self.a * 2
     self.add_loss(a_regularizer)
+    self.sum_metric = keras.metrics.Sum(name='inputs_sum')
+    self.unused_metric = keras.metrics.Sum(name='not_added_to_metrics')
 
   def build(self, input_shape):
     self.c = variables.Variable(
         constant_op.constant(1.0, shape=input_shape[1:]), name=self.name+'_c')
 
   def call(self, inputs):
-    self.add_loss(math_ops.reduce_sum(inputs), inputs)
+    self.add_loss(math_ops.reduce_sum(inputs), inputs=inputs)
+    self.add_metric(self.sum_metric(inputs))
+    self.add_metric(inputs, aggregation='mean', name='mean')
+
     return inputs + self.c
 
 
@@ -106,27 +115,57 @@ class CustomLayerWithConfig(CustomLayerNoConfig):
             'name': self.name}
 
 
-class TestModelRevive(keras_parameterized.TestCase):
+class CustomNetworkDefaultConfig(keras.Model):
+
+  def __init__(self, num_classes, name=None):
+    inputs = keras.Input((2, 3), name='inputs')
+    x = keras.layers.Flatten(name='flatten')(inputs)
+    y = keras.layers.Dense(num_classes, name='outputs')(x)
+    super(CustomNetworkDefaultConfig, self).__init__(inputs, y, name=name)
+
+
+class CustomNetworkWithConfig(CustomNetworkDefaultConfig):
+
+  def __init__(self, num_classes, name=None):
+    super(CustomNetworkWithConfig, self).__init__(num_classes, name=name)
+    self._config_dict = dict(num_classes=num_classes)
+
+  def get_config(self):
+    return self._config_dict
+
+  @classmethod
+  def from_config(cls, config):
+    return cls(config['num_classes'], name=config.get('name'))
+
+
+class CustomNetworkWithConfigName(CustomNetworkWithConfig):
+
+  def __init__(self, num_classes, name=None):
+    super(CustomNetworkWithConfigName, self).__init__(num_classes, name=name)
+    self._config_dict['name'] = self.name
+
+
+class ReviveTestBase(keras_parameterized.TestCase):
 
   def setUp(self):
-    super(TestModelRevive, self).setUp()
+    super(ReviveTestBase, self).setUp()
     self.path = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, self.path, ignore_errors=True)
-
-  def _save_model_dir(self, dirname='saved_model'):
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-    return os.path.join(temp_dir, dirname)
 
   def _assert_revived_correctness(self, model, revived):
     self.assertAllEqual(model.input_names, revived.input_names)
     self.assertAllEqual(model.output_names, revived.output_names)
-    self.assertTrue(all([
-        i.shape.as_list() == r.shape.as_list() and i.dtype == r.dtype
-        for (i, r) in zip(model.inputs, revived.inputs)]))
-    self.assertTrue(all([
-        i.shape.as_list() == r.shape.as_list() and i.dtype == r.dtype
-        for (i, r) in zip(model.outputs, revived.outputs)]))
+    if model.inputs is not None:
+      self.assertTrue(
+          all([
+              i.shape.as_list() == r.shape.as_list() and i.dtype == r.dtype
+              for (i, r) in zip(model.inputs, revived.inputs)
+          ]))
+      self.assertTrue(
+          all([
+              i.shape.as_list() == r.shape.as_list() and i.dtype == r.dtype
+              for (i, r) in zip(model.outputs, revived.outputs)
+          ]))
 
     self.assertAllClose(self.evaluate(model.weights),
                         self.evaluate(revived.weights))
@@ -136,6 +175,11 @@ class TestModelRevive(keras_parameterized.TestCase):
     self.assertAllClose(model(input_arr), revived(input_arr))
     self.assertAllClose(sum(model.losses), sum(revived.losses))
     self.assertAllClose(len(model.losses), len(revived.losses))
+    self.assertEqual(len(model.metrics), len(revived.metrics))
+    # TODO(b/150403085): Investigate why the metric order changes when running
+    # this test in tf-nightly.
+    self.assertAllClose(sorted([m.result() for m in model.metrics]),
+                        sorted([m.result() for m in revived.metrics]))
     model_layers = {layer.name: layer for layer in model.layers}
     revived_layers = {layer.name: layer for layer in revived.layers}
     self.assertAllEqual(model_layers.keys(), revived_layers.keys())
@@ -153,6 +197,11 @@ class TestModelRevive(keras_parameterized.TestCase):
         # created with the same name.
         self.assertEqual(type(model_layer).__name__,
                          type(revived_layer).__name__)
+
+
+# These tests take a while to run, so each should run in a separate shard
+# (putting them in the same TestCase resolves this).
+class TestBigModelRevive(ReviveTestBase):
 
   @keras_parameterized.run_with_all_model_types
   def test_revive(self):
@@ -204,10 +253,8 @@ class TestModelRevive(keras_parameterized.TestCase):
               inner_model_subclassed]
     model = testing_utils.get_model_from_layers(
         layers, input_shape=input_shape)
-
-    # The inputs attribute must be defined in order to save the model.
-    if not model.inputs:
-      model._set_inputs(tensor_spec.TensorSpec((None, 2, 3)))
+    # Run data through the Model to create save spec and weights.
+    model.predict(np.ones((10, 2, 3)), batch_size=10)
 
     # Test that the correct checkpointed values are loaded, whether the layer is
     # created from the config or SavedModel.
@@ -218,17 +265,66 @@ class TestModelRevive(keras_parameterized.TestCase):
     revived = keras_load.load(self.path)
     self._assert_revived_correctness(model, revived)
 
+
+class TestModelRevive(ReviveTestBase):
+
   def test_revive_subclassed_with_nested_model(self):
     model = SubclassedModelNoConfig(1., 2.)
-    model._set_inputs(tensor_spec.TensorSpec((None, 2, 3)))
+    # Run data through the Model to create save spec and weights.
+    model.predict(np.ones((10, 2, 3)), batch_size=10)
     model.save(self.path, save_format='tf')
     revived = keras_load.load(self.path)
     self._assert_revived_correctness(model, revived)
+
+  def test_revive_sequential_inputs(self):
+    model = keras.models.Sequential([
+        keras.Input((None,), dtype=dtypes.string),
+        keras.layers.Lambda(string_ops.string_lower)
+    ])
+    model.save(self.path, save_format='tf')
+    revived = keras_load.load(self.path)
+    self.assertEqual(dtypes.string, revived._layers[0].dtype)
+
+  @parameterized.named_parameters(
+      ('default_config', CustomNetworkDefaultConfig),
+      ('with_config', CustomNetworkWithConfig),
+      ('with_config_name', CustomNetworkWithConfigName))
+  def test_revive_network(self, model_cls):
+    model = model_cls(8)
+    model.save(self.path, include_optimizer=False, save_format='tf')
+    revived = keras_load.load(self.path, compile=False)
+    self._assert_revived_correctness(model, revived)
+
+  def test_load_compiled_metrics(self):
+    model = testing_utils.get_small_sequential_mlp(1, 3)
+
+    # Compile with dense categorical accuracy
+    model.compile('rmsprop', 'mse', 'acc')
+    x = np.random.random((5, 10)).astype(np.float32)
+    y_true = np.random.random((5, 3)).astype(np.float32)
+    model.train_on_batch(x, y_true)
+
+    model.save(self.path, include_optimizer=True, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllClose(model.test_on_batch(x, y_true),
+                        revived.test_on_batch(x, y_true))
+
+    # Compile with sparse categorical accuracy
+    model.compile('rmsprop', 'mse', 'acc')
+    y_true = np.random.randint(0, 3, (5, 1)).astype(np.float32)
+    model.train_on_batch(x, y_true)
+    model.save(self.path, include_optimizer=True, save_format='tf')
+    revived = keras_load.load(self.path, compile=True)
+    self.assertAllClose(model.test_on_batch(x, y_true),
+                        revived.test_on_batch(x, y_true))
 
 
 if __name__ == '__main__':
   ops.enable_eager_execution()
   with generic_utils.CustomObjectScope({
       'CustomLayerWithConfig': CustomLayerWithConfig,
-      'SubclassedModelWithConfig': SubclassedModelWithConfig}):
+      'CustomNetworkWithConfig': CustomNetworkWithConfig,
+      'CustomNetworkWithConfigName': CustomNetworkWithConfigName,
+      'SubclassedModelWithConfig': SubclassedModelWithConfig
+  }):
     test.main()

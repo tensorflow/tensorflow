@@ -215,7 +215,9 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
                                    signature_def_key,
                                    cpp_class,
                                    target_triple,
-                                   variables_to_feed=()):
+                                   target_cpu,
+                                   variables_to_feed=(),
+                                   enable_multithreading=False):
   """Compile a `MetaGraphDef` to header+object files in `output_prefix`.
 
   Use XLA AOT (`tfcompile`) to convert the given meta graph and
@@ -238,10 +240,13 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
     signature_def_key: String, the signature_def to use in the SavedModel.
     cpp_class: String, Name of output C++ class.
     target_triple: String, LLVM target triple.
+    target_cpu: String, LLVM target cpu name.
     variables_to_feed: A list of strings, the variables that will be fed by the
       user; these won't be frozen.  If `None`, then we will extract all the
       variables in the graph and mark them as to-feed.  The default behavior is
       an empty tuple: all variables must be frozen.
+    enable_multithreading: Not implemented.  Enable multithreading in the
+      compiled computation.
 
   Raises:
     RuntimeError: If tensorflow was not built with XLA.
@@ -249,9 +254,24 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       issue importing the tfcompile python wrapper.
     ValueError: If `meta_graph_def.signature_def[signature_def_key]` is
       missing or has empty outputs.
+    NotImplementedError: If `enable_multithreading is True`.
   """
   if _pywrap_tfcompile_import_error:
     raise _pywrap_tfcompile_import_error
+
+  if enable_multithreading:
+    raise NotImplementedError(
+        'Multithreading is not currently supported because it requires '
+        'additional dependencies in the AOT runtime.')
+  else:
+    # TODO(ebrevdo): Pipe DebugOptions through tfcompile::Main and pywrap
+    # so that we can set these directly instead of relying on env vars.
+    xla_flags = os.environ.get('XLA_FLAGS')
+    if not xla_flags:
+      xla_flags = '--xla_cpu_multi_thread_eigen=false'
+    else:
+      xla_flags += ',--xla_cpu_multi_thread_eigen=false'
+    os.environ['XLA_FLAGS'] = xla_flags
 
   signature_def_map = meta_graph_def.signature_def
   if signature_def_key not in signature_def_map:
@@ -301,7 +321,8 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
   # Load the Variables so that we can freeze the graph.
   with session.Session(graph=ops_lib.Graph()) as sess:
     restorer = saver_lib.import_meta_graph(meta_graph_def, clear_devices=True)
-    restorer.restore(sess, checkpoint_path)
+    if restorer is not None:
+      restorer.restore(sess, checkpoint_path)
     graph_def.CopyFrom(
         graph_util.convert_variables_to_constants(
             sess,
@@ -349,6 +370,7 @@ def aot_compile_cpu_meta_graph_def(checkpoint_path,
       config=config_pbtxt_location,
       cpp_class=cpp_class,
       target_triple=target_triple,
+      target_cpu=target_cpu,
       entry_point='entry_{}'.format(entry_digest),
       out_function_object='{}.o'.format(output_prefix),
       out_header='{}.h'.format(output_prefix),

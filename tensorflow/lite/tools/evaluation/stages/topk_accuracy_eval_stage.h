@@ -62,7 +62,7 @@ class TopkAccuracyEvalStage : public EvaluationStage {
 
  private:
   // Updates accuracy_counts_ based on comparing top k labels and the
-  // groundtruth one. Using string comparision since there are some duplicate
+  // groundtruth one. Using string comparison since there are some duplicate
   // labels in the imagenet dataset.
   void UpdateCounts(const std::vector<int>& topk_indices);
 

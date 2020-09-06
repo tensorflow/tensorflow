@@ -18,7 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -59,6 +59,12 @@ def make_transpose_tests(options):
       "perm": [[0, 1, 2, 3], [3, 0, 1, 2]],
       "constant_perm": [True],
       "fully_quantize": [True],
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 2, 3, 4, 5]],
+      "perm": [[0, 1, 2, 3, 4], [3, 4, 0, 1, 2]],
+      "constant_perm": [True],
+      "fully_quantize": [True, False],
   }]
 
   def build_graph(parameters):

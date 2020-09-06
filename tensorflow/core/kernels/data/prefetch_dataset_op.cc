@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -100,9 +102,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
     AttrValue slack_period_attr;
     b->BuildAttrValue(slack_period_, &slack_period_attr);
-    TF_RETURN_IF_ERROR(b->AddDataset(
-        this, {input_graph_node, buffer_size},
-        {std::make_pair(kSlackPeriod, slack_period_attr)}, output));
+    AttrValue legacy_autotune_attr;
+    b->BuildAttrValue(legacy_autotune_, &legacy_autotune_attr);
+    TF_RETURN_IF_ERROR(
+        b->AddDataset(this, {input_graph_node, buffer_size},
+                      {std::make_pair(kSlackPeriod, slack_period_attr),
+                       std::make_pair(kLegacyAutotune, legacy_autotune_attr)},
+                      output));
     return Status::OK();
   }
 
@@ -206,12 +212,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                                 /*max=*/std::numeric_limits<int64>::max())});
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       // Acquire both locks to ensure that the prefetch thread and
       // all GetNext threads are blocked.
       mutex_lock input_l(input_mu_);
       mutex_lock l(*mu_);
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix(), kBufferSize, buffer_.size()));
       for (size_t i = 0; i < buffer_.size(); i++) {
@@ -278,11 +285,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         mu_->unlock();
       }
       data::TraceMeMetadata result;
-      result.push_back(
-          std::make_pair("buffer_limit", strings::Printf("%lld", limit)));
+      result.push_back(std::make_pair(
+          "buffer_limit",
+          strings::Printf("%lld", static_cast<long long>(limit))));
       if (dataset()->slack_period_ > 0) {
-        result.push_back(
-            std::make_pair("slack", strings::Printf("%lld", slack_us_.load())));
+        result.push_back(std::make_pair(
+            "slack",
+            strings::Printf("%lld", static_cast<long long>(slack_us_.load()))));
       }
       return result;
     }
@@ -296,23 +305,24 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // The buffered data element.
       std::vector<Tensor> value;
       int64 created_us;
+      int64 id;
     };
 
-    int64 buffer_limit() const EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+    int64 buffer_limit() const TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (legacy_autotune_) {
         return auto_tuner_.buffer_limit();
       }
       return buffer_size_->value;
     }
 
-    void CancelThreads() LOCKS_EXCLUDED(mu_) {
+    void CancelThreads() TF_LOCKS_EXCLUDED(mu_) {
       mutex_lock l(*mu_);
       cancelled_ = true;
       cond_var_->notify_all();
     }
 
     Status Consume(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
-                   bool* end_of_sequence) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                   bool* end_of_sequence) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
       const auto& stats_aggregator = ctx->stats_aggregator();
       if (stats_aggregator) {
         double buffer_limit_ = buffer_limit();
@@ -332,6 +342,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // (if we successfully got an element) the output values.
       Status s = buffer_.front().status;
       if (s.ok()) {
+        int64 buffer_element_id = buffer_.front().id;
+        profiler::TraceMe traceme(
+            [&] {
+              return profiler::TraceMeEncode(
+                  "PrefetchConsume", {{"element_id", buffer_element_id}});
+            },
+            profiler::kInfo);
         if (dataset()->slack_period_ > 0 &&
             (num_elements() + 1) % dataset()->slack_period_ == 0) {
           // TODO(rachelim): Consider doing something more sophisticated
@@ -365,7 +382,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     Status EnsurePrefetchThreadStarted(IteratorContext* ctx)
-        EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx =
             std::make_shared<IteratorContext>(*ctx);
@@ -416,8 +433,16 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         mutex_lock input_l(input_mu_);
         bool end_of_sequence;
         BufferElement buffer_element;
-        buffer_element.status = input_impl_->GetNext(
-            ctx.get(), &buffer_element.value, &end_of_sequence);
+        {
+          profiler::TraceMe traceme(
+              [&] {
+                return profiler::TraceMeEncode("PrefetchProduce",
+                                               {{"element_id", num_produced}});
+              },
+              profiler::kInfo);
+          buffer_element.status = input_impl_->GetNext(
+              ctx.get(), &buffer_element.value, &end_of_sequence);
+        }
         if (buffer_element.status.ok() && end_of_sequence) {
           mutex_lock l(*mu_);
           prefetch_thread_finished_ = true;
@@ -430,6 +455,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(*mu_);
           RecordBufferEnqueue(ctx.get(), buffer_element.value);
           buffer_element.created_us = EnvTime::NowMicros();
+          buffer_element.id = num_produced;
           buffer_.push_back(std::move(buffer_element));
           cond_var_->notify_all();
         }
@@ -438,7 +464,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     Status WriteStatus(IteratorStateWriter* writer, size_t index,
-                       const Status& status) EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+                       const Status& status) TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(absl::StrCat(prefix(), "::", index), CodeKey(),
                               static_cast<int64>(status.code())));
@@ -451,7 +477,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     }
 
     Status ReadStatus(IteratorStateReader* reader, size_t index, Status* status)
-        EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
+        TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
       int64 code_int;
       TF_RETURN_IF_ERROR(reader->ReadScalar(absl::StrCat(prefix(), "::", index),
                                             CodeKey(), &code_int));
@@ -483,14 +509,14 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     // This mutex is used to ensure exclusivity between multiple threads
     // accessing the input iterator. We keep this separate from `mu_` to allow
     // prefetching to run in parallel with GetNext calls.
-    mutex input_mu_ ACQUIRED_BEFORE(*mu_);
-    std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(input_mu_);
+    mutex input_mu_ TF_ACQUIRED_BEFORE(*mu_);
+    std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(input_mu_);
     const std::shared_ptr<condition_variable> cond_var_;
-    PrefetchAutotuner auto_tuner_ GUARDED_BY(*mu_);
-    std::deque<BufferElement> buffer_ GUARDED_BY(*mu_);
-    std::unique_ptr<Thread> prefetch_thread_ GUARDED_BY(*mu_);
-    bool cancelled_ GUARDED_BY(*mu_) = false;
-    bool prefetch_thread_finished_ GUARDED_BY(*mu_) = false;
+    PrefetchAutotuner auto_tuner_ TF_GUARDED_BY(*mu_);
+    std::deque<BufferElement> buffer_ TF_GUARDED_BY(*mu_);
+    std::unique_ptr<Thread> prefetch_thread_ TF_GUARDED_BY(*mu_);
+    bool cancelled_ TF_GUARDED_BY(*mu_) = false;
+    bool prefetch_thread_finished_ TF_GUARDED_BY(*mu_) = false;
     const bool legacy_autotune_;
 
     std::atomic<int64> slack_us_;

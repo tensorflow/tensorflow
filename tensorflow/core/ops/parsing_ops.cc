@@ -61,7 +61,7 @@ void AddSparseOutputShapes(int num_sparse, const ShapeHandle input_shape,
   }
 }
 
-// Adds output shapes for ragged tensors in Parse*Examle ops.
+// Adds output shapes for ragged tensors in Parse*Example ops.
 Status AddRaggedOutputShapes(int num_ragged, bool ragged_rank_2,
                              const DimensionHandle& num_examples,
                              InferenceContext* c, int* output_idx) {

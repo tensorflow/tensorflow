@@ -32,7 +32,7 @@ namespace toco {
 namespace {
 
 // Checks the permissions of the output file to ensure it is writeable.
-void CheckOutputFilePermissions(const Arg<string>& output_file) {
+void CheckOutputFilePermissions(const Arg<std::string>& output_file) {
   QCHECK(output_file.specified()) << "Missing required flag --output_file.\n";
   QCHECK(port::file::Writable(output_file.value()).ok())
       << "Specified output_file is not writable: " << output_file.value()
@@ -40,7 +40,7 @@ void CheckOutputFilePermissions(const Arg<string>& output_file) {
 }
 
 // Checks the permissions of the frozen model file.
-void CheckFrozenModelPermissions(const Arg<string>& input_file) {
+void CheckFrozenModelPermissions(const Arg<std::string>& input_file) {
   QCHECK(input_file.specified()) << "Missing required flag --input_file.\n";
   QCHECK(port::file::Exists(input_file.value(), port::file::Defaults()).ok())
       << "Specified input_file does not exist: " << input_file.value() << ".\n";
@@ -55,7 +55,7 @@ void CheckFrozenModelPermissions(const Arg<string>& input_file) {
 void ReadInputData(const ParsedTocoFlags& parsed_toco_flags,
                    const ParsedModelFlags& parsed_model_flags,
                    TocoFlags* toco_flags, ModelFlags* model_flags,
-                   string* graph_def_contents) {
+                   std::string* graph_def_contents) {
   port::CheckInitGoogleIsDone("InitGoogle is not done yet.\n");
 
   // Ensure savedmodel_directory is not set.
@@ -71,10 +71,10 @@ void ReadInputData(const ParsedTocoFlags& parsed_toco_flags,
 }
 }  // namespace
 
-tensorflow::Status Convert(const string& graph_def_contents,
+tensorflow::Status Convert(const std::string& graph_def_contents,
                            const TocoFlags& toco_flags,
                            const ModelFlags& model_flags,
-                           string* output_file_contents,
+                           std::string* output_file_contents,
                            int64* arithmetic_ops_count = nullptr) {
   std::unique_ptr<Model> model =
       Import(toco_flags, model_flags, graph_def_contents);
@@ -95,12 +95,12 @@ tensorflow::Status Convert(const ParsedTocoFlags& parsed_toco_flags,
   TocoFlags toco_flags;
   ReadTocoFlagsFromCommandLineFlags(parsed_toco_flags, &toco_flags);
 
-  string graph_def_contents;
+  std::string graph_def_contents;
   ReadInputData(parsed_toco_flags, parsed_model_flags, &toco_flags,
                 &model_flags, &graph_def_contents);
   CheckOutputFilePermissions(parsed_toco_flags.output_file);
 
-  string output_file_contents;
+  std::string output_file_contents;
   TF_RETURN_IF_ERROR(Convert(graph_def_contents, toco_flags, model_flags,
                              &output_file_contents));
 

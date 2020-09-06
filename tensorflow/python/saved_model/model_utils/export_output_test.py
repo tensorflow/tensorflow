@@ -26,9 +26,10 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
-from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import metrics as metrics_module
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model.model_utils import export_output as export_output_lib
@@ -39,26 +40,26 @@ class ExportOutputTest(test.TestCase):
   def test_regress_value_must_be_float(self):
     with context.graph_mode():
       value = array_ops.placeholder(dtypes.string, 1, name='output-tensor-1')
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Regression output value must be a float32 Tensor'):
         export_output_lib.RegressionOutput(value)
 
   def test_classify_classes_must_be_strings(self):
     with context.graph_mode():
       classes = array_ops.placeholder(dtypes.float32, 1, name='output-tensor-1')
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Classification classes must be a string Tensor'):
         export_output_lib.ClassificationOutput(classes=classes)
 
   def test_classify_scores_must_be_float(self):
     with context.graph_mode():
       scores = array_ops.placeholder(dtypes.string, 1, name='output-tensor-1')
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, 'Classification scores must be a float32 Tensor'):
         export_output_lib.ClassificationOutput(scores=scores)
 
   def test_classify_requires_classes_or_scores(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'At least one of scores and classes must be set.'):
       export_output_lib.ClassificationOutput()
 
@@ -216,14 +217,12 @@ class ExportOutputTest(test.TestCase):
     export_output_lib.PredictOutput(constant_op.constant([0]))
 
   def test_predict_outputs_invalid(self):
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Prediction output key must be a string'):
+    with self.assertRaisesRegex(ValueError,
+                                'Prediction output key must be a string'):
       export_output_lib.PredictOutput({1: constant_op.constant([0])})
 
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Prediction output value must be a Tensor'):
+    with self.assertRaisesRegex(ValueError,
+                                'Prediction output value must be a Tensor'):
       export_output_lib.PredictOutput({
           'prediction1': sparse_tensor.SparseTensor(
               indices=[[0, 0]], values=[1], dense_shape=[1, 1]),
@@ -244,10 +243,9 @@ class SupervisedOutputTest(test.TestCase):
     with context.graph_mode():
       loss = {'my_loss': constant_op.constant([0])}
       predictions = {u'output1': constant_op.constant(['foo'])}
-      metric_obj = metrics_module.Mean()
-      metric_obj.update_state(constant_op.constant([0]))
+      mean, update_op = metrics_module.mean_tensor(constant_op.constant([0]))
       metrics = {
-          'metrics': metric_obj,
+          'metrics': (mean, update_op),
           'metrics2': (constant_op.constant([0]), constant_op.constant([10]))
       }
 
@@ -256,7 +254,7 @@ class SupervisedOutputTest(test.TestCase):
       self.assertEqual(
           outputter.predictions['predictions/output1'], predictions['output1'])
       self.assertEqual(outputter.metrics['metrics/update_op'].name,
-                       'metric_op_wrapper:0')
+                       'mean/update_op:0')
       self.assertEqual(
           outputter.metrics['metrics2/update_op'], metrics['metrics2'][1])
 
@@ -267,23 +265,23 @@ class SupervisedOutputTest(test.TestCase):
       self.assertEqual(
           outputter.predictions, {'predictions': predictions['output1']})
       self.assertEqual(outputter.metrics['metrics/update_op'].name,
-                       'metric_op_wrapper_1:0')
+                       'mean/update_op:0')
 
   def test_supervised_outputs_none(self):
     outputter = MockSupervisedOutput(
         constant_op.constant([0]), None, None)
-    self.assertEqual(len(outputter.loss), 1)
-    self.assertEqual(outputter.predictions, None)
-    self.assertEqual(outputter.metrics, None)
+    self.assertLen(outputter.loss, 1)
+    self.assertIsNone(outputter.predictions)
+    self.assertIsNone(outputter.metrics)
 
   def test_supervised_outputs_invalid(self):
-    with self.assertRaisesRegexp(ValueError, 'predictions output value must'):
+    with self.assertRaisesRegex(ValueError, 'predictions output value must'):
       MockSupervisedOutput(constant_op.constant([0]), [3], None)
-    with self.assertRaisesRegexp(ValueError, 'loss output value must'):
+    with self.assertRaisesRegex(ValueError, 'loss output value must'):
       MockSupervisedOutput('str', None, None)
-    with self.assertRaisesRegexp(ValueError, 'metrics output value must'):
+    with self.assertRaisesRegex(ValueError, 'metrics output value must'):
       MockSupervisedOutput(None, None, (15.3, 4))
-    with self.assertRaisesRegexp(ValueError, 'loss output key must'):
+    with self.assertRaisesRegex(ValueError, 'loss output key must'):
       MockSupervisedOutput({25: 'Tensor'}, None, None)
 
   def test_supervised_outputs_tuples(self):
@@ -291,11 +289,9 @@ class SupervisedOutputTest(test.TestCase):
     with context.graph_mode():
       loss = {('my', 'loss'): constant_op.constant([0])}
       predictions = {(u'output1', '2'): constant_op.constant(['foo'])}
-      metric_obj = metrics_module.Mean()
-      metric_obj.update_state(constant_op.constant([0]))
+      mean, update_op = metrics_module.mean_tensor(constant_op.constant([0]))
       metrics = {
-          ('metrics', '1'):
-              metric_obj,
+          ('metrics', '1'): (mean, update_op),
           ('metrics', '2'): (constant_op.constant([0]),
                              constant_op.constant([10]))
       }
@@ -316,10 +312,9 @@ class SupervisedOutputTest(test.TestCase):
     with context.graph_mode():
       loss = {'loss': constant_op.constant([0])}
       predictions = {u'predictions': constant_op.constant(['foo'])}
-      metric_obj = metrics_module.Mean()
-      metric_obj.update_state(constant_op.constant([0]))
+      mean, update_op = metrics_module.mean_tensor(constant_op.constant([0]))
       metrics = {
-          'metrics_1': metric_obj,
+          'metrics_1': (mean, update_op),
           'metrics_2': (constant_op.constant([0]), constant_op.constant([10]))
       }
 
@@ -337,10 +332,9 @@ class SupervisedOutputTest(test.TestCase):
     with context.graph_mode():
       loss = {'my_loss': constant_op.constant([0])}
       predictions = {u'output1': constant_op.constant(['foo'])}
-      metric_obj = metrics_module.Mean()
-      metric_obj.update_state(constant_op.constant([0]))
+      mean, update_op = metrics_module.mean_tensor(constant_op.constant([0]))
       metrics = {
-          'metrics_1': metric_obj,
+          'metrics_1': (mean, update_op),
           'metrics_2': (constant_op.constant([0]), constant_op.constant([10]))
       }
 
@@ -350,11 +344,11 @@ class SupervisedOutputTest(test.TestCase):
                   'labels': constant_op.constant(100, shape=(100, 1))}
       sig_def = outputter.as_signature_def(receiver)
 
-      self.assertTrue('loss/my_loss' in sig_def.outputs)
-      self.assertTrue('metrics_1/value' in sig_def.outputs)
-      self.assertTrue('metrics_2/value' in sig_def.outputs)
-      self.assertTrue('predictions/output1' in sig_def.outputs)
-      self.assertTrue('features' in sig_def.inputs)
+      self.assertIn('loss/my_loss', sig_def.outputs)
+      self.assertIn('metrics_1/value', sig_def.outputs)
+      self.assertIn('metrics_2/value', sig_def.outputs)
+      self.assertIn('predictions/output1', sig_def.outputs)
+      self.assertIn('features', sig_def.inputs)
 
   def test_eval_signature_def(self):
     with context.graph_mode():
@@ -367,38 +361,42 @@ class SupervisedOutputTest(test.TestCase):
                   'labels': constant_op.constant(100, shape=(100, 1))}
       sig_def = outputter.as_signature_def(receiver)
 
-      self.assertTrue('loss/my_loss' in sig_def.outputs)
-      self.assertFalse('metrics/value' in sig_def.outputs)
-      self.assertTrue('predictions/output1' in sig_def.outputs)
-      self.assertTrue('features' in sig_def.inputs)
+      self.assertIn('loss/my_loss', sig_def.outputs)
+      self.assertNotIn('metrics/value', sig_def.outputs)
+      self.assertIn('predictions/output1', sig_def.outputs)
+      self.assertIn('features', sig_def.inputs)
 
   def test_metric_op_is_tensor(self):
     """Tests that ops.Operation is wrapped by a tensor for metric_ops."""
     with context.graph_mode():
       loss = {'my_loss': constant_op.constant([0])}
       predictions = {u'output1': constant_op.constant(['foo'])}
-      metric_obj = metrics_module.Mean()
-      metric_obj.update_state(constant_op.constant([0]))
+      mean, update_op = metrics_module.mean_tensor(constant_op.constant([0]))
       metrics = {
-          'metrics_1': metric_obj,
-          'metrics_2': (constant_op.constant([0]), control_flow_ops.no_op())
+          'metrics_1': (mean, update_op),
+          'metrics_2': (constant_op.constant([0]), control_flow_ops.no_op()),
+          # Keras metric's update_state() could return a Variable, rather than
+          # an Operation or Tensor.
+          'keras_1': (constant_op.constant([0.5]),
+                      variables.Variable(1.0, name='AssignAddVariableOp_3'))
       }
 
       outputter = MockSupervisedOutput(loss, predictions, metrics)
+      # If we get there, it means constructor succeeded; which is sufficient
+      # for testing the constructor.
 
       self.assertTrue(outputter.metrics['metrics_1/update_op'].name.startswith(
-          'metric_op_wrapper'))
-      self.assertTrue(
-          isinstance(outputter.metrics['metrics_1/update_op'], ops.Tensor))
-      self.assertTrue(
-          isinstance(outputter.metrics['metrics_1/value'], ops.Tensor))
+          'mean/update_op'))
+      self.assertIsInstance(
+          outputter.metrics['metrics_1/update_op'], ops.Tensor)
+      self.assertIsInstance(outputter.metrics['metrics_1/value'], ops.Tensor)
 
       self.assertEqual(outputter.metrics['metrics_2/value'],
                        metrics['metrics_2'][0])
       self.assertTrue(outputter.metrics['metrics_2/update_op'].name.startswith(
           'metric_op_wrapper'))
-      self.assertTrue(
-          isinstance(outputter.metrics['metrics_2/update_op'], ops.Tensor))
+      self.assertIsInstance(
+          outputter.metrics['metrics_2/update_op'], ops.Tensor)
 
 
 if __name__ == '__main__':

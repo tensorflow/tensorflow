@@ -1,0 +1,42 @@
+op {
+  name: "BoostedTreesMakeStatsSummary"
+  input_arg {
+    name: "node_ids"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "gradients"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "hessians"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "bucketized_features_list"
+    type: DT_INT32
+    number_attr: "num_features"
+  }
+  output_arg {
+    name: "stats_summary"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "max_splits"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_buckets"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_features"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+}

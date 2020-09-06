@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/kernel_shape_util.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -191,6 +192,7 @@ class Pooling3DOp : public UnaryOp<T> {
                                             {{out[2], out[1], out[0]}}, depth);
     Tensor* output;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
+    if (out_shape.num_elements() == 0) return;
     LaunchPoolingOp<Device, T, Type>::launch(context, tensor_in, window, stride,
                                              padding, data_format_, padding_,
                                              output);

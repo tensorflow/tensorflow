@@ -117,7 +117,7 @@ class XlaDeviceContext : public DeviceContext {
   bool use_fast_mem_;
 
   absl::Mutex mu_;
-  int next_stream_ GUARDED_BY(mu_) = 0;
+  int next_stream_ TF_GUARDED_BY(mu_) = 0;
 };
 
 }  // namespace tensorflow

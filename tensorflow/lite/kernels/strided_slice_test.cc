@@ -12,11 +12,15 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -82,12 +86,12 @@ TYPED_TEST_SUITE(StridedSliceOpTest, DataTypes);
 
 #ifdef GTEST_HAS_DEATH_TEST
 TYPED_TEST(StridedSliceOpTest, UnsupportedInputSize) {
-  EXPECT_DEATH(StridedSliceOpModel<TypeParam>({2, 2, 2, 2, 2}, {5}, {5}, {5}, 0,
-                                              0, 0, 0, 0),
-               "StridedSlice op only supports 1D-4D input arrays.");
+  EXPECT_DEATH(StridedSliceOpModel<TypeParam>({2, 2, 2, 2, 2, 2}, {5}, {5}, {5},
+                                              0, 0, 0, 0, 0),
+               "StridedSlice op only supports 1D-5D input arrays.");
 }
 
-TYPED_TEST(StridedSliceOpTest, UnssupportedArgs) {
+TYPED_TEST(StridedSliceOpTest, UnsupportedArgs) {
   EXPECT_DEATH(
       StridedSliceOpModel<TypeParam>({3, 2}, {2}, {2}, {2}, 0, 0, 1, 0, 0),
       "ellipsis_mask is not implemented yet.");
@@ -96,6 +100,15 @@ TYPED_TEST(StridedSliceOpTest, UnssupportedArgs) {
       "new_axis_mask is not implemented yet.");
 }
 #endif
+
+TYPED_TEST(StridedSliceOpTest, In1DEmpty) {
+  StridedSliceOpModel<TypeParam> m({0}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
+  m.SetBegin({1});
+  m.SetEnd({3});
+  m.SetStrides({1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({0}));
+}
 
 TYPED_TEST(StridedSliceOpTest, In1D) {
   StridedSliceOpModel<TypeParam> m({4}, {1}, {1}, {1}, 0, 0, 0, 0, 0);
@@ -611,6 +624,30 @@ TYPED_TEST(StridedSliceOpTest, In3D_IdentityShrinkAxis1int8) {
   m.Invoke();
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 2}));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TYPED_TEST(StridedSliceOpTest, In5D_Identity) {
+  StridedSliceOpModel<TypeParam> m({2, 2, 2, 1, 2}, {5}, {5}, {5}, 0, 0, 0, 0,
+                                   0);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  m.SetBegin({0, 0, 0, 0, 0});
+  m.SetEnd({2, 1, 2, 1, 2});
+  m.SetStrides({1, 1, 1, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 2, 1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4, 9, 10, 11, 12}));
+}
+
+TYPED_TEST(StridedSliceOpTest, In5D_IdentityShrinkAxis1) {
+  StridedSliceOpModel<TypeParam> m({2, 2, 2, 1, 2}, {5}, {5}, {5}, 0, 0, 0, 0,
+                                   1);
+  m.SetInput({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16});
+  m.SetBegin({0, 0, 0, 0, 0});
+  m.SetEnd({2, 1, 2, 1, 2});
+  m.SetStrides({1, 1, 1, 1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 2, 1, 2}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({1, 2, 3, 4}));
 }
 }  // namespace
 }  // namespace tflite

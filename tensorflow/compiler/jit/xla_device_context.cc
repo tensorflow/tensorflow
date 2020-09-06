@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/framework/tensor_reference.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
@@ -68,6 +69,7 @@ absl::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
   tf_stats.bytes_reserved = se_stats->bytes_reserved;
   tf_stats.peak_bytes_reserved = se_stats->peak_bytes_reserved;
   tf_stats.bytes_reservable_limit = se_stats->bytes_reservable_limit;
+  tf_stats.largest_free_block_bytes = se_stats->largest_free_block_bytes;
   return tf_stats;
 }
 
@@ -254,7 +256,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
   // before the transfer finishes.
   transfer_manager_->TransferLiteralFromDevice(
       device_to_host_stream.get(), xla_tensor->shaped_buffer(), literal,
-      [ref, xla_tensor, done, device_to_host_stream,
+      [this, ref, xla_tensor, done, device_to_host_stream,
        device_allows_sync_on_completion](xla::Status status) {
         Status done_status = status;
         VLOG(2) << "Transfer from device as literal: "
@@ -268,6 +270,19 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
         }
         done(done_status);
         ref.Unref();
+        // If a stream is in a bad state, it gets deleted when it's returned to
+        // the stream pool, i.e. when it leaves this scope. However, a stream
+        // deleting itself in a host callback on itself can cause bad behaviors
+        // on some platforms. Releasing it in another stream to avoid that.
+        if (!device_allows_sync_on_completion &&
+            !device_to_host_stream->RefreshStatus().ok()) {
+          auto status_or_new_stream = client_->mutable_backend()->BorrowStream(
+              stream_->parent()->device_ordinal());
+          if (status_or_new_stream.ok()) {
+            status_or_new_stream.ValueOrDie()->ThenDoHostCallback(
+                [device_to_host_stream] {});
+          }
+        }
       });
 }
 

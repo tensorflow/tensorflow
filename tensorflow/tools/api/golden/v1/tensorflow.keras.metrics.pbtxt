@@ -105,6 +105,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "RecallAtPrecision"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "RootMeanSquaredError"
     mtype: "<type \'type\'>"
   }
@@ -202,6 +206,10 @@ tf_module {
   }
   member_method {
     name: "hinge"
+    argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "kl_divergence"
     argspec: "args=[\'y_true\', \'y_pred\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

@@ -1,9 +1,9 @@
 HELLO_WORLD_TEST_SRCS := \
 tensorflow/lite/micro/examples/hello_world/hello_world_test.cc \
-tensorflow/lite/micro/examples/hello_world/sine_model_data.cc
+tensorflow/lite/micro/examples/hello_world/model.cc
 
 HELLO_WORLD_TEST_HDRS := \
-tensorflow/lite/micro/examples/hello_world/sine_model_data.h
+tensorflow/lite/micro/examples/hello_world/model.h
 
 OUTPUT_HANDLER_TEST_SRCS := \
 tensorflow/lite/micro/examples/hello_world/output_handler_test.cc \
@@ -16,12 +16,12 @@ tensorflow/lite/micro/examples/hello_world/constants.h
 HELLO_WORLD_SRCS := \
 tensorflow/lite/micro/examples/hello_world/main.cc \
 tensorflow/lite/micro/examples/hello_world/main_functions.cc \
-tensorflow/lite/micro/examples/hello_world/sine_model_data.cc \
+tensorflow/lite/micro/examples/hello_world/model.cc \
 tensorflow/lite/micro/examples/hello_world/output_handler.cc \
 tensorflow/lite/micro/examples/hello_world/constants.cc
 
 HELLO_WORLD_HDRS := \
-tensorflow/lite/micro/examples/hello_world/sine_model_data.h \
+tensorflow/lite/micro/examples/hello_world/model.h \
 tensorflow/lite/micro/examples/hello_world/output_handler.h \
 tensorflow/lite/micro/examples/hello_world/constants.h \
 tensorflow/lite/micro/examples/hello_world/main_functions.h

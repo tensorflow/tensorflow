@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_INTERPRETER_WRAPPER_H_
 #define TENSORFLOW_LITE_PYTHON_INTERPRETER_WRAPPER_INTERPRETER_WRAPPER_H_
 
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -27,6 +28,7 @@ limitations under the License.
 #include <Python.h>
 
 #include "tensorflow/lite/experimental/tflite_api_dispatcher/tflite_api_dispatcher.h"
+#include "tensorflow/lite/interpreter.h"
 
 struct TfLiteDelegate;
 
@@ -39,7 +41,6 @@ class BuiltinOpResolver;
 }  // namespace ops
 
 class FlatBufferModel;
-class Interpreter;
 
 namespace interpreter_wrapper {
 
@@ -51,10 +52,19 @@ class InterpreterWrapper {
   static InterpreterWrapper* CreateWrapperCPPFromFile(
       const char* model_path, const std::vector<std::string>& registerers,
       std::string* error_msg);
+  static InterpreterWrapper* CreateWrapperCPPFromFile(
+      const char* model_path,
+      const std::vector<std::string>& registerers_by_name,
+      const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+      std::string* error_msg);
 
   // SWIG caller takes ownership of pointer.
   static InterpreterWrapper* CreateWrapperCPPFromBuffer(
       PyObject* data, const std::vector<std::string>& registerers,
+      std::string* error_msg);
+  static InterpreterWrapper* CreateWrapperCPPFromBuffer(
+      PyObject* data, const std::vector<std::string>& registerers_by_name,
+      const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
       std::string* error_msg);
 
   ~InterpreterWrapper();
@@ -63,7 +73,7 @@ class InterpreterWrapper {
 
   PyObject* InputIndices() const;
   PyObject* OutputIndices() const;
-  PyObject* ResizeInputTensor(int i, PyObject* value);
+  PyObject* ResizeInputTensor(int i, PyObject* value, bool strict);
 
   int NumTensors() const;
   std::string TensorName(int i) const;
@@ -87,8 +97,17 @@ class InterpreterWrapper {
   // should be the interpreter object providing the memory.
   PyObject* tensor(PyObject* base_object, int i);
 
+  PyObject* SetNumThreads(int num_threads);
+
   // Adds a delegate to the interpreter.
   PyObject* ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+
+  // Experimental and subject to change.
+  //
+  // Returns a pointer to the underlying interpreter.
+  tflite_api_dispatcher::Interpreter* interpreter() {
+    return interpreter_.get();
+  }
 
  private:
   // Helper function to construct an `InterpreterWrapper` object.
@@ -97,7 +116,9 @@ class InterpreterWrapper {
   static InterpreterWrapper* CreateInterpreterWrapper(
       std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
       std::unique_ptr<PythonErrorReporter> error_reporter,
-      const std::vector<std::string>& registerers, std::string* error_msg);
+      const std::vector<std::string>& registerers_by_name,
+      const std::vector<std::function<void(uintptr_t)>>& registerers_by_func,
+      std::string* error_msg);
 
   InterpreterWrapper(
       std::unique_ptr<tflite_api_dispatcher::TfLiteModel> model,
@@ -109,6 +130,9 @@ class InterpreterWrapper {
   // InterpreterWrapper() = delete here for SWIG compatibility.
   InterpreterWrapper();
   InterpreterWrapper(const InterpreterWrapper& rhs);
+
+  // Helper function to resize an input tensor.
+  PyObject* ResizeInputTensorImpl(int i, PyObject* value);
 
   // The public functions which creates `InterpreterWrapper` should ensure all
   // these member variables are initialized successfully. Otherwise it should

@@ -18,9 +18,10 @@ limitations under the License.
 
 #include <deque>
 #include <string>
-#include <unordered_set>
+#include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 
 namespace tflite {
@@ -126,7 +127,7 @@ class ModelTransformer {
   TransformationReporter* reporter_;
 
   std::deque<NodeId> to_process_;
-  std::unordered_set<NodeId> processed_;
+  absl::flat_hash_set<NodeId> processed_;
 };
 
 class NullTransformationReporter : public TransformationReporter {

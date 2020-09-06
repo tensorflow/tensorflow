@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/path.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
@@ -84,7 +85,7 @@ struct CanonicalDebugOptions {
       // resort to this hack.
       string pattern = opts.xla_dump_hlo_module_re();
       should_dump_module = [pattern](string_view module_name) {
-        return RE2::PartialMatch(string(module_name), pattern);
+        return RE2::PartialMatch(module_name, pattern);
       };
     } else if (!opts.xla_dump_hlo_pass_re().empty() ||
                !opts.xla_dump_to().empty() || output_format_specified) {
@@ -98,7 +99,7 @@ struct CanonicalDebugOptions {
     if (!opts.xla_dump_hlo_pass_re().empty()) {
       string pattern = opts.xla_dump_hlo_pass_re();
       should_dump_pass = [pattern](string_view pass_name) {
-        return RE2::PartialMatch(string(pass_name), pattern);
+        return RE2::PartialMatch(pass_name, pattern);
       };
     } else {
       should_dump_pass = [](string_view) { return false; };
@@ -110,10 +111,7 @@ struct CanonicalDebugOptions {
     string dump_to_lower = absl::AsciiStrToLower(opts.xla_dump_to());
     if (dump_to_lower == "sponge" ||
         dump_to_lower == "test_undeclared_outputs_dir") {
-      const char* dir = getenv("TEST_UNDECLARED_OUTPUTS_DIR");
-      if (dir != nullptr) {
-        dump_to = dir;
-      } else {
+      if (!tensorflow::io::GetTestUndeclaredOutputsDir(&dump_to)) {
         LOG(ERROR) << "--xla_dump_to=" << opts.xla_dump_to()
                    << ", but environment variable TEST_UNDECLARED_OUTPUTS_DIR "
                       "is not set, so cannot dump anywhere.";
@@ -276,7 +274,7 @@ static tensorflow::mutex mu(tensorflow::LINKER_INITIALIZED);
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
-static auto& module_id_to_step_number GUARDED_BY(mu) =
+static auto& module_id_to_step_number TF_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64, int64>();
 
 // Maps a module's unique ID to a timestamp indicating when we've first dumped
@@ -287,7 +285,7 @@ static auto& module_id_to_step_number GUARDED_BY(mu) =
 // dies.  But we only add an entry if dumping is enabled for this module, and
 // dumping a module leaks buffer space in stdout or bytes on disk *way* faster
 // than this hashtable leaks memory.
-static auto& module_id_to_timestamp GUARDED_BY(mu) =
+static auto& module_id_to_timestamp TF_GUARDED_BY(mu) =
     *new absl::flat_hash_map<int64, uint64>();
 
 int64 StepNumberForModule(const HloModule& module) {
@@ -434,7 +432,7 @@ void DumpHloSnapshotIfEnabled(const HloModule& module,
   int64 execution_count;
   uint64 timestamp;
   {
-    static auto& module_id_to_execution_count GUARDED_BY(mu) =
+    static auto& module_id_to_execution_count TF_GUARDED_BY(mu) =
         *new absl::flat_hash_map<int64, int64>();
     tensorflow::mutex_lock lock(mu);
     execution_count = module_id_to_execution_count[module.unique_id()]++;
@@ -471,7 +469,7 @@ void DumpHloSnapshotIfEnabled(const HloSnapshot& snapshot,
   // have to use its name.
   int64 execution_count;
   {
-    static auto& module_name_to_execution_count GUARDED_BY(mu) =
+    static auto& module_name_to_execution_count TF_GUARDED_BY(mu) =
         *new absl::flat_hash_map<string, int64>();
     tensorflow::mutex_lock lock(mu);
     execution_count = module_name_to_execution_count[name]++;

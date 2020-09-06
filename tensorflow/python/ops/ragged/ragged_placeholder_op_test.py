@@ -37,22 +37,27 @@ class RaggedPlaceholderOpTest(test_util.TensorFlowTestCase,
       (dtypes.int32, 1, [], 'ph',
        'tf.RaggedTensor('
        'values=Tensor("ph/flat_values:0", shape=(None,), dtype=int32), '
-       'row_splits=Tensor("ph/row_splits_0:0", shape=(None,), dtype=int64))'),
+       'row_splits=Tensor("ph/RaggedFromRowSplits/control_dependency:0", '
+       'shape=(None,), dtype=int64))'),
       (dtypes.string, 1, [5], 'ph',
        'tf.RaggedTensor('
        'values=Tensor("ph/flat_values:0", shape=(None, 5), dtype=string), '
-       'row_splits=Tensor("ph/row_splits_0:0", shape=(None,), dtype=int64))'),
+       'row_splits=Tensor("ph/RaggedFromRowSplits/control_dependency:0", '
+       'shape=(None,), dtype=int64))'),
       (dtypes.float32, 2, [], 'ph',
        'tf.RaggedTensor(values=tf.RaggedTensor('
        'values=Tensor("ph/flat_values:0", shape=(None,), dtype=float32), '
-       'row_splits=Tensor("ph/row_splits_1:0", shape=(None,), dtype=int64)), '
-       'row_splits=Tensor("ph/row_splits_0:0", shape=(None,), dtype=int64))'),
+       'row_splits=Tensor("ph/RaggedFromRowSplits/control_dependency:0", '
+       'shape=(None,), dtype=int64)), '
+       'row_splits=Tensor("ph/RaggedFromRowSplits_1/control_dependency:0", '
+       'shape=(None,), dtype=int64))'),
       (dtypes.int32, 2, [3, 5], 'ph',
        'tf.RaggedTensor(values=tf.RaggedTensor('
        'values=Tensor("ph/flat_values:0", shape=(None, 3, 5), dtype=int32), '
-       'row_splits=Tensor("ph/row_splits_1:0", shape=(None,), dtype=int64)), '
-       'row_splits=Tensor("ph/row_splits_0:0", shape=(None,), dtype=int64))'),
-
+       'row_splits=Tensor("ph/RaggedFromRowSplits/control_dependency:0", '
+       'shape=(None,), dtype=int64)), '
+       'row_splits=Tensor("ph/RaggedFromRowSplits_1/control_dependency:0", '
+       'shape=(None,), dtype=int64))'),
   ])
   def testRaggedPlaceholder(self, dtype, ragged_rank, value_shape, name,
                             expected):

@@ -23,15 +23,19 @@ from absl.testing import parameterized
 from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import combinations
+from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util import nest
@@ -85,7 +89,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
         return math_ops.square(x)
 
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(computation, args=(x,)))
+          distribution.run(computation, args=(x,)))
       return outputs
 
     self.assertAllEqual(
@@ -108,7 +112,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       def assign_add():
         v.assign_add(1.0)
 
-      distribution.experimental_run_v2(assign_add)
+      distribution.run(assign_add)
       return array_ops.zeros([])
 
     train_step()
@@ -128,9 +132,69 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     results = []
     for x in dist_dataset:
       output = distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(x,)))
+          distribution.run(train_step, args=(x,)))
       results.append(output)
     self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def testGetNextAsOptional(self, distribution):
+    data = [5., 6., 7., 8.]
+    dataset = get_dataset_from_tensor_slices(data).batch(2)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+    iterator = iter(dist_dataset)
+
+    def train_step(data):
+      return math_ops.square(data)
+
+    @def_function.function
+    def run(iterator):
+      return distribution.experimental_local_results(
+          distribution.run(
+              train_step, args=(iterator.get_next_as_optional().get_value(),)))
+
+    self.assert_equal_flattened([[25., 36.]], [run(iterator)])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies, mode=["eager"]))
+  def testGetNextAsOptionalExampleUsage(self, distribution):
+    global_batch_size = 2
+    steps_per_loop = 6
+    dataset = dataset_ops.Dataset.range(
+        8, output_type=dtypes.int32).batch(global_batch_size)
+    distributed_iterator = iter(
+        distribution.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def train_fn(distributed_iterator):
+
+      def step_fn(x):
+        return x
+
+      for _ in math_ops.range(steps_per_loop):
+        optional_data = distributed_iterator.get_next_as_optional()
+        if not optional_data.has_value():
+          break
+        distribution.run(step_fn, args=(optional_data.get_value(),))
+
+    train_fn(distributed_iterator)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategies, mode=["eager"]))
+  def testFullEagerTPU(self, distribution):
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+
+    def train_step(data):
+      return math_ops.square(data)
+
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    with self.assertRaisesRegex(NotImplementedError,
+                                "does not support pure eager execution"):
+      distribution.run(train_step, args=(next(input_iterator),))
 
   @combinations.generate(
       combinations.combine(
@@ -148,7 +212,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     results = []
     for x in dist_dataset:
       output = distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(x,)))
+          distribution.run(train_step, args=(x,)))
       results.append(output)
     self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
 
@@ -166,7 +230,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     @def_function.function
     def f_train_step(input_data):
       return distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(input_data,)))
+          distribution.run(train_step, args=(input_data,)))
 
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     results = []
@@ -179,7 +243,8 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       combinations.combine(
           distribution=[
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy
+              strategy_combinations.tpu_strategy,
+              strategy_combinations.tpu_strategy_packed_var,
           ],
           mode=["eager"]))
   def testNestedOutput(self, distribution):
@@ -196,7 +261,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
         }]
 
       inputs = next(iterator)
-      outputs = distribution.experimental_run_v2(computation, args=(inputs,))
+      outputs = distribution.run(computation, args=(inputs,))
       return nest.map_structure(distribution.experimental_local_results,
                                 outputs)
 
@@ -220,7 +285,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     @def_function.function
     def f_train_step(input_data):
       return distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(input_data,)))
+          distribution.run(train_step, args=(input_data,)))
 
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
     results = []
@@ -252,7 +317,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
             distribution.reduce("MEAN", x, axis=0), product_of_means.dtype)
 
       for y in dist_dataset:  # loop with no intermediate state
-        distribution.experimental_run_v2(train_step, args=(y,))
+        distribution.run(train_step, args=(y,))
 
       return number_of_steps, product_of_means
 
@@ -290,7 +355,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       for _ in range(2):
         elem = next(iterator)
         output = distribution.experimental_local_results(
-            distribution.experimental_run_v2(step_fn, args=(elem,)))
+            distribution.run(step_fn, args=(elem,)))
         results.append(output)
       return results
 
@@ -315,6 +380,116 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
   @combinations.generate(
       combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetIteratorWithoutFunction(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    self.assertAllEqual(
+        distribution.experimental_local_results(input_iterator.get_next()),
+        data[0:distribution.num_replicas_in_sync])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetIteratorWithFunction(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    @def_function.function
+    def run(iterator):
+      return distribution.experimental_local_results(iterator.get_next())
+
+    local_results = run(input_iterator)
+    self.assertAllEqual(local_results,
+                        data[0:distribution.num_replicas_in_sync])
+    backing_devices = [result.backing_device for result in local_results]
+    self.assertAllEqual(backing_devices, distribution.extended.worker_devices)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_dataset(
+            get_dataset_from_tensor_slices(data).batch(2)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    backing_devices = [result.backing_device for result in local_results]
+    self.assertAllEqual(backing_devices, distribution.extended.worker_devices)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetFunctionPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    backing_devices = [result.backing_device for result in local_results]
+    self.assertAllEqual(backing_devices, distribution.extended.worker_devices)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetHostPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_dataset(
+            get_dataset_from_tensor_slices(data).batch(2),
+            distribute_lib.InputOptions(
+                experimental_prefetch_to_device=False)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    for result in local_results:
+      self.assertEqual(result.backing_device,
+                       device_util.resolve("/device:CPU:0"))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.tpu_strategies,
+          mode=["eager"]
+      ))
+  def testDistributeDatasetFunctionHostPrefetch(self, distribution):
+    data = [5., 6., 7., 8.]
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(
+            lambda _: get_dataset_from_tensor_slices(data),
+            distribute_lib.InputOptions(
+                experimental_prefetch_to_device=False)))
+
+    local_results = distribution.experimental_local_results(
+        input_iterator.get_next())
+
+    for result in local_results:
+      self.assertEqual(result.backing_device,
+                       device_util.resolve("/device:CPU:0"))
+
+  @combinations.generate(
+      combinations.combine(
           distribution=strategy_combinations.multidevice_strategies,
           mode=["eager"]
       ))
@@ -328,7 +503,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
         return math_ops.reduce_mean(x)
       inputs = next(iterator)
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(computation, args=(inputs,)))
+          distribution.run(computation, args=(inputs,)))
       return outputs
 
     # This assumes that there are exactly 2 replicas
@@ -352,12 +527,37 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
 
       inputs = next(iterator)
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(
+          distribution.run(
               computation, args=(inputs,), options=options))
       return outputs
 
     # This assumes that there are exactly 2 replicas
     self.assertAllEqual([5.5, 7.], run(input_iterator))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]))
+  def testDynamicOutputsWithX64(self, distribution):
+    dataset = get_dataset_from_tensor_slices(
+        [5]).map(lambda x: math_ops.cast(x, dtypes.int64)).batch(2)
+    input_iterator = iter(distribution.experimental_distribute_dataset(dataset))
+
+    @def_function.function
+    def run(iterator):
+
+      def computation(x):
+        return math_ops.add(x, x)
+
+      inputs = next(iterator)
+      outputs = distribution.experimental_local_results(
+          distribution.run(computation, args=(inputs,)))
+      return outputs
+
+    # This assumes that there are exactly 2 replicas
+    result = run(input_iterator)
+    self.assertAllEqual([10], result[0])
+    self.assertAllEqual([], result[1])
 
   @combinations.generate(
       combinations.combine(
@@ -373,7 +573,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       def computation(x):
         return math_ops.reduce_mean(x)
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(computation, args=(inputs,)))
+          distribution.run(computation, args=(inputs,)))
       return outputs
 
     # This assumes that there are exactly 2 replicas
@@ -426,7 +626,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       def computation(x):
         return array_ops.size_v2(x)
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(computation, args=(inputs,)))
+          distribution.run(computation, args=(inputs,)))
       return outputs
 
     # This assumes that there are exactly 2 replicas
@@ -435,8 +635,85 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
   @combinations.generate(
       combinations.combine(
           distribution=strategy_combinations.multidevice_strategies,
-          mode=["eager"]
-      ))
+          mode=["eager"]))
+  def testSegmentSumWithDynamicNumberOfSegments(self, distribution):
+
+    def dataset_fn(_):
+      data = array_ops.zeros(5, dtype=dtypes.int32)
+      dataset = get_dataset_from_tensor_slices(data)
+      dataset = dataset.batch(3)
+      return dataset
+
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(dataset_fn))
+
+    @def_function.function
+    def step_fn(example):
+      segment_ids = array_ops.zeros_like_v2(example)
+      num_segment = array_ops.shape(example)[0]
+      # If number of segments is dynamic, output should be a dynamic shape.
+      return math_ops.unsorted_segment_sum(example, segment_ids, num_segment)
+
+    # This assumes that there are exactly 2 replicas
+    outputs = distribution.experimental_local_results(
+        distribution.run(step_fn, args=(next(input_iterator),)))
+    self.assertAllEqual((3,), outputs[0].shape)
+    self.assertAllEqual((2,), outputs[1].shape)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]))
+  def testReshapeWithDynamicInputs(self, distribution):
+
+    def dataset_fn(_):
+      data = array_ops.zeros((5, 1, 2), dtype=dtypes.int32)
+      dataset = get_dataset_from_tensor_slices(data)
+      dataset = dataset.batch(3)
+      return dataset
+
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(dataset_fn))
+
+    @def_function.function
+    def step_fn(example):
+      # example: [<=3, 1, 2]
+      # tile: [<=3, <=3, 2]
+      tile = array_ops.tile(example, [1, array_ops.shape(example)[0], 1])
+      # reshape1: [<=(3*3 = 9), 2]
+      reshape1 = array_ops.reshape(tile, [-1, 2])
+
+      # reshape2: [<=3, <=3, 2]
+      reshape2 = array_ops.reshape(
+          reshape1,
+          [array_ops.shape(example)[0],
+           array_ops.shape(example)[0], 2])
+
+      # reshape3: [<=3, -1, 2]
+      reshape3 = array_ops.reshape(reshape1,
+                                   [array_ops.shape(example)[0], -1, 2])
+      # reshape4: [-1, <=3, 2]
+      reshape4 = array_ops.reshape(reshape1,
+                                   [-1, array_ops.shape(example)[0], 2])
+      return [reshape1, reshape2, reshape3, reshape4]
+
+    # This assumes that there are exactly 2 replicas
+    outputs = distribution.experimental_local_results(
+        distribution.run(step_fn, args=(next(input_iterator),)))
+    self.assertAllEqual((9, 2), outputs[0][0].values[0].shape)
+    self.assertAllEqual((3, 3, 2), outputs[0][1].values[0].shape)
+    self.assertAllEqual((3, 3, 2), outputs[0][2].values[0].shape)
+    self.assertAllEqual((3, 3, 2), outputs[0][3].values[0].shape)
+
+    self.assertAllEqual((4, 2), outputs[0][0].values[1].shape)
+    self.assertAllEqual((2, 2, 2), outputs[0][1].values[1].shape)
+    self.assertAllEqual((2, 2, 2), outputs[0][2].values[1].shape)
+    self.assertAllEqual((2, 2, 2), outputs[0][3].values[1].shape)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]))
   def testDynamicShapesWithFirstReplicaNotMaximumShape(self, distribution):
     def dataset_fn(_):
       dataset1 = get_dataset_from_tensor_slices([[1., 2.], [1., 2.]])
@@ -454,11 +731,44 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       def computation(x):
         return math_ops.reduce_mean(x)
       outputs = distribution.experimental_local_results(
-          distribution.experimental_run_v2(computation, args=(inputs,)))
+          distribution.run(computation, args=(inputs,)))
       return outputs
 
     # This assumes that there are exactly 2 replicas
     self.assertAllEqual([1.5, 2.], run(next(input_iterator)))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.multidevice_strategies,
+          mode=["eager"]))
+  def testMapFnWithDynamicInputs(self, distribution):
+
+    def dataset_fn(_):
+      data = array_ops.zeros((20, 300, 32), dtype=dtypes.int32)
+      dataset = get_dataset_from_tensor_slices(data)
+      dataset = dataset.batch(16)
+      return dataset
+
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(dataset_fn))
+
+    def embedding_lookup(inputs):
+      embedding_weights = array_ops.zeros((1, 128))
+      flat_inputs = array_ops.reshape(inputs, [-1])
+      embeddings = array_ops.gather(embedding_weights, flat_inputs)
+      embeddings = array_ops.reshape(embeddings, inputs.shape.as_list() + [128])
+      return embeddings
+
+    @def_function.function
+    def step_fn(example):
+      return map_fn.map_fn(
+          embedding_lookup, example, fn_output_signature=dtypes.float32)
+
+    # This assumes that there are exactly 2 replicas
+    outputs = distribution.experimental_local_results(
+        distribution.run(step_fn, args=(next(input_iterator),)))
+    self.assertAllEqual((16, 300, 32, 128), outputs[0].shape)
+    self.assertAllEqual((4, 300, 32, 128), outputs[1].shape)
 
   @combinations.generate(
       combinations.combine(
@@ -543,7 +853,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
         # Fixed size output with a dynamic sized output.
         return array_ops.zeros([3]), math_ops.square(x)
 
-      return distribution.experimental_run_v2(
+      return distribution.run(
           computation, args=(next(iterator),))
 
     results = run(input_iterator)
@@ -581,7 +891,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       for _ in range(2):
         elem = next(iterator)
         output = distribution.experimental_local_results(
-            distribution.experimental_run_v2(step_fn, args=(elem,)))
+            distribution.run(step_fn, args=(elem,)))
         results.append(output)
       return results
 
@@ -603,7 +913,7 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
     @def_function.function
     def f_train_step(input_data):
       return distribution.experimental_local_results(
-          distribution.experimental_run_v2(train_step, args=(input_data,)))
+          distribution.run(train_step, args=(input_data,)))
 
     dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
     dist_dataset = distribution.experimental_distribute_dataset(dataset)
@@ -615,6 +925,70 @@ class InputIterationTest(test.TestCase, parameterized.TestCase,
       output = f_train_step(next(iterator))
       results.append(output)
     self.assert_equal_flattened([[25., 36.], [49., 64.]], results)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testMultiDeviceDataCapturedFunction(self, distribution):
+    inputs = constant_op.constant([2., 3.])
+    dataset = lambda _: dataset_ops.Dataset.from_tensor_slices(inputs).repeat(5)
+    input_iterator = iter(
+        distribution.experimental_distribute_datasets_from_function(dataset))
+    with distribution.scope():
+      var = variables.Variable(1.0)
+
+    @def_function.function
+    def train_step(input_iterator):
+
+      def func(inputs):
+        return math_ops.square(inputs) + var
+
+      per_replica_outputs = distribution.run(
+          func, (next(input_iterator),))
+      mean = distribution.reduce(
+          reduce_util.ReduceOp.MEAN, per_replica_outputs, axis=None)
+      for _ in dataset_ops.Dataset.range(1):
+        per_replica_outputs = distribution.run(
+            func, (next(input_iterator),))
+        mean = distribution.reduce(
+            reduce_util.ReduceOp.MEAN, per_replica_outputs, axis=None)
+      return mean
+
+    with distribution.scope():
+      if distribution.num_replicas_in_sync == 1:
+        self.assertAlmostEqual(10.0, self.evaluate(train_step(input_iterator)))
+      else:
+        self.assertAlmostEqual(7.5, self.evaluate(train_step(input_iterator)))
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=strategy_combinations.all_strategies,
+          mode=["eager"]
+      ))
+  def testDatasetOutOfRange(self, distribution):
+    with distribution.scope():
+      a = variables.Variable(
+          0.0, aggregation=variables.VariableAggregation.SUM)
+
+    def train_step(val):
+      a.assign_add(math_ops.reduce_sum(val))
+
+    @def_function.function
+    def f_train_step(iterator):
+      distribution.run(train_step, args=(next(iterator),))
+      return a
+
+    dataset = get_dataset_from_tensor_slices([5., 6., 7., 8.]).batch(2)
+    dist_dataset = distribution.experimental_distribute_dataset(dataset)
+
+    iterator = iter(dist_dataset)
+    with self.assertRaises(errors.OutOfRangeError):
+      for _ in range(100):
+        f_train_step(iterator)
+
+    self.assertAlmostEqual(26.0, a.numpy())
 
 
 if __name__ == "__main__":

@@ -81,6 +81,14 @@ def rewrite_grad_indexed_slices(grads, body_grad_graph, loop_vars,
   return loop_vars
 
 
+def _get_tensor_index_in_iterable(iterable, t):
+  """Returns index of first occurence of `t`, raises ValueError if not found."""
+  for i, elem in enumerate(iterable):
+    if t is elem:
+      return i
+  raise ValueError("%s is not in iterable" % str(t))
+
+
 def _rewrite_output_as_tensor(body_grad_graph, grad_output_slices):
   """Rewrites grad_output_slices to be a Tensor output.
 
@@ -91,7 +99,8 @@ def _rewrite_output_as_tensor(body_grad_graph, grad_output_slices):
   with body_grad_graph.as_default():
     new_output = ops.convert_to_tensor_v2(grad_output_slices)
 
-  idx = body_grad_graph.structured_outputs.index(grad_output_slices)
+  idx = _get_tensor_index_in_iterable(body_grad_graph.structured_outputs,
+                                      grad_output_slices)
   body_grad_graph.structured_outputs[idx] = new_output
   body_grad_graph.outputs = func_graph.flatten(
       body_grad_graph.structured_outputs)
@@ -134,10 +143,10 @@ def _rewrite_input_as_indexed_slices(body_grad_graph, grad_output_slices,
   # computation.
   with body_grad_graph.as_default():
     input_slices = ops.IndexedSlices(
-        values=body_grad_graph.capture(init_slices.values, whitelisted=True),
-        indices=body_grad_graph.capture(init_slices.indices, whitelisted=True),
-        dense_shape=body_grad_graph.capture(init_slices.dense_shape,
-                                            whitelisted=True))
+        values=body_grad_graph.capture(init_slices.values, allowlisted=True),
+        indices=body_grad_graph.capture(init_slices.indices, allowlisted=True),
+        dense_shape=body_grad_graph.capture(
+            init_slices.dense_shape, allowlisted=True))
 
     # Remove the captured tensors from the function inputs. We'll add them back
     # at the correct index in _update_indexed_slices_param.
@@ -259,11 +268,14 @@ def _update_indexed_slices_param(graph, loop_vars, init_slices, input_slices,
   Returns:
     New loop_vars to pass to graph.
   """
-  structured_idx = graph.structured_outputs.index(old_output_slices)
+  structured_idx = _get_tensor_index_in_iterable(graph.structured_outputs,
+                                                 old_output_slices)
   # We assume that the component tensors of old_output_slices appear
   # sequentially in graph.outputs. We use the first of these tensors
   # as the reference index.
-  flat_idx = graph.outputs.index(func_graph.flatten(old_output_slices)[0])
+  flat_idx = _get_tensor_index_in_iterable(
+      graph.outputs,
+      func_graph.flatten(old_output_slices)[0])
 
   graph.structured_outputs[structured_idx] = output_slices
   graph.outputs = func_graph.flatten(

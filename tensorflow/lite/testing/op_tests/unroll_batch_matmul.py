@@ -17,7 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 from tensorflow.lite.testing.zip_test_utils import create_tensor_data
 from tensorflow.lite.testing.zip_test_utils import make_zip_of_tests
 from tensorflow.lite.testing.zip_test_utils import register_make_test_function
@@ -51,9 +51,6 @@ def make_unroll_batch_matmul_tests(options):
                 [(4, 2, 2, 3), (4, 2, 2, 3), False, True],
                 [(4, 2, 2, 3),
                  (4, 2, 2, 3), True, False]] + broadcast_shape_params,
-      # TODO(b/130887442): Improve the forward compatibility tests for every
-      # ops.
-      "forward_compatibility_test": [False, True],
   }]
 
   def build_graph(parameters):
@@ -73,14 +70,7 @@ def make_unroll_batch_matmul_tests(options):
           transpose_b=parameters["shape"][3])
       return [input_tensor1, input_tensor2], [out]
 
-    if parameters["forward_compatibility_test"]:
-      # This is hardcoded to the date after MatMulV2 is activated.
-      # TODO(b/130887442): Improve the forward compatibility tests for every
-      # ops, and remove the hardcoded date.
-      with tf.compat.forward_compatibility_horizon(2019, 4, 26):
-        return _build_graph()
-    else:
-      return _build_graph()
+    return _build_graph()
 
   def build_inputs(parameters, sess, inputs, outputs):
     input_value1 = create_tensor_data(

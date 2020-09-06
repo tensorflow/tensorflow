@@ -198,13 +198,7 @@ TEST_F(SparseToDenseTest, ThreeD_MultValues) {
 
 }  // namespace
 
-static int BM_Arg(int ndim, int n) { return (ndim * 1000000) + n; }
-static int NDIM_from_arg(int bm_arg) { return bm_arg / 1000000; }
-static int N_from_arg(int bm_arg) { return bm_arg % 1000000; }
-
-static void BM_SparseToDense(int iters, const int bm_arg) {
-  const int NDIM = NDIM_from_arg(bm_arg);
-  const int N = N_from_arg(bm_arg);
+static void BM_SparseToDense(int iters, int NDIM, int N) {
   // TODO(zhifengc): Switch to use kernel_benchmark_testlib.h
   tensorflow::testing::StopTiming();
 
@@ -217,7 +211,7 @@ static void BM_SparseToDense(int iters, const int bm_arg) {
 
   // Create a dense tensor with dims [1, ..., 1, N]
   Tensor output_shape(DT_INT32, TensorShape({NDIM}));
-  Tensor sparse_indices(DT_INT32, TensorShape({N, NDIM}));
+  Tensor sparse_indices(DT_INT64, TensorShape({N, NDIM}));
   Tensor sparse_values(DT_FLOAT, TensorShape({N}));
   Tensor default_value(DT_FLOAT, TensorShape({}));
   auto output_shape_t = output_shape.vec<int32>();
@@ -225,7 +219,7 @@ static void BM_SparseToDense(int iters, const int bm_arg) {
     output_shape_t(d) = (d == IndexDim) ? N : 3;
   }
 
-  auto sparse_indices_t = sparse_indices.matrix<int32>();
+  auto sparse_indices_t = sparse_indices.matrix<int64>();
   for (int n = 0; n < N; ++n) {
     for (int d = 0; d < NDIM; ++d)
       sparse_indices_t(n, d) = (d == IndexDim) ? n : 0;
@@ -274,21 +268,21 @@ static void BM_SparseToDense(int iters, const int bm_arg) {
 }
 
 BENCHMARK(BM_SparseToDense)
-    ->Arg(BM_Arg(1, 10))
-    ->Arg(BM_Arg(1, 100))
-    ->Arg(BM_Arg(1, 1000))
-    ->Arg(BM_Arg(1, 10000))
-    ->Arg(BM_Arg(2, 10))
-    ->Arg(BM_Arg(2, 100))
-    ->Arg(BM_Arg(2, 1000))
-    ->Arg(BM_Arg(2, 10000))
-    ->Arg(BM_Arg(3, 10))
-    ->Arg(BM_Arg(3, 100))
-    ->Arg(BM_Arg(3, 1000))
-    ->Arg(BM_Arg(3, 10000))
-    ->Arg(BM_Arg(5, 10))
-    ->Arg(BM_Arg(5, 100))
-    ->Arg(BM_Arg(5, 1000))
-    ->Arg(BM_Arg(5, 10000));
+    ->ArgPair(1, 10)
+    ->ArgPair(1, 100)
+    ->ArgPair(1, 1000)
+    ->ArgPair(1, 10000)
+    ->ArgPair(2, 10)
+    ->ArgPair(2, 100)
+    ->ArgPair(2, 1000)
+    ->ArgPair(2, 10000)
+    ->ArgPair(3, 10)
+    ->ArgPair(3, 100)
+    ->ArgPair(3, 1000)
+    ->ArgPair(3, 10000)
+    ->ArgPair(5, 10)
+    ->ArgPair(5, 100)
+    ->ArgPair(5, 1000)
+    ->ArgPair(5, 10000);
 
 }  // namespace tensorflow

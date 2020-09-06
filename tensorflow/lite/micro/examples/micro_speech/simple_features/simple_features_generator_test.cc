@@ -27,34 +27,35 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   uint8_t yes_calculated_data[g_yes_power_spectrum_data_size];
   TfLiteStatus yes_status = GenerateSimpleFeatures(
-      error_reporter, g_yes_30ms_sample_data, g_yes_30ms_sample_data_size,
-      g_yes_power_spectrum_data_size, yes_calculated_data);
+      &micro_error_reporter, g_yes_30ms_sample_data,
+      g_yes_30ms_sample_data_size, g_yes_power_spectrum_data_size,
+      yes_calculated_data);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, yes_status);
 
   for (int i = 0; i < g_yes_power_spectrum_data_size; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(g_yes_power_spectrum_data[i],
                             yes_calculated_data[i]);
     if (g_yes_power_spectrum_data[i] != yes_calculated_data[i]) {
-      TF_LITE_REPORT_ERROR(error_reporter, "Expected value %d but found %d",
-                           g_yes_power_spectrum_data[i],
-                           yes_calculated_data[i]);
+      TF_LITE_REPORT_ERROR(
+          &micro_error_reporter, "Expected value %d but found %d",
+          g_yes_power_spectrum_data[i], yes_calculated_data[i]);
     }
   }
 
   uint8_t no_calculated_data[g_yes_power_spectrum_data_size];
   TfLiteStatus no_status = GenerateSimpleFeatures(
-      error_reporter, g_no_30ms_sample_data, g_no_30ms_sample_data_size,
+      &micro_error_reporter, g_no_30ms_sample_data, g_no_30ms_sample_data_size,
       g_no_power_spectrum_data_size, no_calculated_data);
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, no_status);
 
   for (int i = 0; i < g_no_power_spectrum_data_size; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(g_no_power_spectrum_data[i], no_calculated_data[i]);
     if (g_no_power_spectrum_data[i] != no_calculated_data[i]) {
-      TF_LITE_REPORT_ERROR(error_reporter, "Expected value %d but found %d",
+      TF_LITE_REPORT_ERROR(&micro_error_reporter,
+                           "Expected value %d but found %d",
                            g_no_power_spectrum_data[i], no_calculated_data[i]);
     }
   }

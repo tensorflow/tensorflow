@@ -61,7 +61,7 @@ REGISTER_OP("_ScopedAllocatorConcat")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ExplicitShape)
     .Doc(R"doc(
-Acts like a Concat Op that merges multple tensors into one, however it must
+Acts like a Concat Op that merges multiple tensors into one, however it must
 only be used in conjunction with a ScopedAllocator which is backing the memory
 of all of its input tensors so that actually it just outputs a read-only
 reference to that ScopedAllocator's backing tensor.

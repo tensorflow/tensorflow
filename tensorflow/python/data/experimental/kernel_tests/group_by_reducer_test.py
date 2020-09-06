@@ -143,7 +143,7 @@ class GroupByReducerTest(test_base.DatasetTestBase, parameterized.TestCase):
         finalize_func=lambda x: x)
 
     dataset = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError,
         "The element types for the new state must match the initial state."):
       dataset.apply(
@@ -158,7 +158,7 @@ class GroupByReducerTest(test_base.DatasetTestBase, parameterized.TestCase):
         finalize_func=lambda x: x)
 
     dataset = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "`key_func` must return a single tf.int64 tensor."):
       dataset.apply(
           grouping.group_by_reducer(lambda _: np.int64((0, 0)), reducer))
@@ -172,7 +172,7 @@ class GroupByReducerTest(test_base.DatasetTestBase, parameterized.TestCase):
         finalize_func=lambda x: x)
 
     dataset = dataset_ops.Dataset.range(10)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "`key_func` must return a single tf.int64 tensor."):
       dataset.apply(
           grouping.group_by_reducer(lambda _: "wrong", reducer))

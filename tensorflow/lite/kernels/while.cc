@@ -13,7 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stddef.h>
+
 #include <cstring>
+#include <vector>
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
@@ -87,7 +90,7 @@ TfLiteStatus CopyTensorsData(TfLiteContext* context, Subgraph* src_subgraph,
 TfLiteStatus CheckCondOutput(TfLiteContext* context,
                              const TfLiteTensor* cond_output) {
   // The condition output must be a single boolean value.
-  TF_LITE_ENSURE_EQ(context, cond_output->type, kTfLiteBool);
+  TF_LITE_ENSURE_TYPES_EQ(context, cond_output->type, kTfLiteBool);
   if (cond_output->dims->size == 0) {
     // It's okay if it's a 0D scalar.
     return kTfLiteOk;
@@ -176,7 +179,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
           body_subgraph->tensor(body_subgraph->inputs()[i]);
       TfLiteTensor* body_output =
           body_subgraph->tensor(body_subgraph->outputs()[i]);
-      TF_LITE_ENSURE_EQ(context, body_input->type, body_output->type);
+      TF_LITE_ENSURE_TYPES_EQ(context, body_input->type, body_output->type);
 
       // TODO(ycling): Support dynamic sized body subgraph.
       TF_LITE_ENSURE(context, !IsDynamicTensor(body_output));

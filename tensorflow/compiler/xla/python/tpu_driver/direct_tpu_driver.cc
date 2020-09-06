@@ -27,7 +27,8 @@
 namespace tpu_driver {
 namespace {
 
-// Enable the macro by default in the env where the libtpu.so is available.
+// Enable the macro by default in the Google internal environment where the
+// libtpu.so is linked in statically.
 #ifdef PLATFORM_GOOGLE
 #define TPU_SHARED_LIBRARY_COMPILE_LINK 1
 #endif

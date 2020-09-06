@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/executor.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
@@ -55,7 +56,6 @@ limitations under the License.
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/data/batch_dataset_op.h"
 #include "tensorflow/core/kernels/data/concatenate_dataset_op.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
@@ -64,12 +64,12 @@ limitations under the License.
 #include "tensorflow/core/kernels/data/range_dataset_op.h"
 #include "tensorflow/core/kernels/data/take_dataset_op.h"
 #include "tensorflow/core/kernels/data/tensor_slice_dataset_op.h"
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
 #include "tensorflow/core/lib/io/record_writer.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/lib/io/zlib_outputbuffer.h"
+#include "tensorflow/core/platform/bfloat16.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -220,8 +220,6 @@ Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
     break;
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_tstring(CASE);
-    TF_CALL_uint32(CASE);
-    TF_CALL_uint64(CASE);
     // TODO(feihugis): figure out how to support variant tensors.
 #undef CASE
     default:
@@ -304,9 +302,14 @@ Status DatasetOpsTestBase::ExpectEqual(std::vector<Tensor> produced_tensors,
 Status DatasetOpsTestBase::CreateOpKernel(
     const NodeDef& node_def, std::unique_ptr<OpKernel>* op_kernel) {
   OpKernel* kernel;
+  Status s;
+
+  std::shared_ptr<const NodeProperties> props;
+  TF_RETURN_IF_ERROR(NodeProperties::CreateFromNodeDef(
+      node_def, flr_->GetFunctionLibraryDefinition(), &props));
   TF_RETURN_IF_ERROR(tensorflow::CreateOpKernel(
       device_type_, device_.get(), allocator_, flr_,
-      device_->resource_manager(), node_def, TF_GRAPH_DEF_VERSION, &kernel));
+      device_->resource_manager(), props, TF_GRAPH_DEF_VERSION, &kernel));
   op_kernel->reset(kernel);
   return Status::OK();
 }
@@ -316,7 +319,10 @@ Status DatasetOpsTestBase::CreateDatasetContext(
     gtl::InlinedVector<TensorValue, 4>* const inputs,
     std::unique_ptr<OpKernelContext::Params>* dataset_context_params,
     std::unique_ptr<OpKernelContext>* dataset_context) {
-  TF_RETURN_IF_ERROR(CheckOpKernelInput(*dateset_kernel, *inputs));
+  Status status = CheckOpKernelInput(*dateset_kernel, *inputs);
+  if (!status.ok()) {
+    VLOG(0) << "WARNING: " << status.ToString();
+  }
   TF_RETURN_IF_ERROR(CreateOpKernelContext(
       dateset_kernel, inputs, dataset_context_params, dataset_context));
   return Status::OK();
@@ -395,7 +401,13 @@ Status DatasetOpsTestBase::InitFunctionLibraryRuntime(
   pflr_ = absl::make_unique<ProcessFunctionLibraryRuntime>(
       device_mgr_.get(), Env::Default(), /*config=*/nullptr,
       TF_GRAPH_DEF_VERSION, lib_def_.get(), opts, thread_pool_.get(),
-      nullptr /* cluster_flr */);
+      /*parent=*/nullptr, /*custom_kernel_creator=*/nullptr,
+      /*session_metadata=*/nullptr,
+      Rendezvous::Factory{
+          [](const int64, const DeviceMgr* device_mgr, Rendezvous** r) {
+            *r = new IntraProcessRendezvous(device_mgr);
+            return Status::OK();
+          }});
   flr_ = pflr_->GetFLR("/job:localhost/replica:0/task:0/cpu:0");
   if (thread_pool_ == nullptr) {
     runner_ = [](const std::function<void()>& fn) { fn(); };
@@ -435,18 +447,14 @@ Status DatasetOpsTestBase::RunFunction(
   LocalExecutorParams params;
   params.function_library = flr_;
   params.device = device_.get();
-  params.create_kernel = [this, version](const NodeDef& ndef,
-                                         OpKernel** kernel) {
-    return CreateNonCachedKernel(device_.get(), this->flr_, ndef, version,
+  params.create_kernel = [this, version](
+                             const std::shared_ptr<const NodeProperties>& props,
+                             OpKernel** kernel) {
+    return CreateNonCachedKernel(device_.get(), this->flr_, props, version,
                                  kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
-  };
-  params.rendezvous_factory = [](const int64, const DeviceMgr* device_mgr,
-                                 Rendezvous** r) {
-    *r = new IntraProcessRendezvous(device_mgr);
-    return Status::OK();
   };
 
   Executor* cur_exec;
@@ -523,10 +531,10 @@ Status DatasetOpsTestBase::CreateSerializationContext(
 
 Status DatasetOpsTestBase::CheckOpKernelInput(
     const OpKernel& kernel, const gtl::InlinedVector<TensorValue, 4>& inputs) {
-  if (kernel.input_types().size() != inputs.size()) {
-    return errors::Internal("The number of input elements should be ",
-                            kernel.input_types().size(),
-                            ", but got: ", inputs.size());
+  if (kernel.num_inputs() != inputs.size()) {
+    return errors::InvalidArgument("The number of input elements should be ",
+                                   kernel.num_inputs(),
+                                   ", but got: ", inputs.size());
   }
   return Status::OK();
 }
@@ -539,8 +547,7 @@ Status DatasetOpsTestBase::AddDatasetInput(
                                    inputs->size(), " vs. ", input_types.size());
   }
   bool is_ref = IsRefType(input_types[inputs->size()]);
-  std::unique_ptr<Tensor> input =
-      absl::make_unique<Tensor>(allocator_, dtype, shape);
+  auto input = absl::make_unique<Tensor>(allocator_, dtype, shape);
 
   if (is_ref) {
     DataType expected_dtype = RemoveRefType(input_types[inputs->size()]);
@@ -654,8 +661,8 @@ Status DatasetOpsTestBase::CheckIteratorSaveAndRestore(
     const string& iterator_prefix, const std::vector<Tensor>& expected_outputs,
     const std::vector<int>& breakpoints, bool compare_order) {
   std::unique_ptr<IteratorBase> iterator;
-  TF_RETURN_IF_ERROR(
-      dataset_->MakeIterator(iterator_ctx_.get(), iterator_prefix, &iterator));
+  TF_RETURN_IF_ERROR(dataset_->MakeIterator(
+      iterator_ctx_.get(), /*parent=*/nullptr, iterator_prefix, &iterator));
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_RETURN_IF_ERROR(CreateSerializationContext(&serialization_ctx));
   bool end_of_sequence = false;
@@ -704,8 +711,9 @@ Status DatasetOpsTestBase::Initialize(const DatasetParams& dataset_params) {
   TF_RETURN_IF_ERROR(MakeDataset(dataset_params, &dataset_kernel_, &params_,
                                  &dataset_ctx_, &tensors_, &dataset_));
   TF_RETURN_IF_ERROR(CreateIteratorContext(dataset_ctx_.get(), &iterator_ctx_));
-  TF_RETURN_IF_ERROR(dataset_->MakeIterator(
-      iterator_ctx_.get(), dataset_params.iterator_prefix(), &iterator_));
+  TF_RETURN_IF_ERROR(
+      dataset_->MakeIterator(iterator_ctx_.get(), /*parent=*/nullptr,
+                             dataset_params.iterator_prefix(), &iterator_));
   initialized_ = true;
   return Status::OK();
 }
@@ -791,7 +799,8 @@ Status DatasetOpsTestBase::MakeIterator(
       CreateIteratorContext(dataset.op_kernel_context(), &iterator_ctx));
   std::unique_ptr<IteratorBase> iterator_base;
   TF_RETURN_IF_ERROR(dataset.dataset()->MakeIterator(
-      iterator_ctx.get(), dataset_params.iterator_prefix(), &iterator_base));
+      iterator_ctx.get(), /*parent=*/nullptr, dataset_params.iterator_prefix(),
+      &iterator_base));
   *iterator = std::make_unique<TestIterator>(std::move(iterator_ctx),
                                              std::move(iterator_base));
   return Status::OK();

@@ -34,6 +34,7 @@ from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import test
@@ -54,7 +55,9 @@ class ModelInputsTest(test.TestCase):
     self.assertEqual(backend.floatx(), vals[0].dtype)
 
   def test_single_thing_eager(self):
-    with context.eager_mode():
+    if not context.executing_eagerly():
+      self.skipTest('Run in eager mode only.')
+    with testing_utils.use_keras_tensors_scope(False):
       a = np.ones(10, dtype=np.int32)
       model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['input_1'], model_inputs.get_input_names())
@@ -63,6 +66,16 @@ class ModelInputsTest(test.TestCase):
       vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
       self.assertEqual(1, len(vals))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
+      self.assertEqual(dtypes.int32, vals[0].dtype)
+    with testing_utils.use_keras_tensors_scope(True):
+      a = np.ones(10, dtype=np.int32)
+      model_inputs = training_utils.ModelInputs(a)
+      self.assertEqual(['input_1'], model_inputs.get_input_names())
+      val = model_inputs.get_symbolic_inputs()
+      self.assertIsInstance(val, keras_tensor.KerasTensor)
+      vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
+      self.assertEqual(1, len(vals))
+      self.assertIsInstance(vals[0], keras_tensor.KerasTensor)
       self.assertEqual(dtypes.int32, vals[0].dtype)
 
   def test_list(self):
@@ -74,13 +87,22 @@ class ModelInputsTest(test.TestCase):
     self.assertTrue(tensor_util.is_tensor(vals[1]))
 
   def test_list_eager(self):
-    with context.eager_mode():
+    if not context.executing_eagerly():
+      self.skipTest('Run in eager mode only.')
+    with testing_utils.use_keras_tensors_scope(False):
       a = [np.ones(10), np.ones(20)]
       model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
       vals = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[1]))
+    with testing_utils.use_keras_tensors_scope(True):
+      a = [np.ones(10), np.ones(20)]
+      model_inputs = training_utils.ModelInputs(a)
+      self.assertEqual(['input_1', 'input_2'], model_inputs.get_input_names())
+      vals = model_inputs.get_symbolic_inputs()
+      self.assertIsInstance(vals[0], keras_tensor.KerasTensor)
+      self.assertIsInstance(vals[1], keras_tensor.KerasTensor)
 
   def test_dict(self):
     a = {'b': np.ones(10), 'a': np.ones(20)}
@@ -91,13 +113,22 @@ class ModelInputsTest(test.TestCase):
     self.assertTrue(tensor_util.is_tensor(vals['b']))
 
   def test_dict_eager(self):
-    with context.eager_mode():
+    if not context.executing_eagerly():
+      self.skipTest('Run in eager mode only.')
+    with testing_utils.use_keras_tensors_scope(False):
       a = {'b': np.ones(10), 'a': np.ones(20)}
       model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['a', 'b'], model_inputs.get_input_names())
       vals = model_inputs.get_symbolic_inputs()
       self.assertTrue(tf_utils.is_symbolic_tensor(vals['a']))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals['b']))
+    with testing_utils.use_keras_tensors_scope(True):
+      a = {'b': np.ones(10), 'a': np.ones(20)}
+      model_inputs = training_utils.ModelInputs(a)
+      self.assertEqual(['a', 'b'], model_inputs.get_input_names())
+      vals = model_inputs.get_symbolic_inputs()
+      self.assertIsInstance(vals['a'], keras_tensor.KerasTensor)
+      self.assertIsInstance(vals['b'], keras_tensor.KerasTensor)
 
 
 class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
@@ -203,9 +234,8 @@ class DatasetUtilsTest(test.TestCase, parameterized.TestCase):
 
     with test.mock.patch.object(logging, 'warning') as mock_log:
       training_utils.verify_dataset_shuffled(dataset)
-      self.assertRegexpMatches(
-          str(mock_log.call_args),
-          'input dataset `x` is not shuffled.')
+      self.assertRegex(
+          str(mock_log.call_args), 'input dataset `x` is not shuffled.')
 
     shuffled_dataset = dataset.shuffle(10)
     training_utils.verify_dataset_shuffled(shuffled_dataset)
@@ -398,14 +428,14 @@ class AggregationTest(keras_parameterized.TestCase):
     training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
     training_utils.SliceAggregator._MAX_COPY_SECONDS = 0.1
     training_utils._COPY_POOL._func_wrapper = add_sleep
-    with self.assertRaisesRegexp(ValueError, 'Timed out waiting for copy'):
+    with self.assertRaisesRegex(ValueError, 'Timed out waiting for copy'):
       self._run_without_steps()
 
   def test_async_copy_reraise(self):
     training_utils.SliceAggregator._BINARY_SIZE_THRESHOLD = 15
     training_utils.SliceAggregator._MAX_COPY_SECONDS = 1.
     training_utils._COPY_POOL._func_wrapper = cause_error
-    with self.assertRaisesRegexp(TypeError, 'NoneType'):
+    with self.assertRaisesRegex(TypeError, 'NoneType'):
       self._run_without_steps()
 
 

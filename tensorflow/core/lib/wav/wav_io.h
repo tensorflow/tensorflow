@@ -46,7 +46,7 @@ Status EncodeAudioAsS16LEWav(const float* audio, size_t sample_rate,
                              size_t num_channels, size_t num_frames,
                              T* wav_string);
 
-// Excplicit instantiations defined in wav_io.cc.
+// Explicit instantiations defined in wav_io.cc.
 extern template Status EncodeAudioAsS16LEWav<string>(const float* audio,
                                                      size_t sample_rate,
                                                      size_t num_channels,

@@ -1,4 +1,4 @@
-# RUN: tf-mlir-translate -graphdef-to-mlir %s -o - -mlir-print-debuginfo | FileCheck %s
+# RUN: tf-mlir-translate -graphdef-to-mlir -tf-enable-shape-inference-on-import=false %s -o - -mlir-print-debuginfo | FileCheck %s
 
 node {
   name: "Quantized_Constant"

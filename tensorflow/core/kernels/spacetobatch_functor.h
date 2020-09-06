@@ -80,7 +80,7 @@ namespace functor {
 
 // Functor used by {SpaceToBatch,BatchToSpace}{ND,}Op to do the conversion.
 //
-// If B2S is false, then this performs the space-to-batch conversion.  If S2B is
+// If B2S is false, then this performs the space-to-batch conversion.  If B2S is
 // true, then this performs the inverse batch-to-space conversion.
 template <typename Device, typename T, int NUM_BLOCK_DIMS, bool B2S = false>
 struct SpaceToBatchFunctor {

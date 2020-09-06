@@ -16,12 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_UTILS_EVENT_SPAN_H_
 #define TENSORFLOW_CORE_PROFILER_UTILS_EVENT_SPAN_H_
 
+#include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
-#include "tensorflow/core/platform/logging.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/op_metrics.pb.h"
+#include "tensorflow/core/profiler/protobuf/steps_db.pb.h"
 #include "tensorflow/core/profiler/utils/timespan.h"
 
 namespace tensorflow {
@@ -35,29 +37,31 @@ enum EventType {
   // executing some events which were not traced.
   UNKNOWN_TIME = 0,
   // Host is computing.
-  HOST_COMPUTE = 1,
+  HOST_COMPUTE = 10,
   // Host is compiling.
-  HOST_COMPILE = 2,
+  HOST_COMPILE = 20,
   // Host-to-host communication.
-  HOST_TO_HOST = 3,
+  HOST_TO_HOST = 30,
   // Host-to-device communication.
-  HOST_TO_DEVICE = 4,
+  HOST_TO_DEVICE = 40,
   // Host is preparing to launch a computation on device.
-  HOST_PREPARE = 5,
+  HOST_PREPARE = 50,
   // Host is waiting for input.
-  HOST_WAIT_INPUT = 6,
+  HOST_WAIT_INPUT = 60,
   // Device-to-device communication.
-  DEVICE_TO_DEVICE = 7,
+  DEVICE_TO_DEVICE = 70,
   // Device-to-host communication.
-  DEVICE_TO_HOST = 8,
+  DEVICE_TO_HOST = 80,
+  // Collective Ops such as All-Reduce.
+  DEVICE_COLLECTIVES = 90,
   // Device is computing with 32-bit precision.
-  DEVICE_COMPUTE_32 = 9,
+  DEVICE_COMPUTE_32 = 100,
   // Device is computing with 16-bit precision.
-  DEVICE_COMPUTE_16 = 10,
+  DEVICE_COMPUTE_16 = 110,
   // Device is waiting for another device.
-  DEVICE_WAIT_DEVICE = 11,
+  DEVICE_WAIT_DEVICE = 120,
   // Device is waiting for host.
-  DEVICE_WAIT_HOST = 12,
+  DEVICE_WAIT_HOST = 130,
   LAST_EVENT_TYPE = DEVICE_WAIT_HOST
 };
 
@@ -76,16 +80,28 @@ struct EventTypeSpan {
   }
 };
 
+enum class StepMarkerType {
+  // "TraceContext" TraceMe events.
+  kExplicitHostStepMarker,
+  // Identified by group_events (e.g., FunctionRun, SessionRun).
+  kImplicitHostStepMarker,
+  // Derived from the result of group_events. A device step marker starts with
+  // the first device event of the group and ends with the last event of the
+  // group.
+  kDeviceStepMarker,
+};
+
 // Record of an event that is used as a step marker.
 struct StepMarker {
-  bool on_device;          // true if this event happened on device.
+  StepMarkerType type;
   std::string event_name;  // name of this event.
   Timespan span;           // timespan of this event.
-  StepMarker(bool device, absl::string_view name, Timespan s)
-      : on_device(device), event_name(name), span(s) {}
+  StepMarker(StepMarkerType step_marker_type, absl::string_view name,
+             Timespan s)
+      : type(step_marker_type), event_name(name), span(s) {}
   // Equality test.
   bool operator==(const StepMarker& other) const {
-    return on_device == other.on_device && event_name == other.event_name &&
+    return type == other.type && event_name == other.event_name &&
            span == other.span;
   }
   // Inequality test.
@@ -95,6 +111,55 @@ struct StepMarker {
 // Details of a step. Note that this could be the result of combining the
 // StepDetails of the same step executed on different cores.
 class StepDetails {
+ public:
+  StepDetails() : device_memory_transfers_(3) {}
+
+  const std::vector<StepMarker>& Markers() const { return markers_; }
+  const std::vector<EventTypeSpan>& Events() const { return events_; }
+  const absl::flat_hash_map<uint32, AllReduceDbResult>& Collectives() const {
+    return collectives_;
+  }
+  const std::vector<DeviceMemoryTransfer>& DeviceMemoryTransfers() const {
+    return device_memory_transfers_;
+  }
+  // Returns the step time.
+  Timespan StepTime() const;
+  std::vector<StepMarker>* MutableMarkers() { return &markers_; }
+  std::vector<EventTypeSpan>* MutableEvents() { return &events_; }
+  absl::flat_hash_map<uint32, AllReduceDbResult>* MutableCollectives() {
+    return &collectives_;
+  }
+  std::vector<DeviceMemoryTransfer>* MutableDeviceMemoryTransfers() {
+    return &device_memory_transfers_;
+  }
+  // Adds a step-marker to this step.
+  void AddMarker(const StepMarker& m);
+  // Adds an EventTypeSpan to this step.
+  void AddEvent(const EventTypeSpan& e);
+  // Adds a collective op to this step.
+  void AddCollectiveOpEvent(uint64 core_id, const AllReduceInfo& e);
+  // Appends device memory transfer events to this step.
+  // Only event type of HOST_TO_DEVICE/DEVICE_TO_DEVICE/DEVICE_TO_HOST are
+  // allowed.
+  void AddDeviceMemoryTransferEvent(EventType event_type,
+                                    const Timespan& time_span, uint64 bytes);
+  // Appends the step-markers from another step to this step.
+  void AppendMarkers(const std::vector<StepMarker>& other_markers);
+  // Appends the events from another step to this step.
+  void AppendEvents(const std::vector<EventTypeSpan>& other_events);
+  // Appends the collectives from another step to this step.
+  void AppendCollectives(
+      const absl::flat_hash_map<uint32, AllReduceDbResult>& collectives);
+  // Accumulates the device memory transfers from another step to this step.
+  void AggregateDeviceMemoryTransfers(
+      const std::vector<DeviceMemoryTransfer> device_memory_transfers);
+  // Equality test.
+  bool operator==(const StepDetails& other) const;
+  // Inequality test.
+  bool operator!=(const StepDetails& other) const { return !(*this == other); }
+  // Returns a string that prints the content of this object.
+  std::string DebugString() const;
+
  private:
   // All step-markers found for marking this step in the traces. There could be
   // multiple step-markers for a single step for different reasons. One such
@@ -104,28 +169,12 @@ class StepDetails {
   std::vector<StepMarker> markers_;
   // All events belonging to this step.
   std::vector<EventTypeSpan> events_;
-
- public:
-  const std::vector<StepMarker>& Markers() const { return markers_; }
-  const std::vector<EventTypeSpan>& Events() const { return events_; }
-  // Returns the step time.
-  Timespan StepTime() const;
-  std::vector<StepMarker>* MutableMarkers() { return &markers_; }
-  std::vector<EventTypeSpan>* MutableEvents() { return &events_; }
-  // Adds a step-marker to this step.
-  void AddMarker(const StepMarker& m);
-  // Adds an EventTypeSpan to this step.
-  void AddEvent(const EventTypeSpan& e);
-  // Appends the step-markers from another step to this step.
-  void AppendMarkers(const std::vector<StepMarker>& other_markers);
-  // Appends the events from another step to this step.
-  void AppendEvents(const std::vector<EventTypeSpan>& other_events);
-  // Equality test.
-  bool operator==(const StepDetails& other) const;
-  // Inequality test.
-  bool operator!=(const StepDetails& other) const { return !(*this == other); }
-  // Returns a string that prints the content of this object.
-  std::string DebugString() const;
+  // Collective operation related events such as all-reduce etc.
+  absl::flat_hash_map<uint32, AllReduceDbResult> collectives_;
+  // Device memory transfers (including time and bytes involved).
+  // TODO(jiesun): Consider to use IntervalSet instead of just sum up the event
+  // durations.
+  std::vector<DeviceMemoryTransfer> device_memory_transfers_;
 };
 
 // Map from step_id to the events happened in that step.
@@ -135,7 +184,8 @@ using StepEvents = absl::flat_hash_map<int64 /*step_id*/, StepDetails>;
 bool operator==(const StepEvents& a, const StepEvents& b);
 
 // Returns the event type of the given CPU event.
-EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id);
+EventType ClassifyCpuEvent(absl::string_view event_name, int64 correlation_id,
+                           bool has_device);
 
 // Returns the event type of the given GPU event and tensor shapes.
 EventType ClassifyGpuEvent(absl::string_view event_name,

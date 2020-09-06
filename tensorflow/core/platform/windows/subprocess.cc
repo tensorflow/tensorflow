@@ -204,7 +204,7 @@ bool SubProcess::Start() {
 
   // No need to store subprocess end of the pipes, they will be closed before
   // this function terminates.
-  HANDLE child_pipe_[kNFds] GUARDED_BY(data_mu_);
+  HANDLE child_pipe_[kNFds] TF_GUARDED_BY(data_mu_);
 
   // Create parent/child pipes for the specified channels and make the
   // parent-side of the pipes non-blocking.
@@ -378,7 +378,7 @@ int SubProcess::Communicate(const string* stdin_input, string* stdout_output,
       }
     } else {
       CloseHandle(parent_pipe_[CHAN_STDIN]);
-      parent_pipe_[CHAN_STDIN] == NULL;
+      parent_pipe_[CHAN_STDIN] = NULL;
     }
 
     if (parent_pipe_[CHAN_STDOUT] != nullptr) {

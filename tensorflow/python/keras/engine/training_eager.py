@@ -28,7 +28,6 @@ from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -122,7 +121,7 @@ def _model_loss(model,
   if any(
       isinstance(input_t, (np.ndarray, float, int))
       for input_t in nest.flatten(inputs)):
-    inputs = nest.map_structure(ops.convert_to_tensor_v2, inputs)
+    inputs = nest.map_structure(ops.convert_to_tensor_v2_with_dispatch, inputs)
 
   outs = model(inputs, **kwargs)
   outs = nest.flatten(outs)
@@ -132,7 +131,8 @@ def _model_loss(model,
   # TODO(sallymatson/psv): check if we should do same mismatch fix for weights
   if sample_weights:
     sample_weights = [
-        training_utils.cast_if_floating_dtype(ops.convert_to_tensor_v2(val))
+        training_utils.cast_if_floating_dtype(
+            ops.convert_to_tensor_v2_with_dispatch(val))
         if val is not None else None for val in sample_weights
     ]
 
@@ -169,7 +169,7 @@ def _model_loss(model,
             # Update dimensions of weights to match with mask if possible.
             weights = math_ops.cast(weights, outs[i].dtype)
             mask, _, weights = (
-                tf_losses_utils.squeeze_or_expand_dimensions(
+                losses_utils.squeeze_or_expand_dimensions(
                     mask, sample_weight=weights))
             weights *= mask
 
@@ -274,7 +274,6 @@ def _process_single_batch(model,
           if isinstance(model.optimizer,
                         loss_scale_optimizer.LossScaleOptimizer):
             grads = model.optimizer.get_unscaled_gradients(grads)
-          grads = model.optimizer._clip_gradients(grads)
           model.optimizer.apply_gradients(zip(grads, trainable_weights))
       else:
         logging.warning('The list of trainable weights is empty. Make sure that'

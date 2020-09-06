@@ -25,9 +25,9 @@ from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribution_strategy_context
+from tensorflow.python.distribute import parameter_server_strategy
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import monitoring
 from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import composite_tensor_utils
 from tensorflow.python.framework import constant_op
@@ -42,15 +42,13 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.distribute import distributed_training_utils
-from tensorflow.python.keras.engine import network
+from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import training as training_lib
 from tensorflow.python.keras.engine import training_arrays
 from tensorflow.python.keras.engine import training_distributed
 from tensorflow.python.keras.engine import training_eager
 from tensorflow.python.keras.engine import training_generator
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine import training_v2
-from tensorflow.python.keras.engine import training_v2_utils
 from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving.saved_model import model_serialization
@@ -59,10 +57,10 @@ from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.types import core
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
@@ -72,9 +70,6 @@ try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
 except ImportError:
   issparse = None
-
-_keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras/model_v1',
-                                        'keras model v1 usage', 'method')
 
 
 class Model(training_lib.Model):
@@ -143,7 +138,6 @@ class Model(training_lib.Model):
 
   def __init__(self, *args, **kwargs):
     super(Model, self).__init__(*args, **kwargs)
-    _keras_api_gauge.get_cell('model_v1').set(True)
     # initializing _distribution_strategy here since it is possible to call
     # predict on a model without compiling it.
     self._distribution_strategy = None
@@ -162,6 +156,11 @@ class Model(training_lib.Model):
     self._experimental_run_tf_function = (
         ops.executing_eagerly_outside_functions())
 
+    self._v1_compile_was_called = False
+
+  def _init_batch_counters(self):
+    pass  # Batch counters should not be created in legacy graph mode.
+
   @trackable.no_automatic_dependency_tracking
   def _set_strategy(self, strategy):
     self._compile_time_distribution_strategy = strategy
@@ -176,8 +175,8 @@ class Model(training_lib.Model):
                 self._compile_time_distribution_strategy)
     if strategy:
       with strategy.scope():
-        return network.Network.get_weights(self)
-    return network.Network.get_weights(self)
+        return base_layer.Layer.get_weights(self)
+    return base_layer.Layer.get_weights(self)
 
   def load_weights(self, filepath, by_name=False, skip_mismatch=False):
     """Loads all layer weights, either from a TensorFlow or an HDF5 weight file.
@@ -227,7 +226,7 @@ class Model(training_lib.Model):
     """
     if distributed_training_utils.is_tpu_strategy(self._distribution_strategy):
       if (self._distribution_strategy.extended.steps_per_run > 1 and
-          (not network._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
+          (not training_lib._is_hdf5_filepath(filepath))):  # pylint: disable=protected-access
         raise ValueError('Load weights is not yet supported with TPUStrategy '
                          'with steps_per_run greater than 1.')
     return super(Model, self).load_weights(filepath, by_name, skip_mismatch)
@@ -298,9 +297,11 @@ class Model(training_lib.Model):
         ValueError: In case of invalid arguments for
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
+    self._assert_built_as_v1()
     self._run_eagerly = kwargs.pop('run_eagerly', None)
     self._experimental_run_tf_function = kwargs.pop(
         'experimental_run_tf_function', True)
+    self._v1_compile_was_called = True
 
     # Prepare Session arguments (legacy).
     kwargs.pop('cloning', None)  # Legacy DistStrat argument, never used.
@@ -354,6 +355,12 @@ class Model(training_lib.Model):
           self._distribution_strategy = (
               distribution_strategy_context.get_strategy())
 
+    if isinstance(self._distribution_strategy,
+                  (parameter_server_strategy.ParameterServerStrategyV1,
+                   parameter_server_strategy.ParameterServerStrategy)):
+      raise NotImplementedError('ParameterServerStrategy currently only works '
+                                'with the tf.Estimator API')
+
     if not self._experimental_run_tf_function:
       self._validate_compile_param_for_distribution_strategy(self.run_eagerly,
                                                              sample_weight_mode,
@@ -401,7 +408,7 @@ class Model(training_lib.Model):
       # time the model gets called on training data.
       return
     self._is_compiled = True
-    _keras_api_gauge.get_cell('compile_v1').set(True)
+    base_layer.keras_api_gauge.get_cell('compile').set(True)
 
     # Prepare list of loss functions, same size of model outputs.
     self.loss_functions = training_utils.prepare_loss_functions(
@@ -479,6 +486,11 @@ class Model(training_lib.Model):
     """Returns the model's metrics added using `compile`, `add_metric` APIs."""
     metrics = []
     if self._is_compiled:
+      if not hasattr(self, '_v1_compile_was_called'):
+        # See b/155687393 for more details, the model is created as a v2
+        # instance but converted to v1. Fallback to use base Model to retrieve
+        # the metrics.
+        return super(Model, self).metrics
       metrics += self._compile_metric_functions
     metrics.extend(self._metrics)
     metrics.extend(_get_metrics_from_layers(self._layers))
@@ -492,6 +504,12 @@ class Model(training_lib.Model):
     # losses for backward compatibility.
     metrics_names = ['loss']
     if self._is_compiled:
+      if not hasattr(self, '_v1_compile_was_called'):
+        # See b/155687393 for more details, the model is created as a v2
+        # instance but converted to v1. Fallback to use base Model to retrieve
+        # the metrics name
+        return super(Model, self).metrics_names
+
       # Add output loss metric names to the metric names list.
       if len(self._training_endpoints) > 1:
         metrics_names.extend([
@@ -523,9 +541,9 @@ class Model(training_lib.Model):
                        'is enabled.')
     if not self.dynamic:
       if self._run_eagerly is None:
-        # Respect `tf.config.experimental_run_functions_eagerly` unless
+        # Respect `tf.config.run_functions_eagerly` unless
         # `run_eagerly` was explicitly passed to `compile`.
-        return def_function.RUN_FUNCTIONS_EAGERLY
+        return def_function.functions_run_eagerly()
       else:
         return self._run_eagerly
     else:
@@ -560,14 +578,6 @@ class Model(training_lib.Model):
                        'Datasets by users. Please directly pass in the '
                        'original `Dataset` object instead of passing in '
                        '`iter(dataset)`.')
-
-    # Experiment training loop with default DS path.
-    if context.executing_eagerly() and self._experimental_run_tf_function:
-      if self._in_multi_worker_mode():
-        return training_distributed.DistributionMultiWorkerTrainingLoop(
-            training_v2.Loop())
-      else:
-        return training_v2.Loop()
 
     # Case 1: distribution strategy.
     if self._distribution_strategy:
@@ -758,7 +768,8 @@ class Model(training_lib.Model):
         ValueError: In case of mismatch between the provided input data
             and what the model expects.
     """
-    _keras_api_gauge.get_cell('fit_v1').set(True)
+    self._assert_built_as_v1()
+    base_layer.keras_api_gauge.get_cell('fit').set(True)
     # Legacy support
     if 'nb_epoch' in kwargs:
       logging.warning(
@@ -804,7 +815,7 @@ class Model(training_lib.Model):
                use_multiprocessing=False):
     """Returns the loss value & metrics values for the model in test mode.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input data. It could be:
@@ -824,7 +835,7 @@ class Model(training_lib.Model):
           `keras.utils.Sequence` instance, `y` should not be specified (since
           targets will be obtained from the iterator/dataset).
         batch_size: Integer or `None`.
-            Number of samples per gradient update.
+            Number of samples per batch of computation.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
@@ -878,7 +889,8 @@ class Model(training_lib.Model):
     Raises:
         ValueError: in case of invalid arguments.
     """
-    _keras_api_gauge.get_cell('evaluate_v1').set(True)
+    self._assert_built_as_v1()
+    base_layer.keras_api_gauge.get_cell('evaluate').set(True)
     self._assert_compile_was_called()
     self._check_call_args('evaluate')
 
@@ -907,7 +919,7 @@ class Model(training_lib.Model):
               use_multiprocessing=False):
     """Generates output predictions for the input samples.
 
-    Computation is done in batches.
+    Computation is done in batches (see the `batch_size` arg.)
 
     Arguments:
         x: Input samples. It could be:
@@ -918,7 +930,7 @@ class Model(training_lib.Model):
           - A `tf.data` dataset.
           - A generator or `keras.utils.Sequence` instance.
         batch_size: Integer or `None`.
-            Number of samples per gradient update.
+            Number of samples per batch of computation.
             If unspecified, `batch_size` will default to 32.
             Do not specify the `batch_size` if your data is in the
             form of symbolic tensors, dataset,
@@ -957,7 +969,8 @@ class Model(training_lib.Model):
             or in case a stateful model receives a number of samples
             that is not a multiple of the batch size.
     """
-    _keras_api_gauge.get_cell('predict_v1').set(True)
+    self._assert_built_as_v1()
+    base_layer.keras_api_gauge.get_cell('predict').set(True)
     self._check_call_args('predict')
 
     func = self._select_training_loop(x)
@@ -1031,18 +1044,6 @@ class Model(training_lib.Model):
     """
     self._assert_compile_was_called()
     self._check_call_args('train_on_batch')
-    if self._experimental_run_tf_function:
-      outputs = training_v2_utils.train_on_batch(
-          self, x, y=y, sample_weight=sample_weight,
-          class_weight=class_weight, reset_metrics=reset_metrics,
-          standalone=True)
-      outputs = (outputs['total_loss'] + outputs['output_losses'] +
-                 outputs['metrics'])
-      outputs = [
-          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
-      if len(outputs) == 1:
-        outputs = outputs[0]
-      return outputs
 
     # If at this point we are in the replica context, then it is okay to execute
     # the Eager code path.  The expected way to get here is to call `fit` that
@@ -1069,8 +1070,7 @@ class Model(training_lib.Model):
           output_loss_metrics=self._output_loss_metrics)
       outputs = (output_dict['total_loss'] + output_dict['output_losses']
                  + output_dict['metrics'])
-      outputs = [
-          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
+      outputs = [_non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
       x = training_utils.ModelInputs(x).as_list()
       ins = x + list(y or []) + list(sample_weights or [])
@@ -1129,17 +1129,6 @@ class Model(training_lib.Model):
     """
     self._assert_compile_was_called()
     self._check_call_args('test_on_batch')
-    if self._experimental_run_tf_function:
-      outputs = training_v2_utils.test_on_batch(
-          self, x, y=y, sample_weight=sample_weight,
-          reset_metrics=reset_metrics, standalone=True)
-      outputs = (outputs['total_loss'] + outputs['output_losses'] +
-                 outputs['metrics'])
-      outputs = [
-          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
-      if len(outputs) == 1:
-        outputs = outputs[0]
-      return outputs
 
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
@@ -1160,8 +1149,7 @@ class Model(training_lib.Model):
           output_loss_metrics=self._output_loss_metrics)
       outputs = (output_dict['total_loss'] + output_dict['output_losses']
                  + output_dict['metrics'])
-      outputs = [
-          training_v2_utils._non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
+      outputs = [_non_none_constant_value(v) for v in outputs]  # pylint: disable=protected-access
     else:
       x = training_utils.ModelInputs(x).as_list()
       inputs = x + list(y or []) + list(sample_weights or [])
@@ -1196,8 +1184,6 @@ class Model(training_lib.Model):
           expectations of the model.
     """
     self._check_call_args('predict_on_batch')
-    if self._experimental_run_tf_function:
-      return training_v2_utils.predict_on_batch(self, x, standalone=True)
 
     if (self._distribution_strategy and
         distribution_strategy_context.in_cross_replica_context()):
@@ -1504,8 +1490,8 @@ class Model(training_lib.Model):
   def _recompile_weights_loss_and_weighted_metrics(self):
     if not self._is_compiled:
       return False
-    recompile = any([e.sample_weights_mismatch()
-                     for e in self._training_endpoints])
+    recompile = any(
+        e.sample_weights_mismatch() for e in self._training_endpoints)
 
     if recompile:
       self._compile_weights_loss_and_weighted_metrics()
@@ -1580,7 +1566,7 @@ class Model(training_lib.Model):
     if self.run_eagerly:
       raise TypeError('total loss can not be computed when compiled with '
                       'run_eagerly = True.')
-    total_loss = None
+    loss_list = []
     with K.name_scope('loss'):
       for endpoint, mask in zip(self._training_endpoints, masks):
         if endpoint.should_skip_target():
@@ -1601,7 +1587,7 @@ class Model(training_lib.Model):
             else:
               # Update dimensions of weights to match with mask if possible.
               mask, _, sample_weight = (
-                  tf_losses_utils.squeeze_or_expand_dimensions(
+                  losses_utils.squeeze_or_expand_dimensions(
                       mask, sample_weight=sample_weight))
               sample_weight *= mask
 
@@ -1639,23 +1625,25 @@ class Model(training_lib.Model):
         if loss_reduction == losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE:
           output_loss = losses_utils.scale_loss_for_distribution(output_loss)
 
-        if total_loss is None:
-          total_loss = loss_weight * output_loss
-        else:
-          total_loss += loss_weight * output_loss
-      if total_loss is None:
-        if not self.losses:
-          raise ValueError('The model cannot be compiled '
-                           'because it has no loss to optimize.')
-        else:
-          total_loss = 0.
+        loss_list.append(loss_weight * output_loss)
+      if not loss_list and not self.losses:
+        raise ValueError('The model cannot be compiled '
+                         'because it has no loss to optimize.')
 
       # Add regularization penalties and other layer-specific losses.
       custom_losses = self.get_losses_for(None) + self.get_losses_for(
           self.inputs)
       if custom_losses:
-        total_loss += losses_utils.scale_loss_for_distribution(
-            math_ops.add_n(custom_losses))
+        total_custom_loss = math_ops.add_n(
+            losses_utils.cast_losses_to_common_dtype(custom_losses))
+        loss_list.append(
+            losses_utils.scale_loss_for_distribution(total_custom_loss))
+
+      loss_list = losses_utils.cast_losses_to_common_dtype(loss_list)
+      if loss_list:
+        total_loss = math_ops.add_n(loss_list)
+      else:
+        total_loss = 0.
     return total_loss
 
   def _get_callback_model(self):
@@ -2601,6 +2589,7 @@ class Model(training_lib.Model):
       ValueError: If dict inputs are passed to a Sequential Model where the
         first layer isn't FeatureLayer.
     """
+    self._set_save_spec(inputs)
     inputs = self._set_input_attrs(inputs)
 
     if outputs is None:
@@ -2760,7 +2749,7 @@ class Model(training_lib.Model):
       training setting, return the epoch the training is supposed to continue
       at. Otherwise, return the `initial_epoch` the user passes in.
     """
-    if hasattr(self, '_training_state'):
+    if self._training_state is not None:
       return self._training_state.maybe_load_initial_epoch_from_ckpt(
           initial_epoch, mode)
     return initial_epoch
@@ -2781,7 +2770,7 @@ class Model(training_lib.Model):
     # then the optimizer is set. This is different from whether the
     # model is compiled
     # (i.e. whether the model is built and its inputs/outputs are set).
-    if not self.optimizer:
+    if not self._compile_was_called:
       raise RuntimeError('You must compile your model before '
                          'training/testing. '
                          'Use `model.compile(optimizer, loss)`.')
@@ -2821,6 +2810,22 @@ class Model(training_lib.Model):
   def _trackable_saved_model_saver(self):
     return model_serialization.ModelSavedModelSaver(self)
 
+  def _get_compile_args(self, user_metrics=True):
+    del user_metrics
+    self._assert_compile_was_called()
+    kwargs = {
+        'loss': self.loss,
+        'metrics': self._compile_metrics,
+        'loss_weights': self.loss_weights,
+        'sample_weight_mode': self.sample_weight_mode,
+        'weighted_metrics': self._compile_weighted_metrics,
+    }
+    return kwargs
+
+  @property
+  def _compile_was_called(self):
+    return self._v1_compile_was_called
+
 
 class DistributedCallbackModel(Model):
   """Model that is used for callbacks with tf.distribute.Strategy."""
@@ -2853,7 +2858,7 @@ class DistributedCallbackModel(Model):
         orig_model_weights)
 
   def __getattr__(self, item):
-    # Whitelisted attributes of the model that can be accessed by the user
+    # Allowed attributes of the model that can be accessed by the user
     # during a callback.
     if item not in ('_setattr_tracking', '_layers'):
       logging.warning('You are accessing attribute ' + item + ' of the '
@@ -3149,7 +3154,7 @@ def _convert_scipy_sparse_tensor(value, expected_input):
     The possibly-converted 'value'.
   """
   if issparse is not None and issparse(value):
-    if ops.is_dense_tensor_like(expected_input):
+    if isinstance(expected_input, core.Tensor):
       if ops.executing_eagerly_outside_functions():
         # In TF2 we do not silently densify sparse matrices.
         raise ValueError('A SciPy sparse matrix was passed to a model '
@@ -3189,3 +3194,8 @@ def _get_metrics_from_layers(layers):
     else:
       metrics.extend(layer.metrics)
   return metrics
+
+
+def _non_none_constant_value(v):
+  constant_value = tensor_util.constant_value(v)
+  return constant_value if constant_value is not None else v

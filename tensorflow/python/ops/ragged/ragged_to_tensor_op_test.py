@@ -396,11 +396,11 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
                 shape=None):
 
     rt = ragged_factory_ops.constant(rt_input, ragged_rank=ragged_rank)
-    with self.assertRaisesRegexp(error_type, error):
+    with self.assertRaisesRegex(error_type, error):
       self.evaluate(rt.to_tensor(default_value=default, shape=shape))
     rt_placeholder = nest.map_structure(
         make_placeholder, rt, expand_composites=True)
-    with self.assertRaisesRegexp(error_type, error):
+    with self.assertRaisesRegex(error_type, error):
       self.evaluate(
           rt_placeholder.to_tensor(default_value=default, shape=shape))
 
@@ -474,6 +474,22 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
     input_data = ragged_factory_ops.constant([[0, 1, 2], [], [3], []])
     actual = input_data.to_tensor(shape=[3, 4])
     self.assertAllEqual(actual, [[0, 1, 2, 0], [0, 0, 0, 0], [3, 0, 0, 0]])
+
+  @parameterized.parameters(
+      ([2, 3, 4], None, [2, 3, 4]),
+      ([2, 3, 4], [None, None, None], [2, 3, 4]),
+      ([2, 3, 4], [None, 3, None], [2, 3, 4]),
+      ([2, 3, 4], [None, 3, 4], [2, 3, 4]),
+      ([2, 3, 4], [2, 3, 4], [2, 3, 4]),
+      )
+  def test_preserve_shape_roundtrip(
+      self, input_shape, to_tensor_shape, expected_shape):
+    tensor = array_ops.zeros(input_shape)
+    ragged_from_tensor = RaggedTensor.from_tensor(tensor, ragged_rank=2)
+    recovered_tensor = ragged_from_tensor.to_tensor(shape=to_tensor_shape)
+    self.assertAllEqual(tensor.shape.as_list(), expected_shape)
+    self.assertAllEqual(ragged_from_tensor.shape.as_list(), expected_shape)
+    self.assertAllEqual(recovered_tensor.shape.as_list(), expected_shape)
 
   def test_empty_tensor_with_shape(self):
     input_data = RaggedTensor.from_value_rowids(
@@ -594,7 +610,6 @@ class RaggedTensorToTensorOpTest(test_util.TensorFlowTestCase,
           output_value  = [],
           output_grad   = [])
   ])  # pyformat: disable
-  @test_util.run_deprecated_v1
   def test_gradient(self,
                     shape,
                     rt_value,

@@ -734,43 +734,13 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/check_numerics_callback_test.py"],
     python_version = "PY3",
+    tags = ["no_windows"],
     deps = [
         ":check_numerics_callback",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-    ],
-)
-
-cuda_py_test(
-    name = "distributed_callbacks_test",
-    size = "medium",
-    srcs = ["lib/distributed_callbacks_test.py"],
-    python_version = "PY3",
-    shard_count = 4,
-    tags = [
-        "guitar",
-        "multi_and_single_gpu",
-        "no_windows",  # TODO(b/142475891): Enable this test on Windows.
-        "no_windows_gpu",  # TODO(b/130551176)
-    ],
-    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
-    deps = [
-        ":check_numerics_callback",
-        ":debug_events_reader",
-        ":debug_events_writer",
-        ":dumping_callback",
-        ":dumping_callback_test_lib",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/distribute:combinations",
-        "//tensorflow/python/distribute:mirrored_strategy",
-        "//tensorflow/python/distribute:strategy_combinations",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -780,7 +750,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["lib/dumping_callback_test.py"],
     python_version = "PY3",
-    shard_count = 8,
+    shard_count = 4,
     tags = [
         "no_windows",  # TODO(b/142475891): Enable this test on Windows.
     ],
@@ -794,7 +764,6 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -819,7 +788,6 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -870,6 +838,9 @@ py_test(
     srcs = ["lib/source_utils_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":debug_data",
         ":debug_utils",
@@ -924,6 +895,7 @@ py_test(
     srcs = ["wrappers/framework_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":debug_data",
         ":framework",
@@ -1144,6 +1116,7 @@ py_test(
     srcs = ["cli/debugger_cli_common_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         ":debugger_cli_common",
         "//tensorflow/python:framework_test_lib",
@@ -1301,6 +1274,7 @@ cuda_py_test(
     tags = [
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
+        "notap",  # TODO(b/160925973): Test flaky due to port collisions.
         "notsan",
         "oss_serial",
     ],
@@ -1331,6 +1305,7 @@ cuda_py_test(
         "no_oss",  # Test flaky due to port collisions.
         "no_windows",
         "noasan",  # Times out due to size of test (b/73731462).
+        "notap",  # TODO(b/153898535) flaky
         "optonly",  # Test flaky (b/80130873)
         "oss_serial",
     ],
@@ -1359,6 +1334,7 @@ cuda_py_test(
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",
+        "notap",  # TODO(b/160822489) flaky timeouts
         "notsan",
     ],
     xla_enable_strict_auto_jit = False,  # Node names are different with autojit
@@ -1425,7 +1401,6 @@ py_test(
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-        "//tensorflow/python/keras",
         "//third_party/py/numpy",
     ],
 )
@@ -1456,7 +1431,7 @@ sh_test(
         ":debug_errors",
         ":debug_fibonacci",
         ":debug_keras",
-        ":debug_mnist",
+        ":debug_mnist_v1",
         ":debug_tflearn_iris",
         ":offline_analyzer",
     ],
