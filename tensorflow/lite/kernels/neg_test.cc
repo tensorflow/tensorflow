@@ -19,13 +19,7 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-<<<<<<< HEAD
-
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
-=======
 #include "flatbuffers/flatbuffers.h"  // from @flatbuffers
->>>>>>> bb49eafc080caf205d5ba4478d9c93552ce46d57
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 
