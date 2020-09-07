@@ -29,7 +29,8 @@ constexpr uint8_t CO_TYPE_ETHOSU = 1;
 
 struct OpData {
   int cms_data_size;
-  int buffer_idx;
+  int base_addr_idx;
+  int base_addr_size_idx;
 };
 
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
@@ -47,8 +48,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   OpData* data = static_cast<OpData*>(node->user_data);
   int num_base_addr = node->inputs->size + node->outputs->size;
+
+  // Request arrays for the base address pointers and sizes
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
-      context, num_base_addr * sizeof(uint64_t), &data->buffer_idx));
+      context, num_base_addr * sizeof(uint64_t), &data->base_addr_idx));
+  TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
+      context, num_base_addr * sizeof(size_t), &data->base_addr_size_idx));
 
   // Get command stream data size
   TfLiteTensor* tensor = context->GetTensor(context, node->inputs->data[0]);
@@ -71,7 +76,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   int result;
   const OpData* data = static_cast<const OpData*>(node->user_data);
   uint64_t* base_addrs = static_cast<uint64_t*>(
-      context->GetScratchBuffer(context, data->buffer_idx));
+      context->GetScratchBuffer(context, data->base_addr_idx));
+  size_t* base_addrs_size = static_cast<size_t*>(
+      context->GetScratchBuffer(context, data->base_addr_size_idx));
 
   const uint8_t* custom_data =
       static_cast<uint8_t const*>(node->custom_initial_data);
@@ -90,6 +97,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (i = 1; i < node->inputs->size; ++i) {
     tensor = context->GetEvalTensor(context, node->inputs->data[i]);
     base_addrs[num_tensors] = reinterpret_cast<uint64_t>(tensor->data.uint8);
+    base_addrs_size[num_tensors] = tensor->dims->size;
     num_tensors++;
   }
 
@@ -97,6 +105,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   for (i = 0; i < node->outputs->size; ++i) {
     tensor = context->GetEvalTensor(context, node->outputs->data[i]);
     base_addrs[num_tensors] = reinterpret_cast<uint64_t>(tensor->data.uint8);
+    base_addrs_size[num_tensors] = tensor->dims->size;
     num_tensors++;
   }
 
@@ -105,7 +114,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   num_tensors = std::min(num_tensors, 8);
 
   result =
-      ethosu_invoke(cms_data, data->cms_data_size, base_addrs, num_tensors);
+      ethosu_invoke_v2(cms_data, data->cms_data_size, base_addrs, base_addrs_size, num_tensors);
   if (-1 == result) {
     return kTfLiteError;
   } else {
