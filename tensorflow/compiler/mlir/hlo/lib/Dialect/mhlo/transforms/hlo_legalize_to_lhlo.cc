@@ -78,7 +78,6 @@ Value InsertDynamicAllocAndDealloc(Location loc, Value result,
 }
 
 Value InsertAlloc(Location loc, OpResult result,
-                  BufferAssignmentPlacer* bufferAssignment,
                   ConversionPatternRewriter* rewriter) {
   auto result_type = result.getType().dyn_cast<ShapedType>();
   if (!result_type || !result_type.hasStaticShape()) {
@@ -88,8 +87,7 @@ Value InsertAlloc(Location loc, OpResult result,
   auto memref_type =
       MemRefType::get(result_type.getShape(), result_type.getElementType());
   OpBuilder::InsertionGuard guard(*rewriter);
-  rewriter->restoreInsertionPoint(
-      bufferAssignment->computeAllocPosition(result));
+  rewriter->setInsertionPoint(result.getDefiningOp());
   auto alloc = rewriter->create<AllocOp>(loc, memref_type);
   return alloc;
 }
@@ -111,8 +109,8 @@ class HloToLhloOpConverter : public BaseOpConversion<HloOpTy> {
         return failure();
       }
       if (resultType.hasStaticShape()) {
-        buffer_args.push_back(InsertAlloc(op->getLoc(), result.value(),
-                                          this->bufferAssignment, &rewriter));
+        buffer_args.push_back(
+            InsertAlloc(op->getLoc(), result.value(), &rewriter));
       } else {
         SmallVector<Value, 1> results_shape;
         auto shape_type_op = dyn_cast<InferShapedTypeOpInterface>(op);
@@ -259,8 +257,7 @@ struct HloToLhloReduceOpConverter : public BaseOpConversion<mhlo::ReduceOp> {
     const auto& original_results = op.getResults();
     SmallVector<Value, 4> buffer_args(operands.begin(), operands.end());
     for (auto result : original_results) {
-      buffer_args.push_back(
-          InsertAlloc(loc, result, this->bufferAssignment, &rewriter));
+      buffer_args.push_back(InsertAlloc(loc, result, &rewriter));
     }
     auto new_op = rewriter.create<lmhlo::ReduceOp>(loc, llvm::None, buffer_args,
                                                    op.getAttrs());
@@ -432,22 +429,12 @@ struct HloLegalizeToLhlo
                          isMemRefType);
     });
 
-    auto module = getOperation();
-    WalkResult result = module.walk([&](FuncOp func) -> WalkResult {
-      BufferAssignmentPlacer bufferAssignment(func);
-      OwningRewritePatternList patterns;
-      populateHLOToLHLOConversionPattern(func.getContext(), &bufferAssignment,
-                                         &converter, &patterns);
-      // FIXME: we likely need to call converter.setResultConversionKind() to
-      // respect results_escape_function.
-      populateWithBufferAssignmentOpConversionPatterns<
-          mlir::ReturnOp, mlir::ReturnOp, lmhlo::CopyOp>(
-          &context, &bufferAssignment, &converter, &patterns);
-      return applyPartialConversion(func, target, patterns);
-    });
-    if (result.wasInterrupted()) {
+    populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
+    populateWithBufferAssignmentOpConversionPatterns<
+        mlir::ReturnOp, mlir::ReturnOp, lmhlo::CopyOp>(&context, &converter,
+                                                       &patterns);
+    if (failed(applyPartialConversion(getOperation(), target, patterns)))
       signalPassFailure();
-    }
   }
 
  private:
@@ -460,8 +447,7 @@ struct HloLegalizeToLhlo
 }  // namespace
 
 void populateHLOToLHLOConversionPattern(
-    MLIRContext* context, BufferAssignmentPlacer* bufferAssignment,
-    BufferAssignmentTypeConverter* converter,
+    MLIRContext* context, BufferAssignmentTypeConverter* converter,
     OwningRewritePatternList* patterns) {
   // clang-format off
   patterns->insert<
@@ -506,7 +492,7 @@ void populateHLOToLHLOConversionPattern(
       HloToLhloReturnOpConverter,
       HloToLhloTensorLoadOpConverter,
       HloToLhloTensorStoreOpConverter
-  >(context, bufferAssignment, converter);
+  >(context, converter);
   // clang-format on
 }
 

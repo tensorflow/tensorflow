@@ -103,25 +103,16 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
     target.addDynamicallyLegalOp<CallOp>(typesAreLegal);
     target.addDynamicallyLegalOp<ReturnOp>(typesAreLegal);
 
-    auto module = getOperation();
-    WalkResult result = module.walk([&](FuncOp func) -> WalkResult {
-      BufferAssignmentPlacer bufferAssignment(func);
-      OwningRewritePatternList patterns;
-      mhlo::populateHLOToLHLOConversionPattern(
-          func.getContext(), &bufferAssignment, &converter, &patterns);
-      populateWithBufferAssignmentOpConversionPatterns<ReturnOp, ReturnOp,
-                                                       lmhlo::CopyOp>(
-          &context, &bufferAssignment, &converter, &patterns);
-      populateStandardBufferizePattern(func.getContext(), &bufferAssignment,
-                                       &converter, &patterns);
-      patterns.insert<UnrankedTensorStoreTestOnlyPattern>(func.getContext());
+    mhlo::populateHLOToLHLOConversionPattern(&context, &converter, &patterns);
+    populateWithBufferAssignmentOpConversionPatterns<ReturnOp, ReturnOp,
+                                                     lmhlo::CopyOp>(
+        &context, &converter, &patterns);
+    populateStandardBufferizePattern(&context, &converter, &patterns);
+    patterns.insert<UnrankedTensorStoreTestOnlyPattern>(&context);
 
-      return applyPartialConversion(func, target, patterns);
-    });
-    if (result.wasInterrupted()) {
+    if (failed(applyPartialConversion(getOperation(), target, patterns)))
       signalPassFailure();
-    }
-  }
+  });
 };
 
 }  // namespace

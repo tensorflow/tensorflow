@@ -96,10 +96,9 @@ class ExtractElementOpConversion
 
 }  // namespace
 
-void populateStandardBufferizePattern(MLIRContext *context,
-                                      BufferAssignmentPlacer *bufferAssignment,
-                                      BufferAssignmentTypeConverter *converter,
-                                      OwningRewritePatternList *patterns) {
+void populateStandardBufferizePattern(MLIRContext* context,
+                                      BufferAssignmentTypeConverter* converter,
+                                      OwningRewritePatternList* patterns) {
   patterns->insert<ExtractElementOpConversion, TensorFromElementsOpConverter,
                    TensorLoadOpConversion>(context, bufferAssignment,
                                            converter);
