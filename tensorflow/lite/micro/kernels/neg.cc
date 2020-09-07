@@ -36,13 +36,15 @@ struct OpData {
   int16_t zero_points_sum;
 };
 
-TfLiteStatus CalculateOpDataInt8(TfLiteContext* context,
-                                 const TfLiteTensor* input,
-                                 const TfLiteTensor* output, OpData* data) {
+TfLiteStatus CalculateOpDataInt8(TfLiteContext* context, TfLiteNode* node,
+                                 OpData* data) {
   constexpr auto kI8Min =
       static_cast<int16_t>(std::numeric_limits<int8_t>::min());
   constexpr auto kI8Max =
       static_cast<int16_t>(std::numeric_limits<int8_t>::max());
+
+  TfLiteTensor const* input = GetInput(context, node, kInputTensor);
+  TfLiteTensor const* output = GetOutput(context, node, kOutputTensor);
 
   // using EQ attempts to cast to int via the %d format specifier and gives
   // incorrect value and since some hardware platforms do not support float
@@ -84,8 +86,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   switch (input->type) {
     case kTfLiteInt8: {
       OpData op_data;
-      TF_LITE_ENSURE_STATUS(
-          CalculateOpDataInt8(context, input, output, &op_data));
+      TF_LITE_ENSURE_STATUS(CalculateOpDataInt8(context, node, &op_data));
       reference_integer_ops::Negate(
           GetTensorShape(input), GetTensorData<int8_t>(input),
           GetTensorShape(output), GetTensorData<int8_t>(output),
