@@ -63,9 +63,8 @@ void TestNegQuantizedInt8(float* input, int8_t* quantized_input_data,
                           float* expected_output,
                           int8_t* quantized_expected_output_data,
                           int8_t* quantized_output_data, float output_min,
-                          float output_max,
-                          std::initializer_list<int> dimension_data) {
-  TfLiteIntArray* tensor_dims = IntArrayFromInitializer(dimension_data);
+                          float output_max, int* dimension_data) {
+  TfLiteIntArray* tensor_dims = IntArrayFromInts(dimension_data);
   const int element_count = ElementCount(*tensor_dims);
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
@@ -101,7 +100,6 @@ void TestNegQuantizedInt8(float* input, int8_t* quantized_input_data,
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  TfLiteIntArray* temporaries_array = IntArrayFromInitializer({0});
 
   TfLiteNode node;
   node.inputs = inputs_array;
@@ -166,7 +164,7 @@ TF_LITE_MICRO_TEST(NegOpQuantizedInt8DifferentZeroPoints) {
   std::transform(input, input + kTensorSize, expected_output,
                  [](float value) { return -value; });
 
-  std::initializer_list<int> dimension_data = {
+  int dimension_data[] = {
       // number of elements in shape
       2,
       // shape data
@@ -201,7 +199,7 @@ TF_LITE_MICRO_TEST(NegOpQuantizedInt8SameZeroPoints) {
   std::transform(input, input + kTensorSize, expected_output,
                  [](float value) { return -value; });
 
-  std::initializer_list<int> dimension_data = {
+  int dimension_data[] = {
       // number of elements in shape
       2,
       // shape data
