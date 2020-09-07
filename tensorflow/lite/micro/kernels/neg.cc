@@ -100,14 +100,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       break;
 
     default:
-<<<<<<< HEAD
-      TF_LITE_KERNEL_LOG(
-          context, "Neg only currently supports float32 and int8, got %d.",
-          input->type);
-=======
-      TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %s (%d) is not supported by 'Negate' kernel.",
                          TfLiteTypeGetName(input->type), input->type);
->>>>>>> bb49eafc080caf205d5ba4478d9c93552ce46d57
       return kTfLiteError;
   }
   return kTfLiteOk;
