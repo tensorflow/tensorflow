@@ -27,6 +27,8 @@ void parse_custom_options(TfLiteContext *context, const char *buffer,
                           int32_t *K_w = nullptr, Conv2DPadding *pad = nullptr,
                           ExecutionPlan *plan = nullptr);
 
+uint32_t get_named_uint32_custom_option(TfLiteContext *context, const char *buffer, 
+    const size_t length, const std::string named_key);
 }  // namespace xcore
 }  // namespace micro
 }  // namespace ops
