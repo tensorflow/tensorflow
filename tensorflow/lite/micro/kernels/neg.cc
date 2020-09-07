@@ -110,23 +110,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 }  // namespace neg
 
-<<<<<<< HEAD
-TfLiteRegistration* Register_NEG() {
-  static TfLiteRegistration r = {};
-  r.prepare = neg::Prepare;
-  r.invoke = neg::Eval;
-  return &r;
-=======
 TfLiteRegistration Register_NEG() {
   return {/*init=*/nullptr,
           /*free=*/nullptr,
-          /*prepare=*/nullptr,
+          /*prepare=*/neg::Prepare,
           /*invoke=*/neg::Eval,
           /*profiling_string=*/nullptr,
           /*builtin_code=*/0,
           /*custom_name=*/nullptr,
           /*version=*/0};
->>>>>>> bb49eafc080caf205d5ba4478d9c93552ce46d57
 }
 
 }  // namespace micro
