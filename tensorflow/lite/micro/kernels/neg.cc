@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/neg.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 namespace tflite {
@@ -88,8 +89,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       OpData op_data;
       TF_LITE_ENSURE_STATUS(CalculateOpDataInt8(context, node, &op_data));
       reference_integer_ops::Negate(
-          GetTensorShape(input), GetTensorData<int8_t>(input),
-          GetTensorShape(output), GetTensorData<int8_t>(output),
+          tflite::micro::GetTensorShape(input),
+          tflite::micro::GetTensorData<int8_t>(input),
+          tflite::micro::GetTensorShape(output),
+          tflite::micro::GetTensorData<int8_t>(output),
           op_data.zero_points_sum);
     } break;
 
