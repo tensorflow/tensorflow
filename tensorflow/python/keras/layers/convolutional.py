@@ -2029,7 +2029,7 @@ class SeparableConv1D(SeparableConv):
 
   def call(self, inputs):
     if self.padding == 'causal':
-      inputs = array_ops.pad(inputs, self._compute_causal_padding())
+      inputs = array_ops.pad(inputs, self._compute_causal_padding(inputs))
     if self.data_format == 'channels_last':
       strides = (1,) + self.strides * 2 + (1,)
       spatial_start_dim = 1
