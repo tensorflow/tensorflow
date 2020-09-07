@@ -25,7 +25,7 @@ config_setting(
 )
 
 tf_kernel_library(
-    name = "cwise_op",
+    name = "cwise_unary_op",
     gpu_srcs = [
         "cwise_op_gpu_base.cu.cc",
         "cwise_op_gpu_base.cu.h",
@@ -49,7 +49,7 @@ tf_cuda_cc_test(
     name = "gpu_tanh_test",
     size = "small",
     srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_tanh_test.cc"]),
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -68,7 +68,7 @@ tf_cuda_cc_test(
     name = "gpu_abs_test",
     size = "small",
     srcs = if_mlir_generated_gpu_kernels_enabled(["gpu_abs_test.cc"]),
-    tags = tf_cuda_tests_tags() + ["no_rocm"],
+    tags = tf_cuda_tests_tags(),
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
