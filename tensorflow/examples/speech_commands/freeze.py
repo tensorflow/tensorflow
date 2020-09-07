@@ -97,8 +97,17 @@ def create_inference_graph(wanted_words, sample_rate, clip_duration_ms,
       desired_channels=1,
       desired_samples=model_settings['desired_samples'],
       name='decoded_sample_data')
+    
+  decoded_sample_data_1d = tf.reshape(decoded_sample_data.audio, [16000], name="decoded_sample_data_1d")
+  print("DECODE>>>", decoded_sample_data_1d, decoded_sample_data)
+  print()
+  print()
+  print()
+  decoded_sample_data_2d = tf.reshape(decoded_sample_data_1d, [16000, 1], name="decoded_sample_data_2d")
+  print("DECODE>>>", decoded_sample_data_1d, decoded_sample_data)
   spectrogram = audio_ops.audio_spectrogram(
-      decoded_sample_data.audio,
+      # decoded_sample_data.audio,
+      decoded_sample_data_2d,
       window_size=model_settings['window_size_samples'],
       stride=model_settings['window_stride_samples'],
       magnitude_squared=True)
