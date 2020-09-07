@@ -84,17 +84,10 @@ void TestNegQuantizedInt8(float* input, int8_t* quantized_input_data,
                  });
 
   TfLiteTensor tensors[tensors_size] = {
-      CreateQuantizedTensor(quantized_input_data, tensor_dims,
-                            "quantized_input_tensor", input_min, input_max),
-      CreateQuantizedTensor(quantized_output_data, tensor_dims,
-                            "quantized_output_tensor", output_min, output_max)};
-
-  TfLiteContext context;
-  PopulateContext(tensors, tensors_size, &context);
-  ::tflite::ops::micro::AllOpsResolver resolver;
-  const TfLiteRegistration* registration =
-      resolver.FindOp(tflite::BuiltinOperator_NEG, 1);
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration);
+      CreateQuantizedTensor(quantized_input_data, tensor_dims, input_min,
+                            input_max),
+      CreateQuantizedTensor(quantized_output_data, tensor_dims, output_min,
+                            output_max)};
 
   int inputs_array_data[] = {1, 0};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
