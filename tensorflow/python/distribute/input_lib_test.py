@@ -1250,5 +1250,45 @@ class DistributedIteratorTensorTypeTest(DistributedIteratorTestBase,
     self.assertAllEqual(nest.flatten(sums), [expected_for_sum] * 3)
 
 
+class DistributedIteratorPerReplicaTest(test.TestCase, parameterized.TestCase):
+
+  @combinations.generate(
+      combinations.combine(
+          mode=["eager"],
+          distribution=[
+              strategy_combinations.mirrored_strategy_with_two_gpus]))
+  def testInputSignatureForPerReplicaValues(self, distribution):
+    with distribution.scope():
+      def dataset_fn(input_context):
+        return tf.data.Dataset.from_tensor_slices(np.zeros([4, 4])).apply(tf.data.experimental.prefetch_to_device('gpu'))
+
+      input_options = tf.distribute.InputOptions(replication_mode = tf.distribute.InputReplicationMode.PER_REPLICA)
+
+      ds = distribution.experimental_distribute_datasets_from_function(
+          dataset_fn, input_options)
+
+      iterator = iter(ds)
+      type_spec = iterator.element_spec
+
+      @def_function.function(input_signature=[type_spec])
+      def process_inputs(inputs):
+        distribution.run(lambda inputs: inputs, args=(inputs,))
+
+      for x in ds:
+        process_inputs(x)
+        self.assertEqual(
+          x.values[0].device,
+          distribution.extended.worker_devices[0])
+        self.assertEqual(
+          x.values[0].backing_device,
+          distribution.extended.worker_devices[0])
+        self.assertEqual(
+          x.values[1].device,
+          distribution.extended.worker_devices[1])
+        self.assertEqual(
+          x.values[1].backing_device,
+          distribution.extended.worker_devices[1])
+        break
+
 if __name__ == "__main__":
   combinations.main()
