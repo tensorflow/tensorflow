@@ -318,12 +318,26 @@ def distribute(processing_mode,
   a "one_epoch" mode which partitions the dataset across the tf.data
   workers, so that the consumers see each element of the dataset only once.
 
+  To see the distributed operations in action, the `DispatchServer` should be
+  started first so that tf.data workers can register to it.
+
+  ```
+  dispatcher = tf.data.experimental.service.DispatchServer(port=5000)
+  print(dispatcher.target) # prints grpc://localhost:5000
+
+  dispatcher_address = dispatcher.target.split("://")[1]
+  worker = tf.data.experimental.service.WorkerServer(
+           port=0, dispatcher_address=dispatcher_address)
+  ```
+
+  Now, when the operations on a `tf.data.Dataset` can distributed to the worker.
+
   ```
   dataset = tf.data.Dataset.range(5)
   dataset = dataset.map(lambda x: x*x)
   dataset = dataset.apply(
       tf.data.experimental.service.distribute("parallel_epochs",
-                                              "grpc://dataservice:5000"))
+                                              dispatcher.target))
   dataset = dataset.map(lambda x: x+1)
 
   for element in dataset:
@@ -331,7 +345,7 @@ def distribute(processing_mode,
   ```
 
   In the above example, the first two lines (before the call to `distribute`)
-  will be executed on tf.data workers, and the elements provided over
+  will be executed on the tf.data worker, and the elements are provided over
   RPC. The remaining transformations (after the call to `distribute`) will be
   executed locally.
 
@@ -339,9 +353,10 @@ def distribute(processing_mode,
   datasets. Instead of each dataset creating its own job, all
   datasets with the same `job_name` will consume from the same job. A new job
   will be created for each iteration of the dataset (with each repetition of
-  `Dataset.repeat` counting as a new iteration). Suppose two training workers
-  (in either a single client or multi-client setup) iterate over the below
-  dataset, and there is a single tf.data worker:
+  `Dataset.repeat` counting as a new iteration). Suppose the `DispatchServer`
+  is serving on `dataservice:5000` and two training workers (in either a single
+  client or multi-client setup) iterate over the below dataset, and there is a
+  single tf.data worker:
 
   ```
   range5_dataset = tf.data.Dataset.range(5)

@@ -460,8 +460,7 @@ def batch_sizes_for_worker(global_batch_size, num_workers,
   worker_0 = floor * worker_0 + array_ops.concat([
       array_ops.ones(num_ceil, dtype=dtypes.int64),
       array_ops.zeros(num_subbatches - num_ceil, dtype=dtypes.int64)
-  ],
-                                                 axis=0)
+  ], axis=0)
 
   return array_ops.concat([worker_0[offset:], worker_0[:offset]], axis=0)
 
