@@ -280,16 +280,16 @@ Following the Steps to run hello world example at HIMAX WE1 EVB platform.
     ```
 
     make sure this tool directory is in $PATH. You can permanently set it to PATH by
+
     ```
     export PATH=$PATH:$(pwd)
     ```
-
 
 5.  run image generate tool, generate flash image file.
 
     *   Before running image generate tool, by typing `sudo chmod +x image_gen`
         and `sudo chmod +x sign_tool` to make sure it is executable.
- 
+
     ```
     image_gen -e hello_world.elf -m himax_we1_evb.map -o out.img
     ```

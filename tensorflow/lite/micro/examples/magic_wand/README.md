@@ -222,8 +222,9 @@ Following the Steps to run magic wand example at HIMAX WE1 EVB platform.
     ```
     cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
     ```
-        
+
     make sure this tool directory is in $PATH. You can permanently set it to PATH by
+
     ```
     export PATH=$PATH:$(pwd)
     ```

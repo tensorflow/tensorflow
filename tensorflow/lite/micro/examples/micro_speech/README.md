@@ -652,11 +652,13 @@ Following the Steps to run micro speech example at HIMAX WE1 EVB platform.
     ```
     cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
     ```
-    
+
     make sure this tool directory is in $PATH. You can permanently set it to PATH by
+
     ```
     export PATH=$PATH:$(pwd)
     ```
+
 5.  run image generate tool, generate flash image file.
 
     *   Before running image generate tool, by typing `sudo chmod +x image_gen`
