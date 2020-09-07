@@ -94,21 +94,17 @@ void TestNegQuantizedInt8(float* input, int8_t* quantized_input_data,
   int outputs_array_data[] = {1, 1};
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
 
-  TfLiteNode node;
-  node.inputs = inputs_array;
-  node.outputs = outputs_array;
-  node.temporaries = temporaries_array;
-  node.user_data = nullptr;
-  node.builtin_data = nullptr;
-  node.custom_initial_data = nullptr;
-  node.custom_initial_data_size = 0;
-  node.delegate = nullptr;
+  const TfLiteRegistration registration = tflite::ops::micro::Register_NEG();
+  micro::KernelRunner runner(registration, tensors, tensors_size, inputs_array,
+                             outputs_array, /*builtin_data=*/nullptr,
+                             micro_test::reporter);
 
-  TF_LITE_MICRO_EXPECT_NE(nullptr, registration->invoke);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, registration->invoke(&context, &node));
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
   TF_LITE_MICRO_EXPECT_EQ(quantized_expected_output_data[0],
                           quantized_output_data[0]);
+
   for (int i = 0; i < element_count; ++i) {
     TF_LITE_MICRO_EXPECT_EQ(quantized_expected_output_data[i],
                             quantized_output_data[i]);
