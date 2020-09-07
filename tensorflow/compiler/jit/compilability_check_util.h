@@ -26,11 +26,11 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -126,9 +126,10 @@ class RecursiveCompilabilityChecker {
     bool allow_inaccurate_ops = false;
   };
 
-  RecursiveCompilabilityChecker(const OperationFilter* op_filter,
-                                const DeviceType* jit_device_type)
-      : op_filter_(*op_filter), jit_device_type_(*jit_device_type) {}
+  RecursiveCompilabilityChecker(OperationFilter op_filter,
+                                DeviceType jit_device_type)
+      : op_filter_(std::move(op_filter)),
+        jit_device_type_(std::move(jit_device_type)) {}
 
   using UncompilableNodesMap =
       std::map<std::string,
@@ -257,23 +258,22 @@ class RecursiveCompilabilityChecker {
       UncompilableNodesMap* uncompilable_nodes_map);
 
   // Make sure we don't recurse infinitely on recursive functions.
-  const int kMaxRecursionDepth = 10;
+  const size_t kMaxRecursionDepth = 10;
 
-  const OperationFilter& op_filter_;
-  const DeviceType& jit_device_type_;
+  const OperationFilter op_filter_;
+  const DeviceType jit_device_type_;
 };
 
 RecursiveCompilabilityChecker::OperationFilter CreateOperationFilter(
     const XlaOpRegistry::DeviceRegistration& registration);
 
-// Given a FunctionLibraryRuntime and a NodeDef calling a function in the
-// runtime, returns this function's body in `fbody` as well as the indices
-// of its constant and resource arguments.
+// Given a FunctionLibraryRuntime and a `function`, returns this function's body
+// in `fbody` as well as the indices of its constant and resource arguments.
 // `fbody` is owned by `flr`.
 // `constant_arg_indices` and `resource_arg_indices` should be empty vector.
 // They are sorted in ascending order on this function's return.
 Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
-                                       const NodeDef& node_def,
+                                       const NameAttrList& function,
                                        const FunctionBody** fbody,
                                        std::vector<int>* constant_arg_indices,
                                        std::vector<int>* resource_arg_indices);
@@ -281,6 +281,9 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
 // Given a NodeDef `node_def` returns true iff `node_def` has kXlaCompileAttr
 // set.
 bool CanCreateXlaKernel(const NodeDef& node_def);
+
+// Check whether graph can trigger XLA compilation.
+bool CanTriggerXlaCompilation(const GraphDef& graph);
 
 }  // namespace tensorflow
 

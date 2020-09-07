@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
-import itertools
 import os
 
 from absl.testing import parameterized
@@ -27,17 +26,18 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import tf2
+from tensorflow.python.distribute import collective_all_reduce_strategy
 from tensorflow.python.distribute import combinations
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribute_utils
-from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import packed_distributed_variable as packed
+from tensorflow.python.distribute import parameter_server_strategy
+from tensorflow.python.distribute import ps_values
 from tensorflow.python.distribute import strategy_combinations
 from tensorflow.python.distribute import test_util as ds_test_util
 from tensorflow.python.distribute import tpu_strategy
 from tensorflow.python.distribute import tpu_values
 from tensorflow.python.distribute import values as values_lib
-from tensorflow.python.distribute.cluster_resolver import tpu_cluster_resolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import test
@@ -46,21 +46,69 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import indexed_slices
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.saved_model import save_context
-from tensorflow.python.tpu import tpu_strategy_util
+from tensorflow.python.saved_model import save_options
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.types import core
 from tensorflow.python.util import nest
+
+
+def _device_str(d):
+  return "/device:GPU:" + str(d)
+
+
+def _nested_value(d):
+  return ("a" + d, ["b" + d, {"c": "d" + d, "e": "f" + d}, "g" + d], "h" + d)
+
+
+def _make_mirrored_val(init_val=5.0):
+  v = []
+  devices = ["/device:GPU:0", "/device:CPU:0"]
+  for d, _ in zip(devices, ["v", "v/replica"]):
+    with ops.device(d):
+      v.append(constant_op.constant(init_val))
+  return values_lib.Mirrored(v)
+
+
+def _make_mirrored(distribution=None):
+  v = []
+  if distribution:
+    devices = distribution.extended.worker_devices
+  else:
+    devices = ["/device:GPU:0", "/device:CPU:0"]
+  for d, n, init in zip(devices, ["v", "v/replica"], [1., 2.]):
+    with ops.device(d):
+      v.append(
+          variable_scope.get_variable(
+              name=n, initializer=init, use_resource=True))
+
+  if (distribution is not None) and isinstance(distribution, _TPU_STRATEGIES):
+    var_cls = tpu_values.TPUMirroredVariable
+  else:
+    var_cls = values_lib.MirroredVariable
+  mirrored = var_cls(distribution, v, variable_scope.VariableAggregation.SUM)
+  return mirrored
+
+
+def mirrored_and_tpu_strategy_combinations():
+  return combinations.combine(
+      distribution=[
+          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
+          strategy_combinations.tpu_strategy,
+          strategy_combinations.tpu_strategy_packed_var,
+      ],
+      mode=["graph", "eager"])
 
 
 class DistributedValuesTest(test.TestCase, parameterized.TestCase):
@@ -248,8 +296,7 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
               strategy_combinations.tpu_strategy_packed_var,
-              # TODO(b/137795644): support CentralStroageStrategy
-              # strategy_combinations.central_storage_strategy_with_two_gpus,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
           ] + strategy_combinations.multiworker_strategies,
           mode=["eager"]))
   def testMakeDistributedValueDefaultDevicePlacement(self, distribution):
@@ -270,8 +317,7 @@ class DistributedValuesTest(test.TestCase, parameterized.TestCase):
               strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
               strategy_combinations.tpu_strategy,
               strategy_combinations.tpu_strategy_packed_var,
-              # TODO(b/137795644): support CentralStroageStrategy
-              # strategy_combinations.central_storage_strategy_with_two_gpus,
+              strategy_combinations.central_storage_strategy_with_two_gpus,
           ] + strategy_combinations.multiworker_strategies,
           mode=["eager"]))
   def testMakeDistributedValueExplicitDevicePlacement(self, distribution):
@@ -364,45 +410,6 @@ class DistributedDelegateTest(test.TestCase):
     self.assertEqual(v.x, v_deep_copy.x)
 
 
-def _device_str(d):
-  return "/device:GPU:" + str(d)
-
-
-def _nested_value(d):
-  return ("a" + d, ["b" + d, {"c": "d" + d, "e": "f" + d}, "g" + d], "h" + d)
-
-
-def _make_mirrored_val(init_val=5.0):
-  v = []
-  devices = ["/device:GPU:0", "/device:CPU:0"]
-  for d, _ in zip(devices, ["v", "v/replica"]):
-    with ops.device(d):
-      v.append(constant_op.constant(init_val))
-  return values_lib.Mirrored(v)
-
-
-def _make_mirrored():
-  v = []
-  devices = ["/device:GPU:0", "/device:CPU:0"]
-  for d, n, init in zip(devices, ["v", "v/replica"], [1., 2.]):
-    with ops.device(d):
-      v.append(variable_scope.get_variable(
-          name=n, initializer=init, use_resource=True))
-  mirrored = values_lib.MirroredVariable(
-      None, v, variable_scope.VariableAggregation.SUM)
-  return mirrored
-
-
-def mirrored_and_tpu_strategy_combinations():
-  return combinations.combine(
-      distribution=[
-          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          strategy_combinations.tpu_strategy,
-          strategy_combinations.tpu_strategy_packed_var,
-      ],
-      mode=["graph", "eager"])
-
-
 @combinations.generate(
     combinations.combine(
         distribution=[
@@ -410,7 +417,10 @@ def mirrored_and_tpu_strategy_combinations():
             strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
             strategy_combinations.tpu_strategy,
             strategy_combinations.tpu_strategy_packed_var,
-            strategy_combinations.central_storage_strategy_with_two_gpus,
+            strategy_combinations.central_storage_strategy_with_gpu_and_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_cpu,
+            strategy_combinations.multi_worker_mirrored_2x1_gpu,
+            strategy_combinations.multi_worker_mirrored_2x2_gpu
         ],
         synchronization=[
             variables_lib.VariableSynchronization.ON_READ,
@@ -421,7 +431,8 @@ def mirrored_and_tpu_strategy_combinations():
             variables_lib.VariableAggregation.SUM,
             variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
         ],
-        mode=["graph", "eager"]))
+        mode=["graph", "eager"],
+        use_var_policy=[True, False]))
 class DistributedVariableTest(test.TestCase, parameterized.TestCase):
 
   def testExtendsVariable(self, distribution, synchronization, aggregation):
@@ -430,7 +441,13 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
           1., synchronization=synchronization, aggregation=aggregation)
     self.assertIsInstance(v, variables_lib.Variable)
 
-  def testCheckpointing(self, distribution, synchronization, aggregation):
+  def testCheckpointing(self, distribution, synchronization, aggregation, mode):
+
+    if (isinstance(distribution,
+                   collective_all_reduce_strategy.CollectiveAllReduceStrategy)
+        and mode == "graph"):
+      self.skipTest("MWMS combinations tests do not work well in graph mode.")
+
     with distribution.scope():
       v = variables_lib.Variable(
           constant_op.constant([1., 2., 3., 4]),
@@ -526,6 +543,42 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
     # In replica context.
     distribution.run(assert_is_tensor_like, args=(v,))
 
+  def testDeepCopy(self, distribution, synchronization,
+                   aggregation):
+    if not context.executing_eagerly():
+      self.skipTest("deepcopy only supported in eager mode")
+
+    with distribution.scope():
+      v = variables_lib.Variable(
+          0., synchronization=synchronization, aggregation=aggregation)
+      in_dist_copy = copy.deepcopy(v)
+
+    out_dist_copy = copy.deepcopy(v)
+
+    def assert_is_deep_copy(v1, v2):
+      self.assertIsInstance(v2, type(v1))
+      self.assertEqual(v1.aggregation, v2.aggregation)
+      self.assertEqual(v1.distribute_strategy, v2.distribute_strategy)
+      if isinstance(v1, ps_values.AggregatingVariable):
+        self.assertIsInstance(v2.get(), type(v1.get()))
+        self.assertNotEqual(id(v1.get()), id(v2.get()))
+      else:
+        if v1._policy:
+          self.assertNotEqual(id(v1._policy), id(v2._policy))  # pylint: disable=protected-access
+        else:
+          self.assertEqual(id(v1._policy), id(v2._policy))  # pylint: disable=protected-access
+        self.assertEqual(len(v1.values), len(v2.values))
+        for (v1v, v2v) in zip(v1.values, v2.values):
+          self.assertEqual(v1v.device, v2v.device)
+          self.assertNotEqual(id(v1v), id(v2v))
+          self.assertAllEqual(self.evaluate(v1.values),
+                              self.evaluate(v2.values))
+
+    self.evaluate(variables_lib.global_variables_initializer())
+    if not isinstance(distribution.extended, tpu_strategy.TPUExtended):
+      distribution.run(assert_is_deep_copy, args=(v, in_dist_copy))
+      distribution.run(assert_is_deep_copy, args=(v, out_dist_copy))
+
   def testAssignSignature(self, distribution, synchronization, aggregation):
     # This test verifies assign*() can be called in the same way as normal
     # variables.
@@ -554,6 +607,236 @@ class DistributedVariableTest(test.TestCase, parameterized.TestCase):
               context.executing_eagerly()):
         self.evaluate(
             distribution.experimental_local_results(distribution.run(assign)))
+
+  def testStrategyExtendedUpdate(self, distribution, synchronization,
+                                 aggregation):
+    if len(distribution.extended.parameter_devices) != 2:
+      self.skipTest("n/a: needs exactly two parameter devices")
+    with distribution.scope():
+      v = variables_lib.Variable(
+          0., synchronization=synchronization, aggregation=aggregation)
+    # Note that this is actually real usage. We're doing this in optimizer to
+    # workaround the current restriction in strategy.extended.update().
+    value = values_lib.Mirrored([1., 2.])
+
+    assign_fn = lambda var, value: var.assign(value)
+    self.evaluate(distribution.extended.update(v, assign_fn, args=(value,)))
+    self.assertAllEqual(self.evaluate(v.values), [1., 2.])
+
+    assign_add_fn = lambda var, value: var.assign_add(value)
+    self.evaluate(distribution.extended.update(v, assign_add_fn, args=(value,)))
+    self.assertAllEqual(self.evaluate(v.values), [2., 4.])
+
+    assign_sub_fn = lambda var, value: var.assign_sub(value)
+    self.evaluate(distribution.extended.update(v, assign_sub_fn, args=(value,)))
+    self.assertAllEqual(self.evaluate(v.values), [1., 2.])
+
+    read_assign_fn = lambda var, value: var.assign_add(var.value() + var.
+                                                       read_value())
+    self.evaluate(
+        distribution.extended.update(v, read_assign_fn, args=(value,)))
+    self.assertAllEqual(self.evaluate(v.values), [3., 6.])
+
+  def testSaveNonDistributed(self, distribution, synchronization, aggregation):
+    # This test verifies that the DistributedVariable behave like the primary
+    # variable when saving a non-distributed version of the model (the default).
+    # The test asserts that the function traced under SaveContext has no device
+    # annotations and only reference the primary component of the variable. Note
+    # that please avoid capturing other eager tensors in this test to make the
+    # assertion easy.
+
+    if isinstance(distribution.extended,
+                  parameter_server_strategy.ParameterServerStrategyExtended):
+      self.skipTest("b/148689177: AggregatingVariable doesn't "
+                    "conform to Variable interface well")
+
+    # tf.function requires the return value to be Tensors, which is not always
+    # case for properties and methods of Variable, so we simply discard the
+    # return values.
+    def _discard_return(f):
+      f()
+      return
+
+    def _test(f, v):
+      # This verifies that the function under SaveContext:
+      #   - contains no device annotations.
+      #   - only references the primary component of the variable.
+      g = def_function.function(lambda: _discard_return(f))
+      options = save_options.SaveOptions(
+          experimental_variable_policy=save_options.VariablePolicy.NONE)
+      with save_context.save_context(options):
+        # The graph should contain no device.
+        graph = g.get_concrete_function().graph
+      for op in graph.get_operations():
+        self.assertEqual(op.device, "", msg=str(op))
+      # The function should only capture the primary variable. Note that it
+      # may not have captures, e.g. v.aggregation.
+      captures = list(graph.captures)
+      self.assertLessEqual(len(captures), 1)
+      if graph.captures:
+        self.assertIs(captures[0][0], v._primary.handle)
+
+    def _assert(cond):
+      return control_flow_ops.Assert(cond, [cond])
+
+    with distribution.scope():
+      # We use four variables for convenience reasons. They have no special
+      # meaning.
+      # - v is used whenever possible, and for the methods that require the
+      # dtype to be integer.
+      # - w is used for scatter and gather, which require the variable to be
+      # non-scalar.
+      # - y is used when the dtype needs to be float.
+      v = variables_lib.Variable(
+          0,
+          synchronization=synchronization,
+          aggregation=aggregation,
+          trainable=True)
+      w = variables_lib.Variable([0., 0., 0.],
+                                 synchronization=synchronization,
+                                 aggregation=aggregation,
+                                 trainable=True)
+      y = variables_lib.Variable(
+          7.,
+          synchronization=synchronization,
+          aggregation=aggregation)
+
+    # pylint: disable=g-long-lambda
+
+    # tf.Variable properties.
+    _test(lambda: self.assertEqual(v.aggregation, aggregation), v)
+    _test(lambda: self.assertIs(v.constraint, None), v)
+    # TODO(crccw): should we raise an error instead?
+    _test(lambda: self.assertEqual(v.device, v._primary.device), v)
+    _test(lambda: self.assertEqual(v.dtype, dtypes.int32), v)
+    if not context.executing_eagerly():
+      _test(lambda: self.assertIs(v.graph, v._primary.graph), v)
+    if not context.executing_eagerly():
+      _test(lambda: _assert(v.initial_value == 0), v)
+    _test(lambda: self.assertIs(v.initializer, v._primary.initializer), v)
+    _test(lambda: self.assertEqual(v.name, "Variable:0"), v)
+    if not context.executing_eagerly():
+      _test(lambda: self.assertIs(v.op, v._primary.op), v)
+    _test(lambda: self.assertEqual(v.shape, tensor_shape.TensorShape(())), v)
+    _test(lambda: self.assertEqual(v.synchronization, synchronization), v)
+    _test(lambda: self.assertTrue(v.trainable, True), v)
+
+    # tf.Variable methods.
+    _test(lambda: check_ops.assert_equal_v2(v.assign(1), 1), v)
+    _test(lambda: check_ops.assert_equal_v2(v.assign_add(1), 2), v)
+    _test(lambda: check_ops.assert_equal_v2(v.assign_sub(1), 1), v)
+    # TODO(b/148689177): Implement batch_scatter_update.
+    # count_up_to() is skipped since it's deprecated.
+    # eval() is skipped since it shouldn't called in a tf.function.
+    # experimental_ref() is skipped since it's deprecated.
+    # from_proto() is skipped since it shouldn't called in a tf.function.
+    # TODO(b/148689177): Implement gather_nd.
+    _test(
+        lambda: check_ops.assert_equal_v2(v.get_shape(),
+                                          tensor_shape.TensorShape(())), v)
+    # initialized_value() is skipped since it shouldn't called in a tf.function.
+    # load() is skipped since it shouldn't called in a tf.function.
+    _test(lambda: check_ops.assert_equal_v2(v.read_value(), 1), v)
+    # ref() is skipped since it shouldn't called in a tf.function.
+    _test(
+        lambda: check_ops.assert_equal_v2(
+            w.scatter_add(_make_index_slices(values=[1., 2.], indices=[0, 2])),
+            [1., 0., 2.]), w)
+    _test(
+        lambda: check_ops.assert_equal_v2(
+            w.scatter_div(_make_index_slices(values=[4., 2.], indices=[0, 2])),
+            [0.25, 0., 1.]), w)
+    _test(
+        lambda: check_ops.assert_equal_v2(
+            w.scatter_max(_make_index_slices(values=[1., 0.5], indices=[1, 2])),
+            [0.25, 1., 1.]), w)
+    _test(
+        lambda: check_ops.assert_equal_v2(
+            w.scatter_min(_make_index_slices(values=[1., 0.5], indices=[0, 1])),
+            [0.25, 0.5, 1.]), w)
+    _test(
+        lambda: check_ops.assert_equal_v2(
+            w.scatter_mul(_make_index_slices(values=[2., 0.5], indices=[0, 1])),
+            [0.5, 0.25, 1.]), w)
+    # TODO(b/148689177): Implement scatter_nd_*
+    _test(
+        lambda: check_ops.assert_equal_v2(
+            w.scatter_sub(_make_index_slices(values=[2., 0.5], indices=[0, 1])),
+            [-1.5, -0.25, 1.]), w)
+    _test(
+        lambda: check_ops.assert_equal_v2(
+            w.scatter_update(
+                _make_index_slices(values=[2., 0.5], indices=[0, 1])),
+            [2., 0.5, 1.]), w)
+    # set_shape() is skipped since ResourceVariable doesn't implement it.
+    # to_proto() is skipped since it shouldn't called in a tf.function.
+    _test(lambda: check_ops.assert_equal_v2(v.value(), 1), v)
+
+    # DistributedVariable should be treated as ResourceVariable, so it needs to
+    # conform to ResourceVariable interface as well.
+    _test(lambda: self.assertIs(v.handle, v._primary.handle), v)
+
+    # Convert to tensor.
+    _test(lambda: check_ops.assert_equal_v2(ops.convert_to_tensor(v), 1), v)
+
+    # Control dependency.
+    def _with_control_dep():
+      with ops.control_dependencies([v.assign(1)]):
+        return array_ops.identity(1)
+
+    _test(_with_control_dep, v)
+
+    # Operator overloads.
+    _test(lambda: check_ops.assert_equal_v2(v.assign(7), 7), v)
+    _test(lambda: check_ops.assert_equal_v2(v + 1, 8), v)
+    _test(lambda: check_ops.assert_equal_v2(3 + v, 10), v)
+    _test(lambda: check_ops.assert_equal_v2(v + v, 14), v)
+    _test(lambda: check_ops.assert_equal_v2(v - 2, 5), v)
+    _test(lambda: check_ops.assert_equal_v2(v - v, 0), v)
+    _test(lambda: check_ops.assert_equal_v2(v * 2, 14), v)
+    _test(lambda: check_ops.assert_equal_v2(3 * v, 21), v)
+    _test(lambda: check_ops.assert_equal_v2(v * v, 49), v)
+    _test(
+        lambda: check_ops.assert_equal_v2(
+            math_ops.cast(v / 2, dtypes.float32), 3.5), v)
+    _test(
+        lambda: check_ops.assert_equal_v2(
+            math_ops.cast(14 / v, dtypes.float32), 2.), v)
+    _test(lambda: check_ops.assert_equal_v2(v // 2, 3), v)
+    _test(lambda: check_ops.assert_equal_v2(15 // v, 2), v)
+    _test(lambda: check_ops.assert_equal_v2(v % 2, 1), v)
+    _test(lambda: check_ops.assert_equal_v2(16 % v, 2), v)
+    _test(lambda: _assert(v < 12), v)
+    _test(lambda: _assert(v <= 12), v)
+    _test(lambda: _assert(not v > 12), v)
+    _test(lambda: _assert(not v >= 12), v)
+    _test(lambda: _assert(not 12 < v), v)
+    _test(lambda: _assert(not 12 <= v), v)
+    _test(lambda: _assert(12 > v), v)
+    _test(lambda: _assert(12 >= v), v)
+    # XLA doesn't implement pow() with integers.
+    _test(lambda: check_ops.assert_near_v2(pow(y, 3.), 343.), y)
+    _test(lambda: check_ops.assert_near_v2(pow(2., y), 128.), y)
+    _test(lambda: check_ops.assert_equal_v2(abs(v), 7), v)
+    _test(lambda: check_ops.assert_equal_v2(v & 3, 3), v)
+    _test(lambda: check_ops.assert_equal_v2(3 & v, 3), v)
+    _test(lambda: check_ops.assert_equal_v2(v | 8, 15), v)
+    _test(lambda: check_ops.assert_equal_v2(16 | v, 23), v)
+    _test(lambda: check_ops.assert_equal_v2(v ^ 3, 4), v)
+    _test(lambda: check_ops.assert_equal_v2(11 ^ v, 12), v)
+    _test(lambda: check_ops.assert_equal_v2(-v, -7), v)
+    _test(lambda: check_ops.assert_equal_v2(~v, ~7), v)
+
+    # Index.
+    if isinstance(distribution.extended, tpu_strategy.TPUExtended):
+      # TODO(b/161572567): slice assignment doesn't work for TPU.
+      _test(lambda: check_ops.assert_equal_v2(w[0], 2.), w)
+    else:
+      _test(lambda: check_ops.assert_equal_v2(w[0].assign(1.), [1., 0.5, 1.]),
+            w)
+      _test(lambda: check_ops.assert_equal_v2(w[0], 1.), w)
+
+    # pylint: enable=g-long-lambda
 
 
 @combinations.generate(
@@ -597,7 +880,8 @@ class PackedDistributedVariableTest(test.TestCase, parameterized.TestCase):
       self.assertIsInstance(
           v._packed_variable, packed.PackedDistributedVariable)
 
-    with save_context.save_context():
+    options = save_options.SaveOptions()
+    with save_context.save_context(options):
       self.assertIsNone(v._packed_variable)
 
 
@@ -628,6 +912,9 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(v.dtype, mirrored.dtype)
     self.assertEqual(v.shape, mirrored.shape)
 
+
+class MirroredVariableSaveRestoreTest(test.TestCase, parameterized.TestCase):
+
   def _assign_mirrored(self, v, new):
     for var, n in zip(v.values, new):
       self.evaluate(var.assign(n))
@@ -642,37 +929,10 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
     save_path, _ = self._save_return_saver(sess, var)
     return save_path
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveAndRestoreMirroredOneGraph(self):
-    if context.num_gpus() < 1 and context.executing_eagerly():
-      # Graph mode can work without GPU because the Placer "moves" the
-      # variable to a CPU. In other words, if there is no GPU available, but
-      # user requested to create a variable on GPU, Placer will ignore the
-      # user request and assign the VarHandleOp to CPU. This requires
-      # soft_placement, which is on by default.
-      self.skipTest("A GPU is not available for this test in eager mode.")
-
-    with self.cached_session(config=self.config) as sess:
-      mirrored = _make_mirrored()
-      v = mirrored.values
-
-      # Overwrite the initial values.
-      self._assign_mirrored(mirrored, [3., 4.])
-
-      # Saves the current value of v[0], 3.
-      save_path, saver = self._save_return_saver(sess, mirrored)
-
-      # Change the values between save and restore.
-      self._assign_mirrored(mirrored, [5., 6.])
-
-      # Restores the saved value of 3. to both variables.
-      saver.restore(sess, save_path)
-      self.assertEqual([3., 3.], self.evaluate([v[0], v[1]]))
-
-  def _save_mirrored(self):
+  def _save_mirrored(self, distribution):
     """Save variables with mirroring, returns save_path."""
     with self.session(graph=ops.Graph()) as sess:
-      mirrored = _make_mirrored()
+      mirrored = _make_mirrored(distribution)
 
       # Overwrite the initial values.
       self._assign_mirrored(mirrored, [3., 4.])
@@ -714,10 +974,10 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual(3., self.evaluate(var))
 
-  def _restore_mirrored(self, save_path):
+  def _restore_mirrored(self, save_path, distribution):
     """Restore to variables with mirroring in a fresh graph."""
     with self.session(graph=ops.Graph()) as sess:
-      mirrored = _make_mirrored()
+      mirrored = _make_mirrored(distribution)
       v = mirrored.values
 
       # Overwrite the initial values.
@@ -728,8 +988,27 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       saver.restore(sess, save_path)
       self.assertEqual([3., 3.], self.evaluate([v[0], v[1]]))
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveMirroredRestoreMirrored(self):
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveAndRestoreMirroredOneGraph(self, distribution):
+    with self.cached_session() as sess:
+      mirrored = _make_mirrored(distribution)
+      v = mirrored  .values
+
+      # Overwrite the initial values.
+      self._assign_mirrored(mirrored, [3., 4.])
+
+      # Saves the current value of v[0], 3.
+      save_path, saver = self._save_return_saver(sess, mirrored)
+
+      # Change the values between save and restore.
+      self._assign_mirrored(mirrored, [5., 6.])
+
+      # Restores the saved value of 3. to both variables.
+      saver.restore(sess, save_path)
+      self.assertEqual([3., 3.], self.evaluate([v[0], v[1]]))
+
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveMirroredRestoreMirrored(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       # Graph mode can work without GPU because the Placer "moves" the
       # variable to a CPU. In other words, if there is no GPU available, but
@@ -738,11 +1017,11 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       # soft_placement, which is on by default.
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    save_path = self._save_mirrored()
-    self._restore_mirrored(save_path)
+    save_path = self._save_mirrored(distribution)
+    self._restore_mirrored(save_path, distribution)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveMirroredRestoreNormal(self):
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveMirroredRestoreNormal(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       # Graph mode can work without GPU because the Placer "moves" the
       # variable to a CPU. In other words, if there is no GPU available, but
@@ -751,11 +1030,11 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       # soft_placement, which is on by default.
       self.skipTest("A GPU is not available for this test in eager mode.")
 
-    save_path = self._save_mirrored()
+    save_path = self._save_mirrored(distribution)
     self._restore_normal(save_path)
 
-  @test_util.run_in_graph_and_eager_modes(config=config)
-  def testSaveNormalRestoreMirrored(self):
+  @combinations.generate(mirrored_and_tpu_strategy_combinations())
+  def testSaveNormalRestoreMirrored(self, distribution):
     if context.num_gpus() < 1 and context.executing_eagerly():
       # Graph mode can work without GPU because the Placer "moves" the
       # variable to a CPU. In other words, if there is no GPU available, but
@@ -765,508 +1044,7 @@ class MirroredVariableTest(test.TestCase, parameterized.TestCase):
       self.skipTest("A GPU is not available for this test in eager mode.")
 
     save_path = self._save_normal()
-    self._restore_mirrored(save_path)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_one_gpu,
-          ],
-          mode=["graph"]))
-  def testFetchAMirroredVariable(self, distribution):
-    with self.session(graph=ops.Graph()) as sess, distribution.scope():
-      with ops.device("/device:GPU:0"):
-        v = variable_scope.get_variable(
-            name="v", initializer=1., use_resource=True)
-      mirrored = values_lib.MirroredVariable(
-          distribution, (v,), variable_scope.VariableAggregation.MEAN)
-      sess.run(variables_lib.global_variables_initializer())
-      sess.run({"complicated": mirrored})
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.tpu_strategy_packed_var,
-          ],
-          mode=["eager"]))
-  def testAssignValueInReplicaContextWithoutAggregation(self, distribution):
-    with distribution.scope():
-      v = variables_lib.Variable(1.0, name="foo")
-
-    @def_function.function
-    def mytest():
-      def model_fn():
-        v.assign(5.0)
-        return v.read_value()
-
-      return distribution.run(model_fn)
-
-    mytest()
-    self.assertAllEqual([5.0, 5.0], self.evaluate(v.values))
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_one_cpu,
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.tpu_strategy_packed_var,
-          ],
-          mode=["graph", "eager"]))
-  def testValueInReplicaContext(self, distribution):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          1., aggregation=variables_lib.VariableAggregation.MEAN)
-      self.evaluate(variables_lib.global_variables_initializer())
-
-      @def_function.function
-      def f():
-        with ops.control_dependencies([v.assign_add(1.)]):
-          return v.value()
-
-      results = self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(f)))
-      for value in results:
-        self.assertEqual(2., value)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_one_cpu,
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.tpu_strategy_packed_var,
-          ],
-          mode=["graph", "eager"]))
-  def testAssignOutOfScope(self, distribution):
-    with distribution.scope():
-      mirrored = variables_lib.Variable(1.)
-    self.evaluate(mirrored.assign(3.))
-    self.assertEqual(self.evaluate(mirrored.read_value()), 3.)
-    for component in mirrored.values:
-      self.assertEqual(self.evaluate(component.read_value()), 3.)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          ],
-          mode=["graph", "eager"]))
-  def testAssignAggregationMeanDTypeNonFloat(self, distribution):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          1,
-          aggregation=variable_scope.VariableAggregation.MEAN,
-          dtype=dtypes.int32)
-    self.evaluate(v.initializer)
-
-    @def_function.function
-    def assign():
-      ctx = distribution_strategy_context.get_replica_context()
-      return v.assign(ctx.replica_id_in_sync_group)
-
-    # disallow assign() with distributed value in replica context.
-    with self.assertRaisesRegex(ValueError,
-                                "Cannot update non-float variables"):
-      self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(assign)))
-
-    # allow assign() with same value in replica context.
-    @def_function.function
-    def assign_same():
-      return v.assign(2)
-
-    self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(assign_same)))
-    self.assertEqual(self.evaluate(v.read_value()), 2)
-
-    # allow assign() with mirrored variable in replica context.
-    with distribution.scope():
-      v2 = variables_lib.Variable(
-          3,
-          aggregation=variable_scope.VariableAggregation.SUM,
-          dtype=dtypes.int32)
-    self.evaluate(v2.initializer)
-
-    @def_function.function
-    def assign_mirrored():
-      return v.assign(v2)
-
-    self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(assign_mirrored)))
-    self.assertEqual(self.evaluate(v.read_value()), 3)
-
-    # allow assign() in cross replica context.
-    with distribution.scope():
-      self.evaluate(v.assign(4))
-      self.assertEqual(self.evaluate(v.read_value()), 4)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.tpu_strategy_packed_var,
-          ],
-          mode=["eager"]))
-  def testInitializedToSameValueInsideEagerRun(self, distribution):
-    v = [None]
-
-    @def_function.function
-    def step():
-
-      def f():
-        if v[0] is None:
-          v[0] = variables_lib.Variable(random_ops.random_normal([]))
-
-      distribution.run(f)
-
-    context.set_global_seed(None)
-    step()
-    vals = self.evaluate(v[0].values)
-    self.assertAllEqual(vals[0], vals[1])
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_one_cpu,
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.tpu_strategy_packed_var,
-          ],
-          mode=["graph", "eager"]))
-  def testAggregationOnlyFirstReplica(self, distribution):
-    with distribution.scope():
-      v = variable_scope.variable(
-          15.,
-          synchronization=variables_lib.VariableSynchronization.ON_WRITE,
-          aggregation=variables_lib.VariableAggregation.ONLY_FIRST_REPLICA)
-    self.evaluate(variables_lib.global_variables_initializer())
-
-    @def_function.function
-    def assign():
-      ctx = distribution_strategy_context.get_replica_context()
-      replica_id = ctx.replica_id_in_sync_group
-      return v.assign(math_ops.cast(replica_id, dtypes.float32))
-    per_replica_results = self.evaluate(distribution.experimental_local_results(
-        distribution.run(assign)))
-    # The per-replica values should always match the first replicas value.
-    self.assertAllEqual(
-        array_ops.zeros(distribution.num_replicas_in_sync, dtypes.float32),
-        per_replica_results)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.tpu_strategy_packed_var,
-          ],
-          mode=["eager"]))
-  def testInitScope(self, distribution):
-
-    class C(object):
-      pass
-
-    obj = C()
-    obj.w = None
-    obj.v = None
-
-    @def_function.function
-    def assign():
-      with ops.init_scope():
-        if obj.w is None:
-          obj.w = variables_lib.Variable(
-              0, aggregation=variables_lib.VariableAggregation.MEAN)
-          obj.v = variables_lib.Variable(
-              obj.w.read_value(),
-              aggregation=variables_lib.VariableAggregation.MEAN)
-
-      return obj.v.assign_add(2)
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(distribution.run(assign)))
-    self.assertAllEqual([2, 2], per_replica_results)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-              strategy_combinations.tpu_strategy,
-          ],
-          mode=["eager"]))
-  def testOperatorOverride(self, distribution):
-
-    with distribution.scope():
-      v = variable_scope.variable(
-          1, aggregation=variables_lib.VariableAggregation.MEAN)
-
-    self.assertEqual(2, self.evaluate(v + 1))
-
-    @def_function.function
-    def add():
-      return v + 1
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(distribution.run(add)))
-    self.assertAllEqual([2, 2], per_replica_results)
-
-  @combinations.generate(mirrored_and_tpu_strategy_combinations())
-  def testAssignAdd(self, distribution):
-    with distribution.scope():
-      v = variable_scope.variable(
-          1, aggregation=variables_lib.VariableAggregation.MEAN)
-    self.evaluate(variables_lib.global_variables_initializer())
-
-    @def_function.function
-    def assign():
-      return v.assign_add(2)
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(distribution.run(assign)))
-    # The per-replica values should always match the first replicas value.
-    self.assertAllEqual([3, 3], per_replica_results)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          ],
-          mode=["graph", "eager"]))
-  def testScatterSub(self, distribution):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [0., 0., 0.], aggregation=variables_lib.VariableAggregation.MEAN)
-    self.evaluate(v.initializer)
-
-    @def_function.function
-    def scatter_sub():
-      ctx = distribution_strategy_context.get_replica_context()
-      replica_id = ctx.replica_id_in_sync_group
-      value = indexed_slices.IndexedSlices(
-          values=array_ops.stack([
-              math_ops.cast(replica_id, dtypes.float32),
-              math_ops.cast(replica_id + 1, dtypes.float32)
-          ]),
-          indices=array_ops.stack([replica_id, replica_id + 1]),
-          dense_shape=(3,))
-      return v.scatter_sub(value)
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_sub)))
-    self.assertAllEqual([[0., -1., -1.], [0., -1., -1.]], per_replica_results)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          ],
-          mode=["graph", "eager"]))
-  def testScatterAdd(self, distribution):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [0, 0, 0], aggregation=variables_lib.VariableAggregation.SUM)
-    self.evaluate(v.initializer)
-
-    @def_function.function
-    def scatter_add():
-      ctx = distribution_strategy_context.get_replica_context()
-      replica_id = ctx.replica_id_in_sync_group
-      value = indexed_slices.IndexedSlices(
-          values=array_ops.stack([replica_id, replica_id + 1]),
-          indices=array_ops.stack([replica_id, replica_id + 1]),
-          dense_shape=(3,))
-      return v.scatter_add(value)
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_add)))
-    self.assertAllEqual([[0, 2, 2], [0, 2, 2]], per_replica_results)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          ],
-          mode=["graph", "eager"]))
-  def testScatterDiv(self, distribution):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [1, 6, 1], aggregation=variables_lib.VariableAggregation.SUM)
-    self.evaluate(v.initializer)
-
-    @def_function.function
-    def scatter_div():
-      ctx = distribution_strategy_context.get_replica_context()
-      replica_id = ctx.replica_id_in_sync_group
-      value = indexed_slices.IndexedSlices(
-          values=array_ops.reshape(replica_id + 2, [1]),
-          indices=array_ops.reshape(replica_id, [1]),
-          dense_shape=(3,))
-      return v.scatter_div(value)
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_div)))
-    self.assertAllEqual([[0, 2, 1], [0, 2, 1]], per_replica_results)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          ],
-          mode=["graph", "eager"]))
-  def testScatterMul(self, distribution):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [2., 1., 1.], aggregation=variables_lib.VariableAggregation.MEAN)
-    self.evaluate(v.initializer)
-
-    @def_function.function
-    def scatter_mul():
-      ctx = distribution_strategy_context.get_replica_context()
-      replica_id = ctx.replica_id_in_sync_group
-      value = indexed_slices.IndexedSlices(
-          values=array_ops.reshape(
-              math_ops.cast(replica_id + 2, dtypes.float32), [1]),
-          indices=array_ops.reshape(replica_id, [1]),
-          dense_shape=(3,))
-      return v.scatter_mul(value)
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_mul)))
-    self.assertAllClose([[2., 1.5, 1.], [2., 1.5, 1.]], per_replica_results)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          ],
-          mode=["graph", "eager"]))
-  def testScatterMin(self, distribution):
-    with distribution.scope():
-      v1 = variables_lib.Variable(
-          [0, 2, 0], aggregation=variables_lib.VariableAggregation.SUM)
-      v2 = variables_lib.Variable(
-          [0, 2, 0],
-          aggregation=variables_lib.VariableAggregation.ONLY_FIRST_REPLICA)
-    self.evaluate(variables_lib.global_variables_initializer())
-
-    @def_function.function
-    def scatter_min(v):
-      value = indexed_slices.IndexedSlices(
-          values=array_ops.identity([1]),
-          indices=array_ops.identity([1]),
-          dense_shape=(3,))
-      return v.scatter_min(value)
-
-    with self.assertRaisesRegex(NotImplementedError, "scatter_min.*"):
-      self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(scatter_min, args=(v1,))))
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_min, args=(v2,))))
-    self.assertAllClose([[0, 1, 0], [0, 1, 0]], per_replica_results)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          ],
-          mode=["graph", "eager"]))
-  def testScatterMax(self, distribution):
-    with distribution.scope():
-      v1 = variables_lib.Variable(
-          [0, 0, 0], aggregation=variables_lib.VariableAggregation.SUM)
-      v2 = variables_lib.Variable(
-          [0, 0, 0],
-          aggregation=variables_lib.VariableAggregation.ONLY_FIRST_REPLICA)
-    self.evaluate(variables_lib.global_variables_initializer())
-
-    @def_function.function
-    def scatter_max(v):
-      value = indexed_slices.IndexedSlices(
-          values=array_ops.identity([1]),
-          indices=array_ops.identity([0]),
-          dense_shape=(3,))
-      return v.scatter_max(value)
-
-    with self.assertRaisesRegex(NotImplementedError, "scatter_max.*"):
-      self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(scatter_max, args=(v1,))))
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_max, args=(v2,))))
-    self.assertAllClose([[1, 0, 0], [1, 0, 0]], per_replica_results)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          ],
-          mode=["graph", "eager"]))
-  def testScatterUpdate(self, distribution):
-    with distribution.scope():
-      v1 = variables_lib.Variable(
-          [0, 0, 0], aggregation=variables_lib.VariableAggregation.SUM)
-      v2 = variables_lib.Variable(
-          [0, 0, 0],
-          aggregation=variables_lib.VariableAggregation.ONLY_FIRST_REPLICA)
-    self.evaluate(variables_lib.global_variables_initializer())
-
-    @def_function.function
-    def scatter_update(v):
-      value = indexed_slices.IndexedSlices(
-          values=array_ops.identity([3]),
-          indices=array_ops.identity([1]),
-          dense_shape=(3,))
-      return v.scatter_update(value)
-
-    with self.assertRaisesRegex(NotImplementedError, "scatter_update.*"):
-      self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(scatter_update, args=(v1,))))
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(
-            distribution.run(scatter_update, args=(v2,))))
-    self.assertAllClose([[0, 3, 0], [0, 3, 0]], per_replica_results)
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-          ],
-          mode=["graph", "eager"]))
-  def testScatterOpsInCrossReplicaContext(self, distribution):
-    with distribution.scope():
-      v1 = variables_lib.Variable(
-          [1, 1, 1], aggregation=variables_lib.VariableAggregation.SUM)
-      v2 = variables_lib.Variable([1, 1, 1])
-    self.evaluate(variables_lib.global_variables_initializer())
-
-    value = indexed_slices.IndexedSlices(
-        values=array_ops.identity([2]),
-        indices=array_ops.identity([0]),
-        dense_shape=(3,))
-    with distribution.scope():
-      self.evaluate(v1.scatter_add(value))
-      self.assertAllEqual([3, 1, 1], self.evaluate(v1.read_value()))
-
-      self.evaluate(v2.scatter_min(value))
-      self.assertAllEqual([1, 1, 1], self.evaluate(v2.read_value()))
+    self._restore_mirrored(save_path, distribution)
 
 
 _TPU_STRATEGIES = (tpu_strategy.TPUStrategy, tpu_strategy.TPUStrategyV1)
@@ -1292,7 +1070,22 @@ def _make_replica_local(method, strategy=None):
   return v, replica_local
 
 
-class SyncOnReadVariablePropertiesTest(test.TestCase):
+class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
+
+  def _assign_replica_local(self, v, new):
+    for var, n in zip(v, new):
+      with ops.device(var.device):
+        self.evaluate(var.assign(n))
+
+  def _save_return_saver(self, sess, var):
+    saver = saver_lib.Saver(var_list=[var])
+    test_dir = self.get_temp_dir()
+    prefix = os.path.join(test_dir, "ckpt")
+    return saver.save(sess, prefix), saver
+
+  def _save(self, sess, var):
+    save_path, _ = self._save_return_saver(sess, var)
+    return save_path
 
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
@@ -1322,43 +1115,6 @@ class SyncOnReadVariablePropertiesTest(test.TestCase):
     replica_local = values_lib.SyncOnReadVariable(
         None, (v,), variable_scope.VariableAggregation.MEAN)
     self.assertEqual(2., self.evaluate(add1(replica_local)))
-
-
-# TODO(b/144432582): Add variable aggregation type to combinations to simplify
-# tests.
-def strategy_and_run_tf_function_combinations():
-  # Test the combination of different strategies and whether a tf.function
-  # is passed into strategy.run."""
-  return combinations.combine(
-      distribution=[
-          strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-      ],
-      mode=["graph", "eager"],
-      experimental_run_tf_function=[True, False]) + combinations.combine(
-          distribution=[
-              strategy_combinations.tpu_strategy,
-              strategy_combinations.tpu_strategy_packed_var,
-          ],
-          mode=["graph", "eager"],
-          experimental_run_tf_function=[True])
-
-
-class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
-
-  def _assign_replica_local(self, v, new):
-    for var, n in zip(v, new):
-      with ops.device(var.device):
-        self.evaluate(var.assign(n))
-
-  def _save_return_saver(self, sess, var):
-    saver = saver_lib.Saver(var_list=[var])
-    test_dir = self.get_temp_dir()
-    prefix = os.path.join(test_dir, "ckpt")
-    return saver.save(sess, prefix), saver
-
-  def _save(self, sess, var):
-    save_path, _ = self._save_return_saver(sess, var)
-    return save_path
 
   @combinations.generate(mirrored_and_tpu_strategy_combinations())
   def testTensorConversion(self, distribution):
@@ -1555,453 +1311,6 @@ class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
   def testSaveNormalRestoreReplicaLocalSum(self, distribution):
     save_path = self._save_normal()
     self._restore_replica_local_sum(save_path, distribution)
-
-  @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testAssign(self, distribution, experimental_run_tf_function):
-
-    def assign(fn, v, update_value, cross_replica):
-      update_fn = lambda: getattr(v, fn)(update_value)
-      if cross_replica:
-        return update_fn()
-      else:
-        if experimental_run_tf_function:
-          update_fn = def_function.function(update_fn)
-        return distribution.experimental_local_results(
-            distribution.run(update_fn))
-
-    updates = [("assign", 1.), ("assign_add", 1.), ("assign_sub", -1.)]
-    aggregations = [
-        variables_lib.VariableAggregation.NONE,
-        variables_lib.VariableAggregation.SUM,
-        variables_lib.VariableAggregation.MEAN,
-        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
-    ]
-    options = list(
-        x for x in itertools.product(updates, aggregations, [True, False]))
-    for update, aggregation, cross_replica in options:
-      # VariableAggregation.SUM in cross-replica mode is tested below,
-      # VariableAggregation.NONE in cross-replica mode is not supported.
-      if cross_replica and aggregation in [
-          variables_lib.VariableAggregation.SUM,
-          variables_lib.VariableAggregation.NONE,
-      ]:
-        continue
-      with distribution.scope():
-        v = variable_scope.variable(
-            0.,
-            synchronization=variables_lib.VariableSynchronization.ON_READ,
-            aggregation=aggregation)
-      self.evaluate(variables_lib.global_variables_initializer())
-      fn, update_value = update
-      self.evaluate(assign(fn, v, update_value, cross_replica))
-      for component in v._values:
-        self.assertAllEqual(self.evaluate(component.read_value()),
-                            self.evaluate(array_ops.ones_like(component)))
-
-  @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testAssignDtypeConversion(self, distribution,
-                                experimental_run_tf_function):
-
-    def assign(fn, v, update_value, cross_replica):
-      update_fn = lambda: getattr(v, fn)(update_value)
-      if cross_replica:
-        return update_fn()
-      else:
-        if experimental_run_tf_function:
-          update_fn = def_function.function(update_fn)
-        return distribution.experimental_local_results(
-            distribution.run(update_fn))
-
-    updates = [("assign", 1), ("assign_add", 1), ("assign_sub", -1)]
-    aggregations = [
-        variables_lib.VariableAggregation.NONE,
-        variables_lib.VariableAggregation.SUM,
-        variables_lib.VariableAggregation.MEAN,
-        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
-    ]
-    options = list(
-        x for x in itertools.product(updates, aggregations, [True, False]))
-    for update, aggregation, cross_replica in options:
-      # VariableAggregation.SUM in cross-replica mode is tested below,
-      # VariableAggregation.NONE in cross-replica mode is not supported.
-      if cross_replica and aggregation in [
-          variables_lib.VariableAggregation.SUM,
-          variables_lib.VariableAggregation.NONE,
-      ]:
-        continue
-      with distribution.scope():
-        v = variable_scope.variable(
-            0.,
-            synchronization=variables_lib.VariableSynchronization.ON_READ,
-            aggregation=aggregation)
-      self.evaluate(variables_lib.global_variables_initializer())
-      fn, update_value = update
-      self.evaluate(assign(fn, v, update_value, cross_replica))
-      for component in v._values:
-        self.assertAllEqual(self.evaluate(component.read_value()),
-                            self.evaluate(array_ops.ones_like(component)))
-
-  @combinations.generate(mirrored_and_tpu_strategy_combinations())
-  def testAssignWithAggregationSum(self, distribution):
-    with distribution.scope():
-      v = variable_scope.variable(
-          0.,
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=variables_lib.VariableAggregation.SUM)
-    self.evaluate(variables_lib.global_variables_initializer())
-    self.evaluate(v.assign(1. * distribution.num_replicas_in_sync))
-    for component in v._values:
-      self.assertAllEqual(self.evaluate(component.read_value()),
-                          self.evaluate(array_ops.ones_like(component)))
-
-  @combinations.generate(mirrored_and_tpu_strategy_combinations())
-  def testAssignAddSubWithAggregationSum(self, distribution):
-    with distribution.scope():
-      v = variable_scope.variable(
-          0.,
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=variables_lib.VariableAggregation.SUM)
-    self.evaluate(variables_lib.global_variables_initializer())
-    with self.assertRaisesRegex(
-        ValueError, "SyncOnReadVariable does not support "):
-      self.evaluate(v.assign_add(1.))
-    with self.assertRaisesRegex(
-        ValueError, "SyncOnReadVariable does not support "):
-      self.evaluate(v.assign_sub(1.))
-
-  @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testReadValueInReplicaContext(self, distribution,
-                                    experimental_run_tf_function):
-    aggregations = [
-        variables_lib.VariableAggregation.NONE,
-        variables_lib.VariableAggregation.SUM,
-        variables_lib.VariableAggregation.MEAN,
-        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
-    ]
-    for aggregation in aggregations:
-      with distribution.scope():
-        v = variable_scope.variable(
-            0.,
-            synchronization=variables_lib.VariableSynchronization.ON_READ,
-            aggregation=aggregation)
-      self.evaluate(variables_lib.global_variables_initializer())
-      if experimental_run_tf_function:
-        read_var_fn = def_function.function(v.read_value)
-      else:
-        read_var_fn = v.read_value
-      results = self.evaluate(
-          distribution.experimental_local_results(
-              distribution.run(read_var_fn)))
-      for component, value in zip(v._values, results):
-        self.assertAllEqual(self.evaluate(component.read_value()), value)
-
-  @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testReadValueInCrossReplicaContext(self, distribution,
-                                         experimental_run_tf_function):
-    aggregations = [
-        variables_lib.VariableAggregation.SUM,
-        variables_lib.VariableAggregation.MEAN,
-        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
-    ]
-    for aggregation in aggregations:
-      if isinstance(distribution, _TPU_STRATEGIES):
-        resolver = tpu_cluster_resolver.TPUClusterResolver("")
-        tpu_strategy_util.initialize_tpu_system(resolver)
-      with distribution.scope():
-        v = variable_scope.variable(
-            0.,
-            synchronization=variables_lib.VariableSynchronization.ON_READ,
-            aggregation=aggregation)
-      self.evaluate(variables_lib.global_variables_initializer())
-
-      def assign(v=v):
-        ctx = distribution_strategy_context.get_replica_context()
-        replica_id = ctx.replica_id_in_sync_group
-        return v.assign(math_ops.cast(replica_id, dtypes.float32))
-
-      if experimental_run_tf_function:
-        assign = def_function.function(assign)
-
-      self.evaluate(
-          distribution.experimental_local_results(distribution.run(assign)))
-      num_replicas = distribution.num_replicas_in_sync
-      sum_of_replica_values = num_replicas * (num_replicas - 1) / 2.
-      if aggregation == variables_lib.VariableAggregation.SUM:
-        expected = sum_of_replica_values
-      elif aggregation == variables_lib.VariableAggregation.MEAN:
-        expected = sum_of_replica_values / num_replicas
-      else:
-        expected = 0
-      self.assertEqual(expected, self.evaluate(v.read_value()), aggregation)
-      self.assertEqual(expected, self.evaluate(v.value()), aggregation)
-      self.assertEqual(expected, self.evaluate(v), aggregation)
-      self.assertEqual(expected, self.evaluate(array_ops.identity(v)),
-                       aggregation)
-
-  # TODO(b/145574622): Re-enable this test once ReduceOp argument is
-  # respected on GPUs.
-  @combinations.generate(strategy_and_run_tf_function_combinations())
-  def disable_testAllReduce(self, distribution,
-                            experimental_run_tf_function):
-    with distribution.scope():
-      v = variable_scope.variable(
-          2.,
-          synchronization=variables_lib.VariableSynchronization.ON_WRITE,
-          aggregation=variables_lib.VariableAggregation.MEAN)
-    self.evaluate(variables_lib.global_variables_initializer())
-
-    def all_reduce():
-      ctx = distribution_strategy_context.get_replica_context()
-      replica_id = ctx.replica_id_in_sync_group
-      return ctx.all_reduce("SUM", v) + math_ops.cast(replica_id,
-                                                      dtypes.float32)
-
-    if experimental_run_tf_function:
-      all_reduce = def_function.function(all_reduce)
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(distribution.run(all_reduce)))
-    expected_result = []
-    for i in range(distribution.num_replicas_in_sync):
-      expected_result.append(2.0 * distribution.num_replicas_in_sync +
-                             1.0 * i)
-    self.assertEqual(per_replica_results, tuple(expected_result))
-
-  @combinations.generate(strategy_and_run_tf_function_combinations())
-  def testAssignPerReplicaBeforeRead(self, distribution,
-                                     experimental_run_tf_function):
-    aggregations = [
-        variables_lib.VariableAggregation.SUM,
-        variables_lib.VariableAggregation.MEAN,
-        variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
-    ]
-    for aggregation in aggregations:
-      with distribution.scope():
-        v = variable_scope.variable(
-            0.,
-            synchronization=variables_lib.VariableSynchronization.ON_READ,
-            aggregation=aggregation)
-      self.evaluate(variables_lib.global_variables_initializer())
-
-      def assign(var=v):
-        ctx = distribution_strategy_context.get_replica_context()
-        replica_id = ctx.replica_id_in_sync_group
-        return var.assign(math_ops.cast(replica_id, dtypes.float32))
-
-      if experimental_run_tf_function:
-        assign = def_function.function(assign)
-
-      per_replica_results = self.evaluate(
-          distribution.experimental_local_results(distribution.run(assign)))
-      expected_result = []
-      for i in range(distribution.num_replicas_in_sync):
-        expected_result.append(1.0 * i)
-      self.assertEqual(per_replica_results, tuple(expected_result))
-
-  @combinations.generate(mirrored_and_tpu_strategy_combinations())
-  def testReadValueWithAggregationNoneInCrossReplicaContext(self, distribution):
-    with distribution.scope():
-      v = variable_scope.variable(
-          0.,
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=variables_lib.VariableAggregation.NONE)
-    self.evaluate(variables_lib.global_variables_initializer())
-    with self.assertRaisesRegex(
-        ValueError, "Could not convert from .* VariableAggregation\\.NONE"):
-      self.evaluate(v.read_value())
-
-  @combinations.generate(mirrored_and_tpu_strategy_combinations())
-  def testInitializedToSameValueInsideEagerRun(self, distribution):
-    if not context.executing_eagerly(): self.skipTest("eager only")
-
-    v = [None]
-    @def_function.function
-    def step():
-      def f():
-        if v[0] is None:
-          v[0] = variables_lib.Variable(
-              random_ops.random_normal([]),
-              synchronization=variables_lib.VariableSynchronization.ON_READ)
-
-      distribution.run(f)
-
-    context.set_global_seed(None)
-    step()
-    vals = self.evaluate(v[0].values)
-    self.assertAllEqual(vals[0], vals[1])
-
-  @combinations.generate(
-      combinations.combine(
-          distribution=[
-              strategy_combinations.tpu_strategy,
-          ],
-          mode=["eager"]))
-  def testOperatorOverride(self, distribution):
-
-    with distribution.scope():
-      v = variable_scope.variable(
-          0.0,
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=variables_lib.VariableAggregation.MEAN)
-
-    @def_function.function
-    def assign():
-      ctx = distribution_strategy_context.get_replica_context()
-      replica_id = ctx.replica_id_in_sync_group
-      return v.assign(math_ops.cast(replica_id, dtypes.float32))
-
-    # Assign different replicas with different values.
-    distribution.run(assign)
-
-    self.assertEqual(1.5, self.evaluate(v + 1))
-
-    @def_function.function
-    def add():
-      return v + 1
-
-    per_replica_results = self.evaluate(
-        distribution.experimental_local_results(distribution.run(add)))
-    self.assertAllEqual([1, 2], per_replica_results)
-
-
-@combinations.generate(
-    combinations.combine(
-        distribution=[
-            strategy_combinations.mirrored_strategy_with_gpu_and_cpu,
-        ],
-        aggregation=[
-            variables_lib.VariableAggregation.MEAN,
-            variables_lib.VariableAggregation.SUM,
-            variables_lib.VariableAggregation.ONLY_FIRST_REPLICA,
-        ],
-        mode=["graph", "eager"]))
-class SyncOnReadScatterReplicaTest(test.TestCase, parameterized.TestCase):
-
-  def testScatterSub(self, distribution, aggregation):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [1., 1., 1.],
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=aggregation)
-    self.evaluate(v.initializer)
-
-    delta = values_lib.PerReplica([
-        indexed_slices.IndexedSlices(
-            values=[[0.], [1.]], indices=[0, 1], dense_shape=(3,)),
-        indexed_slices.IndexedSlices(
-            values=[[1.], [2.]], indices=[1, 2], dense_shape=(3,)),
-    ])
-
-    with self.assertRaises(NotImplementedError):
-      self.evaluate(distribution.run(v.scatter_sub, args=(delta,)))
-
-  def testScatterAdd(self, distribution, aggregation):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [1., 1., 1.],
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=aggregation)
-    self.evaluate(v.initializer)
-
-    delta = values_lib.PerReplica([
-        indexed_slices.IndexedSlices(
-            values=[[0.], [1.]], indices=[0, 1], dense_shape=(3,)),
-        indexed_slices.IndexedSlices(
-            values=[[1.], [2.]], indices=[1, 2], dense_shape=(3,)),
-    ])
-
-    with self.assertRaises(NotImplementedError):
-      self.evaluate(distribution.run(v.scatter_add, args=(delta,)))
-
-  def testScatterDiv(self, distribution, aggregation):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [2., 6., 1.],
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=aggregation)
-    self.evaluate(v.initializer)
-
-    delta = values_lib.PerReplica([
-        indexed_slices.IndexedSlices(
-            values=[[2.], [2.]], indices=[0, 1], dense_shape=(3,)),
-        indexed_slices.IndexedSlices(
-            values=[[3.], [3.]], indices=[1, 2], dense_shape=(3,)),
-    ])
-
-    with self.assertRaises(NotImplementedError):
-      self.evaluate(distribution.run(v.scatter_div, args=(delta,)))
-
-  def testScatterMul(self, distribution, aggregation):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [2., 1., 1.],
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=aggregation)
-    self.evaluate(v.initializer)
-
-    delta = values_lib.PerReplica([
-        indexed_slices.IndexedSlices(
-            values=[[2.], [3.]], indices=[0, 1], dense_shape=(3,)),
-        indexed_slices.IndexedSlices(
-            values=[[4.], [5.]], indices=[1, 2], dense_shape=(3,)),
-    ])
-
-    with self.assertRaises(NotImplementedError):
-      self.evaluate(distribution.run(v.scatter_mul, args=(delta,)))
-
-  def testScatterMin(self, distribution, aggregation):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [3., 4., 5.],
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=aggregation)
-    self.evaluate(v.initializer)
-
-    delta = values_lib.PerReplica([
-        indexed_slices.IndexedSlices(
-            values=[[1.], [8.]], indices=[0, 1], dense_shape=(3,)),
-        indexed_slices.IndexedSlices(
-            values=[[9.], [2.]], indices=[1, 2], dense_shape=(3,)),
-    ])
-
-    with self.assertRaises(NotImplementedError):
-      self.evaluate(distribution.run(v.scatter_min, args=(delta,)))
-
-  def testScatterMax(self, distribution, aggregation):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [3., 4., 5.],
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=aggregation)
-    self.evaluate(v.initializer)
-
-    delta = values_lib.PerReplica([
-        indexed_slices.IndexedSlices(
-            values=[[1.], [8.]], indices=[0, 1], dense_shape=(3,)),
-        indexed_slices.IndexedSlices(
-            values=[[9.], [2.]], indices=[1, 2], dense_shape=(3,)),
-    ])
-
-    with self.assertRaises(NotImplementedError):
-      self.evaluate(distribution.run(v.scatter_max, args=(delta,)))
-
-  def testScatterUpdate(self, distribution, aggregation):
-    with distribution.scope():
-      v = variables_lib.Variable(
-          [0., 0., 0.],
-          synchronization=variables_lib.VariableSynchronization.ON_READ,
-          aggregation=aggregation)
-    self.evaluate(v.initializer)
-
-    delta = values_lib.PerReplica([
-        indexed_slices.IndexedSlices(
-            values=[[1.], [2.]], indices=[0, 1], dense_shape=(3,)),
-        indexed_slices.IndexedSlices(
-            values=[[3.], [4.]], indices=[1, 2], dense_shape=(3,)),
-    ])
-
-    with self.assertRaises(NotImplementedError):
-      self.evaluate(distribution.run(v.scatter_min, args=(delta,)))
 
 
 class MirroredTest(test.TestCase):

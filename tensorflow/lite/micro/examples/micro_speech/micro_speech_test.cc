@@ -28,13 +28,12 @@ TF_LITE_MICRO_TESTS_BEGIN
 TF_LITE_MICRO_TEST(TestInvoke) {
   // Set up logging.
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
   const tflite::Model* model = ::tflite::GetModel(g_model);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    TF_LITE_REPORT_ERROR(error_reporter,
+    TF_LITE_REPORT_ERROR(&micro_error_reporter,
                          "Model provided is schema version %d not equal "
                          "to supported version %d.\n",
                          model->version(), TFLITE_SCHEMA_VERSION);
@@ -59,7 +58,8 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 
   // Build an interpreter to run the model with.
   tflite::MicroInterpreter interpreter(model, micro_op_resolver, tensor_arena,
-                                       tensor_arena_size, error_reporter);
+                                       tensor_arena_size,
+                                       &micro_error_reporter);
   interpreter.AllocateTensors();
 
   // Get information about the memory area to use for the model's input.
@@ -75,14 +75,14 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   // Copy a spectrogram created from a .wav audio file of someone saying "Yes",
   // into the memory area used for the input.
   const int8_t* yes_features_data = g_yes_micro_f2e59fea_nohash_1_data;
-  for (int i = 0; i < input->bytes; ++i) {
+  for (size_t i = 0; i < input->bytes; ++i) {
     input->data.int8[i] = yes_features_data[i];
   }
 
   // Run the model on this input and make sure it succeeds.
   TfLiteStatus invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+    TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -111,14 +111,14 @@ TF_LITE_MICRO_TEST(TestInvoke) {
 
   // Now test with a different input, from a recording of "No".
   const int8_t* no_features_data = g_no_micro_f9643d42_nohash_4_data;
-  for (int i = 0; i < input->bytes; ++i) {
+  for (size_t i = 0; i < input->bytes; ++i) {
     input->data.int8[i] = no_features_data[i];
   }
 
   // Run the model on this "No" input.
   invoke_status = interpreter.Invoke();
   if (invoke_status != kTfLiteOk) {
-    TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed\n");
+    TF_LITE_REPORT_ERROR(&micro_error_reporter, "Invoke failed\n");
   }
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, invoke_status);
 
@@ -139,7 +139,7 @@ TF_LITE_MICRO_TEST(TestInvoke) {
   TF_LITE_MICRO_EXPECT_GT(no_score, unknown_score);
   TF_LITE_MICRO_EXPECT_GT(no_score, yes_score);
 
-  TF_LITE_REPORT_ERROR(error_reporter, "Ran successfully\n");
+  TF_LITE_REPORT_ERROR(&micro_error_reporter, "Ran successfully\n");
 }
 
 TF_LITE_MICRO_TESTS_END

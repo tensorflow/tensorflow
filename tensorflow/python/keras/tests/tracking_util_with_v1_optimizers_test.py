@@ -26,25 +26,28 @@ from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
+from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
+from tensorflow.python.module import module
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.platform import test
 from tensorflow.python.training import adam
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
 from tensorflow.python.training.tracking import graph_view
-from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util as trackable_utils
 
 
-class NonLayerTrackable(tracking.AutoTrackable):
+class NonLayerTrackable(module.Module):
 
   def __init__(self):
     super(NonLayerTrackable, self).__init__()
@@ -68,7 +71,7 @@ class MyModel(training.Model):
     return ret
 
 
-class CheckpointingTests(test.TestCase):
+class CheckpointingTests(keras_parameterized.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNamingWithOptimizer(self):
@@ -178,77 +181,78 @@ class CheckpointingTests(test.TestCase):
             optimizer_node.slot_variables[0]
             .slot_variable_node_id].attributes[0].checkpoint_key)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testSaveRestore(self):
-    model = MyModel()
-    optimizer = adam.AdamOptimizer(0.001)
-    root_trackable = trackable_utils.Checkpoint(
-        optimizer=optimizer, model=model)
-    input_value = constant_op.constant([[3.]])
-    if context.executing_eagerly():
-      optimizer.minimize(
-          lambda: model(input_value))
-    else:
-      train_op = optimizer.minimize(model(input_value))
-      # TODO(allenl): Make initialization more pleasant when graph building.
-      root_trackable.save_counter  # pylint: disable=pointless-statement
-      self.evaluate(trackable_utils.gather_initializers(
-          root_trackable))
-      self.evaluate(train_op)
-    prefix = os.path.join(self.get_temp_dir(), "ckpt")
-    self.evaluate(state_ops.assign(model._named_dense.variables[1], [42.]))
-    m_bias_slot = optimizer.get_slot(model._named_dense.variables[1], "m")
-    self.evaluate(state_ops.assign(m_bias_slot, [1.5]))
-    save_path = root_trackable.save(file_prefix=prefix)
-    self.evaluate(state_ops.assign(model._named_dense.variables[1], [43.]))
-    self.evaluate(state_ops.assign(root_trackable.save_counter, 3))
-    optimizer_variables = self.evaluate(optimizer.variables())
-    self.evaluate(state_ops.assign(m_bias_slot, [-2.]))
-    # Immediate restoration
-    status = root_trackable.restore(save_path=save_path).assert_consumed()
-    status.run_restore_ops()
-    self.assertAllEqual([42.], self.evaluate(model._named_dense.variables[1]))
-    self.assertAllEqual(1, self.evaluate(root_trackable.save_counter))
-    self.assertAllEqual([1.5], self.evaluate(m_bias_slot))
-    if not context.executing_eagerly():
-      return  # Restore-on-create is only supported when executing eagerly
-    on_create_model = MyModel()
-    on_create_optimizer = adam.AdamOptimizer(
-        0.001,
-        # Preserve beta1_power and beta2_power when applying gradients so we can
-        # test that they've been restored correctly.
-        beta1=1.0,
-        beta2=1.0)
-    on_create_root = trackable_utils.Checkpoint(
-        optimizer=on_create_optimizer, model=on_create_model)
-    # Deferred restoration
-    status = on_create_root.restore(save_path=save_path)
-    status.assert_nontrivial_match()
-    status.assert_existing_objects_matched()
-    with self.assertRaises(AssertionError):
+    with self.test_session():
+      model = MyModel()
+      optimizer = adam.AdamOptimizer(0.001)
+      root_trackable = trackable_utils.Checkpoint(
+          optimizer=optimizer, model=model)
+      input_value = constant_op.constant([[3.]])
+      if context.executing_eagerly():
+        optimizer.minimize(
+            lambda: model(input_value))
+      else:
+        train_op = optimizer.minimize(model(input_value))
+        # TODO(allenl): Make initialization more pleasant when graph building.
+        root_trackable.save_counter  # pylint: disable=pointless-statement
+        self.evaluate(trackable_utils.gather_initializers(
+            root_trackable))
+        self.evaluate(train_op)
+      prefix = os.path.join(self.get_temp_dir(), "ckpt")
+      self.evaluate(state_ops.assign(model._named_dense.variables[1], [42.]))
+      m_bias_slot = optimizer.get_slot(model._named_dense.variables[1], "m")
+      self.evaluate(state_ops.assign(m_bias_slot, [1.5]))
+      save_path = root_trackable.save(file_prefix=prefix)
+      self.evaluate(state_ops.assign(model._named_dense.variables[1], [43.]))
+      self.evaluate(state_ops.assign(root_trackable.save_counter, 3))
+      optimizer_variables = self.evaluate(optimizer.variables())
+      self.evaluate(state_ops.assign(m_bias_slot, [-2.]))
+      # Immediate restoration
+      status = root_trackable.restore(save_path=save_path).assert_consumed()
+      status.run_restore_ops()
+      self.assertAllEqual([42.], self.evaluate(model._named_dense.variables[1]))
+      self.assertAllEqual(1, self.evaluate(root_trackable.save_counter))
+      self.assertAllEqual([1.5], self.evaluate(m_bias_slot))
+      if not context.executing_eagerly():
+        return  # Restore-on-create is only supported when executing eagerly
+      on_create_model = MyModel()
+      on_create_optimizer = adam.AdamOptimizer(
+          0.001,
+          # Preserve beta1_power and beta2_power when applying gradients
+          # so we can test that they've been restored correctly.
+          beta1=1.0,
+          beta2=1.0)
+      on_create_root = trackable_utils.Checkpoint(
+          optimizer=on_create_optimizer, model=on_create_model)
+      # Deferred restoration
+      status = on_create_root.restore(save_path=save_path)
+      status.assert_nontrivial_match()
+      status.assert_existing_objects_matched()
+      with self.assertRaises(AssertionError):
+        status.assert_consumed()
+      on_create_model(constant_op.constant([[3.]]))  # create variables
+      self.assertAllEqual(1, self.evaluate(on_create_root.save_counter))
+      self.assertAllEqual([42.],
+                          self.evaluate(
+                              on_create_model._named_dense.variables[1]))
+      on_create_m_bias_slot = on_create_optimizer.get_slot(
+          on_create_model._named_dense.variables[1], "m")
+      status.assert_existing_objects_matched()
+      with self.assertRaises(AssertionError):
+        status.assert_consumed()
+      # Optimizer slot variables are created when the original variable is
+      # restored.
+      self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
+      self.assertAllEqual(optimizer_variables[2:],
+                          self.evaluate(on_create_optimizer.variables()))
+      dummy_var = variables.Variable([1.])
+      on_create_optimizer.minimize(loss=dummy_var.read_value)
+      status.assert_existing_objects_matched()
       status.assert_consumed()
-    on_create_model(constant_op.constant([[3.]]))  # create variables
-    self.assertAllEqual(1, self.evaluate(on_create_root.save_counter))
-    self.assertAllEqual([42.],
-                        self.evaluate(
-                            on_create_model._named_dense.variables[1]))
-    on_create_m_bias_slot = on_create_optimizer.get_slot(
-        on_create_model._named_dense.variables[1], "m")
-    status.assert_existing_objects_matched()
-    with self.assertRaises(AssertionError):
-      status.assert_consumed()
-    # Optimizer slot variables are created when the original variable is
-    # restored.
-    self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
-    self.assertAllEqual(optimizer_variables[2:],
-                        self.evaluate(on_create_optimizer.variables()))
-    dummy_var = variables.Variable([1.])
-    on_create_optimizer.minimize(loss=dummy_var.read_value)
-    status.assert_existing_objects_matched()
-    status.assert_consumed()
-    beta1_power, beta2_power = on_create_optimizer._get_beta_accumulators()
-    self.assertAllEqual(optimizer_variables[0], self.evaluate(beta1_power))
-    self.assertAllEqual(optimizer_variables[1], self.evaluate(beta2_power))
+      beta1_power, beta2_power = on_create_optimizer._get_beta_accumulators()
+      self.assertAllEqual(optimizer_variables[0], self.evaluate(beta1_power))
+      self.assertAllEqual(optimizer_variables[1], self.evaluate(beta2_power))
 
   # TODO(allenl): Debug garbage created by this test in python3.
   def testDeferredRestorationUsageEager(self):
@@ -378,92 +382,95 @@ class CheckpointingTests(test.TestCase):
             self.assertEqual(training_continuation + 1,
                              session.run(root.save_counter))
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testAgnosticUsage(self):
     """Graph/eager agnostic usage."""
     # Does create garbage when executing eagerly due to ops.Graph() creation.
-    num_training_steps = 10
-    checkpoint_directory = self.get_temp_dir()
-    for training_continuation in range(3):
-      with test_util.device(use_gpu=True):
-        model = MyModel()
-        optimizer = adam.AdamOptimizer(0.001)
-        root = trackable_utils.Checkpoint(
-            optimizer=optimizer, model=model,
-            global_step=training_util.get_or_create_global_step())
-        manager = checkpoint_management.CheckpointManager(
-            root, checkpoint_directory, max_to_keep=1)
-        status = root.restore(save_path=manager.latest_checkpoint)
-        input_value = constant_op.constant([[3.]])
-        train_fn = functools.partial(
-            optimizer.minimize,
-            functools.partial(model, input_value),
-            global_step=root.global_step)
-        if not context.executing_eagerly():
-          train_fn = functools.partial(self.evaluate, train_fn())
-        status.initialize_or_restore()
-        for _ in range(num_training_steps):
-          train_fn()
-        manager.save()
-        self.assertEqual((training_continuation + 1) * num_training_steps,
-                         self.evaluate(root.global_step))
-        self.assertEqual(training_continuation + 1,
-                         self.evaluate(root.save_counter))
+    with self.test_session():
+      num_training_steps = 10
+      checkpoint_directory = self.get_temp_dir()
+      for training_continuation in range(3):
+        with testing_utils.device(should_use_gpu=True):
+          model = MyModel()
+          optimizer = adam.AdamOptimizer(0.001)
+          root = trackable_utils.Checkpoint(
+              optimizer=optimizer, model=model,
+              global_step=training_util.get_or_create_global_step())
+          manager = checkpoint_management.CheckpointManager(
+              root, checkpoint_directory, max_to_keep=1)
+          status = root.restore(save_path=manager.latest_checkpoint)
+          input_value = constant_op.constant([[3.]])
+          train_fn = functools.partial(
+              optimizer.minimize,
+              functools.partial(model, input_value),
+              global_step=root.global_step)
+          if not context.executing_eagerly():
+            train_fn = functools.partial(self.evaluate, train_fn())
+          status.initialize_or_restore()
+          for _ in range(num_training_steps):
+            train_fn()
+          manager.save()
+          self.assertEqual((training_continuation + 1) * num_training_steps,
+                           self.evaluate(root.global_step))
+          self.assertEqual(training_continuation + 1,
+                           self.evaluate(root.save_counter))
 
   # pylint: disable=cell-var-from-loop
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testWithDefun(self):
-    num_training_steps = 2
-    checkpoint_directory = self.get_temp_dir()
-    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    for training_continuation in range(3):
-      with test_util.device(use_gpu=True):
-        model = MyModel()
-        # Don't actually train so we can test variable values
-        optimizer = adam.AdamOptimizer(0.)
-        root = trackable_utils.Checkpoint(
-            optimizer=optimizer, model=model,
-            global_step=training_util.get_or_create_global_step())
-        checkpoint_path = checkpoint_management.latest_checkpoint(
-            checkpoint_directory)
-        status = root.restore(save_path=checkpoint_path)
-        def train_fn():
-          @def_function.function
-          def _call_model(x):
-            return model(x)
-          with backprop.GradientTape() as tape:
-            loss = _call_model(constant_op.constant([[3.]]))
-          gradients = tape.gradient(loss, model.variables)
-          return optimizer.apply_gradients(zip(gradients, model.variables),
-                                           global_step=root.global_step)
-        if not context.executing_eagerly():
-          train_fn = functools.partial(
-              self.evaluate, train_fn())
-        status.initialize_or_restore()
-        for _ in range(num_training_steps):
-          train_fn()
-        if training_continuation > 0:
-          status.assert_consumed()
-          self.assertAllClose([[42.]], self.evaluate(model.variables[0]))
-        else:
-          self.evaluate(model.variables[0].assign([[42.]]))
-        root.save(file_prefix=checkpoint_prefix)
-        self.assertEqual((training_continuation + 1) * num_training_steps,
-                         self.evaluate(root.global_step))
-        self.assertEqual(training_continuation + 1,
-                         self.evaluate(root.save_counter))
+    with self.test_session():
+      num_training_steps = 2
+      checkpoint_directory = self.get_temp_dir()
+      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+      for training_continuation in range(3):
+        with testing_utils.device(should_use_gpu=True):
+          model = MyModel()
+          # Don't actually train so we can test variable values
+          optimizer = adam.AdamOptimizer(0.)
+          root = trackable_utils.Checkpoint(
+              optimizer=optimizer, model=model,
+              global_step=training_util.get_or_create_global_step())
+          checkpoint_path = checkpoint_management.latest_checkpoint(
+              checkpoint_directory)
+          status = root.restore(save_path=checkpoint_path)
+          def train_fn():
+            @def_function.function
+            def _call_model(x):
+              return model(x)
+            with backprop.GradientTape() as tape:
+              loss = _call_model(constant_op.constant([[3.]]))
+            gradients = tape.gradient(loss, model.variables)
+            return optimizer.apply_gradients(zip(gradients, model.variables),
+                                             global_step=root.global_step)
+          if not context.executing_eagerly():
+            train_fn = functools.partial(
+                self.evaluate, train_fn())
+          status.initialize_or_restore()
+          for _ in range(num_training_steps):
+            train_fn()
+          if training_continuation > 0:
+            status.assert_consumed()
+            self.assertAllClose([[42.]], self.evaluate(model.variables[0]))
+          else:
+            self.evaluate(model.variables[0].assign([[42.]]))
+          root.save(file_prefix=checkpoint_prefix)
+          self.assertEqual((training_continuation + 1) * num_training_steps,
+                           self.evaluate(root.global_step))
+          self.assertEqual(training_continuation + 1,
+                           self.evaluate(root.save_counter))
   # pylint: enable=cell-var-from-loop
 
   def _get_checkpoint_name(self, name):
-    root = tracking.AutoTrackable()
+    root = module.Module()
     trackable_utils.add_variable(
         root, name=name, shape=[1, 2], dtype=dtypes.float64)
     (named_variable,), _, _ = trackable_utils._serialize_object_graph(
         root, saveables_cache=None)
-    with ops.name_scope("root/" + named_variable.name):
+    with ops.name_scope_v2("root/" + named_variable.name):
       pass  # Make sure we can use this as an op name if we prefix it.
     return named_variable.name
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testAnonymousVarsInInit(self):
 
     class Model(training.Model):
@@ -477,102 +484,102 @@ class CheckpointingTests(test.TestCase):
       def call(self, x):
         return x * self.w + self.b
 
-    with context.eager_mode():
-      model = Model()
-      optimizer = adam.AdamOptimizer(learning_rate=0.05)
-      checkpoint_directory = self.get_temp_dir()
-      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-      checkpoint = trackable_utils.Checkpoint(
-          model=model, optimizer=optimizer)
-      for _ in range(2):
-        checkpoint.save(checkpoint_prefix)
-        with backprop.GradientTape() as tape:
-          loss = (constant_op.constant(1.)
-                  - model(constant_op.constant(1.))) ** 2
-        grad = tape.gradient(loss, model.vars)
-        optimizer.apply_gradients(
-            [(g, v) for g, v in zip(grad, model.vars)])
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_initialize_if_not_restoring(self):
+    model = Model()
+    optimizer = adam.AdamOptimizer(learning_rate=0.05)
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    optimizer_only_prefix = os.path.join(checkpoint_directory, "opt")
-    with test_util.device(use_gpu=True):
-      model = MyModel()
-      optimizer = adam.AdamOptimizer(0.001)
-      root = trackable_utils.Checkpoint(
-          model=model,  # Do not save the optimizer with the checkpoint.
-          global_step=training_util.get_or_create_global_step())
-      optimizer_checkpoint = trackable_utils.Checkpoint(
-          optimizer=optimizer)
+    checkpoint = trackable_utils.Checkpoint(
+        model=model, optimizer=optimizer)
+    for _ in range(2):
+      checkpoint.save(checkpoint_prefix)
+      with backprop.GradientTape() as tape:
+        loss = (constant_op.constant(1.)
+                - model(constant_op.constant(1.))) ** 2
+      grad = tape.gradient(loss, model.vars)
+      optimizer.apply_gradients(
+          [(g, v) for g, v in zip(grad, model.vars)])
 
-      checkpoint_path = checkpoint_management.latest_checkpoint(
-          checkpoint_directory)
-      status = root.restore(save_path=checkpoint_path)
-      input_value = constant_op.constant([[3.]])
-      train_fn = functools.partial(
-          optimizer.minimize,
-          functools.partial(model, input_value),
-          global_step=root.global_step)
-      if not context.executing_eagerly():
-        train_fn = functools.partial(self.evaluate, train_fn())
-      status.initialize_or_restore()
-      self.evaluate([v.initializer for v in optimizer.variables()])
-      train_fn()
-      model_save_path = root.save(file_prefix=checkpoint_prefix)
-      self.evaluate(optimizer.variables()[0].assign(42.))
-      optimizer_save_path = optimizer_checkpoint.save(optimizer_only_prefix)
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
+  def test_initialize_if_not_restoring(self):
+    with self.test_session():
+      checkpoint_directory = self.get_temp_dir()
+      checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+      optimizer_only_prefix = os.path.join(checkpoint_directory, "opt")
+      with testing_utils.device(should_use_gpu=True):
+        model = MyModel()
+        optimizer = adam.AdamOptimizer(0.001)
+        root = trackable_utils.Checkpoint(
+            model=model,  # Do not save the optimizer with the checkpoint.
+            global_step=training_util.get_or_create_global_step())
+        optimizer_checkpoint = trackable_utils.Checkpoint(
+            optimizer=optimizer)
 
-    # Restore into a graph with the optimizer
-    with test_util.device(use_gpu=True):
-      model = MyModel()
-      optimizer = adam.AdamOptimizer(0.001)
-      root = trackable_utils.Checkpoint(
-          optimizer=optimizer, model=model,
-          global_step=training_util.get_or_create_global_step())
-      status = root.restore(save_path=model_save_path)
-      input_value = constant_op.constant([[3.]])
-      train_fn = functools.partial(
-          optimizer.minimize,
-          functools.partial(model, input_value),
-          global_step=root.global_step)
-      if not context.executing_eagerly():
-        train_fn = functools.partial(self.evaluate, train_fn())
-      status.initialize_or_restore()
-      train_fn()
-      with self.assertRaises(AssertionError):
-        status.assert_existing_objects_matched()
-      with self.assertRaises(AssertionError):
-        status.assert_consumed()
+        checkpoint_path = checkpoint_management.latest_checkpoint(
+            checkpoint_directory)
+        status = root.restore(save_path=checkpoint_path)
+        input_value = constant_op.constant([[3.]])
+        train_fn = functools.partial(
+            optimizer.minimize,
+            functools.partial(model, input_value),
+            global_step=root.global_step)
+        if not context.executing_eagerly():
+          train_fn = functools.partial(self.evaluate, train_fn())
+        status.initialize_or_restore()
+        self.evaluate([v.initializer for v in optimizer.variables()])
+        train_fn()
+        model_save_path = root.save(file_prefix=checkpoint_prefix)
+        self.evaluate(optimizer.variables()[0].assign(42.))
+        optimizer_save_path = optimizer_checkpoint.save(optimizer_only_prefix)
 
-    # Make sure initialization doesn't clobber later restores
-    with test_util.device(use_gpu=True):
-      model = MyModel()
-      optimizer = adam.AdamOptimizer(0.001, beta1=1.0)
-      root = trackable_utils.Checkpoint(
-          optimizer=optimizer, model=model,
-          global_step=training_util.get_or_create_global_step())
-      opt_root = trackable_utils.Checkpoint(
-          optimizer=optimizer)
-      status = root.restore(save_path=model_save_path)
-      init_only_optimizer_status = opt_root.restore(save_path=None)
-      optimizer_status = opt_root.restore(save_path=optimizer_save_path)
-      input_value = constant_op.constant([[3.]])
-      train_fn = functools.partial(
-          optimizer.minimize,
-          functools.partial(model, input_value),
-          global_step=root.global_step)
-      if not context.executing_eagerly():
-        train_fn = functools.partial(self.evaluate, train_fn())
-      optimizer_status.run_restore_ops()
-      status.initialize_or_restore()
-      init_only_optimizer_status.initialize_or_restore()
-      train_fn()
-      self.assertEqual(42., self.evaluate(optimizer.variables()[0]))
+      # Restore into a graph with the optimizer
+      with testing_utils.device(should_use_gpu=True):
+        model = MyModel()
+        optimizer = adam.AdamOptimizer(0.001)
+        root = trackable_utils.Checkpoint(
+            optimizer=optimizer, model=model,
+            global_step=training_util.get_or_create_global_step())
+        status = root.restore(save_path=model_save_path)
+        input_value = constant_op.constant([[3.]])
+        train_fn = functools.partial(
+            optimizer.minimize,
+            functools.partial(model, input_value),
+            global_step=root.global_step)
+        if not context.executing_eagerly():
+          train_fn = functools.partial(self.evaluate, train_fn())
+        status.initialize_or_restore()
+        train_fn()
+        with self.assertRaises(AssertionError):
+          status.assert_existing_objects_matched()
+        with self.assertRaises(AssertionError):
+          status.assert_consumed()
+
+      # Make sure initialization doesn't clobber later restores
+      with testing_utils.device(should_use_gpu=True):
+        model = MyModel()
+        optimizer = adam.AdamOptimizer(0.001, beta1=1.0)
+        root = trackable_utils.Checkpoint(
+            optimizer=optimizer, model=model,
+            global_step=training_util.get_or_create_global_step())
+        opt_root = trackable_utils.Checkpoint(
+            optimizer=optimizer)
+        status = root.restore(save_path=model_save_path)
+        init_only_optimizer_status = opt_root.restore(save_path=None)
+        optimizer_status = opt_root.restore(save_path=optimizer_save_path)
+        input_value = constant_op.constant([[3.]])
+        train_fn = functools.partial(
+            optimizer.minimize,
+            functools.partial(model, input_value),
+            global_step=root.global_step)
+        if not context.executing_eagerly():
+          train_fn = functools.partial(self.evaluate, train_fn())
+        optimizer_status.run_restore_ops()
+        status.initialize_or_restore()
+        init_only_optimizer_status.initialize_or_restore()
+        train_fn()
+        self.assertEqual(42., self.evaluate(optimizer.variables()[0]))
 
 
-class CheckpointCompatibilityTests(test.TestCase):
+class CheckpointCompatibilityTests(keras_parameterized.TestCase):
 
   def _initialized_model(self):
     input_value = constant_op.constant([[3.]])
@@ -627,46 +634,47 @@ class CheckpointCompatibilityTests(test.TestCase):
             sess=session, save_path=checkpoint_prefix,
             global_step=root.optimizer_step)
 
-  @test_util.run_in_graph_and_eager_modes
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testLoadFromNameBasedSaver(self):
     """Save a name-based checkpoint, load it using the object-based API."""
-    with test_util.device(use_gpu=True):
-      save_path = self._write_name_based_checkpoint()
-      root = self._initialized_model()
-      self._set_sentinels(root)
-      with self.assertRaises(AssertionError):
-        self._check_sentinels(root)
-      object_saver = trackable_utils.TrackableSaver(
-          graph_view.ObjectGraphView(root))
-      self._set_sentinels(root)
-      status = object_saver.restore(save_path)
-      if context.executing_eagerly():
-        self._check_sentinels(root)
-      if context.executing_eagerly():
-        status.assert_consumed()
-        status.assert_existing_objects_matched()
-        status.assert_nontrivial_match()
-      else:
-        # When graph building, we haven't read any keys, so we don't know
-        # whether the restore will be complete.
-        with self.assertRaisesRegex(AssertionError, "not restored"):
+    with testing_utils.device(should_use_gpu=True):
+      with self.test_session():
+        save_path = self._write_name_based_checkpoint()
+        root = self._initialized_model()
+        self._set_sentinels(root)
+        with self.assertRaises(AssertionError):
+          self._check_sentinels(root)
+        object_saver = trackable_utils.TrackableSaver(
+            graph_view.ObjectGraphView(root))
+        self._set_sentinels(root)
+        status = object_saver.restore(save_path)
+        if context.executing_eagerly():
+          self._check_sentinels(root)
+        if context.executing_eagerly():
           status.assert_consumed()
-        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_existing_objects_matched()
-        with self.assertRaisesRegex(AssertionError, "not restored"):
           status.assert_nontrivial_match()
-      status.run_restore_ops()
-      self._check_sentinels(root)
-      self._set_sentinels(root)
-      status = object_saver.restore(save_path)
-      status.initialize_or_restore()
-      self._check_sentinels(root)
-      # Check that there is no error when keys are missing from the name-based
-      # checkpoint.
-      root.not_in_name_checkpoint = variables.Variable([1.])
-      status = object_saver.restore(save_path)
-      with self.assertRaises(AssertionError):
-        status.assert_existing_objects_matched()
+        else:
+          # When graph building, we haven't read any keys, so we don't know
+          # whether the restore will be complete.
+          with self.assertRaisesRegex(AssertionError, "not restored"):
+            status.assert_consumed()
+          with self.assertRaisesRegex(AssertionError, "not restored"):
+            status.assert_existing_objects_matched()
+          with self.assertRaisesRegex(AssertionError, "not restored"):
+            status.assert_nontrivial_match()
+        status.run_restore_ops()
+        self._check_sentinels(root)
+        self._set_sentinels(root)
+        status = object_saver.restore(save_path)
+        status.initialize_or_restore()
+        self._check_sentinels(root)
+        # Check that there is no error when keys are missing from the name-based
+        # checkpoint.
+        root.not_in_name_checkpoint = variables.Variable([1.])
+        status = object_saver.restore(save_path)
+        with self.assertRaises(AssertionError):
+          status.assert_existing_objects_matched()
 
   def testSaveGraphLoadEager(self):
     checkpoint_directory = self.get_temp_dir()
@@ -700,4 +708,5 @@ class CheckpointCompatibilityTests(test.TestCase):
 
 
 if __name__ == "__main__":
+  ops.enable_eager_execution()
   test.main()

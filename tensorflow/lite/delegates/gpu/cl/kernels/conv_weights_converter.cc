@@ -23,21 +23,37 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
 
-std::string GetConverterToConvWeightsCode(
-    const OperationDef& op_def, const ConvWeightsDescription& conv_weights_desc,
-    Arguments* args) {
-  args->AddObjectRef(
-      "src_tensor", AccessType::READ,
-      absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]));
-  args->AddObjectRef(
-      "dst_tensor", AccessType::WRITE,
-      absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]));
-  args->AddFloat("mask_x");
-  args->AddFloat("mask_y");
-  args->AddFloat("mask_z");
-  args->AddFloat("mask_w");
+ConverterToConvWeights::ConverterToConvWeights(
+    const OperationDef& definition,
+    const ConvWeightsDescription& conv_weights_desc)
+    : GPUOperation(definition), conv_weights_desc_(conv_weights_desc) {
+  code_ = GetConverterToConvWeightsCode(definition_, conv_weights_desc_);
+}
+
+ConverterToConvWeights::ConverterToConvWeights(
+    ConverterToConvWeights&& operation)
+    : GPUOperation(std::move(operation)),
+      conv_weights_desc_(operation.conv_weights_desc_) {}
+
+ConverterToConvWeights& ConverterToConvWeights::operator=(
+    ConverterToConvWeights&& operation) {
+  if (this != &operation) {
+    conv_weights_desc_ = operation.conv_weights_desc_;
+    GPUOperation::operator=(std::move(operation));
+  }
+  return *this;
+}
+
+std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
+    const OperationDef& op_def,
+    const ConvWeightsDescription& conv_weights_desc) {
+  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
+  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
+  args_.AddFloat("mask_x");
+  args_.AddFloat("mask_y");
+  args_.AddFloat("mask_z");
+  args_.AddFloat("mask_w");
 
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
@@ -93,47 +109,13 @@ std::string GetConverterToConvWeightsCode(
   c += "}\n";
   return c;
 }
-}  // namespace
-
-ConverterToConvWeights::ConverterToConvWeights(
-    ConverterToConvWeights&& operation)
-    : GPUOperation(std::move(operation)),
-      conv_weights_desc_(operation.conv_weights_desc_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
-
-ConverterToConvWeights& ConverterToConvWeights::operator=(
-    ConverterToConvWeights&& operation) {
-  if (this != &operation) {
-    conv_weights_desc_ = operation.conv_weights_desc_;
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status ConverterToConvWeights::Compile(
-    const CreationContext& creation_context) {
-  std::string code =
-      GetConverterToConvWeightsCode(definition_, conv_weights_desc_, &args_);
-  RETURN_IF_ERROR(
-      args_.TransformToCLCode(creation_context.device->GetInfo(), {}, &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
 
 absl::Status ConverterToConvWeights::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
   float4 mask = GetMaskForLastPlane(src_[0]->Channels());
   RETURN_IF_ERROR(args_.SetFloat("mask_x", mask.x));
   RETURN_IF_ERROR(args_.SetFloat("mask_y", mask.y));
   RETURN_IF_ERROR(args_.SetFloat("mask_z", mask.z));
-  RETURN_IF_ERROR(args_.SetFloat("mask_w", mask.w));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetFloat("mask_w", mask.w);
 }
 
 int3 ConverterToConvWeights::GetGridSize() const {
@@ -142,16 +124,6 @@ int3 ConverterToConvWeights::GetGridSize() const {
   const int grid_y = src_[0]->Slices();
   const int grid_z = src_[0]->Width() * src_[0]->Height();
   return int3(grid_x, grid_y, grid_z);
-}
-
-absl::Status ConverterToConvWeights::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(BindArguments());
-  return GetBestWorkGroup(params, kernel_, GetGridSize(), &work_group_size_);
-}
-
-absl::Status ConverterToConvWeights::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
 }
 
 ConverterToConvWeights CreateConverterToConvWeights(

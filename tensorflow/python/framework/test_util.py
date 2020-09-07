@@ -50,9 +50,11 @@ from tensorflow.python.client import device_lib
 from tensorflow.python.client import pywrap_tf_session
 from tensorflow.python.client import session
 from tensorflow.python.compat.compat import forward_compatibility_horizon
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import tape
+from tensorflow.python.framework import config
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -68,6 +70,8 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import control_flow_util_v2
+from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
@@ -333,13 +337,13 @@ def NHWCToNCHW(input_tensor):
   """Converts the input from the NHWC format to NCHW.
 
   Args:
-    input_tensor: a 4- or 5-D tensor, or an array representing shape
+    input_tensor: a 3-, 4-, or 5-D tensor, or an array representing shape
 
   Returns:
     converted tensor or shape array
   """
   # tensor dim -> new axis order
-  new_axes = {4: [0, 3, 1, 2], 5: [0, 4, 1, 2, 3]}
+  new_axes = {3: [0, 2, 1], 4: [0, 3, 1, 2], 5: [0, 4, 1, 2, 3]}
   if isinstance(input_tensor, ops.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])
@@ -773,34 +777,34 @@ def assert_no_new_tensors(f):
 
 def _find_reference_cycle(objects, idx):
 
-  def get_ignore_reason(obj, blacklist):
+  def get_ignore_reason(obj, denylist):
     """Tests whether an object should be omitted from the dependency graph."""
-    if len(blacklist) > 100:
+    if len(denylist) > 100:
       return "<depth limit>"
     if tf_inspect.isframe(obj):
       if "test_util.py" in tf_inspect.getframeinfo(obj)[0]:
         return "<test code>"
-    for b in blacklist:
+    for b in denylist:
       if b is obj:
         return "<test code>"
-    if obj is blacklist:
+    if obj is denylist:
       return "<test code>"
     return None
 
   # Note: this function is meant to help with diagnostics. Its output is purely
   # a human-readable representation, so you may freely modify it to suit your
   # needs.
-  def describe(obj, blacklist, leaves_only=False):
+  def describe(obj, denylist, leaves_only=False):
     """Returns a custom human-readable summary of obj.
 
     Args:
       obj: the value to describe.
-      blacklist: same as blacklist in get_ignore_reason.
+      denylist: same as denylist in get_ignore_reason.
       leaves_only: boolean flag used when calling describe recursively. Useful
         for summarizing collections.
     """
-    if get_ignore_reason(obj, blacklist):
-      return "{}{}".format(get_ignore_reason(obj, blacklist), type(obj))
+    if get_ignore_reason(obj, denylist):
+      return "{}{}".format(get_ignore_reason(obj, denylist), type(obj))
     if tf_inspect.isframe(obj):
       return "frame: {}".format(tf_inspect.getframeinfo(obj))
     elif tf_inspect.ismodule(obj):
@@ -810,10 +814,10 @@ def _find_reference_cycle(objects, idx):
         return "{}, {}".format(type(obj), id(obj))
       elif isinstance(obj, list):
         return "list({}): {}".format(
-            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+            id(obj), [describe(e, denylist, leaves_only=True) for e in obj])
       elif isinstance(obj, tuple):
         return "tuple({}): {}".format(
-            id(obj), [describe(e, blacklist, leaves_only=True) for e in obj])
+            id(obj), [describe(e, denylist, leaves_only=True) for e in obj])
       elif isinstance(obj, dict):
         return "dict({}): {} keys".format(id(obj), len(obj.keys()))
       elif tf_inspect.isfunction(obj):
@@ -822,7 +826,7 @@ def _find_reference_cycle(objects, idx):
       else:
         return "{}, {}".format(type(obj), id(obj))
 
-  def build_ref_graph(obj, graph, reprs, blacklist):
+  def build_ref_graph(obj, graph, reprs, denylist):
     """Builds a reference graph as <referrer> -> <list of referents>.
 
     Args:
@@ -832,21 +836,21 @@ def _find_reference_cycle(objects, idx):
         references, the graph holds object IDs rather than actual objects.
       reprs: Auxiliary structure that maps object IDs to their human-readable
         description.
-      blacklist: List of objects to ignore.
+      denylist: List of objects to ignore.
     """
     referrers = gc.get_referrers(obj)
-    blacklist = blacklist + (referrers,)
+    denylist = denylist + (referrers,)
 
     obj_id = id(obj)
     for r in referrers:
-      if get_ignore_reason(r, blacklist) is None:
+      if get_ignore_reason(r, denylist) is None:
         r_id = id(r)
         if r_id not in graph:
           graph[r_id] = []
         if obj_id not in graph[r_id]:
           graph[r_id].append(obj_id)
-          build_ref_graph(r, graph, reprs, blacklist)
-          reprs[r_id] = describe(r, blacklist)
+          build_ref_graph(r, graph, reprs, denylist)
+          reprs[r_id] = describe(r, denylist)
 
   def find_cycle(el, graph, reprs, path):
     """Finds and prints a single cycle in the dependency graph."""
@@ -1906,6 +1910,75 @@ def xla_allow_fallback(description):  # pylint: disable=unused-argument
   return xla_allow_fallback_impl
 
 
+# The description is just for documentation purposes.
+def run_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute test with TensorFloat-32 disabled.
+
+  While almost every real-world deep learning model runs fine with
+  TensorFloat-32, many tests use assertAllClose or similar methods.
+  TensorFloat-32 matmuls typically will cause such methods to fail with the
+  default tolerances.
+
+  Args:
+    description: A description used for documentation purposes, describing why
+      the test requires TensorFloat-32 to be disabled.
+
+  Returns:
+    Decorator which runs a test with TensorFloat-32 disabled.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(self, *args, **kwargs):
+      allowed = config.tensor_float_32_execution_enabled()
+      try:
+        config.enable_tensor_float_32_execution(False)
+        f(self, *args, **kwargs)
+      finally:
+        config.enable_tensor_float_32_execution(allowed)
+
+    return decorated
+
+  return decorator
+
+
+# The description is just for documentation purposes.
+def run_all_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute all tests in a class with TensorFloat-32 disabled."""
+  return for_all_test_methods(run_without_tensor_float_32, description)
+
+
+def matmul_without_tf32(a, b, *args, **kwargs):
+  """Run matmul but cast float32 inputs to float64 if TensorFloat-32 is enabled.
+
+  This effectively runs matmul without TensorFloat-32. It should only be used in
+  tests when verifying some other op or functions works correctly, e.g. to test
+  `tf.linalg.sqrtm` by matrix multiplying the output of the op by itself. In
+  such cases, the matmul itself is not being tested so it's OK to run it with
+  higher precision.
+
+  If a matmul itself is being tested, or some other op which uses matmul, use
+  `run_without_tensor_float_32` instead.
+
+  Args:
+    a: First input to tf.linalg.matmul
+    b: Second input to tf.linalg.matmul
+    args: Other positional arguments to tf.linalg.matmul
+    **kwargs: Other keyword arguments to tf.linalg.matmul
+
+  Returns:
+    A tensor with the same type as `a`.
+  """
+  if config.tensor_float_32_execution_enabled() and a.dtype == "float32":
+    a = math_ops.cast(a, "float64")
+    b = math_ops.cast(b, "float64")
+    ret = math_ops.matmul(a, b, *args, **kwargs)
+    return math_ops.cast(ret, a.dtype)
+  else:
+    return math_ops.matmul(a, b, *args, **kwargs)
+
+
 class EagerSessionWarner(object):
 
   def __getattr__(self, attr):
@@ -2076,7 +2149,7 @@ class TensorFlowTestCase(googletest.TestCase):
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(expected_message, message)
-    elif isinstance(expected_message_maybe_ascii, str):
+    elif isinstance(expected_message_maybe_ascii, (str, bytes)):
       expected_message = type(message)()
       text_format.Merge(
           expected_message_maybe_ascii,
@@ -3276,3 +3349,94 @@ def set_producer_version(graph, producer_version):
   with graph.as_default():
     importer.import_graph_def(graph_def)
   assert graph.graph_def_versions.producer, producer_version
+
+
+@contextlib.contextmanager
+def _fake_gradient_tape_context_manager():
+  """tf.gradients(...) implemented as tf.GradientTape context manager interface.
+
+  This is useful to test tf.gradients() in tests that uses tf.GradientTape().
+
+  Yields:
+    gradient tape instance that's implemented by tf.gradients() underneath.
+  """
+  try:
+    class FakeGradientTape:
+
+      def watch(self, x):
+        pass
+
+      def gradient(self, y, x, grad_ys=None):
+        result = gradients_impl.gradients(y, x, grad_ys)
+
+        # Unlike `tape.gradient()`, `tf.gradients()` returns a list for a single
+        # element. So unpack if needed to match `tape.gradient()` behavior.
+        if not isinstance(x, (list, tuple)):
+          assert len(result) == 1
+          return result[0]
+
+        return result
+
+    yield FakeGradientTape()
+  finally:
+    pass
+
+
+class AbstractGradientTape:
+  """Abstract GradientTape context manager that has multiple implementations.
+
+  This is useful to test both tf.GradientTape() and tf.gradients() without
+  duplicating tests.
+  """
+
+  def __init__(self, use_tape, persistent=False):
+    self._use_tape = use_tape
+    self._persistent = persistent
+
+  def __enter__(self):
+    if self._use_tape:
+      self._tape_impl = backprop.GradientTape(persistent=self._persistent)
+    else:
+      self._tape_impl = _fake_gradient_tape_context_manager()
+    return self._tape_impl.__enter__()
+
+  def __exit__(self, exc_type, exc_val, exc_tb):
+    self._tape_impl.__exit__(exc_type, exc_val, exc_tb)
+
+
+@contextlib.contextmanager
+def run_functions_eagerly(run_eagerly):
+  """Runs functions eagerly if `run_eagerly` is true.
+
+  WARNING: Setting `run_eagerly` to True in tests running in V1 graph mode
+  *WILL NOT* make the tf.function to run eagerly because eager is disabled by
+  default in V1. Instead, tf.function will run as a traced graph function.
+
+  Ensures that the state (for running functions eagerly) is back to the initial
+  `def_function.RUN_FUNCTIONS_EAGERLY` state.
+
+  Args:
+    run_eagerly: Boolean determining whether to run the function eagerly or not.
+
+  Raises:
+    ValueError if `run_eagerly` is not a boolean.
+
+  Yields:
+    Nothing.
+  """
+  if not isinstance(run_eagerly, bool):
+    raise ValueError(
+        "Expected bool for `run_eagerly` but got {}".format(run_eagerly))
+
+  is_eager = context.executing_eagerly()
+  if not is_eager and run_eagerly:
+    logging.warning(
+        "Running tf.function eagerly in V1 graph mode is not supported. "
+        "tf.function will be run as a traced graph function.")
+
+  initial_state = def_function.functions_run_eagerly()
+  def_function.run_functions_eagerly(run_eagerly)
+  try:
+    yield
+  finally:
+    def_function.run_functions_eagerly(initial_state)

@@ -89,6 +89,15 @@ class GrapplerTest : public ::testing::Test {
     return tensor;
   }
 
+  // Creates a random tensor with given shape using `setRandom`.
+  template <DataType DTYPE>
+  Tensor GenerateTensorWithSetRandom(const TensorShape& shape) const {
+    typedef typename EnumToDataType<DTYPE>::Type T;
+    Tensor tensor(DTYPE, shape);
+    tensor.flat<T>().setRandom();
+    return tensor;
+  }
+
   // Get a constant tensor with given shape.
   template <DataType DTYPE>
   Tensor GenerateConstantTensor(

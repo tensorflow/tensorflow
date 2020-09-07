@@ -40,6 +40,14 @@ class HLO_Op<string mnemonic, list<OpTrait> traits> :
   let verifier = [{ return Verify(*this); }];
 }
 
+def HLO_LOOP_FUSION : StrEnumAttrCase<"kLoop">;
+def HLO_INPUT_FUSION : StrEnumAttrCase<"kInput">;
+def HLO_OUTPUT_FUSION : StrEnumAttrCase<"kOutput">;
+def HLO_CUSTOM_FUSION : StrEnumAttrCase<"kCustom">;
+def HLO_FusionKindAttr : StrEnumAttr<"FusionKind", "fusion kind", [
+    HLO_LOOP_FUSION, HLO_INPUT_FUSION, HLO_OUTPUT_FUSION, HLO_CUSTOM_FUSION
+]>;
+
 //===----------------------------------------------------------------------===//
 // MHLO nullary op definitions.
 //===----------------------------------------------------------------------===//
@@ -52,15 +60,14 @@ def HLO_ConstOp : HLO_Op<"constant",
   );
 
   let results = (outs
-    HLO_Tensor:$output
+    HLO_StaticShapeTensor:$output
   );
 
   let builders = [OpBuilder<
     "OpBuilder &builder, OperationState &result, Attribute value"
   >];
 
-  let printer = [{ return Print(*this, &p); }];
-  let parser = [{ return ParseConstOp(&parser, &result); }];
+  let assemblyFormat = "attr-dict $value";
 
   let hasFolder = 1;
 
@@ -484,9 +491,7 @@ def HLO_RecvOp : HLO_Op<"recv", []> {
 
 def HLO_ReplicaIdOp : HLO_Op<"replica_id", [NoSideEffect]>,
       BASE_HLO_ReplicaIdOp {
-  // TODO(prakalps): The output should unsigned 32-bit integer but mlir does
-  // not differentiate between signed and unsigned int.
-  let results = (outs I32Tensor);
+  let results = (outs TensorOf<[UI32]>);
 }
 
 //===----------------------------------------------------------------------===//
@@ -656,13 +661,14 @@ def HLO_GetTupleElementOp: HLO_Op<"get_tuple_element", [NoSideEffect]>, BASE_HLO
 }
 
 def HLO_TupleOp : HLO_Op<"tuple", [NoSideEffect]>, BASE_HLO_TupleOp {
-  let arguments = (ins Variadic<HLO_TensorOrTuple>:$val);
+  let arguments = (ins Variadic<HLO_TensorOrTokenOrTuple>:$val);
   let results = (outs HLO_Tuple);
 
   let builders = [OpBuilder<
                   "OpBuilder &builder, OperationState &results, "
                   "ValueRange values">];
 
+  let hasCanonicalizer = 1;
 }
 
 def HLO_CompareOp: HLO_Op<"compare",
@@ -1067,7 +1073,12 @@ def HLO_GetDimensionSizeOp: HLO_Op<"get_dimension_size", [NoSideEffect]>,
     HLO_Tensor:$operand,
     I32Attr:$dimension
   );
-  let results = (outs HLO_IntTensor);
+  // TODO(hinsu): Allow 64-bit result types once XLA HLO dialect based on the
+  // XLA semantics is available. This limitation is because of the current XLA
+  // implementation.
+  let results = (outs I32Tensor);
+
+  let hasFolder = 1;
 }
 
 def HLO_MapOp: HLO_Op<"map",
@@ -1140,6 +1151,8 @@ def HLO_SelectOp: HLO_Op<"select", [NoSideEffect, DeclareOpInterfaceMethods<Infe
   );
 
   let results = (outs HLO_Tensor);
+
+  let hasFolder = 1;
 }
 
 def HLO_SelectAndScatterOp: HLO_Op<"select_and_scatter",
@@ -1318,13 +1331,14 @@ def HLO_TorchIndexSelectOp : HLO_Op<"torch_index_select", [NoSideEffect]> {
 }
 
 //===----------------------------------------------------------------------===//
-// MHLO RngUniform Operator.
+// MHLO RNG Operators.
 //===----------------------------------------------------------------------===//
+
 def HLO_RngUniformOp : HLO_Op<"rng_uniform", []>, BASE_HLO_RngUniformOp {
   let arguments = (ins
     HLO_PredIntOrFpTensor:$a,
     HLO_PredIntOrFpTensor:$b,
-    I64Tensor:$shape
+    HLO_DimensionTensor:$shape
   );
 
   let results = (outs HLO_PredIntOrFpTensor);
@@ -1336,11 +1350,24 @@ def HLO_RngNormalOp : HLO_Op<"rng_normal", []>, BASE_HLO_RngNormalOp {
   let arguments = (ins
     HLO_FpTensor:$mu,
     HLO_FpTensor:$sigma,
-    I64Tensor:$shape
+    HLO_DimensionTensor:$shape
   );
 
   let results = (outs HLO_FpTensor);
 
+  let hasCustomHLOConverter = 1;
+}
+
+def HLO_RngBitGeneratorOp : HLO_Op<"rng_bit_generator", [NoSideEffect]>, BASE_HLO_RngBitGeneratorOp {
+  let arguments = (ins
+    // TODO(jpienaar): This could be an enum instead.
+    I32Attr:$rng_algorithm,
+    HLO_IntOrFpTensor:$initial_state
+  );
+
+  let results = (outs HLO_TensorOrTuple:$result);
+
+  // TODO(jpienaar): This should not be needed.
   let hasCustomHLOConverter = 1;
 }
 
@@ -1375,7 +1402,8 @@ def HLO_FusionOp : HLO_Op<"fusion", []> {
   let regions = (region SizedRegion<1>:$fused_computation);
 
   let arguments = (ins
-    Variadic<HLO_TensorOrTuple>:$operands
+    Variadic<HLO_TensorOrTuple>:$operands,
+    OptionalAttr<HLO_FusionKindAttr>:$fusion_kind
   );
 
   let results = (outs

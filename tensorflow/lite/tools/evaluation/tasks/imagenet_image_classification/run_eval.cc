@@ -35,7 +35,7 @@ constexpr char kGroundTruthImagesPathFlag[] = "ground_truth_images_path";
 constexpr char kGroundTruthLabelsFlag[] = "ground_truth_labels";
 constexpr char kOutputFilePathFlag[] = "output_file_path";
 constexpr char kModelOutputLabelsFlag[] = "model_output_labels";
-constexpr char kBlacklistFilePathFlag[] = "blacklist_file_path";
+constexpr char kDenylistFilePathFlag[] = "denylist_file_path";
 constexpr char kNumImagesFlag[] = "num_images";
 constexpr char kInterpreterThreadsFlag[] = "num_interpreter_threads";
 constexpr char kDelegateFlag[] = "delegate";
@@ -64,7 +64,7 @@ class ImagenetClassification : public TaskExecutor {
   std::string ground_truth_images_path_;
   std::string ground_truth_labels_path_;
   std::string model_output_labels_path_;
-  std::string blacklist_file_path_;
+  std::string denylist_file_path_;
   std::string output_file_path_;
   std::string delegate_;
   int num_images_;
@@ -90,10 +90,10 @@ std::vector<Flag> ImagenetClassification::GetFlags() {
           "Path to ground truth labels, corresponding to alphabetical ordering "
           "of ground truth images."),
       tflite::Flag::CreateFlag(
-          kBlacklistFilePathFlag, &blacklist_file_path_,
-          "Path to blacklist file (optional) where each line is a single "
+          kDenylistFilePathFlag, &denylist_file_path_,
+          "Path to denylist file (optional) where each line is a single "
           "integer that is "
-          "equal to index number of blacklisted image."),
+          "equal to index number of denylisted image."),
       tflite::Flag::CreateFlag(kOutputFilePathFlag, &output_file_path_,
                                "File to output metrics proto to."),
       tflite::Flag::CreateFlag(kNumImagesFlag, &num_images_,
@@ -131,9 +131,8 @@ absl::optional<EvaluationStageMetrics> ImagenetClassification::RunImpl() {
     image_labels.push_back({image_files[i], ground_truth_image_labels[i]});
   }
 
-  // Filter out blacklisted/unwanted images.
-  if (FilterBlackListedImages(blacklist_file_path_, &image_labels) !=
-      kTfLiteOk) {
+  // Filter out denylisted/unwanted images.
+  if (FilterDenyListedImages(denylist_file_path_, &image_labels) != kTfLiteOk) {
     return absl::nullopt;
   }
   if (num_images_ > 0) {

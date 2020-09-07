@@ -75,10 +75,11 @@ dependencies {
     *   [v1.10.3](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)
     *   [v1.14](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.14.run)
     *   [v1.17](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.17.0.0.run)
+    *   [v1.20](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.0.run)
 
 Note: You will need to accept the license agreement.
 
-Note: As of 04/28/2020 you should use v1.17.
+Note: As of 07/22/2020 you should use v1.20.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel
@@ -180,10 +181,12 @@ dependencies {
     “libhexagon_nn_skel_v66.so”
     *   [v1.10.3](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_1_10_3_1.run)
     *   [v1.14](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.14.run)
+    *   [v1.17](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.17.0.0.run)
+    *   [v1.20](https://storage.cloud.google.com/download.tensorflow.org/tflite/hexagon_nn_skel_v1.20.0.0.run)
 
 Note: You will need to accept the license agreement.
 
-Note: As of 03/03/2020 you should use v1.14.
+Note: As of 07/22/2020 you should use v1.20.
 
 Note: You must use the hexagon_nn libraries with the compatible version of
 interface library. Interface library is part of the AAR and fetched by bazel

@@ -33,11 +33,11 @@ from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.saving.saved_model import layer_serialization
+from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
@@ -45,13 +45,9 @@ from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import keras_export
 from tensorflow.tools.docs import doc_controls
-
-try:
-  from collections import abc as collections_abc  # pylint: disable=g-import-not-at-top
-except ImportError:  # For Python 2
-  import collections as collections_abc  # pylint: disable=g-import-not-at-top
 
 
 RECURRENT_DROPOUT_WARNING_MSG = (
@@ -143,7 +139,7 @@ class StackedRNNCells(Layer):
     # Call the cells in order and store the returned states.
     new_nested_states = []
     for cell, states in zip(self.cells, nested_states):
-      states = states if nest.is_sequence(states) else [states]
+      states = states if nest.is_nested(states) else [states]
       # TF cell does not wrap the state into list when there is only one state.
       is_tf_rnn_cell = getattr(cell, '_is_tf_rnn_cell', None) is not None
       states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
@@ -180,7 +176,7 @@ class StackedRNNCells(Layer):
       else:
         output_dim = cell.state_size
       input_shape = tuple([input_shape[0]] +
-                          tensor_shape.as_shape(output_dim).as_list())
+                          tensor_shape.TensorShape(output_dim).as_list())
     self.built = True
 
   def get_config(self):
@@ -327,7 +323,7 @@ class RNN(Layer):
         This is the expected shape of your inputs
         *including the batch size*.
         It should be a tuple of integers, e.g. `(32, 10, 100)`.
-      - Specify `shuffle=False` when calling fit().
+      - Specify `shuffle=False` when calling `fit()`.
 
     To reset the states of your model, call `.reset_states()` on either
     a specific layer, or on your entire model.
@@ -452,7 +448,7 @@ class RNN(Layer):
   def states(self):
     if self._states is None:
       state = nest.map_structure(lambda _: None, self.cell.state_size)
-      return state if nest.is_sequence(self.cell.state_size) else [state]
+      return state if nest.is_nested(self.cell.state_size) else [state]
     return self._states
 
   @states.setter
@@ -469,7 +465,7 @@ class RNN(Layer):
     # (tensor_shape(1, 2), tensor_shape(3, 4)) or (1, 2, 3) which is from numpy
     # inputs.
     try:
-      input_shape = tensor_shape.as_shape(input_shape)
+      input_shape = tensor_shape.TensorShape(input_shape)
     except (ValueError, TypeError):
       # A nested tensor input
       input_shape = nest.flatten(input_shape)[0]
@@ -485,14 +481,16 @@ class RNN(Layer):
       state_size = [self.cell.state_size]
 
     def _get_output_shape(flat_output_size):
-      output_dim = tensor_shape.as_shape(flat_output_size).as_list()
+      output_dim = tensor_shape.TensorShape(flat_output_size).as_list()
       if self.return_sequences:
         if self.time_major:
-          output_shape = tensor_shape.as_shape([time_step, batch] + output_dim)
+          output_shape = tensor_shape.TensorShape(
+              [time_step, batch] + output_dim)
         else:
-          output_shape = tensor_shape.as_shape([batch, time_step] + output_dim)
+          output_shape = tensor_shape.TensorShape(
+              [batch, time_step] + output_dim)
       else:
-        output_shape = tensor_shape.as_shape([batch] + output_dim)
+        output_shape = tensor_shape.TensorShape([batch] + output_dim)
       return output_shape
 
     if getattr(self.cell, 'output_size', None) is not None:
@@ -506,8 +504,8 @@ class RNN(Layer):
 
     if self.return_state:
       def _get_state_shape(flat_state):
-        state_shape = [batch] + tensor_shape.as_shape(flat_state).as_list()
-        return tensor_shape.as_shape(state_shape)
+        state_shape = [batch] + tensor_shape.TensorShape(flat_state).as_list()
+        return tensor_shape.TensorShape(state_shape)
       state_shape = nest.map_structure(_get_state_shape, state_size)
       return generic_utils.to_list(output_shape) + nest.flatten(state_shape)
     else:
@@ -556,12 +554,12 @@ class RNN(Layer):
     # (tensor_shape(1, 2), tensor_shape(3, 4)) or (1, 2, 3) which is from numpy
     # inputs.
     try:
-      input_shape = tensor_shape.as_shape(input_shape)
+      input_shape = tensor_shape.TensorShape(input_shape)
     except (ValueError, TypeError):
       # A nested tensor input
       pass
 
-    if not nest.is_sequence(input_shape):
+    if not nest.is_nested(input_shape):
       # This indicates the there is only one input.
       if self.input_spec is not None:
         self.input_spec[0] = get_input_spec(input_shape)
@@ -593,7 +591,7 @@ class RNN(Layer):
       self._validate_state_spec(state_size, self.state_spec)
     else:
       self.state_spec = [
-          InputSpec(shape=[None] + tensor_shape.as_shape(dim).as_list())
+          InputSpec(shape=[None] + tensor_shape.TensorShape(dim).as_list())
           for dim in state_size
       ]
     if self.stateful:
@@ -634,7 +632,7 @@ class RNN(Layer):
   def get_initial_state(self, inputs):
     get_initial_state_fn = getattr(self.cell, 'get_initial_state', None)
 
-    if nest.is_sequence(inputs):
+    if nest.is_nested(inputs):
       # The input are nested sequences. Use the first element in the seq to get
       # batch size and dtype.
       inputs = nest.flatten(inputs)[0]
@@ -649,7 +647,7 @@ class RNN(Layer):
       init_state = _generate_zero_filled_state(batch_size, self.cell.state_size,
                                                dtype)
     # Keras RNN expect the states in a list, even if it's a single state tensor.
-    if not nest.is_sequence(init_state):
+    if not nest.is_nested(init_state):
       init_state = [init_state]
     # Force the state to be a list in case it is a namedtuple eg LSTMStateTuple.
     return list(init_state)
@@ -745,7 +743,7 @@ class RNN(Layer):
       # TODO(scottzhu): Should we accept multiple different masks?
       mask = nest.flatten(mask)[0]
 
-    if nest.is_sequence(inputs):
+    if nest.is_nested(inputs):
       # In the case of nested input, use the first element for shape check.
       input_shape = K.int_shape(nest.flatten(inputs)[0])
     else:
@@ -784,7 +782,7 @@ class RNN(Layer):
         states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
         output, new_states = cell_call_fn(
             inputs, states, constants=constants, **kwargs)
-        if not nest.is_sequence(new_states):
+        if not nest.is_nested(new_states):
           new_states = [new_states]
         return output, new_states
     else:
@@ -792,7 +790,7 @@ class RNN(Layer):
       def step(inputs, states):
         states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
         output, new_states = cell_call_fn(inputs, states, **kwargs)
-        if not nest.is_sequence(new_states):
+        if not nest.is_nested(new_states):
           new_states = [new_states]
         return output, new_states
     last_output, outputs, states = K.rnn(
@@ -927,17 +925,24 @@ class RNN(Layer):
                        '`batch_shape` argument to your Input layer.')
     # initialize state if None
     if nest.flatten(self.states)[0] is None:
-      def create_state_variable(state):
-        return K.zeros([batch_size] + tensor_shape.as_shape(state).as_list())
-      self.states = nest.map_structure(
-          create_state_variable, self.cell.state_size)
-      if not nest.is_sequence(self.states):
+      if getattr(self.cell, 'get_initial_state', None):
+        flat_init_state_values = nest.flatten(self.cell.get_initial_state(
+            inputs=None, batch_size=batch_size,
+            dtype=self.dtype or K.floatx()))
+      else:
+        flat_init_state_values = nest.flatten(_generate_zero_filled_state(
+            batch_size, self.cell.state_size, self.dtype or K.floatx()))
+      flat_states_variables = nest.map_structure(
+          K.variable, flat_init_state_values)
+      self.states = nest.pack_sequence_as(self.cell.state_size,
+                                          flat_states_variables)
+      if not nest.is_nested(self.states):
         self.states = [self.states]
     elif states is None:
       for state, size in zip(nest.flatten(self.states),
                              nest.flatten(self.cell.state_size)):
         K.set_value(state, np.zeros([batch_size] +
-                                    tensor_shape.as_shape(size).as_list()))
+                                    tensor_shape.TensorShape(size).as_list()))
     else:
       flat_states = nest.flatten(self.states)
       flat_input_states = nest.flatten(states)
@@ -1118,7 +1123,7 @@ class DropoutRNNCellMixin(object):
     is used every time.
 
     Also the caches are created without tracking. Since they are not picklable
-    by python when deepcopy, we don't want layer._obj_reference_counts_dict
+    by python when deepcopy, we don't want `layer._obj_reference_counts_dict`
     to track it by default.
     """
     self._dropout_mask_cache = K.ContextValueCache(self._create_dropout_mask)
@@ -1128,8 +1133,8 @@ class DropoutRNNCellMixin(object):
   def reset_dropout_mask(self):
     """Reset the cached dropout masks if any.
 
-    This is important for the RNN layer to invoke this in it call() method so
-    that the cached mask is cleared before calling the cell.call(). The mask
+    This is important for the RNN layer to invoke this in it `call()` method so
+    that the cached mask is cleared before calling the `cell.call()`. The mask
     should be cached across the timestep within the same batch, but shouldn't
     be cached between batches. Otherwise it will introduce unreasonable bias
     against certain index of data within the batch.
@@ -1361,7 +1366,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    prev_output = states[0] if nest.is_sequence(states) else states
+    prev_output = states[0] if nest.is_nested(states) else states
     dp_mask = self.get_dropout_mask_for_cell(inputs, training)
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
         prev_output, training)
@@ -1379,7 +1384,7 @@ class SimpleRNNCell(DropoutRNNCellMixin, Layer):
     if self.activation is not None:
       output = self.activation(output)
 
-    new_state = [output] if nest.is_sequence(states) else output
+    new_state = [output] if nest.is_nested(states) else output
     return output, new_state
 
   def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
@@ -1821,7 +1826,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    h_tm1 = states[0] if nest.is_sequence(states) else states  # previous memory
+    h_tm1 = states[0] if nest.is_nested(states) else states  # previous memory
 
     dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
     rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
@@ -1919,7 +1924,7 @@ class GRUCell(DropoutRNNCellMixin, Layer):
       hh = self.activation(x_h + recurrent_h)
     # previous and candidate state mixed by update gate
     h = z * h_tm1 + (1 - z) * hh
-    new_state = [h] if nest.is_sequence(states) else h
+    new_state = [h] if nest.is_nested(states) else h
     return h, new_state
 
   def get_config(self):
@@ -2679,7 +2684,7 @@ class LSTM(RNN):
       the `recurrent_kernel` weights matrix.
     bias_regularizer: Regularizer function applied to the bias vector.
     activity_regularizer: Regularizer function applied to
-      the output of the layer (its "activation")..
+      the output of the layer (its "activation").
     kernel_constraint: Constraint function applied to
       the `kernel` weights matrix.
     recurrent_constraint: Constraint function applied to
@@ -3018,11 +3023,11 @@ def _generate_zero_filled_state(batch_size_tensor, state_size, dtype):
         'batch_size={}, dtype={}'.format(batch_size_tensor, dtype))
 
   def create_zeros(unnested_state_size):
-    flat_dims = tensor_shape.as_shape(unnested_state_size).as_list()
+    flat_dims = tensor_shape.TensorShape(unnested_state_size).as_list()
     init_state_size = [batch_size_tensor] + flat_dims
     return array_ops.zeros(init_state_size, dtype=dtype)
 
-  if nest.is_sequence(state_size):
+  if nest.is_nested(state_size):
     return nest.map_structure(create_zeros, state_size)
   else:
     return create_zeros(state_size)

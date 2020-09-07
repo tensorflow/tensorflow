@@ -263,11 +263,11 @@ class ndarray(composite_tensor.CompositeTensor):
   def __float__(self):
     return float(self.data)
 
-  def __nonzero__(self):
+  def __bool__(self):
     return bool(self.data)
 
-  def __bool__(self):
-    return self.__nonzero__()
+  def __nonzero__(self):
+    return self.__bool__()
 
   def __iter__(self):
     if not isinstance(self.data, ops.EagerTensor):
@@ -293,6 +293,19 @@ class ndarray(composite_tensor.CompositeTensor):
 
   # NOTE: we currently prefer interop with TF to allow TF to take precedence.
   __array_priority__ = 90
+
+  def __array_module__(self, types):
+    # Experimental support for NumPy's module dispatch with NEP-37:
+    # https://numpy.org/neps/nep-0037-array-module.html
+    # Currently requires https://github.com/seberg/numpy-dispatch
+
+    # pylint: disable=g-import-not-at-top
+    import tensorflow.compat.v2 as tf
+
+    if all(issubclass(t, (ndarray, np.ndarray)) for t in types):
+      return tf.experimental.numpy
+    else:
+      return NotImplemented
 
   def __index__(self):
     """Returns a python scalar.

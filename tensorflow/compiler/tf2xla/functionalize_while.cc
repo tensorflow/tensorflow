@@ -24,11 +24,11 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/types/optional.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/tf2xla/frontend_attributes_util.h"
 #include "tensorflow/compiler/tf2xla/functionalize_cond.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -130,7 +130,7 @@ Status BuildLoopCondition(const Graph& graph, WhileLoopFrame* frame,
   std::vector<bool> squash_src_outputs(graph.num_node_ids(), false);
 
   // Build one _Arg node for each Enter node.
-  for (int i = 0; i < frame->args.size(); ++i) {
+  for (int i = 0, end = frame->args.size(); i < end; ++i) {
     const WhileLoopArg& arg = frame->args[i];
 
     TF_ASSIGN_OR_RETURN(Node * arg_node,
@@ -170,7 +170,7 @@ Status BuildLoopBody(const Graph& graph, WhileLoopFrame* frame,
   std::vector<Node*> next_iterations;
   next_iterations.reserve(frame->args.size());
   arg_types->reserve(frame->args.size());
-  for (int i = 0; i < frame->args.size(); ++i) {
+  for (int i = 0, end = frame->args.size(); i < end; ++i) {
     const WhileLoopArg& arg = frame->args[i];
 
     DataType dtype = arg.enter->input_type(0);
@@ -235,7 +235,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
     } else {
       std::vector<const Edge*> edges(arg.enter->out_edges().begin(),
                                      arg.enter->out_edges().end());
-      for (int i = 0; i < edges.size(); ++i) {
+      for (int i = 0, end = edges.size(); i < end; ++i) {
         if (edges[i]->IsControlEdge() && edges[i]->dst()->IsSink()) {
           continue;
         }
@@ -447,7 +447,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
     }
   }
   std::vector<NodeDefBuilder::NodeOut> inputs;
-  for (int i = 0; i < frame->args.size(); ++i) {
+  for (int i = 0, end = frame->args.size(); i < end; ++i) {
     const WhileLoopArg& arg = frame->args[i];
     const Edge* in_edge;
     TF_RETURN_IF_ERROR(arg.enter->input_edge(0, &in_edge));
@@ -463,7 +463,7 @@ Status FunctionalizeLoop(Graph* graph, WhileLoopFrame* frame,
   TF_ASSIGN_OR_RETURN(Node * while_node, AddNodeDefToGraph(while_def, graph));
 
   // Copies edges to the Enter nodes and from the Exit nodes onto the While.
-  for (int i = 0; i < frame->args.size(); ++i) {
+  for (int i = 0, end = frame->args.size(); i < end; ++i) {
     const WhileLoopArg& arg = frame->args[i];
     const Edge* in_edge;
     TF_RETURN_IF_ERROR(arg.enter->input_edge(0, &in_edge));

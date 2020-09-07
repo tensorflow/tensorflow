@@ -15,9 +15,8 @@ limitations under the License.
 
 #include "tensorflow/lite/micro/examples/micro_speech/audio_provider.h"
 
-#include "tensorflow/lite/micro/examples/micro_speech/micro_features/micro_model_settings.h"
-
 #include "hx_drv_tflm.h"
+#include "tensorflow/lite/micro/examples/micro_speech/micro_features/micro_model_settings.h"
 
 namespace {
 // Feedback silence buffer when beginning start_ms <= 0

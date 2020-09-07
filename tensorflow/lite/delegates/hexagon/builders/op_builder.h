@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_HEXAGON_BUILDERS_OP_BUILDER_H_
 
 #include <limits>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
@@ -131,9 +132,9 @@ class OpBuilder {
   void AddInput(const TensorID& tensor_id) { input_ids_.push_back(tensor_id); }
 
   // Adds Output to the current node, the output has shape defined in 'dims'.
-  // This assumes the data type is uint8.
+  // The size of each element is defined using 'element_size'.
   // Returns the TensorID identifying this output in the graph.
-  TensorID AddOutput(const TfLiteIntArray* dims);
+  TensorID AddOutput(const TfLiteIntArray* dims, int element_size);
 
   // Adds Output to the current node, each element in the output has
   // size 'elementsize' and rank 'rank' and for each dimension in the output
@@ -182,6 +183,14 @@ class OpBuilder {
     }
   }
 
+  // Computes the min and max for 'tensor' and adds them as input
+  // to the node.
+  TfLiteStatus ComputeAndAddMinAndMax(TfLiteContext* context,
+                                      const TfLiteTensor& tensor);
+
+  // Computes the float min and max for 'tensor', given 'min_value' and
+  // 'max_value' data range. The float min and max will be set in 'min' and
+  // 'max' params
   template <typename T>
   static TfLiteStatus ComputeMinAndMaxQuantValues(const TfLiteTensor& tensor,
                                                   float* min, float* max,
@@ -308,11 +317,22 @@ class GraphBuilder {
   bool AddTensorWithID(int tflite_tensor_id, int hexagon_node_id,
                        int hexagon_node_output_id, bool overwrite = false) {
     if (!overwrite && HasTensor(tflite_tensor_id)) {
+      TF_LITE_KERNEL_LOG(
+          context_,
+          "Trying to add duplicate tensor without overwrite, tflite_tensor_id "
+          "%d, hexagon_node_id %d, hexagon_node_output_id %d",
+          tflite_tensor_id, hexagon_node_id, hexagon_node_output_id);
       return false;
     }
     if (tensors_.size() <= tflite_tensor_id) {
       tensors_.resize(tflite_tensor_id + 1);
     }
+    if (hexagon_node_id == -1 || hexagon_node_output_id == -1)
+      TF_LITE_KERNEL_LOG(context_,
+                         "Trying to add invalid id, tflite_tensor_id "
+                         "%d, hexagon_node_id %d, hexagon_node_output_id %d",
+                         tflite_tensor_id, hexagon_node_id,
+                         hexagon_node_output_id);
     tensors_[tflite_tensor_id] =
         OpBuilder::TensorID(hexagon_node_id, hexagon_node_output_id);
     return true;
@@ -340,6 +360,14 @@ class GraphBuilder {
   int GetMaxBatchSize() const { return max_size_for_batch_; }
 
  private:
+  // Lookup in cache if data with key 'cache_key' is present.
+  // Return OpBuilder* for the data if found, nullptr otherwise.
+  OpBuilder* LookupConstData(uint64_t cache_key);
+
+  // Inserts 'value' in cache, with key equals 'cache_key'.
+  // If data in cache with same key then it will be overwritten.
+  void AddToCache(uint64_t cache_key, OpBuilder* value);
+
   // Helper method to fetch dimensions.
   // TODO(karimnosseir): Move this method to shared place.
   void GetDims(int* batch_size, int* height_size, int* width_size,
@@ -352,7 +380,10 @@ class GraphBuilder {
   }
 
   // Adds a Cast op to convert a tensor from int8 to uint8 (or vice versa).
-  TfLiteStatus AddCastOp(TfLiteContext* context, int op_type, int tensor_id);
+  // The builder which has the casting operator is filled in 'cast_op_builder'
+  // if not nullptr.
+  TfLiteStatus AddCastOp(TfLiteContext* context, int op_type, int tensor_id,
+                         OpBuilder** cast_op_builder);
 
   const HexagonNN* hexagon_nn_ = nullptr;
   TfLiteContext* context_ = nullptr;
@@ -365,6 +396,11 @@ class GraphBuilder {
   // If the graph being built supports dynamic batch, this represents
   // the maximum value for batch.
   int max_size_for_batch_ = -1;
+
+  // Cache for const data in the graph.
+  // Key is hash of the data, value is pointer to the OpBuilder* for the added
+  // data.
+  std::map<uint64_t, OpBuilder*> cache_;
 };
 
 }  // namespace hexagon

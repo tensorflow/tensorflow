@@ -15,9 +15,9 @@
 # pylint: disable=invalid-name
 """DenseNet models for Keras.
 
-Reference paper:
-  - [Densely Connected Convolutional Networks]
-    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
+Reference:
+  - [Densely Connected Convolutional Networks](
+      https://arxiv.org/abs/1608.06993) (CVPR 2017)
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -192,7 +192,7 @@ def DenseNet(
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -375,13 +375,16 @@ decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
 
 DOC = """
 
-  Reference paper:
-  - [Densely Connected Convolutional Networks]
-    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
+  Reference:
+  - [Densely Connected Convolutional Networks](
+      https://arxiv.org/abs/1608.06993) (CVPR 2017)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
+  
+  Caution: Be sure to properly pre-process your inputs to the application.
+  Please see `applications.densenet.preprocess_input` for an example.
 
   Arguments:
     include_top: whether to include the fully-connected

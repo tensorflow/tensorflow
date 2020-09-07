@@ -57,6 +57,7 @@ class Scope(object):
       the terminology of the Python 3 reference documentation, True roughly
       represents an actual scope, whereas False represents an ordinary code
       block.
+    function_name: Optional[str], name of the function owning this scope.
     isolated_names: Set[qual_names.QN], identifiers that are isolated to this
       scope (even if the scope is not isolated).
     annotations: Set[qual_names.QN], identifiers used as type annotations
@@ -94,7 +95,7 @@ class Scope(object):
   # Note: this mutable-immutable pattern is used because using a builder would
   # have taken a lot more boilerplate.
 
-  def __init__(self, parent, isolated=True):
+  def __init__(self, parent, isolated=True, function_name=None):
     """Create a new scope.
 
     Args:
@@ -102,9 +103,11 @@ class Scope(object):
       isolated: Whether the scope is isolated, that is, whether variables
         modified in this scope should be considered modified in the parent
         scope.
+      function_name: Name of the function owning this scope.
     """
     self.parent = parent
     self.isolated = isolated
+    self.function_name = function_name
 
     self.isolated_names = set()
 
@@ -175,7 +178,8 @@ class Scope(object):
     self.isolated_names.update(other.isolated_names)
     self.read.update(other.read)
     self.modified.update(other.modified)
-    self.bound.update(other.deleted)
+    self.bound.update(other.bound)
+    self.deleted.update(other.deleted)
     self.annotations.update(other.annotations)
     self.params.update(other.params)
 
@@ -321,8 +325,8 @@ class ActivityAnalyzer(transformer.Base):
       raise ValueError('Unknown context {} for node "{}".'.format(
           type(node.ctx), qn))
 
-  def _enter_scope(self, isolated):
-    self.scope = Scope(self.scope, isolated=isolated)
+  def _enter_scope(self, isolated, f_name=None):
+    self.scope = Scope(self.scope, isolated=isolated, function_name=f_name)
 
   def _exit_scope(self):
     exited_scope = self.scope
@@ -580,10 +584,10 @@ class ActivityAnalyzer(transformer.Base):
       self._exit_and_record_scope(node)
 
       # A separate Scope tracks the actual function definition.
-      self._enter_scope(True)
+      self._enter_scope(True, node.name)
 
       # Keep a separate scope for the arguments node, which is used in the CFG.
-      self._enter_scope(False)
+      self._enter_scope(False, node.name)
 
       # Arg declarations only affect the function itself, and have no effect
       # in the defining context whatsoever.
@@ -593,7 +597,7 @@ class ActivityAnalyzer(transformer.Base):
 
       # Track the body separately. This is for compatibility reasons, it may not
       # be strictly needed.
-      self._enter_scope(False)
+      self._enter_scope(False, node.name)
       node.body = self.visit_block(node.body)
       self._exit_and_record_scope(node, NodeAnno.BODY_SCOPE)
 

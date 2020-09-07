@@ -22,11 +22,10 @@ TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(TestCallability) {
   tflite::MicroErrorReporter micro_error_reporter;
-  tflite::ErrorReporter* error_reporter = &micro_error_reporter;
-  HandleOutput(error_reporter, 0);
-  HandleOutput(error_reporter, 1);
-  HandleOutput(error_reporter, 2);
-  HandleOutput(error_reporter, 3);
+  HandleOutput(&micro_error_reporter, 0);
+  HandleOutput(&micro_error_reporter, 1);
+  HandleOutput(&micro_error_reporter, 2);
+  HandleOutput(&micro_error_reporter, 3);
 }
 
 TF_LITE_MICRO_TESTS_END

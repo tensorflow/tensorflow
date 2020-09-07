@@ -167,11 +167,14 @@ class Feature {
   }
 
   // Helper methods
-  tstring& construct_at_end(LimitedArraySlice<tstring>* bytes_list) {
-    return bytes_list->construct_at_end();
+  tstring* construct_at_end(LimitedArraySlice<tstring>* bytes_list) {
+    if (bytes_list->EndDistance() <= 0) {
+      return nullptr;
+    }
+    return &bytes_list->construct_at_end();
   }
-  tstring& construct_at_end(SmallVector<tstring>* bytes_list) {
-    return bytes_list->emplace_back();
+  tstring* construct_at_end(SmallVector<tstring>* bytes_list) {
+    return &bytes_list->emplace_back();
   }
 
   template <typename Result>
@@ -192,9 +195,10 @@ class Feature {
       // parse string
       uint32 bytes_length;
       if (!stream.ReadVarint32(&bytes_length)) return false;
-      tstring& bytes = construct_at_end(bytes_list);
-      bytes.resize_uninitialized(bytes_length);
-      if (!stream.ReadRaw(bytes.data(), bytes_length)) return false;
+      tstring* bytes = construct_at_end(bytes_list);
+      if (bytes == nullptr) return false;
+      bytes->resize_uninitialized(bytes_length);
+      if (!stream.ReadRaw(bytes->data(), bytes_length)) return false;
     }
     stream.PopLimit(limit);
     return true;

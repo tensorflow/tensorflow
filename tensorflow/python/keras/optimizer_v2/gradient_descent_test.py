@@ -258,25 +258,25 @@ class GradientDescentOptimizerTest(test.TestCase, parameterized.TestCase):
         self.assertAllCloseAccordingToType(
             [[3.0], [4.0 - 3.0 * 0.01 - 2.0 * 0.01]], self.evaluate(var1))
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testCapturingInDefunWhileExecutingEagerly(self):
-    with context.eager_mode():
-      optimizer = gradient_descent.SGD(1.0)
+    optimizer = gradient_descent.SGD(1.0)
 
-      def step():
-        self.v = variables.Variable(1.0)
-        with backprop.GradientTape() as tape:
-          loss = self.v**2
-        grad = tape.gradient(loss, self.v)
-        optimizer.apply_gradients([(grad, self.v)])
-        return self.v.read_value()
+    def step():
+      self.v = variables.Variable(1.0)
+      with backprop.GradientTape() as tape:
+        loss = self.v**2
+      grad = tape.gradient(loss, self.v)
+      optimizer.apply_gradients([(grad, self.v)])
+      return self.v.read_value()
 
-      compiled_step = function.defun(step)
+    compiled_step = function.defun(step)
 
-      self.assertEqual(float(step()), -1.0)
-      self.assertEqual(float(compiled_step()), -1.0)
-      # This shouldn't fail; in particular, the learning rate tensor should
-      # be an EagerTensor once again, not a graph Tensor.
-      self.assertEqual(float(step()), -1.0)
+    self.assertEqual(float(step()), -1.0)
+    self.assertEqual(float(compiled_step()), -1.0)
+    # This shouldn't fail; in particular, the learning rate tensor should
+    # be an EagerTensor once again, not a graph Tensor.
+    self.assertEqual(float(step()), -1.0)
 
   def testConstructSGDWithLR(self):
     opt = gradient_descent.SGD(lr=1.0)
@@ -701,6 +701,25 @@ class MomentumOptimizerTest(test.TestCase, parameterized.TestCase):
     self.assertAllClose(self.evaluate(opt.lr), (1.0))
     self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
     self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
+
+  @combinations.generate(combinations.combine(mode=["eager"]))
+  def testMinimizeLossTensor(self):
+    for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
+      var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
+      var1 = variables.Variable([3.0], dtype=dtype)
+      x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
+
+      tape = backprop.GradientTape()
+      with tape:
+        loss = math_ops.matmul(var0, x) + var1
+      sgd = gradient_descent.SGD(1.0)
+      with self.assertRaisesRegex(ValueError, "`tape` is required"):
+        sgd.minimize(loss, [var0, var1])
+      sgd.minimize(loss, [var0, var1], tape=tape)
+
+      self.assertAllCloseAccordingToType([[1.0 - 4.0, 2.0 - 5.0]],
+                                         self.evaluate(var0))
+      self.assertAllCloseAccordingToType([3.0 - 1.0], self.evaluate(var1))
 
 
 if __name__ == "__main__":

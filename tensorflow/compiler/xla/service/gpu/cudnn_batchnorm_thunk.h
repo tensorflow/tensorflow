@@ -63,6 +63,7 @@ class CudnnBatchNormForwardInferenceThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   BufferAllocation::Slice operand_;
   BufferAllocation::Slice scale_;
   BufferAllocation::Slice offset_;
@@ -92,6 +93,7 @@ class CudnnBatchNormForwardTrainingThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   BufferAllocation::Slice operand_;
   BufferAllocation::Slice scale_;
   BufferAllocation::Slice offset_;
@@ -124,6 +126,7 @@ class CudnnBatchNormBackwardThunk : public Thunk {
   Status ExecuteOnStream(const ExecuteParams& params) override;
 
  private:
+  const HloInstruction* hlo_instruction_;
   BufferAllocation::Slice operand_;
   BufferAllocation::Slice scale_;
   BufferAllocation::Slice mean_;

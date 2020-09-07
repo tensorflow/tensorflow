@@ -238,7 +238,8 @@ Following the Steps to run magic wand example at HIMAX WE1 EVB platform.
         [HIMAX WE1 EVB update Flash image](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide#flash-image-update)
 
 After these steps, press reset button on the HIMAX WE1 EVB, you will see
-application output in the serial terminal. Perform following gestures `'Wing'`,`'Ring'`,`'Slope'` and you can see the otuput in serial terminal. 
+application output in the serial terminal. Perform following gestures
+`'Wing'`,`'Ring'`,`'Slope'` and you can see the otuput in serial terminal.
 
 ```
 WING:

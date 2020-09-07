@@ -101,11 +101,18 @@ class XStatsOwner {
   const XPlaneVisitor* metadata_;
 };
 
+using XEventMetadataVisitor = XStatsOwner<XEventMetadata>;
+
 class XEventVisitor : public XStatsOwner<XEvent> {
  public:
   // REQUIRED: plane, line and event cannot be nullptr.
   XEventVisitor(const XPlaneVisitor* plane, const XLine* line,
                 const XEvent* event);
+
+  XEventMetadataVisitor MetadataStats() const {
+    return XEventMetadataVisitor(plane_, metadata_);
+  }
+
   int64 Id() const { return event_->metadata_id(); }
 
   absl::string_view Name() const { return metadata_->name(); }

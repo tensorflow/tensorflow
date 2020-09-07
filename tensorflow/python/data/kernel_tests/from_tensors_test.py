@@ -265,6 +265,13 @@ class FromTensorsTest(test_base.DatasetTestBase, parameterized.TestCase):
 
       self.assertEqual(sess.run(iterator.get_next()), 2)
 
+  @combinations.generate(test_base.default_test_combinations())
+  def testDatasetInputSerialization(self):
+    dataset = dataset_ops.Dataset.range(100)
+    dataset = dataset_ops.Dataset.from_tensors(dataset).flat_map(lambda x: x)
+    dataset = self.graphRoundTrip(dataset)
+    self.assertDatasetProduces(dataset, range(100))
+
 
 if __name__ == "__main__":
   test.main()

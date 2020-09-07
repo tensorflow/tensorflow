@@ -1,0 +1,8 @@
+op {
+  graph_op_name: "TensorMapSize"
+  summary: "Returns the number of tensors in the input tensor map."
+  description: <<END
+input_handle: the input map
+size: the number of tensors in the map
+END
+}

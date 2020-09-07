@@ -19,10 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 import copy
+import threading
+import time
 import weakref
 
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
+from tensorflow.python.distribute import collective_util
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import device_util
@@ -37,44 +40,62 @@ from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training.tracking import base
 from tensorflow.python.util.tf_export import tf_export
 
 
-# TODO(yuefengz): support in-graph replication.
 @tf_export("distribute.experimental.MultiWorkerMirroredStrategy", v1=[])
 class CollectiveAllReduceStrategy(distribute_lib.Strategy):
   """A distribution strategy for synchronous training on multiple workers.
 
   This strategy implements synchronous distributed training across multiple
   workers, each with potentially multiple GPUs. Similar to
-  `tf.distribute.MirroredStrategy`, it creates copies of all variables in the
-  model on each device across all workers.
+  `tf.distribute.MirroredStrategy`, it replicates all variables and computations
+  to each local device. The difference is that it uses a distributed collective
+  implementation (e.g. all-reduce), so that multiple workers can work together.
 
-  It uses CollectiveOps's implementation of multi-worker all-reduce to
-  to keep variables in sync. A collective op is a single op in the
-  TensorFlow graph which can automatically choose an all-reduce algorithm in
-  the TensorFlow runtime according to hardware, network topology and tensor
-  sizes.
+  You need to launch your program on each worker and configure
+  `cluster_resolver` correctly. For example, if you are using
+  `tf.distribute.cluster_resolver.TFConfigClusterResolver`, each worker needs to
+  have its corresponding `task_type` and `task_id` set in the `TF_CONFIG`
+  environment variable.
 
-  By default it uses all local GPUs or CPU for single-worker training.
+  Your program runs on each worker as-is. Note that collectives require each
+  worker to participate. All `tf.distribute` and non `tf.distribute` API may use
+  collectives internally, e.g. checkpointing and saving since reading a
+  `tf.Variable` with `tf.VariableSynchronization.ON_READ` all-reduces the value.
+  Therefore it's recommended to run exactly the same program on each worker.
+  Dispatching based on `task_type` or `task_id` of the worker is error-prone.
 
-  When 'TF_CONFIG' environment variable is set, it parses cluster_spec,
-  task_type and task_id from 'TF_CONFIG' and turns into a multi-worker strategy
-  which mirrored models on GPUs of all machines in a cluster. In the current
-  implementation, it uses all GPUs in a cluster and it assumes all workers have
-  the same number of GPUs.
+  `cluster_resolver.num_accelerators()` determines the number of GPUs the
+  strategy uses. If it's zero, the strategy uses the CPU. All workers need to
+  use the same number of devices, otherwise the behavior is undefined.
 
-  You can also pass a `distribute.cluster_resolver.ClusterResolver` instance
-  when instantiating the strategy. The task_type, task_id etc. will be parsed
-  from the resolver instance instead of from the `TF_CONFIG` env var.
+  This strategy is not intended for TPU. Use
+  `tf.distribute.experimental.TPUStrategy` instead.
 
-  It supports both eager mode and graph mode. However, for eager mode, it has to
-  set up the eager context in its constructor and therefore all ops in eager
-  mode have to run after the strategy object is created.
+  __Saving__
+
+  You need to save and checkpoint on all workers instead of just one. This is
+  because variables whose synchronization=ON_READ triggers aggregation during
+  saving. It's recommended to save to a different path on each worker to avoid
+  race conditions. Each worker saves the same thing. See
+  [Multi-worker training with Keras](https://www.tensorflow.org/tutorials/distribute/multi_worker_with_keras#model_saving_and_loading)
+  tutorial for examples.
+
+  __Known Issues__
+
+  * `tf.distribute.cluster_resolver.TFConfigClusterResolver` does not return the
+  correct number of accelerators. The strategy uses all available GPUs if
+  `cluster_resolver` is `tf.distribute.cluster_resolver.TFConfigClusterResolver`
+  or `None`.
+  * In eager mode, the strategy needs to be created before calling any other
+  Tensorflow API.
 
   """
   # TODO(anjalisridhar): Update our guides with examples showing how we can use
@@ -87,14 +108,13 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
     """Creates the strategy.
 
     Args:
-      communication: optional Enum of type
-        `distribute.experimental.CollectiveCommunication`.  This provides a way
-        for the user to override the choice of collective op communication.
-        Possible values include `AUTO`, `RING`, and `NCCL`.
-      cluster_resolver: optional `distribute.cluster_resolver.ClusterResolver`
-        object. The default ClusterResolver that is used is the
-        TFConfigClusterResolver which is instantiated from the TF_CONFIG env
-        var.
+      communication: optional
+        `tf.distribute.experimental.CollectiveCommunication`. This is a hint on
+        the preferred collective communication implementation. Possible values
+        include `AUTO`, `RING`, and `NCCL`.
+      cluster_resolver: optional
+        `tf.distribute.cluster_resolver.ClusterResolver`. If `None`,
+        `tf.distribute.cluster_resolver.TFConfigClusterResolver` is used.
     """
     # TODO(b/150151677): consider move communication to CollectiveHints.
     super(CollectiveAllReduceStrategy, self).__init__(
@@ -120,23 +140,6 @@ class CollectiveAllReduceStrategy(distribute_lib.Strategy):
     obj = cls(communication)
     obj.extended._initialize_local(TFConfigClusterResolver(), devices=devices)  # pylint: disable=protected-access
     return obj
-
-  def scope(self):  # pylint: disable=useless-super-delegation
-    """Returns a context manager selecting this Strategy as current.
-
-    Inside a `with strategy.scope():` code block, this thread
-    will use a variable creator set by `strategy`, and will
-    enter its "cross-replica context".
-
-    In `MultiWorkerMirroredStrategy`, all variables created inside
-    `strategy.scope() will be mirrored on all replicas of each worker.
-    Moreover, it also sets a default device scope so that ops without
-    specified devices will end up on the correct worker.
-
-    Returns:
-      A context manager to use for creating variables with this strategy.
-    """
-    return super(CollectiveAllReduceStrategy, self).scope()
 
   @property
   def cluster_resolver(self):
@@ -178,6 +181,19 @@ class CollectiveAllReduceStrategyV1(distribute_lib.StrategyV1):
 class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
   """Implementation of CollectiveAllReduceStrategy."""
 
+  # Whether to perdically check the health of the cluster. If any worker is not
+  # reachable, collectives are aborted and the user program should get a
+  # tf.errors.UnavailableError. It's required to restart in order to recover.
+  _enable_check_health = False
+  # Check health interval in seconds.
+  _check_health_interval = 30
+  # Timeout in seconds for the first check health. The first check health needs
+  # to wait for cluster, which may make a longer time.
+  #
+  # TODO(b/151232436): now the inital barrier may hang in a rare case, so we
+  # need a finite timeout.
+  _check_health_initial_timeout = 1200
+
   def __init__(self,
                container_strategy,
                communication,
@@ -190,6 +206,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._communication = communication
     self._initialize_strategy(self._cluster_resolver)
     self._cfer_fn_cache = weakref.WeakKeyDictionary()
+    self.experimental_enable_get_next_as_optional = True
     assert isinstance(self._cross_device_ops,
                       cross_device_ops_lib.CollectiveAllReduce)
 
@@ -371,12 +388,20 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._rpc_layer = cluster_resolver.rpc_layer
     self._warn_nccl_no_gpu()
 
+    # TODO(b/151232436): Enable check health thread by default.
+    if self._enable_check_health:
+      self._start_check_health_thread()
+
     logging.info(
         "MultiWorkerMirroredStrategy with cluster_spec = %r, task_type = %r, "
         "task_id = %r, num_workers = %r, local_devices = %r, "
         "communication = %s", cluster_spec.as_dict(), task_type,
         task_id, self._num_workers, local_devices,
         self._communication)
+
+  def __del__(self):
+    if self._enable_check_health:
+      self._stop_check_health_thread()
 
   def _input_workers_with_options(self, options=None):
     host_device = device_util.get_host_for_device(self._worker_device)
@@ -412,6 +437,8 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           initial_value = kwargs["initial_value"]
           if callable(initial_value):
             initial_value = initial_value()
+          if isinstance(initial_value, base.CheckpointInitialValue):
+            initial_value = initial_value.wrapped_value
           assert not callable(initial_value)
           initial_value = ops.convert_to_tensor(
               initial_value, dtype=kwargs.get("dtype", None))
@@ -607,6 +634,65 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         value,
         destinations=destinations,
         experimental_hints=experimental_hints)
+
+  def _check_health(self):
+    while True:
+      if self._check_health_thread_should_stop.is_set():
+        return
+      try:
+        for job in self._cluster_spec.jobs:
+          for task_id in range(self._cluster_spec.num_tasks(job)):
+            context.context().check_collective_ops_peer_health(
+                "/job:{}/replica:0/task:{}".format(job, task_id))
+      except (errors.UnavailableError, errors.FailedPreconditionError) as e:
+        # TODO(b/151232436): Always raise UnavailableError when a peer fails.
+        # Now there could be many kinds of errors:
+        # - Unavailable: when the peer is not reachable, e.g. it's down.
+        # - FailedPrecondition: when the peer has restarted.
+        logging.error("Cluster check alive failed, aborting collectives")
+        context.context().abort_collective_ops(
+            errors.UNAVAILABLE, "cluster check alive failed: %s" % e)
+      except Exception as e:  # pylint: disable=broad-except
+        logging.exception("Unexpected exception in check alive.")
+        context.context().abort_collective_ops(
+            errors.INTERNAL, "unexecpted exception in check alive: %s" % e)
+        return
+      time.sleep(self._check_health_interval)
+
+  def _start_check_health_thread(self):
+    # Use a dummy all-reduce as a barrier to wait for all workers to be up,
+    # otherwise the check health may fail immediately.
+    #
+    # TODO(b/151232436): change to an explicit barrier if we have it.
+    dummy_value = ops.convert_to_tensor([])
+    logging.info("Waiting for the cluster, timeout = %d",
+                 self._check_health_initial_timeout)
+    try:
+      self._host_cross_device_ops.reduce(
+          reduce_util.ReduceOp.SUM,
+          dummy_value,
+          dummy_value,
+          experimental_hints=collective_util.Hints(
+              timeout_seconds=self._check_health_initial_timeout))
+      if context.is_async():
+        context.async_wait()
+    except errors.DeadlineExceededError:
+      raise RuntimeError(
+          "Timeout waiting for the cluster, timeout is %d seconds" %
+          self._check_health_initial_timeout)
+    self._check_health_thread_should_stop = threading.Event()
+    # Start the thread as daemon to avoid it blocking the program from exiting.
+    # We try best to shutdown the thread but __del__ is not guaranteed to be
+    # called when program exists.
+    self._check_health_thread = threading.Thread(
+        target=self._check_health,
+        daemon=True)
+    self._check_health_thread.start()
+
+  def _stop_check_health_thread(self):
+    self._check_health_thread_should_stop.set()
+    self._check_health_thread.join()
+    self._check_health_thread = None
 
   def _warn_nccl_no_gpu(self):
     if ((self._communication ==

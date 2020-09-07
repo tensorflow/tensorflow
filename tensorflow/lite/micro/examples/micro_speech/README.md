@@ -35,16 +35,14 @@ board. General information and instructions on using the board with TensorFlow
 Lite Micro can be found in the common
 [ARC targets description](/tensorflow/lite/micro/tools/make/targets/arc/README.md).
 
-This example is quantized with symmetric uint8 scheme. As noted in
-[kernels/arc_mli/README.md](/tensorflow/lite/micro/kernels/arc_mli/README.md),
-embARC MLI supports optimized kernels for int8 quantization only. Therefore,
-this example will only use TFLM reference kernels.
+This example uses asymmetric int8 quantization and can therefore leverage
+optimized int8 kernels from the embARC MLI library
 
-The ARC EM SDP board contains the rich set of extension interfaces. You can
-choose any compatible microphone and modify
+The ARC EM SDP board contains a rich set of extension interfaces. You can choose
+any compatible microphone and modify
 [audio_provider.cc](/tensorflow/lite/micro/examples/micro_speech/audio_provider.cc)
-file accordingly to use input from your specific camera. By default, results of
-running this example are printed to the console. If you would like to instead
+file accordingly to use input from your specific microphone. By default, results
+of running this example are printed to the console. If you would like to instead
 implement some target-specific actions, you need to modify
 [command_responder.cc](/tensorflow/lite/micro/examples/micro_speech/command_responder.cc)
 accordingly.
@@ -64,8 +62,13 @@ recommended to get started with example for mock data. The project for ARC EM
 SDP platform can be generated with the following command:
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile TARGET=arc_emsdp TAGS=no_arc_mli generate_micro_speech_mock_make_project
+make -f tensorflow/lite/micro/tools/make/Makefile \
+TARGET=arc_emsdp TAGS=reduce_codesize  \
+generate_micro_speech_mock_make_project
 ```
+
+Note that `TAGS=reduce_codesize` applies example specific changes of code to
+reduce total size of application. It can be ommited.
 
 ### Build and Run Example
 
@@ -107,6 +110,11 @@ get it started.
     *   Plug in the microSD card into the J11 connector.
     *   Push the RST button. If a red LED is lit beside RST button, push the CFG
         button.
+    *   Type or copy next commands one-by-another into serial terminal: `setenv
+        loadaddr 0x10800000 setenv bootfile app.elf setenv bootdelay 1 setenv
+        bootcmd fatload mmc 0 \$\{loadaddr\} \$\{bootfile\} \&\& bootelf
+        saveenv`
+    *   Push the RST button.
 
 6.  If you have the MetaWare Debugger installed in your environment:
 
@@ -567,7 +575,7 @@ using [ARM Mbed](https://github.com/ARMmbed/mbed-cli).
 
 The following instructions will help you build and deploy this example to
 [HIMAX WE1 EVB](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_board_brief)
-board. To undstand more about using this board, please check 
+board. To undstand more about using this board, please check
 [HIMAX WE1 EVB user guide](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide).
 
 ### Initial Setup
@@ -582,25 +590,25 @@ section for instructions on toolchain installation.
 
 #### Make Tool version
 
-A `'make'` tool is required for deploying Tensorflow Lite Micro
-applications on HIMAX WE1 EVB, See 
+A `'make'` tool is required for deploying Tensorflow Lite Micro applications on
+HIMAX WE1 EVB, See
 [Check make tool version](/tensorflow/lite/micro/tools/make/targets/arc/README.md#make-tool)
 section for proper environment.
 
 #### Serial Terminal Emulation Application
 
-There are 2 main purposes for HIMAX WE1 EVB Debug UART port 
+There are 2 main purposes for HIMAX WE1 EVB Debug UART port
 
-- print application output
-- burn application to flash by using xmodem send application binary
+-   print application output
+-   burn application to flash by using xmodem send application binary
 
-You can use any terminal emulation program (like [PuTTY](https://www.putty.org/) or [minicom](https://linux.die.net/man/1/minicom)).
-
+You can use any terminal emulation program (like [PuTTY](https://www.putty.org/)
+or [minicom](https://linux.die.net/man/1/minicom)).
 
 ### Generate Example Project
 
-The example project for HIMAX WE1 EVB platform can be generated with the following
-command:
+The example project for HIMAX WE1 EVB platform can be generated with the
+following command:
 
 Download related third party data
 
@@ -611,54 +619,56 @@ make -f tensorflow/lite/micro/tools/make/Makefile TARGET=himax_we1_evb third_par
 Generate micro speech project
 
 ```
-make -f tensorflow/lite/micro/tools/make/Makefile generate_micro_speech_make_project TARGET=himax_we1_evb 
+make -f tensorflow/lite/micro/tools/make/Makefile generate_micro_speech_make_project TARGET=himax_we1_evb
 ```
 
 ### Build and Burn Example
 
-Following the Steps to run micro speech example at HIMAX WE1 EVB platform. 
+Following the Steps to run micro speech example at HIMAX WE1 EVB platform.
 
 1.  Go to the generated example project directory.
 
     ```
     cd tensorflow/lite/micro/tools/make/gen/himax_we1_evb_arc/prj/micro_speech/make
     ```
-    
+
 2.  Build the example using
 
     ```
     make app
     ```
 
-3.  After example build finish, copy ELF file and map file to image generate tool directory.  
-    image generate tool directory  located at `'tensorflow/lite/micro/tools/make/downloads/himax_we1_sdk/image_gen_linux_v3/'` 
+3.  After example build finish, copy ELF file and map file to image generate
+    tool directory. \
+    image generate tool directory located at
+    `'tensorflow/lite/micro/tools/make/downloads/himax_we1_sdk/image_gen_linux_v3/'`
 
     ```
     cp micro_speech.elf himax_we1_evb.map ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
     ```
 
-4.  Go to flash image generate tool directory. 
+4.  Go to flash image generate tool directory.
 
     ```
     cd ../../../../../downloads/himax_we1_sdk/image_gen_linux_v3/
     ```
 
-5.  run image generate tool, generate flash image file. 
+5.  run image generate tool, generate flash image file.
 
     *   Before running image generate tool, by typing `sudo chmod +x image_gen`
-        and `sudo chmod +x sign_tool` to make sure it is executable. 
+        and `sudo chmod +x sign_tool` to make sure it is executable.
 
     ```
     image_gen -e micro_speech.elf -m himax_we1_evb.map -o out.img
-    ```    
-       
+    ```
 
 6.  Download flash image file to HIMAX WE1 EVB by UART:
 
-    *   more detail about download image through UART can be found at [HIMAX WE1 EVB update Flash image](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide#flash-image-update)
+    *   more detail about download image through UART can be found at
+        [HIMAX WE1 EVB update Flash image](https://github.com/HimaxWiseEyePlus/bsp_tflu/tree/master/HIMAX_WE1_EVB_user_guide#flash-image-update)
 
-After these steps, press reset button on the HIMAX WE1 EVB, you will see application output in the serial
-terminal and lighting LED.
+After these steps, press reset button on the HIMAX WE1 EVB, you will see
+application output in the serial terminal and lighting LED.
 
 ![Animation on Himax WE1 EVB](https://raw.githubusercontent.com/HimaxWiseEyePlus/bsp_tflu/master/HIMAX_WE1_EVB_user_guide/images/tflm_example_micro_speech_int8_led.gif)
 

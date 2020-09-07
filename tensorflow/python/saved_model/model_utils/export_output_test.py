@@ -29,6 +29,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import metrics as metrics_module
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model.model_utils import export_output as export_output_lib
@@ -373,10 +374,16 @@ class SupervisedOutputTest(test.TestCase):
       mean, update_op = metrics_module.mean_tensor(constant_op.constant([0]))
       metrics = {
           'metrics_1': (mean, update_op),
-          'metrics_2': (constant_op.constant([0]), control_flow_ops.no_op())
+          'metrics_2': (constant_op.constant([0]), control_flow_ops.no_op()),
+          # Keras metric's update_state() could return a Variable, rather than
+          # an Operation or Tensor.
+          'keras_1': (constant_op.constant([0.5]),
+                      variables.Variable(1.0, name='AssignAddVariableOp_3'))
       }
 
       outputter = MockSupervisedOutput(loss, predictions, metrics)
+      # If we get there, it means constructor succeeded; which is sufficient
+      # for testing the constructor.
 
       self.assertTrue(outputter.metrics['metrics_1/update_op'].name.startswith(
           'mean/update_op'))

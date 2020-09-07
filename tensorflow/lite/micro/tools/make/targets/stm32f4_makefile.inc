@@ -9,11 +9,12 @@ ifeq ($(TARGET), stm32f4)
   $(eval $(call add_third_party_download,$(CMSIS_URL),$(CMSIS_MD5),cmsis,patch_cmsis))
   $(eval $(call add_third_party_download,$(STM32_BARE_LIB_URL),$(STM32_BARE_LIB_MD5),stm32_bare_lib,))
 
+  # TODO(b/161478030) : change - Wno - vla to - Wvla and remove - Wno-shadow once
+  # we have a solution for fixing / avoiding being tripped up by these warnings.
   PLATFORM_FLAGS = \
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK \
     -DTF_LITE_STATIC_MEMORY \
     -DTF_LITE_MCU_DEBUG_LOG \
-    -fno-rtti \
     -fmessage-length=0 \
     -fno-exceptions \
     -fno-unwind-tables \
@@ -23,10 +24,12 @@ ifeq ($(TARGET), stm32f4)
     -MMD \
     -mcpu=cortex-m4 \
     -mthumb \
-    -std=gnu++11 \
-    -Wvla \
     -Wall \
     -Wextra \
+    -Wno-shadow \
+    -Wno-vla \
+    -Wno-strict-aliasing \
+    -Wno-type-limits \
     -Wno-unused-parameter \
     -Wno-missing-field-initializers \
     -Wno-write-strings \
@@ -34,11 +37,9 @@ ifeq ($(TARGET), stm32f4)
     -Wunused-function \
     -fno-delete-null-pointer-checks \
     -fomit-frame-pointer \
-    -fpermissive \
-    -fno-use-cxa-atexit \
     -g \
     -Os
-  CXXFLAGS += $(PLATFORM_FLAGS)
+  CXXFLAGS += $(PLATFORM_FLAGS) -std=gnu++11 -fno-rtti -fno-use-cxa-atexit
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
     --specs=nosys.specs \

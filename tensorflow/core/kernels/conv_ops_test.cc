@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/const_op.h"
 #include "tensorflow/cc/ops/image_ops.h"
 #include "tensorflow/cc/ops/nn_ops.h"
+#include "tensorflow/cc/ops/nn_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/fake_input.h"
@@ -32,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/platform/tf32_utils.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 
@@ -652,6 +654,8 @@ class FusedConv2DOpTest : public OpsTestBase {
       ops::Relu6(root.WithOpName("with_activation"), with_bias);
     } else if (activation_type == "Elu") {
       ops::Elu(root.WithOpName("with_activation"), with_bias);
+    } else if (activation_type == "LeakyRelu") {
+      ops::internal::LeakyRelu(root.WithOpName("with_activation"), with_bias);
     } else {
       ops::Identity(root.WithOpName("with_activation"), with_bias);
     }
@@ -721,6 +725,9 @@ class FusedConv2DOpTest : public OpsTestBase {
       ops::Relu6(root.WithOpName("with_activation"), with_fused_batch_norm.y);
     } else if (activation_type == "Elu") {
       ops::Elu(root.WithOpName("with_activation"), with_fused_batch_norm.y);
+    } else if (activation_type == "LeakyRelu") {
+      ops::internal::LeakyRelu(root.WithOpName("with_activation"),
+                               with_fused_batch_norm.y);
     } else {
       ops::Identity(root.WithOpName("with_activation"),
                     with_fused_batch_norm.y);
@@ -1038,9 +1045,10 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, ExplicitPaddingConvolution) {
 #endif
 
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolutionAndActivation) {
+  tensorflow::allow_tf32_execution(false);  // Requires full precision Conv2D op
   const int filter_size = 1;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBiasAndActivation(activation, filter_size,
                                             filter_count);
   }
@@ -1049,7 +1057,7 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, OneByOneConvolutionAndActivation) {
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, ImageSizeConvolutionAndActivation) {
   const int filter_size = TestFixture::kImageWidth;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBiasAndActivation(activation, filter_size,
                                             filter_count);
   }
@@ -1058,7 +1066,7 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest, ImageSizeConvolutionAndActivation) {
 TYPED_TEST_P(FusedConv2DWithBiasOpTest, SpatialConvolutionAndActivation) {
   const int filter_size = 3;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBiasAndActivation(activation, filter_size,
                                             filter_count);
   }
@@ -1069,7 +1077,7 @@ TYPED_TEST_P(FusedConv2DWithBiasOpTest,
              ExplicitPaddingConvolutionAndActivation) {
   const int filter_size = 3;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBiasAndActivation(
         activation, filter_size, filter_count,
         /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});
@@ -1112,7 +1120,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, ExplicitPaddingConvolution) {
 TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, OneByOneConvolutionAndActivation) {
   const int filter_size = 1;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBatchNormAndActivation(activation, filter_size,
                                                  filter_count);
   }
@@ -1122,7 +1130,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
              ImageSizeConvolutionAndActivation) {
   const int filter_size = TestFixture::kImageWidth;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBatchNormAndActivation(activation, filter_size,
                                                  filter_count);
   }
@@ -1131,7 +1139,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
 TYPED_TEST_P(FusedConv2DWithBatchNormOpTest, SpatialConvolutionAndActivation) {
   const int filter_size = 3;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBatchNormAndActivation(activation, filter_size,
                                                  filter_count);
   }
@@ -1142,7 +1150,7 @@ TYPED_TEST_P(FusedConv2DWithBatchNormOpTest,
              ExplicitPaddingConvolutionAndActivation) {
   const int filter_size = 3;
   const int filter_count = 12;
-  for (const string& activation : {"Relu", "Relu6", "Elu"}) {
+  for (const string& activation : {"Relu", "Relu6", "Elu", "LeakyRelu"}) {
     this->VerifyConv2DWithBatchNormAndActivation(
         activation, filter_size, filter_count,
         /*explicit_paddings=*/{0, 0, 1, 2, 3, 4, 0, 0});

@@ -111,7 +111,8 @@ class _Optimizer(object):
       A dict of variables, keyed by self._slot_names().
     """
     if self.slot_variable_creation_fn is not None:
-      return self.slot_variable_creation_fn(table, self._slot_names())
+      return self.slot_variable_creation_fn(table, self._slot_names(),
+                                            self._slot_initializers())
     else:
       slots = {}
       for slot, initializer in zip(self._slot_names(),

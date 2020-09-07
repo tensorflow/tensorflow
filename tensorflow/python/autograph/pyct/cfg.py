@@ -219,7 +219,7 @@ class GraphVisitor(object):
                       (gast.Break, gast.Continue, gast.Raise, gast.Pass))
 
   def _visit_internal(self, mode):
-    """Visits the CFG, depth-first."""
+    """Visits the CFG, breadth-first."""
     assert mode in (_WalkMode.FORWARD, _WalkMode.REVERSE)
     if mode == _WalkMode.FORWARD:
       open_ = [self.graph.entry]

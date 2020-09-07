@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_host_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_mem_allocator.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/tf_allocator_adapter.h"
 
 namespace xla {
@@ -89,12 +90,20 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
   CHECK_GT(local_devices.size(), 0);
   const se::Platform* platform = local_devices.front()->executor()->platform();
   std::vector<se::MultiDeviceAdapter::AllocatorWithStream> allocators;
+  bool enable_unified_memory;
+  Status status = tensorflow::ReadBoolFromEnvVar("TF_FORCE_UNIFIED_MEMORY",
+                                                 false, &enable_unified_memory);
+  if (!status.ok()) {
+    LOG(ERROR) << "Unable to read TF_FORCE_UNIFIED_MEMORY: "
+               << status.error_message();
+  }
+
   for (auto& local_device : local_devices) {
     se::StreamExecutor* executor = local_device->executor();
     int device_ordinal = executor->device_ordinal();
     auto sub_allocator = absl::make_unique<tensorflow::GPUMemAllocator>(
         executor, tensorflow::PlatformGpuId(device_ordinal),
-        /*use_unified_memory=*/false,
+        /*use_unified_memory=*/enable_unified_memory,
         /*alloc_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>(),
         /*free_visitors=*/std::vector<tensorflow::SubAllocator::Visitor>());
 
@@ -104,7 +113,10 @@ StatusOr<std::unique_ptr<se::MultiDeviceAdapter>> CreateBFCAllocator(
       return Unavailable("Failed to query available memory from device %i",
                          device_ordinal);
     }
-    size_t allocator_memory = free_memory * memory_fraction;
+    // To allow full GPU memory to be visible to the BFC allocator if using
+    // unified memory.
+    size_t allocator_memory =
+        enable_unified_memory ? total_memory : free_memory * memory_fraction;
     if (preallocate) {
       LOG(INFO) << "XLA backend allocating " << allocator_memory
                 << " bytes on device " << device_ordinal
@@ -207,9 +219,9 @@ StatusOr<std::string> NcclIdStore::GetNcclUniqueId(const NcclCliqueKey& key) {
   return cache_.emplace(key_string, result.ValueOrDie()).first->second;
 }
 
-std::vector<std::unique_ptr<Device>> BuildLocalDevices(
+std::vector<std::unique_ptr<PjRtDevice>> BuildLocalDevices(
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states) {
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<std::unique_ptr<PjRtDevice>> devices;
   for (auto& local_device : local_device_states) {
     int device_ordinal = local_device->device_ordinal();
     const se::DeviceDescription& description =
@@ -225,7 +237,7 @@ std::vector<std::unique_ptr<Device>> BuildLocalDevices(
 Status BuildDistributedDevices(
     std::vector<std::unique_ptr<LocalDeviceState>> local_device_states,
     std::shared_ptr<DistributedRuntimeClient> distributed_client, int node_id,
-    std::vector<std::unique_ptr<Device>>* devices,
+    std::vector<std::unique_ptr<PjRtDevice>>* devices,
     GpuExecutableRunOptions* gpu_executable_run_options) {
   LocalTopologyProto local_topology;
   local_topology.set_node_id(node_id);
@@ -286,8 +298,8 @@ Status BuildDistributedDevices(
 GpuDevice::GpuDevice(int id,
                      std::unique_ptr<LocalDeviceState> local_device_state,
                      std::string device_kind, int node_id)
-    : Device(id, std::move(local_device_state), kGpuPlatformName,
-             std::move(device_kind), node_id) {}
+    : PjRtDevice(id, std::move(local_device_state), kGpuPlatformName,
+                 std::move(device_kind), node_id) {}
 
 StatusOr<std::shared_ptr<PjRtClient>> GetNvidiaGpuClient(
     bool asynchronous, const GpuAllocatorConfig& allocator_config,
@@ -302,7 +314,7 @@ StatusOr<std::shared_ptr<PjRtClient>> GetNvidiaGpuClient(
   auto host_memory_allocator =
       GetGpuHostAllocator(local_device_states.front()->executor());
 
-  std::vector<std::unique_ptr<Device>> devices;
+  std::vector<std::unique_ptr<PjRtDevice>> devices;
   auto gpu_run_options = absl::make_unique<GpuExecutableRunOptions>();
   if (distributed_client) {
     TF_RETURN_IF_ERROR(BuildDistributedDevices(

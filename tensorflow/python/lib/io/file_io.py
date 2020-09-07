@@ -202,14 +202,14 @@ class FileIO(object):
   def __iter__(self):
     return self
 
-  def next(self):
+  def __next__(self):
     retval = self.readline()
     if not retval:
       raise StopIteration()
     return retval
 
-  def __next__(self):
-    return self.next()
+  def next(self):
+    return self.__next__()
 
   def flush(self):
     """Flushes the Writable file.

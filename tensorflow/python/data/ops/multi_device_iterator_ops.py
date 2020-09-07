@@ -335,8 +335,7 @@ class MultiDeviceIterator(object):
     result = []
     for i, device in enumerate(self._devices):
       with ops.device(device):
-        result.append(
-            iterator_ops.get_next_as_optional(self._device_iterators[i]))
+        result.append(self._device_iterators[i].get_next_as_optional())
     return result
 
   @property
@@ -589,10 +588,10 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
   def __iter__(self):
     return self
 
-  def __next__(self):
-    return self.next()
-
   def next(self):
+    return self.__next__()
+
+  def __next__(self):
     try:
       return self.get_next()
     except errors.OutOfRangeError:
@@ -602,8 +601,7 @@ class OwnedMultiDeviceIterator(composite_tensor.CompositeTensor):
     result = []
     for i, device in enumerate(self._devices):
       with ops.device(device):
-        result.append(
-            iterator_ops.get_next_as_optional(self._device_iterators[i]))
+        result.append(self._device_iterators[i].get_next_as_optional())
     return result
 
   @property

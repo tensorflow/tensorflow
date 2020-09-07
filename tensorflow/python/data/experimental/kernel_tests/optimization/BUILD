@@ -305,6 +305,24 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "reorder_data_discarding_ops_test",
+    size = "small",
+    srcs = ["reorder_data_discarding_ops_test.py"],
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:errors",
+        "//tensorflow/python/data/experimental/ops:testing",
+        "//tensorflow/python/data/kernel_tests:test_base",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+tf_py_test(
     name = "shuffle_and_repeat_fusion_test",
     srcs = ["shuffle_and_repeat_fusion_test.py"],
     tags = [

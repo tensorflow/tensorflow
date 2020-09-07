@@ -26,7 +26,6 @@ package(default_visibility = ["//visibility:private"])
 transitive_hdrs(
     name = "included_headers",
     deps = [
-        "//tensorflow/c/experimental:network",
         "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
         "//tensorflow/compiler/mlir:mlir_graph_optimization_pass",
         "//tensorflow/core:core_cpu",
@@ -110,8 +109,8 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python:cond_v2",
     "//tensorflow/python:distributed_framework_test_lib",
     "//tensorflow/python/distribute:distribute_test_lib_pip",
-    "//tensorflow/python:loss_scale",
-    "//tensorflow/python:loss_scale_optimizer",
+    "//tensorflow/python/training/experimental:loss_scale",
+    "//tensorflow/python/training/experimental:loss_scale_optimizer",
     "//tensorflow/python:memory_checker",
     "//tensorflow/python:meta_graph_testdata",
     "//tensorflow/python:util_example_parser_configuration",
@@ -121,6 +120,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/data/experimental/kernel_tests:stats_dataset_test_base",
     "//tensorflow/python/data/experimental/ops:testing",
     "//tensorflow/python/data/experimental/service:server_lib",
+    "//tensorflow/python/ops/ragged:ragged_tensor_test_ops",
     "//tensorflow/python/data/kernel_tests:test_base",
     "//tensorflow/python/debug:debug_pip",
     "//tensorflow/python/distribute:combinations",
@@ -132,7 +132,7 @@ COMMON_PIP_DEPS = [
     "//tensorflow/python/keras/mixed_precision/experimental:test_util",
     "//tensorflow/python/keras/tests:model_subclassing_test_util",
     "//tensorflow/python/keras/tests:model_architectures",
-    "//tensorflow/python/keras/benchmarks:benchmark_util",
+    "//tensorflow/python/keras/benchmarks:keras_benchmark_lib_pip",
     "//tensorflow/python/kernel_tests:cudnn_deterministic_base",
     "//tensorflow/python/kernel_tests:bias_op_base",
     "//tensorflow/python/kernel_tests/random:util",
@@ -151,6 +151,10 @@ COMMON_PIP_DEPS = [
     "//tensorflow/tools/docs:generate_lib",
     "//tensorflow/tools/docs:parser",
     "//tensorflow/tools/docs:py_guide_parser",
+    "//tensorflow/python/distribute/client:client",
+    "//tensorflow/python/distribute/client:parameter_server_client",
+    "//tensorflow/python/distribute/client:remote_eager_lib",
+    "//tensorflow/python/distribute/client:metric_utils",
 ]
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -215,6 +219,7 @@ filegroup(
         "@sobol_data//:LICENSE",
         "@tblib_archive//:LICENSE",
         "@termcolor_archive//:COPYING.txt",
+        "@typing_extensions_archive//:LICENSE",
         "@zlib//:zlib.h",
         "@clog//:LICENSE",
         "@cpuinfo//:LICENSE",

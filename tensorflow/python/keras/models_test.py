@@ -278,8 +278,19 @@ class TestModelCloning(keras_parameterized.TestCase):
       has_placeholder = _has_placeholder(graph)
       self.assertFalse(has_placeholder)
 
-  def test_functional_cloning_with_tensor_kwarg(self):
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters([
+      {'testcase_name': 'clone_weights', 'share_weights': False},
+      {'testcase_name': 'share_weights', 'share_weights': True},
+  ])
+  def test_functional_cloning_with_tensor_kwarg(self, share_weights):
     """Test that cloning works with models that use Tensor kwargs."""
+
+    if share_weights:
+      clone_fn = functools.partial(
+          keras.models.clone_model, clone_function=models.share_weights)
+    else:
+      clone_fn = keras.models.clone_model
 
     class LayerWithTensorKwarg(keras.layers.Layer):
 
@@ -295,13 +306,21 @@ class TestModelCloning(keras_parameterized.TestCase):
     model.add_loss(math_ops.reduce_sum(model.outputs))
 
     input_arr = np.random.random((1, 3)).astype(np.float32)
-    with ops.Graph().as_default():
-      with self.session() as sess:
-        clone = keras.models.clone_model(model)
-        self.assertLen(clone.losses, 1)
+    clone = clone_fn(model)
 
-        loss = sess.run(clone.losses[0], feed_dict={clone.input: input_arr})
-        self.assertAllClose(np.sum(input_arr), loss)
+    if context.executing_eagerly():
+      clone(input_arr)
+      loss = clone.losses[0]
+    else:
+      with self.session() as sess:
+        clone(input_arr)
+        if share_weights:
+          self.skipTest('Weight sharing with inputs in call **kwargs does '
+                        'not work correctly in v1')
+        else:
+          feed_dict = {clone.input: input_arr}
+        loss = sess.run(clone.losses[0], feed_dict=feed_dict)
+    self.assertAllClose(np.sum(input_arr), loss)
 
 
 def _has_placeholder(graph):

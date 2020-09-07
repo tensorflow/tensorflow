@@ -108,12 +108,16 @@ class KerasComponentsBenchmarks(test.Benchmark):
     self.report_benchmark(
         iters=num_iters,
         wall_time=mean_us,
-        extras={
-            "examples_per_sec":
-                float("{0:.3f}".format(num_iters / total_time)),
-            "us_per_example":
-                float("{0:.3f}".format(total_time * 1e6 / num_iters))
-        })
+        metrics=[
+            {
+                "name": "exp_per_sec",
+                "value": float("{0:.3f}".format(num_iters / total_time))
+            },
+            {
+                "name": "us_per_exp",
+                "value": float("{0:.3f}".format(total_time * 1e6 / num_iters))
+            },
+        ])
 
   def benchmark_keras_model_subclassed(self):
     model = SubclassedKerasModel()

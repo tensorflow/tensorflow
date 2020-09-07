@@ -44,11 +44,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/pjrt/pjrt_client.h"
 #include "tensorflow/compiler/xla/python/bfloat16.h"
 #include "tensorflow/compiler/xla/python/dlpack.h"
+#include "tensorflow/compiler/xla/python/jax_jit.h"
 #include "tensorflow/compiler/xla/python/ops.h"
 #include "tensorflow/compiler/xla/python/outfeed_receiver_py.h"
 #include "tensorflow/compiler/xla/python/py_buffer.h"
 #include "tensorflow/compiler/xla/python/py_executable.h"
 #include "tensorflow/compiler/xla/python/python_ref_manager.h"
+#include "tensorflow/compiler/xla/python/pytree.h"
 #include "tensorflow/compiler/xla/python/traceback.h"
 #include "tensorflow/compiler/xla/python/types.h"
 #include "tensorflow/compiler/xla/service/custom_call_target_registry.h"
@@ -169,13 +171,13 @@ class TraceMeWrapper : public tensorflow::profiler::TraceMeWrapper {
 void BuildProfilerSubmodule(py::module* m) {
   py::module profiler =
       m->def_submodule("profiler", "TensorFlow profiler integration");
-  py::class_<tensorflow::ProfilerServer,
-             std::unique_ptr<tensorflow::ProfilerServer>>
+  py::class_<tensorflow::profiler::ProfilerServer,
+             std::unique_ptr<tensorflow::profiler::ProfilerServer>>
       profiler_server_class(profiler, "ProfilerServer");
   profiler.def(
       "start_server",
-      [](int port) -> std::unique_ptr<tensorflow::ProfilerServer> {
-        auto server = absl::make_unique<tensorflow::ProfilerServer>();
+      [](int port) -> std::unique_ptr<tensorflow::profiler::ProfilerServer> {
+        auto server = absl::make_unique<tensorflow::profiler::ProfilerServer>();
         server->StartProfilerServer(port);
         return server;
       },
@@ -437,26 +439,26 @@ PYBIND11_MODULE(xla_extension, m) {
                 device_assignment);
           });
 
-  py::class_<Device, ClientAndPtr<Device>>(
+  py::class_<PjRtDevice, ClientAndPtr<PjRtDevice>>(
       m, "Device",
       "A descriptor of an available device.\n\nSubclasses are used to "
       "represent specific types of devices, e.g. CPUs, GPUs. Subclasses may "
       "have additional properties specific to that device type.")
       .def_property_readonly(
-          "id", &Device::id,
+          "id", &PjRtDevice::id,
           "Integer ID of this device.\n\nUnique across all available devices "
           "of this type, including remote devices on multi-host platforms.")
-      .def_property_readonly("host_id", &Device::host_id,
+      .def_property_readonly("host_id", &PjRtDevice::host_id,
                              "Integer ID of this device's host.\n\n"
                              "This is always 0 except on multi-host platforms.")
-      .def_property_readonly("platform", &Device::platform_name)
-      .def_property_readonly("device_kind", &Device::device_kind)
+      .def_property_readonly("platform", &PjRtDevice::platform_name)
+      .def_property_readonly("device_kind", &PjRtDevice::device_kind)
       .def_property_readonly(
           "client",
-          [](const ClientAndPtr<Device>& device) { return device.client; })
-      .def("__str__", &Device::DebugString)
+          [](const ClientAndPtr<PjRtDevice>& device) { return device.client; })
+      .def("__str__", &PjRtDevice::DebugString)
       .def("transfer_to_infeed",
-           [](const Device& device, const LiteralSlice& literal) {
+           [](const PjRtDevice& device, const LiteralSlice& literal) {
              GlobalPyRefManager()->CollectGarbage();
              py::gil_scoped_release gil_release;
              TF_ASSIGN_OR_RETURN(LocalDeviceState * local_device,
@@ -466,7 +468,8 @@ PYBIND11_MODULE(xla_extension, m) {
            })
       .def(
           "transfer_from_outfeed",
-          [](const Device& device, const Shape& shape) -> StatusOr<py::object> {
+          [](const PjRtDevice& device,
+             const Shape& shape) -> StatusOr<py::object> {
             GlobalPyRefManager()->CollectGarbage();
             std::shared_ptr<Literal> literal_shared;
             {
@@ -490,12 +493,12 @@ PYBIND11_MODULE(xla_extension, m) {
             return LiteralToPython(std::move(literal_shared));
           });
 
-  py::class_<CpuDevice, Device, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
+  py::class_<CpuDevice, PjRtDevice, ClientAndPtr<CpuDevice>>(m, "CpuDevice")
       .def("__repr__", [](const CpuDevice& device) {
         return absl::StrFormat("CpuDevice(id=%i)", device.id());
       });
 
-  py::class_<GpuDevice, Device, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
+  py::class_<GpuDevice, PjRtDevice, ClientAndPtr<GpuDevice>>(m, "GpuDevice")
       .def("__repr__", [](const GpuDevice& device) {
         return absl::StrFormat("GpuDevice(id=%i)", device.id());
       });
@@ -539,7 +542,7 @@ PYBIND11_MODULE(xla_extension, m) {
            &PyClient::CreateDeviceToHostChannelHandle)
       .def("create_host_to_device_channel_handle",
            &PyClient::CreateHostToDeviceChannelHandle)
-      .def("buffer_from_pyval", &PyClient::BufferFromPyal, py::arg("argument"),
+      .def("buffer_from_pyval", &PyClient::BufferFromPyval, py::arg("argument"),
            py::arg("device") = nullptr, py::arg("force_copy") = false,
            py::arg("host_buffer_semantics") =
                PjRtBuffer::HostBufferSemantics::kZeroCopy)
@@ -654,7 +657,7 @@ PYBIND11_MODULE(xla_extension, m) {
   PyTypeObject* buffer_type = reinterpret_cast<PyTypeObject*>(buffer.ptr());
   buffer_type->tp_as_buffer = PyBuffer::BufferProtocol();
 
-  py::class_<PyExecutable, std::unique_ptr<PyExecutable>> executable(
+  py::class_<PyExecutable, std::shared_ptr<PyExecutable>> executable(
       m, "Executable");
   executable.def_property_readonly("client", &PyExecutable::client)
       .def("local_logical_device_ids", &PyExecutable::local_logical_device_ids)
@@ -737,7 +740,7 @@ PYBIND11_MODULE(xla_extension, m) {
       .def(py::init([](const py::bytes& serialized_hlo_module_proto)
                         -> std::unique_ptr<XlaComputation> {
         HloModuleProto proto;
-        proto.ParseFromString(serialized_hlo_module_proto);
+        proto.ParseFromString(std::string(serialized_hlo_module_proto));
         return absl::make_unique<XlaComputation>(proto);
       }))
       .def("get_hlo_module", &GetHloModule)
@@ -897,6 +900,8 @@ PYBIND11_MODULE(xla_extension, m) {
   BuildOpsSubmodule(&m);
   BuildProfilerSubmodule(&m);
   BuildOutfeedReceiverSubmodule(&m);
+  BuildPytreeSubmodule(m);
+  BuildJaxjitSubmodule(m);
 
   py::class_<DistributedRuntimeService,
              std::unique_ptr<DistributedRuntimeService>>

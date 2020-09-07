@@ -15,7 +15,7 @@
 # pylint: disable=invalid-name
 """Inception V3 model for Keras.
 
-Reference paper:
+Reference:
   - [Rethinking the Inception Architecture for Computer Vision](
       http://arxiv.org/abs/1512.00567) (CVPR 2016)
 """
@@ -108,7 +108,7 @@ def InceptionV3(
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '

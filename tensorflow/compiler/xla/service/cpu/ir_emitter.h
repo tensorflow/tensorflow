@@ -190,6 +190,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
  private:
   Status HandleSliceToDynamic(HloInstruction* hlo);
   Status HandlePadToStatic(HloInstruction* hlo);
+  Status HandleTopK(HloInstruction* hlo);
   Status HandleAllReduceSingleReplica(HloInstruction* crs);
   Status HandleAllReduceMultipleReplica(HloInstruction* crs);
 

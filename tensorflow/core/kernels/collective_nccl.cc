@@ -58,7 +58,8 @@ Status NcclBase::InitializeCollectiveParams(CollectiveParams* col_params) {
   return Status::OK();
 }
 
-Status NcclBase::InitializeCollectiveContext(CollectiveContext* col_ctx) {
+Status NcclBase::InitializeCollectiveContext(
+    std::shared_ptr<CollectiveContext> col_ctx) {
   col_ctx_ = col_ctx;
   col_params_ = &col_ctx->col_params;
   return collective_util::InitializeDeviceAndLocality(

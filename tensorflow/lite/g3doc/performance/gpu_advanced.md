@@ -122,8 +122,8 @@ TFLite GPU for Android C/C++ uses the [Bazel](https://bazel.io) build system.
 The delegate can be built, for example, using the following command:
 
 ```sh
-bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:gl_delegate                  # for static library
-bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_gl.so  # for dynamic library
+bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:delegate                           # for static library
+bazel build -c opt --config android_arm64 tensorflow/lite/delegates/gpu:libtensorflowlite_gpu_delegate.so  # for dynamic library
 ```
 
 ### iOS (Swift)
@@ -243,6 +243,24 @@ as well. This includes all flavors of quantization, including:
 
 To optimize performance, use models that have floating-point input & output
 tensors.
+
+#### How does this work?
+
+Since the GPU backend only supports floating-point execution, we run quantized
+models by giving it a ‘floating-point view’ of the original model. At a
+high-level, this entails the following steps:
+
+*   *Constant tensors* (such as weights/biases) are dequantized once into the
+    GPU memory. This happens when the delegate is applied to the TFLite
+    Interpreter.
+
+*   *Inputs and outputs* to the GPU program, if 8-bit quantized, are dequantized
+    and quantized (respectively) for each inference. This is done on the CPU
+    using TFLite’s optimized kernels.
+
+*   The GPU program is modified to mimic quantized behavior by inserting
+    *quantization simulators* between operations. This is necessary for models
+    where ops expect activations to follow bounds learnt during quantization.
 
 This feature can be enabled using delegate options as follows:
 

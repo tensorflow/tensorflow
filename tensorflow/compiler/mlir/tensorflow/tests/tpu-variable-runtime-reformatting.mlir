@@ -20,8 +20,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
                {T = ["tfdtype$DT_INT32", "tfdtype$DT_RESOURCE",
                  "tfdtype$DT_RESOURCE", "tfdtype$DT_RESOURCE",
                  "tfdtype$DT_RESOURCE"], body = @while_body_7560,
-                cond = @while_cond_7550, device = "", is_stateless = false,
-                output_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>]}
+                cond = @while_cond_7550, device = "", is_stateless = false}
          : (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
             tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
          -> (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
@@ -62,9 +61,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
         NumDynamicShapes = 0 : i64,
         // The metadata encodes 2 parameter and two return values.
         metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
-        mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<!tf.string>)
-      tf_device.return %2#0, %2#1 : tensor<!tf.string>, tensor<!tf.string>
-    }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<!tf.string>)
+        mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+      tf_device.return %2#0, %2#1 : tensor<!tf.string>, tensor<2x!tf.string>
+    }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
     "tf_device.launch"() ( {
       "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
       tf_device.return
@@ -87,7 +86,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       "tf_device.launch"() ( {
         "tf.TPUExecuteAndUpdateVariables"(%id, %arg31, %compile#1)
               {device_var_reads_indices = [0, 1], device_var_updates_indices = [0, 1]}
-                : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<!tf.string>) -> ()
+                : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<2x!tf.string>) -> ()
         tf_device.return
       }) {device = "TPU_REPLICATED_CORE_0"} : () -> ()
       %ret = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>
@@ -154,9 +153,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
         NumDynamicShapes = 0 : i64,
         // The metadata encodes 2 parameter and two return values.
         metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
-        mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<!tf.string>)
-      tf_device.return %2#0, %2#1 : tensor<!tf.string>, tensor<!tf.string>
-    }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<!tf.string>)
+        mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+      tf_device.return %2#0, %2#1 : tensor<!tf.string>, tensor<2x!tf.string>
+    }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
     "tf_device.launch"() ( {
       "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
       tf_device.return
@@ -174,7 +173,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
         "tf.TPUExecuteAndUpdateVariables"(%arg30, %arg31, %arg32, %compile#1)
               {device_var_reads_indices = [0, 1], device_var_updates_indices = [0, 1]}
                 : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>,
-                   tensor<*x!tf.resource<tensor<f32>>>, tensor<!tf.string>) -> ()
+                   tensor<*x!tf.resource<tensor<f32>>>, tensor<2x!tf.string>) -> ()
         tf_device.return
       }) {device = "TPU_REPLICATED_CORE_0"} : () -> ()
       tf_device.return
@@ -217,8 +216,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
                {T = ["tfdtype$DT_INT32", "tfdtype$DT_RESOURCE",
                  "tfdtype$DT_RESOURCE", "tfdtype$DT_RESOURCE",
                  "tfdtype$DT_RESOURCE"], body = @while_body_7560,
-                cond = @while_cond_7550, device = "", is_stateless = false,
-                output_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>]}
+                cond = @while_cond_7550, device = "", is_stateless = false}
          : (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
             tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
          -> (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
@@ -241,9 +239,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
         NumDynamicShapes = 0 : i64,
         // The metadata encodes 2 parameter and two return values.
         metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
-        mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<!tf.string>)
-      tf_device.return %2#0, %2#1 : tensor<!tf.string>, tensor<!tf.string>
-    }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<!tf.string>)
+        mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+      tf_device.return %2#0, %2#1 : tensor<!tf.string>, tensor<2x!tf.string>
+    }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
     "tf_device.launch"() ( {
       "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
       tf_device.return
@@ -256,7 +254,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
         "tf_device.launch"() ( {
           "tf.TPUExecuteAndUpdateVariables"(%id, %arg31, %compile#1)
                 {device_var_reads_indices = [0, 1], device_var_updates_indices = [0, 1]}
-                  : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<!tf.string>) -> ()
+                  : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<2x!tf.string>) -> ()
           tf_device.return
         }) {device = "TPU_REPLICATED_CORE_0"} : () -> ()
         tf_device.return
@@ -305,8 +303,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
                {T = ["tfdtype$DT_INT32", "tfdtype$DT_RESOURCE",
                  "tfdtype$DT_RESOURCE", "tfdtype$DT_RESOURCE"],
                 body = @while_body_7560,
-                cond = @while_cond_7550, device = "", is_stateless = false,
-                output_shapes = [#tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>, #tf.shape<>]}
+                cond = @while_cond_7550, device = "", is_stateless = false}
          : (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
             tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>)
          -> (tensor<i32>, tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<f32>>>,
@@ -345,9 +342,9 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
         NumDynamicShapes = 0 : i64,
         // The metadata encodes 2 parameter and two return values.
         metadata = "\0A\0E\08\01\18\01\22\08\08\01\1A\01\01\22\01\00\0A \08\01\12\10\12\02\08\03\12\02\08\03\12\02\08\01\12\02\08 \18\01\22\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\12\0A\0A\08\08\01\1A\01\01\22\01\00\18\02 \01",
-        mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<!tf.string>)
-      tf_device.return %2#0, %2#1 : tensor<!tf.string>, tensor<!tf.string>
-    }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<!tf.string>)
+        mlir_module = "..."} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
+      tf_device.return %2#0, %2#1 : tensor<!tf.string>, tensor<2x!tf.string>
+    }) {device = "/device:CPU:0"} : () -> (tensor<!tf.string>, tensor<2x!tf.string>)
     "tf_device.launch"() ( {
       "tf.TPUCompileSucceededAssert"(%compile#0) : (tensor<!tf.string>) -> ()
       tf_device.return
@@ -370,7 +367,7 @@ module attributes {tf.versions = {bad_consumers = [], min_consumer = 0 : i32, pr
       "tf_device.launch"() ( {
         "tf.TPUExecuteAndUpdateVariables"(%id, %arg31, %compile#1)
               {device_var_reads_indices = [0, 1], device_var_updates_indices = [0, 1]}
-                : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<!tf.string>) -> ()
+                : (tensor<*x!tf.resource<tensor<f32>>>, tensor<*x!tf.resource<tensor<3x3x1x32xf32>>>, tensor<2x!tf.string>) -> ()
         tf_device.return
       }) {device = "TPU_REPLICATED_CORE_0"} : () -> ()
       %ret = "tf.Const"() {value = dense<0> : tensor<i32>} : () -> tensor<i32>

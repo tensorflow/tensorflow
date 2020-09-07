@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -25,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/tpu/kernels/tpu_compile_op_support.h"
 #include "tensorflow/core/tpu/kernels/tpu_executable_info.pb.h"
+#include "tensorflow/core/tpu/kernels/tpu_mesh_state_c_api.h"
+#include "tensorflow/core/tpu/kernels/tpu_mesh_state_interface.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_c_api.h"
 #include "tensorflow/core/tpu/kernels/tpu_program_group_interface.h"
 #include "tensorflow/stream_executor/tpu/tpu_platform_interface.h"
@@ -84,6 +88,14 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
  public:
   using Status = ::stream_executor::port::Status;
 
+  // Compiles Mlir or TF function computation by lowering into HLO IR and
+  // returns TPU programs ready for execution.
+  static Status CompileAndBuild(
+      const TpuCompilationRequestProto& compilation_request,
+      const XLA_TpuMeshState* mesh_state,
+      TpuProgramGroupInterface* tpu_program_group_interface);
+
+  // Compiles HLO IR and returns TPU programs ready for execution.
   static Status Build(
       const TPUCompileMetadataProto& metadata,
       const tensorflow::XlaCompiler::CompilationResult& compilation_result,
@@ -92,11 +104,19 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
       TpuProgramGroupInterface* tpu_program_group_interface);
 
+  // Creates the `count` instances of uninitialized `XLA_TpuPrograms`.
+  static std::unique_ptr<TpuProgramGroup> Create(int count);
+
+  // Initializes `TpuProgramGroup` object with `xla_tpu_programs`.
+  void Initialize(absl::Span<XLA_TpuProgram* const> xla_tpu_programs);
+
   TpuProgramGroup() = default;
   TpuProgramGroup(TpuProgramGroup&& other);
   TpuProgramGroup& operator=(TpuProgramGroup&&) = delete;
 
-  size_t program_count() const override { return tpu_programs_.size(); }
+  bool has_sharding_program() const override;
+
+  size_t program_count() const override;
 
   int64_t program_size() const override;
 
@@ -107,55 +127,49 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   Status LogCompilationStats(const TpuCompilationCacheKey& key,
                              absl::Duration duration) override;
 
-  const std::vector<bool>& may_modify_variables() const override {
-    return may_modify_variables_;
-  }
-  void set_may_modify_variables(const std::vector<bool>& may_modify_variables) {
-    may_modify_variables_ = may_modify_variables;
-  }
+  const std::vector<bool>& may_modify_variables_list() const override;
+  void set_may_modify_variables(const std::vector<bool>& may_modify_variables);
+  bool may_modify_variables(int index) const override;
 
-  const tf2xla::HostComputeMetadata& host_compute_metadata() const {
-    return host_compute_metadata_;
-  }
-  void set_host_compute_metadata(
-      const tf2xla::HostComputeMetadata& host_compute_metadata) {
-    host_compute_metadata_ = host_compute_metadata;
-  }
+  const std::vector<XLA_TpuProgram*>& tpu_programs() const;
+  std::vector<XLA_TpuProgram*> tpu_programs(TpuProgramShardingType type) const;
+  const XLA_TpuProgram* tpu_program(int index) const;
+  void set_tpu_programs(absl::Span<XLA_TpuProgram* const> tpu_programs);
 
-  const std::vector<XLA_TpuProgram*>& tpu_programs() const {
-    return tpu_programs_;
-  }
-  void set_tpu_programs(std::vector<XLA_TpuProgram*> tpu_programs) {
-    tpu_programs_ = tpu_programs;
-  }
+  const TPUExecutableInfoProto& executable_info(int index) const;
 
-  const TPUExecutableInfoProto& executable_info() const {
-    return executable_info_;
-  }
-  void set_executable_info(const TPUExecutableInfoProto& executable_info) {
-    executable_info_ = executable_info;
-  }
-
-  const TPUHostTransferInfoProto& host_transfer_info() const {
-    return host_transfer_info_;
-  }
-  void set_host_transfer_info(
-      const TPUHostTransferInfoProto& host_transfer_info) {
-    host_transfer_info_ = host_transfer_info;
-  }
-
-  void set_hlo_metadata(const xla::HloProto& hlo_metadata);
+  const TPUHostTransferInfoProto& host_transfer_info(int index) const;
+  void set_hlo_metadatas(absl::Span<const xla::HloProto> hlo_metadatas);
+  const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
+
+  // Deserializes `GetTpuProgramResponse` proto into an `XLA_TpuProgram` for
+  // the given core `index`.
+  Status DeserializeFromProto(int index, TpuSerializedProto proto);
+
+  // Serializes executable proto from the TPU program for the given core
+  // `index`.
+  Status SerializeExecutable(int index,
+                             TpuExecutableSerializedProto* executable) const;
+
+  // Serializes compiler metadata of the TPU program for the given core `index`.
+  Status SerializeCompilerMetadata(
+      int index, CompilerMetadataSerializedProto* compiler_metadata) const;
+
+  // Serializes host compute metadata of the TPU program for the given core
+  // `index`.
+  Status SerializeHostComputeMetadata(
+      int index,
+      HostComputeMetadataSerializedProto* host_compute_metadata) const;
 
  private:
   void RefreshHloMetadatasPtrs();
 
   std::vector<bool> may_modify_variables_;
-  tf2xla::HostComputeMetadata host_compute_metadata_;
 
   std::vector<XLA_TpuProgram*> tpu_programs_;  // Not owned.
-  TPUExecutableInfoProto executable_info_;
-  TPUHostTransferInfoProto host_transfer_info_;
+  std::vector<TPUExecutableInfoProto> executable_infos_;
+  std::vector<TPUHostTransferInfoProto> host_transfer_infos_;
 
   // To be consistent with the TpuProgramGroupInterface::hlo_metadatas()
   // signature, we store HloProto values in hlo_metadatas_ when

@@ -19,6 +19,8 @@ package tensorflow.tpu;
 import "tensorflow/compiler/tf2xla/host_compute_metadata.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
+import "tensorflow/core/framework/attr_value.proto";
+import "tensorflow/core/framework/function.proto";
 import "tensorflow/core/framework/tensor.proto";
 import "tensorflow/core/framework/tensor_shape.proto";
 import "tensorflow/core/framework/types.proto";
@@ -141,4 +143,43 @@ message TpuAotCompilationRequestProto {
 
   // XLA compiler compilation result.
   XlaCompilationResultProto compilation_result = 7;
+}
+
+// TPU compilation request for compiling computations into XLA HLO IR and build
+// TPU programs.
+message TpuCompilationRequestProto {
+  // A flag reserved for using experimental version of the compilation. By
+  // default the value should be false.
+  bool use_experimental = 1;
+
+  // Use mlir to lower computation(s) to Hlo.
+  bool use_mlir = 2;
+
+  // If true, returns hlo metadatas.
+  bool return_hlo_protos = 3;
+
+  // If true, unloads cache on session close.
+  bool unload_cache_on_session_close = 4;
+
+  // Compilation metadata.
+  TPUCompileMetadataProto metadata = 5;
+
+  // Computation argument shapes.
+  repeated TensorShapeProto arg_shapes = 6;
+
+  // Input tensor that gives const guarantee to the TF runtime.
+  repeated TensorProto guaranteed_constants = 7;
+
+  // MLIR module definition.
+  string mlir_module = 8;
+
+  // A set of named functions used as the input to lowering to Hlo when mlir is
+  // not used.
+  FunctionDefLibrary fdef_lib = 9;
+
+  // The version of the graph definition used to lower TF function to Hlo.
+  int32 graph_def_version = 10;
+
+  // Function containing the computation to compile.
+  NameAttrList function = 11;
 }

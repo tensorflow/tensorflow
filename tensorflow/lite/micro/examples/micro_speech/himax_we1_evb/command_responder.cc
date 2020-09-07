@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/micro/examples/micro_speech/command_responder.h"
+
 #include "hx_drv_tflm.h"
 
 static int32_t last_command_time = 0;

@@ -1,5 +1,4 @@
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
-load("//tensorflow/lite/micro:build_def.bzl", "cc_library")
 
 package(
     default_visibility = [
@@ -12,10 +11,10 @@ cc_library(
     name = "format_converter",
     srcs = ["format_converter.cc"],
     hdrs = ["format_converter.h"],
-    build_for_embedded = True,
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:common",
+        "//third_party/eigen3",
     ],
 )
 

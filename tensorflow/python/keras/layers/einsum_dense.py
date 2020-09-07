@@ -73,7 +73,7 @@ class EinsumDense(Layer):
   >>> input_tensor = tf.keras.Input(shape=[32])
   >>> output_tensor = layer(input_tensor)
   >>> output_tensor
-  <tf.Tensor '...' shape=(None, 64) dtype=...>
+  <... shape=(None, 64) dtype=...>
 
   **Applying a dense layer to a sequence**
 
@@ -89,7 +89,7 @@ class EinsumDense(Layer):
   >>> input_tensor = tf.keras.Input(shape=[32, 128])
   >>> output_tensor = layer(input_tensor)
   >>> output_tensor
-  <tf.Tensor '...' shape=(None, 32, 64) dtype=...>
+  <... shape=(None, 32, 64) dtype=...>
 
   **Applying a dense layer to a sequence using ellipses**
 
@@ -106,7 +106,7 @@ class EinsumDense(Layer):
   >>> input_tensor = tf.keras.Input(shape=[32, 128])
   >>> output_tensor = layer(input_tensor)
   >>> output_tensor
-  <tf.Tensor '...' shape=(None, 32, 64) dtype=...>
+  <... shape=(None, 32, 64) dtype=...>
   """
 
   def __init__(self,

@@ -200,8 +200,8 @@ TEST_F(ScatterNdUpdateOpTest, Error_WrongDimsIndices) {
   Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(),
-      "The outermost dimension of updates and indices must match. Got "
-      "indices.shape [1,3,1], updates.shape [3,3]"))
+      "Dimensions [0,1) of indices[shape=[1,3,1]] = 1 must match dimensions "
+      "[0,1) of updates[shape=[3,3]] = 3"))
       << s;
 }
 
@@ -217,7 +217,9 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedParamsAndUpdateDimensions) {
       {100, 101, 102, 103, 777, 778, 779, 780, 10000, 10001, 10002, 10004});
   Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
-      s.ToString(), "Must have updates.shape = indices.shape[:batch_dim]"))
+      s.ToString(),
+      "Dimensions [1,2) of input[shape=[5,3]] must match dimensions [1,2) of "
+      "updates[shape=[3,4]]"))
       << s;
 }
 
@@ -233,7 +235,8 @@ TEST_F(ScatterNdUpdateOpTest, Error_MismatchedIndicesAndUpdateDimensions) {
   Status s = RunOpKernel();
   EXPECT_TRUE(absl::StrContains(
       s.ToString(),
-      "The outermost dimension of updates and indices must match."))
+      "Dimensions [0,1) of indices[shape=[3,1]] = 3 must match dimensions [0,1)"
+      " of updates[shape=[2,3]] = 2"))
       << s;
 }
 

@@ -42,8 +42,12 @@ cc_library(
     deps = [
         "//tensorflow/lite/c:common",
     ] + select({
-        "//tensorflow:android": [
+        "//tensorflow/lite/delegates/gpu:supports_gpu_delegate": [
             "//tensorflow/lite/delegates/gpu:delegate",
+        ],
+        "//conditions:default": [],
+    }) + select({
+        "//tensorflow:android": [
             "//tensorflow/lite/delegates/nnapi:nnapi_delegate",
         ],
         "//conditions:default": [],

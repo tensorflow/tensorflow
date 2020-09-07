@@ -27,24 +27,58 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
-namespace {
+ConvolutionTransposed4x4::ConvolutionTransposed4x4(
+    const OperationDef& definition, const DeviceInfo& device_info,
+    const ConvolutionTransposedAttributes& attr)
+    : GPUOperation(definition) {
+  work_group_size_ = int3(8, 4, 1);
+  WeightsUploadType weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  if (device_info.IsPowerVR()) {
+    weights_upload_type = WeightsUploadType::LOCAL_MEM_ASYNC;
+  } else if (device_info.IsNvidia() || device_info.IsIntel()) {
+    weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
+  } else if (device_info.IsAMD()) {
+    weights_upload_type = WeightsUploadType::CONSTANT_MEM;
+  } else {
+    weights_upload_type = WeightsUploadType::GLOBAL_MEM;
+  }
 
-std::string GenerateConvolutionTransposedCode(
-    const OperationDef& op_def,
-    ConvolutionTransposed4x4::WeightsUploadType weights_upload_type,
-    Arguments* args) {
-  auto src_desc = absl::make_unique<TensorDescriptor>(op_def.src_tensors[0]);
-  src_desc->SetTextureAddressMode(TextureAddressMode::ZERO);
-  if (op_def.IsBatchSupported()) {
-    src_desc->SetStateVar("BatchedWidth", "true");
+  code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type);
+  UploadWeights(attr.weights, weights_upload_type);
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
   }
-  args->AddObjectRef("src_tensor", AccessType::READ, std::move(src_desc));
-  auto dst_desc = absl::make_unique<TensorDescriptor>(op_def.dst_tensors[0]);
-  if (op_def.IsBatchSupported()) {
-    dst_desc->SetStateVar("BatchedWidth", "true");
+}
+
+ConvolutionTransposed4x4::ConvolutionTransposed4x4(
+    ConvolutionTransposed4x4&& operation)
+    : GPUOperation(std::move(operation)) {}
+
+ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
+    ConvolutionTransposed4x4&& operation) {
+  if (this != &operation) {
+    GPUOperation::operator=(std::move(operation));
   }
-  args->AddObjectRef("dst_tensor", AccessType::WRITE, std::move(dst_desc));
-  args->AddInt("filter_offset");
+  return *this;
+}
+
+std::string ConvolutionTransposed4x4::GenerateConvolutionTransposedCode(
+    const OperationDef& op_def, WeightsUploadType weights_upload_type) {
+  auto src_desc = op_def.src_tensors[0];
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
+  if (op_def.IsBatchSupported()) {
+    src_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddSrcTensor("src_tensor", src_desc);
+
+  auto dst_desc = op_def.dst_tensors[0];
+  if (op_def.IsBatchSupported()) {
+    dst_desc.SetStateVar("BatchedWidth", "true");
+  }
+  AddDstTensor("dst_tensor", dst_desc);
+
+  args_.AddInt("filter_offset");
 
   const auto src_tensor_type = op_def.src_tensors[0].storage_type;
   const bool manual_clamp = src_tensor_type == TensorStorageType::BUFFER ||
@@ -262,68 +296,8 @@ std::string GenerateConvolutionTransposedCode(
   return c;
 }
 
-}  // namespace
-
-ConvolutionTransposed4x4::ConvolutionTransposed4x4(
-    const OperationDef& definition, const CLDevice& device)
-    : GPUOperation(definition) {
-  if (device.IsPowerVR()) {
-    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
-  } else if (device.IsNvidia() || device.IsIntel()) {
-    weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
-  } else if (device.IsAMD()) {
-    weights_upload_type_ = WeightsUploadType::CONSTANT_MEM;
-  } else {
-    weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
-  }
-}
-
-ConvolutionTransposed4x4::ConvolutionTransposed4x4(
-    ConvolutionTransposed4x4&& operation)
-    : GPUOperation(std::move(operation)),
-      weights_upload_type_(operation.weights_upload_type_),
-      kernel_(std::move(operation.kernel_)),
-      work_group_size_(operation.work_group_size_) {}
-
-ConvolutionTransposed4x4& ConvolutionTransposed4x4::operator=(
-    ConvolutionTransposed4x4&& operation) {
-  if (this != &operation) {
-    std::swap(weights_upload_type_, operation.weights_upload_type_);
-    kernel_ = std::move(operation.kernel_);
-    std::swap(work_group_size_, operation.work_group_size_);
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-absl::Status ConvolutionTransposed4x4::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GenerateConvolutionTransposedCode(
-      definition_, weights_upload_type_, &args_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsPowerVR()) {
-    options.push_back(CompilerOptions::POWERVR_FP16);
-  }
-  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_));
-  return absl::OkStatus();
-}
-
 absl::Status ConvolutionTransposed4x4::BindArguments() {
-  RETURN_IF_ERROR(args_.SetObjectRef("src_tensor", src_[0]));
-  RETURN_IF_ERROR(args_.SetObjectRef("dst_tensor", dst_[0]));
-  RETURN_IF_ERROR(args_.SetInt("filter_offset", 4 * 16 * src_[0]->Slices()));
-  RETURN_IF_ERROR(SetArguments(linked_operations_, &args_));
-  return args_.Bind(kernel_.kernel());
+  return args_.SetInt("filter_offset", 4 * 16 * src_[0]->Slices());
 }
 
 int3 ConvolutionTransposed4x4::GetGridSize() const {
@@ -333,43 +307,26 @@ int3 ConvolutionTransposed4x4::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvolutionTransposed4x4::AddToQueue(CLCommandQueue* queue) {
-  RETURN_IF_ERROR(BindArguments());
-  return queue->DispatchImplicit(kernel_, GetGridSize(), work_group_size_);
-}
-
 bool IsConvolutionTransposed4x4Supported(
-    const CLDevice& device, const OperationDef& definition,
+    const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
   return attr.weights.shape.w == 4 && attr.weights.shape.h == 4 &&
          attr.stride.w == 2 && attr.stride.h == 2 &&
          attr.padding.prepended.w == 1 && attr.padding.prepended.h == 1;
 }
 
-absl::Status CreateConvolutionTransposed4x4(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr,
-    ConvolutionTransposed4x4* result) {
-  if (!IsConvolutionTransposed4x4Supported(*creation_context.device, definition,
-                                           attr)) {
-    return absl::InvalidArgumentError(
-        "ConvolutionTransposed4x4 doesn't support this attributes");
-  }
-  *result = ConvolutionTransposed4x4(definition, *creation_context.device);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+ConvolutionTransposed4x4 CreateConvolutionTransposed4x4(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  ConvolutionTransposed4x4 result(definition, device_info, attr);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
-  return absl::OkStatus();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return result;
 }
 
 }  // namespace cl

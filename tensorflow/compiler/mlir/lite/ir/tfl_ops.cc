@@ -30,6 +30,7 @@ limitations under the License.
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/Matchers.h"  // from @llvm-project
 #include "mlir/IR/OpImplementation.h"  // from @llvm-project
 #include "mlir/IR/PatternMatch.h"  // from @llvm-project
@@ -253,9 +254,8 @@ struct TensorFlowLiteInlinerInterface : public DialectInlinerInterface {
   }
 };
 
-struct TensorFlowLiteOpFolderDialectInterface
-    : public OpFolderDialectInterface {
-  using OpFolderDialectInterface::OpFolderDialectInterface;
+struct TensorFlowLiteDialectFoldInterface : public DialectFoldInterface {
+  using DialectFoldInterface::DialectFoldInterface;
 
   // Registered hook to check if the given region, which is attached to an
   // operation that is *not* isolated from above (i.e. no internal regions
@@ -269,13 +269,13 @@ struct TensorFlowLiteOpFolderDialectInterface
 };
 
 TensorFlowLiteDialect::TensorFlowLiteDialect(mlir::MLIRContext *context)
-    : Dialect(/*name=*/"tfl", context) {
+    : Dialect(/*name=*/"tfl", context, TypeID::get<TensorFlowLiteDialect>()) {
   addOperations<
 #define GET_OP_LIST
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.cc.inc"
       >();
   addInterfaces<TensorFlowLiteInlinerInterface,
-                TensorFlowLiteOpFolderDialectInterface>();
+                TensorFlowLiteDialectFoldInterface>();
 }
 
 //===----------------------------------------------------------------------===//
@@ -569,7 +569,7 @@ namespace {
 
 int64_t GetConcatenationOpAxis(ConcatenationOp op) {
   auto output_type = op.output().getType().cast<RankedTensorType>();
-  int64_t axis = op.axis().getSExtValue();
+  int32_t axis = op.axis();
   if (axis < 0) axis += output_type.getRank();
   return axis;
 }
@@ -773,8 +773,8 @@ static LogicalResult Verify(CustomOp op) {
       op.custom_option().cast<OpaqueElementsAttr>();
   if (!opaque_attr.getType().hasStaticShape())
     return op.emitOpError("custom_option should have a static shape.");
-  if (opaque_attr.getValue().size() !=
-      opaque_attr.getType().cast<ShapedType>().getDimSize(0))
+  const int attribute_size = opaque_attr.getValue().size();
+  if (attribute_size != opaque_attr.getType().cast<ShapedType>().getDimSize(0))
     return op.emitOpError(
         "custom_option should have the same length of content with shape.");
   return success();
@@ -955,7 +955,7 @@ static LogicalResult Verify(ScatterNdOp op) {
     // Checks whether the last `(shape_type.getDimSize(0) - outermost_dim)`
     // dimensions of `updates` and `shape` are equal.
     for (auto shape_it : llvm::enumerate(shape_value)) {
-      auto i = shape_it.index();
+      int64_t i = shape_it.index();
       auto value = shape_it.value().getSExtValue();
       if (i >= outermost_dim) {
         auto corresponding_dim = i - outermost_dim + outer_dims;
@@ -1027,10 +1027,13 @@ static LogicalResult Verify(PackOp op) {
 
   // Check axis bounds.
   if (input_type.hasRank()) {
-    int64_t axis_value = op.axis().getSExtValue();
-    if (abs(axis_value) > input_type.getRank())
-      return op.emitOpError("op attribute 'axis' is out of bounds, got ")
-             << axis_value;
+    int32_t axis_value = op.axis();
+    if (axis_value < 0) axis_value += input_type.getRank() + 1;
+    if (axis_value < 0 || axis_value >= input_type.getRank() + 1)
+      return op.emitOpError()
+             << "op attribute 'axis' should be in range [-rank - 1, rank + 1), "
+             << "got rank = " << input_type.getRank()
+             << ", and axis = " << op.axis();
   }
 
   // Make sure all inputs have the same shape and element type.
@@ -1192,7 +1195,8 @@ struct RemoveRedundantUnpackPack : public RewritePattern {
       return failure();
 
     const int total_pack_inputs = pack_op.getNumOperands();
-    if (total_pack_inputs != input_unpack_op.getNumResults()) return failure();
+    const int num_results = input_unpack_op.getNumResults();
+    if (total_pack_inputs != num_results) return failure();
     for (auto input_output :
          llvm::zip(pack_op.getOperands(), input_unpack_op.getResults())) {
       Value pack_input = std::get<0>(input_output);
@@ -1261,8 +1265,7 @@ static LogicalResult Verify(SliceOp op) {
   }
 
   if (begin && size && input_type.hasStaticShape()) {
-    const int input_rank = begin.getNumElements();
-    for (uint64_t i = 0; i < input_rank; i++) {
+    for (uint64_t i = 0, end = begin.getNumElements(); i < end; i++) {
       int begin_i =
           begin.getValue({i}).cast<IntegerAttr>().getValue().getSExtValue();
       int size_i =
@@ -1443,12 +1446,59 @@ void FakeQuantOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 
 // TODO(b/133486129): Implement shape inference for unpack
 
-static LogicalResult Verify(UnpackOp op) {
-  // TODO(antiagainst): Implement other checks as in
-  // tensorflow/lite/kernels/unpack.cc
+LogicalResult UnpackOp::inferReturnTypes(
+    MLIRContext *context, Optional<Location> loc, ValueRange operands,
+    DictionaryAttr attributes, RegionRange regions,
+    SmallVectorImpl<Type> &inferredReturnTypes) {
+  UnpackOpAdaptor op(operands, attributes);
+  // TODO(jpienaar): Refactor verify
+  if (failed(op.verify(loc.hasValue() ? *loc : UnknownLoc::get(context))))
+    return failure();
 
-  if (op.getOperation()->getNumResults() != op.num())
-    return op.emitOpError("output count should match 'num' attribute");
+  if (operands.size() != 1) {
+    return emitOptionalError(loc, "input count should be equal to 1");
+  }
+
+  const int64_t num_value = op.num().getInt();
+  auto input_type = operands[0].getType().dyn_cast<ShapedType>();
+  if (!input_type || !input_type.hasRank()) {
+    // If input is unranked, then so is output.
+    inferredReturnTypes.assign(
+        num_value, UnrankedTensorType::get(input_type.getElementType()));
+    return success();
+  }
+
+  if (input_type.hasStaticShape() && input_type.getNumElements() <= 0) {
+    return emitOptionalError(
+        loc, "number of elements in input shoule be larger than 0");
+  }
+
+  const int64_t rank = input_type.getRank();
+  if (rank <= 0) {
+    return emitOptionalError(loc, "input should be of rank larger than 0");
+  }
+
+  int64_t axis_value = op.axis().getInt();
+  if (axis_value < 0) {
+    axis_value += rank;
+  }
+  if (axis_value < 0 || axis_value >= rank) {
+    return emitOptionalError(
+        loc, "attribute 'axis' should be in range [-rank, rank), got axis = ",
+        op.axis().getInt(), ", and rank = ", rank);
+  }
+
+  if (!ShapedType::isDynamic(input_type.getDimSize(axis_value)) &&
+      input_type.getDimSize(axis_value) != num_value) {
+    return emitOptionalError(loc, "output count should match 'num' attribute");
+  }
+
+  auto output_shape = llvm::to_vector<4>(input_type.getShape());
+  output_shape.erase(output_shape.begin() + axis_value);
+
+  auto output_type =
+      RankedTensorType::get(output_shape, input_type.getElementType());
+  inferredReturnTypes.assign(num_value, output_type);
 
   return success();
 }
@@ -1495,7 +1545,7 @@ static LogicalResult VerifySplitOpOutputTypes(
 }
 
 static LogicalResult Verify(SplitOp op) {
-  int64_t num_splits = op.num_splits().getSExtValue();
+  int64_t num_splits = op.num_splits();
   if (op.getNumResults() != num_splits)
     return op.emitOpError("output count should match 'num_splits' attribute");
 
@@ -1531,7 +1581,7 @@ static LogicalResult Verify(SplitOp op) {
 }
 
 static LogicalResult Verify(SplitVOp op) {
-  int64_t num_splits = op.num_splits().getSExtValue();
+  int64_t num_splits = op.num_splits();
   if (op.getNumResults() != num_splits)
     return op.emitOpError("output count should match 'num_splits' attribute");
 

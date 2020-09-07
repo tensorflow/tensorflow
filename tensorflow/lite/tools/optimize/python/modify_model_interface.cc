@@ -33,7 +33,7 @@ PYBIND11_MODULE(_pywrap_modify_model_interface, m) {
           return tflite::optimize::ModifyModelInterface(
               input_file, output_file,
               static_cast<tflite::TensorType>(input_type),
-              static_cast<tflite::TensorType>(input_type));
+              static_cast<tflite::TensorType>(output_type));
         });
 }
 

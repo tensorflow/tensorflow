@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/c/eager/abstract_operation.h"
 #include "tensorflow/c/eager/immediate_execution_tensor_handle.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/casts.h"
 #include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/util/abstract_stack_trace.h"
 
 struct TFE_Op;
 
@@ -36,13 +38,20 @@ class ImmediateExecutionOperation : public AbstractOperation {
  public:
   virtual void Clear() = 0;
 
+  // Returns the inputs of this op.
+  virtual absl::Span<ImmediateExecutionTensorHandle* const> GetInputs()
+      const = 0;
+
   virtual const tensorflow::OpDef* OpDef() const = 0;
 
   virtual Status InputLength(const char* input_name, int* length) = 0;
   virtual Status OutputLength(const char* output_name, int* length) = 0;
 
-  // Experimental
-  virtual Status SetUseXla(bool enable) = 0;
+  // Set stack trace to be used for potential async error reporting.
+  virtual void SetStackTrace(AbstractStackTrace stack_trace) = 0;
+
+  // Returns the stack trace set by `SetStackTrace` if exists.
+  virtual absl::optional<AbstractStackTrace> GetStackTrace() = 0;
 
   // For LLVM style RTTI.
   static bool classof(const AbstractOperation* ptr) {

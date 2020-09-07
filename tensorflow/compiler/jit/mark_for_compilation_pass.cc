@@ -32,12 +32,12 @@ limitations under the License.
 #include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/graphcycles/graphcycles.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
-#include "tensorflow/compiler/jit/union_find.h"
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/union_find.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_constructor.h"
@@ -1196,12 +1196,9 @@ Status MarkForCompilationPassImpl::FindCompilationCandidates() {
       continue;
     }
 
-    DeviceType jit_device_type(registration->compilation_device_name);
-
-    RecursiveCompilabilityChecker::OperationFilter op_filter =
-        CreateOperationFilter(*registration);
-
-    if (!RecursiveCompilabilityChecker{&op_filter, &jit_device_type}
+    if (!RecursiveCompilabilityChecker{
+            CreateOperationFilter(*registration),
+            DeviceType{registration->compilation_device_name}}
              .IsCompilableNode(*node, lib_runtime)) {
       continue;
     }
@@ -1718,7 +1715,6 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
   const XlaOpRegistry::DeviceRegistration* registration;
   CHECK(XlaOpRegistry::GetCompilationDevice(device->device_type(),
                                             &registration));
-  DeviceType jit_device_type(registration->compilation_device_name);
 
   // We can always *compile* resource operations, stateful RNGs and dummy ops,
   // even if we are sometimes unable to auto-cluster them.
@@ -1733,7 +1729,8 @@ bool IsCompilable(FunctionLibraryRuntime* flr, const NodeDef& ndef,
   op_filter.allow_slow_ops = true;
   op_filter.allow_inaccurate_ops = true;
 
-  RecursiveCompilabilityChecker checker{&op_filter, &jit_device_type};
+  RecursiveCompilabilityChecker checker{
+      op_filter, DeviceType{registration->compilation_device_name}};
   if (!uncompilable_node_info) {
     // We do not need uncompilable node info. Just return the result.
     return checker.IsCompilableCall(ndef, flr);
@@ -1837,7 +1834,9 @@ absl::flat_hash_map<string, std::vector<string>>* GetAllowlistTable() {
       "ConcatOffset", "Const", "MirrorPad", "Pack", "Pad", "PadV2", "Reverse",
       "ReverseV2", "ReverseSequence", "Slice", "Split", "SplitV",
       "StridedSlice", "StridedSliceGrad", "ResourceStridedSliceAssign",
-      "Tile", "Transpose", "InvertPermutation", "Unpack", "DeviceIndex"}}};
+      "Tile", "Transpose", "InvertPermutation", "Unpack", "DeviceIndex",
+      "TensorStridedSliceUpdate",
+     }}};
   // clang-format on
   return result;
 }
@@ -1952,6 +1951,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "ParallelDynamicStitch",
                                      "ParameterizedTruncatedNormal",
                                      "PartitionedCall",
+                                     "PopulationCount",
                                      "Qr",
                                      "QuantizeAndDequantizeV2",
                                      "QuantizeAndDequantizeV3",
@@ -2014,6 +2014,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "StatefulUniform",
                                      "StatefulUniformFullInt",
                                      "StatefulUniformInt",
+                                     "StatelessCase",
                                      "StatelessIf",
                                      "StatelessMultinomial",
                                      "StatelessRandomNormal",
@@ -2078,6 +2079,7 @@ absl::flat_hash_set<string> GetKnownXLAAllowlistOp() {
                                      "XlaSelectAndScatter",
                                      "XlaSelfAdjointEig",
                                      "XlaSend",
+                                     "XlaSetBound",
                                      "XlaSharding",
                                      "XlaSort",
                                      "XlaSpmdFullToShardShape",

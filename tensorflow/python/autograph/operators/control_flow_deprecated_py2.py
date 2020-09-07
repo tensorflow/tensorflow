@@ -590,7 +590,7 @@ def _tf_iterator_for_stmt(itr, extra_test, body, get_state, set_state,
 
   def while_body(has_next, *loop_vars):
     """Main loop body."""
-    opt_iterate = iterator_ops.get_next_as_optional(itr)
+    opt_iterate = itr.get_next_as_optional()
     has_next = opt_iterate.has_value()
 
     if not init_vars:

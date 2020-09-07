@@ -16,20 +16,25 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/common/object_reader.h"
 
 #include <cstdint>
-#include <unordered_map>
+#include <optional>
+#include <string>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
 #include "tensorflow/lite/delegates/gpu/common/status.h"
+#include "tensorflow/lite/delegates/gpu/common/tensor.h"
 #include "tensorflow/lite/delegates/utils.h"
+#include "tensorflow/lite/kernels/kernel_util.h"
 
 namespace tflite {
 namespace gpu {
 
 absl::Status ObjectReader::ReadNonConstantTensor(
-    TfLiteContext* context, std::unordered_map<int, Value*>* tensor_to_value,
-    std::unordered_map<int, int>* quant_conversion_map, GraphFloat32* graph,
+    TfLiteContext* context, absl::flat_hash_map<int, Value*>* tensor_to_value,
+    absl::flat_hash_map<int, int>* quant_conversion_map, GraphFloat32* graph,
     uint32_t tensor_idx, Value** value) {
   if (tensor_idx >= context->tensors_size) {
     return absl::OutOfRangeError(

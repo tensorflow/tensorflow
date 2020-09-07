@@ -48,7 +48,10 @@ int main(int argc, char* argv[]) {
       tflite::FlatBufferModel::BuildFromFile(filename);
   TFLITE_MINIMAL_CHECK(model != nullptr);
 
-  // Build the interpreter
+  // Build the interpreter with the InterpreterBuilder.
+  // Note: all Interpreters should be built with the InterpreterBuilder,
+  // which allocates memory for the Intrepter and does various set up
+  // tasks so that the Interpreter can read the provided model.
   tflite::ops::builtin::BuiltinOpResolver resolver;
   InterpreterBuilder builder(*model, resolver);
   std::unique_ptr<Interpreter> interpreter;

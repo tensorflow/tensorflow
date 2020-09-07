@@ -96,6 +96,8 @@ py_test(
         "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
     ],
     python_version = "PY3",
+    # Increased thread count for reducing timeout failures.
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
@@ -160,6 +162,7 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
     ],
     deps = [
@@ -193,10 +196,6 @@ py_test(
     srcs = ["lite_flex_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        "no_mac",  # TODO(b/159077703): Enable Python API Flex support on MacOS.
-        "no_windows",  # TODO(b/159077703): Enable Python API Flex support on Windows.
-    ],
     deps = [
         ":lite",
         "//tensorflow/python:client_testlib",
@@ -214,8 +213,11 @@ py_library(
     deps = [
         ":lite_constants",
         ":op_hint",
+        ":schema_py",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/eager:wrap_function",
+        "@absl_py//absl/logging",
+        "@flatbuffers//:runtime_py",
         "@six_archive//:six",
     ],
 )
@@ -226,12 +228,24 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
     ],
     deps = [
+        ":lite_constants",
         ":util",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:convert_to_constants",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )

@@ -339,6 +339,15 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
   TF_DCHECK_OK(ValidateShape(*shape));
 }
 
+/* static */ void ShapeUtil::CopyDynamicDimensions(Shape* to,
+                                                   const Shape& from) {
+  CHECK_EQ(to->rank(), from.rank());
+  for (int64 i = 0; i < from.rank(); ++i) {
+    to->set_dynamic_dimension(i, from.is_dynamic_dimension(i));
+  }
+  TF_DCHECK_OK(ValidateShape(*to));
+}
+
 /* static */ bool ShapeUtil::ElementIsIntegral(const Shape& shape) {
   return primitive_util::IsIntegralType(shape.element_type());
 }
@@ -522,13 +531,7 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
     text += ")";
     return text;
   }
-  string result = StrCat(
-      primitive_util::LowercasePrimitiveTypeName(shape.element_type()), "[");
-  for (int i = 0; i < shape.dimensions().size(); i++) {
-    StrAppend(&result, (i > 0) ? "," : "",
-              shape.is_dynamic_dimension(i) ? "<=" : "", shape.dimensions(i));
-  }
-  result += "]";
+  string result = HumanString(shape);
   if (IsScalar(shape)) {
     string layout_str = LayoutUtil::HumanString(shape.layout());
     // Don't print "{}" as layout for scalars.
@@ -780,9 +783,18 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
 
 /* static */ Shape ShapeUtil::ChangeElementType(const Shape& original,
                                                 PrimitiveType type) {
-  Shape new_shape = original;
-  new_shape.set_element_type(type);
-  return new_shape;
+  if (original.IsTuple()) {
+    std::vector<Shape> new_operands;
+    new_operands.reserve(original.tuple_shapes_size());
+    for (const Shape& operand : original.tuple_shapes()) {
+      new_operands.push_back(ChangeElementType(operand, type));
+    }
+    return MakeTupleShape(new_operands);
+  } else {
+    Shape new_shape = original;
+    new_shape.set_element_type(type);
+    return new_shape;
+  }
 }
 
 /* static */ bool ShapeUtil::IndexIsValid(const Shape& shape,

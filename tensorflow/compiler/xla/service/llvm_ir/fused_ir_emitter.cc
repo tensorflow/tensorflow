@@ -244,16 +244,7 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
       } else {
         total = 0;
         for (const auto* user : indexing_users[instruction]) {
-          int64 weight = 1;
-          // Concatenate is special: the index differs for each operand, so
-          // in the worst case we have to deal with as many index values as
-          // the number of operands of Concatenate. By considering the worst
-          // case, we are more conservative than necessary regarding
-          // refusing to fuse.
-          if (user->opcode() == HloOpcode::kConcatenate) {
-            weight = user->operand_count();
-          }
-          total += index_usage_count[user] * weight;
+          total += index_usage_count[user];
         }
       }
       for (const auto* operand : instruction->operands()) {
@@ -298,15 +289,9 @@ bool FusedIrEmitter::IsFusedIrEmitterInefficient(
     evaluate_fusion_computation(producer);
   }
 
-  // Sum up the total number of emitted ops.
-  int64 total = 0;
-  for (const auto& entry : index_usage_count) {
-    total += entry.second;
-  }
-
   // Check that the code duplication has at most a factor of 15 (where 15 is an
   // arbitrary constant that seems to work).
-  return total > 15 * index_usage_count.size();
+  return index_usage_count[producer] > 15;
 }
 
 }  // namespace xla

@@ -384,10 +384,10 @@ class ThreadsafeIter(object):
   def __iter__(self):
     return self
 
-  def __next__(self):
-    return self.next()
-
   def next(self):
+    return self.__next__()
+
+  def __next__(self):
     with self.lock:
       if self._exception:
         raise self._exception  # pylint: disable=raising-bad-type

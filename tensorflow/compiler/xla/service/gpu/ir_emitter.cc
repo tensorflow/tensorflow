@@ -192,9 +192,6 @@ Status IrEmitter::EmitCallToNestedComputation(
   llvm::Value* casted_output = AddrCastToDefault(output, b_);
   arguments.push_back(casted_output);
 
-  // It is not required to do address space cast because TempBufferBase
-  // is always in addrspace 0.
-  arguments.push_back(bindings_.GetTempBufferBase());
   Call(emitted_function, arguments);
 
   return Status::OK();

@@ -143,7 +143,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
           seed_generator_(seed_generator),
           parent_generator_(seed_generator->seed(), seed_generator->seed2()),
           generator_(&parent_generator_) {
-      buffer_ = absl::make_unique<std::vector<Tensor>[]>(
+      buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>(
           params.dataset->buffer_size_);
       slices_.push_back(absl::make_unique<Slice>(0, 0));
     }
@@ -201,7 +201,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
                     << this->dataset()->buffer_size_;
           }
           this->RecordBufferEnqueue(ctx, input_element);
-          buffer_[slices_.back()->end % this->dataset()->buffer_size_] =
+          buffer_->at(slices_.back()->end % this->dataset()->buffer_size_) =
               std::move(input_element);
           num_elements_++;
           slices_.back()->end++;
@@ -239,11 +239,11 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             Random() % (slices_.front()->end - slices_.front()->start);
         int64 index =
             (slices_.front()->start + offset) % this->dataset()->buffer_size_;
-        *out_tensors = std::move(buffer_[index]);
+        *out_tensors = std::move(buffer_->at(index));
         this->RecordBufferDequeue(ctx, *out_tensors);
-        std::swap(
-            buffer_[index],
-            buffer_[slices_.front()->start % this->dataset()->buffer_size_]);
+        std::swap(buffer_->at(index),
+                  buffer_->at(slices_.front()->start %
+                              this->dataset()->buffer_size_));
         slices_.front()->start++;
         num_elements_--;
       } else {
@@ -293,6 +293,7 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
       TF_RETURN_IF_ERROR(writer->WriteScalar(this->full_name(kEpoch), epoch_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(this->full_name(kNumElements), num_elements_));
+      TF_RETURN_IF_ERROR(WriteElementsToCheckpoint(writer, prefix(), *buffer_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(this->full_name(kSlicesSize), slices_.size()));
       for (size_t i = 0; i < slices_.size(); ++i) {
@@ -303,19 +304,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
         TF_RETURN_IF_ERROR(writer->WriteScalar(
             this->full_name(absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_")),
             slices_[i]->end));
-        for (size_t j = slices_[i]->start; j < slices_[i]->end; ++j) {
-          size_t index = j % this->dataset()->buffer_size_;
-          TF_RETURN_IF_ERROR(writer->WriteScalar(
-              this->full_name(
-                  absl::StrJoin(std::make_tuple(kBuffer, index, kSize), "_")),
-              buffer_[index].size()));
-          for (size_t k = 0; k < buffer_[index].size(); ++k) {
-            TF_RETURN_IF_ERROR(writer->WriteTensor(
-                this->full_name(
-                    absl::StrJoin(std::make_tuple(kBuffer, index, k), "_")),
-                buffer_[index][k]));
-          }
-        }
       }
       if (data_produced_) {
         TF_RETURN_IF_ERROR(
@@ -360,8 +348,10 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             reader->ReadScalar(this->full_name(kSlicesSize), &temp));
         slices_size = static_cast<size_t>(temp);
       }
-      buffer_ = absl::make_unique<std::vector<Tensor>[]>(
+      buffer_ = absl::make_unique<std::vector<std::vector<Tensor>>>(
           this->dataset()->buffer_size_);
+      TF_RETURN_IF_ERROR(
+          ReadElementsFromCheckpoint(reader, prefix(), buffer_.get()));
       slices_.clear();
       for (size_t i = 0; i < slices_size; ++i) {
         int64 start;
@@ -374,21 +364,6 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
             this->full_name(absl::StrJoin(std::make_tuple(kSlicesEnd, i), "_")),
             &end));
         slices_.push_back(absl::make_unique<Slice>(start, end));
-        for (size_t j = start; j < end; ++j) {
-          size_t index = j % this->dataset()->buffer_size_;
-          int64 list_size;
-          TF_RETURN_IF_ERROR(reader->ReadScalar(
-              this->full_name(
-                  absl::StrJoin(std::make_tuple(kBuffer, index, kSize), "_")),
-              &list_size));
-          buffer_[index] = std::vector<Tensor>(list_size);
-          for (int k = 0; k < list_size; ++k) {
-            TF_RETURN_IF_ERROR(reader->ReadTensor(
-                this->full_name(
-                    absl::StrJoin(std::make_tuple(kBuffer, index, k), "_")),
-                &buffer_[index][k]));
-          }
-        }
       }
       data_produced_ = reader->Contains(this->full_name(kDataProduced));
 
@@ -421,7 +396,8 @@ class ShuffleDatasetOpBase::ShuffleDatasetBase : public DatasetBase {
 
     mutex mu_;
     SeedGenerator* const seed_generator_ TF_GUARDED_BY(mu_);  // Not owned.
-    std::unique_ptr<std::vector<Tensor>[]> buffer_ TF_GUARDED_BY(mu_);
+    std::unique_ptr<std::vector<std::vector<Tensor>>> buffer_
+        TF_GUARDED_BY(mu_);
     std::unique_ptr<IteratorBase> input_impl_ TF_GUARDED_BY(mu_) = nullptr;
     int64 epoch_ TF_GUARDED_BY(mu_) = 0;
     int64 num_elements_ TF_GUARDED_BY(mu_) = 0;

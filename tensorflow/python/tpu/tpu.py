@@ -50,14 +50,13 @@ from tensorflow.python.tpu import tpu_function
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable("TPUReplicatedInput")
 
 # Operations that indicate some error in the users graph, e.g. a placeholder
 # that's introduced outside of the infeed.
-_BLACKLISTED_OPS = set([
+_DENYLISTED_OPS = set([
     "Placeholder",
 ])
 
@@ -526,7 +525,7 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
 
   def AddOp(self, op):
     # pylint: disable=protected-access
-    if op.type in _BLACKLISTED_OPS:
+    if op.type in _DENYLISTED_OPS:
       logging.error("Operation of type %s (%s) is not supported on the TPU. "
                     "Execution will fail if this op is used in the graph. " %
                     (op.type, op.name))
@@ -826,7 +825,7 @@ class XLAOptions(
       requested.
   """
 
-  def __new__(cls, use_spmd_for_xla_partitioning=False):
+  def __new__(cls, use_spmd_for_xla_partitioning=True):
     return super(XLAOptions, cls).__new__(cls, use_spmd_for_xla_partitioning)
 
 
@@ -1227,7 +1226,7 @@ def split_compile_and_replicate(computation,
       nest.flatten(per_replica_input, expand_composites=True)
       for per_replica_input in inputs
   ]
-  # Mask parallel to one replicat's inputs with True for tensors coming from
+  # Mask parallel to one replica's inputs with True for tensors coming from
   # composites.
   is_composite = nest.flatten(nest.map_structure(
       lambda x: _flatten_and_filter_composite(x, False, True), inputs[0]))
@@ -1412,9 +1411,11 @@ def split_compile_and_replicate(computation,
 
     outputs_is_flat = xla.is_flat(outputs)
     if outputs_is_flat:
-      output_tensors, control_deps = _postprocess_flat_outputs(outputs)
+      output_tensors, control_deps, pack_template = _postprocess_flat_outputs(
+          outputs)
     else:
-      output_tensors, control_deps = _postprocess_non_flat_outputs(outputs)
+      output_tensors, control_deps, pack_template = (
+          _postprocess_non_flat_outputs(outputs))
 
     # tensor_tracer imports tpu.py. Local import to tensor_tracer to avoid
     # import-cycle
@@ -1473,11 +1474,10 @@ def split_compile_and_replicate(computation,
             array_ops.identity(
                 ys[replica], name="output_%d_shard_%d" % (i, replica)))
 
-  if not outputs_is_flat:
-    replicated_outputs = [
-        nest.pack_sequence_as(outputs, replica_outs)
-        for replica_outs in replicated_outputs
-    ]
+  replicated_outputs = [
+      nest.pack_sequence_as(pack_template, replica_outs, expand_composites=True)
+      for replica_outs in replicated_outputs
+  ]
 
   return [compile_status, replicated_outputs]
 
@@ -1489,7 +1489,9 @@ def _postprocess_flat_outputs(outputs):
     outputs: Output from `computation` inside `tpu.rewrite`.
 
   Returns:
-    Tensors and Operations extracted from outputs.
+    - Tensors extracted from outputs.
+    - Operations extracted from outputs.
+    - A pack template for use with nest.pack_sequence_as to pack the tensors.
   """
   # Following code segment is to preserve legacy behavior. Previously we only
   # supported flat outputs and thus for consistency it was nice to convert even
@@ -1500,9 +1502,17 @@ def _postprocess_flat_outputs(outputs):
   # If the computation returns `None`, make it an empty tuple.
   if outputs is None:
     outputs = tuple()
-  # If the computation only returned one value, makes it a tuple.
-  if not isinstance(outputs, collections_abc.Sequence):
-    outputs = (outputs,)
+
+  # For legacy / backwards compatibility reasons we return a list for "flat"
+  # output values (even if the user's flat return value was a different type or
+  # even just a scalar value) so use nest.flatten to compute a flat list pack
+  # template.
+  pack_template = nest.flatten(outputs, expand_composites=False)
+
+  # Even though outputs is already "flat", we flatten any composites so their
+  # component tensors can be tagged and replicated. The pack_template will be
+  # used by the caller to repack the composite tensors.
+  outputs = nest.flatten(outputs, expand_composites=True)
 
   # Append `no_op` here so that fetching any return value of this function
   # will trigger TPUExecute node.
@@ -1527,6 +1537,11 @@ def _postprocess_flat_outputs(outputs):
         "TPU functions must return zero-or more Tensor values followed by "
         "zero or more Operations.")
 
+  # Trim operations off the end of the pack template. output_operations has 1
+  # extra element due to the no-op that is added.
+  if len(output_operations) > 1:
+    pack_template = pack_template[:1 - len(output_operations)]
+
   # Wraps outputs in Identity ops. Otherwise a replicated input copied
   # straight to an output would bypass the replicate(). This would be bad
   # because the TPUReplicatedInput/TPUReplicatedOutput operator would not
@@ -1540,7 +1555,7 @@ def _postprocess_flat_outputs(outputs):
       o.op._set_attr("_tpu_output_identity", attr_value_pb2.AttrValue(b=True))
       # pylint: enable=protected-access
       new_output_tensors.append(o)
-  return new_output_tensors, output_operations
+  return new_output_tensors, output_operations, pack_template
 
 
 def _postprocess_non_flat_outputs(outputs):
@@ -1550,12 +1565,14 @@ def _postprocess_non_flat_outputs(outputs):
     outputs: Output from `computation` inside `tpu.rewrite`.
 
   Returns:
-    Tensors extracted from outputs and an empty list because Operations are not
-    allowed in non-flat outputs..
+    - Tensors extracted from outputs.
+    - An empty Operations list because Operations are not allowed in non-flat
+      outputs.
+    - A pack template for use with nest.pack_sequence_as to pack the tensors.
   """
 
   # Flatten output items.
-  flat_outputs = nest.flatten(outputs)
+  flat_outputs = nest.flatten(outputs, expand_composites=True)
 
   # Convert all non-Operation outputs to Tensors.
   for i, o in enumerate(flat_outputs):
@@ -1586,7 +1603,7 @@ def _postprocess_non_flat_outputs(outputs):
       flat_outputs[i] = array_ops.identity(o)
 
   # All flat_outputs are Tensors, and no Operations.
-  return flat_outputs, []
+  return flat_outputs, [], outputs
 
 
 def split_compile_and_shard(computation,
@@ -1947,7 +1964,9 @@ def rewrite(computation,
   # pylint: enable=indexing-exception
 
   # Operations that indicate some error in the user's inference graph.
-_BLACKLISTED_INFERENCE_OPS = set([
+
+
+_DENYLISTED_INFERENCE_OPS = set([
     "ReadVariableOp",
     "AssignVariableOp",
     "AssignAddVariableOp",
@@ -1993,7 +2012,7 @@ class _TPUInferenceContext(control_flow_ops.XLAControlFlowContext):
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
-    if self._check_ops and op.type in _BLACKLISTED_INFERENCE_OPS:
+    if self._check_ops and op.type in _DENYLISTED_INFERENCE_OPS:
       raise NotImplementedError(
           "Operation of type %s (%s) is not supported on the TPU for inference."
           " Execution will fail if this op is used in the graph. Make sure your"
