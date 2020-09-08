@@ -4,23 +4,22 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
 -->
 
 <!--ts-->
+   * [Resources](#resources)
+   * [Contributing Guidelines](#contributing-guidelines)
+      * [General Pull Request Guidelines](#general-pull-request-guidelines)
+      * [Guidelines for Specific Contribution Categories](#guidelines-for-specific-contribution-categories)
+         * [Bug Fixes](#bug-fixes)
+         * [Reference Kernel Implementations](#reference-kernel-implementations)
+         * [Optimized Kernel Implementations](#optimized-kernel-implementations)
+         * [New Target / Platform / IDE / Examples](#new-target--platform--ide--examples)
+         * [New Features](#new-features)
+   * [Development Workflow Notes](#development-workflow-notes)
+      * [Before submitting your PR](#before-submitting-your-pr)
+      * [During the PR review](#during-the-pr-review)
+      * [Reviewer notes](#reviewer-notes)
+      * [Python notes](#python-notes)
 
-*   [Resources](#resources)
-*   [Contributing Guidelines](#contributing-guidelines)
-    *   [General Pull Request Guidelines](#general-pull-request-guidelines)
-    *   [Guidelines for Specific Contribution Categories](#guidelines-for-specific-contribution-categories)
-        *   [Bug Fixes](#bug-fixes)
-        *   [Reference Kernel Implementations](#reference-kernel-implementations)
-        *   [Optimized Kernel Implementations](#optimized-kernel-implementations)
-        *   [New Target / Platform / IDE / Examples](#new-target--platform--ide--examples)
-        *   [New Features](#new-features)
-*   [Development Workflow](#development-workflow)
-    *   [Before Creating a Pull Request](#before-creating-a-pull-request)
-    *   [Making Changes During the Pull Request Review Process](#making-changes-during-the-pull-request-review-process)
-    *   [Reviewer Notes](#reviewer-notes)
-    *   [Python Notes](#python-notes)
-
-<!-- Added by: advaitjain, at: Wed 02 Sep 2020 02:59:14 PM PDT -->
+<!-- Added by: advaitjain, at: Tue 08 Sep 2020 03:46:53 PM PDT -->
 
 <!--te-->
 
@@ -198,17 +197,23 @@ to determine if the requested feature aligns with the TFLM roadmap.
 ## Before submitting your PR
 
 1.  Run in-place clang-format on all the files that are modified in your git
-    tree with ``clang-format -i -style=google `git ls-files -m` ``
+    tree with
+    
+    ```clang-format -i -style=google `git ls-files -m` ```
 
 1.  Make sure your code is lint-free.
 
     Get a copy of
     [cpplint](https://github.com/google/styleguide/tree/gh-pages/cpplint)
 
-    Run cpplint.py on all modified files in your git tree: ``cpplint.py `git
-    ls-files -m` ``
+    Run cpplint.py on all modified files in your git tree:
+   
+    ```
+    cpplint.py `gitls-files -m`
+    ```
 
 1.  Run all the tests for x86, and any other platform that you are modifying.
+
     `make -f tensorflow/lite/micro/tools/make/Makefile test`
 
     Please check the READMEs in the optimized kernel directories for specific
@@ -217,26 +222,40 @@ to determine if the requested feature aligns with the TFLM roadmap.
 1.  Sometimes, bugs are caught by the address sanitizer that can go unnoticed
     via the Makefile. To run a test with the address sanitizer, use the
     following command (replace `micro_interpreter_test` with the target that you
-    want to test: `CC=clang BAZEL_COMPILER=llvm bazel run
+    want to test:
+    
+    ```
+    CC=clang BAZEL_COMPILER=llvm bazel run
     --copt=-DADDRESS_SANITIZER     --copt=-fsanitize=address
-    --linkopt=-fsanitize=address tensorflow/lite/micro:micro_interpreter_test`
+    --linkopt=-fsanitize=address tensorflow/lite/micro:micro_interpreter_test
+    ```
 
 ## During the PR review
 
-1.  Do not change the git version history. Always merge upstream/master, and no
+1.  Do not change the git version hishttp://cl/328554559tory. Always merge upstream/master, and no
     force-pushes please.
 
     Assuming that you forked tensorflow and added a remote called upstream with:
+    
     `git remote add upstream https://github.com/tensorflow/tensorflow.git`
 
     Fetch the latest changes from upstream and merge into your local branch.
-    `git fetch upstream git merge upstream/master`
+   
+    ```
+    git fetch upstream git merge upstream/master
+    ```
 
-    In case of a merge conflict, resolve via: ``` git mergetool
+    In case of a merge conflict, resolve via:
+    
+    ```
+    git mergetool
 
     # Use your favorite diff tools (e.g. meld) to resolve the conflicts.
 
-    git add <files that were manually resolved> git commit ```
+    git add <files that were manually resolved>
+    
+    git commit
+    ```
 
 1.  If a force push seems to be the only path forward, please stop and let your
     PR reviewer know ***before*** force pushing. We will attempt to do the merge
@@ -246,7 +265,9 @@ to determine if the requested feature aligns with the TFLM roadmap.
 ## Reviewer notes
 
 *   [GIthub CLI](cli.github.com) can be useful to quickly checkout a PR to test
-    locally. `gh pr checkout <PR number>`
+    locally.
+    
+    `gh pr checkout <PR number>`
 
 *   Google engineers on the Tensorflow team will have the permissions to push
     edits to most PRs. This can be useful to make some small fixes as a result
@@ -256,7 +277,10 @@ to determine if the requested feature aligns with the TFLM roadmap.
     One example of this is
     [this comment](https://github.com/tensorflow/tensorflow/pull/38634#issuecomment-683190474).
 
-    And a sketch of the steps: ``` git remote add <remote_name>
+    And a sketch of the steps:
+    
+    ```
+    git remote add <remote_name>
     git@github.com:<PR author>/tensorflow.git git fetch <remote_name>
 
     git checkout -b <local-branch-name> <remote_name>/<PR branch name>
@@ -269,7 +293,8 @@ to determine if the requested feature aligns with the TFLM roadmap.
 
     # remove the temp remote to clean up your git environment.
 
-    git remote rm <remote_name> ```
+    git remote rm <remote_name>
+    ```
 
 ## Python notes
 
