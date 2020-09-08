@@ -267,7 +267,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
 
 ## Reviewer notes
 
-*   [GIthub CLI](cli.github.com) can be useful to quickly checkout a PR to test
+*   [GIthub CLI](https://cli.github.com) can be useful to quickly checkout a PR to test
     locally.
 
     `gh pr checkout <PR number>`
