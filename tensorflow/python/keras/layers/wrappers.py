@@ -336,7 +336,7 @@ class TimeDistributed(Wrapper):
     inner_input_shape = nest.map_structure(lambda tensor: self._get_shape_tuple((-1,), tensor, 2),
                                            inputs)
     inner_inputs = nest.map_structure_up_to(inputs, array_ops.reshape,
-                                      inputs, inner_input_shape)
+                                            inputs, inner_input_shape)
     output_mask = self.layer.compute_mask(inner_inputs, inner_mask)
     if output_mask is None:
       if mask is None:
