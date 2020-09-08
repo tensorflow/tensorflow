@@ -13,31 +13,40 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-//===- gpu_binary_creator.h -------------------------------------*- C++ -*-===//
+//===- kernel_creator.h -----------------------------------------*- C++ -*-===//
 //
-// This file declares the function to compile a TF kernel function
-// to gpu binary (hsaco for AMD, cubin for NVIDIA)
+// This file declares the function to compile a TF kernel function to gpu
+// binary (hsaco for AMD, cubin for NVIDIA) or to a gpu binary with host side.
 //
 //===----------------------------------------------------------------------===//
-#ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_GPU_BINARY_CREATOR_H_
-#define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_GPU_BINARY_CREATOR_H_
+#ifndef TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_KERNEL_CREATOR_H_
+#define TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_KERNEL_CREATOR_H_
 
 #include <utility>
-#include <vector>
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 #include "tensorflow/compiler/xla/statusor.h"
 
 namespace tensorflow {
 namespace kernel_gen {
-xla::StatusOr<std::vector<uint8_t>> GenerateGpuBinaryForTfCode(
-    llvm::StringRef tf_code,
+
+// Converts TF code to LLVM/NVVM. If `gpu_binary_only` is true, then the
+// conversion stops after gpu_binary blob is generated. If `gpu_binary_only` is
+// false, lowers the host side to LLVM Dialect.
+xla::StatusOr<mlir::OwningModuleRef> GenerateKernelForTfCode(
+    mlir::MLIRContext& context, llvm::StringRef tf_code, bool gpu_binary_only,
     std::pair<int32_t, int32_t> compute_capability = {7, 5},
     llvm::ArrayRef<uint32_t> tile_sizes = {16, 64},
     llvm::ArrayRef<uint32_t> same_shape = {},
     llvm::ArrayRef<uint32_t> unroll_factors = {});
+
+// Extracts gpu_binary from the converted module.
+xla::StatusOr<std::string> ExtractGpuBinary(mlir::ModuleOp module);
+
 }  // namespace kernel_gen
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_GPU_BINARY_CREATOR_H_
+#endif  // TENSORFLOW_COMPILER_MLIR_TOOLS_KERNEL_GEN_KERNEL_CREATOR_H_
