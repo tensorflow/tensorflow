@@ -925,14 +925,13 @@ cc_library(
 )
 
 # Library with TensorFlow dialect static initialization.
+# TODO(aminim): OBSOLETE ; remove all users and delete this.
 cc_library(
     name = "tensorflow_dialect_registration",
-    srcs = ["ir/dialect_registration.cc"],
     deps = [
         ":tensorflow",
         "@llvm-project//mlir:Shape",
     ],
-    alwayslink = 1,
 )
 
 cc_library(
@@ -1310,9 +1309,8 @@ cc_library(
 cc_library(
     name = "tf_dialect_lib",
     deps = [
-        ":tensorflow_dialect_registration",
         ":tf_dialect_passes",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
     ],
 )
 
@@ -1506,7 +1504,6 @@ COMPILE_MLIR_UTIL_DEPS = [
     ":error_util",
     ":mlir_roundtrip_flags",
     ":tensorflow",
-    ":tensorflow_dialect_registration",
     ":tensorflow_types",
     ":tensorflow_passes",
     ":translate_utils",
@@ -1790,14 +1787,13 @@ cc_library(
         ":convert_graphdef",
         ":error_util",
         ":tensorflow",
-        ":tensorflow_dialect_registration",
         ":tensorflow_passes",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core/platform:logging",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:Analysis",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:Pass",
