@@ -48,11 +48,10 @@ Status XlaCompileOnDemandOp::Run(OpKernelContext* ctx,
                                  const ResourceVarsSnapshot& variable_args) {
   xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
-  absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
   se::DeviceMemoryAllocator* allocator = GetAllocator(
-      &tf_allocator_adapter, ctx->device(),
+      ctx->device(),
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
-      platform_info_);
+      platform_info_).get();
   XlaComputationLaunchContext launch_context(
       client, allocator, client->default_device_ordinal(),
       /*allocate_xla_tensors=*/platform_info_.xla_device_metadata() != nullptr,
@@ -126,12 +125,10 @@ Status XlaCompileOnDemandOp::Compile(
                                         write_into_cache);
       }));
 
-  absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
   XlaCompiler::Options options = GenerateCompilerOptions(
       **cache, *ctx->function_library(), ctx->device(),
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
-      platform_info_,
-      /*has_ref_vars=*/true, &tf_allocator_adapter);
+      platform_info_, /*has_ref_vars=*/true);
   // No detailed logging from on demand op.
   options.detailed_logging = false;
   XlaCompiler::CompileOptions compile_options;

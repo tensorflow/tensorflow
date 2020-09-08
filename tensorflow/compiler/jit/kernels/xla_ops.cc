@@ -166,8 +166,8 @@ static Status CompileToLocalExecutable(
     const XlaPlatformInfo& platform_info,
     absl::Span<const Tensor* const> inputs,
     absl::Span<VariableInfo const> variable_infos,
-    absl::Span<const int> constants, bool lazy, bool may_alias_resource_update,
-    xla::LocalClient** client,
+    absl::Span<const int> constants, XlaCompilationCache::CompileMode cmode,
+    bool may_alias_resource_update, xla::LocalClient** client,
     const XlaCompiler::CompilationResult** compilation_result,
     xla::LocalExecutable** executable) {
   // We store information about the JIT-compiled XLA computation
@@ -190,11 +190,10 @@ static Status CompileToLocalExecutable(
 
   *client = static_cast<xla::LocalClient*>(cache->client());
 
-  absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
   XlaCompiler::Options options = GenerateCompilerOptions(
       *cache, *ctx->function_library(), ctx->device(),
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
-      platform_info, has_ref_vars, &tf_allocator_adapter);
+      platform_info, has_ref_vars);
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
@@ -210,9 +209,7 @@ static Status CompileToLocalExecutable(
           constants, inputs, variable_infos,
           static_cast<Device*>(ctx->device()));
   TF_RETURN_IF_ERROR(args.status());
-  return cache->Compile(options, function, *args, compile_options,
-                        lazy ? XlaCompilationCache::CompileMode::kLazy
-                             : XlaCompilationCache::CompileMode::kStrict,
+  return cache->Compile(options, function, *args, compile_options, cmode,
                         compilation_result, executable);
 }
 
@@ -233,7 +230,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
     OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(variable_infos)));
     Status s = CompileToLocalExecutable(
         ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_, inputs,
-        variable_infos, constants_, /*lazy=*/false,
+        variable_infos, constants_, XlaCompilationCache::CompileMode::kStrict,
         /*may_alias_resource_update=*/true, &client, &compilation_result,
         &executable);
     OP_REQUIRES_OK(ctx, s);
@@ -248,10 +245,8 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-  se::DeviceMemoryAllocator* allocator = GetAllocator(
-      &tf_allocator_adapter, ctx->device(),
-      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
-      platform_info_);
+  se::DeviceMemoryAllocator* allocator =
+      GetAllocator(ctx->device(), stream, platform_info_).get();
   int device_ordinal = stream ? stream->parent()->device_ordinal()
                               : client->default_device_ordinal();
   XlaComputationLaunchContext launch_context(
@@ -381,6 +376,20 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     mutex_lock guard(cannot_compile_cluster_mu_);
     cannot_compile_cluster = cannot_compile_cluster_;
   }
+  // If must_compile_ is true, there is no fallback path and therefore
+  // async and lazy must be false. If must_compile_ is false, and async
+  // compilation is enabled, async is true, and lazy is false. Otherwise
+  // lazy compilation is true.
+  bool async = !must_compile_ &&
+               GetXlaOpsCommonFlags().tf_xla_async_compilation;
+  // Possible future work:
+  //    disable async for small clusters.
+  //    disable async for cluster that have short compile time.
+  bool lazy = async ? false : !must_compile_;
+  XlaCompilationCache::CompileMode cmode =
+    lazy  ? XlaCompilationCache::CompileMode::kLazy :
+    async ? XlaCompilationCache::CompileMode::kAsync :
+            XlaCompilationCache::CompileMode::kStrict;
 
   if (GetXlaOpsCommonFlags().tf_xla_always_defer_compilation ||
       cannot_compile_cluster) {
@@ -396,12 +405,11 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
     // unlocking them in XlaRun may lead to deadlocks.
     Status status = CompileToLocalExecutable(
         ctx, function_, has_ref_vars_, platform_info_, inputs, variable_infos,
-        constants_,
-        /*lazy=*/!must_compile_,
-        /*may_alias_resource_update=*/false, &client, &kernel, &executable);
+        constants_, cmode, /*may_alias_resource_update=*/false, &client,
+        &kernel, &executable);
     OP_REQUIRES_OK(ctx, SnapshotResourceVariables(ctx, resources_,
                                                   variable_infos, &variables));
-    if (must_compile_ || status.code() != error::UNIMPLEMENTED) {
+    if (must_compile_ || async || status.code() != error::UNIMPLEMENTED) {
       OP_REQUIRES_OK(ctx, status);
     }
 
@@ -423,6 +431,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
   host_alloc_attrs.set_on_host(true);
   Allocator* cpu_allocator = ctx->device()->GetAllocator(host_alloc_attrs);
 
+  // Async compilation returns nullptr executable without an error.
   if (!executable) {
     DCHECK(!must_compile_);
     Tensor compilation_key(cpu_allocator, DT_STRING, TensorShape({}));
@@ -463,13 +472,10 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
   XlaExecutableClosure closure =
       XlaExecutableClosureStore::Global()->Consume(key);
 
-  absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-  se::DeviceMemoryAllocator* allocator = GetAllocator(
-      &tf_allocator_adapter, ctx->device(),
-      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
-      platform_info_);
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
+  se::DeviceMemoryAllocator* allocator =
+      GetAllocator(ctx->device(), stream, platform_info_).get();
   int device_ordinal = stream ? stream->parent()->device_ordinal()
                               : closure.client()->default_device_ordinal();
   XlaComputationLaunchContext launch_context(
