@@ -102,8 +102,8 @@ func @broadcast_shift_right(%arg0: tensor<4xi32>, %arg1: tensor<2x4xi32>) -> ten
   return %0 : tensor<2x4xi32>
 }
 
-func @and(%arg0: tensor<2xi1>) -> tensor<2xi1> {
-  %0 = mhlo.and %arg0, %arg0 : tensor<2xi1>
+func @and(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
+  %0 = mhlo.and %arg0, %arg1 : tensor<2xi1>
   return %0 : tensor<2xi1>
 }
 
@@ -117,8 +117,8 @@ func @and_dynamic(%arg0: tensor<?xi1>, %arg1: tensor<1xi1>) -> tensor<?xi1> {
   return %0 : tensor<?xi1>
 }
 
-func @or(%arg0: tensor<2xi1>) -> tensor<2xi1> {
-  %0 = mhlo.or %arg0, %arg0 : tensor<2xi1>
+func @or(%arg0: tensor<2xi1>, %arg1: tensor<2xi1>) -> tensor<2xi1> {
+  %0 = mhlo.or %arg0, %arg1 : tensor<2xi1>
   return %0 : tensor<2xi1>
 }
 
@@ -927,9 +927,10 @@ func @convert_reduce_to_min(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
 // CHECK:         }
 
 // CHECK-LABEL:   func @and(
-// CHECK-SAME:              %[[VAL_0:.*]]: tensor<2xi1>) -> tensor<2xi1> {
-// CHECK:           %[[VAL_1:.*]] = "tf.LogicalAnd"(%[[VAL_0]], %[[VAL_0]]) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
-// CHECK:           return %[[VAL_1]] : tensor<2xi1>
+// CHECK-SAME:              %[[VAL_0:.*]]: tensor<2xi1>,
+// CHECK-SAME:              %[[VAL_1:.*]]: tensor<2xi1>) -> tensor<2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.LogicalAnd"(%[[VAL_0]], %[[VAL_1]]) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<2xi1>
 // CHECK:         }
 
 // CHECK-LABEL:   func @and_broadcast(
@@ -947,9 +948,10 @@ func @convert_reduce_to_min(%arg0: tensor<1x256xf32>) -> tensor<1xf32> {
 // CHECK:         }
 
 // CHECK-LABEL:   func @or(
-// CHECK-SAME:             %[[VAL_0:.*]]: tensor<2xi1>) -> tensor<2xi1> {
-// CHECK:           %[[VAL_1:.*]] = "tf.LogicalOr"(%[[VAL_0]], %[[VAL_0]]) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
-// CHECK:           return %[[VAL_1]] : tensor<2xi1>
+// CHECK-SAME:             %[[VAL_0:.*]]: tensor<2xi1>,
+// CHECK-SAME:             %[[VAL_1:.*]]: tensor<2xi1>) -> tensor<2xi1> {
+// CHECK:           %[[VAL_2:.*]] = "tf.LogicalOr"(%[[VAL_0]], %[[VAL_1]]) : (tensor<2xi1>, tensor<2xi1>) -> tensor<2xi1>
+// CHECK:           return %[[VAL_2]] : tensor<2xi1>
 // CHECK:         }
 
 // CHECK-LABEL:   func @or_broadcast(

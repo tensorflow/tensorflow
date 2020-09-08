@@ -1268,6 +1268,130 @@ static LogicalResult Verify(InfeedOp op) {
 }
 
 //===----------------------------------------------------------------------===//
+// Logical Ops
+//===----------------------------------------------------------------------===//
+
+OpFoldResult AndOp::fold(ArrayRef<Attribute> operands) {
+  if (lhs() == rhs()) return lhs();
+
+  auto rType = getType().cast<ShapedType>();
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return rhs();
+    }
+
+    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return lhsVal;
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return lhs();
+    }
+
+    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return rhsVal;
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+
+  llvm::SmallVector<APInt, 4> values;
+  values.reserve(rhsVal.getNumElements());
+  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+    values.push_back(std::get<0>(it) & std::get<1>(it));
+  }
+
+  return DenseIntElementsAttr::get(rType, values);
+}
+
+OpFoldResult OrOp::fold(ArrayRef<Attribute> operands) {
+  if (lhs() == rhs()) return lhs();
+
+  auto rType = getType().cast<ShapedType>();
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return lhsVal;
+    }
+
+    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return rhs();
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue()
+            .cast<IntegerAttr>()
+            .getValue()
+            .isAllOnesValue()) {
+      return rhsVal;
+    }
+
+    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return lhs();
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+
+  llvm::SmallVector<APInt, 4> values;
+  values.reserve(rhsVal.getNumElements());
+  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+    values.push_back(std::get<0>(it) | std::get<1>(it));
+  }
+
+  return DenseIntElementsAttr::get(rType, values);
+}
+
+OpFoldResult XorOp::fold(ArrayRef<Attribute> operands) {
+  auto rType = getType().cast<ShapedType>();
+  if (lhs() == rhs()) {
+    return DenseIntElementsAttr::get(rType, 0);
+  }
+
+  auto lhsVal = operands[0].dyn_cast_or_null<DenseElementsAttr>();
+  auto rhsVal = operands[1].dyn_cast_or_null<DenseElementsAttr>();
+
+  if (lhsVal && lhsVal.isSplat()) {
+    if (lhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return rhs();
+    }
+  }
+
+  if (rhsVal && rhsVal.isSplat()) {
+    if (rhsVal.getSplatValue().cast<IntegerAttr>().getValue().isNullValue()) {
+      return lhs();
+    }
+  }
+
+  if (!rhsVal || !lhsVal) return {};
+
+  llvm::SmallVector<APInt, 4> values;
+  values.reserve(rhsVal.getNumElements());
+  for (auto it : llvm::zip(rhsVal.getIntValues(), lhsVal.getIntValues())) {
+    values.push_back(std::get<0>(it) ^ std::get<1>(it));
+  }
+
+  return DenseIntElementsAttr::get(rType, values);
+}
+
+//===----------------------------------------------------------------------===//
 // MapOp
 //===----------------------------------------------------------------------===//
 
