@@ -243,7 +243,8 @@ to determine if the requested feature aligns with the TFLM roadmap.
     Fetch the latest changes from upstream and merge into your local branch.
    
     ```
-    git fetch upstream git merge upstream/master
+    git fetch upstream
+    git merge upstream/master
     ```
 
     In case of a merge conflict, resolve via:
