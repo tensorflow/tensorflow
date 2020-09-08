@@ -529,7 +529,7 @@ see the incremented value or a subsequent newer one.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
     TF_Tensor:$value
   );
 
@@ -547,7 +547,7 @@ see the decremented value or a subsequent newer one.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
     TF_Tensor:$value
   );
 
@@ -565,7 +565,7 @@ this value or a subsequent newer value of the variable.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableWrite]>:$resource,
     TF_Tensor:$value
   );
 
@@ -6546,21 +6546,6 @@ pad(t, paddings) ==> [[2, 1, 1, 2, 3, 3, 2]
   TF_DerivedOperandTypeAttr Tpaddings = TF_DerivedOperandTypeAttr<1>;
 }
 
-def TF_MlirLocalVarOp : TF_Op<"MlirLocalVarOp", []> {
-  let summary = "Creates a handle to a in-scope variable.";
-
-  let description = [{
-Used by internal passes for temporary representation of local state, which will
-be eventually removed.
-  }];
-
-  let arguments = (ins);
-
-  let results = (outs
-    TF_ResourceTensor:$resource
-  );
-}
-
 def TF_MlirPassthroughOp : TF_Op<"MlirPassthroughOp", [NoSideEffect]> {
   let summary = [{
 Wraps an arbitrary MLIR computation expressed as a module with a main() function.
@@ -8190,8 +8175,8 @@ var -= lr * grad * (1 / (sqrt(accum) + epsilon))
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$var,
-    TF_ResourceTensor:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$epsilon,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
@@ -8216,9 +8201,9 @@ $$\text{variable} := \text{variable} - \text{lr}_t * m_t / (\sqrt{v_t} + \epsilo
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$var,
-    TF_ResourceTensor:$m,
-    TF_ResourceTensor:$v,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$m,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$v,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$beta1_power,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$beta2_power,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
@@ -8261,10 +8246,10 @@ var <- var - mom
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$var,
-    TF_ResourceTensor:$mg,
-    TF_ResourceTensor:$ms,
-    TF_ResourceTensor:$mom,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$mg,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$ms,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$mom,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$rho,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$momentum,
@@ -8283,7 +8268,7 @@ def TF_ResourceApplyGradientDescentOp : TF_Op<"ResourceApplyGradientDescent", []
   let summary = "Update '*var' by subtracting 'alpha' * 'delta' from it.";
 
   let arguments = (ins
-    TF_ResourceTensor:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$alpha,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$delta,
 
@@ -8306,8 +8291,8 @@ var += accum
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$var,
-    TF_ResourceTensor:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$momentum,
@@ -8332,8 +8317,8 @@ var -= lr * accum
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$var,
-    TF_ResourceTensor:$accum,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$var,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$accum,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$lr,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$grad,
     TensorOf<[BF16, F16, F32, F64, I16, I32, I64, I8, TF_Complex128, TF_Complex64, TF_Qint32, TF_Qint8, TF_Quint8, TF_Uint16, TF_Uint32, TF_Uint64, TF_Uint8]>:$momentum,
@@ -8369,7 +8354,7 @@ Produces an output tensor with shape `indices.shape + params.shape[1:]` where:
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead]>:$resource,
     TF_I32OrI64Tensor:$indices,
 
     DefaultValuedAttr<I64Attr, "0">:$batch_dims,
@@ -8403,7 +8388,7 @@ This operation computes
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$resource,
+    Arg<TF_ResourceTensor, "", [TF_VariableRead,TF_VariableWrite]>:$resource,
     TF_I32OrI64Tensor:$indices,
     TF_Tensor:$updates
   );
@@ -10890,29 +10875,6 @@ The above computation has a replicated output of two replicas.
   TF_DerivedOperandTypeAttr T = TF_DerivedOperandTypeAttr<0>;
 }
 
-def TF_TPUReshardVariablesOp : TF_Op<"TPUReshardVariables", []> {
-  let summary = [{
-Op that reshards on-device TPU variables to specified state. Internal use only.
-  }];
-
-  let description = [{
-The sharding state is represented as the key of the compilation that generated
-the sharding/unsharding programs along with the main program. new_format_key
-specifies the desired state, and format_state_var is the current state of the
-variables.
-  }];
-
-  let arguments = (ins
-    Variadic<TF_ResourceTensor>:$vars,
-    TF_StrTensor:$new_format_key,
-    TF_ResourceTensor:$format_state_var
-  );
-
-  let results = (outs);
-
-  TF_DerivedOperandSizeAttr N = TF_DerivedOperandSizeAttr<0>;
-}
-
 def TF_TanOp : TF_Op<"Tan", [NoSideEffect, SameOperandsAndResultType]> {
   let summary = "Computes tan of x element-wise.";
 
@@ -12174,7 +12136,7 @@ Checks whether a resource handle-based variable has been initialized.
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$resource
+    Arg<TF_ResourceTensor, "", [TF_VariableRead]>:$resource
   );
 
   let results = (outs
@@ -12199,7 +12161,7 @@ shape(t) ==> [2, 2, 3]
   }];
 
   let arguments = (ins
-    TF_ResourceTensor:$input
+    Arg<TF_ResourceTensor, "", [TF_VariableRead]>:$input
   );
 
   let results = (outs

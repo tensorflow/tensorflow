@@ -117,6 +117,8 @@ def TF_VariableWrite : MemWrite<TF_VariableResource>;
 def TF_StackWrite : MemWrite<TF_StackResource>;
 def TF_TensorArrayWrite : MemWrite<TF_TensorArrayResource>;
 
+def TF_VariableAlloc : MemAlloc<TF_VariableResource>;
+
 //===----------------------------------------------------------------------===//
 // TensorFlow op definitions
 //===----------------------------------------------------------------------===//
