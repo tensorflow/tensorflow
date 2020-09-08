@@ -84,6 +84,7 @@ ifneq ($(filter cmsis-nn,$(ALL_TAGS)),)
       $(CMSIS_PATH)/CMSIS/NN/Source/SoftmaxFunctions/arm_softmax_u8.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/SoftmaxFunctions/arm_softmax_q7.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/SoftmaxFunctions/arm_softmax_with_batch_q7.c \
+      $(CMSIS_PATH)/CMSIS/NN/Source/SVDFunctions/arm_svdf_s8.c \
       $(CMSIS_PATH)/CMSIS/NN/Source/ReshapeFunctions/arm_reshape_s8.c
 
     # Cherry-picked list of headers that are needed to compile the CMSIS-NN
