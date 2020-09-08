@@ -2732,7 +2732,7 @@ TEST_F(NoCifgPeepholeProjectionNoClippingSparseLstmTest,
 INSTANTIATE_TEST_SUITE_P(
     Parameterized, LstmOpTest,
     ::testing::Combine(::testing::Values(TensorType_FLOAT32, TensorType_UINT8,
-                                         TensorType_UINT8),
+                                         TensorType_INT8),
                        ::testing::Bool(), ::testing::Bool()));
 
 }  // namespace
