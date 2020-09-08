@@ -122,6 +122,8 @@ std::string TpuVersionEnumToString(TpuVersionEnum version) {
       return "TPU v2";
     case kTpuV3:
       return "TPU v3";
+    case kTpuV4:
+      return "TPU v4";
   }
 }
 

@@ -16,7 +16,6 @@ limitations under the License.
 // This file combines patterns for lowering shape dialect to standard ops,
 // structured control flow and descriptors.
 
-#include "mlir/Conversion/ShapeToSCF/ShapeToSCF.h"  // from @llvm-project
 #include "mlir/Conversion/ShapeToStandard/ShapeToStandard.h"  // from @llvm-project
 #include "mlir/Dialect/SCF/SCF.h"  // from @llvm-project
 #include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
@@ -56,7 +55,6 @@ struct ShapeToDescriptorsPass
     OwningRewritePatternList patterns;
     populateShapeRewritePatterns(&ctx, patterns);
     populateShapeToStandardConversionPatterns(patterns, &ctx);
-    populateShapeToSCFConversionPatterns(patterns, &ctx);
 
     // Apply conversion.
     auto module = getOperation();

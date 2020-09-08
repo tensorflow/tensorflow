@@ -198,7 +198,7 @@ void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
   // clang-format on
 }
 
-std::unique_ptr<::mlir::Pass> createTransformUnrankedHloPass() {
+std::unique_ptr<FunctionPass> createTransformUnrankedHloPass() {
   return std::make_unique<TransformUnrankedHloPass>();
 }
 

@@ -126,6 +126,8 @@ cc_library(
         "lib/IR/TestFunc.cpp",
         "lib/IR/TestInterfaces.cpp",
         "lib/IR/TestMatchers.cpp",
+        "lib/IR/TestPrintDefUse.cpp",
+        "lib/IR/TestPrintNesting.cpp",
         "lib/IR/TestSideEffects.cpp",
         "lib/IR/TestSymbolUses.cpp",
         "lib/IR/TestTypes.cpp",
