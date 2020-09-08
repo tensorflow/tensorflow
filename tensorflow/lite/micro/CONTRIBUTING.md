@@ -229,9 +229,9 @@ to determine if the requested feature aligns with the TFLM roadmap.
     want to test:
 
     ```
-    CC=clang BAZEL_COMPILER=llvm bazel run
-    --copt=-DADDRESS_SANITIZER     --copt=-fsanitize=address
-    --linkopt=-fsanitize=address tensorflow/lite/micro:micro_interpreter_test
+    CC=clang BAZEL_COMPILER=llvm bazel run --copt=-DADDRESS_SANITIZER \
+    --copt=-fsanitize=address --linkopt=-fsanitize=address \
+    tensorflow/lite/micro:micro_interpreter_test
     ```
 
 ## During the PR review
