@@ -237,7 +237,9 @@ to determine if the requested feature aligns with the TFLM roadmap.
 ## During the PR review
 
 1.  Do not change the git version history.
+
      * Always merge upstream/master (***do not rebase***) and no force-pushes please.
+
      * Having an extra merge commit it ok as the github review tool handles that
        gracefully.
 
