@@ -19,7 +19,7 @@ https://github.com/ekalinin/github-markdown-toc#auto-insert-and-update-toc
       * [Reviewer notes](#reviewer-notes)
       * [Python notes](#python-notes)
 
-<!-- Added by: advaitjain, at: Tue 08 Sep 2020 03:46:53 PM PDT -->
+<!-- Added by: advaitjain, at: Tue 08 Sep 2020 04:00:31 PM PDT -->
 
 <!--te-->
 
@@ -198,8 +198,10 @@ to determine if the requested feature aligns with the TFLM roadmap.
 
 1.  Run in-place clang-format on all the files that are modified in your git
     tree with
-    
-    ```clang-format -i -style=google `git ls-files -m` ```
+
+    ```
+    clang-format -i -style=google `git ls-files -m`
+    ```
 
 1.  Make sure your code is lint-free.
 
@@ -207,7 +209,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
     [cpplint](https://github.com/google/styleguide/tree/gh-pages/cpplint)
 
     Run cpplint.py on all modified files in your git tree:
-   
+
     ```
     cpplint.py `gitls-files -m`
     ```
@@ -223,7 +225,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
     via the Makefile. To run a test with the address sanitizer, use the
     following command (replace `micro_interpreter_test` with the target that you
     want to test:
-    
+
     ```
     CC=clang BAZEL_COMPILER=llvm bazel run
     --copt=-DADDRESS_SANITIZER     --copt=-fsanitize=address
@@ -232,28 +234,29 @@ to determine if the requested feature aligns with the TFLM roadmap.
 
 ## During the PR review
 
-1.  Do not change the git version hishttp://cl/328554559tory. Always merge upstream/master, and no
-    force-pushes please.
+1.  Do not change the git version history. Always merge upstream/master, ***do not
+    rebase*** and no force-pushes please.
 
     Assuming that you forked tensorflow and added a remote called upstream with:
-    
+
     `git remote add upstream https://github.com/tensorflow/tensorflow.git`
 
     Fetch the latest changes from upstream and merge into your local branch.
-   
+
     ```
-    git fetch upstream git merge upstream/master
+    git fetch upstream
+    git merge upstream/master
     ```
 
     In case of a merge conflict, resolve via:
-    
+
     ```
     git mergetool
 
     # Use your favorite diff tools (e.g. meld) to resolve the conflicts.
 
     git add <files that were manually resolved>
-    
+
     git commit
     ```
 
@@ -266,7 +269,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
 
 *   [GIthub CLI](cli.github.com) can be useful to quickly checkout a PR to test
     locally.
-    
+
     `gh pr checkout <PR number>`
 
 *   Google engineers on the Tensorflow team will have the permissions to push
@@ -278,7 +281,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
     [this comment](https://github.com/tensorflow/tensorflow/pull/38634#issuecomment-683190474).
 
     And a sketch of the steps:
-    
+
     ```
     git remote add <remote_name>
     git@github.com:<PR author>/tensorflow.git git fetch <remote_name>
