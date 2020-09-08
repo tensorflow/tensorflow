@@ -452,7 +452,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 15,
     tags = [
-        "nogpu",  # TODO(b/162544929): segfault
         "nomac",  # b/157056289
     ],
     deps = [
