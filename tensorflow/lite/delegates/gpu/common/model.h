@@ -90,6 +90,9 @@ class GraphFloat32 {
   // @return graph outputs, that are values without consumers.
   std::vector<Value*> outputs() const;
 
+  // @return values updated in place with a previously defined tensor reference.
+  std::vector<Value*> variable_inputs() const;
+
   // @return inputs into the given node. Returns empty vector for deleted node.
   std::vector<Value*> FindInputs(NodeId id) const;
 

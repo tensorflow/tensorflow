@@ -82,6 +82,13 @@ class TFLiteOperationParser {
   virtual absl::Status IsSupported(const TfLiteContext* context,
                                    const TfLiteNode* tflite_node,
                                    const TfLiteRegistration* registration) = 0;
+
+  // Return the value ids in the graph that correspond to the updated values of
+  // the variable input tensor.
+  virtual absl::flat_hash_map<int, ValueId>
+  GetNewValueIdsForVariableInputNodes() {
+    return absl::flat_hash_map<int, ValueId>();
+  }
 };
 
 HW ToHW(int32_t h, int32_t w) { return HW(h > 0 ? h : 1, w > 0 ? w : 1); }
@@ -2803,6 +2810,44 @@ absl::Status PrecreateIOTensors(
   return absl::OkStatus();
 }
 
+absl::Status CopyVariableTensorOutputs(
+    TfLiteNode* tflite_node, TfLiteRegistration* registration,
+    GraphFloat32* graph, ObjectReader& reader,
+    const absl::flat_hash_map<int, ValueId>& new_variable_tensor_values) {
+  absl::flat_hash_map<int, ValueId> new_variable_tensor_values_copy(
+      new_variable_tensor_values);
+  // Retrieve the final value id for the variable input tensors.
+  for (int i = 0; i < tflite_node->inputs->size; i++) {
+    int tensor_idx = tflite_node->inputs->data[i];
+    Value* value;
+    if (!reader.ReadValueByTensorIdx(tensor_idx, &value).ok()) continue;
+    if (value->tensor.is_variable_input) {
+      if (new_variable_tensor_values_copy.find(i) ==
+          new_variable_tensor_values_copy.end()) {
+        return absl::InvalidArgumentError(
+            absl::StrCat(GetOpNameByRegistration(*registration),
+                         " did not provide a new value for the variable input "
+                         "tensor with index ",
+                         tensor_idx));
+      } else {
+        Node* node = graph->NewNode();
+        node->operation.type = ToString(OperationType::COPY);
+        RETURN_IF_ERROR(graph->AddConsumer(
+            node->id, new_variable_tensor_values_copy.at(i)));
+        RETURN_IF_ERROR(reader.AddUpdate(node, i));
+        new_variable_tensor_values_copy.erase(
+            new_variable_tensor_values_copy.find(i));
+      }
+    }
+  }
+  if (!new_variable_tensor_values_copy.empty()) {
+    return absl::InvalidArgumentError(
+        "More input variable tensors asked to be copied than present on the "
+        "node");
+  }
+  return absl::OkStatus();
+}
+
 absl::Status BuildModel(TfLiteContext* context,
                         const TfLiteDelegateParams* delegate_params,
                         GraphFloat32* graph,
@@ -2833,6 +2878,7 @@ absl::Status BuildModel(TfLiteContext* context,
     tflite_nodes.push_back(i);
   }
   absl::flat_hash_map<int, Value*> tensor_to_value;
+  std::vector<ValueId> variable_inputs_to_value_id;
   RETURN_IF_ERROR(PrecreateIOTensors(context, graph,
                                      delegate_params->input_tensors,
                                      quant_conversion_map, &tensor_to_value));
@@ -2852,6 +2898,23 @@ absl::Status BuildModel(TfLiteContext* context,
     if (!status.ok()) {
       return absl::InternalError(absl::StrCat(
           GetOpNameByRegistration(*registration), ": ", status.message()));
+    }
+
+    absl::flat_hash_map<int, ValueId> new_value_for_variable_input_tensors =
+        operations[i]->GetNewValueIdsForVariableInputNodes();
+
+    RETURN_IF_ERROR(
+        CopyVariableTensorOutputs(tflite_node, registration, graph, reader,
+                                  new_value_for_variable_input_tensors));
+  }
+
+  // Variable input tensors expect to be unchanged throughout model execution.
+  // They need to be an output of the graph in order to have them unchanged.
+  for (auto value_id : variable_inputs_to_value_id) {
+    if (!graph->IsGraphOutput(value_id)) {
+      return absl::InvalidArgumentError(
+          absl::StrCat("Variable input tensors must be a graph output. Value ",
+                       value_id, " is not a graph output"));
     }
   }
   return absl::OkStatus();
