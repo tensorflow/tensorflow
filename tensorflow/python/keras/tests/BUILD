@@ -17,6 +17,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 tf_py_test(
     name = "get_config_test",
     srcs = ["get_config_test.py"],

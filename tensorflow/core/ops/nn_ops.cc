@@ -867,11 +867,12 @@ REGISTER_OP("MaxPool")
         "uint16, qint8} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
     .Output("output: T")
-    .SetShapeFn(shape_inference::MaxPoolShape);
+    .SetShapeFn(shape_inference::MaxPoolShapeWithExplicitPadding);
 
 REGISTER_OP("MaxPoolV2")
     .Attr(
@@ -891,7 +892,8 @@ REGISTER_OP("MaxPoolV2")
 REGISTER_OP("MaxPoolGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Input("orig_input: T")
     .Input("orig_output: T")
@@ -916,6 +918,7 @@ REGISTER_OP("MaxPoolGradV2")
       return UnchangedShapeWithRank(c, 4);
     });
 
+// TODO(b/150813181): Implement explicit padding.
 REGISTER_OP("MaxPoolGradGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")

@@ -507,6 +507,57 @@ TEST_P(CppGradients, TestIdentityNGrad) {
   result_tensor = nullptr;
 }
 
+TEST_P(CppGradients, TestSetAttrString) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  AbstractContextPtr ctx;
+  {
+    AbstractContext* ctx_raw = nullptr;
+    Status s =
+        BuildImmediateExecutionContext(std::get<1>(GetParam()), &ctx_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    ctx.reset(ctx_raw);
+  }
+
+  AbstractTensorHandlePtr t;
+  {
+    AbstractTensorHandle* x_raw = nullptr;
+    Status s = TestScalarTensorHandle(ctx.get(), 1.0f, &x_raw);
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+    t.reset(x_raw);
+  }
+
+  AbstractOperationPtr check_numerics_op(ctx->CreateOperation());
+  ForwardOperation forward_op;
+  forward_op.ctx = ctx.get();
+  Status s = Reset(check_numerics_op.get(), "CheckNumerics",
+                   /*raw_device_name=*/nullptr, &forward_op);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  if (isa<TracingOperation>(check_numerics_op.get())) {
+    s = dyn_cast<TracingOperation>(check_numerics_op.get())
+            ->SetOpName("check_numerics");
+    ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  }
+  s = AddInput(check_numerics_op.get(), t.get(), &forward_op);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  string message = "This is the way!";
+  s = SetAttrString(check_numerics_op.get(), "message", message.data(),
+                    message.length(), &forward_op);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  int num_retvals = 1;
+  std::vector<AbstractTensorHandle*> outputs(1);
+  GradientRegistry registry;
+  std::unique_ptr<Tape> tape(new Tape(/*persistent=*/false));
+  s = Execute(check_numerics_op.get(), ctx.get(), absl::MakeSpan(outputs),
+              &num_retvals, &forward_op, tape.get(), registry);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+
+  string read_message;
+  s = forward_op.attrs.Get("message", &read_message);
+  ASSERT_EQ(errors::OK, s.code()) << s.error_message();
+  ASSERT_EQ(read_message, message);
+}
+
 // TODO(b/164171226): Enable this test with tfrt after AddInputList is
 // supported. It is needed for IdentityN.
 #ifdef PLATFORM_GOOGLE

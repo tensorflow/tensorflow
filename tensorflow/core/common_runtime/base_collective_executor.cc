@@ -298,8 +298,8 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 }
 
 void BaseCollectiveExecutor::CompleteParamsAsync(
-    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
-    StatusCallback done) {
+    const DeviceAttributes& device, CollectiveParams* cp,
+    CancellationManager* cancel_mgr, StatusCallback done) {
   cp->instance.gpu_ring_order = *gpu_ring_order_;
   const auto is_callback_called = std::make_shared<std::atomic<bool>>(false);
   auto done_with_timeout = done;

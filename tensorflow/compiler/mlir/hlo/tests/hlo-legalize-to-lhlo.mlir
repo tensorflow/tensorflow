@@ -320,6 +320,18 @@ func @cos(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
 
 // -----
 
+// BOTH-LABEL: func @floor
+func @floor(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
+  %tensor_operand = tensor_load %operand : memref<2x2xf32>
+  %tensor_result = "mhlo.floor"(%tensor_operand)
+      : (tensor<2x2xf32>) -> tensor<2x2xf32>
+  // BOTH: "lmhlo.floor"(%{{.*}}, %{{.*}})
+  tensor_store %tensor_result, %result : memref<2x2xf32>
+  return
+}
+
+// -----
+
 // BOTH-LABEL: func @neg
 func @neg(%operand: memref<2x2xf32>, %result: memref<2x2xf32>) {
   %tensor_operand = tensor_load %operand : memref<2x2xf32>

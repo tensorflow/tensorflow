@@ -34,8 +34,8 @@ enum class ProcessingMode : int64 {
 };
 
 // Parses a string representing a processing mode and stores the result in
-// *mode. Returns an InvalidArgument status if the string is not recognized.
-Status ParseProcessingMode(const std::string& s, ProcessingMode* mode);
+// `mode`. Returns an InvalidArgument status if the string is not recognized.
+Status ParseProcessingMode(const std::string& s, ProcessingMode& mode);
 
 // Converts a processing mode to its corresponding string.
 std::string ProcessingModeToString(ProcessingMode mode);
@@ -87,34 +87,34 @@ class DataServiceDispatcherClient : public DataServiceClientBase {
   Status GetDatasetDef(int64 dataset_id, DatasetDef& dataset_def);
 
   // Registers a dataset with the tf.data service, and stores the generated
-  // dataset id in `*dataset_id`.
-  Status RegisterDataset(GraphDef dataset, int64* dataset_id);
+  // dataset id in `dataset_id`.
+  Status RegisterDataset(GraphDef dataset, int64& dataset_id);
 
   // Creates a new tf.data service job for the specified dataset. The id for the
-  // created job will be stored in `*job_client_id`.
+  // created job will be stored in `job_client_id`.
   Status CreateJob(int64 dataset_id, ProcessingMode processing_mode,
-                   int64* job_client_id);
+                   int64& job_client_id);
 
   // Gets the job id for the job represented by the tuple
-  // (job_name, job_name_index), and stores the id in *job_client_id. If the
+  // (job_name, job_name_index), and stores the id in `job_client_id`. If the
   // job doesn't exist yet, it will be created.
   Status GetOrCreateJob(int64 dataset_id, ProcessingMode processing_mode,
                         const std::string& job_name, int job_name_index,
-                        int64* job_client_id);
+                        int64& job_client_id);
 
   // Releases a job client id, indicating that the id will no longer be used to
   // read from the job.
   Status ReleaseJobClient(int64 job_client_id);
 
   // Queries the dispatcher for the tasks associated with the specified job.
-  // The tasks will be stored in *tasks, and whether the job is finished will
-  // be stored in `*job_finished`.
-  Status GetTasks(int64 job_client_id, std::vector<TaskInfo>* tasks,
-                  bool* job_finished);
+  // The tasks will be stored in `tasks`, and whether the job is finished will
+  // be stored in `job_finished`.
+  Status GetTasks(int64 job_client_id, std::vector<TaskInfo>& tasks,
+                  bool& job_finished);
 
   // Queries the dispatcher for its registered workers. The worker info will be
-  // stored in `*workers`.
-  Status GetWorkers(std::vector<WorkerInfo>* workers);
+  // stored in `workers`.
+  Status GetWorkers(std::vector<WorkerInfo>& workers);
 
  protected:
   Status EnsureInitialized() override;
@@ -134,10 +134,10 @@ class DataServiceWorkerClient : public DataServiceClientBase {
       : DataServiceClientBase(address, protocol) {}
 
   // Fetches the next element for the specified task_id. The element's
-  // compressed tensors will be stored in *element. If no element is available,
-  // `*end_of_sequence` will be `true`, and `element` will be left unchanged.
-  Status GetElement(int64 task_id, CompressedElement* element,
-                    bool* end_of_sequence);
+  // compressed tensors will be stored in `element`. If no element is available,
+  // `end_of_sequence` will be `true`, and `element` will be left unchanged.
+  Status GetElement(int64 task_id, CompressedElement& element,
+                    bool& end_of_sequence);
 
  protected:
   Status EnsureInitialized() override;
@@ -152,12 +152,12 @@ class DataServiceWorkerClient : public DataServiceClientBase {
 // Creates and initializes a new tf.data service dispatcher client.
 Status CreateDataServiceDispatcherClient(
     const std::string& address, const std::string& protocol,
-    std::unique_ptr<DataServiceDispatcherClient>* out);
+    std::unique_ptr<DataServiceDispatcherClient>& out);
 
 // Creates and initializes a new tf.data service worker client.
 Status CreateDataServiceWorkerClient(
     const std::string& address, const std::string& protocol,
-    std::unique_ptr<DataServiceWorkerClient>* out);
+    std::unique_ptr<DataServiceWorkerClient>& out);
 
 }  // namespace data
 }  // namespace tensorflow

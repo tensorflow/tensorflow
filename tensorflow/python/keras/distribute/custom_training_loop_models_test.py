@@ -204,11 +204,6 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
     train_step(input_iterator)
 
   # TODO(b/165912857): Re-enable.
-  @combinations.generate(
-      combinations.combine(
-          distribution=strategy_combinations.all_strategies,
-          mode=["eager"]
-      ))
   def DISABLED_test_lstm(self, distribution):
 
     batch_size = 32

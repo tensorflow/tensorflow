@@ -807,6 +807,7 @@ cuda_py_test(
     name = "matrix_square_root_op_test",
     size = "medium",
     srcs = ["matrix_square_root_op_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -1137,6 +1138,7 @@ tf_py_test(
     name = "string_format_op_test",
     size = "small",
     srcs = ["string_format_op_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -2064,7 +2066,10 @@ cuda_py_test(
     name = "dynamic_partition_op_test",
     size = "medium",
     srcs = ["dynamic_partition_op_test.py"],
-    tfrt_enabled = True,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    tfrt_enabled = False,  # TODO(b/153089059): add support for complex128.
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

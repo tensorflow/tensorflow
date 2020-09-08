@@ -4766,7 +4766,7 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       from_logits: Boolean, whether `output` is the
           result of a softmax, or is a tensor of logits.
       axis: Int specifying the channels axis. `axis=-1` corresponds to data
-          format `channels_last', and `axis=1` corresponds to data format
+          format `channels_last`, and `axis=1` corresponds to data format
           `channels_first`.
 
   Returns:
@@ -4838,7 +4838,7 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
       from_logits: Boolean, whether `output` is the
           result of a softmax, or is a tensor of logits.
       axis: Int specifying the channels axis. `axis=-1` corresponds to data
-          format `channels_last', and `axis=1` corresponds to data format
+          format `channels_last`, and `axis=1` corresponds to data format
           `channels_first`.
 
   Returns:

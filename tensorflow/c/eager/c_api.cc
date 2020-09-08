@@ -1553,8 +1553,67 @@ void SetOpAttrValueScalar(TFE_Context* ctx, TFE_Op* op,
       TFE_OpSetAttrFunction(op, attr_name, func_op);
       TFE_DeleteOp(func_op);
     } break;
-    case tensorflow::AttrValue::kList:
-      TF_FALLTHROUGH_INTENDED;
+    case tensorflow::AttrValue::kList: {
+      // String
+      if (const int s_size = default_value.list().s_size()) {
+        absl::InlinedVector<const void*, 4> values_vector;
+        absl::InlinedVector<size_t, 4> lengths_vector;
+        for (int i = 0; i < s_size; ++i) {
+          const string& v = default_value.list().s(i);
+          values_vector.push_back(v.data());
+          lengths_vector.push_back(v.size());
+        }
+        TFE_OpSetAttrStringList(op, attr_name, values_vector.data(),
+                                lengths_vector.data(), s_size);
+      }
+
+      // Int
+      if (const int i_size = default_value.list().i_size()) {
+        absl::InlinedVector<int64_t, 4> i_vector;
+        for (int i = 0; i < i_size; ++i) {
+          i_vector.push_back(default_value.list().i(i));
+        }
+        TFE_OpSetAttrIntList(op, attr_name, i_vector.data(), i_size);
+      }
+      // Float
+      if (const int f_size = default_value.list().f_size()) {
+        absl::InlinedVector<float, 4> f_vector;
+        for (int i = 0; i < f_size; ++i) {
+          f_vector.push_back(default_value.list().f(i));
+        }
+        TFE_OpSetAttrFloatList(op, attr_name, f_vector.data(), f_size);
+      }
+      // Bool
+      if (const int b_size = default_value.list().b_size()) {
+        absl::InlinedVector<unsigned char, 4> b_vector;
+        for (int i = 0; i < b_size; i++) {
+          b_vector.push_back(default_value.list().b(i));
+        }
+        TFE_OpSetAttrBoolList(op, attr_name, b_vector.data(), b_size);
+      }
+      // Type
+      if (const int type_size = default_value.list().type_size()) {
+        absl::InlinedVector<unsigned int, 4> type_vector;
+        for (int i = 0; i < type_size; ++i) {
+          type_vector.push_back(default_value.list().type(i));
+        }
+        TFE_OpSetAttrTypeList(
+            op, attr_name,
+            reinterpret_cast<const TF_DataType*>(type_vector.data()),
+            type_size);
+      }
+
+      // Rest are not supported.
+      if (default_value.list().shape_size() > 0 ||
+          default_value.list().func_size() > 0 ||
+          default_value.list().tensor_size() > 0) {
+        TF_SetStatus(
+            status, TF_UNIMPLEMENTED,
+            tensorflow::strings::StrCat("Unable to get setfor default value: ",
+                                        default_value.DebugString())
+                .data());
+      }
+    } break;
     case tensorflow::AttrValue::kTensor:
       TF_FALLTHROUGH_INTENDED;
     case tensorflow::AttrValue::kPlaceholder:

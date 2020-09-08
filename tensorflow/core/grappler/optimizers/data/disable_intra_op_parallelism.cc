@@ -96,12 +96,7 @@ Status DisableIntraOpParallelism::OptimizeAndCollectStats(
     if (last_node->attr().find(attr) != last_node->attr().end()) {
       graph_utils::CopyAttribute(attr, *last_node, &insert_node);
     } else {
-      auto inferred_attr = strings::StrCat("T", attr);
-      if (last_node->attr().find(inferred_attr) != last_node->attr().end()) {
-        graph_utils::CopyAttribute(inferred_attr, *last_node, &insert_node);
-      } else {
-        return Status::OK();
-      }
+      return Status::OK();
     }
   }
 

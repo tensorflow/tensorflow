@@ -304,6 +304,10 @@ std::unique_ptr<OperationPass<ModuleOp>> CreateTPUShardingIdentificationPass();
 // updates.
 std::unique_ptr<OperationPass<FuncOp>> CreateTPUMergeVariablesWithExecutePass();
 
+// Creates a pass that wraps ReadVariableOp/AssignVariable op that consumes a
+// packed tensor to have same device placement as underlying TPU device.
+std::unique_ptr<OperationPass<FuncOp>> CreateTPUColocateCompositeResourceOps();
+
 // Creates a pass that adds ops which perform formatting on variables at
 // run-time according to compilation result.
 std::unique_ptr<OperationPass<ModuleOp>> CreateTPUVariableReformattingPass();

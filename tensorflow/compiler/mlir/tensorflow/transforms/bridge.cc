@@ -118,6 +118,7 @@ void CreateTPUBridgePipeline(OpPassManager &pm) {
   pm.addNestedPass<FuncOp>(TFDevice::CreateReplicateInvariantOpHoistingPass());
   pm.addNestedPass<FuncOp>(CreateTPUDynamicLayoutPass());
   pm.addNestedPass<FuncOp>(CreateTPUMergeVariablesWithExecutePass());
+  pm.addNestedPass<FuncOp>(CreateTPUColocateCompositeResourceOps());
   pm.addPass(CreateTPUVariableReformattingPass());
 }
 

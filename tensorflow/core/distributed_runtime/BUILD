@@ -571,7 +571,9 @@ cc_library(
         ":device_resolver_distributed",
         ":worker_cache",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/platform:errors",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -606,6 +608,7 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:collective_ops",
+        "@com_google_absl//absl/container:flat_hash_map",
     ],
 )
 

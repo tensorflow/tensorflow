@@ -2999,37 +2999,14 @@ filegroup(
         # GIF data with optimization
         "lib/gif/testdata/optimized.gif",
         # BMP data
-        "lib/bmp/testdata/lena.bmp",
-        "lib/bmp/testdata/rgb_small.bmp",
-        "lib/bmp/testdata/rgb_small_255.bmp",
-        "lib/bmp/testdata/rgba_small.bmp",
-        "lib/bmp/testdata/rgba_small_255.bmp",
-        "lib/bmp/testdata/grayscale_small.bmp",
-        "lib/bmp/testdata/grayscale_small_3channels.bmp",
-        "lib/bmp/testdata/grayscale_small_4channels.bmp",
+        "//tensorflow/core/lib/bmp:bmp_testdata",
     ],
     visibility = ["//visibility:public"],
 )
 
-filegroup(
+alias(
     name = "lmdb_testdata",
-    testonly = 1,
-    srcs = [
-        # A simple key-value store:
-        #   0 : 'b'
-        #   1 : 'b'
-        #    ...
-        #   9 : 'b'
-        # Which is then overwritten with:
-        #   0 : 'a'
-        #   1 : 'b'
-        #    ...
-        #   9 : 'j'
-        "lib/lmdb/testdata/data.mdb",
-        # LMDB, being a memory-mapped database, uses a different file format on
-        # big-endian systems.
-        "lib/lmdb/testdata/data_bigendian.mdb",
-    ],
+    actual = "//tensorflow/core/lib/lmdb:lmdb_testdata",
     visibility = ["//visibility:public"],
 )
 

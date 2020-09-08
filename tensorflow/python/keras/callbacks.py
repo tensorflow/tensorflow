@@ -675,6 +675,10 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
+
     Arguments:
         batch: Integer, index of batch within the current epoch.
         logs: Dict, contains the return value of `model.train_step`. Typically,
@@ -690,6 +694,10 @@ class Callback(object):
     """Called at the end of a training batch in `fit` methods.
 
     Subclasses should override for any actions to run.
+
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
@@ -708,6 +716,10 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
+
     Arguments:
         batch: Integer, index of batch within the current epoch.
         logs: Dict, contains the return value of `model.test_step`. Typically,
@@ -725,6 +737,10 @@ class Callback(object):
 
     Subclasses should override for any actions to run.
 
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
+
     Arguments:
         batch: Integer, index of batch within the current epoch.
         logs: Dict. Aggregated metric results up until this batch.
@@ -736,6 +752,10 @@ class Callback(object):
     """Called at the beginning of a batch in `predict` methods.
 
     Subclasses should override for any actions to run.
+
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
 
     Arguments:
         batch: Integer, index of batch within the current epoch.
@@ -750,6 +770,10 @@ class Callback(object):
     """Called at the end of a batch in `predict` methods.
 
     Subclasses should override for any actions to run.
+
+    Note that if the `steps_per_execution` argument to `compile` in
+    `tf.keras.Model` is set to `N`, this method will only be called every `N`
+    batches.
 
     Arguments:
         batch: Integer, index of batch within the current epoch.

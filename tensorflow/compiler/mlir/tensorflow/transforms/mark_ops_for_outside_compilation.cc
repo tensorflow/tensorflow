@@ -47,6 +47,15 @@ struct MarkOpsForOutsideCompilation
   void runOnOperation() override;
 };
 
+// Adds any canonicalization patterns to list of supported `patterns`.
+// TODO(b/161726307): Move or import the relevant patterns to LowerTF pass and
+// remove this.
+void AddCanonicalizationPatterns(MLIRContext* context,
+                                 OwningRewritePatternList* patterns) {
+  for (auto* op : context->getRegisteredOperations())
+    op->getCanonicalizationPatterns(*patterns, context);
+}
+
 // TODO(b/159128666): Check the control flow legalization passes instead once
 // added.
 void AddSupportedControlFlowOps(MLIRContext* context,
@@ -179,6 +188,7 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   OwningRewritePatternList patterns;
   mhlo::PopulateLegalizeTfPatterns(module.getContext(), &patterns);
   TF::PopulateLoweringTFPatterns(module.getContext(), &patterns);
+  AddCanonicalizationPatterns(module.getContext(), &patterns);
 
   // `supported_ops` contains the name of all of the ops that can potentially be
   // lowered into HLO on the device. This doesn't always mean that the op can
@@ -186,7 +196,8 @@ void MarkOpsForOutsideCompilation::runOnOperation() {
   // be lowered in a subsequent pass.
   llvm::DenseSet<OperationName> supported_ops;
   for (auto& pattern : patterns) {
-    supported_ops.insert(*pattern->getRootKind());
+    Optional<OperationName> root_kind = pattern->getRootKind();
+    if (root_kind.hasValue()) supported_ops.insert(root_kind.getValue());
   }
   AddSupportedControlFlowOps(module.getContext(), &supported_ops);
   AddRewrittenEmbeddingOps(module.getContext(), &supported_ops);

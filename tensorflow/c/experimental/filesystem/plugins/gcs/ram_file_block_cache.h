@@ -28,6 +28,7 @@ limitations under the License.
 #include "absl/synchronization/mutex.h"
 #include "absl/synchronization/notification.h"
 #include "tensorflow/c/env.h"
+#include "tensorflow/c/logging.h"
 #include "tensorflow/c/tf_status.h"
 
 namespace tf_gcs_filesystem {
@@ -65,8 +66,8 @@ class RamFileBlockCache {
       pruning_thread_.reset(
           TF_StartThread(&thread_options, "TF_prune_FBC", PruneThread, this));
     }
-    std::cout << "GCS file block cache is "
-              << (IsCacheEnabled() ? "enabled" : "disabled") << ".\n";
+    TF_VLog(1, "GCS file block cache is %s.\n",
+            (IsCacheEnabled() ? "enabled" : "disabled"));
   }
 
   ~RamFileBlockCache() {

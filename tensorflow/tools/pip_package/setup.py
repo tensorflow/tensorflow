@@ -260,6 +260,7 @@ setup(
     version=_VERSION.replace('-', ''),
     description=DOCLINES[0],
     long_description='\n'.join(DOCLINES[2:]),
+    long_description_content_type="text/markdown",
     url='https://www.tensorflow.org/',
     download_url='https://github.com/tensorflow/tensorflow/tags',
     author='Google Inc.',

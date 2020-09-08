@@ -3324,6 +3324,7 @@ cc_library(
         ":IPO",
         ":InstCombine",
         ":Instrumentation",
+        ":ObjCARC",
         ":Scalar",
         ":Support",
         ":Target",
