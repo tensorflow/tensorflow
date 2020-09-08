@@ -745,14 +745,15 @@ class PoolingTest(test.TestCase):
       self._testMaxPoolSamePaddingPacket4(use_gpu)
       self._testMaxPoolSamePaddingPacket8(use_gpu)
       self._testMaxPoolEmptyInput(use_gpu)
-      self._testMaxPoolZeroExplicitPadding(use_gpu)
-      self._testMaxPoolExplicitPadding(use_gpu)
-      self._testMaxPoolExplicitPaddingV2(use_gpu)
-      self._testMaxPoolExplicitPadding1D(use_gpu)
-      self._testMaxPoolExplicitPadding1dV2(use_gpu)
-      self._testMaxPoolExplicitPaddingAdvanced(use_gpu)
-      self._testMaxPoolNegativeInputExpPadding(use_gpu)
-      self._testMaxPoolNegativeInputExpPaddingAdv(use_gpu)
+      if not test.is_built_with_rocm():
+        self._testMaxPoolZeroExplicitPadding(use_gpu)
+        self._testMaxPoolExplicitPadding(use_gpu)
+        self._testMaxPoolExplicitPaddingV2(use_gpu)
+        self._testMaxPoolExplicitPadding1D(use_gpu)
+        self._testMaxPoolExplicitPadding1dV2(use_gpu)
+        self._testMaxPoolExplicitPaddingAdvanced(use_gpu)
+        self._testMaxPoolNegativeInputExpPadding(use_gpu)
+        self._testMaxPoolNegativeInputExpPaddingAdv(use_gpu)
 
   # Tests for DepthwiseMaxPooling on CPU only.
   @test_util.run_deprecated_v1
@@ -1481,11 +1482,12 @@ class PoolingTest(test.TestCase):
       self._testMaxPoolGradSamePadding2_1(data_format, use_gpu)
       self._testMaxPoolGradSamePadding2_2(data_format, use_gpu)
       self._testMaxPoolGradSamePadding3_1(data_format, use_gpu)
-      self._testMaxPoolExplicitPadding1(data_format, use_gpu)
-      self._testMaxPoolExplicitPadding2(data_format, use_gpu)
-      self._testMaxPoolExplicitPaddingStrides(data_format, use_gpu)
-      self._testMaxPoolExplicitPaddingLeftGreater(data_format, use_gpu)
-      self._testMaxPoolExplicitPaddingBatchChannel(data_format, use_gpu)
+      if not test.is_built_with_rocm():
+        self._testMaxPoolExplicitPadding1(data_format, use_gpu)
+        self._testMaxPoolExplicitPadding2(data_format, use_gpu)
+        self._testMaxPoolExplicitPaddingStrides(data_format, use_gpu)
+        self._testMaxPoolExplicitPaddingLeftGreater(data_format, use_gpu)
+        self._testMaxPoolExplicitPaddingBatchChannel(data_format, use_gpu)
 
   def _MaxPoolGrad(self, orig_input, orig_output, grad, window_rows,
                    window_cols, row_stride, col_stride, padding, v2):
@@ -1944,10 +1946,11 @@ class PoolingTest(test.TestCase):
     self._testMaxPoolGradDirect1_3()
     self._testMaxPoolGradDirectWithNans2_1()
     self._testMaxPoolGradDirectWithNans2_2()
-    self._testMaxPoolGradZeroExplicitPadding()
-    self._testMaxPoolGradExplicitPadding_1()
-    self._testMaxPoolGradExplicitPadding_2()
-    self._testMaxPoolGradExplicitPadding_3()
+    if not test.is_built_with_rocm():
+      self._testMaxPoolGradZeroExplicitPadding()
+      self._testMaxPoolGradExplicitPadding_1()
+      self._testMaxPoolGradExplicitPadding_2()
+      self._testMaxPoolGradExplicitPadding_3()
 
   def _testMaxPoolGradGradValidPadding1_1(self, data_format, use_gpu):
     for pool_func in [gen_nn_ops.max_pool_v2, nn_ops.max_pool]:
