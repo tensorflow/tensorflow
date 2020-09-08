@@ -435,7 +435,7 @@ PYBIND11_MODULE(_concrete_function, m) {
            &FunctionSpec::ConvertVariablesToTensors)
       .def("_convert_annotated_args_to_tensors",
            &FunctionSpec::ConvertAnnotatedArgsToTensors,
-           "Attempts to autobox arguments annotated as tf.Tensor.")
+           "Attempts to autobox arguments annotated as tf.Tensor.");
   m.def("_as_ndarray", &AsNdarray,
         "Converts value to an ndarray, assumes _is_ndarray(value).");
   m.def(
