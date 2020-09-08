@@ -203,8 +203,7 @@ class KerasModelsTest(test.TestCase, parameterized.TestCase):
 
     train_step(input_iterator)
 
-  # TODO(b/165912857): Re-enable.
-  def DISABLED_test_lstm(self, distribution):
+  def test_lstm(self, distribution):
 
     batch_size = 32
 
