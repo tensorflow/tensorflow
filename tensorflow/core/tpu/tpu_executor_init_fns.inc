@@ -54,6 +54,8 @@ tensorflow::Status SetExecutorStructFn(void* library_handle) {
   TFTPU_SET_FN(executor_fn, TpuStream_Stream);
   TFTPU_SET_FN(executor_fn, TpuStream_Status);
   TFTPU_SET_FN(executor_fn, TpuStream_IsSameSharedMemoryLocation);
+  TFTPU_SET_FN(executor_fn, TpuStream_EnqueueTransferHostToDevice);
+  TFTPU_SET_FN(executor_fn, TpuStream_EnqueueTransferDeviceToHost);
   TFTPU_SET_FN(executor_fn, TpuStream_TpuEnqueueOnDeviceSendRecvLocal);
 
   TFTPU_SET_FN(executor_fn, TpuEvent_New);
