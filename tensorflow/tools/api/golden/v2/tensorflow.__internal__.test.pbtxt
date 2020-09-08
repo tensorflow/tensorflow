@@ -1,0 +1,7 @@
+path: "tensorflow.__internal__.test"
+tf_module {
+  member {
+    name: "combinatioins"
+    mtype: "<type \'module\'>"
+  }
+}

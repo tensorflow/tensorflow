@@ -255,6 +255,7 @@ py_library(
         "//third_party/py/tensorflow_core:__subpackages__",
     ],
     deps = [
+        ":framework_combinations",
         ":no_contrib",
     ],
 )
