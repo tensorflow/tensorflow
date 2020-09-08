@@ -25,6 +25,7 @@ limitations under the License.
 #include "mlir/IR/AffineMap.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
 #include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
 #include "mlir/IR/Location.h"  // from @llvm-project
 #include "mlir/IR/MLIRContext.h"  // from @llvm-project
 #include "mlir/IR/Module.h"  // from @llvm-project
@@ -34,6 +35,7 @@ limitations under the License.
 #include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "mlir/Pass/PassOptions.h"  // from @llvm-project
 #include "mlir/Translation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/mlir/xla/hlo_function_importer.h"
 #include "tensorflow/compiler/mlir/xla/hlo_utils.h"
@@ -134,6 +136,11 @@ Status ConvertModule(std::unique_ptr<HloModule> hlo_module, ModuleOp module,
 // MLIR LHLO.
 class XlaHloToLhloPass
     : public PassWrapper<XlaHloToLhloPass, OperationPass<ModuleOp>> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<mlir::StandardOpsDialect, mlir::mhlo::MhloDialect,
+                    mlir::lmhlo::LmhloDialect>();
+  }
+
  public:
   XlaHloToLhloPass() = default;
   XlaHloToLhloPass(const XlaHloToLhloPass&) {}
@@ -182,7 +189,10 @@ template <typename OpType>
 StatusOr<OpType> LhloDialectEmitter::CreateOpWithoutAttrs(
     HloInstruction* instr) {
   Location loc = getLocation(instr);
-  ArrayRef<std::pair<Identifier, Attribute>> attrs;
+  std::pair<Identifier, Attribute> attrs[] = {
+      {Identifier::get("name", builder_.getContext()),
+       builder_.getStringAttr(instr->name())},
+  };
   ArrayRef<Type> rets{};
 
   llvm::SmallVector<Value, 4> operands;
@@ -252,15 +262,14 @@ Status LhloDialectEmitter::DefaultAction(HloInstruction* instr) {
   return Status::OK();
 }
 
-StatusOr<mlir::Operation*> LhloDialectEmitter::EmitSortOp(
-    HloInstruction* instr) {
+StatusOr<lmhlo::SortOp> LhloDialectEmitter::EmitSortOp(HloInstruction* instr) {
   TF_ASSIGN_OR_RETURN(auto sort, CreateOpWithoutAttrs<lmhlo::SortOp>(instr));
   auto* sort_instr = ::xla::Cast<::xla::HloSortInstruction>(instr);
   sort.dimensionAttr(builder_.getI64IntegerAttr(sort_instr->sort_dimension()));
   sort.is_stableAttr(builder_.getBoolAttr(sort_instr->is_stable()));
   TF_RETURN_IF_ERROR(::xla::HloFunctionImporter::ImportAsRegion(
       *sort_instr->called_computations()[0], &sort.comparator(), &builder_));
-  return sort.getOperation();
+  return sort;
 }
 
 Status LhloDialectEmitter::HandleSort(HloInstruction* instr) {
@@ -327,19 +336,17 @@ Status LhloDialectEmitter::CreateView(const HloInstruction* instr,
 // create another view to adjust the slice for the shape of the instruction.
 Status LhloDialectEmitter::GetOrCreateView(const HloInstruction* instr,
                                            SmallVectorImpl<Value>* values) {
-  // In terms of cache key, we have several choices:
-  // * Use `instr`. It's the easiest, but it creates different cache entries for
-  // aliased buffers, which could have been deduplicated.
-  // * Use the actual content as the key, aka a tree of allocation slices.
-  // * Somewhere in the middle, use the allocation slice for the instruction. If
-  // `instr` is a tuple, the key is the allocated buffer for the tuple itself
-  // (an array of pointers).
+  // Cache generated ViewOp and StaticMemRefCastOp by instruction. We could have
+  // gone fancier to do the following cacheing:
+  //   %range = ViewOp(%allocation, %offset) : memref<i8xSIZE>
+  //   %typed_range = ViewOp(%range) : memref<f32x...>
   //
-  // We choose the third approach for simplicity.
-  TF_ASSIGN_OR_RETURN(BufferAllocation::Slice slice,
-                      assignment_.GetUniqueTopLevelSlice(instr));
-  SliceKey slice_key(slice.allocation(), slice.offset(), slice.size());
-  auto result = slices_.try_emplace(slice_key, llvm::SmallVector<Value, 4>{});
+  // where %range is cached. This in theory gives easier time for alias
+  // analysis, since the identity of %range defines alias. However,
+  // %typed_range can't be cached, as different buffers with different types and
+  // shapes may still alias. Creating two ViewOps doesn't seem to worth the
+  // effort for a slightly easier aliasing, so we don't over optimize here.
+  auto result = slices_.try_emplace(instr, llvm::SmallVector<Value, 4>{});
   llvm::SmallVectorImpl<Value>& new_values = result.first->second;
   if (result.second) {
     ::xla::ShapeIndex shape_index;
@@ -439,7 +446,7 @@ Status LhloDialectEmitter::Initialize() {
   builder_.setInsertionPointToEnd(block);
 
   auto return_op = builder_.create<ReturnOp>(builder_.getUnknownLoc());
-  builder_ = mlir::OpBuilder(return_op);
+  builder_ = OpBuilder(return_op);
 
   return Status::OK();
 }
@@ -450,6 +457,9 @@ std::unique_ptr<OperationPass<ModuleOp>> createXlaHloToLhloWithXlaPass() {
 
 Status HloToLhloModule(const BufferAssignment& assignment,
                        const HloModule& hlo_module, ModuleOp module) {
+  module.getContext()
+      ->loadDialect<StandardOpsDialect, mhlo::MhloDialect,
+                    lmhlo::LmhloDialect>();
   HloComputation* computation = hlo_module.entry_computation();
 
   LhloDialectEmitter emitter(assignment, *computation, module);
@@ -463,15 +473,14 @@ Status HloToLhloModule(const BufferAssignment& assignment,
   return computation->AcceptOrdered(&emitter, ordering);
 }
 
-mlir::OwningModuleRef HloTextToLhloTranslateFunction(
-    llvm::StringRef input, mlir::MLIRContext* context) {
+OwningModuleRef HloTextToLhloTranslateFunction(llvm::StringRef input,
+                                               MLIRContext* context) {
   StatusOr<std::unique_ptr<HloModule>> maybe_module =
       xla::ParseAndReturnUnverifiedModule(
           absl::string_view(input.data(), input.size()));
   TF_CHECK_OK(maybe_module.status());
 
-  mlir::OwningModuleRef module =
-      mlir::ModuleOp::create(mlir::UnknownLoc::get(context));
+  OwningModuleRef module = ModuleOp::create(UnknownLoc::get(context));
 
   TF_CHECK_OK(
       ConvertModule(maybe_module.ConsumeValueOrDie(), module.get(), "Host"));

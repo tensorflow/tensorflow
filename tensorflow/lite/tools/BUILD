@@ -85,6 +85,17 @@ py_binary(
 )
 
 py_binary(
+    name = "reverse_xxd_dump_from_cc",
+    srcs = ["reverse_xxd_dump_from_cc.py"],
+    python_version = "PY3",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":flatbuffer_utils",
+        "//tensorflow/python:platform",
+    ],
+)
+
+py_binary(
     name = "randomize_weights",
     srcs = ["randomize_weights.py"],
     python_version = "PY3",
@@ -267,8 +278,8 @@ cc_library(
         "//tensorflow/core:tensorflow",
         "//tensorflow/lite:framework",
         "//tensorflow/lite:util",
-        "@com_google_absl//absl/strings",
         "@flatbuffers",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 
@@ -302,7 +313,7 @@ cc_library(
     hdrs = ["list_flex_ops.h"],
     deps = [
         "//tensorflow/lite:framework",
-        "@com_google_absl//absl/strings",
+        "@jsoncpp_git//:jsoncpp",
     ],
 )
 

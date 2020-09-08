@@ -329,8 +329,10 @@ cc_library(
     srcs = ["xla_compilation_cache.cc"],
     hdrs = ["xla_compilation_cache.h"],
     deps = [
+        ":flags",
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
+        "//tensorflow/compiler/mlir:array_container_utils",
         "//tensorflow/compiler/mlir/tensorflow:compile_mlir_util_no_tf_dialect_passes",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -361,8 +363,11 @@ tf_cc_test(
         "xla_compilation_cache_test.cc",
     ],
     deps = [
+        ":flags",
         ":xla_compilation_cache",
+        ":xla_cpu_jit",
         "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/xla/client:client_library",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
@@ -604,7 +609,6 @@ cc_library(
         ":flags",
         ":resource_operation_safety_analysis",
         ":shape_inference_helpers",
-        ":union_find",
         ":xla_activity_listener",
         ":xla_cluster_util",
         "//tensorflow/cc:cc_ops",
@@ -623,8 +627,8 @@ cc_library(
         "//tensorflow/compiler/tf2xla/cc:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:union_find",
         "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -699,11 +703,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
     ],
-)
-
-cc_library(
-    name = "union_find",
-    hdrs = ["union_find.h"],
 )
 
 tf_cc_test(
@@ -800,6 +799,7 @@ tf_cc_test(
         "//tensorflow/compiler/tf2xla/kernels:xla_dummy_ops",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
         "//tensorflow/compiler/xla:test",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -886,7 +886,6 @@ cc_library(
         ":device_util",
         ":flags",
         ":resource_operation_safety_analysis",
-        ":union_find",
         ":xla_activity_listener",
         ":xla_activity_proto_cc",
         ":xla_cluster_util",
@@ -895,6 +894,7 @@ cc_library(
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla:xla_op_registry",
         "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:union_find",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
@@ -918,6 +918,7 @@ tf_cc_test(
         ":xla_cpu_jit",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope",
         "//tensorflow/compiler/tf2xla:test_util",
@@ -944,6 +945,7 @@ tf_cc_test(
         ":xla_cpu_jit",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:ops",
+        "//tensorflow/core:all_kernels",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",

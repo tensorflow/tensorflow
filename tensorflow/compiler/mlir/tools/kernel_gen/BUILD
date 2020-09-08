@@ -1,5 +1,6 @@
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 
 package(
     default_visibility = [":friends"],
@@ -13,15 +14,15 @@ package_group(
 )
 
 cc_library(
-    name = "cubin_creator",
-    srcs = ["cubin_creator.cc"],
-    hdrs = ["cubin_creator.h"],
-    copts = if_cuda(["-DGOOGLE_CUDA=1"]),
+    name = "gpu_binary_creator",
+    srcs = ["gpu_binary_creator.cc"],
+    hdrs = ["gpu_binary_creator.h"],
+    copts = if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]),
     deps = [
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
         "@llvm-project//llvm:Support",
-        "@llvm-project//mlir:AllPassesAndDialects",
+        "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:GPUDialect",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:LLVMDialect",
@@ -29,6 +30,7 @@ cc_library(
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:StandardOps",
         "@llvm-project//mlir:TargetNVVMIR",
+        "@llvm-project//mlir:TargetROCDLIR",
         "@llvm-project//mlir:Transforms",
         "//tensorflow/compiler/mlir/tensorflow",
         "//tensorflow/compiler/mlir/hlo",
@@ -44,15 +46,19 @@ cc_library(
         "//tensorflow/compiler/xla/service/mlir_gpu:kernel_lowering",
         "//tensorflow/core:cuda_libdevice_path",
         "//tensorflow/core:lib",
-    ] + if_cuda(["//tensorflow/stream_executor/gpu:asm_compiler"]),
+    ] + if_cuda([
+        "//tensorflow/stream_executor/gpu:asm_compiler",
+    ]) + if_rocm([
+        "//tensorflow/core/platform:rocm_rocdl_path",
+    ]),
 )
 
 tf_cc_binary(
-    name = "tf_to_cubin",
-    srcs = ["tf_to_cubin.cc"],
+    name = "tf_to_gpu_binary",
+    srcs = ["tf_to_gpu_binary.cc"],
     visibility = ["//tensorflow/core/kernels/mlir_generated:__pkg__"],
     deps = [
-        ":cubin_creator",
+        ":gpu_binary_creator",
         "//tensorflow/compiler/mlir:init_mlir",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
@@ -65,14 +71,15 @@ tf_cc_binary(
     srcs = ["tools/kernel-gen-opt/kernel-gen-opt.cc"],
     visibility = ["//tensorflow/compiler/mlir/tools/kernel_gen/tests:__pkg__"],
     deps = [
+        "//tensorflow/compiler/mlir/hlo:all_passes",
         "//tensorflow/compiler/mlir/hlo:hlo_dialect_registration",
-        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_dialect_registration",
+        "//tensorflow/compiler/mlir/tensorflow",
+        "//tensorflow/compiler/mlir/tools/kernel_gen/ir:tf_framework_ops",
         "//tensorflow/compiler/mlir/tools/kernel_gen/transforms:passes",
         "@llvm-project//llvm:Support",
         "@llvm-project//mlir:AllPassesAndDialectsNoRegistration",
         "@llvm-project//mlir:IR",
         "@llvm-project//mlir:MlirOptLib",
-        "@llvm-project//mlir:MlirOptMain",
         "@llvm-project//mlir:Pass",
         "@llvm-project//mlir:Support",
     ],

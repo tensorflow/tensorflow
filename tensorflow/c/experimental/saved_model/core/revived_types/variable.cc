@@ -65,10 +65,11 @@ Status Variable::ReadValue(ImmediateTensorHandlePtr* out) {
 Status Variable::CreateUninitialized(ImmediateExecutionContext* ctx,
                                      DataType dtype, TensorShape shape,
                                      absl::optional<std::string> name,
+                                     const char* raw_device_name,
                                      std::unique_ptr<Variable>* output) {
   ImmediateTensorHandlePtr handle;
   TF_RETURN_IF_ERROR(internal::CreateUninitializedResourceVariable(
-      ctx, dtype, shape, &handle));
+      ctx, dtype, shape, raw_device_name, &handle));
 
   output->reset(
       new Variable(ctx, dtype, shape, std::move(name), std::move(handle)));

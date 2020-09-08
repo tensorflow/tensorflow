@@ -33,8 +33,7 @@ LD_DEBUGGABLE_FLAGS="-x"
 # LD_DEBUGGABLE_FLAGS="-d"
 
 # Exits if C++ symbols are found in the allowlist.
-if grep -q "^__Z" "${ALLOWLIST_FILE_PATH}"
-then
+if grep -q "^__Z" "${ALLOWLIST_FILE_PATH}"; then
   echo "ERROR: Failed in symbol hiding. This rule does not permit hiding of" \
        "C++ symbols due to possible serious problems mixing symbol hiding," \
        "shared libraries and the C++ runtime." \
@@ -59,8 +58,7 @@ IFS=' ' read -r -a archs <<< "${archs_str}"
 merge_cmd=(xcrun lipo)
 
 # Merges object files and hide symbols for each architecture.
-for arch in "${archs[@]}"
-do
+for arch in "${archs[@]}"; do
     archdir=$(mktemp -t "${arch}" -d)
     arch_file="${archdir}/${arch}"
 

@@ -405,12 +405,14 @@ bool EventNode::IsEager() {
          FindParent(HostEventType::kEagerKernelExecute) != nullptr;
 }
 
-EventNode* EventNode::FindParent(int64 event_type) const {
-  if (parent_) {
-    if (parent_->GetEventVisitor().Type() == event_type) {
-      return parent_;
-    }
-    return parent_->FindParent(event_type);
+const EventNode* EventNode::FindParent(int64 event_type) const {
+  absl::flat_hash_set<const EventNode*> seen;
+  const EventNode* node = this;
+  while (node) {
+    if (seen.contains(node)) break;
+    if (node->GetEventVisitor().Type() == event_type) return node;
+    seen.insert(node);
+    node = node->GetParent();
   }
   return nullptr;
 }

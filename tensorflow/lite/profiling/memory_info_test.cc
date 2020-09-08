@@ -15,7 +15,6 @@ limitations under the License.
 #include "tensorflow/lite/profiling/memory_info.h"
 
 #include <gtest/gtest.h>
-#include "tensorflow/lite/testing/util.h"
 
 namespace tflite {
 namespace profiling {
@@ -71,9 +70,3 @@ TEST(MemoryUsage, IsSupported) {
 }  // namespace memory
 }  // namespace profiling
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

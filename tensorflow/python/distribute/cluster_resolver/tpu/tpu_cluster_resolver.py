@@ -42,6 +42,13 @@ def is_running_in_gce():
   return True
 
 
+class _LocalCloudTpuClient(object):
+  """Dummy local Cloud TPU client."""
+
+  def api_available(self):
+    return False
+
+
 _TPU_DEVICE_REGEX = re.compile(
     r'.*task:(?P<host_id>\d+)/.*device:TPU:(?P<core_id>\d+)$')
 _TPU_CONN_RETRIES = 120
@@ -201,7 +208,7 @@ class TPUClusterResolver(cluster_resolver.ClusterResolver):
       self._tpu = self._cloud_tpu_client.name()
     else:
       # Directly connected TPU environment
-      self._cloud_tpu_client = None
+      self._cloud_tpu_client = _LocalCloudTpuClient()
       self._tpu = 'local'
 
     # By default the task_type is 'worker` and the task_id is 0 (which is the

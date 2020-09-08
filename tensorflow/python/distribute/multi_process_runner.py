@@ -187,11 +187,12 @@ class MultiProcessRunner(object):
                        'one chief. Current `cluster_spec` has {} chiefs.'
                        .format(len(cluster_spec['chief'])))
     if not multi_process_lib.initialized():
-      raise RuntimeError('`multi_process_runner` is not initialized. '
-                         'Please call `multi_process_runner.test_main()` '
-                         'within `if __name__ == \'__main__\':` block '
-                         'in your python module to properly initialize '
-                         '`multi_process_runner`.')
+      raise MultiProcessRunnerNotInitializedError(
+          '`multi_process_runner` is not initialized. '
+          'Please call `multi_process_runner.test_main()` '
+          'within `if __name__ == \'__main__\':` block '
+          'in your python module to properly initialize '
+          '`multi_process_runner`.')
     if not callable(proc_func):
       raise ValueError('proc_func is not a callable')
 
@@ -612,8 +613,12 @@ class MultiProcessRunner(object):
         self._watchdog_thread.join()
       process_statuses = self._get_process_statuses()
       self._reraise_if_subprocess_error(process_statuses)
-      raise SubprocessTimeoutError('one or more subprocesses timed out.',
-                                   self._get_mpr_result(process_statuses))
+      raise SubprocessTimeoutError(
+          'One or more subprocesses timed out, where timeout was set to {}s. '
+          'Please change the `timeout` argument for '
+          '`MultiProcessRunner.join()` or `multi_process_runner.run()` '
+          'if it should be adjusted.'.format(timeout),
+          self._get_mpr_result(process_statuses))
 
     for (task_type, task_id), p in self._processes.items():
       logging.info('%s-%d exit code: %s', task_type, task_id, p.exitcode)
@@ -1049,6 +1054,16 @@ class UnexpectedSubprocessExitError(RuntimeError):
   def __init__(self, msg, mpr_result):
     super(UnexpectedSubprocessExitError, self).__init__(msg)
     self.mpr_result = mpr_result
+
+
+class MultiProcessRunnerNotInitializedError(RuntimeError):
+  """An error indicating `MultiProcessRunner` is used without initialization.
+
+  When this is raised, user is supposed to call
+  `multi_process_runner.test_main()` within `if __name__ == '__main__':` block
+  to properly initialize `multi_process_runner`.
+  """
+  pass
 
 
 def _set_tf_config(task_type, task_id, cluster_spec, rpc_layer=None):

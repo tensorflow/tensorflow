@@ -17,6 +17,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_IR_EMITTER_CONTEXT_H_
 
 #include "llvm/IR/Module.h"
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/gpu/launch_dimensions.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
@@ -34,14 +38,20 @@ class IrEmitterContext {
       const HloModule* hlo_module, const BufferAssignment* buffer_assignment,
       std::string platform_name, GpuDeviceInfo gpu_device_info,
       absl::optional<CudaComputeCapability> cuda_compute_capability,
-      const HloProfileIndexMap* profile_index_map, llvm::Module* llvm_module)
+      const HloProfileIndexMap* profile_index_map,
+      mlir::MLIRContext* mlir_context, llvm::Module* llvm_module)
       : hlo_module_(hlo_module),
         buffer_assignment_(buffer_assignment),
         platform_name_(std::move(platform_name)),
         gpu_device_info_(gpu_device_info),
         cuda_compute_capability_(cuda_compute_capability),
         profile_index_map_(profile_index_map),
-        llvm_module_(llvm_module) {}
+        mlir_context_(mlir_context),
+        llvm_module_(llvm_module) {
+    mlir_context_
+        ->loadDialect<mlir::lmhlo::LmhloDialect, mlir::mhlo::MhloDialect,
+                      mlir::StandardOpsDialect>();
+  }
   // Disallow copy and assign.
   IrEmitterContext(const IrEmitterContext&) = delete;
   IrEmitterContext& operator=(const IrEmitterContext&) = delete;
@@ -57,6 +67,7 @@ class IrEmitterContext {
     return cuda_compute_capability_;
   }
   const HloProfileIndexMap* profile_index_map() { return profile_index_map_; }
+  mlir::MLIRContext* mlir_context() { return mlir_context_; }
   llvm::Module* llvm_module() { return llvm_module_; }
   NameUniquer* name_uniquer() { return &name_uniquer_; }
 
@@ -67,6 +78,7 @@ class IrEmitterContext {
   GpuDeviceInfo gpu_device_info_;
   absl::optional<CudaComputeCapability> cuda_compute_capability_;
   const HloProfileIndexMap* profile_index_map_;
+  mlir::MLIRContext* mlir_context_;
   llvm::Module* llvm_module_;
   NameUniquer name_uniquer_;
 };

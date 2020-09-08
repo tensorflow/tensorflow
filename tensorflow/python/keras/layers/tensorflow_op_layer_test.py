@@ -637,7 +637,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllEqual(model(ones), 3.0 * ones)
 
   def test_numerical_correctness_simple(self):
-    x = ops.convert_to_tensor_v2([[-1., 0., -2., 1.]])
+    x = ops.convert_to_tensor_v2_with_dispatch([[-1., 0., -2., 1.]])
     inputs = keras.Input(shape=(4,))
     outputs = gen_nn_ops.relu(inputs)
     model = keras.Model(inputs, outputs)
@@ -645,7 +645,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllClose(y, [[0., 0., 0., 1.]])
 
   def test_numerical_correctness_with_attrs(self):
-    x = ops.convert_to_tensor_v2([[1.5, 1.5], [2.5, 3.5]])
+    x = ops.convert_to_tensor_v2_with_dispatch([[1.5, 1.5], [2.5, 3.5]])
     inputs = keras.Input(shape=(2,))
     outputs = math_ops.reduce_mean(inputs, axis=1)
     model = keras.Model(inputs, outputs)
@@ -653,7 +653,7 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     self.assertAllClose(y, [1.5, 3.])
 
   def test_numerical_correctness_serialization(self):
-    x = ops.convert_to_tensor_v2([[-1., 0., -2., 1.]])
+    x = ops.convert_to_tensor_v2_with_dispatch([[-1., 0., -2., 1.]])
     inputs = keras.Input(shape=(4,))
     outputs = gen_nn_ops.relu(inputs)
     model1 = keras.Model(inputs, outputs)
@@ -731,7 +731,8 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     model.summary()
 
 
-class InputInEagerTest(test.TestCase):
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class InputInEagerTest(keras_parameterized.TestCase):
   """Tests ops on keras inputs in Eager runtime.
 
   Input returns graph/symbolic tensors in the Eager runtime (this
@@ -740,21 +741,19 @@ class InputInEagerTest(test.TestCase):
   """
 
   def test_identity(self):
-    with context.eager_mode():
-      x = keras.Input(shape=(1,))
-      ident = array_ops.identity(x)
+    x = keras.Input(shape=(1,))
+    ident = array_ops.identity(x)
 
-      # This is now a graph tensor, and should be able to continue in graphland
-      self.assertIn('Identity', ident.name)
+    # This is now a graph tensor, and should be able to continue in graphland
+    self.assertIn('Identity', ident.name)
 
   def test_size(self):
-    with context.eager_mode():
-      x = keras.Input(shape=(3,))
-      self.assertAllEqual(x.get_shape().as_list(), [None, 3])
-      sz = array_ops.size(x)
+    x = keras.Input(shape=(3,))
+    self.assertAllEqual(x.get_shape().as_list(), [None, 3])
+    sz = array_ops.size(x)
 
-      # This is now a graph tensor, and should be able to continue in graphland
-      self.assertIn('Size', sz.name)
+    # This is now a graph tensor, and should be able to continue in graphland
+    self.assertIn('Size', sz.name)
 
 
 if __name__ == '__main__':

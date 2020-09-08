@@ -56,22 +56,9 @@ class MhloDialect : public Dialect {
   void printType(Type type, DialectAsmPrinter &os) const override;
 };
 
-namespace HLOTypes {
-enum Kind {
-  Token = Type::FIRST_XLA_HLO_TYPE,
-};
-}  // namespace HLOTypes
-
 class TokenType : public Type::TypeBase<TokenType, Type, TypeStorage> {
  public:
   using Base::Base;
-
-  static TokenType get(MLIRContext *context) {
-    return Base::get(context, HLOTypes::Token);
-  }
-
-  // Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) { return kind == HLOTypes::Token; }
 };
 
 // Shape derivation function that computes the shape of the result based on

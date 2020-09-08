@@ -51,7 +51,8 @@ Status GrpcDataServerBase::Start() {
                            credentials, &bound_port_);
   builder.SetMaxReceiveMessageSize(-1);
 
-  AddServiceToBuilder(&builder);
+  AddDataServiceToBuilder(builder);
+  AddProfilerServiceToBuilder(builder);
   server_ = builder.BuildAndStart();
   if (!server_) {
     return errors::Internal("Could not start gRPC server");
@@ -71,11 +72,19 @@ void GrpcDataServerBase::Stop() {
   }
   server_->Shutdown();
   stopped_ = true;
+  LOG(INFO) << "Shut down " << server_type_ << " server running at port "
+            << BoundPort();
 }
 
 void GrpcDataServerBase::Join() { server_->Wait(); }
 
 int GrpcDataServerBase::BoundPort() { return bound_port(); }
+
+void GrpcDataServerBase::AddProfilerServiceToBuilder(
+    ::grpc::ServerBuilder& builder) {
+  profiler_service_ = profiler::CreateProfilerService();
+  builder.RegisterService(profiler_service_.get());
+}
 
 DispatchGrpcDataServer::DispatchGrpcDataServer(
     const experimental::DispatcherConfig& config)
@@ -84,8 +93,9 @@ DispatchGrpcDataServer::DispatchGrpcDataServer(
 
 DispatchGrpcDataServer::~DispatchGrpcDataServer() { delete service_; }
 
-void DispatchGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
-  service_ = absl::make_unique<GrpcDispatcherImpl>(builder, config_).release();
+void DispatchGrpcDataServer::AddDataServiceToBuilder(
+    ::grpc::ServerBuilder& builder) {
+  service_ = absl::make_unique<GrpcDispatcherImpl>(config_, builder).release();
 }
 
 Status DispatchGrpcDataServer::StartServiceInternal() {
@@ -95,8 +105,8 @@ Status DispatchGrpcDataServer::StartServiceInternal() {
 Status DispatchGrpcDataServer::NumWorkers(int* num_workers) {
   GetWorkersRequest req;
   GetWorkersResponse resp;
-  grpc::ServerContext ctx;
-  grpc::Status s = service_->GetWorkers(&ctx, &req, &resp);
+  ::grpc::ServerContext ctx;
+  ::grpc::Status s = service_->GetWorkers(&ctx, &req, &resp);
   if (!s.ok()) {
     return grpc_util::WrapError("Failed to get workers", s);
   }
@@ -111,8 +121,9 @@ WorkerGrpcDataServer::WorkerGrpcDataServer(
 
 WorkerGrpcDataServer::~WorkerGrpcDataServer() { delete service_; }
 
-void WorkerGrpcDataServer::AddServiceToBuilder(grpc::ServerBuilder* builder) {
-  service_ = absl::make_unique<GrpcWorkerImpl>(builder, config_).release();
+void WorkerGrpcDataServer::AddDataServiceToBuilder(
+    ::grpc::ServerBuilder& builder) {
+  service_ = absl::make_unique<GrpcWorkerImpl>(config_, builder).release();
 }
 
 Status WorkerGrpcDataServer::StartServiceInternal() {
@@ -128,14 +139,14 @@ Status WorkerGrpcDataServer::StartServiceInternal() {
 }
 
 Status NewDispatchServer(const experimental::DispatcherConfig& config,
-                         std::unique_ptr<DispatchGrpcDataServer>* out_server) {
-  *out_server = absl::make_unique<DispatchGrpcDataServer>(config);
+                         std::unique_ptr<DispatchGrpcDataServer>& out_server) {
+  out_server = absl::make_unique<DispatchGrpcDataServer>(config);
   return Status::OK();
 }
 
 Status NewWorkerServer(const experimental::WorkerConfig& config,
-                       std::unique_ptr<WorkerGrpcDataServer>* out_server) {
-  *out_server = absl::make_unique<WorkerGrpcDataServer>(config);
+                       std::unique_ptr<WorkerGrpcDataServer>& out_server) {
+  out_server = absl::make_unique<WorkerGrpcDataServer>(config);
   return Status::OK();
 }
 

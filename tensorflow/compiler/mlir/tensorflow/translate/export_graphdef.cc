@@ -49,6 +49,7 @@ limitations under the License.
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/translate_utils.h"
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/graph_to_functiondef.h"
@@ -80,46 +81,14 @@ constexpr char kInvalidExecutorGraphMsg[] =
 constexpr char kDeviceAttr[] = "tf.device";
 constexpr char kResourceArgUniqueIdAttr[] = "tf._resource_arg_unique_id";
 
-bool IsLegalChar(char c, bool first_char) {
-  if (isalpha(c)) return true;
-  if (isdigit(c)) return true;
-  if (c == '.') return true;
-  if (c == '_') return true;
-
-  // First character of a node name can only be a letter, digit, dot or
-  // underscore.
-  if (first_char) return false;
-
-  if (c == '/') return true;
-  if (c == '-') return true;
-
-  return false;
-}
-
-// Convert characters in name that are considered illegal in TensorFlow Node
-// name to '.'.
-std::string LegalizeNodeName(llvm::StringRef name) {
-  assert(!name.empty() && "expected non-empty name");
-
-  std::string legalized_name;
-  bool first = true;
-  for (auto c : name) {
-    if (IsLegalChar(c, first)) {
-      legalized_name += c;
-    } else {
-      legalized_name += '.';
-    }
-    first = false;
-  }
-
-  return legalized_name;
-}
-
 // OpOrArgLocNameMapper that legalizes the returned name.
 class LegalizedOpOrValLocNameMapper : public OpOrArgLocNameMapper {
  private:
   std::string GetName(OpOrVal op_or_val) override {
-    return LegalizeNodeName(OpOrArgLocNameMapper::GetName(op_or_val));
+    std::string name = OpOrArgLocNameMapper::GetName(op_or_val);
+    assert(!name.empty() && "expected non-empty name");
+    mlir::LegalizeNodeName(name);
+    return name;
   }
 };
 
@@ -523,13 +492,14 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
       if (index >= num_data_results) break;
       // TODO(jpienaar): If there is a result index specified, ensure only one
       // and that it matches the result index of the op.
-      std::string orig_name(output_names[index]);
-      auto tensor_id = ParseTensorName(orig_name);
-      auto name = LegalizeNodeName(
-          llvm::StringRef(tensor_id.node().data(), tensor_id.node().size()));
+      std::string name(output_names[index]);
+      auto tensor_id = ParseTensorName(name);
+      std::string tensor_id_node(tensor_id.node());
+      assert(!tensor_id_node.empty() && "expected non-empty name");
+      mlir::LegalizeNodeName(tensor_id_node);
 
       // Ensure name does not get reused.
-      (void)exporter.op_to_name_.GetUniqueName(name);
+      (void)exporter.op_to_name_.GetUniqueName(tensor_id_node);
     }
   }
 
@@ -537,8 +507,9 @@ StatusOr<std::unique_ptr<Graph>> Exporter::Convert(
     TF_RET_CHECK(input_names.size() == block.getNumArguments());
     for (const auto& it : llvm::enumerate(function.getArguments())) {
       // TODO(lyandy): Update when changing feed/fetch import.
-      std::string orig_name(input_names[it.index()]);
-      std::string name = LegalizeNodeName(orig_name);
+      std::string name(input_names[it.index()]);
+      assert(!name.empty() && "expected non-empty name");
+      mlir::LegalizeNodeName(name);
       auto tensor_id = ParseTensorName(name);
       TF_RET_CHECK(tensor_id.index() == 0)
           << "input port designation not supported";
@@ -726,7 +697,7 @@ Status Exporter::Convert(mlir::ModuleOp module,
       mlir::Identifier::get("main", module.getContext());
   absl::optional<mlir::FuncOp> entry_func;
   FunctionDefLibrary flib;
-  auto tf_dialect = module.getContext()->getRegisteredDialect("tf");
+  auto tf_dialect = module.getContext()->getLoadedDialect("tf");
   for (auto function : module.getOps<mlir::FuncOp>()) {
     if (function.isExternal())
       return errors::FailedPrecondition("External functions not supported");
@@ -799,7 +770,7 @@ StatusOr<std::unique_ptr<GraphDef>> ConvertMlirToGraphdef(
 stream_executor::port::Status ConvertMlirFunctionToFunctionLibraryDef(
     mlir::FuncOp func, const GraphExportConfig& configs,
     FunctionDef* function_def) {
-  Dialect* tf_dialect = func.getContext()->getRegisteredDialect("tf");
+  Dialect* tf_dialect = func.getContext()->getLoadedDialect("tf");
   FunctionDefLibrary flib;
   TF_RETURN_IF_ERROR(
       Exporter::ConvertLibFunction(configs, tf_dialect, func, &flib));

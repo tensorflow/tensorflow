@@ -5,6 +5,5 @@ op {
 input_handle: the original map
 output_handle: the map with value from given key removed
 key: the key of the value to be erased
-value: the value that was erased
 END
 }

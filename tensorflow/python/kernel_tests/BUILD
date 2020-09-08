@@ -142,6 +142,10 @@ tf_py_test(
     size = "small",
     srcs = ["map_ops_test.py"],
     grpc_enabled = True,
+    tags = [
+        "noasan",  # TODO(b/164696004)
+        "notsan",  # TODO(b/164696004)
+    ],
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
@@ -802,6 +806,7 @@ cuda_py_test(
     name = "matrix_square_root_op_test",
     size = "medium",
     srcs = ["matrix_square_root_op_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -979,24 +984,6 @@ tf_py_test(
     ],
 )
 
-cuda_py_test(
-    name = "scatter_nd_ops_test",
-    size = "medium",
-    srcs = ["scatter_nd_ops_test.py"],
-    tags = ["noasan"],  # http://b/32635055
-    deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:state_ops",
-        "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-    ],
-)
-
 tf_py_test(
     name = "segment_reduction_ops_test",
     size = "medium",
@@ -1150,6 +1137,7 @@ tf_py_test(
     name = "string_format_op_test",
     size = "small",
     srcs = ["string_format_op_test.py"],
+    tfrt_enabled = True,
     deps = [
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -2062,7 +2050,10 @@ cuda_py_test(
     name = "dynamic_partition_op_test",
     size = "medium",
     srcs = ["dynamic_partition_op_test.py"],
-    tfrt_enabled = True,
+    tags = [
+        "multi_and_single_gpu",
+    ],
+    tfrt_enabled = False,  # TODO(b/153089059): add support for complex128.
     deps = [
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",

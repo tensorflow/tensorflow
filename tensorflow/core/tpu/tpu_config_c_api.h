@@ -26,17 +26,15 @@ typedef struct TpuSerializedProto TpuSerializedProto;
 
 namespace tensorflow {
 class TpuMeshCommonState;
-namespace tpu {
-class TpuMeshStateInterface;
-}  // namespace tpu
 }  // namespace tensorflow
 
 extern "C" {
 
 TFTPU_CAPI_EXPORT void ConfigureDistributedTpuOp_DoWork(
     const size_t num_cores_per_host_size, const int32_t* num_cores_per_host,
-    void* tpu_compilation_cache_interface, size_t* host_config_output_size,
-    char** host_config_output, TF_Status* status);
+    size_t server_address_size, const char* server_address,
+    size_t* host_config_output_size, char** host_config_output,
+    TF_Status* status);
 
 TFTPU_CAPI_EXPORT void WaitForDistributedTpuOp_DoWork(
     const size_t num_hosts, const size_t num_cores_per_host,
@@ -45,11 +43,9 @@ TFTPU_CAPI_EXPORT void WaitForDistributedTpuOp_DoWork(
     size_t* tpu_topology_output_size, char** tpu_topology_output,
     TF_Status* status);
 
-TFTPU_CAPI_EXPORT void ShutdownDistributedTpuOp_DoWork(TF_Status* status);
-
 TFTPU_CAPI_EXPORT void InitializeHostForDistributedTpuOp_DoWork(
     const size_t tpu_host_config_size, const char* tpu_host_config,
-    const bool enable_whole_mesh_compilations, void* local_compilation_cache,
+    const bool enable_whole_mesh_compilations, bool is_master_worker,
     size_t* core_id_output_size, int32_t** core_id_output, TF_Status* status);
 
 TFTPU_CAPI_EXPORT void SetGlobalTPUArrayOp_DoWork(
@@ -68,12 +64,22 @@ TFTPU_CAPI_EXPORT void TpuConfigurationApi_TpusPerHost(int32_t* tpus,
                                                        TF_Status* status);
 TFTPU_CAPI_EXPORT void TpuConfigurationApi_TpuMemoryLimit(int64_t* memory_limit,
                                                           TF_Status* status);
+
+TFTPU_CAPI_EXPORT void TpuConfigurationApi_RemoteCompilationCacheSizeInBytes(
+    int64_t* cache_size_in_bytes);
+TFTPU_CAPI_EXPORT
+void TpuConfigurationApi_CompilationCacheServerAddressFromConfig(
+    size_t tpu_host_config_size, const char* tpu_host_config,
+    size_t* server_address_output_size, char** server_address_output,
+    TF_Status* status);
+TFTPU_CAPI_EXPORT void TpuConfigurationApi_GetServerAddressAndPort(
+    size_t* server_address_output_size, char** server_address_output,
+    int* port_output, TF_Status* status);
 }
 
 struct TfTpu_ConfigApiFn {
   TFTPU_ADD_FN_IN_STRUCT(ConfigureDistributedTpuOp_DoWork);
   TFTPU_ADD_FN_IN_STRUCT(WaitForDistributedTpuOp_DoWork);
-  TFTPU_ADD_FN_IN_STRUCT(ShutdownDistributedTpuOp_DoWork);
   TFTPU_ADD_FN_IN_STRUCT(InitializeHostForDistributedTpuOp_DoWork);
   TFTPU_ADD_FN_IN_STRUCT(SetGlobalTPUArrayOp_DoWork);
   TFTPU_ADD_FN_IN_STRUCT(DisconnectDistributedTpuChipsOp_DoWork);
@@ -82,6 +88,10 @@ struct TfTpu_ConfigApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_HasTPUPodState);
   TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_TpusPerHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_TpuMemoryLimit);
+  TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_RemoteCompilationCacheSizeInBytes);
+  TFTPU_ADD_FN_IN_STRUCT(
+      TpuConfigurationApi_CompilationCacheServerAddressFromConfig);
+  TFTPU_ADD_FN_IN_STRUCT(TpuConfigurationApi_GetServerAddressAndPort);
 };
 
 #endif  // TENSORFLOW_CORE_TPU_TPU_CONFIG_C_API_H_

@@ -593,13 +593,18 @@ TfLiteStatus SimpleStatefulOp::Prepare(TfLiteContext* context,
   TF_LITE_ENSURE_STATUS(context->RequestScratchBufferInArena(
       context, sizeof(uint8_t) * NumElements(input->dims),
       &data->sorting_buffer));
+  // We can interleave scratch / persistent buffer allocation.
+  data->invoke_count = reinterpret_cast<int*>(
+      context->AllocatePersistentBuffer(context, sizeof(int)));
+  *data->invoke_count = 0;
+
   return kTfLiteOk;
 }
 
 TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
                                       TfLiteNode* node) {
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
-  data->invoke_count += 1;
+  *data->invoke_count += 1;
 
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   const uint8_t* input_data = GetTensorData<uint8_t>(input);
@@ -626,7 +631,7 @@ TfLiteStatus SimpleStatefulOp::Invoke(TfLiteContext* context,
   int32_t* invoke_count_data = GetTensorData<int32_t>(invoke_count);
 
   median_data[0] = sorting_buffer[size / 2];
-  invoke_count_data[0] = data->invoke_count;
+  invoke_count_data[0] = *data->invoke_count;
   return kTfLiteOk;
 }
 

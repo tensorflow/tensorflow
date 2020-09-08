@@ -251,8 +251,10 @@ cc_library(
     srcs = ["tpu_computation_placer.cc"],
     hdrs = ["tpu_computation_placer.h"],
     deps = [
+        ":status_helper",
         ":tpu_executor",
         ":tpu_executor_c_api_hdrs",
+        ":tpu_topology_external",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/service:computation_placer",
         "//tensorflow/core/tpu:tpu_api",
@@ -308,6 +310,7 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":tpu_platform_interface",
+        ":tpu_topology_external",
         "//tensorflow/stream_executor:stream_executor_headers",
         "//tensorflow/stream_executor/lib",
     ],

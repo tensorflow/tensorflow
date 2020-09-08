@@ -69,7 +69,8 @@ void TpuTransferAsyncOpKernel::ComputeAsync(OpKernelContext* ctx,
 }
 
 Status TpuTransferAsyncOpKernel::RunTransfer(OpKernelContext* ctx) {
-  auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform();
+  auto* tpu_platform = tpu::TpuPlatformInterface::GetRegisteredPlatform(
+      /*initialize_platform=*/false);
 
   int real_device_ordinal = device_ordinal_;
   if (real_device_ordinal < 0) {

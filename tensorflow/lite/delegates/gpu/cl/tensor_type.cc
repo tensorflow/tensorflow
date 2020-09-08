@@ -73,6 +73,25 @@ std::string ToString(TensorStorageType type) {
   }
 }
 
+TensorDescriptor::TensorDescriptor(TensorDescriptor&& desc)
+    : GPUObjectDescriptor(std::move(desc)),
+      data_type(desc.data_type),
+      storage_type(desc.storage_type),
+      layout(desc.layout),
+      shape(desc.shape),
+      data(std::move(desc.data)) {}
+TensorDescriptor& TensorDescriptor::operator=(TensorDescriptor&& desc) {
+  if (this != &desc) {
+    std::swap(data_type, desc.data_type);
+    std::swap(storage_type, desc.storage_type);
+    std::swap(layout, desc.layout);
+    std::swap(shape, desc.shape);
+    data = std::move(desc.data);
+    GPUObjectDescriptor::operator=(std::move(desc));
+  }
+  return *this;
+}
+
 GPUResources TensorDescriptor::GetGPUResources() const {
   GPUResources resources;
   if (HasAxis(Axis::WIDTH)) {
@@ -724,6 +743,174 @@ TextureAddressMode TensorDescriptor::ModeFromState() const {
     return TextureAddressMode::DONT_CARE;
   }
 }
+
+void TensorDescriptor::UploadData(
+    const tflite::gpu::Tensor<HWC, DataType::FLOAT32>& src) {
+  shape = BHWDC(1, src.shape.h, src.shape.w, 1, src.shape.c);
+  UploadData(absl::MakeConstSpan(src.data));
+}
+
+void TensorDescriptor::UploadData(
+    const tflite::gpu::Tensor<Linear, DataType::FLOAT32>& src) {
+  shape = BHWDC(1, 1, 1, 1, src.shape.v);
+  UploadData(absl::MakeConstSpan(src.data));
+}
+
+void TensorDescriptor::UploadData(absl::Span<const float> src) {
+  int aligned_channels = storage_type == TensorStorageType::SINGLE_TEXTURE_2D
+                             ? shape.c
+                             : AlignByN(shape.c, 4);
+  int elements_count = shape.b * shape.w * shape.h * shape.d * aligned_channels;
+  data.resize(elements_count * SizeOf(data_type));
+  if (data_type == DataType::FLOAT32) {
+    float* gpu_data = reinterpret_cast<float*>(data.data());
+    DataFromBHWDC(src, shape, *this, absl::MakeSpan(gpu_data, elements_count));
+  } else {
+    half* gpu_data = reinterpret_cast<half*>(data.data());
+    DataFromBHWDC(src, shape, *this, absl::MakeSpan(gpu_data, elements_count));
+  }
+}
+
+bool TensorDescriptor::SupportsZeroClamp(const Axis& axis) const {
+  switch (storage_type) {
+    case TensorStorageType::UNKNOWN:
+      return false;
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+      return false;
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return axis == Axis::WIDTH || axis == Axis::HEIGHT;
+    case TensorStorageType::TEXTURE_3D:
+      return axis == Axis::WIDTH || axis == Axis::HEIGHT || axis == Axis::DEPTH;
+  }
+}
+
+bool TensorDescriptor::CanReadOutOfBorder(const Axis& axis) const {
+  switch (storage_type) {
+    case TensorStorageType::UNKNOWN:
+      return false;
+    case TensorStorageType::BUFFER:
+      return false;
+    case TensorStorageType::IMAGE_BUFFER:
+    case TensorStorageType::TEXTURE_2D:
+    case TensorStorageType::TEXTURE_3D:
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+    case TensorStorageType::TEXTURE_ARRAY:
+      return true;
+  }
+}
+
+bool TensorDescriptor::IsLinear() const {
+  return storage_type == TensorStorageType::BUFFER ||
+         storage_type == TensorStorageType::IMAGE_BUFFER;
+}
+
+bool TensorDescriptor::ReturnsZeroForNegOneRead() const {
+  return storage_type == TensorStorageType::IMAGE_BUFFER;
+}
+
+namespace {
+int GetLinearIndex(const TensorDescriptor& desc, const BHWDC& shape, int b,
+                   int x, int y, int d, int s, int sub_c) {
+  const int slices = DivideRoundUp(shape.c, 4);
+  switch (desc.storage_type) {
+    case TensorStorageType::BUFFER:
+    case TensorStorageType::IMAGE_BUFFER:
+    case TensorStorageType::TEXTURE_ARRAY:
+    case TensorStorageType::TEXTURE_3D:
+      return ((((d * slices + s) * shape.h + y) * shape.w + x) * shape.b + b) *
+                 4 +
+             sub_c;  // DSHWBC4
+    case TensorStorageType::TEXTURE_2D:
+      return ((((y * slices + s) * shape.w + x) * shape.b + b) * shape.d + d) *
+                 4 +
+             sub_c;  // HSWBDC4
+    case TensorStorageType::SINGLE_TEXTURE_2D:
+      return (((y * shape.w + x) * shape.b + b) * shape.d + d) * shape.c +
+             sub_c;  // HWBDC
+    case TensorStorageType::UNKNOWN:
+      return -1;
+  }
+}
+
+int GetChannelsAlignment(const TensorDescriptor& desc, const BHWDC& shape) {
+  return desc.storage_type == TensorStorageType::SINGLE_TEXTURE_2D ? shape.c
+                                                                   : 4;
+}
+}  // namespace
+
+template <typename T>
+void DataFromBHWDC(absl::Span<const float> src, const BHWDC& shape,
+                   const TensorDescriptor& desc, absl::Span<T> dst) {
+  const int channels_alignment = GetChannelsAlignment(desc, shape);
+  const int slices = DivideRoundUp(shape.c, 4);
+  for (int b = 0; b < shape.b; ++b) {
+    for (int s = 0; s < slices; ++s) {
+      for (int y = 0; y < shape.h; ++y) {
+        for (int x = 0; x < shape.w; ++x) {
+          for (int d = 0; d < shape.d; ++d) {
+            for (int c = 0; c < channels_alignment; ++c) {
+              float value;
+              if (s * 4 + c < shape.c) {
+                const int cpu_index =
+                    shape.LinearIndex({b, y, x, d, s * 4 + c});
+                value = src[cpu_index];
+              } else {
+                value = 0.0f;
+              }
+              int gpu_index = GetLinearIndex(desc, shape, b, x, y, d, s, c);
+              dst[gpu_index] = value;
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+template void DataFromBHWDC<float>(absl::Span<const float> src,
+                                   const BHWDC& shape,
+                                   const TensorDescriptor& desc,
+                                   absl::Span<float> dst);
+template void DataFromBHWDC<half>(absl::Span<const float> src,
+                                  const BHWDC& shape,
+                                  const TensorDescriptor& desc,
+                                  absl::Span<half> dst);
+
+template <typename T>
+void DataToBHWDC(absl::Span<const T> src, const BHWDC& shape,
+                 const TensorDescriptor& desc, absl::Span<float> dst) {
+  const int channels_alignment = GetChannelsAlignment(desc, shape);
+  const int slices = DivideRoundUp(shape.c, 4);
+  for (int b = 0; b < shape.b; ++b) {
+    for (int s = 0; s < slices; ++s) {
+      for (int y = 0; y < shape.h; ++y) {
+        for (int x = 0; x < shape.w; ++x) {
+          for (int d = 0; d < shape.d; ++d) {
+            for (int c = 0; c < channels_alignment; ++c) {
+              if (s * 4 + c >= shape.c) {
+                continue;
+              }
+              int cpu_index = shape.LinearIndex({b, y, x, d, s * 4 + c});
+              int gpu_index = GetLinearIndex(desc, shape, b, x, y, d, s, c);
+              dst[cpu_index] = src[gpu_index];
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+template void DataToBHWDC<float>(absl::Span<const float> src,
+                                 const BHWDC& shape,
+                                 const TensorDescriptor& desc,
+                                 absl::Span<float> dst);
+template void DataToBHWDC<half>(absl::Span<const half> src, const BHWDC& shape,
+                                const TensorDescriptor& desc,
+                                absl::Span<float> dst);
 
 }  // namespace cl
 }  // namespace gpu

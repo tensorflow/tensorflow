@@ -37,6 +37,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import backend as keras_backend
 from tensorflow.python.keras import combinations
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_layer
 from tensorflow.python.keras.engine import training
@@ -71,7 +72,7 @@ class RandomFourierFeaturesTest(test.TestCase, parameterized.TestCase):
     else:
       self.assertAllClose(expected, actual, atol=atol)
 
-  @test_util.run_v2_only
+  @testing_utils.run_v2_only
   def test_state_saving_and_loading(self):
     input_data = np.random.random((1, 2))
     rff_layer = kernel_layers.RandomFourierFeatures(output_dim=10, scale=3.0)

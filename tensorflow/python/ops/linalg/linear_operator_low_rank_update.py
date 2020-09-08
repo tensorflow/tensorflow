@@ -182,6 +182,18 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     Raises:
       ValueError:  If `is_X` flags are set in an inconsistent way.
     """
+    parameters = dict(
+        base_operator=base_operator,
+        u=u,
+        diag_update=diag_update,
+        v=v,
+        is_diag_update_positive=is_diag_update_positive,
+        is_non_singular=is_non_singular,
+        is_self_adjoint=is_self_adjoint,
+        is_positive_definite=is_positive_definite,
+        is_square=is_square,
+        name=name
+    )
     dtype = base_operator.dtype
 
     if diag_update is not None:
@@ -253,6 +265,7 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
           is_self_adjoint=is_self_adjoint,
           is_positive_definite=is_positive_definite,
           is_square=is_square,
+          parameters=parameters,
           name=name)
       self._set_graph_parents(graph_parents)
 

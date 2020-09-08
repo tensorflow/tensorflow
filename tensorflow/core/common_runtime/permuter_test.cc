@@ -49,9 +49,8 @@ static int64 kStepId = 123;
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
   FailTestRMA(const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-              std::shared_ptr<UnboundedWorkQueue> work_queue, int64 step_id,
-              int fail_after)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
+              int64 step_id, int fail_after)
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
         fail_after_(fail_after) {}
 
   bool MaybeFail(const StatusCallback& done) {
@@ -162,10 +161,11 @@ class PermuterTest : public ::testing::Test {
     }
     dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
     work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
-    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), work_queue_,
-                           kStepId, fail_after);
-    col_exec_ = new BaseCollectiveExecutor(
-        &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
+    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
+                           fail_after);
+    col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
+                                           dev_mgr_.get(),
+                                           gpu_ring_order_.get(), work_queue_);
     col_params_.name = "test_collective";
     col_params_.instance.data_type = dtype;
     static const int kInstanceKey = 18;
@@ -294,6 +294,7 @@ class PermuterTest : public ::testing::Test {
                              actual.template flat<T>()(i))
                 << "Mismatch at device " << di << " index " << i;
             break;
+          case DT_BOOL:
           case DT_INT32:
           case DT_INT64:
             EXPECT_EQ(expected[(di * tensor_len) + i],
@@ -443,6 +444,9 @@ class PermuterTest : public ::testing::Test {
          DaTy##B##_DevTy##T##_Wkr##W##_Dev##D##_Sdiv##S##_Len##L##_Abrt##A) { \
     DataType dtype = DT_##B;                                                  \
     switch (dtype) {                                                          \
+      case DT_BOOL: {                                                         \
+        RunTest<bool>(dtype, DEVICE_##T, W, D, L, A);                         \
+      } break;                                                                \
       case DT_FLOAT: {                                                        \
         RunTest<float>(dtype, DEVICE_##T, W, D, L, A);                        \
       } break;                                                                \
@@ -471,6 +475,10 @@ DEF_TEST(FLOAT, CPU, 2, 1, 128, 0)
 DEF_TEST(FLOAT, CPU, 2, 4, 128, 0)
 DEF_TEST(FLOAT, CPU, 2, 8, 4095, 0)
 DEF_TEST(FLOAT, CPU, 4, 4, 1045991, 0)
+
+DEF_TEST(BOOL, CPU, 1, 4, 1, 0)
+DEF_TEST(BOOL, CPU, 2, 4, 1, 0)
+DEF_TEST(BOOL, CPU, 2, 4, 1001, 0)
 
 DEF_TEST(DOUBLE, CPU, 2, 4, 128, 0)
 DEF_TEST(INT32, CPU, 2, 4, 128, 0)

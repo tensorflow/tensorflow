@@ -384,7 +384,7 @@ void RingAlg::DispatchSend(RingField* rf, const StatusCallback& done) {
   int send_to_rank = (rf->rank + 1) % group_size_;
   int send_to_dev_idx = col_params_->instance.impl_details
                             .subdiv_permutations[rf->subdiv_idx][send_to_rank];
-  col_ctx_->col_exec->PostToPeer(
+  col_ctx_->col_exec->remote_access()->PostToPeer(
       col_params_->instance.device_names[send_to_dev_idx],
       col_params_->instance.task_names[send_to_dev_idx], send_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
@@ -403,7 +403,7 @@ void RingAlg::DispatchRecv(RingField* rf, const StatusCallback& done) {
   Tensor* dst_tensor = (!rf->second_pass && (col_params_->merge_op != nullptr))
                            ? &rf->tmp_chunk
                            : &rf->chunk;
-  col_ctx_->col_exec->RecvFromPeer(
+  col_ctx_->col_exec->remote_access()->RecvFromPeer(
       col_params_->instance.device_names[rf->recv_dev_idx],
       col_params_->instance.task_names[rf->recv_dev_idx],
       col_params_->task.is_local[rf->recv_dev_idx], recv_buf_key,

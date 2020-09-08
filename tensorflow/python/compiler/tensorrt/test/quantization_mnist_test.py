@@ -261,10 +261,6 @@ class QuantizationAwareTrainingMNISTTest(test_util.TensorFlowTestCase):
     if not is_tensorrt_enabled():
       return
 
-    # TODO(b/162447069): Enable the test for TRT 7.1.3.
-    if trt_test.IsTensorRTVersionGreaterEqual(7, 1, 3):
-      return
-
     model_dir = test.test_src_dir_path(
         'python/compiler/tensorrt/test/testdata/mnist')
 

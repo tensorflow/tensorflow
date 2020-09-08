@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
+load("@flatbuffers//:build_defs.bzl", "flatbuffer_cc_library", "flatbuffer_java_library")
 load("//tensorflow/lite:special_rules.bzl", "tflite_extra_gles_deps", "tflite_portable_test_suite")
 
 package(
@@ -26,6 +26,14 @@ package(
 flatbuffer_cc_library(
     name = "database_fbs",
     srcs = ["database.fbs"],
+)
+
+exports_files(srcs = ["database.fbs"])
+
+flatbuffer_java_library(
+    name = "database_fbs_java",
+    srcs = ["database.fbs"],
+    package_prefix = "org.tensorflow",
 )
 
 cc_library(
@@ -91,7 +99,7 @@ genrule(
         --output_source_file $(location :devicedb-sample.cc) \
         --array_variable_name g_tflite_acceleration_devicedb_sample_binary
     """,
-    tools = [":convert_binary_to_cc_source"],
+    exec_tools = [":convert_binary_to_cc_source"],
 )
 
 cc_library(
@@ -116,6 +124,8 @@ cc_test(
     ],
 )
 
+exports_files(["gpu_compatibility.bin"])
+
 genrule(
     name = "gpu_compatibility_binary",
     srcs = ["gpu_compatibility.bin"],
@@ -132,7 +142,7 @@ genrule(
         --output_source_file $(location :gpu_compatibility_binary.cc) \
         --array_variable_name g_tflite_acceleration_gpu_compatibility_binary
     """,
-    tools = [":convert_binary_to_cc_source"],
+    exec_tools = [":convert_binary_to_cc_source"],
 )
 
 cc_library(

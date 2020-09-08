@@ -34,6 +34,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import combinations
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -944,6 +945,31 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
       LeakedObjectTest().test_has_leak()
 
     LeakedObjectTest().test_has_no_leak()
+
+
+class RunFunctionsEagerlyInV2Test(test_util.TensorFlowTestCase,
+                                  parameterized.TestCase):
+  @parameterized.named_parameters(
+      [("_RunEagerly", True), ("_RunGraph", False)])
+  def test_run_functions_eagerly(self, run_eagerly):  # pylint: disable=g-wrong-blank-lines
+    results = []
+
+    @def_function.function
+    def add_two(x):
+      for _ in range(5):
+        x += 2
+        results.append(x)
+      return x
+
+    with test_util.run_functions_eagerly(run_eagerly):
+      add_two(constant_op.constant(2.))
+      if context.executing_eagerly():
+        if run_eagerly:
+          self.assertTrue(isinstance(t, ops.EagerTensor) for t in results)
+        else:
+          self.assertTrue(isinstance(t, ops.Tensor) for t in results)
+      else:
+        self.assertTrue(isinstance(t, ops.Tensor) for t in results)
 
 
 if __name__ == "__main__":

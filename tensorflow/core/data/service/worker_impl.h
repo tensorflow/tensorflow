@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/data/service/common.pb.h"
+#include "tensorflow/core/data/service/data_service.h"
 #include "tensorflow/core/data/service/dispatcher.grpc.pb.h"
 #include "tensorflow/core/data/service/worker.pb.h"
 #include "tensorflow/core/data/standalone.h"
@@ -51,36 +52,37 @@ class DataServiceWorkerImpl {
                     GetElementResponse* response);
 
  private:
-  Status MakeDispatcherStub(std::unique_ptr<DispatcherService::Stub>* stub);
-  // Registers the worker with the dispatcher.
-  Status Register(DispatcherService::Stub* dispatcher) LOCKS_EXCLUDED(mu_);
-  // Sends task status to the dispatcher and checks for dispatcher commands.
-  Status SendTaskUpdates(DispatcherService::Stub* dispatcher)
-      LOCKS_EXCLUDED(mu_);
-  // Creates an iterator to process a task.
-  Status ProcessTaskInternal(const TaskDef& task) EXCLUSIVE_LOCKS_REQUIRED(mu_);
-  // A thread for doing async background processing not associated with a
-  // specific RPC, such as reporting finished tasks. The thread takes
-  // ownership of the passed dispatcher_ptr. We use a raw pointer instead of
-  // unique_ptr since unique_ptr cannot be passed to std::function.
-  void BackgroundThread(DispatcherService::Stub* dispatcher_ptr)
-      LOCKS_EXCLUDED(mu_);
+  struct Task {
+    explicit Task(TaskDef task_def) : task_def(std::move(task_def)) {}
 
-  typedef struct Task {
-    int64 task_id;
+    TaskDef task_def;
+    mutex mu;
+    bool initialized TF_GUARDED_BY(mu) = false;
     // TODO(aaudibert): Have standalone::Iterator own a reference to
     // standalone::Dataset so that we don't need to store the dataset here.
     std::unique_ptr<standalone::Dataset> dataset;
     std::unique_ptr<standalone::Iterator> iterator;
-  } Task;
+  };
+
+  // Registers the worker with the dispatcher.
+  Status Register() LOCKS_EXCLUDED(mu_);
+  // Sends task status to the dispatcher and checks for dispatcher commands.
+  Status SendTaskUpdates() LOCKS_EXCLUDED(mu_);
+  // Creates an iterator to process a task.
+  Status ProcessTaskInternal(const TaskDef& task) EXCLUSIVE_LOCKS_REQUIRED(mu_);
+  Status EnsureTaskInitialized(Task& task);
+  // A thread for doing async background processing not associated with a
+  // specific RPC, such as reporting finished tasks.
+  void BackgroundThread() LOCKS_EXCLUDED(mu_);
 
   const experimental::WorkerConfig config_;
   // The worker's own address.
   std::string worker_address_;
+  std::unique_ptr<DataServiceDispatcherClient> dispatcher_;
 
   mutex mu_;
   // Information about tasks, keyed by task ids.
-  absl::flat_hash_map<int64, Task> tasks_ TF_GUARDED_BY(mu_);
+  absl::flat_hash_map<int64, std::unique_ptr<Task>> tasks_ TF_GUARDED_BY(mu_);
   // Completed tasks which haven't yet been communicated to the dispatcher.
   absl::flat_hash_set<int64> pending_completed_tasks_ TF_GUARDED_BY(mu_);
   bool cancelled_ TF_GUARDED_BY(mu_) = false;

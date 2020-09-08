@@ -77,6 +77,10 @@ flags.DEFINE_string(
     "The path prefix (up to `.../api_docs/python`) used in the "
     "`_toc.yaml` and `_redirects.yaml` files")
 
+flags.DEFINE_bool("gen_report", False,
+                  ("Generate an API report containing the health of the"
+                   "docstrings of the public API."))
+
 _PRIVATE_MAP = {
     "tf": ["python", "core", "compiler", "examples", "tools", "contrib"],
     # There's some aliasing between the compats and v1/2s, so it's easier to
@@ -151,13 +155,15 @@ class TfExportAwareVisitor(doc_generator_visitor.DocGeneratorVisitor):
     return (canonical_score,) + scores
 
 
-def build_docs(output_dir, code_url_prefix, search_hints=True):
+def build_docs(output_dir, code_url_prefix, search_hints, gen_report):
   """Build api docs for tensorflow v2.
 
   Args:
     output_dir: A string path, where to put the files.
     code_url_prefix: prefix for "Defined in" links.
     search_hints: Bool. Include meta-data search hints at the top of each file.
+    gen_report: Bool. Generates an API report containing the health of the
+      docstrings of the public API.
   """
   # The custom page will be used for raw_ops.md not the one generated above.
   doc_controls.set_custom_page_content(tf.raw_ops, generate_raw_ops_doc())
@@ -208,9 +214,14 @@ def build_docs(output_dir, code_url_prefix, search_hints=True):
       code_url_prefix=code_url_prefixes,
       site_path=FLAGS.site_path,
       visitor_cls=TfExportAwareVisitor,
-      private_map=_PRIVATE_MAP)
+      private_map=_PRIVATE_MAP,
+      gen_report=gen_report,
+  )
 
   doc_generator.build(output_dir)
+
+  if gen_report:
+    return
 
   out_path = pathlib.Path(output_dir)
 
@@ -267,7 +278,8 @@ def main(argv):
   build_docs(
       output_dir=FLAGS.output_dir,
       code_url_prefix=FLAGS.code_url_prefix,
-      search_hints=FLAGS.search_hints)
+      search_hints=FLAGS.search_hints,
+      gen_report=FLAGS.gen_report,)
 
 
 if __name__ == "__main__":

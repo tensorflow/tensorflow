@@ -97,6 +97,8 @@ class DynamicDimensionInferenceVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleTranspose(HloInstruction* hlo) override;
 
+  Status HandleDynamicReshape(HloInstruction* hlo) override;
+
   Status HandleReshape(HloInstruction* hlo) override;
 
   Status HandleSort(HloInstruction* hlo) override;
@@ -619,6 +621,18 @@ Status DynamicDimensionInferenceVisitor::HandleElementwiseBinary(
 
 Status DynamicDimensionInferenceVisitor::HandleClamp(HloInstruction* hlo) {
   return PassThroughDynamicDimension(hlo);
+}
+
+Status DynamicDimensionInferenceVisitor::HandleDynamicReshape(
+    HloInstruction* hlo) {
+  HloDynamicReshapeInstruction* dynamic_reshape =
+      Cast<HloDynamicReshapeInstruction>(hlo);
+  for (int64 i = 0; i < hlo->shape().rank(); ++i) {
+    if (hlo->shape().is_dynamic_dimension(i)) {
+      parent_->SetDynamicSize(hlo, {}, i, dynamic_reshape->dim_sizes(i));
+    }
+  }
+  return Status::OK();
 }
 
 Status DynamicDimensionInferenceVisitor::HandleReshape(HloInstruction* hlo) {

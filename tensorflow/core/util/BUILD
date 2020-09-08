@@ -16,6 +16,7 @@ load(
     "tf_cuda_only_cc_test",
     "tf_kernel_library",
 )
+load("//tensorflow:tensorflow.bzl", "get_compatible_with_portable")
 load("//tensorflow:tensorflow.bzl", "tf_version_info_genrule")
 load(
     "//third_party/mkl:build_defs.bzl",
@@ -105,6 +106,8 @@ filegroup(
         "ptr_util.h",
         "ragged_to_dense_util.cc",
         "ragged_to_dense_util.h",
+        "ragged_to_dense_util_common.cc",
+        "ragged_to_dense_util_common.h",
         "reffed_status_callback.h",
         "saved_tensor_slice_util.cc",
         "saved_tensor_slice_util.h",
@@ -364,6 +367,7 @@ filegroup(
 tf_version_info_genrule(
     name = "version_info_gen",
     out = "version_info.cc",
+    compatible_with = get_compatible_with_portable(),
 )
 
 cc_library(
@@ -382,6 +386,19 @@ cc_library(
 )
 
 cc_library(
+    name = "ragged_to_dense_util_common",
+    srcs = [
+        "ragged_to_dense_util_common.cc",
+    ],
+    hdrs = [
+        "ragged_to_dense_util_common.h",
+    ],
+    visibility = [
+        "//visibility:public",
+    ],
+)
+
+cc_library(
     name = "ragged_to_dense_util",
     srcs = [
         "ragged_to_dense_util.cc",
@@ -390,6 +407,7 @@ cc_library(
         "ragged_to_dense_util.h",
     ],
     deps = [
+        ":ragged_to_dense_util_common",
         "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
     ],
@@ -507,6 +525,7 @@ cc_library(
     name = "version_info",
     srcs = ["version_info.cc"],
     hdrs = ["//tensorflow/core/public:version.h"],
+    compatible_with = get_compatible_with_portable(),
     copts = tf_copts(),
     alwayslink = if_static(0, 1),
 )
@@ -626,9 +645,9 @@ tf_kernel_library(
         "//tensorflow/core:lib",
     ] + if_cuda([
         "//tensorflow/stream_executor/cuda:cusparse_lib",
-        "@cub_archive//:cub",
+        "@local_config_cuda//cuda:cub_headers",
     ]) + if_rocm([
-        "@local_config_rocm//rocm:hipsparse",
+        "//tensorflow/stream_executor/rocm:hipsparse_wrapper",
     ]),
 )
 

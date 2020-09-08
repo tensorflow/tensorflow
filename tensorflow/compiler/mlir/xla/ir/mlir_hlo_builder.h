@@ -124,6 +124,13 @@ class MlirHloBuilder : public XlaBuilder {
                               FftType fft_type,
                               absl::Span<const int64> fft_length) override;
 
+  StatusOr<XlaOp> TriangularSolveInternal(
+      const Shape& shape, XlaOp a, XlaOp b,
+      TriangularSolveOptions options) override;
+
+  StatusOr<XlaOp> CholeskyInternal(const Shape& shape, XlaOp a,
+                                   bool lower) override;
+
   StatusOr<XlaOp> CustomCallInternal(
       const string& call_target_name, absl::Span<const XlaOp> operands,
       const Shape& shape, const string& opaque,
@@ -176,6 +183,9 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<XlaOp> RngOpInternal(RandomDistribution distribution,
                                 absl::Span<const XlaOp> parameters,
                                 const Shape& shape) override;
+  StatusOr<XlaOp> RngBitGeneratorInternal(const Shape& full_result_shape,
+                                          RandomAlgorithm algorithm,
+                                          XlaOp initial_state) override;
 
   StatusOr<XlaOp> ReshapeInternal(const Shape& shape, XlaOp operand,
                                   int64 inferred_dimension) override;
@@ -188,6 +198,9 @@ class MlirHloBuilder : public XlaBuilder {
   StatusOr<XlaOp> InDimBroadcast(
       const Shape& shape, XlaOp operand,
       absl::Span<const int64> broadcast_dimensions) override;
+
+  StatusOr<XlaOp> AddInstruction(HloInstructionProto&& instr, HloOpcode opcode,
+                                 absl::Span<const XlaOp> operands) override;
 
   StatusOr<XlaOp> Compare(const Shape& shape, XlaOp lhs, XlaOp rhs,
                           ComparisonDirection direction) override;

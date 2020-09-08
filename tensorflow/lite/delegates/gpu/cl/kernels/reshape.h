@@ -25,23 +25,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class Reshape : public GPUOperation {
- public:
-  explicit Reshape(const OperationDef& definition);
-
-  int3 GetGridSize() const override;
-
-  // Move only
-  Reshape(Reshape&& operation);
-  Reshape& operator=(Reshape&& operation);
-  Reshape(const Reshape&) = delete;
-  Reshape& operator=(const Reshape&) = delete;
-
- private:
-  std::string GetReshapeCode(const OperationDef& op_def);
-};
-
-Reshape CreateReshape(const OperationDef& definition);
+GPUOperation CreateReshape(const OperationDef& definition);
 
 }  // namespace cl
 }  // namespace gpu

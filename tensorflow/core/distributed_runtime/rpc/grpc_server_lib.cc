@@ -249,7 +249,7 @@ Status GrpcServer::Init(const GrpcServerOptions& opts) {
                         .release();
   eager_service_ = new eager::GrpcEagerServiceImpl(&worker_env_, &builder);
 
-  profiler_service_ = CreateProfilerService();
+  profiler_service_ = profiler::CreateProfilerService();
   builder.RegisterService(profiler_service_.get());
 
   // extra service:

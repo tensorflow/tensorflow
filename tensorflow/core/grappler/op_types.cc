@@ -334,6 +334,12 @@ bool IsImmutableConst(const NodeDef& node) {
 
 bool IsInvGrad(const NodeDef& node) { return node.op() == "InvGrad"; }
 
+bool IsLeakyRelu(const NodeDef& node) { return node.op() == "LeakyRelu"; }
+
+bool IsLeakyReluGrad(const NodeDef& node) {
+  return node.op() == "LeakyReluGrad";
+}
+
 bool IsLess(const NodeDef& node) { return node.op() == "Less"; }
 
 bool IsLessEqual(const NodeDef& node) { return node.op() == "LessEqual"; }

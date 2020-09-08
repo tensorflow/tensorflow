@@ -107,7 +107,7 @@ TEST_P(CSavedModelAPITest, LoadsSavedModel) {
   compute_fn_inputs.push_back(input_a);
   compute_fn_inputs.push_back(input_b);
 
-  TFE_Op* compute_fn_op = TF_ConcreteFunctionGetCallOp(
+  TFE_Op* compute_fn_op = TF_ConcreteFunctionMakeCallOp(
       compute_fn, compute_fn_inputs.data(), compute_fn_inputs.size(), status);
   EXPECT_EQ(TF_GetCode(status), TF_OK) << TF_Message(status);
 

@@ -29,11 +29,8 @@ limitations under the License.
 
 namespace tensorflow {
 namespace tpu {
-
 namespace {
-
 namespace se_tpu = ::stream_executor::tpu;
-
 using stream_executor::port::Status;
 using stream_executor::port::StatusOr;
 using xla::Shape;
@@ -112,7 +109,7 @@ void TpuProgramGroup::Initialize(
       xla_tpu_programs.size());
   std::vector<xla::HloProto> hlo_metadatas(xla_tpu_programs.size());
   for (size_t i = 0; i < xla_tpu_programs.size(); ++i) {
-    const XLA_TpuProgram* xla_tpu_program = xla_tpu_programs[i];
+    const XLA_TpuProgram* xla_tpu_program = tpu_programs_[i];
     bool may_modify_variables;
     TpuProgramApiFn()->TpuProgram_GetMayModifyVariablesFn(
         xla_tpu_program, &may_modify_variables);
@@ -195,7 +192,20 @@ void TpuProgramGroup::UnloadAndDestroyPrograms() {
   tpu_programs_.clear();
 }
 
-/*static*/ Status TpuProgramGroup::Build(
+/*static*/
+std::unique_ptr<TpuProgramGroup> TpuProgramGroup::Create(int count) {
+  auto tpu_program_group = std::make_unique<TpuProgramGroup>();
+  std::vector<XLA_TpuProgram*> tpu_programs;
+  tpu_programs.resize(count);
+  for (int i = 0; i < count; ++i) {
+    tpu_programs[i] = TpuProgramApiFn()->TpuProgram_NewFn();
+  }
+  tpu_program_group->set_tpu_programs(tpu_programs);
+  return tpu_program_group;
+}
+
+/*static*/
+Status TpuProgramGroup::Build(
     const TPUCompileMetadataProto& metadata,
     const tensorflow::XlaCompiler::CompilationResult& compilation_result,
     const std::vector<ShardingAndIndex>& arg_core_mapping,
@@ -250,10 +260,11 @@ TpuProgramGroup::TpuProgramGroup(TpuProgramGroup&& other)
   RefreshHloMetadatasPtrs();
 }
 
-void TpuProgramGroup::set_hlo_metadata(const xla::HloProto& hlo_metadata) {
-  // TODO(henrytan): initialize hlo_metadatas_ for multi program support.
-  if (hlo_metadatas_.empty()) {
-    hlo_metadatas_.push_back(hlo_metadata);
+void TpuProgramGroup::set_hlo_metadatas(
+    absl::Span<const xla::HloProto> hlo_metadatas) {
+  hlo_metadatas_.resize(hlo_metadatas.size());
+  for (size_t i = 0; i < hlo_metadatas.size(); ++i) {
+    hlo_metadatas_[i] = hlo_metadatas[i];
   }
   RefreshHloMetadatasPtrs();
 }
@@ -282,13 +293,22 @@ Status TpuProgramGroup::LogCompilationStats(const TpuCompilationCacheKey& key,
   return Status::OK();
 }
 
-const std::vector<bool>& TpuProgramGroup::may_modify_variables() const {
+const std::vector<bool>& TpuProgramGroup::may_modify_variables_list() const {
   return may_modify_variables_;
 }
 
 void TpuProgramGroup::set_may_modify_variables(
     const std::vector<bool>& may_modify_variables) {
   may_modify_variables_ = may_modify_variables;
+}
+
+bool TpuProgramGroup::may_modify_variables(int index) const {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, tpu_programs_.size());
+  bool may_modify_variables;
+  TpuProgramApiFn()->TpuProgram_GetMayModifyVariablesFn(tpu_programs_[index],
+                                                        &may_modify_variables);
+  return may_modify_variables;
 }
 
 const std::vector<XLA_TpuProgram*>& TpuProgramGroup::tpu_programs() const {
@@ -369,6 +389,48 @@ std::vector<XLA_TpuProgram*> TpuProgramGroup::tpu_programs(
     }
   }
   return tpu_programs;
+}
+
+Status TpuProgramGroup::DeserializeFromProto(int index,
+                                             TpuSerializedProto proto) {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, tpu_programs_.size());
+  StatusHelper status;
+  CHECK_NE(tpu_programs_[index], nullptr);
+  TpuProgramApiFn()->TpuProgram_DeserializeFromGetTpuProgramResponseProtoFn(
+      proto, tpu_programs_[index], status.c_status);
+  return status.status();
+}
+
+Status TpuProgramGroup::SerializeExecutable(
+    int index, TpuExecutableSerializedProto* executable) const {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, tpu_programs_.size());
+  StatusHelper status;
+  TpuProgramApiFn()->TpuProgram_SerializeTpuExecutableFn(
+      tpu_programs_[index], executable, status.c_status);
+  return status.status();
+}
+
+Status TpuProgramGroup::SerializeCompilerMetadata(
+    int index, CompilerMetadataSerializedProto* compiler_metadata) const {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, tpu_programs_.size());
+  StatusHelper status;
+  TpuProgramApiFn()->TpuProgram_SerializeCompilerMetadataFn(
+      tpu_programs_[index], compiler_metadata, status.c_status);
+  return status.status();
+}
+
+Status TpuProgramGroup::SerializeHostComputeMetadata(
+    int index,
+    HostComputeMetadataSerializedProto* host_compute_metadata) const {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, tpu_programs_.size());
+  StatusHelper status;
+  TpuProgramApiFn()->TpuProgram_SerializeHostComputeMetadataFn(
+      tpu_programs_[index], host_compute_metadata, status.c_status);
+  return status.status();
 }
 }  // namespace tpu
 }  // namespace tensorflow

@@ -35,6 +35,13 @@ void RemoteMgr::AddOperationOutputs(
   }
 }
 
+void RemoteMgr::AddOperationOutput(tensorflow::TensorHandle* handle,
+                                   int64 operation_id, int32 output_num) {
+  mutex_lock l(remote_tensor_handle_mu_);
+  remote_tensor_handle_map_.emplace(
+      RemoteTensorHandleInternal(operation_id, output_num), handle);
+}
+
 Status RemoteMgr::GetTensorHandleImpl(
     const RemoteTensorHandleInternal& remote_handle,
     tensorflow::TensorHandle** handle) {
@@ -160,13 +167,14 @@ Status RemoteMgr::DeserializeRemoteTensorHandle(const RemoteTensorHandle& in,
     (*out)->Ref();
   } else {
     // Create a remote TensorHandle for remote tensors which have not been
-    // copied to the local worker yet.
+    // copied to the local worker yet (e.g. remote function inputs).
     const string& device_name =
         in.op_device().empty() ? in.device() : in.op_device();
     TF_RETURN_IF_ERROR(
         parent_->FindDeviceFromName(device_name.c_str(), &device));
     *out = TensorHandle::CreateLazyRemoteHandle(in.op_id(), in.output_num(),
-                                                in.dtype(), device, parent_);
+                                                in.dtype(), device,
+                                                /*is_ready=*/true, parent_);
     std::vector<DtypeAndPartialTensorShape> dtypes_and_shapes;
     if (!GetMirroredResourceShape(RemoteTensorHandleInternal(in),
                                   &dtypes_and_shapes)

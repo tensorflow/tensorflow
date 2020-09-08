@@ -2051,6 +2051,37 @@ TEST(uKernels, MeanStddevNormalizationAllBatches) {
                           ArrayFloatNear(expected_output, 1.81e-4f)));
 }
 
+TEST(uKernels, MeanStddevNormalizationLargeVector) {
+  const float mean = 100.0f;
+  const float diff = 1.0f;
+  // Some large vector that is not a round multiple of any SIMD vector sizes.
+  // Note this is odd.
+  constexpr int kVectorSize = 16 * 16 + 16 + 1;
+
+  float input[kVectorSize];
+  // First input is mean.
+  input[0] = mean;
+  // Rest is alternating between mean + diff and mean - diff.
+  for (int i = 1; i < kVectorSize - 1; i += 2) {
+    input[i + 0] = mean + diff;
+    input[i + 1] = mean - diff;
+  }
+  float output[kVectorSize];
+  MeanStddevNormalization(input, output, kVectorSize, 1);
+
+  float expected_output[kVectorSize];
+  // First output should be 0.
+  expected_output[0] = 0.0;
+  // Rest should be alternating between ±√(N/(N-1)).
+  const float expected_elem = std::sqrt(static_cast<double>(kVectorSize) /
+                                        static_cast<double>(kVectorSize - 1));
+  for (int i = 1; i < kVectorSize - 1; i += 2) {
+    expected_output[i + 0] = +expected_elem;
+    expected_output[i + 1] = -expected_elem;
+  }
+  EXPECT_THAT(output, testing::Pointwise(testing::FloatEq(), expected_output));
+}
+
 }  // namespace tensor_utils
 }  // namespace tflite
 

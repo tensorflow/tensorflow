@@ -376,7 +376,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
                                          tf_executor::IslandOp island_op,
                                          tf_device::ReplicateOp replicate_op) {
   OpBuilder builder(island_op);
-  const int num_replicas = replicate_op.n().getLimitedValue();
+  const int num_replicas = replicate_op.n();
 
   // Create islands per replica.
   llvm::SmallVector<tf_executor::IslandOp, 8> replicas;
@@ -438,7 +438,7 @@ LogicalResult CreateIslandsFromReplicate(const Dialect* tf_dialect,
 
 void ReplicateToIslandPass::runOnOperation() {
   auto module = getOperation();
-  const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
+  const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
     module.emitError() << "'tf' dialect is not registered";
     return signalPassFailure();

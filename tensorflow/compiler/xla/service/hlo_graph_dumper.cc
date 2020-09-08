@@ -1012,6 +1012,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kGather:
     case HloOpcode::kPad:
     case HloOpcode::kReshape:
+    case HloOpcode::kDynamicReshape:
     case HloOpcode::kReverse:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kTranspose:

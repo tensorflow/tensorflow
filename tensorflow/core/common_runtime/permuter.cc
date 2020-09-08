@@ -39,17 +39,14 @@ namespace tensorflow {
 Permuter::Permuter()
     : col_ctx_(nullptr), col_params_(nullptr), done_(nullptr), counter_(0) {}
 
-bool Permuter::CheckCounter() {
-  mutex_lock lock(mu_counter_);
-  ++counter_;
-  if (counter_ == 2) return true;
-  return false;
-}
-
-StatusCallback Permuter::HalfDone() {
+StatusCallback Permuter::CheckCounterAndCallDone() {
   return [this](const Status& s) {
+    mu_.lock();
     status_.Update(s);
-    if (CheckCounter()) done_(status_);
+    int counter = ++counter_;
+    Status status = status_;
+    mu_.unlock();
+    if (counter == 2) done_(status);
   };
 }
 
@@ -64,17 +61,18 @@ Status Permuter::InitializeCollectiveContext(
 }
 
 void Permuter::Run(StatusCallback done) {
+  if (col_params_->instance.permutation.size() !=
+      col_params_->instance.devices.size()) {
+    done(errors::Internal("Permutation must be the same size as devices"));
+  }
   done_ = std::move(done);
-  for (int i = 0; i < col_params_->instance.devices.size(); ++i) {
-    if (col_ctx_->device_name == col_params_->instance.devices[i]) {
-      DispatchSend(i, col_params_->instance.permutation[i], col_ctx_->input,
-                   HalfDone());
-      continue;
-    }
-    if (col_ctx_->device_name ==
-        col_params_->instance.devices[col_params_->instance.permutation[i]]) {
+  DispatchSend(col_params_->default_rank,
+               col_params_->instance.permutation[col_params_->default_rank],
+               col_ctx_->input, CheckCounterAndCallDone());
+  for (int i = 0; i < col_params_->instance.permutation.size(); ++i) {
+    if (col_params_->default_rank == col_params_->instance.permutation[i]) {
       DispatchRecv(i, col_params_->instance.permutation[i], col_ctx_->output,
-                   HalfDone());
+                   CheckCounterAndCallDone());
     }
   }
 }
@@ -87,12 +85,12 @@ void Permuter::DispatchSend(int src_rank, int target_rank, const Tensor* tensor,
           << col_ctx_->device_name << " to_device "
           << col_params_->instance.devices[target_rank]
           << " target_rank=" << target_rank << " src_rank=" << src_rank;
-  col_ctx_->col_exec->PostToPeer(col_params_->instance.devices[target_rank],
-                                 col_params_->instance.task_names[target_rank],
-                                 send_buf_key, col_ctx_->device,
-                                 col_ctx_->op_ctx->op_device_context(),
-                                 col_ctx_->op_ctx->output_alloc_attr(0), tensor,
-                                 col_ctx_->device_locality, done);
+  col_ctx_->col_exec->remote_access()->PostToPeer(
+      col_params_->instance.devices[target_rank],
+      col_params_->instance.task_names[target_rank], send_buf_key,
+      col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
+      col_ctx_->op_ctx->output_alloc_attr(0), tensor, col_ctx_->device_locality,
+      done);
 }
 
 void Permuter::DispatchRecv(int src_rank, int target_rank, Tensor* tensor,
@@ -103,13 +101,13 @@ void Permuter::DispatchRecv(int src_rank, int target_rank, Tensor* tensor,
           << col_ctx_->device_name << " from_device "
           << col_params_->instance.devices[src_rank]
           << " target_rank=" << target_rank << " src_rank=" << src_rank;
-  col_ctx_->col_exec->RecvFromPeer(col_params_->instance.devices[src_rank],
-                                   col_params_->instance.task_names[src_rank],
-                                   col_params_->task.is_local[src_rank],
-                                   recv_buf_key, col_ctx_->device,
-                                   col_ctx_->op_ctx->op_device_context(),
-                                   col_ctx_->op_ctx->output_alloc_attr(0),
-                                   tensor, col_ctx_->device_locality, 0, done);
+  col_ctx_->col_exec->remote_access()->RecvFromPeer(
+      col_params_->instance.devices[src_rank],
+      col_params_->instance.task_names[src_rank],
+      col_params_->task.is_local[src_rank], recv_buf_key, col_ctx_->device,
+      col_ctx_->op_ctx->op_device_context(),
+      col_ctx_->op_ctx->output_alloc_attr(0), tensor, col_ctx_->device_locality,
+      0, done);
 }
 namespace {
 REGISTER_COLLECTIVE(Permute, Permuter);

@@ -113,25 +113,20 @@ void DeviceResolverDistributed::RefreshRemoteAttributes(
       });
 }
 
-void DeviceResolverDistributed::ClearTask(const string& task) {
+Status DeviceResolverDistributed::GetTaskCached(
+    const string& task, std::vector<DeviceAttributes>* attributes) {
   mutex_lock l(mu_);
-  // First find all the keys belonging to the task.
-  std::unordered_set<string> task_keys;
+  attributes->clear();
   for (const auto& it : attr_table_) {
     const string& device_name = it.first;
     if (DeviceNameUtils::IsSameAddressSpace(task, device_name)) {
-      task_keys.insert(device_name);
+      attributes->push_back(it.second);
     }
   }
-  // Then delete them.
-  for (const string& key : task_keys) {
-    attr_table_.erase(key);
+  if (attributes->empty()) {
+    return errors::NotFound(task, " not found in the cache");
   }
-}
-
-void DeviceResolverDistributed::ClearCache() {
-  mutex_lock l(mu_);
-  attr_table_.clear();
+  return Status::OK();
 }
 
 }  // namespace tensorflow

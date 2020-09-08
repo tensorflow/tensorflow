@@ -10,6 +10,12 @@ package(
 
 exports_files(["LICENSE"])
 
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
+
 # To run CPU benchmarks:
 #   bazel run -c opt benchmarks_test -- --benchmarks=.
 
@@ -33,6 +39,12 @@ py_library(
     ],
 )
 
+# This lib is mainly for running benchmarks on mlcompass infra.
+py_library(
+    name = "profiler_lib",
+    visibility = ["//tensorflow:internal"],
+)
+
 COMMON_TAGS = [
     "no_pip",  # b/161253163
     "no_windows",  # b/160628318
@@ -46,6 +58,7 @@ py_test(
     tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
+        ":profiler_lib",
         "//tensorflow:tensorflow_py",
         "//third_party/py/numpy",
     ],
@@ -60,6 +73,7 @@ cuda_py_test(
         "no_oss_py38",  # TODO(b/162044699)
     ],
     deps = [
+        ":profiler_lib",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -69,6 +83,7 @@ cuda_py_test(
     srcs = ["model_components_benchmarks_test.py"],
     python_version = "PY3",
     deps = [
+        ":profiler_lib",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -90,6 +105,7 @@ cuda_py_test(
     tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
+        ":profiler_lib",
         "//tensorflow:tensorflow_py",
     ],
 )
@@ -169,6 +185,17 @@ cuda_py_test(
     tags = COMMON_TAGS,
     deps = [
         ":benchmark_util",
+        "//tensorflow:tensorflow_py",
+    ],
+)
+
+cuda_py_test(
+    name = "mnist_conv_custom_training_benchmark_test",
+    srcs = ["keras_examples_benchmarks/mnist_conv_custom_training_benchmark_test.py"],
+    python_version = "PY3",
+    tags = COMMON_TAGS,
+    deps = [
+        ":distribution_util",
         "//tensorflow:tensorflow_py",
     ],
 )

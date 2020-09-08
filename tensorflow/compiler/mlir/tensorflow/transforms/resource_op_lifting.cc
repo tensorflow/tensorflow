@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -330,15 +331,6 @@ LogicalResult HoistResourceOpsFromCluster(tf_device::ClusterOp cluster,
   getUsedValuesDefinedAbove(new_cluster.body(), new_cluster.body(),
                             captured_values);
 
-  for (Value v : captured_values) {
-    auto tensor_type = v.getType().dyn_cast<TensorType>();
-    if (!tensor_type) continue;
-    if (!tensor_type.getElementType().isa<TF::ResourceType>()) continue;
-
-    return new_cluster.emitOpError()
-           << "has remaining resource inputs that can not be lifted";
-  }
-
   return success();
 }
 
@@ -361,29 +353,23 @@ LogicalResult FindResourceArgUseInfo(
     ResourceArgUseInfo info;
     info.used = false;
     info.updated = false;
-    bool do_not_touch = false;
+    bool read_or_assigned = false;
     for (auto user : arg.getUsers()) {
       if (user == return_op) continue;
+      info.used = true;
       if (auto read = llvm::dyn_cast<TF::ReadVariableOp>(user)) {
-        info.used = true;
+        read_or_assigned = true;
         info.data_type = read.getType();
         continue;
       }
       if (auto assign = llvm::dyn_cast<TF::AssignVariableOp>(user)) {
-        info.used = true;
+        read_or_assigned = true;
         info.updated = true;
         info.data_type = assign.value().getType();
         continue;
       }
-      if (isa<TF::StackPushV2Op, TF::StackPopV2Op>(user)) {
-        // Stacks will be handled by a separate pass.
-        do_not_touch = true;
-        break;
-      }
-      user->emitOpError("found unsupported operations on resource.");
-      return failure();
     }
-    if (!do_not_touch) (*result)[arg.getArgNumber()] = info;
+    if (!info.used || read_or_assigned) (*result)[arg.getArgNumber()] = info;
   }
   return success();
 }
@@ -914,8 +900,8 @@ LogicalResult HandlePartitionedCallOpCallee(
 // resource-lifted new callee function in lifting_info.
 template <typename CallOpType>
 void UpdatePartitionedCallOpWithNewCallee(
-    CallOpType call_op, const PartitionedCallLiftingInfo& lifting_info) {
-  if (lifting_info.lifted_callee == nullptr) return;
+    CallOpType call_op, PartitionedCallLiftingInfo& lifting_info) {
+  if (!lifting_info.lifted_callee) return;
   // Replace output resource uses with the aliasing input, so that we can remove
   // this output.
   for (const auto& entry : lifting_info.old_outputs_aliasing_old_inputs) {
@@ -929,12 +915,10 @@ void UpdatePartitionedCallOpWithNewCallee(
   auto new_operands =
       FilterRange<Value, OperandRange>(call_op.args(), lifting_info.use_info);
   auto new_call = builder.create<CallOpType>(
-      call_op.getLoc(),
-      const_cast<FuncOp&>(lifting_info.lifted_callee).getType().getResults(),
+      call_op.getLoc(), lifting_info.lifted_callee.getType().getResults(),
       new_operands, call_op.getAttrs());
   new_call.setAttr(
-      "f", builder.getSymbolRefAttr(
-               const_cast<FuncOp&>(lifting_info.lifted_callee).getName()));
+      "f", builder.getSymbolRefAttr(lifting_info.lifted_callee.getName()));
   AddLoadsStoresOutsideControlFlowOp(
       new_call, lifting_info.arg_data_type_and_updated_output_index);
   // Replace uses.
@@ -949,7 +933,8 @@ void UpdatePartitionedCallOpWithNewCallee(
 }
 
 LogicalResult HoistForFunctionalControlFlow(
-    Block*, ModuleOp, llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>*);
+    Block*, ModuleOp,
+    llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>*);
 
 // A templated routine for handling both PartitionedCallOp and
 // StatefulPartitionedCallOp. If the callee is already lifted, it just updates
@@ -958,9 +943,10 @@ LogicalResult HoistForFunctionalControlFlow(
 template <typename CallOpType>
 LogicalResult HandlePartitionedCallOp(
     CallOpType call_op, FuncOp callee, ModuleOp module,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>* lifted_callees) {
-  auto emplace_res =
-      lifted_callees->try_emplace(callee, PartitionedCallLiftingInfo());
+    llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>*
+        lifted_callees) {
+  auto emplace_res = lifted_callees->try_emplace(callee.getName(),
+                                                 PartitionedCallLiftingInfo());
   if (emplace_res.second) {
     // Unseen callee. Perform resource lifting on it.
     HoistForFunctionalControlFlow(&callee.front(), module, lifted_callees);
@@ -977,7 +963,7 @@ LogicalResult HandlePartitionedCallOp(
 // body/cond/branch/callee functions.
 LogicalResult HoistForFunctionalControlFlow(
     Block* block, ModuleOp module,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>*
+    llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>*
         lifted_partitioned_call_callees) {
   // Remove identity nodes to avoid aliasing.
   RemoveIdentity(block);
@@ -1056,7 +1042,7 @@ LogicalResult HoistForFunctionalControlFlow(
 // Returns failure if there are remaining resource-type values that can not be
 // lifted.
 void ResourceOpLiftingPass::runOnOperation() {
-  llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>
+  llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
   ModuleOp module = getOperation();
   auto result = module.walk([&](FuncOp func_op) {
@@ -1121,7 +1107,7 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
            << function.getBlocks().size();
   }
 
-  llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>
+  llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
   return HoistForFunctionalControlFlow(&function.front(),
                                        cast<ModuleOp>(function.getParentOp()),

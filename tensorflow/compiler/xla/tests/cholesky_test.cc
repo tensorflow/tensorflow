@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/platform/tf32_utils.h"
 
 namespace xla {
 namespace {
@@ -181,6 +182,7 @@ class RandomCholeskyTest
       public ::testing::WithParamInterface<CholeskyTestCase> {};
 
 XLA_TEST_P(RandomCholeskyTest, Random) {
+  tensorflow::allow_tf32_execution(false);  // Test fails with tf32 allowed
   XlaBuilder builder(TestName());
 
   auto test_params = GetParam();

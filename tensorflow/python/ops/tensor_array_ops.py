@@ -220,6 +220,24 @@ class _GraphTensorArray(object):
       with ops.colocate_with(self._colocate_with[0]):
         yield
 
+  @contextlib.contextmanager
+  def _colocate_with_first_write_or_handle(self):
+    """Colocates ops with the handle or the first write.
+
+    In the case of colocate_with_first_write_call, the device for _handle is not
+    updated and remains empty. Colocating things with that just propagates the
+    empty device assignment, so we colocate with the first write op instead.
+
+    Yields:
+      Nothing but the appropriate colocation context.
+    """
+    if not self._colocate_with:
+      with ops.colocate_with(self._handle):
+        yield
+    else:
+      with ops.colocate_with(self._colocate_with[0]):
+        yield
+
   def identity(self):
     """See TensorArray."""
     flow = array_ops.identity(self._flow)
@@ -234,7 +252,7 @@ class _GraphTensorArray(object):
     if flow is None:
       flow = self.flow
     with ops.name_scope(name, "TensorArrayGrad", [self._handle]):
-      with ops.colocate_with(self._handle):
+      with self._colocate_with_first_write_or_handle():
         g_handle, unused_flow = gen_data_flow_ops.tensor_array_grad_v3(
             handle=self._handle, source=source, flow_in=flow, name=name)
         with ops.control_dependencies([g_handle]):
@@ -281,7 +299,7 @@ class _GraphTensorArray(object):
 
   def stack(self, name=None):
     """See TensorArray."""
-    with ops.colocate_with(self._handle):
+    with self._colocate_with_first_write_or_handle():
       with ops.name_scope(name, "TensorArrayStack", [self._handle]):
         value = self.gather(math_ops.range(0, self.size()), name=name)
         if (self.element_shape and not self._dynamic_size and

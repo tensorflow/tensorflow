@@ -691,6 +691,10 @@ class SelectAndScatterOpConverter
 
 struct LhloLegalizeToParallelLoopsPass
     : public PassWrapper<LhloLegalizeToParallelLoopsPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<StandardOpsDialect, scf::SCFDialect>();
+  }
+
   void runOnFunction() override {
     auto func = getFunction();
 

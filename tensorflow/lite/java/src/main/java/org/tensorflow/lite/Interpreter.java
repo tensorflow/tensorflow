@@ -152,7 +152,7 @@ public final class Interpreter implements AutoCloseable {
      * <ul>
      *   <li>Startup time and resize time may increase.
      *   <li>Baseline memory consumption may increase.
-     *   <li>Compatibility with other delegates (e.g., GPU) has not been fully validated.
+     *   <li>May be ignored if another delegate (eg NNAPI) have been applied.
      *   <li>Quantized models will not see any benefit.
      * </ul>
      *

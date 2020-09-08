@@ -22,6 +22,7 @@ from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import one_device_strategy
 from tensorflow.python.distribute import tpu_strategy
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
@@ -141,8 +142,8 @@ class _DelegatingTrackableMixin(object):
     return self._trackable._add_variable_with_custom_getter(
         name, shape, dtype, initializer, getter, overwrite, **kwargs_for_getter)
 
-  def _preload_simple_restoration(self, name, shape):
-    return self._trackable._preload_simple_restoration(name, shape)
+  def _preload_simple_restoration(self, name):
+    return self._trackable._preload_simple_restoration(name)
 
   def _track_trackable(self, trackable, name, overwrite=False):  # pylint: disable=redefined-outer-name
     return self._trackable._track_trackable(trackable, name, overwrite)
@@ -349,9 +350,14 @@ class LossScaleOptimizer(_DelegatingTrackableMixin, optimizer_v2.OptimizerV2):
     ]
 
   def _compute_gradients(self, loss, var_list, grad_loss=None, tape=None):
-    loss = self.get_scaled_loss(loss)
-    grads_and_vars = self._optimizer._compute_gradients(loss, var_list,  # pylint: disable=protected-access
-                                                        grad_loss)
+    tape = backprop.GradientTape() if tape is None else tape
+    with tape:
+      loss = self.get_scaled_loss(loss)
+    grads_and_vars = self._optimizer._compute_gradients(  # pylint: disable=protected-access
+        loss,
+        var_list,
+        grad_loss,
+        tape=tape)
     grads = [g for g, _ in grads_and_vars]
     variables = [v for _, v in grads_and_vars]
     unscaled_grads = self.get_unscaled_gradients(grads)

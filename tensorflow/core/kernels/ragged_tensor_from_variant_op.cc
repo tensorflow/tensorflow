@@ -175,8 +175,22 @@ Status NestedStackRaggedTensors(
     }
   }
 
+  // If the variant tensor input is empty, then we have no way to determine
+  // the correct shape for the dense_values.  (It must have rank>=1, and its
+  // outer dimension must be 0, but we don't know its shape beyond that.)
+  // For now, we just use a shape of `[0]` in this case.
+  // TODO(edloper): Update this op with an attribute containing information
+  // about dense_values shape.  If it's `None`, then we'll probably still have
+  // to use shape=[0] here, but if we have more info, then we can use it.
+  // E.g., in map_fn, we may have shape info from the RaggedTensorSpec.
+  TensorShape component_values_shape;
+  if (ragged_components.empty()) {
+    component_values_shape = TensorShape({0});
+  } else {
+    component_values_shape = ragged_components[0].values.shape();
+  }
+
   // Populate values.
-  TensorShape component_values_shape = ragged_components[0].values.shape();
   int values_size = component_values_shape.dim_size(0);
   for (int i = 1; i < ragged_components.size(); i++) {
     if (ragged_components[i].values.dims() != component_values_shape.dims()) {

@@ -35,6 +35,8 @@ enum Mode { FILL_REFLECT, FILL_WRAP, FILL_CONSTANT, FILL_NEAREST };
 using Eigen::array;
 using Eigen::DenseIndex;
 
+// Follow scipy's implementation
+// https://github.com/scipy/scipy/blob/master/scipy/ndimage/src/ni_interpolation.c
 template <typename Device, Mode M>
 struct MapCoordinate {
   float operator()(const float out_coord, const DenseIndex len);
@@ -44,22 +46,32 @@ template <typename Device>
 struct MapCoordinate<Device, Mode::FILL_REFLECT> {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
                                                          const DenseIndex len) {
+    // Reflect [abcd] to [dcba|abcd|dcba].
     float in_coord = out_coord;
-    // Reflect [abcd] to [dcba|abcd|dcba], periodically from [0, 2 * len)
-    // over [abcddcba]
-    const DenseIndex boundary = 2 * len;
-    // Shift coordinate to (-boundary, boundary)
-    in_coord -= boundary * static_cast<DenseIndex>(in_coord / boundary);
-    // Convert negative coordinates from [-boundary, 0) to [0, boundary)
     if (in_coord < 0) {
-      in_coord += boundary;
+      if (len <= 1) {
+        in_coord = 0;
+      } else {
+        const DenseIndex sz2 = 2 * len;
+        if (in_coord < sz2) {
+          in_coord = sz2 * static_cast<DenseIndex>(-in_coord / sz2) + in_coord;
+        }
+        in_coord = (in_coord < -len) ? in_coord + sz2 : -in_coord - 1;
+      }
+    } else if (in_coord > len - 1) {
+      if (len <= 1) {
+        in_coord = 0;
+      } else {
+        const DenseIndex sz2 = 2 * len;
+        in_coord -= sz2 * static_cast<DenseIndex>(in_coord / sz2);
+        if (in_coord >= len) {
+          in_coord = sz2 - in_coord - 1;
+        }
+      }
     }
-    // Coordinate in_coord between [len, boundary) should reverse reflect
-    // to coordinate to (bounary - 1 - in_coord) between [0, len)
-    if (in_coord > len - 1) {
-      in_coord = boundary - 1 - in_coord;
-    }
-    return in_coord;
+    // clamp is necessary because when out_coord = 3.5 and len = 4,
+    // in_coord = 3.5 and will be rounded to 4 in nearest interpolation.
+    return Eigen::internal::scalar_clamp_op<float>(0.0f, len - 1)(in_coord);
   }
 };
 
@@ -67,17 +79,26 @@ template <typename Device>
 struct MapCoordinate<Device, Mode::FILL_WRAP> {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
                                                          const DenseIndex len) {
+    // Wrap [abcd] to [abcd|abcd|abcd].
     float in_coord = out_coord;
-    // Wrap [abcd] to [abcd|abcd|abcd], periodically from [0, len)
-    // over [abcd]
-    const DenseIndex boundary = len;
-    // Shift coordinate to (-boundary, boundary)
-    in_coord -= boundary * static_cast<DenseIndex>(in_coord / boundary);
-    // Shift negative coordinate from [-boundary, 0) to [0, boundary)
     if (in_coord < 0) {
-      in_coord += boundary;
+      if (len <= 1) {
+        in_coord = 0;
+      } else {
+        const DenseIndex sz = len - 1;
+        in_coord += len * (static_cast<DenseIndex>(-in_coord / sz) + 1);
+      }
+    } else if (in_coord > len - 1) {
+      if (len <= 1) {
+        in_coord = 0;
+      } else {
+        const DenseIndex sz = len - 1;
+        in_coord -= len * static_cast<DenseIndex>(in_coord / sz);
+      }
     }
-    return in_coord;
+    // clamp is necessary because when out_coord = -0.5 and len = 4,
+    // in_coord = 3.5 and will be rounded to 4 in nearest interpolation.
+    return Eigen::internal::scalar_clamp_op<float>(0.0f, len - 1)(in_coord);
   }
 };
 
@@ -93,11 +114,7 @@ template <typename Device>
 struct MapCoordinate<Device, Mode::FILL_NEAREST> {
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE float operator()(const float out_coord,
                                                          const DenseIndex len) {
-    if (out_coord < 0)
-      return 0;
-    else if (out_coord >= len)
-      return len - 1;
-    return out_coord;
+    return Eigen::internal::scalar_clamp_op<float>(0.0f, len - 1)(out_coord);
   }
 };
 
@@ -107,17 +124,20 @@ class ProjectiveGenerator {
   typename TTypes<T, 4>::ConstTensor input_;
   typename TTypes<float>::ConstMatrix transforms_;
   const Interpolation interpolation_;
+  const T fill_value_;
 
  public:
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE
   ProjectiveGenerator(typename TTypes<T, 4>::ConstTensor input,
                       typename TTypes<float>::ConstMatrix transforms,
-                      const Interpolation interpolation)
-      : input_(input), transforms_(transforms), interpolation_(interpolation) {}
+                      const Interpolation interpolation, const T fill_value)
+      : input_(input),
+        transforms_(transforms),
+        interpolation_(interpolation),
+        fill_value_(fill_value) {}
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
   operator()(const array<DenseIndex, 4>& coords) const {
-    const T fill_value = T(0);
     const int64 output_y = coords[1];
     const int64 output_x = coords[2];
     const float* transform =
@@ -126,9 +146,9 @@ class ProjectiveGenerator {
             : &transforms_.data()[transforms_.dimension(1) * coords[0]];
     float projection = transform[6] * output_x + transform[7] * output_y + 1.f;
     if (projection == 0) {
-      // Return the fill value (0) for infinite coordinates,
+      // Return the fill value for infinite coordinates,
       // which are outside the input image
-      return fill_value;
+      return fill_value_;
     }
     const float input_x =
         (transform[0] * output_x + transform[1] * output_y + transform[2]) /
@@ -146,13 +166,13 @@ class ProjectiveGenerator {
     const DenseIndex channels = coords[3];
     switch (interpolation_) {
       case NEAREST:
-        return nearest_interpolation(batch, y, x, channels, fill_value);
+        return nearest_interpolation(batch, y, x, channels, fill_value_);
       case BILINEAR:
-        return bilinear_interpolation(batch, y, x, channels, fill_value);
+        return bilinear_interpolation(batch, y, x, channels, fill_value_);
     }
     // Unreachable; ImageProjectiveTransform only uses INTERPOLATION_NEAREST
     // or INTERPOLATION_BILINEAR.
-    return fill_value;
+    return fill_value_;
   }
 
   EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE T
@@ -225,27 +245,27 @@ struct FillProjectiveTransform {
   EIGEN_ALWAYS_INLINE
   void operator()(const Device& device, OutputType* output,
                   const InputType& images, const TransformsType& transform,
-                  const Mode fill_mode) const {
+                  const Mode fill_mode, const T fill_value) const {
     switch (fill_mode) {
       case Mode::FILL_REFLECT:
         output->device(device) =
             output->generate(ProjectiveGenerator<Device, T, Mode::FILL_REFLECT>(
-                images, transform, interpolation));
+                images, transform, interpolation, fill_value));
         break;
       case Mode::FILL_WRAP:
         output->device(device) =
             output->generate(ProjectiveGenerator<Device, T, Mode::FILL_WRAP>(
-                images, transform, interpolation));
+                images, transform, interpolation, fill_value));
         break;
       case Mode::FILL_CONSTANT:
         output->device(device) = output->generate(
             ProjectiveGenerator<Device, T, Mode::FILL_CONSTANT>(
-                images, transform, interpolation));
+                images, transform, interpolation, fill_value));
         break;
       case Mode::FILL_NEAREST:
         output->device(device) =
             output->generate(ProjectiveGenerator<Device, T, Mode::FILL_NEAREST>(
-                images, transform, interpolation));
+                images, transform, interpolation, fill_value));
         break;
     }
   }

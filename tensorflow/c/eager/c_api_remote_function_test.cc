@@ -30,18 +30,26 @@ TEST(CAPI, RemoteExecuteSilentCopiesAsyncFunc) {
   TestRemoteExecuteSilentCopiesFunc(/*async=*/true, /*remote=*/true,
                                     /*heavy_load_on_streaming_rpc=*/false);
 }
+TEST(CAPI, RemoteExecuteSilentCopiesFuncRemoteOutputs) {
+  TestRemoteExecuteSilentCopiesFunc(/*async=*/false, /*remote=*/true,
+                                    /*heavy_load_on_streaming_rpc=*/false,
+                                    /*remote_func_outputs=*/true);
+}
+TEST(CAPI, RemoteExecuteSilentCopiesAsyncFuncRemoteOutputs) {
+  TestRemoteExecuteSilentCopiesFunc(/*async=*/true, /*remote=*/true,
+                                    /*heavy_load_on_streaming_rpc=*/false,
+                                    /*remote_func_outputs=*/true);
+}
 TEST(CAPI, RemoteExecuteSilentCopiesLocalAsyncFunc) {
   TestRemoteExecuteSilentCopiesFunc(/*async=*/true, /*remote=*/false,
                                     /*heavy_load_on_streaming_rpc=*/false);
 }
-// TODO(b/162618595): Enable this test once we remove the check of remote
-// outputs in ProcessFunctionLibraryRuntime.
-TEST(CAPI, DISABLED_RemoteExecuteSilentCopiesLocalFuncRemoteOutputs) {
+TEST(CAPI, RemoteExecuteSilentCopiesLocalFuncRemoteOutputs) {
   TestRemoteExecuteSilentCopiesFunc(/*async=*/false, /*remote=*/false,
                                     /*heavy_load_on_streaming_rpc=*/false,
                                     /*remote_func_outputs=*/true);
 }
-TEST(CAPI, DISABLED_RemoteExecuteSilentCopiesLocalAsyncFuncRemoteOutputs) {
+TEST(CAPI, RemoteExecuteSilentCopiesLocalAsyncFuncRemoteOutputs) {
   TestRemoteExecuteSilentCopiesFunc(/*async=*/true, /*remote=*/false,
                                     /*heavy_load_on_streaming_rpc=*/false,
                                     /*remote_func_outputs=*/true);

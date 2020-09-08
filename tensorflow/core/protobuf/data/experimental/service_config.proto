@@ -9,11 +9,11 @@ message DispatcherConfig {
   int64 port = 1;
   // The protocol for the dispatcher to use when connecting to workers.
   string protocol = 2;
-  // An optional work directory to use for storing dispatcher state, and for
-  // recovering during restarts.
+  // A work directory to use for storing dispatcher state, and for recovering
+  // during restarts. The empty string indicates not to use any work directory.
   string work_dir = 3;
   // Whether to run in fault tolerant mode, where dispatcher state is saved
-  // across restarts.
+  // across restarts. Requires that `work_dir` is nonempty.
   bool fault_tolerant_mode = 4;
 }
 

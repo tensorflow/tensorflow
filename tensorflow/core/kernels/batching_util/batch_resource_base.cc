@@ -137,7 +137,7 @@ BatchResourceBase::GetBatcherQueueOptions(
     int32 max_enqueued_batches, const std::vector<int32>& allowed_batch_sizes,
     bool enable_large_batch_splitting) {
   BatcherT::QueueOptions batcher_queue_options;
-  batcher_queue_options.max_batch_size = max_batch_size;
+  batcher_queue_options.input_batch_size_limit = max_batch_size;
   batcher_queue_options.max_enqueued_batches = max_enqueued_batches;
   batcher_queue_options.batch_timeout_micros = batch_timeout_micros;
   // Support for splitting large batch is still in progress.

@@ -176,6 +176,7 @@ def _header_paths():
       "include/*-linux-gnu",
       "extras/CUPTI/include",
       "include/cuda/CUPTI",
+      "local/cuda/extras/CUPTI/include",
   ]
 
 
@@ -188,6 +189,8 @@ def _library_paths():
       "lib/*-linux-gnu",
       "lib/x64",
       "extras/CUPTI/*",
+      "local/cuda/lib64",
+      "local/cuda/extras/CUPTI/lib64",
   ]
 
 
@@ -279,6 +282,7 @@ def _find_cuda_config(base_paths, required_cuda_version, required_cudnn_version)
   cuda_nvcc_path, nvcc_version = _find_versioned_file(base_paths, [
       "",
       "bin",
+      "local/cuda/bin",
   ], nvcc_name, cuda_version, get_nvcc_version)
 
   cuda_libdevice_path = _find_file(base_paths, [
@@ -286,6 +290,7 @@ def _find_cuda_config(base_paths, required_cuda_version, required_cudnn_version)
       "nvvm/libdevice",
       "share/cuda",
       "lib/nvidia-cuda-toolkit/libdevice",
+      "local/cuda/nvvm/libdevice",
   ], "libdevice*.10.bc")
 
   cuda_bin2c_path = _find_file(base_paths, [

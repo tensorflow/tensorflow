@@ -23,26 +23,9 @@ limitations under the License.
 namespace tflite {
 namespace gpu {
 namespace cl {
+namespace {
 
-Reshapex4::Reshapex4(const OperationDef& definition)
-    : GPUOperation(definition) {
-  code_ = GetReshapeCode(definition_);
-}
-
-Reshapex4::Reshapex4(Reshapex4&& operation)
-    : GPUOperation(std::move(operation)) {}
-
-Reshapex4& Reshapex4::operator=(Reshapex4&& operation) {
-  if (this != &operation) {
-    GPUOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-std::string Reshapex4::GetReshapeCode(const OperationDef& op_def) {
-  AddSrcTensor("src_tensor", op_def.src_tensors[0]);
-  AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
-
+std::string GetReshapeCode(const OperationDef& op_def) {
   std::string c = GetCommonDefines(op_def.precision);
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
@@ -82,15 +65,15 @@ std::string Reshapex4::GetReshapeCode(const OperationDef& op_def) {
   return c;
 }
 
-int3 Reshapex4::GetGridSize() const {
-  const int grid_x = dst_[0]->Width() * dst_[0]->Batch();
-  const int grid_y = dst_[0]->Height();
-  const int grid_z = dst_[0]->Slices();
-  return int3(grid_x, grid_y, grid_z);
-}
+}  // namespace
 
-Reshapex4 CreateReshapex4(const OperationDef& definition) {
-  return Reshapex4(definition);
+GPUOperation CreateReshapex4(const OperationDef& definition) {
+  GPUOperation op(definition);
+  op.AddSrcTensor("src_tensor", definition.src_tensors[0]);
+  op.AddDstTensor("dst_tensor", definition.dst_tensors[0]);
+  op.code_ = GetReshapeCode(definition);
+  op.tensor_to_grid_ = TensorToGrid::kWBToX_HDToY_SToZ;
+  return op;
 }
 
 }  // namespace cl

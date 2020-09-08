@@ -80,27 +80,31 @@ class XlaPlatformInfo {
 };
 
 // Returns created XLA compilation cache.
-Status BuildXlaCompilationCache(OpKernelContext* ctx,
+Status BuildXlaCompilationCache(DeviceBase* dev,
                                 const XlaPlatformInfo& platform_info,
                                 XlaCompilationCache** cache);
 
 // Returns information about the platform from kernel context.
-XlaPlatformInfo XlaPlatformInfoFromContext(OpKernelConstruction* ctx);
+XlaPlatformInfo XlaPlatformInfoFromDevice(DeviceBase* device);
 
 // Returns allocator from platform info if non-null, or populate and return a
 // pointer to the allocator adapter with allocator from context.
 //
 // This is necessary because for XLA devices the underlying TF allocator returns
 // dummy tensors.
+//
+// `stream` parameter is nullable when running on host.
 se::DeviceMemoryAllocator* GetAllocator(
     absl::optional<se::TfAllocatorAdapter>* tf_allocator_adapter,
-    OpKernelContext* ctx, const XlaPlatformInfo& platform_info);
+    DeviceBase* device, se::Stream* stream,
+    const XlaPlatformInfo& platform_info);
 
 // Returns created options for the XLA compiler, and writes the used allocator
 // into `tf_allocator_adapter`.
 XlaCompiler::Options GenerateCompilerOptions(
-    const XlaCompilationCache& cache, OpKernelContext* ctx,
-    const XlaPlatformInfo& platform_info, bool has_ref_vars,
+    const XlaCompilationCache& cache,
+    const FunctionLibraryRuntime& function_library, DeviceBase* device,
+    se::Stream* stream, const XlaPlatformInfo& platform_info, bool has_ref_vars,
     absl::optional<se::TfAllocatorAdapter>* tf_allocator_adapter);
 
 }  // namespace tensorflow

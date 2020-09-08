@@ -41,22 +41,11 @@ void TensorMap::Encode(VariantTensorData* data) const {
     *data->add_tensors() = v;
     map_it++;
   }
-  string metadata;
-  // TODO(b/118838800): Add a proto for storing the metadata.
-  // Metadata format:
-  // <element_dtype><element_shape_proto>
-  core::PutVarint64(&metadata, static_cast<uint64>(element_dtype));
-  TensorShapeProto element_shape_proto;
-  element_shape.AsProto(&element_shape_proto);
-  element_shape_proto.AppendToString(&metadata);
-  data->set_metadata(metadata);
 }
 
 static Status TensorMapDeviceCopy(
     const TensorMap& from, TensorMap* to,
     const UnaryVariantOpRegistry::AsyncTensorDeviceCopyFn& copy) {
-  to->element_shape = from.element_shape;
-  to->element_dtype = from.element_dtype;
   for (const std::pair<TensorKey, Tensor>& p : from.tensors()) {
     TensorKey to_key(p.first.dtype());
     Tensor to_val(p.second.dtype());
@@ -81,11 +70,6 @@ bool TensorMap::Decode(const VariantTensorData& data) {
   // TODO(srbs): Change the signature to Decode(VariantTensorData data) so
   // that we do not have to copy each tensor individually below. This would
   // require changing VariantTensorData::tensors() as well.
-  string metadata;
-  data.get_metadata(&metadata);
-  uint64 scratch;
-  StringPiece iter(metadata);
-
   std::vector<Tensor>::const_iterator tensors_it = data.tensors().begin();
 
   while (tensors_it != data.tensors().end()) {
@@ -95,13 +79,6 @@ bool TensorMap::Decode(const VariantTensorData& data) {
     tensors().emplace(tensors_it[0], tensors_it[1]);
     tensors_it += 2;
   }
-
-  core::GetVarint64(&iter, &scratch);
-  element_dtype = static_cast<DataType>(scratch);
-  core::GetVarint64(&iter, &scratch);
-  TensorShapeProto element_shape_proto;
-  element_shape_proto.ParseFromString(string(iter.data(), iter.size()));
-  element_shape = PartialTensorShape(element_shape_proto);
   return true;
 }
 

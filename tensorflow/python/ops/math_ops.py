@@ -4514,7 +4514,7 @@ def tensordot(a, b, axes, name=None):
         rank_a = array_ops.rank(a)
         axes = ops.convert_to_tensor(axes, dtype=dtypes.int32, name="axes")
         axes = array_ops.where(axes >= 0, axes, axes + rank_a)
-        free, _ = array_ops.setdiff1d(range(rank_a), axes)
+        free, _ = gen_array_ops.list_diff(range(rank_a), axes, dtypes.int32)
       free_dims = array_ops.gather(shape_a, free)
       axes_dims = array_ops.gather(shape_a, axes)
       prod_free_dims = reduce_prod(free_dims)

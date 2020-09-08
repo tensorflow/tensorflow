@@ -31,7 +31,7 @@ def convert_graph_def(graph_def, pass_pipeline='tf-standard-pipeline'):
       representation of a valid GraphDef.
     pass_pipeline: A textual description of an MLIR Pass Pipeline to run on the
       module, see MLIR documentation for the
-      [textual pass pipeline syntax](https://github.com/tensorflow/mlir/blob/master/g3doc/WritingAPass.md#textual-pass-pipeline-specification).
+      [textual pass pipeline syntax](https://mlir.llvm.org/docs/PassManagement/#textual-pass-pipeline-specification).
 
   Returns:
     A textual representation of the MLIR module corresponding to the graphdef.

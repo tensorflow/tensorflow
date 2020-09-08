@@ -158,12 +158,13 @@ XlaLocalLaunchBase::XlaLocalLaunchBase(OpKernelConstruction* ctx,
       constants_(constants),
       resources_(resources),
       function_(function),
-      platform_info_(XlaPlatformInfoFromContext(ctx)),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
       has_ref_vars_(has_ref_vars) {}
 
 static Status CompileToLocalExecutable(
     OpKernelContext* ctx, const NameAttrList& function, bool has_ref_vars,
     const XlaPlatformInfo& platform_info,
+    absl::Span<const Tensor* const> inputs,
     absl::Span<VariableInfo const> variable_infos,
     absl::Span<const int> constants, bool lazy, bool may_alias_resource_update,
     xla::LocalClient** client,
@@ -180,7 +181,7 @@ static Status CompileToLocalExecutable(
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<XlaCompilationCache>(
       rm->default_container(), "xla_cache", &cache,
       [&](XlaCompilationCache** cache) {
-        return BuildXlaCompilationCache(ctx, platform_info, cache);
+        return BuildXlaCompilationCache(ctx->device(), platform_info, cache);
       }));
   // Hold the reference to the JIT during evaluation. (We could probably
   // free it sooner because the ResourceMgr will retain a reference, but
@@ -191,12 +192,9 @@ static Status CompileToLocalExecutable(
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
   XlaCompiler::Options options = GenerateCompilerOptions(
-      *cache, ctx, platform_info, has_ref_vars, &tf_allocator_adapter);
-
-  std::map<int, Tensor> constant_args;
-  for (int i : constants) {
-    constant_args.insert({i, ctx->input(i)});
-  }
+      *cache, *ctx->function_library(), ctx->device(),
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
+      platform_info, has_ref_vars, &tf_allocator_adapter);
 
   XlaCompiler::CompileOptions compile_options;
   compile_options.is_entry_computation = true;
@@ -207,10 +205,11 @@ static Status CompileToLocalExecutable(
                                           !platform_info.is_on_xla_device() &&
                                           may_alias_resource_update;
 
-  std::vector<XlaCompiler::Argument> args;
-  TF_RETURN_IF_ERROR(XlaComputationLaunchContext::BuildXlaCompilerArguments(
-      constant_args, variable_infos, ctx, &args));
-  return cache->Compile(options, function, args, compile_options,
+  xla::StatusOr<std::vector<XlaCompiler::Argument>> args =
+      XlaComputationLaunchContext::BuildXlaCompilerArguments(constants, inputs,
+                                                             variable_infos);
+  TF_RETURN_IF_ERROR(args.status());
+  return cache->Compile(options, function, *args, compile_options,
                         lazy ? XlaCompilationCache::CompileMode::kLazy
                              : XlaCompilationCache::CompileMode::kStrict,
                         compilation_result, executable);
@@ -220,6 +219,7 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   VLOG(1) << "XlaLocalLaunchOpBase::Compute "
           << Canonicalize(function_.name(), AttrSlice(&function_.attr()));
 
+  std::vector<const Tensor*> inputs = InputsFromContext(ctx);
   xla::LocalClient* client;
   const XlaCompiler::CompilationResult* compilation_result;
   xla::LocalExecutable* executable;
@@ -227,10 +227,11 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   std::vector<VariableInfo> variable_infos;
   {
     OP_REQUIRES_OK(
-        ctx, GetVariableInfosFromCtxInputs(ctx, resources_, &variable_infos));
+        ctx, GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
+                                        inputs, resources_, &variable_infos));
     OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(variable_infos)));
     Status s = CompileToLocalExecutable(
-        ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_,
+        ctx, function_, /*has_ref_vars=*/has_ref_vars_, platform_info_, inputs,
         variable_infos, constants_, /*lazy=*/false,
         /*may_alias_resource_update=*/true, &client, &compilation_result,
         &executable);
@@ -248,8 +249,10 @@ void XlaLocalLaunchBase::Compute(OpKernelContext* ctx) {
   VLOG(1) << "Executing XLA Computation...";
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-  se::DeviceMemoryAllocator* allocator =
-      GetAllocator(&tf_allocator_adapter, ctx, platform_info_);
+  se::DeviceMemoryAllocator* allocator = GetAllocator(
+      &tf_allocator_adapter, ctx->device(),
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
+      platform_info_);
   int device_ordinal = stream ? stream->parent()->device_ordinal()
                               : client->default_device_ordinal();
   XlaComputationLaunchContext launch_context(
@@ -373,7 +376,7 @@ XlaCompileOp::XlaCompileOp(OpKernelConstruction* ctx)
       constants_(ConstantsVector(ctx)),
       resources_(ResourcesVector(ctx)),
       function_(FunctionAttr(ctx)),
-      platform_info_(XlaPlatformInfoFromContext(ctx)),
+      platform_info_(XlaPlatformInfoFromDevice(ctx->device())),
       must_compile_(MustCompileAttr(ctx)),
       has_ref_vars_(HasRefVars(ctx)) {}
 
@@ -385,6 +388,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
   xla::LocalExecutable* executable;
   ResourceVarsSnapshot variables;
 
+  std::vector<const Tensor*> inputs = InputsFromContext(ctx);
   bool cannot_compile_cluster;
   {
     mutex_lock guard(cannot_compile_cluster_mu_);
@@ -397,13 +401,14 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
   } else {
     std::vector<VariableInfo> variable_infos;
     OP_REQUIRES_OK(
-        ctx, GetVariableInfosFromCtxInputs(ctx, resources_, &variable_infos));
+        ctx, GetVariableInfosFromInputs(ctx->resource_manager(), ctx->device(),
+                                        inputs, resources_, &variable_infos));
     OP_REQUIRES_OK(ctx, LockVariables(absl::MakeSpan(variable_infos)));
 
     // Do not alias resource updates as locking variables in XlaCompile and
     // unlocking them in XlaRun may lead to deadlocks.
     Status status = CompileToLocalExecutable(
-        ctx, function_, has_ref_vars_, platform_info_, variable_infos,
+        ctx, function_, has_ref_vars_, platform_info_, inputs, variable_infos,
         constants_,
         /*lazy=*/!must_compile_,
         /*may_alias_resource_update=*/false, &client, &kernel, &executable);
@@ -461,7 +466,7 @@ void XlaCompileOp::Compute(OpKernelContext* ctx) {
 }
 
 XlaRunOp::XlaRunOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), platform_info_(XlaPlatformInfoFromContext(ctx)) {}
+    : OpKernel(ctx), platform_info_(XlaPlatformInfoFromDevice(ctx->device())) {}
 
 void XlaRunOp::Compute(OpKernelContext* ctx) {
   VLOG(3) << "XlaRunOp " << def().name();
@@ -472,8 +477,10 @@ void XlaRunOp::Compute(OpKernelContext* ctx) {
       XlaExecutableClosureStore::Global()->Consume(key);
 
   absl::optional<se::TfAllocatorAdapter> tf_allocator_adapter;
-  se::DeviceMemoryAllocator* allocator =
-      GetAllocator(&tf_allocator_adapter, ctx, platform_info_);
+  se::DeviceMemoryAllocator* allocator = GetAllocator(
+      &tf_allocator_adapter, ctx->device(),
+      ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr,
+      platform_info_);
   se::Stream* stream =
       ctx->op_device_context() ? ctx->op_device_context()->stream() : nullptr;
   int device_ordinal = stream ? stream->parent()->device_ordinal()

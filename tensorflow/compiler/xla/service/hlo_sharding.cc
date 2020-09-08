@@ -242,7 +242,8 @@ std::vector<int64> HloSharding::TileLimitForDevice(const Shape& shape,
                               shape.dimensions().end());
   }
 
-  CHECK_EQ(shape.dimensions_size(), tile_assignment_.num_dimensions());
+  CHECK_EQ(shape.dimensions_size() + (ReplicateOnLastTileDim() ? 1 : 0),
+           tile_assignment_.num_dimensions());
   std::vector<int64> index = TileIndexForDevice(device);
   for (int64 i = 0; i < index.size(); ++i) {
     const int64 shape_dim = shape.dimensions(i);

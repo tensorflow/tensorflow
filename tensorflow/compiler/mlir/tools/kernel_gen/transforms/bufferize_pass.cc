@@ -67,6 +67,10 @@ class UnrankedTensorStoreTestOnlyPattern
 };
 
 struct BufferizePass : public BufferizePassBase<BufferizePass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<lmhlo::LmhloDialect>();
+  }
+
  public:
   void runOnOperation() override {
     OwningRewritePatternList patterns;
@@ -105,10 +109,9 @@ struct BufferizePass : public BufferizePassBase<BufferizePass> {
       OwningRewritePatternList patterns;
       mhlo::populateHLOToLHLOConversionPattern(
           func.getContext(), &bufferAssignment, &converter, &patterns);
-      populateWithBufferAssignmentOpConversionPatterns<
-          ReturnOp, ReturnOp, lmhlo::CopyOp,
-          /*allowMemrefFunctionResults=*/true>(&context, &bufferAssignment,
-                                               &converter, &patterns);
+      populateWithBufferAssignmentOpConversionPatterns<ReturnOp, ReturnOp,
+                                                       lmhlo::CopyOp>(
+          &context, &bufferAssignment, &converter, &patterns);
       populateStandardBufferizePattern(func.getContext(), &bufferAssignment,
                                        &converter, &patterns);
       patterns.insert<UnrankedTensorStoreTestOnlyPattern>(func.getContext());

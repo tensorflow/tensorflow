@@ -282,13 +282,13 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
     class SleepCallback(keras.callbacks.Callback):
 
       def on_train_batch_end(self, batch, logs=None):
-        time.sleep(1)
+        time.sleep(0.1)
 
     model = sequential.Sequential()
-    model.add(keras.layers.Dense(1, activation='sigmoid'))
+    model.add(keras.layers.Dense(1))
     model.compile(
         'sgd',
-        loss='binary_crossentropy',
+        loss='mse',
         run_eagerly=testing_utils.should_run_eagerly())
 
     warning_messages = []
@@ -298,14 +298,37 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 
     with test.mock.patch.object(logging, 'warning', warning):
       model.fit(
-          np.ones((10, 10), 'float32'),
-          np.ones((10, 1), 'float32'),
-          batch_size=5,
-          epochs=10,
+          np.ones((16, 1), 'float32'),
+          np.ones((16, 1), 'float32'),
+          batch_size=3,
+          epochs=1,
           callbacks=[SleepCallback()])
-    warning_msg = ('Callbacks method `on_train_batch_end` is slow compared '
+    warning_msg = ('Callback method `on_train_batch_end` is slow compared '
                    'to the batch time')
     self.assertIn(warning_msg, '\n'.join(warning_messages))
+
+  @keras_parameterized.run_all_keras_modes
+  def test_default_callbacks_no_warning(self):
+    # Test that without the callback no warning is raised
+    model = sequential.Sequential()
+    model.add(keras.layers.Dense(1))
+    model.compile(
+        'sgd',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    warning_messages = []
+
+    def warning(msg):
+      warning_messages.append(msg)
+
+    with test.mock.patch.object(logging, 'warning', warning):
+      model.fit(
+          np.ones((16, 1), 'float32'),
+          np.ones((16, 1), 'float32'),
+          batch_size=3,
+          epochs=1)
+    self.assertListEqual(warning_messages, [])
 
   @keras_parameterized.run_with_all_model_types(exclude_models='functional')
   @keras_parameterized.run_all_keras_modes
@@ -911,33 +934,33 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
                                            steps=10,
                                            verbose=0)
 
-    with context.eager_mode():
-      tensor = ops.convert_to_tensor(1.)
+    tensor = ops.convert_to_tensor_v2_with_dispatch(1.)
 
     def mock_numpy():
       raise RuntimeError(
           'If this error is seen, ModelCheckpoint is causing a blocking '
           'NumPy conversion even when not checkpointing.')
 
-    with test.mock.patch.object(tensor, 'numpy', mock_numpy):
-      logs = {'metric': tensor}
+    tensor.numpy = mock_numpy
 
-      cb_list.on_train_begin(logs)
-      cb_list.on_epoch_begin(0, logs)
-      cb_list.on_train_batch_begin(0, logs)
-      cb_list.on_train_batch_end(0, logs)
-      cb_list.on_epoch_end(0, logs)
-      cb_list.on_train_end(logs)
+    logs = {'metric': tensor}
 
-      cb_list.on_test_begin(logs)
-      cb_list.on_test_batch_begin(0, logs)
-      cb_list.on_test_batch_end(0, logs)
-      cb_list.on_test_end(logs)
+    cb_list.on_train_begin(logs)
+    cb_list.on_epoch_begin(0, logs)
+    cb_list.on_train_batch_begin(0, logs)
+    cb_list.on_train_batch_end(0, logs)
+    cb_list.on_epoch_end(0, logs)
+    cb_list.on_train_end(logs)
 
-      cb_list.on_predict_begin(logs)
-      cb_list.on_predict_batch_begin(logs)
-      cb_list.on_predict_batch_end(logs)
-      cb_list.on_predict_end(logs)
+    cb_list.on_test_begin(logs)
+    cb_list.on_test_batch_begin(0, logs)
+    cb_list.on_test_batch_end(0, logs)
+    cb_list.on_test_end(logs)
+
+    cb_list.on_predict_begin(logs)
+    cb_list.on_predict_batch_begin(logs)
+    cb_list.on_predict_batch_end(logs)
+    cb_list.on_predict_end(logs)
 
   def test_ProgbarLogger_verbose_2_nonblocking(self):
     # Should only cause a sync block on epoch end methods.
@@ -951,31 +974,30 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
                                            steps=10,
                                            verbose=2)
 
-    with context.eager_mode():
-      tensor = ops.convert_to_tensor(1.)
+    tensor = ops.convert_to_tensor_v2_with_dispatch(1.)
 
     def mock_numpy():
       raise RuntimeError(
           'If this error is seen, ModelCheckpoint is causing a blocking '
           'NumPy conversion even when not checkpointing.')
 
-    with test.mock.patch.object(tensor, 'numpy', mock_numpy):
-      logs = {'metric': tensor}
+    tensor.numpy = mock_numpy
+    logs = {'metric': tensor}
 
-      cb_list.on_train_begin(logs)
-      cb_list.on_epoch_begin(0, logs)
-      cb_list.on_train_batch_begin(0, logs)
-      cb_list.on_train_batch_end(0, logs)
+    cb_list.on_train_begin(logs)
+    cb_list.on_epoch_begin(0, logs)
+    cb_list.on_train_batch_begin(0, logs)
+    cb_list.on_train_batch_end(0, logs)
 
-      cb_list.on_test_begin(logs)
-      cb_list.on_test_batch_begin(0, logs)
-      cb_list.on_test_batch_end(0, logs)
-      cb_list.on_test_end(logs)
+    cb_list.on_test_begin(logs)
+    cb_list.on_test_batch_begin(0, logs)
+    cb_list.on_test_batch_end(0, logs)
+    cb_list.on_test_end(logs)
 
-      with self.assertRaisesRegex(RuntimeError, 'NumPy conversion'):
-        # on_epoch_end should still block.
-        cb_list.on_epoch_end(0, logs)
-      cb_list.on_train_end(logs)
+    with self.assertRaisesRegex(RuntimeError, 'NumPy conversion'):
+      # on_epoch_end should still block.
+      cb_list.on_epoch_end(0, logs)
+    cb_list.on_train_end(logs)
 
   def test_EarlyStopping(self):
     with self.cached_session():
@@ -2170,7 +2192,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
                                            steps=100,
                                            verbose=0)
 
-    tensor = ops.convert_to_tensor(1.)
+    tensor = ops.convert_to_tensor_v2_with_dispatch(1.)
 
     def mock_numpy():
       raise RuntimeError(

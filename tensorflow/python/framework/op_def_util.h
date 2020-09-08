@@ -15,8 +15,14 @@ limitations under the License.
 #ifndef TENSORFLOW_PYTHON_FRAMEWORK_OP_DEF_UTIL_H_
 #define TENSORFLOW_PYTHON_FRAMEWORK_OP_DEF_UTIL_H_
 
+#include <Python.h>
+
 #include <string>
 
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
@@ -71,6 +77,21 @@ std::string AttributeTypeToName(AttributeType attr_type);
 //     or if conversion fails for any item, then an exception is raised.)
 Safe_PyObjectPtr ConvertPyObjectToAttributeType(PyObject* value,
                                                 AttributeType type);
+
+// Converts a c++ `AttrValue` protobuf message to a Python object; or sets a
+// Python exception and returns nullptr if an error occurs.
+Safe_PyObjectPtr AttrValueToPyObject(const AttrValue& attr_value);
+
+// Converts a c++ `DataType` protobuf enum to a Python object; or sets a
+// Python exception and returns nullptr if an error occurs.
+Safe_PyObjectPtr DataTypeToPyObject(const DataType& data_type);
+
+// Converts a c++ `TensorShapeProto` message to a Python object; or sets a
+// Python exception and returns nullptr if an error occurs.
+Safe_PyObjectPtr TensorShapeProtoToPyObject(
+    const TensorShapeProto& tensor_shape);
+
+// TODO(edloper): Define TensorProtoToPyObject?
 
 }  // namespace tensorflow
 

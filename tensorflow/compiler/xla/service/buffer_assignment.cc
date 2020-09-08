@@ -1424,13 +1424,16 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
   // Returns a heap algorithm that chooses the best result from several
   // algorithms.
   auto get_heap_algorithm = [&](int64 alignment) {
-    auto algorithms =
-        absl::make_unique<std::vector<std::unique_ptr<HeapAlgorithm>>>();
-    algorithms->push_back(absl::make_unique<GlobalDecreasingSizeBestFitHeap>(
-        alignment, GlobalDecreasingSizeBestFitHeap::kSpatial));
-    algorithms->push_back(absl::make_unique<GlobalDecreasingSizeBestFitHeap>(
-        alignment, GlobalDecreasingSizeBestFitHeap::kTemporal));
-    return absl::make_unique<ChooseBestHeapAlgorithm>(std::move(algorithms));
+    auto algorithms = absl::make_unique<
+        std::vector<std::unique_ptr<HeapAlgorithm<HloValue>>>>();
+    algorithms->push_back(
+        absl::make_unique<GlobalDecreasingSizeBestFitHeap<HloValue>>(
+            alignment, GlobalDecreasingSizeBestFitHeap<HloValue>::kSpatial));
+    algorithms->push_back(
+        absl::make_unique<GlobalDecreasingSizeBestFitHeap<HloValue>>(
+            alignment, GlobalDecreasingSizeBestFitHeap<HloValue>::kTemporal));
+    return absl::make_unique<ChooseBestHeapAlgorithm<HloValue>>(
+        std::move(algorithms));
   };
 
   if (run_whole_module_heap_simulation) {
@@ -1461,7 +1464,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       options.buffers_to_assign = &single_colored_set.second;
 
       TF_ASSIGN_OR_RETURN(
-          HeapSimulator::Result result,
+          HeapSimulator::Result<HloValue> result,
           HeapSimulator::Run(
               get_heap_algorithm(alignment), assignment->module(), schedule,
               assignment->alias_analysis(), assignment->buffer_size_, options));
@@ -1487,7 +1490,7 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         HeapSimulator::Options options;
         options.buffers_to_assign = &single_colored_set.second;
         TF_ASSIGN_OR_RETURN(
-            HeapSimulator::Result result,
+            HeapSimulator::Result<HloValue> result,
             HeapSimulator::Run(get_heap_algorithm(alignment), *computation,
                                *instruction_sequence,
                                assignment->alias_analysis(),
@@ -1582,7 +1585,7 @@ std::vector<const HloValue*> ComputePeakMemoryLogicalBuffers(
 }  // namespace
 
 void BufferAssigner::AssignBuffersFromHeapSimulator(
-    const HeapSimulator::Result& result, BufferAssignment* assignment,
+    const HeapSimulator::Result<HloValue>& result, BufferAssignment* assignment,
     BufferValue::Color color) {
   if (assignment->stats_.preallocated_temp_fragmentation_bytes == -1) {
     assignment->stats_.preallocated_temp_fragmentation_bytes =

@@ -59,6 +59,11 @@ class ArrayTest(PForTestCase):
         outputs.append(array_ops.gather(y, [i, 1, 2], axis=2, batch_dims=1))
         outputs.append(array_ops.gather(y, [[2, i], [i, 1], [2, 1]],
                                         axis=-1, batch_dims=1))
+        outputs.append(
+            array_ops.gather(y, [[0, 1, 2]] * 3, axis=2, batch_dims=2))
+        outputs.append(array_ops.gather(y, [0, 1, 2], axis=1, batch_dims=-1))
+        outputs.append(
+            array_ops.gather(y, [[0, 1, 2]] * 3, axis=2, batch_dims=-2))
 
       return outputs
 

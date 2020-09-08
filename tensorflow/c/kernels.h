@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_datatype.h"
 #include "tensorflow/c/tf_status.h"
+#include "tensorflow/c/tf_tensor.h"
 
 // Macro to control visibility of exported symbols in the shared library (.so,
 // .dylib, .dll).
@@ -198,6 +199,26 @@ TF_CAPI_EXPORT TF_Tensor* TF_AllocateOutput(TF_OpKernelContext* context,
                                             int index, TF_DataType dtype,
                                             int64_t* dims, int num_dims,
                                             size_t len, TF_Status* status);
+
+// Tries to forward one of the inputs given in input_indices to
+// output[output_index]. If none of the given inputs can be forwarded, calls
+// allocate_output() to allocate a new output buffer. The index of the
+// forwarded input will be assign to output argument forwarded_input (if it's
+// not nullptr). If no inputs are forwarded, forwarded_input will be assigned
+// -1.
+TF_CAPI_EXPORT TF_Tensor* TF_ForwardInputOrAllocateOutput(
+    TF_OpKernelContext* context, int* candidate_input_indices,
+    int num_candidate_input_indices, int output_index, int64_t* output_dims,
+    int output_num_dims, int* forwarded_input, TF_Status* status);
+
+// Allocates a temporary Tensor of the specified type and shape. The
+// Tensor must not be used after kernel construction is
+// complete.
+//
+// num_dims must equal the size of array dims
+TF_CAPI_EXPORT extern TF_Tensor* TF_AllocateTemp(
+    TF_OpKernelContext* context, TF_DataType dtype, int64_t* dims, int num_dims,
+    TF_AllocatorAttributes* alloc_attrs, TF_Status* status);
 
 #ifdef __cplusplus
 } /* end extern "C" */

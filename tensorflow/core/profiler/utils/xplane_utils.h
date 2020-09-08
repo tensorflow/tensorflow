@@ -21,6 +21,7 @@ limitations under the License.
 #include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
+#include "tensorflow/core/profiler/utils/trace_utils.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -74,6 +75,26 @@ class XLinesComparatorByName {
 void SortXPlane(XPlane* plane);
 // Sorts each plane of the XSpace.
 void SortXSpace(XSpace* space);
+
+// Functor that compares XEvents for sorting by timespan.
+struct XEventsComparator {
+  bool operator()(const XEvent* a, const XEvent* b) const;
+};
+
+// Returns a sorted vector of all XEvents in the given XPlane.
+template <class Compare>
+std::vector<XEvent*> GetSortedEvents(XPlane* plane, Compare comp,
+                                     bool include_derived_events = false) {
+  std::vector<XEvent*> events;
+  for (XLine& line : *plane->mutable_lines()) {
+    if (!include_derived_events && IsDerivedThreadId(line.id())) continue;
+    for (XEvent& event : *line.mutable_events()) {
+      events.push_back(&event);
+    }
+  }
+  absl::c_sort(events, XEventsComparator());
+  return events;
+}
 
 // Normalize timestamps by time-shifting to start_time_ns_ as origin.
 void NormalizeTimestamps(XPlane* plane, uint64 start_time_ns);

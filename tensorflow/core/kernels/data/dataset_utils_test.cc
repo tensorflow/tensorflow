@@ -66,11 +66,12 @@ string full_name(string key) {
 }
 
 TEST(DatasetUtilsTest, MatchesAnyVersion) {
-  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDataset"));
-  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV2"));
-  EXPECT_TRUE(MatchesAnyVersionRE("BatchDataset", "BatchDatasetV3"));
-  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "BatchV2Dataset"));
-  EXPECT_FALSE(MatchesAnyVersionRE("BatchDataset", "PaddedBatchDataset"));
+  EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDataset"));
+  EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDatasetV2"));
+  EXPECT_TRUE(MatchesAnyVersion("BatchDataset", "BatchDatasetV3"));
+  EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "BatchDatasetXV3"));
+  EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "BatchV2Dataset"));
+  EXPECT_FALSE(MatchesAnyVersion("BatchDataset", "PaddedBatchDataset"));
 }
 
 TEST(DatasetUtilsTest, VariantTensorDataRoundtrip) {

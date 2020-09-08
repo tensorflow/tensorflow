@@ -96,7 +96,7 @@ Status FileJournalReader::EnsureInitialized() {
   return UpdateFile(DataServiceJournalFile(journal_dir_, 0));
 }
 
-Status FileJournalReader::Read(Update* update, bool* end_of_journal) {
+Status FileJournalReader::Read(Update& update, bool& end_of_journal) {
   TF_RETURN_IF_ERROR(EnsureInitialized());
   while (true) {
     tstring record;
@@ -108,20 +108,20 @@ Status FileJournalReader::Read(Update* update, bool* end_of_journal) {
       if (errors::IsNotFound(env_->FileExists(next_journal_file))) {
         VLOG(3) << "Next journal file " << next_journal_file
                 << " does not exist. End of journal reached.";
-        *end_of_journal = true;
+        end_of_journal = true;
         return Status::OK();
       }
       TF_RETURN_IF_ERROR(UpdateFile(next_journal_file));
       continue;
     }
     TF_RETURN_IF_ERROR(s);
-    if (!update->ParseFromString(record)) {
+    if (!update.ParseFromString(record)) {
       return errors::DataLoss("Failed to parse journal record.");
     }
     if (VLOG_IS_ON(4)) {
-      VLOG(4) << "Read journal entry: " << update->DebugString();
+      VLOG(4) << "Read journal entry: " << update.DebugString();
     }
-    *end_of_journal = false;
+    end_of_journal = false;
     return Status::OK();
   }
 }

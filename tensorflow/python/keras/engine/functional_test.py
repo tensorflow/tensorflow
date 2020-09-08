@@ -60,6 +60,18 @@ except ImportError:
 
 class NetworkConstructionTest(keras_parameterized.TestCase):
 
+  def test_default_model_name(self):
+    inputs = input_layer_lib.Input(shape=(1,))
+    outputs = layers.Dense(1, activation='relu')(inputs)
+    model = training_lib.Model(inputs=inputs, outputs=outputs)
+    self.assertEqual(model.name, 'model')
+
+    model_2 = training_lib.Model(inputs=inputs, outputs=outputs)
+    self.assertEqual(model_2.name, 'model_1')
+
+    model_3 = training_lib.Model(inputs=inputs, outputs=outputs)
+    self.assertEqual(model_3.name, 'model_2')
+
   def test_get_updates(self):
 
     class MyLayer(layers.Layer):
@@ -1408,11 +1420,11 @@ class NetworkConstructionTest(keras_parameterized.TestCase):
     outputs = layers.Dense(4)(inputs)
 
     with self.assertRaisesRegex(TypeError,
-                                'got an unexpected keyword argument'):
+                                'Keyword argument not understood'):
       model = training_lib.Model(
           inputs, outputs, name='m', trainable=False, dtype='int64')
     with self.assertRaisesRegex(TypeError,
-                                'got an unexpected keyword argument'):
+                                'Keyword argument not understood'):
       model = training_lib.Model(
           inputs, outputs, name='m', trainable=False, dynamic=False)
 

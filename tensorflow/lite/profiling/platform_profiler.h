@@ -22,7 +22,7 @@ limitations under the License.
 namespace tflite {
 namespace profiling {
 
-std::unique_ptr<tflite::Profiler> CreatePlatformProfiler();
+std::unique_ptr<tflite::Profiler> MaybeCreatePlatformProfiler();
 
 }  // namespace profiling
 }  // namespace tflite

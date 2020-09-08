@@ -30,6 +30,9 @@ using tensorflow::string;
 namespace tensorflow {
 namespace {
 
+// The tests are parameterized on:
+// - a string representing the tracing implementation: "mlir" or "graphdef".
+// - a boolean that when true enables TFRT as the execution engine.
 class UnifiedCAPI
     : public ::testing::TestWithParam<std::tuple<const char*, bool>> {
  protected:
@@ -554,7 +557,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
     auto* add_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(add_op, "Add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-    TF_AbstractOpSetOpName(add_op, "my_add1", s);
+    TF_AbstractOpSetOpName(add_op, "my_add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_AbstractTensor* inputs[2] = {arg0, arg1};
     TF_OutputList* add_outputs = TF_NewOutputList();
@@ -576,7 +579,7 @@ TEST_P(UnifiedCAPI, TestMultiOutputGraph) {
     auto* add_op = TF_NewAbstractOp(graph_ctx);
     TF_AbstractOpSetOpType(add_op, "Add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
-    TF_AbstractOpSetOpName(add_op, "my_add2", s);
+    TF_AbstractOpSetOpName(add_op, "my_add", s);
     ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
     TF_AbstractTensor* inputs[2] = {arg1, arg1};
     TF_OutputList* add_outputs = TF_NewOutputList();
@@ -983,6 +986,10 @@ TEST_P(UnifiedCAPI, TF_ExecutionContextGetTFEContextFromFunctionContextRaises) {
 
   TF_DeleteExecutionContext(graph_ctx);
 }
+
+// The above tests are run for a combination of:
+// - graphdef and MLIR tracing engine
+// - Using TFRT as an execution runtime (true == enable TFRT)
 #ifdef PLATFORM_GOOGLE
 INSTANTIATE_TEST_SUITE_P(Tracing, UnifiedCAPI,
                          ::testing::Combine(::testing::Values("graphdef",

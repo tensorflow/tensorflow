@@ -25,7 +25,6 @@ from __future__ import print_function
 
 import collections
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import backprop_util
 from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import auto_control_deps_utils as acd
@@ -1120,10 +1119,7 @@ def _build_case(branch_index,
         op for op in bg.get_operations() if auto_control_deps.op_is_stateful(op)
     ])
 
-  # TODO(b/161915509): Remove this after 08/20/2020. This is required to abide
-  # by 3-week forward compat window of new TF python op generating code with
-  # stale runtime binaries.
-  if (stateful_ops or not compat.forward_compatible(2020, 8, 20)):
+  if stateful_ops:
     op_fn = gen_functional_ops.case
   else:
     op_fn = gen_functional_ops.stateless_case

@@ -385,7 +385,7 @@ xla_test(
         "gpu",
         "cpu",
     ],
-    shard_count = 6,
+    shard_count = 40,
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:execution_options_util",
@@ -728,7 +728,6 @@ xla_test(
     name = "array_elementwise_ops_test",
     srcs = ["array_elementwise_ops_test.cc"],
     shard_count = 25,
-    tags = ["no_oss"],  # b/163416869
     deps = [
         ":test_macros_header",
         "//tensorflow/compiler/xla:array2d",
@@ -2700,5 +2699,6 @@ xla_test(
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:tf32_utils",
     ],
 )
