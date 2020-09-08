@@ -2111,7 +2111,10 @@ cc_library(
         "include/llvm/Extensions/*.inc",
     ]),
     copts = llvm_copts,
-    deps = [":config"],
+    deps = [
+        ":Support",
+        ":config",
+    ],
 )
 
 cc_library(
