@@ -1135,8 +1135,8 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
     self._could_use_gpu_kernel = (
         self.activation in (activations.tanh, nn.tanh) and
         self.recurrent_activation in (activations.sigmoid, nn.sigmoid) and
-        recurrent_dropout == 0 and not unroll and use_bias and
-        ops.executing_eagerly_outside_functions())
+        dropout == 0 and recurrent_dropout == 0 and 
+        not unroll and use_bias and ops.executing_eagerly_outside_functions())
     if context.num_gpus() > 0:
       # Only show the message when there is GPU available, user will not care
       # about the cuDNN if there isn't any GPU.
@@ -1202,10 +1202,6 @@ class LSTM(recurrent.DropoutRNNCellMixin, recurrent.LSTM):
       # signature, eg, the tensor parameters need to have same shape and dtypes.
       # Since the CuDNN has an extra set of bias, those bias will be passed to
       # both normal and CuDNN implementations.
-      self.reset_dropout_mask()
-      dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
-      if dropout_mask is not None:
-        inputs = inputs * dropout_mask[0]
       if _use_new_code():
         lstm_kwargs = {
             'inputs':
