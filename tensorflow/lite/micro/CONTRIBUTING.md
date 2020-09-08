@@ -285,8 +285,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
     And a sketch of the steps:
 
     ```
-    git remote add <remote_name>
-    git@github.com:<PR author>/tensorflow.git
+    git remote add <remote_name> git@github.com:<PR author>/tensorflow.git
     git fetch <remote_name>
 
     git checkout -b <local-branch-name> <remote_name>/<PR branch name>
