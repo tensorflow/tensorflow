@@ -82,6 +82,7 @@ class FunctionSpec {
   std::string SignatureSummary(bool default_values = false);
   py::tuple ConvertVariablesToTensors(py::tuple args, py::dict kwargs);
   py::tuple ConvertAnnotatedArgsToTensors(py::tuple oargs, py::dict kwargs);
+  py::object CanonicalizeFunctionInputs(py::args oargs, py::kwargs okwargs);
 };
 
 namespace {
@@ -356,6 +357,147 @@ py::tuple FunctionSpec::ConvertAnnotatedArgsToTensors(py::tuple oargs,
   return py::make_tuple(py::tuple(args), kwargs);
 }
 
+py::object FunctionSpec::CanonicalizeFunctionInputs(py::args oargs, py::kwargs okwargs) {
+  py::tuple args = (py::tuple) oargs;
+  py::dict kwargs = (py::dict) okwargs;
+  if (is_pure_) {
+    py::tuple converted = ConvertVariablesToTensors(args, kwargs);
+    args = converted[0];
+    kwargs = converted[1];
+  }
+
+  if (experimental_follow_type_hints_ && input_signature_is_none_) {
+    py::tuple converted = ConvertAnnotatedArgsToTensors(args, kwargs);
+    args = converted[0];
+    kwargs = converted[1];
+  }
+  if (!input_signature_is_none_) {
+    if (args.size() > input_signature_.size()) {
+      throw py::type_error(tensorflow::strings::StrCat(
+          SignatureSummary(), " takes ", input_signature_.size(),
+          " positional arguments (as specified by the input_signature) but ",
+          args.size(), " were given"));
+    }
+    for (const auto& item : kwargs) {
+      int index;
+      try {
+        index = args_to_indices_.at(PyObjectToString(item.first.ptr()));
+      } catch (const std::out_of_range& e) {
+        throw py::type_error(tensorflow::strings::StrCat(
+            SignatureSummary(), " got unexpected keyword argument `",
+            std::string((py::str) item.first), "`"));
+      }
+      if (index >= input_signature_.size()) {
+        throw py::type_error(tensorflow::strings::StrCat(
+            SignatureSummary(), " got keyword argument `",
+            std::string((py::str) item.first),
+            "` that was not included in input_signature"));
+      }
+    }
+  }
+
+  py::tuple inputs;
+  if (kwargs.empty()) {
+    inputs = args;
+    if (!arg_indices_to_default_values_.empty()) {
+      py::list remaining_args;
+      try {
+        for (int i = args.size(); i < arg_names_.size(); ++i) {
+          remaining_args.append((arg_indices_to_default_values_[i]));
+        }
+        inputs += py::tuple(remaining_args);
+      }
+      catch(const std::out_of_range& e) {
+        std::vector<std::string> missing_args;
+        for (int i = args.size(); i < arg_names_.size(); ++i) {
+          if (arg_indices_to_default_values_.find(i) ==
+              arg_indices_to_default_values_.end()) {
+            missing_args.push_back((py::str) arg_names_[i]);
+          }
+        }
+        throw py::type_error(tensorflow::strings::StrCat(
+            SignatureSummary(), " missing required arguments: ",
+            JoinVector(", ", missing_args)));
+      }
+    }
+
+    if (!kwonlydefaults_.empty()) {
+      for (const auto& item : kwonlydefaults_) {
+        kwargs[item.first] = item.second;
+      }
+    }
+  } else {
+    std::map<int, py::handle> args_indices_to_values;
+    for (auto it = arg_indices_to_default_values_.find(args.size());
+         it != arg_indices_to_default_values_.end(); ++it) {
+      args_indices_to_values[it->first] = it->second;
+    }
+    std::vector<py::handle> consumed_args;
+
+    for (const auto& item : kwargs) {
+      int index;
+      try {
+        index = args_to_indices_.at(PyObjectToString(item.first.ptr()));
+        if (index < args.size()) {
+          throw py::type_error(tensorflow::strings::StrCat(
+              SignatureSummary(), " got two values for argument `",
+              std::string((py::str) item.first), "`"));
+        }
+        args_indices_to_values[index] = item.second;
+        consumed_args.push_back(item.first);
+      } catch (const std::out_of_range& e) {} // Do nothing
+    }
+
+    for (const auto& arg : consumed_args) {
+      PyDict_DelItem(kwargs.ptr(), arg.ptr());
+    }
+    inputs = args;
+
+    py::list remaining_args = py::list(args_indices_to_values.size());
+    int index = 0;
+
+    for (const auto& item : args_indices_to_values) {
+      remaining_args[index] = item.second;
+      ++index;
+    }
+
+    inputs += py::tuple(remaining_args);
+
+    if (!kwargs.empty() && !input_signature_is_none_) {
+      throw py::type_error(tensorflow::strings::StrCat(
+          SignatureSummary(), " got unexpected keyword arguments: ",
+          JoinPyDict(", ", kwargs),
+          "\n(Cannot define a TensorFlow function from a Python ",
+          "function with keyword arguments when input_signature is provided.)"));
+      }
+
+    if (!kwonlydefaults_.empty()) {
+      for (const auto& item : kwonlydefaults_) {
+        PyDict_SetDefault(kwargs.ptr(), item.first.ptr(), item.second.ptr());
+      }
+    }
+  }
+
+  static const py::object* _convert_inputs_to_signature = new py::object(
+      py::module::import("tensorflow.python.eager.function")
+          .attr("_convert_inputs_to_signature"));
+
+  if (input_signature_is_none_) {
+    py::tuple converted_inputs = ConvertNumpyInputs(inputs);
+    py::tuple converted_kwargs = ConvertNumpyInputs(kwargs);
+    return py::make_tuple(
+        converted_inputs[0], converted_kwargs[0],
+        converted_inputs[1] + converted_kwargs[1],
+        converted_inputs[2] + converted_kwargs[2]);
+  } else {
+    assert(kwargs.empty());
+    py::tuple converted_inputs = (*_convert_inputs_to_signature)(
+        inputs, input_signature_, flat_input_signature_);
+    return py::make_tuple(converted_inputs[0], py::dict(),
+                          converted_inputs[1], converted_inputs[2]);
+  }
+}
+
 py::object AsNdarray(py::handle value) {
   // TODO(tomhennigan) Support __array_interface__ too.
   return value.attr("__array__")();
@@ -435,7 +577,9 @@ PYBIND11_MODULE(_concrete_function, m) {
            &FunctionSpec::ConvertVariablesToTensors)
       .def("_convert_annotated_args_to_tensors",
            &FunctionSpec::ConvertAnnotatedArgsToTensors,
-           "Attempts to autobox arguments annotated as tf.Tensor.");
+           "Attempts to autobox arguments annotated as tf.Tensor.")
+      .def("canonicalize_function_inputs",
+           &FunctionSpec::CanonicalizeFunctionInputs);
   m.def("_as_ndarray", &AsNdarray,
         "Converts value to an ndarray, assumes _is_ndarray(value).");
   m.def(
