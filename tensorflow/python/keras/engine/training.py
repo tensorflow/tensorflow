@@ -20,6 +20,9 @@ from __future__ import print_function
 
 import copy
 import itertools
+from io import BytesIO
+import zipfile
+
 import json
 import os
 import six
@@ -57,6 +60,7 @@ from tensorflow.python.keras.utils import version_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras.utils.io_utils import path_to_string
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
+from tensorflow.python.lib import io as tf_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
@@ -64,6 +68,7 @@ from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_concat_ops
 from tensorflow.python.ops.ragged import ragged_tensor
+from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.profiler import trace
 from tensorflow.python.training import checkpoint_management
@@ -2210,6 +2215,36 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
         'backend': backend.backend()
     }
     return model_config
+
+  def __reduce_ex__(self, protocol):
+    """Support for Pythons's Pickle protocol.
+    """
+    save_folder = f"tmp/saving/{id(self)}"
+    ram_prefix = "ram://"
+    temp_ram_location = os.path.join(ram_prefix, save_folder)
+    self.save(temp_ram_location)
+    b = BytesIO()
+    with zipfile.ZipFile(b, "w", zipfile.ZIP_DEFLATED) as zf:
+        for _, _, filenames in tf_io.file_io.walk_v2(temp_ram_location):
+            for filename in filenames:
+                with gfile.GFile(filename, "rb") as f:
+                    zf.writestr(os.path.relpath(filename, temp_ram_location), f.read())
+    return self._reconstruct_pickle, (b, )
+
+  @classmethod
+  def _reconstruct_pickle(cls, obj):
+    """Reconstruct a model from the result of __reduce_ex__
+    """
+    save_folder = f"tmp/saving/{id(obj)}"
+    ram_prefix = "ram://"
+    temp_ram_location = os.path.join(ram_prefix, save_folder)
+    with zipfile.ZipFile(obj, "r", zipfile.ZIP_DEFLATED) as zf:
+        for path in zf.namelist():
+            if not tf_io.file_io.file_exists_v2(os.path.dirname(os.path.join(temp_ram_location, path))):
+                tf_io.file_io.recursive_create_dir_v2(os.path.dirname(os.path.join(temp_ram_location, path)))
+            with gfile.GFile(os.path.join(temp_ram_location, path), "wb+") as f:
+                f.write(zf.read(path))
+    return save.load_model(temp_ram_location)
 
   def get_config(self):
     raise NotImplementedError
