@@ -790,10 +790,13 @@ LogicalResult ConvertTf2XlaOps(FuncOp func, MLIRContext *context) {
   target.addLegalOp<ModuleOp>();
   target.addLegalOp<FuncOp>();
   target.addIllegalOp<TF::XlaConvOp>();
+  target.addIllegalOp<TF::XlaGatherOp>();
 
   OwningRewritePatternList patterns;
   mhlo::PopulateLegalizeTfWithTf2XlaPatterns("XLA_CPU_JIT", patterns);
+  mhlo::PopulateLegalizeTfPatterns(context, &patterns);
   TF::PopulateLegalizeHloToTfPatterns(&patterns, context);
+  mhlo::GatherOp::getCanonicalizationPatterns(patterns, context);
 
   return applyPartialConversion(func, target, patterns);
 }
