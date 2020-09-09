@@ -74,8 +74,7 @@ void TestSplitVFloat(const int* input_dims_data, const float* input_data,
   tensors[2].allocation_type = kTfLiteMmapRo;
   tensors[1].allocation_type = kTfLiteMmapRo;
 
-  void* user_data = nullptr;
-  TfLiteSplitVParams builtin;
+    TfLiteSplitVParams builtin;
   builtin.num_splits = N;
   int inputs_array_data[] = {3, 0, 1, 2};
   TfLiteIntArray* inputs_array = IntArrayFromInts(inputs_array_data);
@@ -83,8 +82,7 @@ void TestSplitVFloat(const int* input_dims_data, const float* input_data,
   outputs_array_data[0] = N;
   for (int i = 0; i < N; i++) outputs_array_data[i + 1] = i + 3;
   TfLiteIntArray* outputs_array = IntArrayFromInts(outputs_array_data);
-  TfLiteIntArray* temporaries_array = IntArrayFromInts({0});
-
+  
   TfLiteNode node;
   node.inputs = inputs_array;
   node.outputs = outputs_array;
@@ -409,8 +407,7 @@ TF_LITE_MICRO_TEST(SPLIT_V_OneDimensionalFloatTest2) {
   constexpr int output5_dims_count = 1;
   constexpr int output6_dims_count = 1;
   constexpr int output7_dims_count = 2;
-  constexpr int output8_dims_count = 0;
-
+  
   float output1_data[output1_dims_count];
   float output2_data[output2_dims_count];
   float output3_data[output3_dims_count];
