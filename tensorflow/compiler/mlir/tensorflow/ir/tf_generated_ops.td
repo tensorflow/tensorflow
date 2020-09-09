@@ -10897,7 +10897,7 @@ def TF_StackCloseV2Op : TF_Op<"StackCloseV2", []> {
   let summary = "Delete the stack from its resource container.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle
+    Arg<TF_ResourceTensor, "", [TF_StackFree]>:$handle
   );
 
   let results = (outs);
@@ -10907,7 +10907,7 @@ def TF_StackPopV2Op : TF_Op<"StackPopV2", []> {
   let summary = "Pop the element at the top of the stack.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle
+    Arg<TF_ResourceTensor, "", [TF_StackRead,TF_StackWrite]>:$handle
   );
 
   let results = (outs
@@ -10921,7 +10921,7 @@ def TF_StackPushV2Op : TF_Op<"StackPushV2", []> {
   let summary = "Push an element onto the stack.";
 
   let arguments = (ins
-    TF_ResourceTensor:$handle,
+    Arg<TF_ResourceTensor, "", [TF_StackRead,TF_StackWrite]>:$handle,
     TF_Tensor:$elem,
 
     DefaultValuedAttr<BoolAttr, "false">:$swap_memory
@@ -10945,7 +10945,7 @@ def TF_StackV2Op : TF_Op<"StackV2", []> {
   );
 
   let results = (outs
-    TF_ResourceTensor:$handle
+    Res<TF_ResourceTensor, "", [TF_StackAlloc]>:$handle
   );
 }
 
