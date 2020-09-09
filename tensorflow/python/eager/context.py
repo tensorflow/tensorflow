@@ -183,6 +183,21 @@ class _TensorCaches(threading.local):
     return self._zeros_cache
 
 
+class _ThreadLocalData(threading.local):
+  """Thread local storage for the eager context."""
+
+  def __init__(self):
+    super(_ThreadLocalData, self).__init__()
+    self.device_spec = _starting_device_spec
+    self.device_name = ""
+    self.is_eager = default_execution_mode == EAGER_MODE
+    self.scope_name = ""
+    self.function_call_options = None
+    self.executor = None
+    self.op_callbacks = []
+    self.invoking_op_callbacks = False
+
+
 ContextSwitch = collections.namedtuple(
     "ContextSwitch", ["is_building_function", "enter_context_fn",
                       "device_stack"])
@@ -405,9 +420,7 @@ class Context(object):
     _tensor_caches_map[self._id] = _TensorCaches()
 
     self._config = config
-    self._thread_local_data = pywrap_tfe.EagerContextThreadLocalData(
-        self, is_eager=default_execution_mode == EAGER_MODE,
-        device_spec=_starting_device_spec)
+    self._thread_local_data = _ThreadLocalData()
     self._context_switches = _ContextSwitchStack(self.executing_eagerly())
     self._context_handle = None
     self._context_devices = None

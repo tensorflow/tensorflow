@@ -928,7 +928,8 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 
 void GenEagerPythonOp::AddEagerFastPathExecute() {
   string fastpath_execute_params =
-      strings::StrCat("_ctx, \"", op_def_.name(), "\", ", "name");
+      strings::StrCat("_ctx._context_handle, tld.device_name, \"",
+                      op_def_.name(), "\", ", "name, tld.op_callbacks");
   string fallback_params;
 
   for (int i = 0; i < api_def_.in_arg_size(); i++) {
