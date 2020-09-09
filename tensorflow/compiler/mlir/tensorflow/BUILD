@@ -927,16 +927,6 @@ cc_library(
     alwayslink = 1,
 )
 
-# Library with TensorFlow dialect static initialization.
-# TODO(aminim): OBSOLETE ; remove all users and delete this.
-cc_library(
-    name = "tensorflow_dialect_registration",
-    deps = [
-        ":tensorflow",
-        "@llvm-project//mlir:Shape",
-    ],
-)
-
 cc_library(
     name = "convert_graphdef",
     srcs = [
