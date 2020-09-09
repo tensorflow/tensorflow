@@ -101,8 +101,8 @@ class LSTMOpModel : public SingleOpModel {
     }
 
     // Adding the 2 state tensors.
-    AddInput({TensorType_FLOAT32, {n_batch, n_output}}, true);
-    AddInput({TensorType_FLOAT32, {n_batch, n_cell}}, true);
+    AddVariableInput({TensorType_FLOAT32, {n_batch, n_output}});
+    AddVariableInput({TensorType_FLOAT32, {n_batch, n_cell}});
 
     // Layer norm weights.
     if (!model_has_legacy_20_inputs) {
@@ -1412,16 +1412,14 @@ class LSTMIntegerOpModel : public SingleOpModel {
     }
 
     // Adding the 2 state tensors.
-    AddInput({TensorType_INT16,
-              {n_batch, n_output},
-              ranges[18].first,
-              ranges[18].second},
-             true);
-    AddInput({TensorType_INT16,
-              {n_batch, n_cell},
-              ranges[19].first,
-              ranges[19].second},
-             true);
+    AddVariableInput({TensorType_INT16,
+                      {n_batch, n_output},
+                      ranges[18].first,
+                      ranges[18].second});
+    AddVariableInput({TensorType_INT16,
+                      {n_batch, n_cell},
+                      ranges[19].first,
+                      ranges[19].second});
 
     // Layer norm weights.
     if (use_layer_norm) {
@@ -2204,12 +2202,10 @@ class HybridSparseLSTMOpModel : public ::tflite::SingleOpModel {
     }
 
     // Adding the 2 state tensors.
-    output_state_ = AddInput(::tflite::TensorData{::tflite::TensorType_FLOAT32,
-                                                  {n_output_ * n_batch_}},
-                             true);
-    cell_state_ = AddInput(::tflite::TensorData{::tflite::TensorType_FLOAT32,
-                                                {n_cell_ * n_batch_}},
-                           true);
+    output_state_ = AddVariableInput(::tflite::TensorData{
+        ::tflite::TensorType_FLOAT32, {n_output_ * n_batch_}});
+    cell_state_ = AddVariableInput(::tflite::TensorData{
+        ::tflite::TensorType_FLOAT32, {n_cell_ * n_batch_}});
 
     if (use_cifg) {
       input_layer_norm_weights_ = AddNullInput();

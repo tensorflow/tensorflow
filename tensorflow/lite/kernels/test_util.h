@@ -188,10 +188,8 @@ class SingleOpModel {
   SingleOpModel& operator=(const SingleOpModel&) = delete;
 
   // Add a TensorType input tensor and return its index.
-  int AddInput(TensorType type, bool is_variable = false) {
-    return AddInput(TensorData{type}, is_variable);
-  }
-  int AddInput(const TensorData& t, bool is_variable = false);
+  int AddInput(const TensorData& t);
+  int AddVariableInput(const TensorData& t);
 
   int AddIntermediate(TensorType type, const std::vector<float>& scale,
                       const std::vector<int64_t>& zero_point);
@@ -378,7 +376,6 @@ class SingleOpModel {
   int AddNullInput();
 
   // Add a TensorType output tensor and return its index.
-  int AddOutput(TensorType type) { return AddOutput(TensorData{type}); }
   int AddOutput(const TensorData& t);
 
   template <typename T>
