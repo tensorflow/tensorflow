@@ -123,26 +123,39 @@ class ShardDatasetOp::Dataset : public DatasetBase {
                            bool* end_of_sequence) override {
       mutex_lock l(mu_);
 
+      *end_of_sequence = false;
       if (!input_impl_) {
         *end_of_sequence = true;
         return Status::OK();
       }
 
+      int num_to_skip =
+          (dataset()->index_ - next_index_) % dataset()->num_shards_;
+      if (num_to_skip < 0) {
+        num_to_skip += dataset()->num_shards_;
+      }
+      int num_skipped;
+      TF_RETURN_IF_ERROR(
+          input_impl_->Skip(ctx, num_to_skip, end_of_sequence, &num_skipped));
+      next_index_ += num_skipped;
+      if (*end_of_sequence) {
+        input_impl_.reset();
+        return Status::OK();
+      }
+
       std::vector<Tensor> result;
-      do {
-        result.clear();
-        TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &result, end_of_sequence));
-        if (*end_of_sequence) {
-          input_impl_.reset();
-          return Status::OK();
-        }
-      } while ((next_index_++ % dataset()->num_shards_) != dataset()->index_);
+      TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &result, end_of_sequence));
+      if (*end_of_sequence) {
+        input_impl_.reset();
+        return Status::OK();
+      }
+      next_index_++;
 
-      while (dataset()->require_non_empty_ &&
-             next_index_ < dataset()->num_shards_) {
-        std::vector<Tensor> unused_result;
-
-        Status s = input_impl_->GetNext(ctx, &unused_result, end_of_sequence);
+      if (dataset()->require_non_empty_ &&
+          next_index_ < dataset()->num_shards_) {
+        int num_skipped;
+        Status s = input_impl_->Skip(ctx, dataset()->num_shards_ - next_index_,
+                                     end_of_sequence, &num_skipped);
         if (*end_of_sequence || errors::IsOutOfRange(s)) {
           return errors::InvalidArgument(
               "There aren't enough elements in this dataset for each shard to "
@@ -156,7 +169,7 @@ class ShardDatasetOp::Dataset : public DatasetBase {
           return s;
         }
 
-        next_index_++;
+        next_index_ = dataset()->num_shards_;
       }
 
       *out_tensors = std::move(result);
@@ -169,12 +182,13 @@ class ShardDatasetOp::Dataset : public DatasetBase {
       return model::MakeKnownRatioNode(std::move(args), dataset()->num_shards_);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (!input_impl_) {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       } else {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kNextIndex), next_index_));
       }

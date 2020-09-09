@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/ring_alg.h"
 
 #include <stdlib.h>
+
 #include <atomic>
 #include <functional>
 #include <utility>
@@ -240,7 +241,8 @@ Status RingAlg::InitializeCollectiveParams(CollectiveParams* col_params) {
   return Status::OK();
 }
 
-Status RingAlg::InitializeCollectiveContext(CollectiveContext* col_ctx) {
+Status RingAlg::InitializeCollectiveContext(
+    std::shared_ptr<CollectiveContext> col_ctx) {
   DCHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
   col_params_ = &col_ctx->col_params;
@@ -254,14 +256,9 @@ string RingAlg::TensorDebugString(const Tensor& tensor) {
       col_ctx_->op_ctx->device()->tensorflow_gpu_device_info();
   if (gpu_device_info) {
     Tensor cpu_tensor(tensor.dtype(), tensor.shape());
-    Notification note;
-    gpu_device_info->default_context->CopyDeviceTensorToCPU(
-        &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor,
-        [&note](const Status& s) {
-          DCHECK(s.ok());
-          note.Notify();
-        });
-    note.WaitForNotification();
+    Status st = gpu_device_info->default_context->CopyDeviceTensorToCPUSync(
+        &tensor, "" /*tensor_name*/, col_ctx_->device, &cpu_tensor);
+    DCHECK(st.ok());
     return cpu_tensor.SummarizeValue(64);
   } else {
     return tensor.SummarizeValue(64);
@@ -387,7 +384,7 @@ void RingAlg::DispatchSend(RingField* rf, const StatusCallback& done) {
   int send_to_rank = (rf->rank + 1) % group_size_;
   int send_to_dev_idx = col_params_->instance.impl_details
                             .subdiv_permutations[rf->subdiv_idx][send_to_rank];
-  col_ctx_->col_exec->PostToPeer(
+  col_ctx_->col_exec->remote_access()->PostToPeer(
       col_params_->instance.device_names[send_to_dev_idx],
       col_params_->instance.task_names[send_to_dev_idx], send_buf_key,
       col_ctx_->device, col_ctx_->op_ctx->op_device_context(),
@@ -406,7 +403,7 @@ void RingAlg::DispatchRecv(RingField* rf, const StatusCallback& done) {
   Tensor* dst_tensor = (!rf->second_pass && (col_params_->merge_op != nullptr))
                            ? &rf->tmp_chunk
                            : &rf->chunk;
-  col_ctx_->col_exec->RecvFromPeer(
+  col_ctx_->col_exec->remote_access()->RecvFromPeer(
       col_params_->instance.device_names[rf->recv_dev_idx],
       col_params_->instance.task_names[rf->recv_dev_idx],
       col_params_->task.is_local[rf->recv_dev_idx], recv_buf_key,

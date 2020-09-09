@@ -52,6 +52,7 @@ void GrpcEagerServiceImpl::HandleRPCsLoop() {
   ENQUEUE_REQUEST(UpdateContext);
   ENQUEUE_REQUEST(Enqueue);
   ENQUEUE_REQUEST(WaitQueueDone);
+  ENQUEUE_REQUEST(RunComponentFunction);
   ENQUEUE_REQUEST(KeepAlive);
   ENQUEUE_REQUEST(CloseContext);
 #undef ENQUEUE_REQUEST

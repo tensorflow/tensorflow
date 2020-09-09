@@ -353,11 +353,11 @@ class RaggedReduceOpsTest(test_util.TensorFlowTestCase,
     axis = array_ops.placeholder_with_default(constant_op.constant([0]), None)
 
     if not context.executing_eagerly():
-      self.assertRaisesRegexp(
-          ValueError, r'axis must be known at graph construction time.',
-          ragged_math_ops.reduce_sum, rt_input, axis)
-    self.assertRaisesRegexp(TypeError, r'axis must be an int; got str.*',
-                            ragged_math_ops.reduce_sum, rt_input, ['x'])
+      self.assertRaisesRegex(ValueError,
+                             r'axis must be known at graph construction time.',
+                             ragged_math_ops.reduce_sum, rt_input, axis)
+    self.assertRaisesRegex(TypeError, r'axis must be an int; got str.*',
+                           ragged_math_ops.reduce_sum, rt_input, ['x'])
 
 
 if __name__ == '__main__':

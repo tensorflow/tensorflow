@@ -26,12 +26,128 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/platform/strcat.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace {
 
-constexpr char kFusedOpName[] = "ShuffleAndRepeatDataset";
+constexpr char kShuffleDataset[] = "ShuffleDataset";
+constexpr char kShuffleDatasetV2[] = "ShuffleDatasetV2";
+constexpr char kShuffleDatasetV3[] = "ShuffleDatasetV3";
+constexpr char kRepeatDataset[] = "RepeatDataset";
+constexpr char kShuffleAndRepeatDataset[] = "ShuffleAndRepeatDataset";
+constexpr char kShuffleAndRepeatDatasetV2[] = "ShuffleAndRepeatDatasetV2";
+
+constexpr char kOutputShapes[] = "output_shapes";
+constexpr char kOutputTypes[] = "output_types";
+constexpr char kReshuffleEachIteration[] = "reshuffle_each_iteration";
+
+Status FuseShuffleV1AndRepeat(const NodeDef& shuffle_node,
+                              const NodeDef& repeat_node,
+                              MutableGraphView* graph, GraphDef* output,
+                              NodeDef* fused_node) {
+  fused_node->set_op(kShuffleAndRepeatDataset);
+  graph_utils::SetUniqueGraphNodeName(kShuffleAndRepeatDataset, output,
+                                      fused_node);
+
+  // Set the `input` input argument.
+  fused_node->add_input(shuffle_node.input(0));
+
+  // Set the `buffer_size` input argument.
+  fused_node->add_input(shuffle_node.input(1));
+
+  // Set the `seed` input argument.
+  fused_node->add_input(shuffle_node.input(2));
+
+  // Set the `seed2` input argument.
+  fused_node->add_input(shuffle_node.input(3));
+
+  // Set the `count` input argument.
+  fused_node->add_input(repeat_node.input(1));
+
+  // Set `output_types`, `output_shapes`, and `reshuffle_each_iteration`
+  // attributes.
+  for (auto key : {kOutputShapes, kOutputTypes, kReshuffleEachIteration}) {
+    graph_utils::CopyAttribute(key, shuffle_node, fused_node);
+  }
+
+  return Status::OK();
+}
+
+Status FuseShuffleV2AndRepeat(const NodeDef& shuffle_node,
+                              const NodeDef& repeat_node,
+                              MutableGraphView* graph, GraphDef* output,
+                              NodeDef* fused_node) {
+  fused_node->set_op(kShuffleAndRepeatDatasetV2);
+  graph_utils::SetUniqueGraphNodeName(kShuffleAndRepeatDatasetV2, output,
+                                      fused_node);
+
+  NodeDef zero_node = *graph_utils::AddScalarConstNode<int64>(0, graph);
+
+  // Set the `input` input argument.
+  fused_node->add_input(shuffle_node.input(0));
+
+  // Set the `buffer_size` input argument.
+  fused_node->add_input(shuffle_node.input(1));
+
+  // Default the `seed` input argument to 0.
+  fused_node->add_input(zero_node.name());
+
+  // Default the `seed2` input argument to 0.
+  fused_node->add_input(zero_node.name());
+
+  // Set the `count` input argument.
+  fused_node->add_input(repeat_node.input(1));
+
+  // Set the `seed_generator` input argument.
+  fused_node->add_input(shuffle_node.input(2));
+
+  // Set `output_types` and `output_shapes` attributes.
+  for (auto key : {kOutputShapes, kOutputTypes}) {
+    graph_utils::CopyAttribute(key, shuffle_node, fused_node);
+  }
+
+  // Default the `reshuffle_each_iteration` attribute to true.
+  (*fused_node->mutable_attr())[kReshuffleEachIteration].set_b(true);
+
+  return Status::OK();
+}
+
+Status FuseShuffleV3AndRepeat(const NodeDef& shuffle_node,
+                              const NodeDef& repeat_node,
+                              MutableGraphView* graph, GraphDef* output,
+                              NodeDef* fused_node) {
+  fused_node->set_op(kShuffleAndRepeatDatasetV2);
+  graph_utils::SetUniqueGraphNodeName(kShuffleAndRepeatDataset, output,
+                                      fused_node);
+
+  // Set the `input` input argument.
+  fused_node->add_input(shuffle_node.input(0));
+
+  // Set the `buffer_size` input argument.
+  fused_node->add_input(shuffle_node.input(1));
+
+  // Set the `seed` input argument.
+  fused_node->add_input(shuffle_node.input(2));
+
+  // Set the `seed2` input argument.
+  fused_node->add_input(shuffle_node.input(3));
+
+  // Set the `count` input argument.
+  fused_node->add_input(repeat_node.input(1));
+
+  // Set the `seed_generator` input argument.
+  fused_node->add_input(shuffle_node.input(4));
+
+  // Set `output_types`, `output_shapes`, and `reshuffle_each_iteration`
+  // attributes.
+  for (auto key : {kOutputShapes, kOutputTypes, kReshuffleEachIteration}) {
+    graph_utils::CopyAttribute(key, shuffle_node, fused_node);
+  }
+
+  return Status::OK();
+}
 
 }  // namespace
 
@@ -42,65 +158,46 @@ Status ShuffleAndRepeatFusion::OptimizeAndCollectStats(
   MutableGraphView graph(output);
   absl::flat_hash_set<string> nodes_to_delete;
 
-  auto make_shuffle_and_repeat_node = [&output](const NodeDef& shuffle_node,
-                                                const NodeDef& repeat_node) {
-    NodeDef new_node;
-    new_node.set_op(kFusedOpName);
-    graph_utils::SetUniqueGraphNodeName(kFusedOpName, output, &new_node);
-
-    // Set the `input` input argument.
-    new_node.add_input(shuffle_node.input(0));
-
-    // Set the `buffer_size` input argument.
-    new_node.add_input(shuffle_node.input(1));
-
-    // Set the `seed` input argument.
-    new_node.add_input(shuffle_node.input(2));
-
-    // Set the `seed2` input argument.
-    new_node.add_input(shuffle_node.input(3));
-
-    // Set the `count` input argument.
-    new_node.add_input(repeat_node.input(1));
-
-    // Set `output_types` and `output_shapes` attributes.
-    for (auto key : {"output_shapes", "output_types"}) {
-      graph_utils::CopyAttribute(key, repeat_node, &new_node);
-    }
-    return new_node;
-  };
-
-  for (const NodeDef& node : item.graph.node()) {
-    if (node.op() != "RepeatDataset") {
+  for (const NodeDef& repeat_node : item.graph.node()) {
+    if (repeat_node.op() != kRepeatDataset) {
       continue;
     }
 
-    // Use a more descriptive variable name now that we know the node type.
-    const NodeDef& repeat_node = node;
-    NodeDef* node2 = graph_utils::GetInputNode(repeat_node, graph);
+    const NodeDef& shuffle_node =
+        *graph_utils::GetInputNode(repeat_node, graph);
 
-    if (node2->op() != "ShuffleDataset") {
+    NodeDef fused_node;
+    if (shuffle_node.op() == kShuffleDataset) {
+      TF_RETURN_IF_ERROR(FuseShuffleV1AndRepeat(shuffle_node, repeat_node,
+                                                &graph, output, &fused_node));
+    } else if (shuffle_node.op() == kShuffleDatasetV2) {
+      TF_RETURN_IF_ERROR(FuseShuffleV2AndRepeat(shuffle_node, repeat_node,
+                                                &graph, output, &fused_node));
+
+    } else if (shuffle_node.op() == kShuffleDatasetV3) {
+      TF_RETURN_IF_ERROR(FuseShuffleV3AndRepeat(shuffle_node, repeat_node,
+                                                &graph, output, &fused_node));
+    } else {
       continue;
     }
 
-    // Use a more descriptive variable name now that we know the node type.
-    const NodeDef& shuffle_node = *node2;
-
-    // TODO(b/129712758): Remove when the fused kernel supports disabling
-    // reshuffling for each iteration.
-    if (HasNodeAttr(shuffle_node, "reshuffle_each_iteration") &&
-        !shuffle_node.attr().at("reshuffle_each_iteration").b()) {
-      continue;
-    }
-
-    NodeDef* shuffle_and_repeat_node =
-        graph.AddNode(make_shuffle_and_repeat_node(shuffle_node, repeat_node));
+    NodeDef& shuffle_and_repeat_node = *graph.AddNode(std::move(fused_node));
     TF_RETURN_IF_ERROR(graph.UpdateFanouts(repeat_node.name(),
-                                           shuffle_and_repeat_node->name()));
+                                           shuffle_and_repeat_node.name()));
+    // Update shuffle node fanouts to shuffle_and_repeat fanouts to take care of
+    // control dependencies.
+    TF_RETURN_IF_ERROR(graph.UpdateFanouts(shuffle_node.name(),
+                                           shuffle_and_repeat_node.name()));
 
-    // Mark the `Shuffle` and `Repeat` nodes for removal.
-    nodes_to_delete.insert(shuffle_node.name());
-    nodes_to_delete.insert(repeat_node.name());
+    // Mark the `Shuffle` and `Repeat` nodes for removal (as long as neither of
+    // them needs to be preserved).
+    const auto nodes_to_preserve = item.NodesToPreserve();
+    if (nodes_to_preserve.find(shuffle_node.name()) ==
+            nodes_to_preserve.end() &&
+        nodes_to_preserve.find(repeat_node.name()) == nodes_to_preserve.end()) {
+      nodes_to_delete.insert(shuffle_node.name());
+      nodes_to_delete.insert(repeat_node.name());
+    }
     stats->num_changes++;
   }
 

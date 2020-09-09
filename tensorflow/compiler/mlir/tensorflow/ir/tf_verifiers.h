@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_VERIFIERS_H_
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_IR_TF_VERIFIERS_H_
 
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 
 namespace mlir {
 namespace TF {

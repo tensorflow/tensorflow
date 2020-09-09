@@ -17,6 +17,7 @@ package org.tensorflow.op.core;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.fail;
 
 import java.util.List;
 
@@ -142,14 +143,15 @@ public class ZerosTest {
     }
   }
   
-  @Test(expected = IllegalArgumentException.class)
+  @Test
   public void cannotCreateStringZeros() {
     try (Graph g = new Graph();
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       long[] shape = {2, 2};
       Zeros.create(scope, Constant.create(scope, shape), String.class);
-    }
+      fail();
+    } catch (IllegalArgumentException expected) {}
   }
   
   @Test

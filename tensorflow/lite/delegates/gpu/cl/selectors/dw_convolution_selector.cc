@@ -17,8 +17,8 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/lite/delegates/gpu/cl/cl_device.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv.h"
-#include "tensorflow/lite/delegates/gpu/cl/kernels/depth_wise_conv_3x3.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv.h"
+#include "tensorflow/lite/delegates/gpu/cl/kernels/depthwise_conv_3x3.h"
 #include "tensorflow/lite/delegates/gpu/cl/precision.h"
 
 namespace tflite {
@@ -26,80 +26,59 @@ namespace gpu {
 namespace cl {
 namespace {
 
-Status SelectDWConvolutionAdreno(const DepthwiseConvolution2DAttributes& attr,
-                                 const CreationContext& creation_context,
-                                 const OperationDef& op_def,
-                                 std::unique_ptr<GPUOperation>* ptr) {
-  if (!op_def.IsBatchSupported() && IsDepthWiseConv3x3Supported(attr)) {
-    DepthWiseConv3x3 dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthWiseConv3x3(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
+std::unique_ptr<GPUOperation> SelectDWConvolutionAdreno(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
+  if (IsDepthwiseConv3x3Supported(attr)) {
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    DepthWiseConvolution dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
-  return OkStatus();
 }
 
-Status SelectDWConvolutionPowerVR(const DepthwiseConvolution2DAttributes& attr,
-                                  const CreationContext& creation_context,
-                                  const OperationDef& op_def,
-                                  std::unique_ptr<GPUOperation>* ptr) {
-  if (!op_def.IsBatchSupported() && IsDepthWiseConv3x3Supported(attr)) {
-    DepthWiseConv3x3 dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthWiseConv3x3(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
+std::unique_ptr<GPUOperation> SelectDWConvolutionPowerVR(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
+  if (IsDepthwiseConv3x3Supported(attr)) {
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    DepthWiseConvolution dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
-  return OkStatus();
 }
 
-Status SelectDWConvolutionMali(const DepthwiseConvolution2DAttributes& attr,
-                               const CreationContext& creation_context,
-                               const OperationDef& op_def,
-                               std::unique_ptr<GPUOperation>* ptr) {
+std::unique_ptr<GPUOperation> SelectDWConvolutionMali(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
   const auto storage_type = op_def.src_tensors[0].storage_type;
   bool buffer_type = storage_type == TensorStorageType::BUFFER ||
                      storage_type == TensorStorageType::IMAGE_BUFFER;
-  MaliInfo mali_info = creation_context.device->GetInfo().mali_info;
-  if (IsDepthWiseConv3x3Supported(attr) && !mali_info.IsMidgard() &&
-      !buffer_type && !op_def.IsBatchSupported() &&
-      op_def.precision != CalculationsPrecision::F32) {
-    DepthWiseConv3x3 dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthWiseConv3x3(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConv3x3>(std::move(dw_conv));
+  const MaliInfo mali_info = device_info.mali_info;
+  if (IsDepthwiseConv3x3Supported(attr) && !mali_info.IsMidgard() &&
+      !buffer_type && op_def.precision != CalculationsPrecision::F32) {
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    DepthWiseConvolution dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthWiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthWiseConvolution>(std::move(dw_conv));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
-  return OkStatus();
 }
 }  // namespace
 
-Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
-                           const CreationContext& creation_context,
-                           const OperationDef& op_def,
-                           std::unique_ptr<GPUOperation>* ptr) {
-  switch (creation_context.device->vendor()) {
-    case Vendor::QUALCOMM:
-      return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
-    case Vendor::POWERVR:
-      return SelectDWConvolutionPowerVR(attr, creation_context, op_def, ptr);
-    case Vendor::MALI:
-      return SelectDWConvolutionMali(attr, creation_context, op_def, ptr);
-    default:
-      return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
+std::unique_ptr<GPUOperation> SelectDWConvolution(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
+  if (device_info.IsAdreno()) {
+    return SelectDWConvolutionAdreno(attr, device_info, op_def);
+  } else if (device_info.IsPowerVR()) {
+    return SelectDWConvolutionPowerVR(attr, device_info, op_def);
+  } else if (device_info.IsMali()) {
+    return SelectDWConvolutionMali(attr, device_info, op_def);
+  } else {
+    return SelectDWConvolutionAdreno(attr, device_info, op_def);
   }
 }
 

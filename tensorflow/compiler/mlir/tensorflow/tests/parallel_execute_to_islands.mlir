@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -tf-parallel-execute-to-islands | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -tf-parallel-execute-to-islands | FILECHECK_OPTS="" FileCheck %s
 
 // CHECK-LABEL: func @check_regions_to_islands
 func @check_regions_to_islands() {
@@ -17,11 +17,9 @@ func @check_regions_to_islands() {
   return
 }
 
-// CHECK:      %[[ISLAND_INPUT_CTL:[a-z_0-9]*]] = tf_executor.island {
-// CHECK-NEXT:   tf_executor.yield
-// CHECK:      %[[ISLAND_1_CTL:[a-z_0-9]*]] = tf_executor.island(%[[ISLAND_INPUT_CTL]]) {
+// CHECK:      %[[ISLAND_1_CTL:[a-z_0-9]*]] = tf_executor.island {
 // CHECK:        tf_executor.yield
-// CHECK:      %[[ISLAND_2_CTL:[a-z_0-9]*]] = tf_executor.island(%[[ISLAND_INPUT_CTL]]) {
+// CHECK:      %[[ISLAND_2_CTL:[a-z_0-9]*]] = tf_executor.island {
 // CHECK:        tf_executor.yield
 // CHECK:      %{{.*}} = tf_executor.island(%[[ISLAND_1_CTL]], %[[ISLAND_2_CTL]]) {
 // CHECK-NEXT:   tf_executor.yield
@@ -192,3 +190,37 @@ func @check_output_barrier_correctly_forwards_outputs(%arg0 : tensor<i1>) -> ten
 // CHECK:         tf_executor.yield %[[OP_C_OUTPUT]] : tensor<i32>
 // CHECK:       %[[OUTPUT_SINK_OUTPUT:[a-z_0-9]*]]:2, %[[OUTPUT_SINK_CTL:[a-z_0-9]*]] = tf_executor.island {
 // CHECK-NEXT:    tf_executor.yield %[[ISLAND_1_OUTPUT]], %[[ISLAND_2_OUTPUT]] : tensor<i1>, tensor<i32>
+
+// CHECK-LABEL: func @check_parallel_execute_using_args
+// CHECK-SAME: (%[[ARG_0:[a-z0-9]*]]: tensor<i1>)
+func @check_parallel_execute_using_args(%arg0 : tensor<i1>) {
+  tf_executor.graph {
+    %1:2 = tf_executor.island {
+      %2 = "tf.opA"(%arg0) : (tensor<i1>) -> tensor<i1>
+      tf_executor.yield %2 : tensor<i1>
+    }
+    %2:2 = tf_executor.island {
+      %3 = "tf.opB"(%arg0) : (tensor<i1>) -> tensor<i1>
+      tf_executor.yield %3 : tensor<i1>
+    }
+    tf_executor.island() {
+      "tf_device.parallel_execute"() ({
+        %4 = "tf.opC"(%arg0, %1#0) : (tensor<i1>, tensor<i1>) -> tensor<i1>
+        tf_device.return %4 : tensor<i1>
+      },
+      {
+        %5 = "tf.opD"(%arg0, %2#0) : (tensor<i1>, tensor<i1>) -> tensor<i32>
+        tf_device.return %5 : tensor<i32>
+      }) {} : () -> (tensor<i1>, tensor<i32>)
+      tf_executor.yield
+    }
+    tf_executor.fetch
+  }
+  return
+}
+
+// Verify that args are directly accessed in newly created island without alias
+// through entry barrier.
+
+// CHECK:  "tf.opC"(%[[ARG_0]]
+// CHECK:  "tf.opD"(%[[ARG_0]]

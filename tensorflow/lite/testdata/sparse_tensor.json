@@ -40,11 +40,19 @@
               }
             ]
           }
+        },
+        {
+          "shape": [
+            4,
+            4
+          ],
+          "name": "output_tensor",
+          "type": "INT8"
         }
       ],
       "inputs": [0],
       "outputs": [0],
-      "operators": [{"inputs":[-1], "outputs":[-1]}]
+      "operators": [{"inputs":[-1], "outputs":[1]}]
     }
   ],
   "buffers": [

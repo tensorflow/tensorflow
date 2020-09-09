@@ -32,19 +32,19 @@ class StringJoinOpTest(test.TestCase):
 
     with self.cached_session():
       output = string_ops.string_join([input0, input1])
-      self.assertAllEqual(output.eval(), [b"aa", b"ba"])
+      self.assertAllEqual(output, [b"aa", b"ba"])
 
       output = string_ops.string_join([input0, input1], separator="--")
-      self.assertAllEqual(output.eval(), [b"a--a", b"b--a"])
+      self.assertAllEqual(output, [b"a--a", b"b--a"])
 
       output = string_ops.string_join([input0, input1, input0], separator="--")
-      self.assertAllEqual(output.eval(), [b"a--a--a", b"b--a--b"])
+      self.assertAllEqual(output, [b"a--a--a", b"b--a--b"])
 
       output = string_ops.string_join([input1] * 4, separator="!")
-      self.assertEqual(output.eval(), b"a!a!a!a")
+      self.assertEqual(self.evaluate(output), b"a!a!a!a")
 
       output = string_ops.string_join([input2] * 2, separator="")
-      self.assertAllEqual(output.eval(), [[b"bb"], [b"cc"]])
+      self.assertAllEqual(output, [[b"bb"], [b"cc"]])
 
       with self.assertRaises(ValueError):  # Inconsistent shapes
         string_ops.string_join([input0, input2]).eval()

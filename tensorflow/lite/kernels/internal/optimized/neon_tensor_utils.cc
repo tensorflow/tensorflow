@@ -23,23 +23,23 @@ limitations under the License.
 #include <limits>
 #include <utility>
 
-#include "tensorflow/lite/experimental/ruy/detect_arm.h"
-#include "tensorflow/lite/experimental/ruy/ruy.h"
+#include "ruy/ruy.h"  // from @ruy
 #include "tensorflow/lite/kernels/cpu_backend_context.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm.h"
 #include "tensorflow/lite/kernels/cpu_backend_gemm_params.h"
 #include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/optimized/cpu_check.h"
 #include "tensorflow/lite/kernels/internal/optimized/neon_tensor_utils_impl.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 
 #ifdef USE_NEON
 
 // aligned_alloc is available (via cstdlib/stdlib.h) with C++17/C11.
 #if __cplusplus >= 201703L || __STDC_VERSION__ >= 201112L
 #if !defined(__ANDROID__) || __ANDROID_API__ >= 28
-#if !defined(__APPLE__)  // Apple does not provide aligned_alloc.
+// Neither Apple nor Windows provide aligned_alloc.
+#if !defined(__APPLE__) && !defined(_WIN32)
 #define TFLITE_USE_STD_ALIGNED_ALLOC
 #endif
 #endif
@@ -79,7 +79,7 @@ inline void* aligned_alloc(size_t alignment, size_t size,
 }
 
 bool HasSdotInstruction() {
-  static const bool has_dotprod = ruy::DetectDotprod();
+  static const bool has_dotprod = DetectArmNeonDotprod();
   return has_dotprod;
 }
 
@@ -90,6 +90,32 @@ inline float AccumulateNeonLane(const float32x4_t lane) {
   return vgetq_lane_f32(lane, 0) + vgetq_lane_f32(lane, 1) +
          vgetq_lane_f32(lane, 2) + vgetq_lane_f32(lane, 3);
 #endif
+}
+
+// Empirically determined breakpoints on when to use CpuBackendGemm vs.
+// standard MatrixBatchVectorMultiplyAccumulate. Briefly, if the batch size
+// is above 8 and the device does not have sdot, use CpuBackendGemm. Otherwise,
+// for large batch sizes, it makes sense to use CpuBackendGemm if the matrix
+// is not extremely rectangular.
+bool UseCpuBackendGemm(int rows, int cols, int batch) {
+  if (!HasSdotInstruction()) {
+    return batch >= 8;
+  }
+  if (batch < 16) {
+    return false;
+  }
+  constexpr int kCpuBackendGemmThreshold = 2;
+  // Calculate "rectangularness" as a measure of how far from square the
+  // the LHS matrix is.
+  int row_rect = rows / cols;
+  int col_rect = cols / rows;
+  int rectangularness_lg2 =
+      row_rect > 0 ? FloorLog2(row_rect) : FloorLog2(col_rect);
+  int batch_lg2 = FloorLog2(batch);
+  // Large batch sizes move us above the threshold, but can be offset
+  // by significant rectangularness.
+  int batch_lg2_minus_rect_lg2 = batch_lg2 - rectangularness_lg2;
+  return batch_lg2_minus_rect_lg2 > kCpuBackendGemmThreshold;
 }
 
 inline int32_t AccumulateNeonLane(const int32x4_t lane) {
@@ -1015,7 +1041,7 @@ void NeonCpuBackendGemm(const int8_t* input, const int32_t* bias,
   lhs_params.order = cpu_backend_gemm::Order::kRowMajor;
   lhs_params.rows = n_output;
   lhs_params.cols = n_input;
-  lhs_params.cacheable = true;
+  lhs_params.cache_policy = cpu_backend_gemm::CachePolicy::kCacheIfLargeSpeedup;
 
   MatrixParams<int8_t> rhs_params;
   rhs_params.order = cpu_backend_gemm::Order::kColMajor;
@@ -1310,6 +1336,13 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
   const int postamble_half_start = m_cols & ~(kWeightsPerNeonLane - 1);
   const int postamble_start = m_cols & ~((kWeightsPerNeonLane >> 1) - 1);
 
+  int32_t* row_sums_ptr = row_sums;
+  if (row_sums == nullptr) {
+    row_sums_ptr = static_cast<int32_t*>(malloc(sizeof(int32_t) * m_rows));
+    memset(row_sums_ptr, 0, sizeof(int32_t) * m_rows);
+    NeonReductionSumVector(matrix, row_sums_ptr, m_rows, m_cols);
+  }
+
   for (int batch = 0; batch < n_batch; ++batch) {
     const float batch_scaling_factor = scaling_factors[batch];
     const int batch_input_offset = input_offset[batch];
@@ -1327,10 +1360,6 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
       // Initialize the dot product sum for the row to 0.
       int32x4_t dotprod_32x4 = vmovq_n_s32(0);
 
-      int32x4_t row_sum_32x4;
-      if (row_sums == nullptr) {
-        row_sum_32x4 = vmovq_n_s32(0);
-      }
       // Prefetch the row to cache.
       __builtin_prefetch(row_ptr, 0 /* prefetch for read */,
                          3 /* temporal locality */);
@@ -1358,10 +1387,6 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
         prod_16x8 =
             vmlal_s8(prod_16x8, vget_high_s8(s1_8x16), vget_high_s8(s2_8x16));
         dotprod_32x4 = vpadalq_s16(dotprod_32x4, prod_16x8);
-        if (row_sums == nullptr) {
-          const int16x8_t row_sum_16x8 = vpaddlq_s8(s2_8x16);
-          row_sum_32x4 = vpadalq_s16(row_sum_32x4, row_sum_16x8);
-        }
       }  // for col
 
       // Half iteration dealing only 8 elements
@@ -1375,29 +1400,24 @@ void NeonMatrixBatchVectorMultiplyAccumulateImpl(
         const int8x8_t s2_8x8 = vld1_s8((const int8_t*)(row_ptr + col));
         const int16x8_t prod_16x8 = vmull_s8(s1_8x8, s2_8x8);
         dotprod_32x4 = vpadalq_s16(dotprod_32x4, prod_16x8);
-        if (row_sums == nullptr) {
-          const int16x8_t row_sum_16x8 = vmovl_s8(s2_8x8);
-          row_sum_32x4 = vpadalq_s16(row_sum_32x4, row_sum_16x8);
-        }
         col += (kWeightsPerNeonLane >> 1);
       }
 
       int32_t dotprod = AccumulateNeonLane(dotprod_32x4);
-      int32_t row_sum = row_sums == nullptr ? AccumulateNeonLane(row_sum_32x4)
-                                            : row_sums[row];
 
       // Postamble loop.
       for (; col < m_cols; ++col) {
         dotprod += row_ptr[col] * aligned_vec[col];
-        if (row_sums == nullptr) {
-          row_sum += row_ptr[col];
-        }
       }  // for col
-      dotprod -= row_sum * batch_input_offset;
+      dotprod -= row_sums_ptr[row] * batch_input_offset;
       *result += dotprod * scale;
       ++result;
     }  // for row
   }    // for batch
+
+  if (row_sums == nullptr) {
+    free(row_sums_ptr);
+  }
   if (unaligned) {
     free(aligned_row_free);
   }
@@ -1410,6 +1430,23 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     int n_batch, float* __restrict__ result, const float* per_channel_scale,
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context) {
+#ifdef TFLITE_WITH_RUY_GEMV
+  const bool use_cpu_backend_gemm = true;
+#else
+  const bool use_cpu_backend_gemm = UseCpuBackendGemm(m_rows, m_cols, n_batch);
+#endif
+  if (input_offset == nullptr) {
+    if (use_cpu_backend_gemm && context) {
+      NeonMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
+                                              scaling_factors, n_batch, scratch,
+                                              result, context);
+      return;
+    }
+    NeonMatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
+                                            scaling_factors, n_batch, result);
+    return;
+  }
+
   if (compute_row_sums == nullptr || *compute_row_sums) {
     memset(row_sums, 0, sizeof(int32_t) * m_rows);
     NeonReductionSumVector(matrix, row_sums, m_rows, m_cols);
@@ -1418,72 +1455,70 @@ void NeonMatrixBatchVectorMultiplyAccumulate(
     }
   }
 
-#ifdef TFLITE_WITH_RUY_GEMV
-  if (m_rows % 4 == 0) {
-    const int32_t* bias = static_cast<const int32_t*>(nullptr);
-    NeonCpuBackendGemm(vectors, bias, matrix, n_batch, m_cols, m_rows, 0,
-                       scratch, context);
+  if (use_cpu_backend_gemm) {
+    if (context != nullptr && m_rows % 4 == 0) {
+      const int32_t* bias = static_cast<const int32_t*>(nullptr);
+      NeonCpuBackendGemm(vectors, bias, matrix, n_batch, m_cols, m_rows, 0,
+                         scratch, context);
 
-    // Multiply by float scaling factors and write to result
-    const int total_size = n_batch * m_rows;
-    int i = 0;
-    int32_t* scratch_ptr = scratch;
-    for (; i <= total_size - 8; i += 8, result += 8) {
-      float batch_scaling_factor0 = scaling_factors[i / m_rows];
-      float batch_scaling_factor1 = scaling_factors[(i + 4) / m_rows];
-      if (per_channel_scale) {
-        batch_scaling_factor0 *= per_channel_scale[i % m_rows];
-        batch_scaling_factor1 *= per_channel_scale[(i + 4) % m_rows];
+      // Multiply by float scaling factors and write to result
+      const int total_size = n_batch * m_rows;
+      int i = 0;
+      int32_t* scratch_ptr = scratch;
+      for (; i <= total_size - 8; i += 8, result += 8) {
+        const float batch_scaling_factor0 = scaling_factors[i / m_rows];
+        const float batch_scaling_factor1 = scaling_factors[(i + 4) / m_rows];
+        const int batch_input_offset0 = -input_offset[i / m_rows];
+        const int batch_input_offset1 = -input_offset[(i + 4) / m_rows];
+        float32x4_t scaling_factor0 = vdupq_n_f32(batch_scaling_factor0);
+        float32x4_t scaling_factor1 = vdupq_n_f32(batch_scaling_factor1);
+        if (per_channel_scale) {
+          const float32x4_t per_channel_scale0 =
+              vld1q_f32(&per_channel_scale[i % m_rows]);
+          const float32x4_t per_channel_scale1 =
+              vld1q_f32(&per_channel_scale[(i + 4) % m_rows]);
+          scaling_factor0 = vmulq_f32(scaling_factor0, per_channel_scale0);
+          scaling_factor1 = vmulq_f32(scaling_factor1, per_channel_scale1);
+        }
+        const int32x4_t input_offset0 = vdupq_n_s32(batch_input_offset0);
+        const int32x4_t input_offset1 = vdupq_n_s32(batch_input_offset1);
+        const int32x4_t row_sum0 = vld1q_s32(row_sums + (i % m_rows));
+        const int32x4_t row_sum1 = vld1q_s32(row_sums + ((i + 4) % m_rows));
+        const int32x4_t scratch_val0 = vld1q_s32(scratch_ptr + i);
+        const int32x4_t scratch_val1 = vld1q_s32(scratch_ptr + i + 4);
+        const int32x4_t dotprod0 =
+            vmlaq_s32(scratch_val0, row_sum0, input_offset0);
+        const int32x4_t dotprod1 =
+            vmlaq_s32(scratch_val1, row_sum1, input_offset1);
+        const float32x4_t float_val0 = vcvtq_f32_s32(dotprod0);
+        const float32x4_t float_val1 = vcvtq_f32_s32(dotprod1);
+        const float32x4_t result0 =
+            vmlaq_f32(vld1q_f32(result), float_val0, scaling_factor0);
+        const float32x4_t result1 =
+            vmlaq_f32(vld1q_f32(result + 4), float_val1, scaling_factor1);
+        vst1q_f32(result, result0);
+        vst1q_f32(result + 4, result1);
       }
-      const int batch_input_offset0 = -input_offset[i / m_rows];
-      const int batch_input_offset1 = -input_offset[(i + 4) / m_rows];
-      const float32x4_t scaling_factor0 = vdupq_n_f32(batch_scaling_factor0);
-      const float32x4_t scaling_factor1 = vdupq_n_f32(batch_scaling_factor1);
-      const int32x4_t input_offset0 = vdupq_n_s32(batch_input_offset0);
-      const int32x4_t input_offset1 = vdupq_n_s32(batch_input_offset1);
-      const int32x4_t row_sum0 = vld1q_s32(row_sums + (i % m_rows));
-      const int32x4_t row_sum1 = vld1q_s32(row_sums + ((i + 4) % m_rows));
-      const int32x4_t scratch_val0 = vld1q_s32(scratch_ptr + i);
-      const int32x4_t scratch_val1 = vld1q_s32(scratch_ptr + i + 4);
-      const int32x4_t dotprod0 =
-          vmlaq_s32(scratch_val0, row_sum0, input_offset0);
-      const int32x4_t dotprod1 =
-          vmlaq_s32(scratch_val1, row_sum1, input_offset1);
-      const float32x4_t float_val0 = vcvtq_f32_s32(dotprod0);
-      const float32x4_t float_val1 = vcvtq_f32_s32(dotprod1);
-      const float32x4_t result0 =
-          vmlaq_f32(vld1q_f32(result), float_val0, scaling_factor0);
-      const float32x4_t result1 =
-          vmlaq_f32(vld1q_f32(result + 4), float_val1, scaling_factor1);
-      vst1q_f32(result, result0);
-      vst1q_f32(result + 4, result1);
-    }
 
-    scratch_ptr += i;
-    for (; i < total_size; i++) {
-      const float batch_scaling_factor = scaling_factors[i / m_rows];
-      const int32_t zero_point = input_offset[i / m_rows];
-      int32_t x = *(scratch_ptr++);
-      x -= row_sums[i % m_rows] * zero_point;
-      *result += x * batch_scaling_factor;
-      ++result;
+      scratch_ptr += i;
+      for (; i < total_size; i++) {
+        float batch_scaling_factor = scaling_factors[i / m_rows];
+        if (per_channel_scale) {
+          batch_scaling_factor *= per_channel_scale[i % m_rows];
+        }
+        const int32_t zero_point = input_offset[i / m_rows];
+        int32_t dotprod = *(scratch_ptr++);
+        dotprod -= row_sums[i % m_rows] * zero_point;
+        *result += dotprod * batch_scaling_factor;
+        ++result;
+      }
+      return;
     }
-    return;
   }
-#endif
+
   NeonMatrixBatchVectorMultiplyAccumulateImpl(
       matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
       per_channel_scale, input_offset, row_sums);
-}
-
-void NeonMatrixBatchVectorMultiplyAccumulate(
-    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
-    const int8_t* __restrict__ vectors, const float* scaling_factors,
-    int n_batch, float* __restrict__ result, const float* per_channel_scale,
-    const int32_t* input_offset) {
-  NeonMatrixBatchVectorMultiplyAccumulateImpl(
-      matrix, m_rows, m_cols, vectors, scaling_factors, n_batch, result,
-      per_channel_scale, input_offset, nullptr);
 }
 
 inline int64x2x2_t MulAdd(int32x4_t acc, int32x4_t lhs, int32x4_t rhs) {
@@ -1857,60 +1892,99 @@ void NeonCwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
   }
 }
 
-void NeonCwiseClipping(int16_t* input, const int16_t clipping_value,
-                       int32_t n_batch, int32_t n_input) {
-  const int16x8_t max_dup = vdupq_n_s16(clipping_value);
-  const int16x8_t min_dup = vdupq_n_s16(-clipping_value);
-  for (int batch = 0; batch < n_batch; ++batch) {
-    int i = 0;
-    for (; i <= n_input - 16; i += 16) {
-      const int index = batch * n_input + i;
-      int16x8_t val_0 = vld1q_s16(input + index);
-      int16x8_t val_1 = vld1q_s16(input + index + 8);
-      val_0 = vminq_s16(val_0, max_dup);
-      val_1 = vminq_s16(val_1, max_dup);
-      val_0 = vmaxq_s16(val_0, min_dup);
-      val_1 = vmaxq_s16(val_1, min_dup);
-      vst1q_s16(input + index, val_0);
-      vst1q_s16(input + index + 8, val_1);
-    }
-    for (; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      if (input[index] > clipping_value) {
-        input[index] = clipping_value;
-      }
-      if (input[index] < -clipping_value) {
-        input[index] = -clipping_value;
-      }
-    }
+void NeonCwiseClipping(float* vector, const int v_size,
+                       const float clipping_value) {
+  const float32x4_t clipping_value_f32x4 = vmovq_n_f32(clipping_value);
+  const float32x4_t neg_clipping_value_f32x4 = vmovq_n_f32(-clipping_value);
+
+  int i = 0;
+  for (; i <= v_size - kFloatValuesPerNeonVector;
+       i += kFloatValuesPerNeonVector) {
+    // Load from memory to vector.
+    float32x4_t v_f32x4 = vld1q_f32(vector + i);
+    // Clip between clipping_value and -clipping_value.
+    v_f32x4 = vminq_f32(clipping_value_f32x4, v_f32x4);
+    v_f32x4 = vmaxq_f32(neg_clipping_value_f32x4, v_f32x4);
+    // Save to output.
+    vst1q_f32(vector + i, v_f32x4);
+  }
+  for (; i < v_size; i++) {
+    vector[i] = std::max(std::min(clipping_value, vector[i]), -clipping_value);
   }
 }
 
-void NeonCwiseClipping(int8_t* input, const int8_t clipping_value,
-                       int32_t n_batch, int32_t n_input) {
+void NeonCwiseClipping(int16_t* vector, const int v_size,
+                       const int16_t clipping_value) {
+  const int16x8_t max_dup = vdupq_n_s16(clipping_value);
+  const int16x8_t min_dup = vdupq_n_s16(-clipping_value);
+
+  int i = 0;
+  for (; i <= v_size - kInt16ValuesPerNeonVector * 2;
+       i += kInt16ValuesPerNeonVector * 2) {
+    int16x8_t val_0 = vld1q_s16(vector + i);
+    int16x8_t val_1 = vld1q_s16(vector + i + kInt16ValuesPerNeonVector);
+    val_0 = vminq_s16(val_0, max_dup);
+    val_1 = vminq_s16(val_1, max_dup);
+    val_0 = vmaxq_s16(val_0, min_dup);
+    val_1 = vmaxq_s16(val_1, min_dup);
+    vst1q_s16(vector + i, val_0);
+    vst1q_s16(vector + i + kInt16ValuesPerNeonVector, val_1);
+  }
+  for (; i < v_size; i++) {
+    vector[i] = std::max(std::min(clipping_value, vector[i]),
+                         static_cast<int16_t>(-clipping_value));
+  }
+}
+
+void NeonCwiseClipping(int8_t* vector, const int v_size,
+                       const int8_t clipping_value) {
   const int8x16_t max_dup = vdupq_n_s8(clipping_value);
   const int8x16_t min_dup = vdupq_n_s8(-clipping_value);
-  for (int batch = 0; batch < n_batch; ++batch) {
-    int i = 0;
-    for (; i <= n_input - 32; i += 32) {
-      const int index = batch * n_input + i;
-      int8x16_t val_0 = vld1q_s8(input + index);
-      int8x16_t val_1 = vld1q_s8(input + index + 16);
-      val_0 = vminq_s8(val_0, max_dup);
-      val_1 = vminq_s8(val_1, max_dup);
-      val_0 = vmaxq_s8(val_0, min_dup);
-      val_1 = vmaxq_s8(val_1, min_dup);
-      vst1q_s8(input + index, val_0);
-      vst1q_s8(input + index + 16, val_1);
-    }
-    for (; i < n_input; ++i) {
-      const int index = batch * n_input + i;
-      if (input[index] > clipping_value) {
-        input[index] = clipping_value;
+
+  int i = 0;
+  for (; i < v_size - kInt8ValuesPerNeonVector * 2;
+       i += kInt8ValuesPerNeonVector * 2) {
+    int8x16_t val_0 = vld1q_s8(vector + i);
+    int8x16_t val_1 = vld1q_s8(vector + i + kInt8ValuesPerNeonVector);
+    val_0 = vminq_s8(val_0, max_dup);
+    val_1 = vminq_s8(val_1, max_dup);
+    val_0 = vmaxq_s8(val_0, min_dup);
+    val_1 = vmaxq_s8(val_1, min_dup);
+    vst1q_s8(vector + i, val_0);
+    vst1q_s8(vector + i + kInt8ValuesPerNeonVector, val_1);
+  }
+  for (; i < v_size; i++) {
+    vector[i] = std::max(std::min(clipping_value, vector[i]),
+                         static_cast<int8_t>(-clipping_value));
+  }
+}
+
+void NeonSparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result) {
+  const int kBlockSize = 4;
+  TFLITE_DCHECK_EQ(m_cols % kBlockSize, 0);
+
+  for (int batch = 0; batch < n_batch; batch++) {
+    const float* matrix_ptr = matrix;
+    for (int row = 0; row < m_rows; row++) {
+      float32x4_t acc_32x4 = vmovq_n_f32(0.0);
+      const float* vector_in_batch = vector + batch * m_cols;
+
+      for (int i = segments[row]; i < segments[row + 1]; i++) {
+        const int block_start_index = indices[i] * kBlockSize;
+        const float* vector_block_in_batch_ptr =
+            vector_in_batch + block_start_index;
+
+        // Load 4 float values from the vector and matrix row.
+        float32x4_t vector_f32x4 = vld1q_f32(vector_block_in_batch_ptr);
+        float32x4_t matrix_f32x4 = vld1q_f32(matrix_ptr);
+        // Multiply the vector and matrix row and add to accumulator.
+        acc_32x4 = vmlaq_f32(acc_32x4, matrix_f32x4, vector_f32x4);
+        matrix_ptr += kBlockSize;
       }
-      if (input[index] < -clipping_value) {
-        input[index] = -clipping_value;
-      }
+      result[batch * m_rows + row] += AccumulateNeonLane(acc_32x4);
     }
   }
 }
@@ -2143,34 +2217,6 @@ bool NeonIsZeroVector(const int8_t* vector, int v_size) {
   return true;
 }
 
-void NeonClipVector(const float* vector, int v_size, float abs_limit,
-                    float* result) {
-  // If v_size is not divisible by the vector size, then we need to process the
-  // final few elements sequentially. postamble_start shows the start index
-  // where this should happen.
-  const int postamble_start =
-      RoundDownVectors<kFloatValuesPerNeonVector>(v_size);
-
-  // Replicate abs_limit and -abs_limit in two vectors.
-  const float32x4_t abs_limit_f32x4 = vmovq_n_f32(abs_limit);
-  const float32x4_t neg_abs_limit_f32x4 = vmovq_n_f32(-abs_limit);
-
-  int v = 0;
-  for (; v < postamble_start; v += kFloatValuesPerNeonVector) {
-    // Load from memory to vector.
-    float32x4_t v_f32x4 = vld1q_f32(vector + v);
-    // Clip between abs_limit and -abs_limit.
-    float32x4_t result_f32x4 = vminq_f32(abs_limit_f32x4, v_f32x4);
-    result_f32x4 = vmaxq_f32(neg_abs_limit_f32x4, result_f32x4);
-    // Save to output.
-    vst1q_f32(result + v, result_f32x4);
-  }
-  // Postamble loop.
-  for (; v < v_size; v++) {
-    result[v] = std::max(std::min(abs_limit, vector[v]), -abs_limit);
-  }
-}
-
 void NeonVectorScalarMultiply(const int8_t* vector, const int v_size,
                               const float scale, float* result) {
   // Here the assumption is that each buffer is 4-byte aligned.
@@ -2246,7 +2292,7 @@ void NeonVectorScalarMultiply(const int8_t* vector, const int v_size,
 // Also consider changing the rounding stragey from "ties to away" to
 // "ties to even" since vcvtnq_s32_f32 is generally more available.
 inline int32x4_t RoundToNearest(const float32x4_t input) {
-#if defined(_ACAT_ARM64)
+#if __ARM_ARCH >= 8
   return vcvtaq_s32_f32(input);
 #else
   static const float32x4_t zero_val_dup = vdupq_n_f32(0.0f);
@@ -2339,7 +2385,7 @@ void NeonSymmetricQuantizeFloats(const float* values, const int size,
     const int32x4_t f2i0_i32x4 = RoundToNearest(mul0_f32x4);
     const int32x4_t f2i1_i32x4 = RoundToNearest(mul1_f32x4);
 
-    // Implements the vectorized version of the folowing block:
+    // Implements the vectorized version of the following block:
     //  quantized_values[i] = std::min(kScale, std::max(-kScale,
     //  quantized_value));
     int32x4_t max0_i32x4 = vmaxq_s32(f2i0_i32x4, neg_scale_i32x4);

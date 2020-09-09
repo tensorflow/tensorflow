@@ -238,7 +238,11 @@ REGISTER_OP("_FusedBatchNormEx")
     .Output("reserve_space_1: U")
     .Output("reserve_space_2: U")
     .Output("reserve_space_3: U")
+#ifdef ENABLE_MKLDNN_V1
+    .Attr("T: {half, float, bfloat16}")
+#else
     .Attr("T: {half, float}")
+#endif
     .Attr("U: {float}")
     .Attr("epsilon: float = 0.0001")
     .Attr("exponential_avg_factor: float = 1.0")
@@ -248,7 +252,9 @@ REGISTER_OP("_FusedBatchNormEx")
     .Attr("is_training: bool = true")
     .SetShapeFn(shape_inference::FusedBatchNormExShape)
     .Doc(R"doc(
-*NOTE*: Do not invoke this operator directly in Python. Grappler is
+Internal FusedBatchNorm operation: reserved for internal use.
+
+Do not invoke this operator directly in Python. A fusion optimization is
 expected to create these operators.
 )doc");
 
@@ -357,13 +363,7 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle s;
-      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
-      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
-      c->set_output(0, s);
-      return Status::OK();
-    });
+    .SetShapeFn(shape_inference::Conv2DBackpropInputShape);
 
 // TODO(jeff): Instead of 'use_cudnn_for_gpu', maybe we should have a
 // more general string attribute ('kernel_impl'?) that can be used to
@@ -404,11 +404,30 @@ REGISTER_OP("_FusedConv2D")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ------------------------------------ //
     .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ----------------------------------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
     // ---------------------------------------------------------------------- //
     .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding)
     .Doc(R"doc(
-*NOTE*: Do not invoke this operator directly in Python. Grappler is
-expected to create these operators.
+Performs a convolution followed by a specified series of operations.
+
+The inputs to the convolution are `input` and `filter`. The series of operations
+that follows is specified by the `fused_ops` attribute, which is a list of TF op
+names specified as strings (e.g. "Relu"). They are performed in order, where the
+(first) input to each op is the output of the preceding op. The first input and
+the output of each fused_op must be of type T.
+
+Currently supported fused_op combinations are: [X] and [X,A], where X is one of
+{"BiasAdd","FusedBatchNorm"} and A is one of {"Elu","Relu","Relu6"}.
+
+* The first input to op X is the Conv2D result, and the additional input(s) to X
+are specified by `args`.
+* If there is an op A specified, the output of op X is the input to op A, and op
+A produces the _FusedConv2D output. Otherwise, op X produces the _FusedConv2D
+output.
+
+*NOTE*: Do not invoke this operator directly in Python. Grappler is expected to
+create these operators.
 )doc");
 
 namespace {
@@ -558,10 +577,11 @@ REGISTER_OP("DepthwiseConv2dNative")
     .Output("output: T")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShapeWithExplicitPadding);
 
 REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Input("input_sizes: int32")
@@ -570,7 +590,8 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropInput")
     .Output("output: T")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -588,7 +609,8 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
     .Output("output: T")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -598,6 +620,26 @@ REGISTER_OP("DepthwiseConv2dNativeBackpropFilter")
       c->set_output(0, s);
       return Status::OK();
     });
+
+REGISTER_OP("_FusedDepthwiseConv2dNative")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("args: num_args * T")
+    .Output("output: T")
+    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("num_args: int >= 0")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("fused_ops: list(string) = []")
+    // Attributes for the FusedBatchNorm ------------------------------------ //
+    .Attr("epsilon: float = 0.0001")
+    // Attributes for the LeakyRelu ----------------------------------------- //
+    .Attr("leakyrelu_alpha: float = 0.2")
+    // ---------------------------------------------------------------------- //
+
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
 // --------------------------------------------------------------------------
 REGISTER_OP("Conv3D")
@@ -804,11 +846,12 @@ REGISTER_OP("MaxPool")
         "uint16, qint8} = DT_FLOAT")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("data_format: {'NHWC', 'NCHW', 'NCHW_VECT_C'} = 'NHWC'")
     .Input("input: T")
     .Output("output: T")
-    .SetShapeFn(shape_inference::MaxPoolShape);
+    .SetShapeFn(shape_inference::MaxPoolShapeWithExplicitPadding);
 
 REGISTER_OP("MaxPoolV2")
     .Attr(
@@ -828,7 +871,8 @@ REGISTER_OP("MaxPoolV2")
 REGISTER_OP("MaxPoolGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Input("orig_input: T")
     .Input("orig_output: T")
@@ -853,6 +897,7 @@ REGISTER_OP("MaxPoolGradV2")
       return UnchangedShapeWithRank(c, 4);
     });
 
+// TODO(b/150813181): Implement explicit padding.
 REGISTER_OP("MaxPoolGradGrad")
     .Attr("ksize: list(int) >= 4")
     .Attr("strides: list(int) >= 4")
@@ -1631,6 +1676,7 @@ REGISTER_OP("_MklDepthwiseConv2dNative")
     .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
 
@@ -1649,6 +1695,7 @@ REGISTER_OP("_MklConv2D")
     .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn(shape_inference::Conv2DShape)
     .Doc(R"doc(
@@ -1658,13 +1705,14 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_MklEagerConv2D")
+REGISTER_OP("_MklNativeConv2D")
     .Input("input: T")
     .Input("filter: T")
     .Output("output: T")
     .Attr("T: {bfloat16, float}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrStringWithExplicit())
     .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
@@ -1791,6 +1839,7 @@ REGISTER_OP("_MklConv2DBackpropFilter")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
@@ -1807,7 +1856,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_MklEagerConv2DBackpropFilter")
+REGISTER_OP("_MklNativeConv2DBackpropFilter")
     .Input("input: T")
     .Input("filter_sizes: int32")
     .Input("out_backprop: T")
@@ -1951,6 +2000,7 @@ REGISTER_OP("_MklConv2DBackpropInput")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle s;
@@ -1967,7 +2017,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
-REGISTER_OP("_MklEagerConv2DBackpropInput")
+REGISTER_OP("_MklNativeConv2DBackpropInput")
     .Input("input_sizes: int32")
     .Input("filter: T")
     .Input("out_backprop: T")
@@ -2250,6 +2300,7 @@ REGISTER_OP("_MklMaxPool")
     .Attr("strides: list(int) >= 4")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr("workspace_enabled: bool = false")
     .Input("input: T")
     .Input("mkl_input: uint8")
@@ -2277,6 +2328,7 @@ REGISTER_OP("_MklMaxPoolGrad")
     .Attr("workspace_enabled: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr(GetExplicitPaddingsAttrString())
     .Input("orig_input: T")
     .Input("orig_output: T")
     .Input("grad: T")
@@ -3366,5 +3418,17 @@ REGISTER_OP("QuantizedDepthwiseConv2DWithBiasAndReluAndRequantize")
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("padding_list: list(int) = []")
     .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
+REGISTER_OP("IsotonicRegression")
+    .Input("input: T")
+    .Output("output: output_dtype")
+    .Output("segments: int32")
+    .Attr("T: realnumbertype")
+    .Attr("output_dtype: {half, bfloat16, float, double} = DT_FLOAT")
+    .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* context) {
+      context->set_output(0, context->input(0));
+      context->set_output(1, context->input(0));
+      return tensorflow::Status::OK();
+    });
 
 }  // namespace tensorflow

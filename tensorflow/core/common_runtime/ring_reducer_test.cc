@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/device_resolver_local.h"
-#include "tensorflow/core/common_runtime/dma_helper.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/test_collective_executor_mgr.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
@@ -46,9 +45,8 @@ namespace tensorflow {
 class FailTestRMA : public CollectiveRemoteAccessLocal {
  public:
   FailTestRMA(const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-              std::shared_ptr<UnboundedWorkQueue> work_queue, int64 step_id,
-              int fail_after)
-      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, work_queue, step_id),
+              int64 step_id, int fail_after)
+      : CollectiveRemoteAccessLocal(dev_mgr, dev_resolver, step_id),
         fail_after_(fail_after) {}
 
   bool MaybeFail(const StatusCallback& done) {
@@ -196,10 +194,11 @@ class RingReducerTest : public ::testing::Test {
     }
     dev_resolver_ = absl::make_unique<DeviceResolverLocal>(dev_mgr_.get());
     work_queue_ = std::make_shared<UnboundedWorkQueue>(Env::Default(), "test");
-    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), work_queue_,
-                           kStepId, fail_after);
-    col_exec_ = new BaseCollectiveExecutor(
-        &col_exec_mgr_, rma_, kStepId, dev_mgr_.get(), gpu_ring_order_.get());
+    rma_ = new FailTestRMA(dev_mgr_.get(), dev_resolver_.get(), kStepId,
+                           fail_after);
+    col_exec_ = new BaseCollectiveExecutor(&col_exec_mgr_, rma_, kStepId,
+                                           dev_mgr_.get(),
+                                           gpu_ring_order_.get(), work_queue_);
     col_params_.name = "test_collective";
     static const int kGroupKey = 5;
     col_params_.group.group_key = kGroupKey;
@@ -331,16 +330,13 @@ class RingReducerTest : public ::testing::Test {
           CHECK(actual.CopyFrom(*inst, inst->shape()));
           VLOG(1) << "actual " << actual.SummarizeValue(100);
         } else if (device_type_ == DEVICE_GPU) {
-          Notification note;
           Device* dev = instances_[di]->device_;
           auto* dev_info = dev->tensorflow_gpu_device_info();
           CHECK(dev_info);
-          dev_info->default_context->CopyDeviceTensorToCPU(
-              inst, "" /*tensor_name*/, dev, &actual, [&note](const Status& s) {
-                CHECK(s.ok());
-                note.Notify();
-              });
-          note.WaitForNotification();
+          CHECK(dev_info->default_context
+                    ->CopyDeviceTensorToCPUSync(inst, "" /*tensor_name*/, dev,
+                                                &actual)
+                    .ok());
         }
 
         auto alias = actual.template unaligned_flat<T>();
@@ -397,12 +393,13 @@ class RingReducerTest : public ::testing::Test {
     cp->instance.impl_details.subdiv_permutations.clear();
     cp->subdiv_rank.clear();
     // Create a stub ring reducer only for testing param initialization.
-    RingReducer reducer;
-    TF_CHECK_OK(reducer.InitializeCollectiveParams(cp));
+    RingReducer* reducer = new RingReducer;
+    core::ScopedUnref unref(reducer);
+    TF_CHECK_OK(reducer->InitializeCollectiveParams(cp));
     EXPECT_EQ(expected_subdiv_perms,
               cp->instance.impl_details.subdiv_permutations);
     EXPECT_EQ(expected_subdiv_rank, cp->subdiv_rank);
-    reducer.group_size_tensor_ready_.Notify();  // To unblock destructor.
+    reducer->group_size_tensor_ready_.Notify();  // To unblock destructor.
   }
 
   class DeviceInstance {
@@ -458,13 +455,9 @@ class RingReducerTest : public ::testing::Test {
         init_f(&cpu_tensor);
         auto* dev_info = device_->tensorflow_gpu_device_info();
         CHECK(dev_info);
-        Notification note;
-        dev_info->default_context->CopyCPUTensorToDevice(
-            &cpu_tensor, device_, &tensor_, [&note](const Status& s) {
-              CHECK(s.ok());
-              note.Notify();
-            });
-        note.WaitForNotification();
+        CHECK(dev_info->default_context
+                  ->CopyCPUTensorToDeviceSync(&cpu_tensor, device_, &tensor_)
+                  .ok());
       } else {
         LOG(FATAL) << "Unsupported device_type " << device_type_;
       }
@@ -514,14 +507,15 @@ class RingReducerTest : public ::testing::Test {
       // Prepare a RingReducer instance.
       string exec_key =
           strings::StrCat(col_params_.instance.instance_key, ":0:0");
-      RingReducer reducer;
-      CollectiveContext col_ctx(parent_->col_exec_, parent_->dev_mgr_.get(),
-                                &ctx, &op_params, col_params_, exec_key,
-                                kStepId, &tensor_, &tensor_);
-      TF_CHECK_OK(reducer.InitializeCollectiveContext(&col_ctx));
+      RingReducer* reducer = new RingReducer;
+      core::ScopedUnref unref(reducer);
+      auto col_ctx = std::make_shared<CollectiveContext>(
+          parent_->col_exec_, parent_->dev_mgr_.get(), &ctx, &op_params,
+          col_params_, exec_key, kStepId, &tensor_, &tensor_);
+      TF_CHECK_OK(reducer->InitializeCollectiveContext(col_ctx));
 
       // Run the all-reduce.
-      reducer.Run([this](Status s) { status_ = s; });
+      reducer->Run([this](Status s) { status_ = s; });
       if (status_.ok()) {
         CHECK(tensor_.CopyFrom(*ctx.mutable_output(0), tensor_.shape()));
       }

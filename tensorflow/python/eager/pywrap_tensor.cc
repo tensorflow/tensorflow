@@ -21,9 +21,11 @@ limitations under the License.
 #include <cmath>
 
 #include "structmember.h"  // NOLINT // For PyMemberDef
+#include "pybind11/pybind11.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/eager/c_api.h"
 #include "tensorflow/c/eager/c_api_internal.h"
+#include "tensorflow/c/tf_status.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -32,44 +34,13 @@ limitations under the License.
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 #include "tensorflow/python/lib/core/ndarray_tensor_bridge.h"
 #include "tensorflow/python/lib/core/numpy.h"
+#include "tensorflow/python/lib/core/py_exception_registry.h"
 #include "tensorflow/python/lib/core/py_seq_tensor.h"
 #include "tensorflow/python/lib/core/safe_ptr.h"
 
 // forward declare
 struct EagerTensor;
-
-namespace {
-
-// An instance of _EagerTensorProfiler that will receive callbacks about
-// events on eager tensors. This is set by TFE_Py_InitEagerTensor, if at all.
-PyObject* eager_tensor_profiler = nullptr;
-
-TFE_Context* GetContextHandle(PyObject* py_context) {
-  tensorflow::Safe_PyObjectPtr py_context_handle(
-      PyObject_GetAttrString(py_context, "_handle"));
-  if (py_context_handle == nullptr) {
-    // Current Python code makes sure this never happens. If it does, or
-    // becomes hard to maintain, we can call the ensure_initialized() method
-    // here.
-    PyErr_SetString(
-        PyExc_TypeError,
-        "Expected `context` argument in EagerTensor constructor to have a "
-        "`_handle` attribute but it did not. Was eager Context initialized?");
-    return nullptr;
-  }
-
-  auto* ctx = reinterpret_cast<TFE_Context*>(
-      PyCapsule_GetPointer(py_context_handle.get(), nullptr));
-  if (ctx == nullptr) {
-    PyErr_SetString(PyExc_TypeError,
-                    tensorflow::strings::StrCat(
-                        "Expected context._handle to contain a PyCapsule "
-                        "encoded pointer to TFE_Context. Got ",
-                        Py_TYPE(py_context_handle.get())->tp_name)
-                        .c_str());
-  }
-  return ctx;
-}
+namespace tensorflow {
 
 // Convert a TFE_TensorHandle to a Python numpy.ndarray object.
 // The two may share underlying storage so changes to one may reflect in the
@@ -100,6 +71,55 @@ PyObject* TFE_TensorHandleToNumpy(TFE_TensorHandle* handle, TF_Status* status) {
   CHECK_NE(ret, nullptr);
   return ret;
 }
+}  // namespace tensorflow
+namespace {
+
+using tensorflow::TFE_TensorHandleToNumpy;
+
+// An instance of _EagerTensorProfiler that will receive callbacks about
+// events on eager tensors. This is set by TFE_Py_InitEagerTensor, if at all.
+PyObject* eager_tensor_profiler = nullptr;
+
+// Read-only dict. Please don't use this in any setting where the dict might
+// actually get mutated. This is only used to pass empty kwargs when creating a
+// new EagerTensor.
+PyObject* EmptyDict() {
+  static PyObject* empty_dict = PyDict_New();
+  return empty_dict;
+}
+
+PyObject* EmptyTuple() {
+  static PyObject* empty_tuple = PyTuple_New(0);
+  return empty_tuple;
+}
+
+TFE_Context* GetContextHandle(PyObject* py_context) {
+  tensorflow::Safe_PyObjectPtr py_context_handle(
+      PyObject_GetAttrString(py_context, "_handle"));
+  if (py_context_handle == nullptr) {
+    // Current Python code makes sure this never happens. If it does, or
+    // becomes hard to maintain, we can call the ensure_initialized() method
+    // here.
+    PyErr_SetString(
+        PyExc_TypeError,
+        "Expected `context` argument in EagerTensor constructor to have a "
+        "`_handle` attribute but it did not. Was eager Context initialized?");
+    return nullptr;
+  }
+
+  auto* ctx = reinterpret_cast<TFE_Context*>(
+      PyCapsule_GetPointer(py_context_handle.get(), nullptr));
+  if (ctx == nullptr) {
+    PyErr_SetString(PyExc_TypeError,
+                    tensorflow::strings::StrCat(
+                        "Expected context._handle to contain a PyCapsule "
+                        "encoded pointer to TFE_Context. Got ",
+                        Py_TYPE(py_context_handle.get())->tp_name)
+                        .c_str());
+  }
+  return ctx;
+}
+
 
 // Helper function to convert `v` to a tensorflow::DataType and store it in
 // `*out`. Returns true on success, false otherwise.
@@ -162,6 +182,15 @@ int ConvertDeviceName(PyObject* obj, const char** dst) {
   }
 
   return 1;
+}
+
+void RaiseExceptionTypeFromTFStatus(TF_Status* status) {
+  TF_Code code = TF_GetCode(status);
+  PyObject* exception = tensorflow::PyExceptionRegistry::Lookup(code);
+  PyErr_SetObject(exception,
+                  pybind11::make_tuple(pybind11::none(), pybind11::none(),
+                                       TF_Message(status))
+                      .ptr());
 }
 
 }  // namespace
@@ -287,19 +316,12 @@ TFE_TensorHandle* ConvertToEagerTensorUncached(TFE_Context* ctx,
       strstr(device_name, "/device:CPU:0") != nullptr) {
     handle = make_safe(TFE_TensorHandleCopyToDevice(handle.get(), ctx,
                                                     device_name, status.get()));
-    if (MaybeRaiseExceptionFromTFStatus(status.get(), PyExc_RuntimeError)) {
+    const TF_Code code = TF_GetCode(status.get());
+    if (code != TF_OK) {
+      RaiseExceptionTypeFromTFStatus(status.get());
       return nullptr;
     }
   }
-
-  // We always enable implicit mirroring for constants. Without this, code
-  // written previously under the assumption that
-  //
-  //   with tf.device('GPU:0'): x = tf.constant(1.0)
-  //
-  // will be placed in the GPU will suffer a non-trivial performance regression
-  // (measured at ~20% for certain benchmarks).
-  handle->handle->EnableImplicitMirroring();
 
   return handle.release();
 }
@@ -341,6 +363,8 @@ typedef struct EagerTensor {
   char unused[kMaxEagerTensorParentSize];
   TFE_TensorHandle* handle;
   int64_t id;
+  // Indicates whether it's a packed tensor or not.
+  bool is_packed;
   // This mirrors tensorflow.core.framework.ops.Tensor._handle_data Which will
   // be None for tensors of type other than DT_RESOURCE. For DT_RESOURCE
   // tensors, this will contain a serialized HandleData proto with shape
@@ -414,6 +438,7 @@ bool MaybeInvokeCreatedOnEagerTensorProfiler(EagerTensor* created_tensor) {
 int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   self->id = get_uid();
   self->handle = nullptr;
+  self->is_packed = false;
   Py_INCREF(Py_None);
   self->handle_data = Py_None;
   Py_INCREF(Py_None);
@@ -494,7 +519,9 @@ static PyObject* EagerTensor_datatype_enum(EagerTensor* self) {
 static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   auto handle = self->handle;
   int n = TFE_TensorHandleNumDims(handle, &self->status);
-  if (MaybeRaiseExceptionFromTFStatus(&self->status, nullptr)) {
+  TF_Code code = TF_GetCode(&self->status);
+  if (code != TF_OK) {
+    RaiseExceptionTypeFromTFStatus(&self->status);
     // Cleanup self->status before returning.
     self->status.status = tensorflow::Status::OK();
     return nullptr;
@@ -504,13 +531,18 @@ static PyObject* EagerTensor_shape_tuple(EagerTensor* self) {
   for (int i = 0; i < n; ++i) {
     PyObject* dim =
         PyLong_FromLongLong(TFE_TensorHandleDim(handle, i, &self->status));
-    if (MaybeRaiseExceptionFromTFStatus(&self->status, nullptr) ||
-        dim == nullptr || PyTuple_SetItem(shape, i, dim) != 0) {
+    code = TF_GetCode(&self->status);
+    if (code != TF_OK || dim == nullptr ||
+        PyTuple_SetItem(shape, i, dim) != 0) {
+      if (code != TF_OK) {
+        RaiseExceptionTypeFromTFStatus(&self->status);
+      } else {
+        PyErr_SetString(PyExc_RuntimeError, "Error while creating shape");
+      }
       // Cleanup self->status before returning.
       self->status.status = tensorflow::Status::OK();
       Py_DECREF(shape);
       if (dim != nullptr) Py_DECREF(dim);
-      PyErr_SetString(PyExc_RuntimeError, "Error while creating shape");
       return nullptr;
     }
   }
@@ -643,6 +675,11 @@ static PyObject* EagerTensor_backing_device(EagerTensor* self) {
 #endif
 }
 
+// Getter `is_packed`.
+static PyObject* EagerTensor_is_packed(EagerTensor* self) {
+  return PyBool_FromLong(self->is_packed);
+}
+
 static PyGetSetDef EagerTensor_getsetters[] = {
     {const_cast<char*>("_id"), (getter)EagerTensor_getid, nullptr,
      const_cast<char*>("Tensor ID."), nullptr},
@@ -650,6 +687,9 @@ static PyGetSetDef EagerTensor_getsetters[] = {
      const_cast<char*>("Device of op that produced the tensor."), nullptr},
     {const_cast<char*>("backing_device"), (getter)EagerTensor_backing_device,
      nullptr, const_cast<char*>("Device on which tensor's memory is resident."),
+     nullptr},
+    {const_cast<char*>("is_packed"), (getter)EagerTensor_is_packed, nullptr,
+     const_cast<char*>("Whether the EagerTensor is a packed tensor or not."),
      nullptr},
     {const_cast<char*>("_handle_data"), (getter)EagerTensor_handle_data,
      (setter)EagerTensor_sethandle_data,
@@ -758,7 +798,11 @@ static PyTypeObject _EagerTensorType = {
     sizeof(EagerTensor),                /* tp_basicsize */
     0,                                  /* tp_itemsize */
     (destructor)EagerTensor_dealloc,    /* tp_dealloc */
+#if PY_VERSION_HEX < 0x03080000
     nullptr,                            /* tp_print */
+#else
+    0, /* tp_vectorcall_offset */
+#endif
     nullptr,                            /* tp_getattr */
     nullptr,                            /* tp_setattr */
     nullptr,                            /* tp_compare */
@@ -805,14 +849,16 @@ TFE_TensorHandle* EagerTensor_Handle(const PyObject* o) {
   return reinterpret_cast<const EagerTensor*>(o)->handle;
 }
 
-PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle) {
+PyObject* EagerTensorFromHandle(TFE_TensorHandle* handle,
+                                const bool is_packed) {
   if (handle == nullptr) {
     return nullptr;
   }
   EagerTensor* t = reinterpret_cast<EagerTensor*>(
-      EagerTensorType->tp_new(EagerTensorType, Py_None, Py_None));
+      EagerTensorType->tp_new(EagerTensorType, EmptyTuple(), EmptyDict()));
   if (t != nullptr) {
     t->id = get_uid();
+    t->is_packed = is_packed;
     Py_INCREF(Py_None);
     t->handle_data = Py_None;
     Py_INCREF(Py_None);

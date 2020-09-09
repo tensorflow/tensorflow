@@ -14,11 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/Support/Debug.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
 #define DEBUG_TYPE "tf-functional-to-executor"
@@ -40,19 +40,19 @@ namespace {
 //      return %graph_results#...
 //    }
 struct FunctionalToExecutorDialectConversion
-    : public FunctionPass<FunctionalToExecutorDialectConversion> {
+    : public PassWrapper<FunctionalToExecutorDialectConversion, FunctionPass> {
   void runOnFunction() override;
 };
 }  // end anonymous namespace
 
 void FunctionalToExecutorDialectConversion::runOnFunction() {
-  if (getFunction().getBlocks().size() != 1) {
+  if (!llvm::hasSingleElement(getFunction())) {
     LLVM_DEBUG(llvm::dbgs() << "Expect single block function, skip conversion "
                                "to tf_executor dialect\n");
     return;
   }
   auto loc = getFunction().getLoc();
-  mlir::Block& body = getFunction().getBody().front();
+  mlir::Block& body = getFunction().front();
   // Find region of interest and ReturnOp.
   auto copy_range = body.without_terminator();
   if (copy_range.begin() != copy_range.end() &&
@@ -95,7 +95,7 @@ void FunctionalToExecutorDialectConversion::runOnFunction() {
   }
 }
 
-std::unique_ptr<OpPassBase<FuncOp>>
+std::unique_ptr<OperationPass<FuncOp>>
 CreateFunctionalToExecutorDialectConversionPass() {
   return std::make_unique<FunctionalToExecutorDialectConversion>();
 }

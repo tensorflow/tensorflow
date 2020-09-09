@@ -1,4 +1,3 @@
-
 /* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -13,12 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <string>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {
@@ -26,8 +30,8 @@ namespace {
 using ::testing::ElementsAreArray;
 
 enum class TestType {
-  CONST = 0,
-  DYNAMIC = 1,
+  kConst = 0,
+  kDynamic = 1,
 };
 
 template <typename InputType>
@@ -36,7 +40,7 @@ class ExpandDimsOpModel : public SingleOpModel {
   ExpandDimsOpModel(int axis, std::initializer_list<int> input_shape,
                     std::initializer_list<InputType> input_data,
                     TestType input_tensor_types) {
-    if (input_tensor_types == TestType::DYNAMIC) {
+    if (input_tensor_types == TestType::kDynamic) {
       input_ = AddInput(GetTensorType<InputType>());
       axis_ = AddInput(TensorType_INT32);
     } else {
@@ -50,7 +54,7 @@ class ExpandDimsOpModel : public SingleOpModel {
 
     BuildInterpreter({input_shape, {1}});
 
-    if (input_tensor_types == TestType::DYNAMIC) {
+    if (input_tensor_types == TestType::kDynamic) {
       PopulateTensor<InputType>(input_, input_data);
       PopulateTensor<int32_t>(axis_, {axis});
     }
@@ -69,18 +73,18 @@ class ExpandDimsOpModel : public SingleOpModel {
 template <typename T>
 class ExpandDimsOpTest : public ::testing::Test {
  public:
-  static std::vector<TestType> _range_;
+  static std::vector<TestType> range_;
 };
 
 template <>
-std::vector<TestType> ExpandDimsOpTest<TestType>::_range_{TestType::CONST,
-                                                          TestType::DYNAMIC};
+std::vector<TestType> ExpandDimsOpTest<TestType>::range_{TestType::kConst,
+                                                         TestType::kDynamic};
 
 using DataTypes = ::testing::Types<float, int8_t, int16_t, int32_t>;
 TYPED_TEST_SUITE(ExpandDimsOpTest, DataTypes);
 
 TYPED_TEST(ExpandDimsOpTest, PositiveAxis) {
-  for (TestType test_type : ExpandDimsOpTest<TestType>::_range_) {
+  for (TestType test_type : ExpandDimsOpTest<TestType>::range_) {
     std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
 
     ExpandDimsOpModel<TypeParam> axis_0(0, {2, 2}, values, test_type);
@@ -101,7 +105,7 @@ TYPED_TEST(ExpandDimsOpTest, PositiveAxis) {
 }
 
 TYPED_TEST(ExpandDimsOpTest, NegativeAxis) {
-  for (TestType test_type : ExpandDimsOpTest<TestType>::_range_) {
+  for (TestType test_type : ExpandDimsOpTest<TestType>::range_) {
     std::initializer_list<TypeParam> values = {-1, 1, -2, 2};
 
     ExpandDimsOpModel<TypeParam> m(-1, {2, 2}, values, test_type);
@@ -115,7 +119,7 @@ TEST(ExpandDimsOpTest, StrTensor) {
   std::initializer_list<std::string> values = {"abc", "de", "fghi"};
 
   // this test will fail on TestType::CONST
-  ExpandDimsOpModel<std::string> m(0, {3}, values, TestType::DYNAMIC);
+  ExpandDimsOpModel<std::string> m(0, {3}, values, TestType::kDynamic);
   m.Invoke();
   EXPECT_THAT(m.GetValues(), ElementsAreArray(values));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 3}));

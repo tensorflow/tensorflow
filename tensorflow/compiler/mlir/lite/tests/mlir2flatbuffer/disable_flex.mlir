@@ -2,7 +2,8 @@
 
 // CHECK: error: 'tf.Div' op is neither a custom op nor a flex op
 // CHECK: error: failed while converting: 'main'
-// CHECK: Ops that can be supported by the flex runtime (enabled via setting the -emit-select-tf-ops flag): Div.
+// CHECK: Ops that can be supported by the flex runtime (enabled via setting the -emit-select-tf-ops flag):
+// CHECK: tf.Div {name = "div"}
 
 func @main(tensor<4xf32>) -> tensor<4xf32> {
 ^bb0(%arg0: tensor<4xf32>):

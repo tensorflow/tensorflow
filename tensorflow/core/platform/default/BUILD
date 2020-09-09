@@ -87,6 +87,7 @@ cc_library(
         "//tensorflow/core/platform:env.h",
         "//tensorflow/core/platform:file_system.h",
         "//tensorflow/core/platform:file_system_helper.h",
+        "//tensorflow/core/platform:ram_file_system.h",
         "//tensorflow/core/platform:threadpool.h",
     ],
     tags = [
@@ -267,6 +268,7 @@ cc_library(
         "//tensorflow/core/platform:init_main.h",
         "//tensorflow/core/platform:mem.h",
         "//tensorflow/core/platform:numa.h",
+        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
         "//tensorflow/core/platform:snappy.h",
     ],
     copts = tf_copts(),
@@ -285,6 +287,8 @@ cc_library(
         "//tensorflow/core/platform:byte_order",
         "//tensorflow/core/platform:dynamic_annotations",
         "//tensorflow/core/platform:logging",
+        "//tensorflow/core/platform:macros",
+        "//tensorflow/core/platform:profile_utils_cpu_utils",
         "//tensorflow/core/platform:types",
         "//tensorflow/core/platform",
         "@snappy",
@@ -508,6 +512,7 @@ filegroup(
 filegroup(
     name = "mobile_srcs_no_runtime",
     srcs = [
+        "casts.h",
         "context.h",
         "dynamic_annotations.h",
         "env.cc",
@@ -519,6 +524,8 @@ filegroup(
         "resource.cc",
         "stacktrace.h",
         "tracing_impl.h",
+        "//tensorflow/core/platform:profile_utils/cpu_utils.h",
+        "//tensorflow/core/platform:profile_utils/i_cpu_utils_helper.h",
     ],
     visibility = ["//tensorflow/core/platform:__pkg__"],
 )

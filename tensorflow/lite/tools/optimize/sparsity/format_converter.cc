@@ -161,7 +161,7 @@ TfLiteStatus FormatConverter<T>::DenseToSparse(const T* src_data) {
     if (dst_dim_idx == num_expanded_dims) {
       // We have a complete coordinate. Add the element to the value array if it
       // is not zero, or if the last dimension is dense.
-      if (src_data[dense_tensor_idx] != 0) {
+      if (!IsZero(src_data[dense_tensor_idx])) {
         data_.push_back(src_data[dense_tensor_idx]);
         // Mark all sparse dimensions that their current indices have nonzeroes.
         for (auto dst_dim : dst_sparse_dims) {
@@ -250,7 +250,7 @@ FormatConverter<T>::FormatConverter(const std::vector<int>& shape,
   for (int i = 0; i < original_rank; i++) {
     if (block_dim < block_map_.size() && block_map_[block_dim] == i) {
       int orig_dim = traversal_order_[original_rank + block_dim];
-      block_size_[i] = sparsity.dim_metadata[orig_dim].dense_size;
+      block_size_[block_dim] = sparsity.dim_metadata[orig_dim].dense_size;
       blocked_shape_[i] = shape[i] / sparsity.dim_metadata[orig_dim].dense_size;
       block_dim++;
     } else {
@@ -273,9 +273,10 @@ void FormatConverter<T>::Populate(const T* src_data, std::vector<int> indices,
     }
 
     for (; i < indices.size(); i++) {
-      int orig_dim = block_map_[traversal_order_[i] - orig_rank];
+      const int block_idx = traversal_order_[i] - orig_rank;
+      const int orig_dim = block_map_[block_idx];
       orig_idx[orig_dim] =
-          orig_idx[orig_dim] * block_size_[orig_dim] + indices[i];
+          orig_idx[orig_dim] * block_size_[block_idx] + indices[i];
     }
 
     data_[GetFlattenedIndex(orig_idx, dense_shape_)] = src_data[*src_data_ptr];
@@ -316,9 +317,21 @@ TfLiteStatus FormatConverter<T>::SparseToDense(const T* src_data) {
   return kTfLiteOk;
 }
 
+template <>
+bool FormatConverter<Eigen::half>::IsZero(const Eigen::half val) {
+  auto zero = Eigen::half(0);
+  return Eigen::half_impl::operator==(val, zero);
+}
+
+template <typename T>
+bool FormatConverter<T>::IsZero(const T val) {
+  return (val == 0);
+}
+
 template class FormatConverter<int32_t>;
 template class FormatConverter<int8_t>;
 template class FormatConverter<float>;
+template class FormatConverter<Eigen::half>;
 
 }  // namespace sparsity
 }  // namespace optimize

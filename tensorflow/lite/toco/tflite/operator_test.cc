@@ -30,14 +30,14 @@ namespace {
 class OperatorTest : public ::testing::Test {
  protected:
   // Return the operator for the given name and type.
-  const BaseOperator& GetOperator(const string& name, OperatorType type) {
-    using OpsByName = std::map<string, std::unique_ptr<BaseOperator>>;
+  const BaseOperator& GetOperator(const std::string& name, OperatorType type) {
+    using OpsByName = std::map<std::string, std::unique_ptr<BaseOperator>>;
     using OpsByType = std::map<OperatorType, std::unique_ptr<BaseOperator>>;
 
     static auto* by_name = new OpsByName(BuildOperatorByNameMap());
     static auto* by_type = new OpsByType(BuildOperatorByTypeMap());
 
-    // Make sure the two maps were consitently built.
+    // Make sure the two maps were consistently built.
     CHECK(by_name->count(name)) << "No operator for '" << name << "'.";
     BaseOperator* op1 = by_name->at(name).get();
     CHECK(op1->type() == type) << "while verifying '" << name << "'.";
@@ -86,7 +86,7 @@ class OperatorTest : public ::testing::Test {
   // Verify serialization and deserialization of simple operators (those
   // that don't have any configuration parameters).
   template <typename T>
-  void CheckSimpleOperator(const string& name, OperatorType type) {
+  void CheckSimpleOperator(const std::string& name, OperatorType type) {
     Options options;
     auto output_toco_op =
         SerializeAndDeserialize(GetOperator(name, type), T(), &options);
@@ -99,7 +99,7 @@ class OperatorTest : public ::testing::Test {
   }
 
   template <typename T>
-  void CheckReducerOperator(const string& name, OperatorType type) {
+  void CheckReducerOperator(const std::string& name, OperatorType type) {
     T op;
 
     op.keep_dims = false;
@@ -436,11 +436,25 @@ TEST_F(OperatorTest, ResizeBilinear_HalfPixelCenters) {
 TEST_F(OperatorTest, ResizeNearestNeighbor) {
   ResizeNearestNeighborOperator op;
   op.align_corners = true;
+  op.half_pixel_centers = false;
   auto output_toco_op =
       SerializeAndDeserialize(GetOperator("RESIZE_NEAREST_NEIGHBOR",
                                           OperatorType::kResizeNearestNeighbor),
                               op);
   EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
+}
+
+TEST_F(OperatorTest, ResizeNearestNeighbor_HalfPixelCenters) {
+  ResizeNearestNeighborOperator op;
+  op.align_corners = true;
+  op.half_pixel_centers = true;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("RESIZE_NEAREST_NEIGHBOR",
+                                          OperatorType::kResizeNearestNeighbor),
+                              op);
+  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+  EXPECT_EQ(op.half_pixel_centers, output_toco_op->half_pixel_centers);
 }
 
 TEST_F(OperatorTest, Svdf) {
@@ -614,6 +628,13 @@ TEST_F(OperatorTest, BuiltinSquaredDifference) {
   SquaredDifferenceOperator op;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("SQUARED_DIFFERENCE", OperatorType::kSquaredDifference), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
+TEST_F(OperatorTest, BuiltinScatterNd) {
+  ScatterNdOperator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SCATTER_ND", OperatorType::kScatterNd), op);
   ASSERT_NE(nullptr, output_toco_op.get());
 }
 
@@ -933,7 +954,35 @@ TEST_F(OperatorTest, VersioningTanhTest) {
 }
 
 TEST_F(OperatorTest, VersioningStridedSliceTest) {
-  SimpleVersioningTest<StridedSliceOperator>();
+  StridedSliceOperator op;
+  op.inputs = {"input1"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model uint8_model;
+  Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[0]);
+  uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& int8_array = int8_model.GetOrCreateArray(op.inputs[0]);
+  int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
+
+  Model bool_model;
+  Array& bool_array = bool_model.GetOrCreateArray(op.inputs[0]);
+  bool_array.data_type = ArrayDataType::kBool;
+  OperatorSignature bool_signature = {.op = &op, .model = &bool_model};
+  EXPECT_EQ(base_op->GetVersion(bool_signature), 3);
+
+  op.start_indices = {0, 0, 0, 0, 0};
+  op.stop_indices = {1, 2, 2, 2, 2};
+  op.strides = {1, 1, 1, 1, 1};
+  EXPECT_EQ(base_op->GetVersion(uint8_signature), 4);
+  EXPECT_EQ(base_op->GetVersion(int8_signature), 4);
+  EXPECT_EQ(base_op->GetVersion(bool_signature), 4);
 }
 
 TEST_F(OperatorTest, VersioningSpaceToDepthTest) {
@@ -982,8 +1031,6 @@ TEST_F(OperatorTest, VersioningSumTest) {
 
 TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }
 
-TEST_F(OperatorTest, VersioningSubTest) { SimpleVersioningTest<SubOperator>(); }
-
 void SimpleMulVersioningTest(ArrayDataType data_type, float multiplier,
                              int version) {
   MulOperator op;
@@ -1012,6 +1059,60 @@ TEST_F(OperatorTest, VersioningMulTest) {
   SimpleMulVersioningTest(ArrayDataType::kUint8, 0.5f, 1);
   SimpleMulVersioningTest(ArrayDataType::kInt8, 0.5f, 2);
   SimpleMulVersioningTest(ArrayDataType::kInt8, 2.0f, 3);
+}
+
+template <typename OpType>
+void SimpleTwoInputsVersioningTest(ArrayDataType data_type, Shape shape1,
+                                   Shape shape2, int version) {
+  OpType op;
+  op.inputs = {"input1", "input2"};
+  op.outputs = {"output"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* base_op = operator_by_type_map.at(op.type).get();
+
+  Model model;
+  Array& input0 = model.GetOrCreateArray(op.inputs[0]);
+  Array& input1 = model.GetOrCreateArray(op.inputs[1]);
+  Array& output = model.GetOrCreateArray(op.outputs[0]);
+
+  input0.data_type = data_type;
+  input0.copy_shape(shape1);
+  input1.data_type = data_type;
+  input1.copy_shape(shape2);
+  output.data_type = data_type;
+
+  OperatorSignature signature = {.op = &op, .model = &model};
+  EXPECT_EQ(base_op->GetVersion(signature), version);
+}
+
+TEST_F(OperatorTest, VersioningSubTest) {
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kUint8,
+                                             {1, 2, 2, 2}, {1, 2, 2, 2}, 1);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kInt8, {1, 2, 2, 2},
+                                             {1, 2, 2, 2}, 2);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kUint8, {1, 2, 2},
+                                             {1, 2, 2}, 1);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kInt8, {1, 2, 2},
+                                             {1, 2, 2}, 2);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kUint8,
+                                             {1, 2, 2, 2}, {1, 2, 2, 1}, 1);
+  SimpleTwoInputsVersioningTest<SubOperator>(ArrayDataType::kInt8, {1, 2, 2, 2},
+                                             {1, 2, 2, 1}, 2);
+  SimpleTwoInputsVersioningTest<SubOperator>(
+      ArrayDataType::kUint8, {1, 2, 2, 2, 2}, {1, 2, 2, 2, 1}, 3);
+  SimpleTwoInputsVersioningTest<SubOperator>(
+      ArrayDataType::kInt8, {1, 2, 2, 2, 2}, {1, 2, 2, 2, 1}, 3);
+}
+
+TEST_F(OperatorTest, VersioningDivTest) {
+  SimpleTwoInputsVersioningTest<DivOperator>(ArrayDataType::kUint8,
+                                             {1, 2, 2, 2}, {1, 2, 2, 2}, 1);
+  SimpleTwoInputsVersioningTest<DivOperator>(ArrayDataType::kInt8, {1, 2, 2},
+                                             {1, 2, 2}, 1);
+  SimpleTwoInputsVersioningTest<DivOperator>(ArrayDataType::kUint8,
+                                             {1, 2, 2, 2}, {1, 2, 2, 1}, 1);
+  SimpleTwoInputsVersioningTest<DivOperator>(
+      ArrayDataType::kInt8, {1, 2, 2, 2, 2}, {1, 2, 2, 2, 1}, 2);
 }
 
 TEST_F(OperatorTest, VersioningPadTest) { SimpleVersioningTest<PadOperator>(); }

@@ -30,6 +30,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/lite/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/context_util.h"
 #include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/experimental/writer/enum_mapping.h"
@@ -47,9 +48,13 @@ class SubgraphWriter {
       flatbuffers::Offset<flatbuffers::Vector<uint8_t>>* output_options,
       CustomOptionsFormat* custom_options_format);
 
-  // Construct an subgraph writer for the specified `subgraph`. Then,
-  // a uses .Write() or .GetBuffer(...)  to extract the data.
-  explicit SubgraphWriter(Subgraph* subgraph) : subgraph_(subgraph) {
+  // Construct a subgraph writer for the specified `subgraph`. Then, use
+  // .Write() or .GetBuffer(...) to extract the data.
+  explicit SubgraphWriter(Subgraph* subgraph)
+      : subgraph_(subgraph),
+        inputs_(subgraph->inputs()),
+        outputs_(subgraph->outputs()),
+        execution_plan_(subgraph->execution_plan()) {
     buffers_.push_back(std::make_pair(nullptr, 0));
   }
 
@@ -65,6 +70,11 @@ class SubgraphWriter {
   void SetUnusedTensors(const std::set<int>& unused_tensors) {
     unused_tensors_ = unused_tensors;
   }
+  // Sets custom inputs, outputs, and execution_plan so that a portion of the
+  // subgraph is written to the buffer instead of the whole subgraph.
+  TfLiteStatus SetCustomInputOutput(const std::vector<int>& inputs,
+                                    const std::vector<int>& outputs,
+                                    const std::vector<int>& execution_plan);
 
  private:
   template <class T>
@@ -83,6 +93,12 @@ class SubgraphWriter {
 
   template <class T>
   std::vector<int> RemapTensorIndicesToWritten(const T& input);
+
+  // Checks if given `input`, `output`, and `execution_plan` represents a valid
+  // model within the Subgraph.
+  TfLiteStatus CheckInputOutput(const std::vector<int>& inputs,
+                                const std::vector<int>& outputs,
+                                const std::vector<int>& execution_plan);
 
   int GetOpCodeForBuiltin(int builtin_op_index) {
     // auto it = builtin_op_to_opcode_.find(builtin_op_index);
@@ -107,6 +123,12 @@ class SubgraphWriter {
 
   // The subgraph we are writing
   Subgraph* subgraph_;
+  // Input tensor indices to be written.
+  std::vector<int> inputs_;
+  // Output tensor indices to be written.
+  std::vector<int> outputs_;
+  // Order of nodes to be written.
+  std::vector<int> execution_plan_;
   // Keep track of byte buffers
   std::vector<std::pair<const uint8_t*, size_t>> buffers_;
   // List of op codes and mappings from builtin or custom op to opcode

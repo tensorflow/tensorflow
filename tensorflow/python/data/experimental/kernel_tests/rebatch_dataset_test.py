@@ -17,51 +17,367 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.core.example import example_pb2
-from tensorflow.core.example import feature_pb2
-from tensorflow.python.data.experimental.ops import batching
 from tensorflow.python.data.experimental.ops import distribute
-from tensorflow.python.data.experimental.ops import grouping
-from tensorflow.python.data.experimental.ops import readers
-from tensorflow.python.data.experimental.ops import scan_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import combinations
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.lib.io import python_io
-from tensorflow.python.ops import array_ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import image_ops
-from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import parsing_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.platform import test
 
 
+class BatchSizesForWorkerTest(test_base.DatasetTestBase,
+                              parameterized.TestCase):
+
+  def _test(self, global_batch_size, num_workers, num_replicas_per_worker,
+            is_batch_size_static):
+    """Test that all constraints are met for given parameters."""
+    if not is_batch_size_static:
+      # Adding a constant value here prevents downstream computation from
+      # statically deriving the value of global batch size when running
+      # in graph mode.
+      global_batch_size += constant_op.constant(0, dtypes.int64)
+
+    batch_sizes_list = []
+    for i in range(num_workers):
+      batch_sizes_list.append(
+          self.evaluate(
+              distribute.batch_sizes_for_worker(global_batch_size, num_workers,
+                                                num_replicas_per_worker, i)))
+    for batch_sizes in batch_sizes_list:
+      # Constraint (A): for any worker, len(batch_sizes) == W * R
+      self.assertLen(batch_sizes, num_workers * num_replicas_per_worker)
+      # Constraint (B): for any worker, sum(batch_sizes) == G
+      self.assertAllEqual(np.sum(batch_sizes), global_batch_size)
+
+    # Each per-worker batch is split into num_workers global steps
+    for step_index in range(num_workers):
+      actual_global_batch = 0
+      offset = step_index * num_replicas_per_worker
+      for batch_sizes in batch_sizes_list:
+        actual_global_batch += np.sum(batch_sizes[offset:offset +
+                                                  num_replicas_per_worker])
+      # Constraint (C): for any step, batch size across all workers add up to G.
+      self.assertAllEqual(
+          global_batch_size,
+          actual_global_batch,
+      )
+
+    # Constraint (D): Batch size of any two replicas differs by at most one
+    self.assertLessEqual(np.max(batch_sizes_list) - np.min(batch_sizes_list), 1)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(is_batch_size_static=[True, False])))
+  def testBasic(self, is_batch_size_static):
+    # Manually verify basic test case.
+    global_batch_size = 8
+    num_workers = 2
+    num_replicas_per_worker = 2
+    for worker_index in range(4):
+      batch_sizes = distribute.batch_sizes_for_worker(global_batch_size,
+                                                      num_workers,
+                                                      num_replicas_per_worker,
+                                                      worker_index)
+      self.assertAllEqual([2, 2, 2, 2],
+                          tensor_util.constant_value(batch_sizes))
+    self._test(global_batch_size, num_workers, num_replicas_per_worker,
+               is_batch_size_static)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(is_batch_size_static=[True, False])))
+  def testBatchSizeIndivisibleByNumWorkers(self, is_batch_size_static):
+    global_batch_size = 4
+    num_workers = 3
+    num_replicas_per_worker = 1
+
+    def get_batch_sizes_for_worker(worker_index):
+      return tensor_util.constant_value(
+          distribute.batch_sizes_for_worker(global_batch_size, num_workers,
+                                            num_replicas_per_worker,
+                                            worker_index))
+
+    # Manually verify this test case.
+    self.assertAllEqual([2, 1, 1], get_batch_sizes_for_worker(0))
+    self.assertAllEqual([1, 1, 2], get_batch_sizes_for_worker(1))
+    self.assertAllEqual([1, 2, 1], get_batch_sizes_for_worker(2))
+    self._test(global_batch_size, num_workers, num_replicas_per_worker,
+               is_batch_size_static)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(is_batch_size_static=[True, False])))
+  def testBatchSizeIndivisibleByNumReplicas(self, is_batch_size_static):
+    self._test(
+        global_batch_size=4,
+        num_workers=1,
+        num_replicas_per_worker=5,
+        is_batch_size_static=is_batch_size_static)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(is_batch_size_static=[True, False])))
+  def testBatchSizeSmallerThanNumReplicas(self, is_batch_size_static):
+    self._test(
+        global_batch_size=4,
+        num_workers=2,
+        num_replicas_per_worker=5,
+        is_batch_size_static=is_batch_size_static)
+
+  @combinations.generate(
+      combinations.times(
+          test_base.default_test_combinations(),
+          combinations.combine(is_batch_size_static=[True, False])))
+  def testBatchSizeSmallerThanNumWorkers(self, is_batch_size_static):
+    self._test(
+        global_batch_size=4,
+        num_workers=5,
+        num_replicas_per_worker=1,
+        is_batch_size_static=is_batch_size_static)
+
+
 def _flat_shapes(dataset):
-  return nest.flatten(dataset_ops.get_legacy_output_shapes(dataset))
+  return [
+      ts.as_list()
+      for ts in nest.flatten(dataset_ops.get_legacy_output_shapes(dataset))
+  ]
 
 
 class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  ##############################################################################
+  # The following tests exercise our static computation of output_shapes.
+  ##############################################################################
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testShapeInferenceNotAllBatchSizesEqual(self):
+    dataset = dataset_ops.Dataset.range(8).batch(4, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 1, 1])
+    expected_shapes = [[None]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
+  def testShapeInferenceInputBatchDimDivisible(self, drop_remainder):
+    dataset = dataset_ops.Dataset.range(8).batch(4, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 2], drop_remainder=drop_remainder)
+    expected_shapes = [[2]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testShapeInferenceInputBatchDimUnknown(self):
+    dataset = dataset_ops.Dataset.range(8).batch(4, drop_remainder=False)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 2], drop_remainder=False)
+    expected_shapes = [[None]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testShapeInferenceInputBatchDimUnknownWithDropRemainder(self):
+    dataset = dataset_ops.Dataset.range(8).batch(4, drop_remainder=False)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 2], drop_remainder=True)
+    expected_shapes = [[2]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testShapeInferenceInputBatchDimIndivisible(self):
+    dataset = dataset_ops.Dataset.range(10).batch(5, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 2], drop_remainder=False)
+    expected_shapes = [[None]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testShapeInferenceInputBatchDimIndivisibleWithDropRemainder(self):
+    dataset = dataset_ops.Dataset.range(10).batch(5, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 2], drop_remainder=True)
+    expected_shapes = [[2]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+  ##############################################################################
+  # The following tests check _RebatchDataset's output.
+  ##############################################################################
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
+  def testBasic(self, drop_remainder):
+    dataset = dataset_ops.Dataset.range(8).batch(4, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 2], drop_remainder=drop_remainder)
+
+    expected_shapes = [[2]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+    expected_output = [[0, 1], [2, 3], [4, 5], [6, 7]]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testPartialBatch(self):
+    dataset = dataset_ops.Dataset.range(5).batch(4, drop_remainder=False)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 2], drop_remainder=False)
+
+    expected_shapes = [[None]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+    expected_output = [[0, 1], [2, 3], [4]]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations()))
+  def testPartialBatchWithDropRemainder(self):
+    dataset = dataset_ops.Dataset.range(5).batch(4, drop_remainder=False)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 2], drop_remainder=True)
+
+    expected_shapes = [[2]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+    expected_output = [[0, 1], [2, 3]]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
+  def testBatchSizeGreaterThanOriginal(self, drop_remainder):
+    dataset = dataset_ops.Dataset.range(12).batch(
+        4, drop_remainder=False)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[6], drop_remainder=drop_remainder)
+
+    expected_output = [[0, 1, 2, 3, 4, 5], [6, 7, 8, 9, 10, 11]]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
+  def testEmptySplits(self, drop_remainder):
+    # It's possible for splits to be empty if the batch size is smaller than
+    # the number of replicas. Here, we use an example with batch_size == 4
+    # and num_replicas == 5.
+    dataset = dataset_ops.Dataset.range(8).batch(4, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[1, 1, 1, 1, 0], drop_remainder=drop_remainder)
+
+    expected_shapes = [[None]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+    expected_output = [[0], [1], [2], [3], [], [4], [5], [6], [7], []]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
+  def testScalarBatchSizeInput(self, drop_remainder):
+    dataset = dataset_ops.Dataset.range(8).batch(
+        4, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=2, drop_remainder=drop_remainder)
+
+    expected_shapes = [[2]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+    expected_output = [[0, 1], [2, 3], [4, 5], [6, 7]]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testMultipleBatches(self):
+    dataset = dataset_ops.Dataset.range(16).batch(
+        2, drop_remainder=True).batch(
+            4, drop_remainder=True)
+    self.assertEqual([[4, 2]], _flat_shapes(dataset))
+
+    rebatched_dataset = distribute._RebatchDataset(dataset, [2, 2])
+    self.assertEqual([[2, 2]], _flat_shapes(rebatched_dataset))
+    # Each element is a list of 2 elements where each element is a list of 2.
+    expected_output = [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]],
+                       [[12, 13], [14, 15]]]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNestedDictionaryOutput(self):
+    dataset = dataset_ops.Dataset.range(8).map(
+        lambda x: {"a": x, "b": {"c": x + 1}}).batch(4, drop_remainder=True)
+    rebatched_dataset = distribute._RebatchDataset(dataset, [2, 2])
+    self.assertEqual([[2], [2]], _flat_shapes(rebatched_dataset))
+
+    expected_output = [{"a": [0, 1], "b": {"c": [1, 2]}},
+                       {"a": [2, 3], "b": {"c": [3, 4]}},
+                       {"a": [4, 5], "b": {"c": [5, 6]}},
+                       {"a": [6, 7], "b": {"c": [7, 8]}}]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         combinations.combine(drop_remainder=[True, False])))
+  def testRaggedDataset(self, drop_remainder):
+    # Set up a dataset that produces ragged tensors with a static batch size.
+    dataset = dataset_ops.Dataset.from_tensor_slices(
+        ragged_tensor.RaggedTensor.from_row_lengths(
+            list(range(10)), [1, 2, 3, 4]))
+    # The map changes the internal representation of the ragged tensor.
+    # This test will fail if we don't normalize the tensor representation.
+    dataset = dataset.batch(4, drop_remainder=True).map(lambda x: x)
+
+    rebatched_dataset = distribute._RebatchDataset(
+        dataset, batch_sizes=[2, 2])
+
+    expected_output = [
+        ragged_tensor.RaggedTensor.from_row_lengths(list(range(3)), [1, 2]),
+        ragged_tensor.RaggedTensor.from_row_lengths(list(range(3, 10)),
+                                                    [3, 4]),
+    ]
+    self.assertDatasetProduces(rebatched_dataset, expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoneDataset(self):
+    # Some datasets, e.g. datasets with None tensors, have components without
+    # output shapes. Test that this doesn't break rebatching shape inference
+    # logic.
+    dataset = dataset_ops.Dataset.range(4)
+    dataset = dataset.map(lambda x: (x, None))
+    dataset = dataset.batch(4, drop_remainder=True)
+    _ = distribute._RebatchDataset(dataset, batch_sizes=[2, 2])
+
+
+class LegacyRebatchDatasetTest(test_base.DatasetTestBase,
+                               parameterized.TestCase):
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(drop_remainder=[True, False])))
   def testBasic(self, drop_remainder):
-    dataset = dataset_ops.Dataset.range(1024).batch(
-        32, drop_remainder=drop_remainder)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[8] if drop_remainder else [None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
+    dataset = dataset_ops.Dataset.range(8).batch(
+        4, drop_remainder=drop_remainder)
+    rebatched_dataset = distribute._LegacyRebatchDataset(
+        dataset, num_replicas=2)
 
-    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
+    expected_shapes = [[2]] if drop_remainder else [[None]]
+    self.assertEqual(expected_shapes, _flat_shapes(rebatched_dataset))
+
+    expected_output = [[0, 1], [2, 3], [4, 5], [6, 7]]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -70,71 +386,54 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     # decode_image results in a tensor of completely unknown shape (i.e. unknown
     # rank)
     dataset = dataset.map(image_ops.decode_image)
-    self.assertEqual([tensor_shape.TensorShape(None)], _flat_shapes(dataset))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    # Note that we are just testing the dataset shapes, not the actual output.
     self.assertEqual([tensor_shape.TensorShape(None)],
-                     _flat_shapes(rebatched_dataset))
+                     nest.flatten(
+                         dataset_ops.get_legacy_output_shapes(dataset)))
+    rebatched_dataset = distribute._LegacyRebatchDataset(
+        dataset, num_replicas=4)
+    # Note that we are just testing the dataset shapes, not the actual output.
+    self.assertEqual(
+        [tensor_shape.TensorShape(None)],
+        nest.flatten(dataset_ops.get_legacy_output_shapes(rebatched_dataset)))
 
   @combinations.generate(test_base.default_test_combinations())
   def testCanHandleUnknownDims(self):
     dataset = dataset_ops.Dataset.range(1000)
     dataset = dataset.batch(10, drop_remainder=False)
     dataset = dataset.batch(10, drop_remainder=False)
-    self.assertEqual([[None, None]],
-                     [ts.as_list() for ts in _flat_shapes(dataset)])
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
+    self.assertEqual([[None, None]], _flat_shapes(dataset))
+    rebatched_dataset = distribute._LegacyRebatchDataset(
+        dataset, num_replicas=4)
     # Note that we are just testing the dataset shapes, not the actual output.
-    self.assertEqual([[None, None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
+    self.assertEqual([[None, None]], _flat_shapes(rebatched_dataset))
 
   @combinations.generate(test_base.default_test_combinations())
   def testScalarInputError(self):
     dataset = dataset_ops.Dataset.range(1024)
-    distribute._RebatchDataset(dataset.batch(4), num_replicas=4)
-    with self.assertRaisesRegexp(ValueError, ("You can fix the issue "
-                                              "by adding the `batch`")):
-      distribute._RebatchDataset(dataset, num_replicas=4)
+    distribute._LegacyRebatchDataset(dataset.batch(4), num_replicas=4)
+    with self.assertRaisesRegex(ValueError, ("You can fix the issue "
+                                             "by adding the `batch`")):
+      distribute._LegacyRebatchDataset(dataset, num_replicas=4)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(drop_remainder=[True, False])))
   def testBatchNotDivisibleByNumReplicas(self, drop_remainder):
-    dataset = dataset_ops.Dataset.range(1024).batch(
-        32, drop_remainder=drop_remainder)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=5)
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    expected_output = []
-    i = 0
-    for _ in range(32):  # number of steps
-      # first four minibatches have seven elements
-      for _ in range(4):
-        expected_output.append([k for k in range(i, i + 7)])
-        i += 7
-      # last minibatch has four elements
-      expected_output.append([k for k in range(i, i + 4)])
-      i += 4
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testBatchSizeNotDivisibleByNumReplicas2(self):
-    dataset = dataset_ops.Dataset.range(32).batch(16, drop_remainder=True)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=5)
-    # This will rebatch into sub-batches of size 4, since
-    # ceil(16 / 5) = 4. However, that means only the first 4 replicas will get
-    # data.
-    expected_output = [[k for k in range(i, i + 4)] for i in range(0, 16, 4)]
-    expected_output.extend([[]])  # Last replica gets an empty batch
-    expected_output.extend(
-        [[k for k in range(i, i + 4)] for i in range(16, 32, 4)])
-    expected_output.extend([[]])  # Last replica gets an empty batch
+    dataset = dataset_ops.Dataset.range(8).batch(
+        4, drop_remainder=drop_remainder)
+    rebatched_dataset = distribute._LegacyRebatchDataset(
+        dataset, num_replicas=3)
+    self.assertEqual([[None]], _flat_shapes(rebatched_dataset))
+    # This rebatches into sub-batches of size 2, since ceil(4 / 3) = 2. However,
+    # this means that only the first 2 replicas will get data.
+    expected_output = [[0, 1], [2, 3], [], [4, 5], [6, 7], []]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   @combinations.generate(test_base.default_test_combinations())
   def testTupleOutput(self):
     dataset = dataset_ops.Dataset.range(1024).map(lambda x: (x, x)).batch(32)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
+    rebatched_dataset = distribute._LegacyRebatchDataset(
+        dataset, num_replicas=4)
     expected_output = [([k for k in range(i, i + 8)],  # pylint: disable=g-complex-comprehension
                         [k for k in range(i, i + 8)])
                        for i in range(0, 1024, 8)]
@@ -142,352 +441,63 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
   @combinations.generate(test_base.default_test_combinations())
   def testNestedDictionaryOutput(self):
-    dataset = dataset_ops.Dataset.range(1024).map(
-        lambda x: {"a": x, "b": {"c": x}}).batch(32)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    expected_output = [{"a": [k for k in range(i, i + 8)],  # pylint: disable=g-complex-comprehension
-                        "b": {"c": [k for k in range(i, i + 8)]}}
-                       for i in range(0, 1024, 8)]
+    dataset = dataset_ops.Dataset.range(8).map(
+        lambda x: {"a": x, "b": {"c": x + 1}}).batch(4)
+    rebatched_dataset = distribute._LegacyRebatchDataset(
+        dataset, num_replicas=2)
+    expected_output = [{"a": [0, 1], "b": {"c": [1, 2]}},
+                       {"a": [2, 3], "b": {"c": [3, 4]}},
+                       {"a": [4, 5], "b": {"c": [5, 6]}},
+                       {"a": [6, 7], "b": {"c": [7, 8]}}]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(drop_remainder=[True, False])))
   def testFinalPartialBatch(self, drop_remainder):
-    dataset = dataset_ops.Dataset.range(1032).batch(
-        32, drop_remainder=drop_remainder)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[8] if drop_remainder else [None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-
-    # if drop_remainder, the final partial batch is dropped, even though it
-    # makes up a complete minibatch.
-    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
-    if not drop_remainder:
-      # The last partial batch of size 8 is split over 4 replicas
-      expected_output.extend(
-          [[k for k in range(i, i + 2)] for i in range(1024, 1032, 2)])
+    dataset = dataset_ops.Dataset.range(10).batch(
+        4, drop_remainder=drop_remainder)
+    rebatched_dataset = distribute._LegacyRebatchDataset(
+        dataset, num_replicas=2)
+    self.assertEqual([[2] if drop_remainder else [None]],
+                     _flat_shapes(rebatched_dataset))
+    if drop_remainder:
+      expected_output = [[0, 1], [2, 3], [4, 5], [6, 7]]
+    else:
+      expected_output = [[0, 1], [2, 3], [4, 5], [6, 7], [8], [9]]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   @combinations.generate(
       combinations.times(test_base.default_test_combinations(),
                          combinations.combine(drop_remainder=[True, False])))
   def testFinalPartialBatchAfterRebatch(self, drop_remainder):
-    dataset = dataset_ops.Dataset.range(34).batch(
-        32, drop_remainder=drop_remainder)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[8] if drop_remainder else [None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-
-    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 32, 8)]  # pylint: disable=g-complex-comprehension
-    if not drop_remainder:
-      # The last partial batch of size 2 is split over 4 replicas
-      expected_output += [[32], [33], [], []]
+    dataset = dataset_ops.Dataset.range(9).batch(
+        4, drop_remainder=drop_remainder)
+    rebatched_dataset = distribute._LegacyRebatchDataset(
+        dataset, num_replicas=2)
+    self.assertEqual([[2] if drop_remainder else [None]],
+                     _flat_shapes(rebatched_dataset))
+    if drop_remainder:
+      expected_output = [[0, 1], [2, 3], [4, 5], [6, 7]]
+    else:
+      expected_output = [[0, 1], [2, 3], [4, 5], [6, 7], [8], []]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   @combinations.generate(test_base.default_test_combinations())
   def testMultipleBatches(self):
-    dataset = dataset_ops.Dataset.range(128).batch(4).batch(8)
-    self.assertEqual([[None, None]],
-                     [ts.as_list() for ts in _flat_shapes(dataset)])
+    dataset = dataset_ops.Dataset.range(16).batch(2).batch(4)
+    self.assertEqual([[None, None]], _flat_shapes(dataset))
 
-    # Each element is a list of 8 elements where each element is a list of 4.
-    expected_output = [[[j, j + 1, j + 2, j + 3]  # pylint: disable=g-complex-comprehension
-                        for j in range(i, i + 32, 4)]  # generates 8 elements
-                       for i in range(0, 128, 32)]
+    # Each element is a list of 4 elements where each element is a list of 2.
+    expected_output = [[[0, 1], [2, 3], [4, 5], [6, 7]],
+                       [[8, 9], [10, 11], [12, 13], [14, 15]]]
     self.assertDatasetProduces(dataset, expected_output)
 
-    rebatched_dataset = distribute._RebatchDataset(dataset, 4)
-    self.assertEqual([[None, None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    # Each element is a list of 2 elements where each element is a list of 4.
-    expected_output = [[[j, j + 1, j + 2, j + 3]  # pylint: disable=g-complex-comprehension
-                        for j in range(i, i + 8, 4)]  # generates 2 elements
-                       for i in range(0, 128, 8)]
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testMapAndBatch(self):
-    dataset = dataset_ops.Dataset.range(1024).apply(
-        batching.map_and_batch(math_ops.square, 32))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    expected_output = [[k**2 for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
-                       for i in range(0, 1024, 8)]
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testMapAndBatchWithCapturedInput(self):
-    captured_t = variables.Variable(42)
-    dataset = dataset_ops.Dataset.range(1024).apply(
-        batching.map_and_batch(lambda x: captured_t, 32))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    expected_output = [[42 for _ in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
-                       for i in range(0, 1024, 8)]
-    self.evaluate(variables.global_variables_initializer())
-    self.assertDatasetProduces(
-        rebatched_dataset, expected_output, requires_initialization=True)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testPaddedBatch(self):
-    dataset = dataset_ops.Dataset.range(128).batch(
-        4, drop_remainder=True).padded_batch(
-            8, padded_shapes=[5])
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    # Each element is a list of 8 elements in which each element is a list of 5
-    # elements, first four are numbers and the last one is a padded zero.
-    expected_output = [[[j, j + 1, j + 2, j + 3, 0]  # pylint: disable=g-complex-comprehension
-                        for j in range(i, i + 32, 4)]  # generates 8 elements
-                       for i in range(0, 128, 32)]
-    self.assertDatasetProduces(dataset, expected_output)
-    self.assertEqual([[None, 5]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    # Each element is a list of 2 elements in which each element is a list of 5
-    # elements, first four are numbers and the last one is a padded zero.
-    expected_output = [[[j, j + 1, j + 2, j + 3, 0]  # pylint: disable=g-complex-comprehension
-                        for j in range(i, i + 8, 4)]  # generates 2 elements
-                       for i in range(0, 128, 8)]
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testConcatenate(self):
-    dataset1 = dataset_ops.Dataset.range(64).batch(8)
-    dataset2 = dataset_ops.Dataset.range(32).batch(8)
-    dataset = dataset1.concatenate(dataset2)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    expected_output = ([[i, i + 1] for i in range(0, 64, 2)] +
-                       [[i, i + 1] for i in range(0, 32, 2)])
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testConcatenateDifferentShapes(self):
-    dataset1 = dataset_ops.Dataset.range(64).batch(16)
-    dataset2 = dataset_ops.Dataset.range(32).batch(8)
-    dataset = dataset1.concatenate(dataset2)
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    expected_output = ([[i, i + 1, i + 2, i + 3] for i in range(0, 64, 4)] +
-                       [[i, i + 1] for i in range(0, 32, 2)])
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testZip(self):
-    dataset1 = dataset_ops.Dataset.range(64).batch(8)
-    dataset2 = dataset_ops.Dataset.range(32).batch(8)
-    dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[None], [None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    expected_output = [([i, i + 1], [i, i + 1]) for i in range(0, 32, 2)]
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testZipDifferentShapes(self):
-    dataset1 = dataset_ops.Dataset.range(64).batch(16)
-    dataset2 = dataset_ops.Dataset.range(32).batch(8)
-    dataset = dataset_ops.Dataset.zip((dataset1, dataset2))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[None], [None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    expected_output = [([2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3], [i, i + 1])
-                       for i in range(0, 32, 2)]
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testFlatMapBatching(self):
-    dataset = dataset_ops.Dataset.range(2).flat_map(
-        lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
-            32))
-    # Two elements where each element is range(32)
-    expected_output = [[k for k in range(32)] for _ in range(2)]  # pylint: disable=g-complex-comprehension
-    self.assertDatasetProduces(dataset, expected_output)
-
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    # Two elements where each element is a list of 4 elements where each element
-    # is a list of 8.
-    expected_output = [[k for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
-                       for _ in range(2)
-                       for i in range(0, 32, 8)]  # generates 4 elements
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testInterleaveBatching(self):
-    dataset = dataset_ops.Dataset.range(2).interleave(
-        lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
-            32),
-        cycle_length=2)
-    # Two elements where each element is range(32)
-    expected_output = [[k for k in range(32)] for _ in range(2)]  # pylint: disable=g-complex-comprehension
-    self.assertDatasetProduces(dataset, expected_output)
-
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 32, 8)]
-    expected_output += expected_output
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testParallelInterleaveBatching(self):
-    dataset = dataset_ops.Dataset.range(2).interleave(
-        lambda _: dataset_ops.Dataset.range(32).batch(  # pylint: disable=g-long-lambda
-            32),
-        cycle_length=2,
-        num_parallel_calls=2)
-    # Two elements where each element is range(32)
-    expected_output = [[k for k in range(32)] for _ in range(2)]  # pylint: disable=g-complex-comprehension
-    self.assertDatasetProduces(dataset, expected_output)
-
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    expected_output = [[k for k in range(i, i + 8)] for i in range(0, 32, 8)]
-    expected_output += expected_output
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testGroupByWindowStaticBatch(self):
-    dataset = dataset_ops.Dataset.from_tensor_slices(
-        [[array_ops.constant(i, dtype=dtypes.int64)] * 3 for i in range(40)])
-    reduce_fn = lambda bucket_id, ds: ds.batch(  # pylint: disable=g-long-lambda
-        batch_size=10)
-    dataset = dataset.apply(
-        grouping.group_by_window(
-            key_func=lambda x: x[0] % 4, reduce_func=reduce_fn, window_size=10))
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=2)
-
-    self.assertEqual([[None, 3]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-    # pylint: disable=g-complex-comprehension
-    expected_output = [[[j + i * 4 + k * 20] * 3
-                        for i in range(5)]
-                       for j in range(4)
-                       for k in range(2)]
-    self.assertDatasetProduces(rebatched_dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testGroupByWindowDynamicBatch(self):
-    # {0, 1, 0, 1, ...}
-    dataset = dataset_ops.Dataset.range(40).map(lambda x: x % 2)
-
-    def reduce_fn(key, ds):
-      # key == 0 -> .batch(5)
-      # key == 1 -> .batch(10)
-      return ds.batch(batch_size=(key + 1) * 5)
-
-    dataset = dataset.apply(
-        grouping.group_by_window(
-            key_func=lambda x: x, reduce_func=reduce_fn, window_size=10))
-    dataset = distribute._RebatchDataset(dataset, num_replicas=2)
-
-    self.assertEqual([[None]], [ts.as_list() for ts in _flat_shapes(dataset)])
-
-    # The batches of 5 (value == 0) will be split into minibatches of (3, 2) and
-    # the batches of 10 (value == 1) split into minibatches of (5, 5)
-    # [(batch_size, value), ...]
-    pairs = [(3, 0), (2, 0), (3, 0), (2, 0), (5, 1), (5, 1)]
-    pairs = pairs * 2
-    expected_output = [[value] * batch_size for batch_size, value in pairs]
-    self.assertDatasetProduces(dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testGroupByWindowDynamicBatchWithPartialBatch(self):
-    # {0, 1, 0, 1, ...}
-    dataset = dataset_ops.Dataset.range(40).map(lambda x: x % 2)
-
-    def reduce_fn(key, ds):
-      # key == 0 -> .batch(5)
-      # key == 1 -> .batch(10)
-      return ds.batch(batch_size=(key + 1) * 5)
-
-    dataset = dataset.apply(
-        grouping.group_by_window(
-            key_func=lambda x: x, reduce_func=reduce_fn, window_size=11))
-    dataset = distribute._RebatchDataset(dataset, num_replicas=2)
-
-    self.assertEqual([[None]], [ts.as_list() for ts in _flat_shapes(dataset)])
-
-    pairs = [(3, 0), (2, 0), (3, 0), (2, 0), (1, 0), (0, 0), (5, 1), (5, 1),
-             (1, 1), (0, 1), (3, 0), (2, 0), (2, 0), (2, 0), (5, 1), (4, 1)]
-    expected_output = [[value] * batch_size for batch_size, value in pairs]
-    self.assertDatasetProduces(dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testGroupByWindowDynamicBatchWithPartialBatchWithDropRemainder(self):
-    # This test exercises nested batch functionality, dynamic batch size
-    # and drop_remainder=True together.
-    dataset = dataset_ops.Dataset.range(40).map(lambda x: x % 2)
-
-    def reduce_fn(key, ds):
-      # key == 0 -> .batch(5)
-      # key == 1 -> .batch(10)
-      return ds.batch(batch_size=(key + 1) * 5, drop_remainder=True)
-
-    dataset = dataset.apply(
-        grouping.group_by_window(
-            key_func=lambda x: x, reduce_func=reduce_fn, window_size=11))
-    dataset = distribute._RebatchDataset(dataset, num_replicas=2)
-
-    self.assertEqual([[None]], [ts.as_list() for ts in _flat_shapes(dataset)])
-
-    # The batches of 5 (value == 0) will be split into minibatches of (3, 2) and
-    # the batches of 10 (value == 1) split into minibatches of (5, 5)
-    # [(batch_size, value), ...]
-    pairs = [(3, 0), (2, 0), (3, 0), (2, 0), (5, 1), (5, 1), (3, 0), (2, 0)]
-    expected_output = [[value] * batch_size for batch_size, value in pairs]
-    self.assertDatasetProduces(dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testScanAfterBatch(self):
-    dataset = dataset_ops.Dataset.range(40).batch(10).apply(
-        scan_ops.scan(np.int64(2), lambda state, value: (state, value * state)))
-    dataset = distribute._RebatchDataset(dataset, num_replicas=2)
-
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(dataset)])
-    expected_output = [[i * 2 for i in range(j*5, (j+1)*5)] for j in range(8)]  # pylint: disable=g-complex-comprehension
-    self.assertDatasetProduces(dataset, expected_output)
-
-  @combinations.generate(test_base.default_test_combinations())
-  def testMakeBatchedFeaturesDataset(self):
-    # Set up
-    fn = os.path.join(self.get_temp_dir(), "tf_record.txt")
-    writer = python_io.TFRecordWriter(fn)
-    for i in range(1024):
-      writer.write(
-          example_pb2.Example(
-              features=feature_pb2.Features(
-                  feature={
-                      "value":
-                          feature_pb2.Feature(
-                              int64_list=feature_pb2.Int64List(value=[i]))
-                  })).SerializeToString())
-    writer.close()
-
-    dataset = readers.make_batched_features_dataset(
-        file_pattern=fn,
-        batch_size=32,
-        features={"value": parsing_ops.FixedLenFeature([], dtypes.int64)},
-        shuffle=False,
-        num_epochs=1,
-        drop_final_batch=False)
-
-    rebatched_dataset = distribute._RebatchDataset(dataset, num_replicas=4)
-
-    self.assertEqual([[None]],
-                     [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
-
-    expected_output = [{
-        "value": [k for k in range(i, i + 8)]
-    } for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
+    rebatched_dataset = distribute._LegacyRebatchDataset(dataset, 2)
+    self.assertEqual([[None, None]], _flat_shapes(rebatched_dataset))
+    # Each element is a list of 2 elements where each element is a list of 2.
+    expected_output = [[[0, 1], [2, 3]], [[4, 5], [6, 7]], [[8, 9], [10, 11]],
+                       [[12, 13], [14, 15]]]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
   @combinations.generate(test_base.default_test_combinations())
@@ -503,7 +513,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     # This test will fail if we don't normalize the tensor representation.
     dataset = dataset.map(lambda x: x)
 
-    dataset = distribute._RebatchDataset(dataset, num_replicas=8)
+    dataset = distribute._LegacyRebatchDataset(dataset, num_replicas=8)
     # After rebatching, batch size is now 4.
     expected_output = []
     value_index = 0
@@ -515,6 +525,70 @@ class RebatchDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
               batch_row_lengths))
       value_index += num_values
     self.assertDatasetProduces(dataset, expected_output)
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testNoneDataset(self):
+    # Some datasets, e.g. datasets with None tensors, have components without
+    # output shapes. Test that this doesn't break rebatching shape inference
+    # logic.
+    dataset = dataset_ops.Dataset.range(4)
+    dataset = dataset.map(lambda x: (x, None))
+    dataset = dataset.batch(4, drop_remainder=True)
+    _ = distribute._LegacyRebatchDataset(dataset, num_replicas=2)
+
+
+class ComputeBatchSizeTest(test_base.DatasetTestBase, parameterized.TestCase):
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeKnown(self):
+    # When drop_remainder=True, batch size can be inferred from the type spec.
+    dataset = dataset_ops.Dataset.range(32).batch(4, drop_remainder=True)
+    dataset = dataset_ops.Dataset.zip((dataset, dataset))
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(4, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeKnownAndMismatched(self):
+    # Return -1 when different components have different batch sizes.
+    dataset = dataset_ops.Dataset.range(32)
+    dataset = dataset_ops.Dataset.zip((dataset.batch(4, drop_remainder=True),
+                                       dataset.batch(8, drop_remainder=True)))
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(-1, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeUnknown(self):
+    dataset = dataset_ops.Dataset.range(32).batch(4)
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(4, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeWithPassthrough(self):
+    dataset = dataset_ops.Dataset.range(32).batch(4)
+    dataset = dataset.take(5)
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(4, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeWithPassthroughInvalid(self):
+    dataset = dataset_ops.Dataset.range(32).batch(4)
+    dataset = dataset.map(lambda x: x + 1)
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(-1, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeWithZip(self):
+    dataset = dataset_ops.Dataset.range(32).batch(4)
+    dataset = dataset_ops.Dataset.zip((dataset, dataset))
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(4, self.evaluate(batch_size))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testComputeBatchSizeWithZipMismatched(self):
+    dataset = dataset_ops.Dataset.range(32)
+    dataset = dataset_ops.Dataset.zip((dataset.batch(4), dataset.batch(8)))
+    batch_size = distribute.compute_batch_size(dataset)
+    self.assertEqual(-1, self.evaluate(batch_size))
 
 
 if __name__ == "__main__":

@@ -113,6 +113,476 @@ TEST(RunHandlerUtilTest, PrioritySchedulingTest) {
   EXPECT_EQ(sorted_active_list[3], 1);
 }
 
+TEST(RunHandlerThreadPool, EnqueueTask) {
+  Eigen::MaxSizeVector<mutex> waiters_mu(2);
+  waiters_mu.resize(2);
+  Eigen::MaxSizeVector<internal::Waiter> waiters(2);
+  waiters.resize(2);
+  internal::RunHandlerThreadPool run_handler_thread_pool(
+      /*num_blocking_threads=*/0, /*num_non_blocking_threads=*/0,
+      Env::Default(), ThreadOptions(), "tf_run_handler_pool", &waiters_mu,
+      &waiters);
+  internal::ThreadWorkSource tws;
+
+  int result = 0;
+  std::function<void()> fn = [&result] { result = 1; };
+  std::function<void()> fn2 = [&result] { result = 2; };
+  run_handler_thread_pool.AddWorkToQueue(&tws, /*is_blocking=*/true, fn);
+  EXPECT_EQ(tws.TaskQueueSize(/*is_blocking=*/true), 1);
+  run_handler_thread_pool.AddWorkToQueue(&tws, /*is_blocking=*/true, fn2);
+  EXPECT_EQ(tws.TaskQueueSize(/*is_blocking=*/true), 2);
+  tws.PopBlockingTask().f->f();
+  EXPECT_EQ(result, 1);
+  tws.PopBlockingTask().f->f();
+  EXPECT_EQ(result, 2);
+
+  run_handler_thread_pool.AddWorkToQueue(&tws, /*is_blocking=*/false, fn);
+  EXPECT_EQ(tws.TaskQueueSize(/*is_blocking=*/false), 1);
+  run_handler_thread_pool.AddWorkToQueue(&tws, /*is_blocking=*/false, fn2);
+  EXPECT_EQ(tws.TaskQueueSize(/*is_blocking=*/false), 2);
+  tws.PopNonBlockingTask(0, true).f->f();
+  EXPECT_EQ(result, 1);
+  tws.PopNonBlockingTask(0, true).f->f();
+  EXPECT_EQ(result, 2);
+}
+
+TEST(RunHandlerThreadPool, FindTask) {
+  Eigen::MaxSizeVector<mutex> waiters_mu(2);
+  waiters_mu.resize(2);
+  Eigen::MaxSizeVector<internal::Waiter> waiters(2);
+  waiters.resize(2);
+  internal::RunHandlerThreadPool run_handler_thread_pool(
+      /*num_blocking_threads=*/1, /*num_non_blocking_threads=*/0,
+      Env::Default(), ThreadOptions(), "tf_run_handler_pool", &waiters_mu,
+      &waiters);
+
+  Eigen::MaxSizeVector<internal::ThreadWorkSource*> thread_work_sources(5);
+  thread_work_sources.resize(5);
+  for (int i = 0; i < 5; ++i) {
+    thread_work_sources[i] = new internal::ThreadWorkSource();
+  }
+
+  {
+    // The thread should search the task following round robin fashion.
+    int result = -1;
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[2],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 2; });
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[2],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 2; });
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[3],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 3; });
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[3],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 3; });
+
+    const auto find_blocking_task_from_all_handlers =
+        [&](bool* task_from_blocking_queue, internal::Task* t) {
+          internal::ThreadWorkSource* tws;
+          *t = run_handler_thread_pool.FindTask(
+              /*searching_range_start=*/0, /*searching_range_end=*/5,
+              /*thread_id=*/0,
+              /*sub_thread_pool_id=*/0, /*max_blocking_inflight=*/10,
+              /*may_steal_blocking_work=*/true, thread_work_sources,
+              task_from_blocking_queue, &tws);
+        };
+    bool task_from_blocking_queue;
+    internal::Task t;
+    find_blocking_task_from_all_handlers(&task_from_blocking_queue, &t);
+    EXPECT_EQ(task_from_blocking_queue, true);
+    t.f->f();
+    EXPECT_EQ(result, 2);
+
+    find_blocking_task_from_all_handlers(&task_from_blocking_queue, &t);
+    EXPECT_EQ(task_from_blocking_queue, true);
+    t.f->f();
+    EXPECT_EQ(result, 3);
+
+    find_blocking_task_from_all_handlers(&task_from_blocking_queue, &t);
+    EXPECT_EQ(task_from_blocking_queue, true);
+    t.f->f();
+    EXPECT_EQ(result, 2);
+
+    find_blocking_task_from_all_handlers(&task_from_blocking_queue, &t);
+    EXPECT_EQ(task_from_blocking_queue, true);
+    t.f->f();
+    EXPECT_EQ(result, 3);
+  }
+
+  {
+    // Task out of searching range cannot be found.
+    int result = -1;
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[3],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 3; });
+
+    const auto find_blocking_task_from_range =
+        [&](bool* task_from_blocking_queue, internal::Task* t, int range_start,
+            int range_end) {
+          internal::ThreadWorkSource* tws;
+          *t = run_handler_thread_pool.FindTask(
+              range_start, range_end,
+              /*thread_id=*/0,
+              /*sub_thread_pool_id=*/0, /*max_blocking_inflight=*/10,
+              /*may_steal_blocking_work=*/true, thread_work_sources,
+              task_from_blocking_queue, &tws);
+        };
+
+    bool task_from_blocking_queue;
+    internal::Task t;
+    find_blocking_task_from_range(&task_from_blocking_queue, &t, 0, 3);
+    EXPECT_EQ(t.f, nullptr);
+
+    // Clean up the queue.
+    find_blocking_task_from_range(&task_from_blocking_queue, &t, 0, 5);
+  }
+
+  {
+    // The thread should search from start range if the currrent index is
+    // smaller.
+    int result = -1;
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[2],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 2; });
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[3],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 3; });
+
+    const auto find_blocking_task_from_range =
+        [&](bool* task_from_blocking_queue, internal::Task* t, int range_start,
+            int range_end) {
+          internal::ThreadWorkSource* tws;
+          *t = run_handler_thread_pool.FindTask(
+              range_start, range_end,
+              /*thread_id=*/0,
+              /*sub_thread_pool_id=*/0, /*max_blocking_inflight=*/10,
+              /*may_steal_blocking_work=*/true, thread_work_sources,
+              task_from_blocking_queue, &tws);
+        };
+    bool task_from_blocking_queue;
+    internal::Task t;
+    find_blocking_task_from_range(&task_from_blocking_queue, &t, 3, 5);
+    EXPECT_EQ(task_from_blocking_queue, true);
+    t.f->f();
+    EXPECT_EQ(result, 3);
+
+    find_blocking_task_from_range(&task_from_blocking_queue, &t, 0, 5);
+    EXPECT_EQ(task_from_blocking_queue, true);
+    t.f->f();
+    EXPECT_EQ(result, 2);
+  }
+
+  {
+    // The thread should search within the range even if the current index
+    // is larger than searching_range_end;
+    int result = -1;
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[2],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 2; });
+
+    const auto find_blocking_task_from_range =
+        [&](bool* task_from_blocking_queue, internal::Task* t, int range_start,
+            int range_end) {
+          internal::ThreadWorkSource* tws;
+          *t = run_handler_thread_pool.FindTask(
+              range_start, range_end,
+              /*thread_id=*/0,
+              /*sub_thread_pool_id=*/0, /*max_blocking_inflight=*/10,
+              /*may_steal_blocking_work=*/true, thread_work_sources,
+              task_from_blocking_queue, &tws);
+        };
+    bool task_from_blocking_queue;
+    // Make the current index to be 3.
+    internal::Task t;
+    find_blocking_task_from_range(&task_from_blocking_queue, &t, 0, 5);
+    EXPECT_EQ(task_from_blocking_queue, true);
+    t.f->f();
+    EXPECT_EQ(result, 2);
+
+    // Search in a smaller range.
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[2],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 2; });
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[3],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 3; });
+    find_blocking_task_from_range(&task_from_blocking_queue, &t, 0, 3);
+    EXPECT_EQ(task_from_blocking_queue, true);
+    t.f->f();
+    EXPECT_EQ(result, 2);
+
+    // Clean up the queue.
+    find_blocking_task_from_range(&task_from_blocking_queue, &t, 0, 5);
+    EXPECT_EQ(task_from_blocking_queue, true);
+    t.f->f();
+    EXPECT_EQ(result, 3);
+  }
+
+  {
+    // We prefer blocking task for blocking threads.
+    int result = -1;
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[2],
+                                           /*is_blocking=*/false,
+                                           [&result] { result = 2; });
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[2],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 2; });
+    const auto blocking_thread_find_task_from_all_handler =
+        [&](bool* task_from_blocking_queue, internal::Task* t) {
+          internal::ThreadWorkSource* tws;
+          *t = run_handler_thread_pool.FindTask(
+              /*searching_range_start=*/0, /*searching_range_end=*/5,
+              /*thread_id=*/0,
+              /*sub_thread_pool_id=*/0, /*max_blocking_inflight=*/10,
+              /*may_steal_blocking_work=*/true, thread_work_sources,
+              task_from_blocking_queue, &tws);
+        };
+    bool task_from_blocking_queue;
+    internal::Task t;
+    blocking_thread_find_task_from_all_handler(&task_from_blocking_queue, &t);
+    EXPECT_EQ(task_from_blocking_queue, true);
+    t.f->f();
+    EXPECT_EQ(result, 2);
+
+    blocking_thread_find_task_from_all_handler(&task_from_blocking_queue, &t);
+    EXPECT_EQ(task_from_blocking_queue, false);
+    t.f->f();
+    EXPECT_EQ(result, 2);
+  }
+
+  {
+    // Nonblocking threads can only pick up non-blocking task.
+    int result = -1;
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[2],
+                                           /*is_blocking=*/false,
+                                           [&result] { result = 2; });
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[2],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 2; });
+
+    const auto find_task_from_all_handler = [&](bool* task_from_blocking_queue,
+                                                internal::Task* t,
+                                                bool is_blocking_thread) {
+      internal::ThreadWorkSource* tws;
+      *t = run_handler_thread_pool.FindTask(
+          /*searching_range_start=*/0, /*searching_range_end=*/5,
+          /*thread_id=*/0,
+          /*sub_thread_pool_id=*/0, /*max_blocking_inflight=*/10,
+          is_blocking_thread, thread_work_sources, task_from_blocking_queue,
+          &tws);
+    };
+    bool task_from_blocking_queue;
+    internal::Task t;
+    find_task_from_all_handler(&task_from_blocking_queue, &t,
+                               /*is_blocking_thread=*/false);
+    EXPECT_EQ(task_from_blocking_queue, false);
+    t.f->f();
+    EXPECT_EQ(result, 2);
+
+    find_task_from_all_handler(&task_from_blocking_queue, &t,
+                               /*is_blocking_thread=*/false);
+    EXPECT_EQ(t.f, nullptr);
+
+    // Clean up the queue.
+    find_task_from_all_handler(&task_from_blocking_queue, &t,
+                               /*is_blocking_thread=*/true);
+  }
+
+  {
+    // There is a limit for max_blocking_inflight requests.
+    int result = -1;
+    run_handler_thread_pool.AddWorkToQueue(thread_work_sources[2],
+                                           /*is_blocking=*/true,
+                                           [&result] { result = 2; });
+
+    const auto find_task_from_all_handler = [&](bool* task_from_blocking_queue,
+                                                internal::Task* t,
+                                                bool is_blocking_thread) {
+      internal::ThreadWorkSource* tws;
+      *t = run_handler_thread_pool.FindTask(
+          /*searching_range_start=*/0, /*searching_range_end=*/5,
+          /*thread_id=*/0,
+          /*sub_thread_pool_id=*/0, /*max_blocking_inflight=*/10,
+          is_blocking_thread, thread_work_sources, task_from_blocking_queue,
+          &tws);
+    };
+
+    bool task_from_blocking_queue;
+    internal::Task t;
+    find_task_from_all_handler(&task_from_blocking_queue, &t,
+                               /*is_blocking_thread=*/false);
+    EXPECT_EQ(task_from_blocking_queue, false);
+    EXPECT_EQ(t.f, nullptr);
+
+    // Clean up the queue.
+    find_task_from_all_handler(&task_from_blocking_queue, &t,
+                               /*is_blocking_thread=*/true);
+  }
+
+  for (int i = 0; i < 5; ++i) {
+    delete thread_work_sources[i];
+  }
+}
+
+TEST(RunHandlerThreadPool, RoundRobinExecution) {
+  // Set up environment for 1 sub thread pool.
+  setenv("TF_RUN_HANDLER_USE_SUB_THREAD_POOL", "true", true);
+  setenv("TF_RUN_HANDLER_NUM_THREADS_IN_SUB_THREAD_POOL", "1", true);
+  setenv("TF_RUN_HANDLER_SUB_THREAD_POOL_START_REQUEST_PERCENTAGE", "0", true);
+  setenv("TF_RUN_HANDLER_SUB_THREAD_POOL_END_REQUEST_PERCENTAGE", "1", true);
+
+  Eigen::MaxSizeVector<mutex> waiters_mu(1);
+  waiters_mu.resize(1);
+  Eigen::MaxSizeVector<internal::Waiter> waiters(1);
+  waiters.resize(1);
+  internal::RunHandlerThreadPool* run_handler_thread_pool =
+      new internal::RunHandlerThreadPool(
+          /*num_blocking_threads=*/1, /*num_non_blocking_threads=*/0,
+          Env::Default(), ThreadOptions(), "tf_run_handler_pool", &waiters_mu,
+          &waiters);
+  Eigen::MaxSizeVector<internal::ThreadWorkSource*> thread_work_sources(3);
+  thread_work_sources.resize(3);
+  internal::ThreadWorkSource tws[3];
+  for (int i = 0; i < 3; ++i) {
+    tws[i].SetWaiter(1, &waiters[0], &waiters_mu[0]);
+    thread_work_sources[i] = &tws[i];
+  }
+
+  int result = 0;
+  mutex mu;
+  bool ok_to_execute = false;
+  bool ok_to_validate = false;
+  condition_variable function_start;
+  condition_variable function_end;
+  std::vector<std::function<void()>> fns;
+  for (int i = 0; i < 3; ++i) {
+    fns.push_back([&result, &mu, &function_start, &function_end, &ok_to_execute,
+                   &ok_to_validate, i] {
+      mutex_lock l(mu);
+      while (!ok_to_execute) {
+        function_start.wait(l);
+      }
+      result = i;
+      ok_to_execute = false;
+      ok_to_validate = true;
+      function_end.notify_one();
+    });
+    run_handler_thread_pool->AddWorkToQueue(&tws[i], /*is_blocking=*/true,
+                                            fns[i]);
+    run_handler_thread_pool->AddWorkToQueue(&tws[i], /*is_blocking=*/true,
+                                            fns[i]);
+  }
+  run_handler_thread_pool->Start();
+  run_handler_thread_pool->SetThreadWorkSources(
+      /*tid=*/0, /*start_request_idx=*/0, /*version=*/1, thread_work_sources);
+
+  // Validate the execution should be roundrobin.
+  mutex_lock l(mu);
+  for (int round = 0; round < 2; ++round) {
+    for (int i = 0; i < 3; ++i) {
+      ok_to_execute = true;
+      function_start.notify_one();
+      while (!ok_to_validate) {
+        function_end.wait(l);
+      }
+      ok_to_validate = false;
+      EXPECT_EQ(result, i);
+    }
+  }
+
+  delete run_handler_thread_pool;
+}
+
+TEST(RunHandlerThreadPool, MultipleSubThreadPool) {
+  // Set up environment for 2 sub thread pools.
+  setenv("TF_RUN_HANDLER_USE_SUB_THREAD_POOL", "true", true);
+  setenv("TF_RUN_HANDLER_NUM_THREADS_IN_SUB_THREAD_POOL", "2", true);
+  setenv("TF_RUN_HANDLER_SUB_THREAD_POOL_START_REQUEST_PERCENTAGE", "0,0.5",
+         true);
+  setenv("TF_RUN_HANDLER_SUB_THREAD_POOL_END_REQUEST_PERCENTAGE", "0.5,1",
+         true);
+
+  Eigen::MaxSizeVector<mutex> waiters_mu(2);
+  waiters_mu.resize(2);
+  Eigen::MaxSizeVector<internal::Waiter> waiters(2);
+  waiters.resize(2);
+  internal::RunHandlerThreadPool* run_handler_thread_pool =
+      new internal::RunHandlerThreadPool(
+          /*num_blocking_threads=*/2, /*num_non_blocking_threads=*/0,
+          Env::Default(), ThreadOptions(), "tf_run_handler_pool", &waiters_mu,
+          &waiters);
+  Eigen::MaxSizeVector<internal::ThreadWorkSource*> thread_work_sources(4);
+  thread_work_sources.resize(4);
+  internal::ThreadWorkSource tws[4];
+  for (int i = 0; i < 4; ++i) {
+    tws[i].SetWaiter(1, &waiters[i / 2], &waiters_mu[i / 2]);
+    thread_work_sources[i] = &tws[i];
+  }
+
+  int result = 0;
+  mutex mu;
+  bool ok_to_execute = false;
+  bool ok_to_validate = false;
+  condition_variable function_start;
+  condition_variable function_end;
+
+  std::vector<std::function<void()>> fns;
+  for (int i = 0; i < 4; ++i) {
+    fns.push_back([&result, &mu, &function_start, &function_end, &ok_to_execute,
+                   &ok_to_validate, i] {
+      mutex_lock l(mu);
+      while (!ok_to_execute) {
+        function_start.wait(l);
+      }
+      result = i;
+      ok_to_execute = false;
+      ok_to_validate = true;
+      function_end.notify_one();
+    });
+    run_handler_thread_pool->AddWorkToQueue(&tws[i], /*is_blocking=*/true,
+                                            fns[i]);
+    run_handler_thread_pool->AddWorkToQueue(&tws[i], /*is_blocking=*/true,
+                                            fns[i]);
+  }
+  run_handler_thread_pool->StartOneThreadForTesting();
+  run_handler_thread_pool->SetThreadWorkSources(
+      /*tid=*/0, /*start_request_idx=*/0, /*version=*/1, thread_work_sources);
+  run_handler_thread_pool->SetThreadWorkSources(
+      /*tid=*/1, /*start_request_idx=*/0, /*version=*/1, thread_work_sources);
+
+  // Pick task from the given sub thread pool requests in a round robin fashion.
+  mutex_lock l(mu);
+  for (int round = 0; round < 2; ++round) {
+    for (int i = 0; i < 2; ++i) {
+      ok_to_execute = true;
+      function_start.notify_one();
+      while (!ok_to_validate) {
+        function_end.wait(l);
+      }
+      ok_to_validate = false;
+      EXPECT_EQ(result, i);
+    }
+  }
+
+  // Pick task from any task if there is no tasks from the requests in the sub
+  // thread pool.
+  for (int i = 0; i < 2; ++i) {
+    for (int round = 0; round < 2; ++round) {
+      ok_to_execute = true;
+      function_start.notify_one();
+      while (!ok_to_validate) {
+        function_end.wait(l);
+      }
+      ok_to_validate = false;
+      EXPECT_EQ(result, i + 2);
+    }
+  }
+
+  delete run_handler_thread_pool;
+}
+
 SessionOptions DefaultSessionOptions() {
   SessionOptions options;
   (*options.config.mutable_device_count())["CPU"] = 2;

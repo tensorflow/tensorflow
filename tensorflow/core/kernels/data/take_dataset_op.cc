@@ -95,7 +95,8 @@ class TakeDataset::EmptyIterator : public DatasetIterator<TakeDataset> {
                                      /*ratio=*/1);
   }
 
-  Status SaveInternal(IteratorStateWriter* writer) override {
+  Status SaveInternal(SerializationContext* ctx,
+                      IteratorStateWriter* writer) override {
     return Status::OK();
   }
 
@@ -142,11 +143,12 @@ class TakeDataset::FiniteIterator : public DatasetIterator<TakeDataset> {
                                      /*ratio=*/1);
   }
 
-  Status SaveInternal(IteratorStateWriter* writer) override {
+  Status SaveInternal(SerializationContext* ctx,
+                      IteratorStateWriter* writer) override {
     mutex_lock l(mu_);
     TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
     if (input_impl_) {
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
     } else {
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
     }

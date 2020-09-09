@@ -44,6 +44,8 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor",
         "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/lib:connected_traceme",
+        "//tensorflow/core/profiler/lib:annotated_traceme",
     ]),
     alwayslink = 1,
 )
@@ -72,6 +74,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:cuda",
     ]) + if_rocm([
         "@local_config_rocm//rocm:rccl",
-        "//tensorflow/core:rocm",
+        "//tensorflow/core/common_runtime/gpu:rocm",
     ]),
 )

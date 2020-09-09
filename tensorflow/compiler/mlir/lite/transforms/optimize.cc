@@ -27,22 +27,26 @@ limitations under the License.
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Matchers.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/Functional.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Matchers.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
 #include "tensorflow/compiler/mlir/lite/utils/attribute_utils.h"
+#include "tensorflow/compiler/mlir/lite/utils/convert_type.h"
 #include "tensorflow/compiler/mlir/lite/utils/validators.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -52,6 +56,9 @@ namespace TFL {
 //===----------------------------------------------------------------------===//
 // The actual Optimize Pass.
 namespace {
+constexpr char kRelu[] = "RELU";
+constexpr char kRelu6[] = "RELU6";
+constexpr char kRelu1[] = "RELU_N1_TO_1";
 
 bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
   if (sq_op.getType().cast<ShapedType>().getRank() - 1 ==
@@ -74,7 +81,7 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-struct Optimize : public FunctionPass<Optimize> {
+struct Optimize : public PassWrapper<Optimize, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -83,12 +90,24 @@ bool IsBroadcastableElementsAttrAndType(Type a, Type b) {
   return OpTrait::util::getBroadcastedType(a, b) != Type();
 }
 
+// Returns whether the resultant type of any broadcastable operation with
+// operands `a` and `b` matches `expected_output`. Returns false if `a` is not
+// broadcast-compatible with `b`.
+bool OperandsBroadcastToOutputType(Type a, Type b, Type expected_output) {
+  Type output_element_type =
+      expected_output.cast<ShapedType>().getElementType();
+  Type broadcasted_type =
+      OpTrait::util::getBroadcastedType(a, b, output_element_type);
+  return broadcasted_type != Type() && broadcasted_type == expected_output;
+}
+
 // Returns whether if `type1` dimensions are the same as the ending dimensions
 // of `type2`. This is more restricted than broadcastable.
 bool IsTailOfShape(Type type1, Type type2) {
   auto tail_type = type1.dyn_cast<ShapedType>();
   auto full_type = type2.dyn_cast<ShapedType>();
-  if (!tail_type || !full_type || tail_type.getRank() > full_type.getRank())
+  if (!tail_type || !full_type || !tail_type.hasRank() ||
+      !full_type.hasRank() || tail_type.getRank() > full_type.getRank())
     return false;
   auto i1 = tail_type.getShape().rbegin(), e1 = tail_type.getShape().rend();
   auto i2 = full_type.getShape().rbegin();
@@ -145,6 +164,31 @@ bool CanFuseConvOrDepthwiseConv(Attribute filter, Attribute val,
   return false;
 }
 
+// Retuns true if we can eliminate the GatherNdOp or ScatterNdOp. When the value
+// of `indices` are from 0 to n-1, the output tensor are identical to the
+// `params`.
+bool CanOptimizeIdentityGatherNdOrScatterNdOp(Value params,
+                                              DenseIntElementsAttr indices) {
+  auto params_type = params.getType().dyn_cast<RankedTensorType>();
+  auto indices_type = indices.getType().dyn_cast<RankedTensorType>();
+  // Checks the shape of `params` is [n, ...], shape of `indices` is [n, 1]. 2D
+  // `indices` means it gets the first row of `params`. As long as indices
+  // iterate the first row of `params`, the output is identical to input.
+  if (!params_type || !indices_type || indices_type.getRank() != 2 ||
+      indices_type.getDimSize(0) != params_type.getDimSize(0) ||
+      indices_type.getDimSize(1) != 1)
+    return false;
+
+  // Checks the value in `indices` is from 0 to n-1.
+  int cur_value = 0;
+  for (const auto &v : indices.getValues<APInt>()) {
+    if (v.getSExtValue() != cur_value) return false;
+    ++cur_value;
+  }
+
+  return true;
+}
+
 // Expand Attribute 'a' to 4D with all 1s except 1 dimension.
 // Which dimension depends on 'is_depthwise' is true or false.
 ElementsAttr ExpandTo4DForConvImpl(Attribute a, bool is_depthwise) {
@@ -182,15 +226,58 @@ TypeAttr RescaleQtype(Type input, Attribute factor) {
 DenseElementsAttr GetShape(Value output_val) {
   auto output_type = output_val.getType().cast<RankedTensorType>();
   auto shape_vector = output_type.getShape();
-  std::vector<int32_t> shape(shape_vector.size());
-  for (int i = 0; i < shape_vector.size(); ++i) {
-    shape[i] = shape_vector[i];
+  std::vector<int32_t> shape;
+  shape.reserve(shape_vector.size());
+  for (auto shape_object : shape_vector) {
+    shape.push_back(shape_object);
   }
   return mlir::DenseElementsAttr::get(
       RankedTensorType::get(
           {static_cast<int>(shape.size())},
           mlir::IntegerType::get(32, output_val.getContext())),
       llvm::makeArrayRef(shape));
+}
+
+static Type GetShapeStrippedType(TypeAttr type_attr) {
+  auto type = type_attr.getValue();
+  auto shaped_type = type.dyn_cast<ShapedType>();
+  if (shaped_type) {
+    return shaped_type.getElementType();
+  } else {
+    return type;
+  }
+}
+
+// Returns `true` if reducing `axes` in `input` with `keep_dims=true` results in
+// the specified `shape` and `false` otherwise.
+static bool ShapeMatchesReduceWithKeepAxes(Value input,
+                                           const mlir::Attribute &axes,
+                                           const mlir::Attribute &shape) {
+  RankedTensorType type = input.getType().dyn_cast_or_null<RankedTensorType>();
+  if (!type) return false;
+
+  DenseIntElementsAttr axes_attr =
+      axes.dyn_cast_or_null<DenseIntElementsAttr>();
+  DenseIntElementsAttr shape_attr =
+      shape.dyn_cast_or_null<DenseIntElementsAttr>();
+  if (!axes_attr || !shape_attr) return false;
+
+  if (shape_attr.getNumElements() != type.getRank()) return false;
+
+  llvm::SmallSet<uint64_t, 4> axes_set;
+  for (auto a : axes_attr.getIntValues()) {
+    axes_set.insert(a.getZExtValue());
+  }
+
+  auto type_shape = type.getShape();
+  for (uint64_t i = 0; i < type.getRank(); ++i) {
+    if (axes_set.contains(i)) {
+      if (shape_attr.getValue<APInt>({i}) != 1) return false;
+    } else {
+      if (shape_attr.getValue<APInt>({i}) != type_shape[i]) return false;
+    }
+  }
+  return true;
 }
 
 #include "tensorflow/compiler/mlir/lite/transforms/generated_optimize.inc"
@@ -200,18 +287,17 @@ DenseElementsAttr GetShape(Value output_val) {
 struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
   using OpRewritePattern<TFL::AddOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TFL::AddOp add_op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(TFL::AddOp add_op,
+                                PatternRewriter &rewriter) const override {
     // Match Add.
     DenseElementsAttr added_value;
     Value constant_val = add_op.rhs();
-    if (!matchPattern(constant_val, m_Constant(&added_value)))
-      return matchFailure();
+    if (!matchPattern(constant_val, m_Constant(&added_value))) return failure();
 
     // Match Fully Connected.
     auto fc_op =
         dyn_cast_or_null<TFL::FullyConnectedOp>(add_op.lhs().getDefiningOp());
-    if (!fc_op) return matchFailure();
+    if (!fc_op) return failure();
 
     // Check if the constant RHS is either 0D (scalar), or a 1D with
     // `{num_channels}` shape.
@@ -225,21 +311,19 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
     if (constant_val_type.getRank() == 0) {
       is_scalar_rhs = true;
     } else if (constant_val_type.getRank() != 1) {
-      return matchFailure();
+      return failure();
     }
 
     Value filter = fc_op.filter();
     Value bias = fc_op.bias();
     ElementsAttr bias_value;
     const bool is_none_bias = bias.getType().isa<NoneType>();
-    if (fc_op.fused_activation_function() != "NONE") return matchFailure();
+    if (fc_op.fused_activation_function() != "NONE") return failure();
 
     if (!is_none_bias && !matchPattern(bias, m_Constant(&bias_value)))
-      return matchFailure();
+      return failure();
 
     // Rewrite
-    Location loc = fc_op.getLoc();
-
     if (is_none_bias) {
       if (is_scalar_rhs) {
         // If the `constant_val` is scalar, we must the shape of filter
@@ -250,7 +334,7 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         // Filter must be a `2D` tensor with `{num_channels, num_features}`
         // shape. The following check is rejecting unknown rank (-1).
         if (filter_type.getRank() != 2) {
-          return matchFailure();
+          return failure();
         }
         int num_channels = filter_type.getShape()[0];
 
@@ -262,10 +346,11 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         RankedTensorType type = RankedTensorType::get(
             {num_channels}, constant_val_type.getElementType());
         auto attr = rewriter.getZeroAttr(type);
-        bias = rewriter.create<ConstantOp>(loc, type, attr);
+        bias = rewriter.create<ConstantOp>(add_op.getLoc(), type, attr);
         auto none_af = rewriter.getStringAttr("NONE");
         bias =
-            rewriter.create<AddOp>(loc, bias, constant_val, none_af).output();
+            rewriter.create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
+                .output();
       } else {
         // If there no pre-existing bias and the `constant_val` is 1D, simply
         // use `constant_val` as bias.
@@ -273,11 +358,14 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
       }
     } else {
       auto none_af = rewriter.getStringAttr("NONE");
-      bias = rewriter.create<AddOp>(loc, bias, constant_val, none_af).output();
+      bias =
+          rewriter.create<AddOp>(add_op.getLoc(), bias, constant_val, none_af)
+              .output();
     }
 
-    rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
-        add_op, add_op.getType(),
+    auto fc = rewriter.create<TFL::FullyConnectedOp>(
+        FusedLoc::get({fc_op.getLoc(), add_op.getLoc()}, fc_op.getContext()),
+        add_op.getType(),
         /*input=*/fc_op.input(),
         /*filter=*/filter,
         /*bias=*/bias,
@@ -285,34 +373,39 @@ struct FuseFullyConnectedAndAdd : public OpRewritePattern<TFL::AddOp> {
         rewriter.getStringAttr(add_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr(fc_op.weights_format()),
         /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+    rewriter.replaceOp(add_op, fc.output());
 
-    return matchSuccess();
+    return success();
   }
 };
 
 // TODO(b/136285429): Move to tablegen when variadic is supported.
-struct FuseFullyConnectedAndRelu : public OpRewritePattern<TFL::ReluOp> {
-  using OpRewritePattern<TFL::ReluOp>::OpRewritePattern;
+template <typename ReluXOp, char const *Act>
+struct FuseFullyConnectedAndReluX : public OpRewritePattern<ReluXOp> {
+  using OpRewritePattern<ReluXOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TFL::ReluOp relu_op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ReluXOp relu_op,
+                                PatternRewriter &rewriter) const override {
     Operation *input = relu_op.getOperand().getDefiningOp();
-    if (!isa_and_nonnull<FullyConnectedOp>(input)) return matchFailure();
+    if (!isa_and_nonnull<FullyConnectedOp>(input)) return failure();
     auto fully_connected_op = cast<FullyConnectedOp>(input);
     if (fully_connected_op.fused_activation_function() != "NONE")
-      return matchFailure();
+      return failure();
 
-    auto new_activation_func = rewriter.getStringAttr("RELU");
+    auto new_activation_func = rewriter.getStringAttr(Act);
     auto new_weights_format =
         rewriter.getStringAttr(fully_connected_op.weights_format());
     auto new_keep_num_dims =
         rewriter.getBoolAttr(fully_connected_op.keep_num_dims());
-    rewriter.replaceOpWithNewOp<FullyConnectedOp>(
-        relu_op, relu_op.getType(), fully_connected_op.input(),
+    auto fc = rewriter.create<FullyConnectedOp>(
+        FusedLoc::get({fully_connected_op.getLoc(), relu_op.getLoc()},
+                      relu_op.getContext()),
+        relu_op.getType(), fully_connected_op.input(),
         fully_connected_op.filter(), fully_connected_op.bias(),
         new_activation_func, new_weights_format, new_keep_num_dims);
+    rewriter.replaceOp(relu_op, fc.output());
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -321,25 +414,25 @@ struct FuseFullyConnectedAndRelu : public OpRewritePattern<TFL::ReluOp> {
 struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
   using OpRewritePattern<TFL::MulOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TFL::MulOp mul_op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(TFL::MulOp mul_op,
+                                PatternRewriter &rewriter) const override {
     // Mul.
     DenseElementsAttr cst;
     Value constant_val = mul_op.rhs();
-    if (!matchPattern(constant_val, m_Constant(&cst))) return matchFailure();
+    if (!matchPattern(constant_val, m_Constant(&cst))) return failure();
 
     // Fully Connected.
     auto fc_op =
         dyn_cast_or_null<TFL::FullyConnectedOp>(mul_op.lhs().getDefiningOp());
-    if (!fc_op) return matchFailure();
+    if (!fc_op) return failure();
     Value filter = fc_op.filter();
     Value bias = fc_op.bias();
     ElementsAttr cst_tmp;
-    if (!matchPattern(filter, m_Constant(&cst_tmp))) return matchFailure();
+    if (!matchPattern(filter, m_Constant(&cst_tmp))) return failure();
     if (!bias.getType().isa<NoneType>() &&
         !matchPattern(bias, m_Constant(&cst_tmp)))
-      return matchFailure();
-    if (fc_op.fused_activation_function() != "NONE") return matchFailure();
+      return failure();
+    if (fc_op.fused_activation_function() != "NONE") return failure();
 
     // Broadcast the constant operand of Mul if it isn't compatible to the
     // filter input. We only support broadcasting the operand along the depth
@@ -354,7 +447,7 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
           normalized_shape, cst.getType().getElementType()));
       Type new_type = new_cst.getType();
       if (!IsBroadcastableElementsAttrAndType(new_type, filter.getType())) {
-        return matchFailure();
+        return failure();
       }
       auto new_op =
           rewriter.create<ConstantOp>(mul_op.getLoc(), new_type, new_cst);
@@ -364,16 +457,17 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
     // Rewrite. Since the folder of TFL::MulOp couldn't broadcast the operands,
     // TF::MulOp is used to fold the constant.
     // TODO(b/139192933): switch to the TFL constant folding
-    Location loc = fc_op.getLoc();
     auto new_filter =
-        rewriter.create<TF::MulOp>(loc, filter, new_const_val).z();
+        rewriter.create<TF::MulOp>(mul_op.getLoc(), filter, new_const_val).z();
     // If bias isn't None, it needs to be multiplied as well.
     if (!bias.getType().isa<NoneType>()) {
-      bias = rewriter.create<TF::MulOp>(loc, bias, constant_val).z();
+      bias =
+          rewriter.create<TF::MulOp>(mul_op.getLoc(), bias, constant_val).z();
     }
 
-    rewriter.replaceOpWithNewOp<TFL::FullyConnectedOp>(
-        mul_op, mul_op.getType(),
+    auto fc = rewriter.create<TFL::FullyConnectedOp>(
+        FusedLoc::get({fc_op.getLoc(), mul_op.getLoc()}, fc_op.getContext()),
+        mul_op.getType(),
         /*input=*/fc_op.input(),
         /*filter=*/new_filter,
         /*bias=*/bias,
@@ -381,8 +475,9 @@ struct FuseFullyConnectedAndMul : public OpRewritePattern<TFL::MulOp> {
         rewriter.getStringAttr(mul_op.fused_activation_function()),
         /*weights_format=*/rewriter.getStringAttr(fc_op.weights_format()),
         /*keep_num_dims=*/rewriter.getBoolAttr(fc_op.keep_num_dims()));
+    rewriter.replaceOp(mul_op, fc.output());
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -414,36 +509,36 @@ template <typename AffineOpType>
 struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
   using OpRewritePattern<TFL::MulOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TFL::MulOp mul_op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(TFL::MulOp mul_op,
+                                PatternRewriter &rewriter) const override {
     // Mul. Required 1-D rhs for batch normalization.
     DenseElementsAttr gamma_cst;
     Value gamma = mul_op.rhs();
-    if (!matchPattern(gamma, m_Constant(&gamma_cst))) return matchFailure();
-    if (gamma_cst.getType().getRank() != 1) return matchFailure();
+    if (!matchPattern(gamma, m_Constant(&gamma_cst))) return failure();
+    if (gamma_cst.getType().getRank() != 1) return failure();
 
     // Affine op
     Operation *mul_op_lhs = mul_op.lhs().getDefiningOp();
     auto fc_op = dyn_cast_or_null<AffineOpType>(mul_op_lhs);
-    if (!fc_op) return matchFailure();
+    if (!fc_op) return failure();
     Value filter = fc_op.filter();
     Value bias = fc_op.bias();
 
     // QDQs
     auto dq_op = dyn_cast_or_null<TFL::DequantizeOp>(filter.getDefiningOp());
-    if (!dq_op) return matchFailure();
+    if (!dq_op) return failure();
     auto q_op =
         dyn_cast_or_null<TFL::QuantizeOp>(dq_op.input().getDefiningOp());
-    if (!q_op) return matchFailure();
+    if (!q_op) return failure();
     filter = q_op.input();
 
     // weight constant
     ElementsAttr cst_tmp;
-    if (!matchPattern(filter, m_Constant(&cst_tmp))) return matchFailure();
+    if (!matchPattern(filter, m_Constant(&cst_tmp))) return failure();
     if (!bias.getType().isa<NoneType>() &&
         !matchPattern(bias, m_Constant(&cst_tmp)))
-      return matchFailure();
-    if (fc_op.fused_activation_function() != "NONE") return matchFailure();
+      return failure();
+    if (fc_op.fused_activation_function() != "NONE") return failure();
 
     // Broadcast the constant operand of Mul if it isn't compatible to the
     // filter input. We only support broadcasting the operand along the depth
@@ -458,7 +553,7 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
       auto mul_rhs = ExpandTo4DForDepthwiseConv(gamma_cst);
       broadcasted_gamma = rewriter.create<ConstOp>(loc, mul_rhs);
     } else {
-      return matchFailure();
+      return failure();
     }
 
     // Rewrite filter constant. Since the folder of TFL::MulOp couldn't
@@ -467,7 +562,7 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
         rewriter.create<TF::MulOp>(loc, filter, broadcasted_gamma).z();
     // Update the scale in the quantize op.
     auto new_qtype = RescaleQtype(q_op.qtype(), gamma_cst);
-    if (!new_qtype) return matchFailure();
+    if (!new_qtype) return failure();
     rewriter.replaceOpWithNewOp<TFL::QuantizeOp>(q_op, new_qtype.getValue(),
                                                  new_filter, new_qtype);
 
@@ -480,7 +575,7 @@ struct FuseAffinOpAndMulWithQDQs : public OpRewritePattern<TFL::MulOp> {
 
     // Remove the tailing mul op.
     mul_op.replaceAllUsesWith(fc_op.getResult());
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -493,20 +588,19 @@ template <typename AffineOpType>
 struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
   using OpRewritePattern<AffineOpType>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(AffineOpType fc_op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(AffineOpType fc_op,
+                                PatternRewriter &rewriter) const override {
     // Binary op.
     Operation *binary_op = fc_op.input().getDefiningOp();
-    if (!binary_op || binary_op->getNumOperands() != 2)
-      return this->matchFailure();
+    if (!binary_op || binary_op->getNumOperands() != 2) return failure();
     // We only handle the cases the RHS is a scalar.
     // TODO(fengliuai): Currently the canonicalizer pass couldn't guarantee that
     // the constant operands are on the RHS, we need to consider LHS constant
     // operand if necessary.
     DenseFPElementsAttr cst;
     if (!matchPattern(binary_op->getOperand(1), m_Constant(&cst)))
-      return this->matchFailure();
-    if (cst.getNumElements() != 1) return this->matchFailure();
+      return failure();
+    if (cst.getNumElements() != 1) return failure();
     APFloat cst_value = *cst.float_value_begin();
 
     // Affine op.
@@ -516,21 +610,21 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
     if (!matchPattern(filter, m_Constant(&filter_cst))) {
       // The filter maybe quantized, then we should set it to the real constant.
       auto dq = llvm::dyn_cast_or_null<DequantizeOp>(filter.getDefiningOp());
-      if (!dq) return this->matchFailure();
+      if (!dq) return failure();
       auto q = llvm::dyn_cast_or_null<QuantizeOp>(dq.input().getDefiningOp());
       if (!q || !matchPattern(q.input(), m_Constant(&filter_cst))) {
-        return this->matchFailure();
+        return failure();
       }
       filter = q.input();
     }
     if (!bias.getType().isa<NoneType>() &&
         !matchPattern(bias, m_Constant(&bias_cst)))
-      return this->matchFailure();
+      return failure();
     ShapedType filter_type = filter_cst.getType();
 
-    if (llvm::isa<AddOp>(binary_op) || llvm::isa<SubOp>(binary_op)) {
+    if (llvm::isa<AddOp, SubOp>(binary_op)) {
       auto padding = fc_op.template getAttrOfType<StringAttr>("padding");
-      if (padding && padding.getValue() != "VALID") return this->matchFailure();
+      if (padding && padding.getValue() != "VALID") return failure();
 
       // The fusion of add/sub is actually applying the following
       // transformation:
@@ -557,7 +651,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
                                bias_cst.float_value_begin(),
                                bias_cst.float_value_end());
       } else {
-        return this->matchFailure();
+        return failure();
       }
 
       int64_t flatten_index = 0;
@@ -574,7 +668,7 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
           rewriter.create<ConstOp>(fc_op.getLoc(), new_bias_type, new_bias);
       fc_op.setOperand(0, binary_op->getOperand(0));
       fc_op.setOperand(2, new_bias_op);
-    } else if (llvm::isa<MulOp>(binary_op) || llvm::isa<DivOp>(binary_op)) {
+    } else if (llvm::isa<MulOp, DivOp>(binary_op)) {
       // The fusion of mul/div is actually applying the following
       // transformation:
       // w * (x ' c) + b => (w ' c) x + b
@@ -599,9 +693,9 @@ struct FuseBinaryOpToFollowingAffineOp : public OpRewritePattern<AffineOpType> {
         fc_op.setOperand(1, new_filter_op);
       }
     } else {
-      return this->matchFailure();
+      return failure();
     }
-    return this->matchSuccess();
+    return success();
   }
 
  private:
@@ -627,22 +721,21 @@ struct ConvertTrivialTransposeOpToReshapeOp
     : public OpRewritePattern<TFL::TransposeOp> {
   using OpRewritePattern<TFL::TransposeOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(TFL::TransposeOp transpose_op,
-                                     PatternRewriter &rewriter) const override {
-    auto input_type = transpose_op.x().getType().cast<ShapedType>();
-    auto output_type = transpose_op.y().getType().cast<ShapedType>();
+  LogicalResult matchAndRewrite(TFL::TransposeOp transpose_op,
+                                PatternRewriter &rewriter) const override {
+    auto input_type = transpose_op.input().getType().cast<ShapedType>();
+    auto output_type = transpose_op.output().getType().cast<ShapedType>();
     // It's possible to know if the transformation is safe only if the input
     // & output shapes are fully known and permutation is a constant.
     if (!input_type.hasStaticShape() || !output_type.hasStaticShape())
-      return matchFailure();
+      return failure();
     Value perm = transpose_op.perm();
     DenseElementsAttr perm_values_attr;
-    if (!matchPattern(perm, m_Constant(&perm_values_attr)))
-      return matchFailure();
+    if (!matchPattern(perm, m_Constant(&perm_values_attr))) return failure();
 
     auto input_shape = input_type.getShape();
     SmallVector<int64_t, 8> perm_values;
-    for (auto dim : perm_values_attr.getIntValues())
+    for (const auto &dim : perm_values_attr.getIntValues())
       perm_values.push_back(dim.getSExtValue());
 
     // This should never happen unless the input graph is malformed.
@@ -653,7 +746,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
 
     SmallVector<int, 8> old_major_index_ordering;
     SmallVector<int, 8> new_major_index_ordering;
-    for (int i = 0; i < input_shape.size(); i++) {
+    for (int i = 0, end = input_shape.size(); i < end; i++) {
       if (input_shape[i] != 1) {
         old_major_index_ordering.push_back(i);
       }
@@ -663,7 +756,7 @@ struct ConvertTrivialTransposeOpToReshapeOp
       }
     }
     if (old_major_index_ordering != new_major_index_ordering) {
-      return matchFailure();
+      return failure();
     }
 
     // Rewrite.
@@ -680,9 +773,10 @@ struct ConvertTrivialTransposeOpToReshapeOp
     auto new_shape = rewriter.create<TF::ConstOp>(loc, new_shape_attr);
 
     rewriter.replaceOpWithNewOp<TFL::ReshapeOp>(
-        transpose_op, transpose_op.y().getType(), transpose_op.x(), new_shape);
+        transpose_op, transpose_op.output().getType(), transpose_op.input(),
+        new_shape);
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -701,9 +795,12 @@ void Optimize::runOnFunction() {
   // we explore these potentially first and then fuse the binary ops with the
   // following ops in a second pattern match.
   TFL::populateWithGenerated(ctx, &patterns);
-  patterns.insert<FuseFullyConnectedAndAdd, FuseFullyConnectedAndRelu,
+  patterns.insert<FuseFullyConnectedAndAdd,
+                  FuseFullyConnectedAndReluX<TFL::ReluOp, kRelu>,
+                  FuseFullyConnectedAndReluX<TFL::Relu6Op, kRelu6>,
+                  FuseFullyConnectedAndReluX<TFL::Relu1Op, kRelu1>,
                   FuseFullyConnectedAndMul>(ctx);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 
   // Fuse the binary ops with the following ops.
   patterns.insert<
@@ -711,13 +808,13 @@ void Optimize::runOnFunction() {
       FuseBinaryOpToFollowingFullyConnected, FuseConv2DAndMulWithQDQs,
       FuseDepthwiseConv2DAndMulWithQDQs, ConvertTrivialTransposeOpToReshapeOp>(
       ctx);
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace
 
 // Creates an instance of the TensorFlow Lite dialect Optimize pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateOptimizePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateOptimizePass() {
   return std::make_unique<Optimize>();
 }
 

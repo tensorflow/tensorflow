@@ -42,12 +42,25 @@ void TfLiteInterpreterOptionsAddBuiltinOp(
                                   registration, min_version, max_version);
 }
 
+TfLiteInterpreter* TfLiteInterpreterCreateWithSelectedOps(
+    const TfLiteModel* model,
+    const TfLiteInterpreterOptions* optional_options) {
+  tflite::MutableOpResolver resolver;
+  return tflite::internal::InterpreterCreateWithOpResolver(
+      model, optional_options, &resolver);
+}
+
 void TfLiteInterpreterOptionsAddCustomOp(TfLiteInterpreterOptions* options,
                                          const char* name,
                                          const TfLiteRegistration* registration,
                                          int32_t min_version,
                                          int32_t max_version) {
   options->op_resolver.AddCustom(name, registration, min_version, max_version);
+}
+
+void TfLiteInterpreterOptionsSetUseNNAPI(TfLiteInterpreterOptions* options,
+                                         bool enable) {
+  options->use_nnapi = enable;
 }
 
 #ifdef __cplusplus

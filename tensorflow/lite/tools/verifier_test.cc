@@ -428,6 +428,19 @@ TEST(VerifyModel, UseUnsupportedCustomOps) {
                   "Unsupported custom op: Not supported, version: 1"));
 }
 
+TEST(VerifyModel, UseUnnamedCustomOps) {
+  TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"NewOp"});
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
+  builder.AddTensor({2, 2}, TensorType_UINT8, {}, "output");
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+  EXPECT_THAT(builder.GetErrorString(),
+              ::testing::ContainsRegex(
+                  "Invalid custom op name, cannot be null/empty."));
+}
+
 TEST(VerifyModel, UnpopulatedInputToOp) {
   TfLiteFlatbufferModelBuilder builder({}, {"test"});
   builder.AddOperator({1, 2}, {3}, BuiltinOperator_CUSTOM, "test");

@@ -18,6 +18,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <atomic>
+#include <utility>
 
 #include "absl/strings/str_cat.h"
 #include "absl/strings/string_view.h"

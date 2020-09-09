@@ -58,9 +58,10 @@ Status InitializeTableFromTextFile(const string& filename, int64 vocab_size,
 
 // Initializes `table` from `dataset` by iterating over it. Caller retains
 // ownership of `dataset`.
-Status InitializeTableFromDataset(OpKernelContext* ctx,
-                                  data::DatasetBase* dataset,
-                                  InitializableLookupTable* table);
+void InitializeTableFromDataset(OpKernelContext* ctx,
+                                data::DatasetBase* dataset,
+                                InitializableLookupTable* table,
+                                AsyncOpKernel::DoneCallback done);
 
 }  // namespace lookup
 }  // namespace tensorflow

@@ -390,7 +390,8 @@ class HloComputation {
                           std::unique_ptr<HloInstruction>>
           replacements,
       absl::Span<const HloInstruction* const> extra_parameters = {},
-      HloCloneContext* context = nullptr, const string& suffix = "clone");
+      HloCloneContext* context = nullptr, const string& suffix = "clone",
+      const HloInstruction* new_root = nullptr);
 
   // Convenience overloads for CloneWithReplacements.  You want to do
   //
@@ -475,6 +476,9 @@ class HloComputation {
   // HloInstructions in a pass.
   void Cleanup() { to_be_deleted_.clear(); }
 
+  // Returns true if a given instruction is marked dead in this computation.
+  bool IsMarkedAsDead(const HloInstruction* inst);
+
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
@@ -505,7 +509,7 @@ class HloComputation {
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      const HloComputation::ChannelDependencyGroup& channel_dependency_map,
+      const HloComputation::ChannelDependencyGroup& channel_dependency_group,
       std::vector<HloInstruction*>* post_order, HloInstruction* root,
       absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
 

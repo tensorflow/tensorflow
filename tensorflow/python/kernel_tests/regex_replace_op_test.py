@@ -44,7 +44,7 @@ class RegexReplaceOpVariantsTest(test.TestCase, parameterized.TestCase):
                                 "HiJkLmN"], dtypes.string),
           pos=0,
           len=5)
-      stripped = op(inp, "\\p{Ll}", ".").eval()
+      stripped = op(inp, "\\p{Ll}", ".")
       self.assertAllEqual([b"A.C.E", b"H.J.L"], stripped)
 
   @test_util.run_deprecated_v1
@@ -52,7 +52,7 @@ class RegexReplaceOpVariantsTest(test.TestCase, parameterized.TestCase):
     values = ["a:foo", "a:bar", "a:foo", "b:baz", "b:qux", "ca:b"]
     with self.cached_session():
       input_vector = constant_op.constant(values, dtypes.string)
-      stripped = op(input_vector, "^(a:|b:)", "", replace_global=False).eval()
+      stripped = op(input_vector, "^(a:|b:)", "", replace_global=False)
       self.assertAllEqual([b"foo", b"bar", b"foo", b"baz", b"qux", b"ca:b"],
                           stripped)
 
@@ -61,7 +61,7 @@ class RegexReplaceOpVariantsTest(test.TestCase, parameterized.TestCase):
     values = ["aba\naba", "abcdabcde"]
     with self.cached_session():
       input_vector = constant_op.constant(values, dtypes.string)
-      stripped = op(input_vector, "a.*a", "(\\0)").eval()
+      stripped = op(input_vector, "a.*a", "(\\0)")
       self.assertAllEqual([b"(aba)\n(aba)", b"(abcda)bcde"], stripped)
 
   @test_util.run_deprecated_v1
@@ -69,7 +69,7 @@ class RegexReplaceOpVariantsTest(test.TestCase, parameterized.TestCase):
     values = ["abc", "1"]
     with self.cached_session():
       input_vector = constant_op.constant(values, dtypes.string)
-      stripped = op(input_vector, "", "x").eval()
+      stripped = op(input_vector, "", "x")
       self.assertAllEqual([b"xaxbxcx", b"x1x"], stripped)
 
   @test_util.run_deprecated_v1
@@ -87,7 +87,7 @@ class RegexReplaceOpVariantsTest(test.TestCase, parameterized.TestCase):
     values = ["ababababab", "abcabcabc", ""]
     with self.cached_session():
       input_vector = constant_op.constant(values, dtypes.string)
-      stripped = op(input_vector, "ab", "abc", True).eval()
+      stripped = op(input_vector, "ab", "abc", True)
       self.assertAllEqual([b"abcabcabcabcabc", b"abccabccabcc", b""], stripped)
 
 

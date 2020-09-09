@@ -50,7 +50,7 @@ bool Slice(SliceOperator const& op, Array const& input_array,
   CHECK_LE(size.size(), 4);
   std::vector<int> begin = op.begin;
   std::vector<int> end;
-  for (int i = 0; i < begin.size(); ++i) {
+  for (size_t i = 0; i < begin.size(); ++i) {
     int dim_size = size[i];
     if (dim_size == -1) {
       // -1 means the rest of the dimension.

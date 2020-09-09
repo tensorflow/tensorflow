@@ -14,6 +14,8 @@ RUN apt-get update && \
       python-setuptools \
       python-wheel \
       python-numpy \
+      python-pip \
+      pybind11-dev \
       libpython-dev \
       libpython-dev:armhf \
       libpython-dev:arm64 \
@@ -21,6 +23,7 @@ RUN apt-get update && \
       python3-setuptools \
       python3-wheel \
       python3-numpy \
+      python3-pip \
       libpython3-dev \
       libpython3-dev:armhf \
       libpython3-dev:arm64 \
@@ -29,8 +32,11 @@ RUN apt-get update && \
       zlib1g-dev  \
       zlib1g-dev:armhf \
       zlib1g-dev:arm64 \
-      swig \
       curl \
       unzip \
       git && \
     apt-get clean
+RUN pip install pip --upgrade
+RUN pip install pybind11
+RUN pip3 install pip --upgrade
+RUN pip3 install pybind11

@@ -15,9 +15,10 @@ limitations under the License.
 #ifdef INTEL_MKL
 #include <string>
 #include <unordered_map>
+
 #include "tensorflow/core/common_runtime/eager/eager_op_rewrite_registry.h"
+#include "tensorflow/core/common_runtime/mkl_layout_pass.h"
 #include "tensorflow/core/graph/mkl_graph_util.h"
-#include "tensorflow/core/graph/mkl_layout_pass.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/util/mkl_util.h"
 #include "tensorflow/core/util/util.h"
@@ -135,28 +136,23 @@ Status MklEagerOpRewrite::SetupNewOp(
       ->MutableAttrs()
       ->Set("_kernel", mkl_op_registry::kMklNameChangeOpLabel);
 
-  if (orig_op->Device() == kVariantDeviceNull) {
-    string device_name = orig_op->GetDeviceName();
-    (*new_mkl_op)->SetDeviceName(device_name.c_str());
-  } else if (VariantDeviceIsCustom(orig_op->Device())) {
-    (*new_mkl_op)->SetDevice(absl::get<CustomDevice*>(orig_op->Device()));
-  } else {
-    (*new_mkl_op)->SetDevice(absl::get<Device*>(orig_op->Device()));
-  }
-  return Status::OK();
+  string device_name = orig_op->DeviceName();
+  return (*new_mkl_op)->SetDeviceName(device_name.c_str());
 }
 
 Status MklEagerOpRewrite::CreateGenericMklOp(
     EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_op) {
-  const string mkl_op_name = mkl_op_registry::GetMklOpName(orig_op->Name());
+  const string mkl_op_name =
+      mkl_op_registry::GetMklNativeOpName(orig_op->Name());
   TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_op));
   return Status::OK();
 }
 
+// TODO(mabuzain): Replace this call with above generic one.
 Status MklEagerOpRewrite::CreateMklConv2DOp(
     EagerOperation* orig_op, std::unique_ptr<EagerOperation>* mkl_conv2d_op) {
   const string mkl_op_name =
-      mkl_op_registry::GetMklEagerOpName(orig_op->Name());
+      mkl_op_registry::GetMklNativeOpName(orig_op->Name());
   TF_CHECK_OK(SetupNewOp(orig_op, mkl_op_name, mkl_conv2d_op));
   return Status::OK();
 }
@@ -213,10 +209,10 @@ bool MklEagerOpRewrite::SlowCheckIfKernelRegistered(string op_name,
                                                     DataType dt) {
   // Find if the eager op_name exists in mkl_eager_ops_ list.
   auto element = mkl_eager_ops_.find(op_name);
-  if (element != mkl_eager_ops_.end() && dt == DT_FLOAT) {
+  if (element != mkl_eager_ops_.end()) {
     // Eager Op exists. So verify registry and return registered or not.
     return (mkl_op_registry::IsMklNameChangeOp(
-                mkl_op_registry::GetMklEagerOpName(op_name), dt) ||
+                mkl_op_registry::GetMklNativeOpName(op_name), dt) ||
             mkl_op_registry::IsMklNameChangeOp(
                 mkl_op_registry::GetMklOpName(op_name), dt));
   } else {

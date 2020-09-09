@@ -269,6 +269,14 @@ class ShapeUtil {
     if (SameElementType(a, b)) {
       return a.element_type();
     }
+    // If only one of A and B are floating use the floating point type.
+    if (ElementIsFloating(a) && !ElementIsFloating(b)) {
+      return a.element_type();
+    }
+    if (ElementIsFloating(b) && !ElementIsFloating(a)) {
+      return b.element_type();
+    }
+    // Use the higher precision type.
     return primitive_util::BitWidth(a.element_type()) <
                    primitive_util::BitWidth(b.element_type())
                ? b.element_type()
@@ -297,6 +305,16 @@ class ShapeUtil {
 
   // As Equal, but allow one of lhs and rhs to be F16 while the other is F32.
   static bool EqualIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
+
+  // Two shapes have same structure if all subshape indices of lhs are presented
+  // on rhs and vice versa.
+  // A nested tuple shape of (F32, (S32[2], F32[2, 2])) is structurally equal to
+  // (S32, (F32[3], S32[2])) as their structures are both (,(,))
+  //
+  // In contrast, (F32, (F32, F32)) is structurally different from
+  // ((F32, F32), F32) as the former has structure (,(,)) while the latter has
+  // ((,),)
+  static bool EqualStructure(const Shape& lhs, const Shape& rhs);
 
   // Returns the number of dimensions for which the dimension is not (trivially)
   // 1. e.g., f32[2x1x1] has a true rank of 1D, the other dimensions are just
@@ -339,6 +357,9 @@ class ShapeUtil {
   // element type changed to type.
   static Shape ChangeElementType(const Shape& original, PrimitiveType type);
 
+  // Retursn a shape with same dimensions but with all dimensions set to static.
+  static Shape MakeStaticShape(const Shape& original);
+
   // Creates a tuple shape from a slice of element shapes within the tuple.
   static Shape MakeTupleShape(absl::Span<const Shape> shapes);
 
@@ -363,6 +384,9 @@ class ShapeUtil {
 
   // Appends a major dimension to the shape with the given bound.
   static void AppendMajorDimension(int bound, Shape* shape);
+
+  // Copy the dynamic dimensions property from one shape to another.
+  static void CopyDynamicDimensions(Shape* to, const Shape& from);
 
   // Returns an empty tuple shape. Can be used as a sentinel Shape value.
   static Shape MakeNil() { return MakeTupleShape({}); }
@@ -643,12 +667,20 @@ class ShapeUtil {
   static Shape FilterDimensions(const std::function<bool(int64)>& p,
                                 Shape shape);
 
-  // Iterates through all the shape indexes, in minor to major order, starting
-  // from the base indexes, incrementing by the incr steps, up to count
-  // (index[i] < base[i] + count[i]), and calls the visitor_function with the
-  // current index.
-  // The visitor_function visitor function should return true if it wants to
-  // continue, or false otherwise.
+  // Returns true if `dynamic_shape` has dimensions that are less-equal to the
+  // "bounded_shape". Shapes must be arrays.
+  static bool DynamicArrayShapeIsCompatible(const xla::Shape& dynamic_shape,
+                                            const xla::Shape& bounded_shape);
+
+  // Same as DynamicArrayShapeIsCompatible() but supports tuples.
+  static bool DynamicShapeIsCompatible(const xla::Shape& dynamic_shape,
+                                       const xla::Shape& bounded_shape);
+
+  // Iterates through all the shape indexes, in minor to major order,
+  // starting from the base indexes, incrementing by the incr steps, up to
+  // count (index[i] < base[i] + count[i]), and calls the visitor_function
+  // with the current index. The visitor_function visitor function should
+  // return true if it wants to continue, or false otherwise.
   //
   // visitor_function must be a callable of type
   // StatusOr<bool>(absl::Span<int64>) or compatible.

@@ -17,7 +17,7 @@
 
 # Keep in sync with tensorflow_estimator and configure.py.
 # LINT.IfChange
-LATEST_BAZEL_VERSION=2.0.0
+LATEST_BAZEL_VERSION=3.1.0
 # LINT.ThenChange(
 #   //tensorflow/opensource_only/configure.py,
 #   //tensorflow_estimator/google/kokoro/common.sh,
@@ -142,10 +142,13 @@ function install_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install portpicker
   ${SUDO_CMD} ${PIP_CMD} install scipy
   ${SUDO_CMD} ${PIP_CMD} install scikit-learn
+  ${SUDO_CMD} ${PIP_CMD} install typing_extensions
   ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
+  ${PIP_CMD} install --user --upgrade flatbuffers
   ${PIP_CMD} install --user --upgrade attrs
   ${PIP_CMD} install --user --upgrade tf-estimator-nightly
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
+  ${PIP_CMD} install --user --upgrade wrapt
   # LINT.ThenChange(:ubuntu_16_pip_installations)
 }
 
@@ -165,6 +168,7 @@ function install_ubuntu_16_pip_deps {
   # LINT.IfChange(ubuntu_16_pip_installations)
   "${PIP_CMD}" install astunparse==1.6.3 --user
   "${PIP_CMD}" install --user --upgrade attrs
+  "${PIP_CMD}" install --user --upgrade flatbuffers
   "${PIP_CMD}" install keras_preprocessing==1.1.0 --no-deps --user
   "${PIP_CMD}" install numpy==1.16.0 --user
   "${PIP_CMD}" install --user --upgrade "future>=0.17.1"
@@ -175,9 +179,12 @@ function install_ubuntu_16_pip_deps {
   "${PIP_CMD}" install portpicker --user
   "${PIP_CMD}" install scipy --user
   "${PIP_CMD}" install scikit-learn --user
+  "${PIP_CMD}" install typing_extensions --user
   "${PIP_CMD}" install PyYAML==3.13 --user
-  "${PIP_CMD}" install --user --upgrade tf-estimator-nightly
+  # b/156523241
+  "${PIP_CMD}" install --force-reinstall --user --upgrade tf-estimator-nightly
   "${PIP_CMD}" install --user --upgrade tb-nightly
+  "${PIP_CMD}" install --user --upgrade wrapt
   # LINT.ThenChange(:ubuntu_pip_installations)
 }
 
@@ -215,10 +222,14 @@ function install_macos_pip_deps {
   ${SUDO_CMD} ${PIP_CMD} install numpy==1.16.0
   ${SUDO_CMD} ${PIP_CMD} install gast==0.3.3
   ${SUDO_CMD} ${PIP_CMD} install h5py==2.10.0
+  ${SUDO_CMD} ${PIP_CMD} install typing_extensions
   ${SUDO_CMD} ${PIP_CMD} install --upgrade grpcio
   ${SUDO_CMD} ${PIP_CMD} install --upgrade tb-nightly
+  ${PIP_CMD} install --user --upgrade flatbuffers
   ${PIP_CMD} install --user --upgrade attrs
-  ${PIP_CMD} install --user --upgrade tf-estimator-nightly
+  # b/156523241
+  ${PIP_CMD} install --force-reinstall --user --upgrade tf-estimator-nightly
+  ${PIP_CMD} install --user --upgrade wrapt
   ${PIP_CMD} install --user --upgrade "future>=0.17.1"
 }
 
@@ -249,22 +260,65 @@ function copy_to_new_project_name {
   VERSION="$(echo "${FULL_TAG}" | cut -d '-' -f 1)"
 
   TMP_DIR="$(mktemp -d)"
-  cp "${WHL_PATH}" "${TMP_DIR}"
-  pushd "${TMP_DIR}"
-  unzip -q "${ORIGINAL_WHL_NAME}"
+  wheel unpack "${WHL_PATH}" -d "${TMP_DIR}"
+  TMP_UNPACKED_DIR="$(ls -d "${TMP_DIR}"/* | head -n 1)"
+  pushd "${TMP_UNPACKED_DIR}"
 
   ORIGINAL_WHL_DIR_PREFIX="${ORIGINAL_PROJECT_NAME}-${VERSION}"
   NEW_WHL_DIR_PREFIX="${NEW_PROJECT_NAME}-${VERSION}"
   mv "${ORIGINAL_WHL_DIR_PREFIX}.dist-info" "${NEW_WHL_DIR_PREFIX}.dist-info"
-  mv "${ORIGINAL_WHL_DIR_PREFIX}.data" "${NEW_WHL_DIR_PREFIX}.data" || echo
-  sed -i.bak "s/${ORIGINAL_PROJECT_NAME}/${NEW_PROJECT_NAME}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/RECORD"
+  if [[ -d "${ORIGINAL_WHL_DIR_PREFIX}.data" ]]; then
+    mv "${ORIGINAL_WHL_DIR_PREFIX}.data" "${NEW_WHL_DIR_PREFIX}.data"
+  fi
 
   ORIGINAL_PROJECT_NAME_DASH="${ORIGINAL_PROJECT_NAME//_/-}"
   NEW_PROJECT_NAME_DASH="${NEW_PROJECT_NAME//_/-}"
   sed -i.bak "s/${ORIGINAL_PROJECT_NAME_DASH}/${NEW_PROJECT_NAME_DASH}/g" "${NEW_WHL_DIR_PREFIX}.dist-info/METADATA"
 
-  zip -rq "${NEW_WHL_NAME}" "${NEW_WHL_DIR_PREFIX}.dist-info" "${NEW_WHL_DIR_PREFIX}.data" "tensorflow" "tensorflow_core"
-  mv "${NEW_WHL_NAME}" "${ORIGINAL_WHL_DIR}"
+  wheel pack "${TMP_UNPACKED_DIR}" -d "${ORIGINAL_WHL_DIR}"
   popd
   rm -rf "${TMP_DIR}"
+}
+
+# Create minimalist test XML for web view. It includes the pass/fail status
+# of each target, without including errors or stacktraces.
+# Remember to "set +e" before calling bazel or we'll only generate the XML for
+# passing runs.
+function test_xml_summary {
+  set +x
+  set +e
+  mkdir -p "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary"
+  # First build the repeated inner XML blocks, since the header block needs to
+  # report the number of test cases / failures / errors.
+  # TODO(rsopher): handle build breakages
+  # TODO(rsopher): extract per-test times as well
+  TESTCASE_XML="$(sed -n '/INFO:\ Build\ completed/,/INFO:\ Build\ completed/p' \
+    /tmpfs/kokoro_build.log \
+    | grep -E '(PASSED|FAILED|TIMEOUT)\ in' \
+    | while read -r line; \
+      do echo '<testcase name="'"$(echo "${line}" | tr -s ' ' | cut -d ' ' -f 1)"\
+          '" status="run" classname="" time="0">'"$( \
+        case "$(echo "${line}" | tr -s ' ' | cut -d ' ' -f 2)" in \
+          FAILED) echo '<failure message="" type=""/>' ;; \
+          TIMEOUT) echo '<failure message="timeout" type=""/>' ;; \
+        esac; \
+      )"'</testcase>'; done; \
+  )"
+  NUMBER_OF_TESTS="$(echo "${TESTCASE_XML}" | wc -l)"
+  NUMBER_OF_FAILURES="$(echo "${TESTCASE_XML}" | grep -c '<failure')"
+  echo '<?xml version="1.0" encoding="UTF-8"?>'\
+  '<testsuites name="1"  tests="1" failures="0" errors="0" time="0">'\
+  '<testsuite name="Kokoro Summary" tests="'"${NUMBER_OF_TESTS}"\
+  '" failures="'"${NUMBER_OF_FAILURES}"'" errors="0" time="0">'\
+  "${TESTCASE_XML}"'</testsuite></testsuites>'\
+  > "${KOKORO_ARTIFACTS_DIR}/${KOKORO_JOB_NAME}/summary/sponge_log.xml"
+}
+
+# Create minimalist test XML for web view, then exit.
+# Ends script with value of previous command, meant to be called immediately
+# after bazel as the last call in the build script.
+function test_xml_summary_exit {
+  RETVAL=$?
+  test_xml_summary
+  exit "${RETVAL}"
 }

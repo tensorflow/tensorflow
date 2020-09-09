@@ -16,10 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_CL_API_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_CL_API_H_
 
+#ifdef CL_DELEGATE_NO_GL
+#define EGL_NO_PROTOTYPES
+#endif
+
+#include <EGL/egl.h>
+
 #include <cstdint>
 #include <memory>
 
-#include <EGL/egl.h>
 #include "absl/types/span.h"
 #include "tensorflow/lite/delegates/gpu/api.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
@@ -70,7 +75,7 @@ class InferenceEnvironment {
  public:
   virtual ~InferenceEnvironment() {}
 
-  virtual Status NewInferenceBuilder(
+  virtual absl::Status NewInferenceBuilder(
       const InferenceOptions& options, GraphFloat32 model,
       std::unique_ptr<InferenceBuilder>* builder) = 0;
 
@@ -112,7 +117,7 @@ struct InferenceEnvironmentOptions {
 
 // Creates new OpenCL environment that needs to stay around until all inference
 // runners are destroyed.
-Status NewInferenceEnvironment(
+absl::Status NewInferenceEnvironment(
     const InferenceEnvironmentOptions& options,
     std::unique_ptr<InferenceEnvironment>* environment,
     InferenceEnvironmentProperties* properties /* optional */);

@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 
+#include <algorithm>
 #include <iterator>
 #include <stack>
 #include <vector>
@@ -66,6 +67,25 @@ bool IfFusedReadsElementsMultipleTimes(const HloInstruction& instr) {
   return false;
 }
 
+std::vector<int64> ExtractRelativeOrderOfNontrivialDims(const Shape& shape) {
+  std::vector<int64> relative_order;
+  for (int64 dim : LayoutUtil::MinorToMajor(shape)) {
+    if (shape.dimensions(dim) > 1) {
+      relative_order.push_back(dim);
+    }
+  }
+  // Now normalize the dimensions to values between 0 and true rank - 1.
+  std::vector<int64> sorted_dims = relative_order;
+  std::sort(sorted_dims.begin(), sorted_dims.end());
+  for (int64& dim : relative_order) {
+    int64 sorted_index = std::distance(
+        sorted_dims.begin(),
+        std::lower_bound(sorted_dims.begin(), sorted_dims.end(), dim));
+    dim = sorted_index;
+  }
+  return relative_order;
+}
+
 }  // namespace
 
 bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
@@ -73,17 +93,20 @@ bool LayoutsAreReduceInputFusionFriendly(const HloInstruction& producer,
   std::vector<HloInstruction*> params;
   AppendParams(producer, &params);
   AppendParams(reduce, &params);
-  int64 max_rank = -1;
-  const Layout* max_rank_layout;
+  int64 max_true_rank = -1;
+  std::vector<int64> max_rank_order;
   for (HloInstruction* param : params) {
-    if (param->shape().IsArray() && param->shape().rank() > max_rank) {
-      max_rank = param->shape().rank();
-      max_rank_layout = &param->shape().layout();
+    if (param->shape().IsArray() &&
+        ShapeUtil::TrueRank(param->shape()) > max_true_rank) {
+      max_true_rank = ShapeUtil::TrueRank(param->shape());
+      max_rank_order = ExtractRelativeOrderOfNontrivialDims(param->shape());
     }
   }
   return absl::c_all_of(params, [&](HloInstruction* param) {
-    return (!param->shape().IsArray()) || (param->shape().rank() < max_rank) ||
-           (LayoutUtil::Equal(param->shape().layout(), *max_rank_layout));
+    return !param->shape().IsArray() ||
+           ShapeUtil::TrueRank(param->shape()) < max_true_rank ||
+           ExtractRelativeOrderOfNontrivialDims(param->shape()) ==
+               max_rank_order;
   });
 }
 
@@ -239,13 +262,6 @@ bool IsProducerConsumerFusible(const HloInstruction& producer,
       !LayoutsAreReduceInputFusionFriendly(producer, consumer)) {
     return false;
   }
-  // We can't fuse library calls, so if a user of such an op could become a
-  // bitcast, leave it unfused. See `xla::InstructionFusion::ShouldFuse` for
-  // further rationale.
-  if (producer.CouldBeBitcast() &&
-      ImplementedAsLibraryCall(*producer.operand(0))) {
-    return false;
-  }
   // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
   //
@@ -331,10 +347,18 @@ static int64 SharedMemoryUsage(const HloInstruction& instr) {
 // This limit is also often good for performance.  In a fusion with many
 // operands, each GPU thread likely has to do a lot of work, and so possibly
 // uses a lot of registers, thus limiting occupancy.
+//
+// If the fusion is a producer/consumer fusion and instr1 is the
+// consumer and instr2 is the producer, set is_consumer_producer_fusion
+// to true to enable more fusion.
 bool FusionWouldBeTooLarge(const HloInstruction& instr1,
-                           const HloInstruction& instr2) {
+                           const HloInstruction& instr2,
+                           bool is_consumer_producer_fusion) {
   if (SharedMemoryUsage(instr1) + SharedMemoryUsage(instr2) >
       kSharedMemoryBudgetInBytes) {
+    VLOG(5) << "Shared memory usage of fusion of " << instr1.ToString()
+            << " and " << instr2.ToString() << " would be over the budget of "
+            << kSharedMemoryBudgetInBytes << "B";
     return true;
   }
 
@@ -367,6 +391,14 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
           num_output_buffers <=
       kMaxOperandsAndOutputsPerFusion) {
     return false;
+  } else {
+    VLOG(5) << "Operand count of "
+            << "(" << instr1.ToString() << " ) = " << instr1.operand_count()
+            << " and ( " << instr2.ToString()
+            << " ) = " << instr2.operand_count()
+            << " and num_output_buffers = " << num_output_buffers
+            << " is bigger than the bound of "
+            << kMaxOperandsAndOutputsPerFusion;
   }
 
   // Compute the precise number of operands to the new fusion.
@@ -377,6 +409,17 @@ bool FusionWouldBeTooLarge(const HloInstruction& instr1,
   // producer -> consumer relationship.
   operands.erase(&instr1);
   operands.erase(&instr2);
+
+  // If we generate the same numbers of inputs and outputs as
+  // before, it won't be bigger after fusion. So accept the fusion.
+  // As this is a consumer_producer fusion, this does not change the
+  // consumer numbers of output. So no need to check it.
+  if (is_consumer_producer_fusion &&
+      operands.size() <= instr1.operands().size()) {
+    return false;
+  }
+
+  // Does the new fusion have more operands and outputs than the max?
   return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
 }
 

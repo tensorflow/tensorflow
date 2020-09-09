@@ -15,7 +15,7 @@ limitations under the License.
 
 #include <fstream>
 #include <gtest/gtest.h>
-#include "flatbuffers/flatc.h"  // TF:flatbuffers
+#include "flatbuffers/flatc.h"  // from @flatbuffers
 #include "tensorflow/core/platform/platform.h"
 
 #ifdef PLATFORM_GOOGLE

@@ -44,7 +44,7 @@ Tindices FindNextDenseRowStartIndex(
 // v.front() = 0, v.back() = indices_mat.dimension(0), and for i > 0,
 // v[i] - v[i-1] is the length of the ith dense row in indices_mat.
 // *contains_empty_rows = true if and only if indices_mat contains empty rows
-// (rows without values) between its first and last row.
+// (rows without values) between row 0 and the last row.
 template <typename Tindices>
 std::vector<Tindices> GetStartIndicesOfEachDenseRow(
     const typename TTypes<Tindices>::ConstMatrix& indices_mat,

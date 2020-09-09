@@ -14,18 +14,39 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/test_util.h"
 
-#include <numeric>
+#include <stddef.h>
+#include <stdint.h>
+
+#include <algorithm>
+#include <complex>
+#include <functional>
+#include <map>
+#include <memory>
+#include <optional>
+#include <string>
+#include <tuple>
+#include <utility>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/subgraph.h"
 #include "tensorflow/lite/delegates/nnapi/acceleration_test_util.h"
 #include "tensorflow/lite/delegates/nnapi/nnapi_delegate.h"
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/acceleration_test_util.h"
-#include "tensorflow/lite/minimal_logging.h"
+#include "tensorflow/lite/kernels/register.h"
+#include "tensorflow/lite/kernels/test_delegate_providers.h"
+#include "tensorflow/lite/model.h"
 #include "tensorflow/lite/nnapi/nnapi_implementation.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
+#include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/tools/logging.h"
 #include "tensorflow/lite/tools/versioning/op_version.h"
 #include "tensorflow/lite/version.h"
 
@@ -33,26 +54,6 @@ namespace tflite {
 
 using ::testing::FloatNear;
 using ::testing::Matcher;
-
-namespace {
-
-// Whether to enable (global) use of NNAPI. Note that this will typically
-// be set via a command-line flag.
-static bool force_use_nnapi = false;
-
-TfLiteDelegate* TestNnApiDelegate() {
-  static TfLiteDelegate* delegate = [] {
-    StatefulNnApiDelegate::Options options;
-    // In Android Q, the NNAPI delegate avoids delegation if the only device
-    // is the reference CPU. However, for testing purposes, we still want
-    // delegation coverage, so force use of this reference path.
-    options.accelerator_name = "nnapi-reference";
-    return new StatefulNnApiDelegate(options);
-  }();
-  return delegate;
-}
-
-}  // namespace
 
 std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
                                            float max_abs_error) {
@@ -78,12 +79,23 @@ std::vector<Matcher<std::complex<float>>> ArrayComplex64Near(
   return matchers;
 }
 
-int SingleOpModel::AddInput(const TensorData& t, bool is_variable) {
+int SingleOpModel::AddInput(const TensorData& t) {
   int id = 0;
   if (t.per_channel_quantization) {
     id = AddTensorPerChannelQuant(t);
   } else {
-    id = AddTensor<float>(t, {}, is_variable);
+    id = AddTensor<float>(t, {});
+  }
+  inputs_.push_back(id);
+  return id;
+}
+
+int SingleOpModel::AddVariableInput(const TensorData& t) {
+  int id = 0;
+  if (t.per_channel_quantization) {
+    id = AddTensorPerChannelQuant(t);
+  } else {
+    id = AddTensor<float>(t, {}, true);
   }
   inputs_.push_back(id);
   return id;
@@ -122,7 +134,7 @@ int SingleOpModel::AddOutput(const TensorData& t) {
 void SingleOpModel::SetBuiltinOp(BuiltinOperator type,
                                  BuiltinOptions builtin_options_type,
                                  flatbuffers::Offset<void> builtin_options) {
-  opcodes_.push_back(CreateOperatorCode(builder_, type, 0));
+  opcodes_.push_back(CreateOperatorCode(builder_, type, 0, 0));
   operators_.push_back(CreateOperator(
       builder_, /*opcode_index=*/0, builder_.CreateVector<int32_t>(inputs_),
       builder_.CreateVector<int32_t>(outputs_), builtin_options_type,
@@ -144,10 +156,22 @@ void SingleOpModel::SetCustomOp(
       CustomOptionsFormat_FLEXBUFFERS));
 }
 
+void SingleOpModel::AllocateAndDelegate(bool apply_delegate) {
+  CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
+      << "Cannot allocate tensors";
+  interpreter_->ResetVariableTensors();
+
+  // In some rare cases a test may need to postpone modifying the graph with
+  // a delegate, e.g. if tensors are not fully specified. In such cases the
+  // test has to explicitly call ApplyDelegate() when necessary.
+  if (apply_delegate) ApplyDelegate();
+}
+
 void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      int num_threads,
                                      bool allow_fp32_relax_to_fp16,
-                                     bool apply_delegate) {
+                                     bool apply_delegate,
+                                     bool allocate_and_delegate) {
   auto opcodes = builder_.CreateVector(opcodes_);
   auto operators = builder_.CreateVector(operators_);
   auto tensors = builder_.CreateVector(tensors_);
@@ -189,26 +213,30 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
 
   interpreter_->SetAllowFp16PrecisionForFp32(allow_fp32_relax_to_fp16);
 
-  CHECK(interpreter_->AllocateTensors() == kTfLiteOk)
-      << "Cannot allocate tensors";
-  interpreter_->ResetVariableTensors();
-
-  // In some rare cases a test may need to postpone modifying the graph with
-  // a delegate, e.g. if tensors are not fully specified. In such cases the
-  // test has to explicitly call ApplyDelegate() when necessary.
-  if (apply_delegate) ApplyDelegate();
+  if (allocate_and_delegate) {
+    AllocateAndDelegate(apply_delegate);
+  }
 }
 
-void SingleOpModel::ApplyDelegate() {
-  if (force_use_nnapi) {
-    // TODO(b/124505407): Check the result and fail accordingly.
-    interpreter_->ModifyGraphWithDelegate(TestNnApiDelegate());
+TfLiteStatus SingleOpModel::ApplyDelegate() {
+  if (delegate_) {
+    TFLITE_LOG(WARN) << "Having a manually-set TfLite delegate, and bypassing "
+                        "KernelTestDelegateProviders";
+    TF_LITE_ENSURE_STATUS(interpreter_->ModifyGraphWithDelegate(delegate_));
+    ++num_applied_delegates_;
+  } else {
+    auto* delegate_providers = tflite::KernelTestDelegateProviders::Get();
+    for (auto& one : delegate_providers->CreateAllDelegates()) {
+      // The raw ptr always points to the actual TfLiteDegate object.
+      auto* delegate_raw_ptr = one.get();
+      TF_LITE_ENSURE_STATUS(
+          interpreter_->ModifyGraphWithDelegate(std::move(one)));
+      // Note: 'delegate_' is always set to the last successfully applied one.
+      delegate_ = delegate_raw_ptr;
+      ++num_applied_delegates_;
+    }
   }
-
-  // Modify delegate with function.
-  if (apply_delegate_fn_) {
-    apply_delegate_fn_(interpreter_.get());
-  }
+  return kTfLiteOk;
 }
 
 void SingleOpModel::Invoke() { ASSERT_EQ(interpreter_->Invoke(), kTfLiteOk); }
@@ -219,30 +247,18 @@ void SingleOpModel::BuildInterpreter(
     std::vector<std::vector<int>> input_shapes) {
   BuildInterpreter(input_shapes, /*num_threads=*/-1,
                    /*allow_fp32_relax_to_fp16=*/false,
-                   /*apply_delegate=*/true);
-}
-
-void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                                     bool allow_fp32_relax_to_fp16,
-                                     bool apply_delegate) {
-  BuildInterpreter(input_shapes, /*num_threads=*/-1, allow_fp32_relax_to_fp16,
-                   apply_delegate);
-}
-
-void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
-                                     int num_threads) {
-  BuildInterpreter(input_shapes, num_threads,
-                   /*allow_fp32_relax_to_fp16=*/false,
-                   /*apply_delegate=*/true);
+                   /*apply_delegate=*/true, /*allocate_and_delegate=*/true);
 }
 
 // static
-void SingleOpModel::SetForceUseNnapi(bool use_nnapi) {
-  force_use_nnapi = use_nnapi;
+bool SingleOpModel::GetForceUseNnapi() {
+  const auto& delegate_params =
+      tflite::KernelTestDelegateProviders::Get()->ConstParams();
+  // It's possible this library isn't linked with the nnapi delegate provider
+  // lib.
+  return delegate_params.HasParam("use_nnapi") &&
+         delegate_params.Get<bool>("use_nnapi");
 }
-
-// static
-bool SingleOpModel::GetForceUseNnapi() { return force_use_nnapi; }
 
 int32_t SingleOpModel::GetTensorSize(int index) const {
   TfLiteTensor* t = interpreter_->tensor(index);
@@ -322,20 +338,27 @@ void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
     return;
   }
 
-  TFLITE_LOG_PROD(TFLITE_LOG_INFO, "Validating acceleration");
+  // If we have multiple delegates applied, we would skip this check at the
+  // moment.
+  if (num_applied_delegates_ > 1) {
+    TFLITE_LOG(WARN) << "Skipping ExpectOpAcceleratedWithNnapi as "
+                     << num_applied_delegates_
+                     << " delegates have been successfully applied.";
+    return;
+  }
+  TFLITE_LOG(INFO) << "Validating acceleration";
   const NnApi* nnapi = NnApiImplementation();
   if (nnapi && nnapi->nnapi_exists &&
       nnapi->android_sdk_version >=
           validation_params.value().MinAndroidSdkVersion()) {
-    EXPECT_EQ(
-        CountPartitionsDelegatedTo(interpreter_.get(), TestNnApiDelegate()), 1)
+    EXPECT_EQ(CountPartitionsDelegatedTo(interpreter_.get(), delegate_), 1)
         << "Expecting operation to be accelerated but cannot find a partition "
            "associated to the NNAPI delegate";
   }
 }
 
 void SingleOpModel::ValidateAcceleration() {
-  if (force_use_nnapi) {
+  if (GetForceUseNnapi()) {
     ExpectOpAcceleratedWithNnapi(GetCurrentTestId());
   }
 }
@@ -350,7 +373,7 @@ void MultiOpModel::AddBuiltinOp(
     BuiltinOperator type, BuiltinOptions builtin_options_type,
     const flatbuffers::Offset<void>& builtin_options,
     const std::vector<int32_t>& inputs, const std::vector<int32_t>& outputs) {
-  opcodes_.push_back(CreateOperatorCode(builder_, type, 0));
+  opcodes_.push_back(CreateOperatorCode(builder_, type, 0, 0));
   const int opcode_index = opcodes_.size() - 1;
   operators_.push_back(CreateOperator(
       builder_, opcode_index, builder_.CreateVector<int32_t>(inputs),
@@ -373,5 +396,4 @@ void MultiOpModel::AddCustomOp(
       builder_.CreateVector<uint8_t>(custom_option),
       CustomOptionsFormat_FLEXBUFFERS));
 }
-
 }  // namespace tflite

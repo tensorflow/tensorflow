@@ -12,12 +12,18 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <stdint.h>
+
+#include <initializer_list>
+#include <string>
+#include <vector>
+
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/string_type.h"
 
 namespace tflite {
 namespace {
@@ -264,6 +270,26 @@ TEST(TypesGatherOpTest, Int8Int64) {
   m.Invoke();
 
   EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({14, 15, -13, -120}));
+}
+
+TEST(TypesGatherOpTest, Int16Int32) {
+  GatherOpModel m({TensorType_INT16, {2, 2}}, {TensorType_INT32, {2}});
+  m.SetInput<int16_t>({-13, -32000, 0, 32500});
+  m.SetPositions<int32_t>({1, 0});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 32500, -13, -32000}));
+}
+
+TEST(TypesGatherOpTest, Int16Int64) {
+  GatherOpModel m({TensorType_INT16, {2, 2}}, {TensorType_INT64, {2}});
+  m.SetInput<int16_t>({-13, -32000, 0, 32500});
+  m.SetPositions<int64_t>({1LL, 0LL});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput<int16_t>(),
+              ElementsAreArray({0, 32500, -13, -32000}));
 }
 
 TEST(TypesGatherOpTest, Int64Int32) {

@@ -48,8 +48,8 @@ class DistributedTrainingUtilsTest(test.TestCase):
     ]
 
     for callback in unsupported_predefined_callbacks:
-      with self.assertRaisesRegexp(
-          ValueError, 'You must specify a Keras Optimizer V2'):
+      with self.assertRaisesRegex(ValueError,
+                                  'You must specify a Keras Optimizer V2'):
         distributed_training_utils.validate_callbacks([callback],
                                                       v1_adam.AdamOptimizer())
 

@@ -241,16 +241,13 @@ TEST_F(HloAliasAnalysisTest, ParametersWithAliasing) {
   SCOPED_TRACE(module_->ToString());
 
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
 
   // Cannot alias an output twice.
   ASSERT_IS_NOT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0}));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
@@ -287,16 +284,13 @@ TEST_F(HloAliasAnalysisTest, ParametersWithCrossAliasing) {
   SCOPED_TRACE(module_->ToString());
 
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{1},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{1}));
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{0}));
 
   // Cannot alias an output twice.
   ASSERT_IS_NOT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 
@@ -378,11 +372,9 @@ TEST_F(HloAliasAnalysisTest, InputOutputAliasingWithWhile) {
   SCOPED_TRACE(module_->ToString());
 
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{0}, /*param_number=*/0, /*param_index=*/{0}));
   TF_ASSERT_OK(module_->input_output_alias_config().SetUpAlias(
-      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1},
-      /*kind=*/HloInputOutputAliasConfig::AliasKind::kUserAlias));
+      /*output_index=*/{1}, /*param_number=*/0, /*param_index=*/{1}));
 
   const HloAliasAnalysis& analysis = RunAnalysis();
 

@@ -71,7 +71,8 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
         del fetches, feeds
         return framework.WatchOptions(
             debug_ops=["DebugIdentity"],
-            node_name_regex_whitelist=r"original_u")
+            node_name_regex_allowlist=r"original_u")
+
       sess = grpc_wrapper.GrpcDebugWrapperSession(
           sess, "localhost:%d" % self.debug_server_port, watch_fn=watch_fn)
       self.assertAllClose(42.0, sess.run(u))
@@ -101,8 +102,8 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
       def watch_fn(fetches, feeds):
         del fetches, feeds  # Unused by this watch_fn.
         return framework.WatchOptions(
-            debug_ops=["DebugIdentity"],
-            node_name_regex_whitelist=r"u_init")
+            debug_ops=["DebugIdentity"], node_name_regex_allowlist=r"u_init")
+
       sess = grpc_wrapper.GrpcDebugWrapperSession(
           sess, "localhost:%d" % self.debug_server_port, watch_fn=watch_fn)
       sess.run(u.initializer)
@@ -125,8 +126,8 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
       def watch_fn(fetches, feeds):
         del fetches, feeds
         return framework.WatchOptions(
-            debug_ops=["DebugIdentity"],
-            node_name_regex_whitelist=r"u_init")
+            debug_ops=["DebugIdentity"], node_name_regex_allowlist=r"u_init")
+
       sess = grpc_wrapper.GrpcDebugWrapperSession(
           sess, "localhost:%d" % self.debug_server_port, watch_fn=watch_fn)
       sess.run(u.initializer)
@@ -155,8 +156,8 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
       def watch_fn(fetches, feeds):
         del fetches, feeds
         return framework.WatchOptions(
-            debug_ops=["DebugIdentity"],
-            node_name_regex_whitelist=r"u_init")
+            debug_ops=["DebugIdentity"], node_name_regex_allowlist=r"u_init")
+
       sess = grpc_wrapper.GrpcDebugWrapperSession(
           sess, "localhost:%d" % self.debug_server_port, watch_fn=watch_fn)
       sess.run(u.initializer)
@@ -177,8 +178,8 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
       def watch_fn(fetches, feeds):
         del fetches, feeds
         return framework.WatchOptions(
-            debug_ops=["DebugIdentity"],
-            node_name_regex_whitelist=r"u_init")
+            debug_ops=["DebugIdentity"], node_name_regex_allowlist=r"u_init")
+
       sess = grpc_wrapper.GrpcDebugWrapperSession(
           sess, "localhost:%d" % self.debug_server_port, watch_fn=watch_fn)
       sess.run(u.initializer)
@@ -200,8 +201,8 @@ class LargeGraphAndLargeTensorsDebugTest(test_util.TensorFlowTestCase):
       def watch_fn(fetches, feeds):
         del fetches, feeds
         return framework.WatchOptions(
-            debug_ops=["DebugIdentity"],
-            node_name_regex_whitelist=r"u_init")
+            debug_ops=["DebugIdentity"], node_name_regex_allowlist=r"u_init")
+
       sess = grpc_wrapper.GrpcDebugWrapperSession(
           sess, "localhost:%d" % self.debug_server_port, watch_fn=watch_fn)
       sess.run(u.initializer)

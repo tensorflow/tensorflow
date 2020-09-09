@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
+
 #include "tensorflow/lite/delegates/gpu/common/status.h"
 
 namespace tflite {
@@ -32,7 +33,7 @@ class EglSync {
   // flushed.
   //
   // Depends on EGL_KHR_fence_sync extension.
-  static Status NewFence(EGLDisplay display, EglSync* sync);
+  static absl::Status NewFence(EGLDisplay display, EglSync* sync);
 
   // Creates invalid object.
   EglSync() : EglSync(EGL_NO_DISPLAY, EGL_NO_SYNC_KHR) {}
@@ -50,10 +51,10 @@ class EglSync {
 
   // Causes GPU to block and wait until this sync has been signaled.
   // This call does not block and returns immediately.
-  Status ServerWait();
+  absl::Status ServerWait();
 
   // Causes CPU to block and wait until this sync has been signaled.
-  Status ClientWait();
+  absl::Status ClientWait();
 
   // Returns the EGLDisplay on which this instance was created.
   EGLDisplay display() const { return display_; }

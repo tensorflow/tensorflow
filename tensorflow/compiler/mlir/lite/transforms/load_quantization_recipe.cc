@@ -19,11 +19,11 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/None.h"
 #include "llvm/ADT/Optional.h"
-#include "mlir/Dialect/QuantOps/QuantTypes.h"  // TF:llvm-project
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
+#include "mlir/Dialect/Quant/QuantTypes.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/lite/quantization/quantization_utils.h"
 #include "tensorflow/compiler/mlir/lite/transforms/passes.h"
@@ -42,7 +42,8 @@ namespace {
 // AnyQuantizedType, thus bitwidth, narrow_range, etc are included. The op also
 // defines the op quantization traits, which are used to propagate the
 // quantization parameters by the following passes.
-struct LoadQuantizationRecipe : public FunctionPass<LoadQuantizationRecipe> {
+struct LoadQuantizationRecipe
+    : public PassWrapper<LoadQuantizationRecipe, FunctionPass> {
   void runOnFunction() override;
 
  private:
@@ -183,7 +184,7 @@ void LoadQuantizationRecipe::LoadForLSTMOp(LSTMOp lstm, OpBuilder* builder) {
 
   auto new_cell_tanh = builder->create<TanhOp>(loc, int16, new_cell);
   auto hidden_state = builder->create<MulOp>(
-      loc, int16, new_cell_tanh.y(), output_gate->getResult(0), none_af);
+      loc, int16, new_cell_tanh.output(), output_gate->getResult(0), none_af);
   auto act = builder->create<FullyConnectedOp>(
       loc, int8, hidden_state.output(), lstm.projection_weights(),
       lstm.projection_bias(), none_af, fc_format, keep_dims);
@@ -215,7 +216,7 @@ void LoadQuantizationRecipe::runOnFunction() {
 
 // Creates an instance of the TensorFlow Lite dialect LoadQuantizationRecipe
 // pass.
-std::unique_ptr<OpPassBase<FuncOp>> CreateLoadQuantizationRecipePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLoadQuantizationRecipePass() {
   return absl::make_unique<LoadQuantizationRecipe>();
 }
 

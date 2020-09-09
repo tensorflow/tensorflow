@@ -38,6 +38,24 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddBuiltinOp(
     const TfLiteRegistration* registration, int32_t min_version,
     int32_t max_version);
 
+// Returns a new interpreter using the provided model and options, or null on
+// failure, where the model uses only the builtin operators specified in the
+// options.  This is the same as `TFLiteInterpreterCreate` from `c_api.h`,
+// except that the only builtin operators that are supported are the ones
+// registered in `options` with `TfLiteInterpreterOptionsAddBuiltinOp`.
+//
+// * `model` must be a valid model instance. The caller retains ownership of the
+//   object, and can destroy it immediately after creating the interpreter; the
+//   interpreter will maintain its own reference to the underlying model data.
+// * `options` should not be null. The caller retains ownership of the object,
+//   and can safely destroy it immediately after creating the interpreter.
+//
+// NOTE: The client *must* explicitly allocate tensors before attempting to
+// access input tensor data or invoke the interpreter.
+TFL_CAPI_EXPORT extern TfLiteInterpreter*
+TfLiteInterpreterCreateWithSelectedOps(const TfLiteModel* model,
+                                       const TfLiteInterpreterOptions* options);
+
 // Adds an op registration for a custom operator.
 //
 // NOTE: The interpreter will make a copy of `registration` internally, so the
@@ -48,6 +66,10 @@ TFL_CAPI_EXPORT void TfLiteInterpreterOptionsAddCustomOp(
     TfLiteInterpreterOptions* options, const char* name,
     const TfLiteRegistration* registration, int32_t min_version,
     int32_t max_version);
+
+// Enable or disable the NN API for the interpreter (true to enable).
+TFL_CAPI_EXPORT extern void TfLiteInterpreterOptionsSetUseNNAPI(
+    TfLiteInterpreterOptions* options, bool enable);
 
 #ifdef __cplusplus
 }  // extern "C"

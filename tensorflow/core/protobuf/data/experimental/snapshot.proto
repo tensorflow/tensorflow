@@ -26,6 +26,8 @@ message SnapshotMetadataRecord {
   int64 version = 4;
   // A list of tensor dtype corresponding to each element of the snapshot.
   repeated .tensorflow.DataType dtype = 5;
+  // The number of elements in the snapshot.
+  int64 num_elements = 6;
 
   bool finalized = 1000;
 }

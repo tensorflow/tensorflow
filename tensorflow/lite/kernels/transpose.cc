@@ -12,17 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string.h>
+#include <stdint.h>
 
-#include <vector>
-
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {
@@ -76,9 +75,10 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TransposeContext op_context(context, node);
 
   // Ensure validity of input tensor.
-  TF_LITE_ENSURE_MSG(context, NumDimensions(op_context.input) <= 4,
-                     "Transpose op only supports 1D-4D input arrays.");
-  TF_LITE_ENSURE_EQ(context, op_context.input->type, op_context.output->type);
+  TF_LITE_ENSURE_MSG(context, NumDimensions(op_context.input) <= 5,
+                     "Transpose op only supports 1D-5D input arrays.");
+  TF_LITE_ENSURE_TYPES_EQ(context, op_context.input->type,
+                          op_context.output->type);
 
   if (!IsConstantTensor(op_context.perm)) {
     SetTensorToDynamic(op_context.output);
@@ -145,9 +145,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
       break;
     default:
-      context->ReportError(context,
-                           "Type %d is currently not supported by Transpose.",
-                           op_context.input->type);
+      TF_LITE_KERNEL_LOG(context,
+                         "Type %s is currently not supported by Transpose.",
+                         TfLiteTypeGetName(op_context.input->type));
       return kTfLiteError;
   }
 #undef TF_LITE_TRANSPOSE

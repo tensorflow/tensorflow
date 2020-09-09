@@ -74,7 +74,9 @@ class StatusLogSink : public TFLogSink {
 
     mutex_lock lock(mu_);
     messages_.emplace_back(entry.ToString());
-    if (messages_.size() > num_messages_) messages_.pop_front();
+    if (messages_.size() > static_cast<size_t>(num_messages_)) {
+      messages_.pop_front();
+    }
   }
 
  private:
@@ -87,11 +89,13 @@ class StatusLogSink : public TFLogSink {
 
 }  // namespace
 
-Status::Status(tensorflow::error::Code code, StringPiece msg) {
+Status::Status(tensorflow::error::Code code, tensorflow::StringPiece msg,
+               std::vector<StackFrame>&& stack_trace) {
   assert(code != tensorflow::error::OK);
   state_ = std::unique_ptr<State>(new State);
   state_->code = code;
   state_->msg = string(msg);
+  state_->stack_trace = std::move(stack_trace);
   VLOG(5) << "Generated non-OK status: \"" << *this << "\". "
           << CurrentStackTrace();
 }
@@ -112,6 +116,11 @@ void Status::SlowCopyFrom(const State* src) {
 
 const string& Status::empty_string() {
   static string* empty = new string;
+  return *empty;
+}
+
+const std::vector<StackFrame>& Status::empty_stack_trace() {
+  static std::vector<StackFrame>* empty = new std::vector<StackFrame>();
   return *empty;
 }
 

@@ -348,7 +348,7 @@ void Timeline::AllocateLanes() {
       int64 start_time = tnode.second->start_micros;
       int64 end_time = tnode.second->start_micros + tnode.second->exec_micros;
       int64 l = -1;
-      for (int64 i = 0; i < p->lanes.size(); ++i) {
+      for (int64 i = 0, end = p->lanes.size(); i < end; ++i) {
         const auto& lane = p->lanes[i];
         l = i;
         for (auto cur_it = lane.rbegin(); cur_it != lane.rend(); ++cur_it) {

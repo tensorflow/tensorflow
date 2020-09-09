@@ -50,6 +50,7 @@ class RunId {
  public:
   // Creates a new, unique RunId.
   RunId();
+  explicit RunId(int64 value) : data_(value) {}
 
   RunId(const RunId&) = default;
   RunId& operator=(const RunId&) = default;
@@ -127,6 +128,13 @@ class ExecutableRunOptions {
   ExecutableRunOptions& set_rng_seed(int rng_seed);
   int rng_seed() const;
 
+  ExecutableRunOptions& set_launch_id(int32 launch_id) {
+    launch_id_ = launch_id;
+    return *this;
+  }
+
+  int32 launch_id() const { return launch_id_; }
+
   ExecutableRunOptions& set_run_id(RunId id);
   RunId run_id() const;
 
@@ -153,6 +161,7 @@ class ExecutableRunOptions {
   const Eigen::ThreadPoolDevice* intra_op_thread_pool_ = nullptr;
   ExecutionProfile* execution_profile_ = nullptr;
   int rng_seed_ = 0;
+  int32 launch_id_ = 0;
   stream_executor::Stream* host_to_device_stream_ = nullptr;
   ThenExecuteFunction* then_execute_function_ = nullptr;
   RunId run_id_;

@@ -61,6 +61,21 @@ TEST(StrCat, Ints) {
   EXPECT_EQ(answer, "130");
 }
 
+TEST(StrCat, Floats) {
+  const int s = 0;
+  const float f = 1.5f;
+  const double d = 1.5;
+  const bfloat16 bf(1.5f);
+
+  string answer;
+  answer = tensorflow::strings::StrCat(s, f);
+  EXPECT_EQ(answer, "01.5");
+  answer = tensorflow::strings::StrCat(s, d);
+  EXPECT_EQ(answer, "01.5");
+  answer = tensorflow::strings::StrCat(s, bf);
+  EXPECT_EQ(answer, "01.5");
+}
+
 TEST(StrCat, Basics) {
   string result;
 

@@ -5,11 +5,21 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 
 package(
-    default_visibility = ["//visibility:public"],
+    # TODO(scottzhu): Remove non-keras deps from TF.
+    default_visibility = [
+        "//tensorflow/python/feature_column:__pkg__",
+        "//tensorflow/python/keras:__subpackages__",
+    ],
     licenses = ["notice"],  # Apache 2.0
 )
 
 exports_files(["LICENSE"])
+
+filegroup(
+    name = "all_py_srcs",
+    srcs = glob(["*.py"]),
+    visibility = ["//tensorflow/python/keras/google/private_tf_api_test:__pkg__"],
+)
 
 py_library(
     name = "utils",
@@ -27,6 +37,7 @@ py_library(
         "all_utils.py",
     ],
     deps = [
+        ":control_flow_util",
         ":engine_utils",
         ":generic_utils",
         ":layer_utils",
@@ -34,6 +45,13 @@ py_library(
         ":np_utils",
         ":vis_utils",
     ],
+)
+
+py_library(
+    name = "control_flow_util",
+    srcs = ["control_flow_util.py"],
+    srcs_version = "PY2AND3",
+    deps = [],
 )
 
 py_library(
@@ -244,6 +262,7 @@ tf_py_test(
         ":tf_utils",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
     ],
 )
 
@@ -285,6 +304,19 @@ tf_py_test(
         "//tensorflow/python/keras",
         "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+tf_py_test(
+    name = "layer_utils_test",
+    size = "small",
+    srcs = ["layer_utils_test.py"],
+    python_version = "PY3",
+    deps = [
+        ":layer_utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/training/tracking",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -370,6 +402,7 @@ tf_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras",
+        "//tensorflow/python/keras:combinations",
         "//tensorflow/python/ops/ragged:ragged_factory_ops",
         "//tensorflow/python/ops/ragged:ragged_tensor",
         "@absl_py//absl/testing:parameterized",

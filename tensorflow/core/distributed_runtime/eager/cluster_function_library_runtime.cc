@@ -20,9 +20,11 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/common_runtime/eager/eager_operation.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/distributed_runtime/call_options.h"
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_execute_node.h"
 #include "tensorflow/core/distributed_runtime/eager/remote_mgr.h"
+#include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -64,13 +66,7 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   VLOG(1) << "CFLR::Instantiate: " << function_name << " on " << target
           << " (this: " << this << ")";
   core::RefCountPtr<eager::EagerClient> eager_client;
-  Device* device;
-  s = ctx_->FindDeviceFromName(target.c_str(), &device);
-  if (!s.ok()) {
-    done(s);
-    return;
-  }
-  s = ctx_->GetClient(device, &eager_client);
+  s = ctx_->GetClient(target, &eager_client);
   if (!s.ok()) {
     done(s);
     return;
@@ -85,8 +81,8 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
   const FunctionLibraryDefinition& func_lib_def =
       options.lib_def ? *options.lib_def : lib_def;
 
-  EnqueueRequest* request = new EnqueueRequest;
-  EnqueueResponse* response = new EnqueueResponse;
+  auto request = std::make_shared<EnqueueRequest>();
+  auto response = std::make_shared<EnqueueResponse>();
 
   request->set_context_id(context_id_);
 
@@ -100,19 +96,19 @@ void EagerClusterFunctionLibraryRuntime::Instantiate(
           .ToProto();
   StripDefaultAttributesInRegisterFunctionOp(register_function);
 
+  const absl::optional<std::vector<int>>& ret_indices = options.ret_indices;
   eager_client->EnqueueAsync(
-      request, response,
+      /*call_opts=*/nullptr, request.get(), response.get(),
       [this, request, response, handle, released_op = released_op.release(),
-       target, eager_client = eager_client.get(), done](const Status& s) {
+       target, ret_indices, eager_client = eager_client.get(),
+       done](const Status& s) {
         {
           mutex_lock l(mu_);
           *handle = function_data_.size();
-          function_data_.emplace_back(target, eager_client,
+          function_data_.emplace_back(target, ret_indices, eager_client,
                                       absl::WrapUnique(released_op));
         }
         done(s);
-        delete request;
-        delete response;
       });
 }
 
@@ -120,24 +116,35 @@ void EagerClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::LocalHandle handle, gtl::ArraySlice<Tensor> args,
     std::vector<Tensor>* rets, FunctionLibraryRuntime::DoneCallback done) {
-  if (args.empty() && rets->empty()) {
-    FunctionLibraryRuntime::Options opts_copy = opts;
-    opts_copy.op_id = ctx_->RemoteMgr()->NextOpId();
-    Run(opts_copy, handle, /*args=*/nullptr, std::move(done));
-  } else {
-    // TODO(b/150963957): Support remote inputs and outputs which are passed as
-    // Tensors.
-    done(errors::Unimplemented(
-        "Not implemented. Users could set the input devices and output devices "
-        "in FunctionLibraryRuntime::Options to the default multi-device "
-        "function device as a workaround."));
+  std::vector<FunctionArg> function_args;
+  for (const auto& tensor : args) {
+    function_args.push_back(tensor);
   }
+  std::vector<FunctionRet>* function_rets = new std::vector<FunctionRet>;
+  Run(opts, handle, function_args, function_rets,
+      [rets, function_rets, done = std::move(done)](const Status& s) {
+        Status status = s;
+        if (status.ok()) {
+          for (const auto& t : *function_rets) {
+            if (t.index() == 0) {
+              rets->push_back(absl::get<Tensor>(t));
+            } else {
+              status.Update(
+                  errors::Internal("Expect a Tensor as a remote function "
+                                   "output but got a TensorShape."));
+              break;
+            }
+          }
+        }
+        delete function_rets;
+        done(status);
+      });
 }
 
 void EagerClusterFunctionLibraryRuntime::Run(
     const FunctionLibraryRuntime::Options& opts,
     FunctionLibraryRuntime::LocalHandle handle,
-    std::vector<eager::RemoteTensorHandle>* args,
+    gtl::ArraySlice<FunctionArg> args, std::vector<FunctionRet>* rets,
     FunctionLibraryRuntime::DoneCallback done) {
   FunctionData* function_data = nullptr;
   {
@@ -152,32 +159,41 @@ void EagerClusterFunctionLibraryRuntime::Run(
     return;
   }
 
-  Device* device;
-  Status s = ctx_->FindDeviceFromName(function_data->target.c_str(), &device);
-  if (!s.ok()) {
-    done(errors::Internal("Failed to get device"));
+  EagerOperation* op = function_data->op.get();
+  if (!op->Inputs().empty()) {
+    done(errors::Internal("Inputs should not be set during instantiation."));
     return;
   }
 
-  EagerOperation* op = function_data->op.get();
-
-  if (!opts.op_id.has_value()) {
-    done(
-        errors::Internal("op_id is not set for remote function: ", op->Name()));
-  }
-
-  eager::EnqueueRequest* request = new eager::EnqueueRequest;
+  auto request = std::make_shared<RunComponentFunctionRequest>();
+  auto response = std::make_shared<RunComponentFunctionResponse>();
   request->set_context_id(context_id_);
-  eager::Operation* remote_op = request->add_queue()->mutable_operation();
-  if (args) {
-    for (size_t i = 0; i < args->size(); ++i) {
-      remote_op->add_inputs()->Swap(&(*args)[i]);
+  eager::Operation* remote_op = request->mutable_operation();
+
+  if (function_data->ret_indices.has_value()) {
+    for (const int ret_index : function_data->ret_indices.value()) {
+      request->add_output_num(ret_index);
     }
   }
+
+  for (const auto& arg : args) {
+    if (arg.index() == 0) {
+      absl::get<Tensor>(arg).AsProtoTensorContent(
+          remote_op->add_op_inputs()->mutable_tensor());
+    } else {
+      remote_op->add_op_inputs()->mutable_remote_handle()->Swap(
+          absl::get<RemoteTensorHandle*>(arg));
+    }
+  }
+
   // The remote component function should use the same op_id as its parent
   // multi-device function's in order to get the global unique op_id generated
   // by the master context.
-  remote_op->set_id(opts.op_id.value());
+  if (opts.op_id.has_value()) {
+    remote_op->set_id(opts.op_id.value());
+  } else {
+    remote_op->set_id(kInvalidRemoteOpId);
+  }
   remote_op->set_is_function(true);
   remote_op->set_is_component_function(true);
   remote_op->set_func_step_id(opts.step_id);
@@ -185,23 +201,55 @@ void EagerClusterFunctionLibraryRuntime::Run(
   op->Attrs().FillAttrValueMap(remote_op->mutable_attrs());
   remote_op->set_device(function_data->target);
 
-  for (auto handle : op->Inputs()) {
-    handle->Ref();
+  CancellationManager* cm = opts.cancellation_manager;
+  CancellationToken token = 0;
+  auto call_opts = std::make_shared<CallOptions>();
+  if (cm != nullptr) {
+    token = cm->get_cancellation_token();
+    const bool already_cancelled = !cm->RegisterCallback(
+        token,
+        [call_opts, request, response, done]() { call_opts->StartCancel(); });
+    if (already_cancelled) {
+      done(errors::Cancelled("EagerClusterFunctionLibraryRuntime::Run"));
+      return;
+    }
   }
 
-  // StreamingEnqueueAsync may introduce a deadlock. When streaming RPC is
-  // disabled, Run() returns when the remote function execution completes, which
-  // might be blocked by a non-enqueued function execution.
-  EnqueueResponse* response = new EnqueueResponse;
-  eager_client->EnqueueAsync(request, response,
-                             [op, request, response, done](const Status& s) {
-                               for (auto handle : op->Inputs()) {
-                                 handle->Unref();
-                               }
-                               done(s);
-                               delete request;
-                               delete response;
-                             });
+  // Execute component function on remote worker using RunComponentFunction RPC.
+  // Different from executing remote functions with Enqueue, this method runs
+  // a function on remote worker without tying up a thread (i.e., pure
+  // asynchronously).
+  eager_client->RunComponentFunctionAsync(
+      call_opts.get(), request.get(), response.get(),
+      [request, response, rets, call_opts, cm, token,
+       done = std::move(done)](const Status& s) {
+        if (cm != nullptr) {
+          cm->TryDeregisterCallback(token);
+        }
+        if (!s.ok()) {
+          done(s);
+          return;
+        }
+        if (!response->shape().empty() && !response->tensor().empty()) {
+          done(errors::Internal(
+              "Both shape and tensor are specified in the same response"));
+          return;
+        }
+        for (const auto& shape : response->shape()) {
+          rets->push_back(shape);
+        }
+        for (const auto& tensor_proto : response->tensor()) {
+          Tensor t;
+          if (t.FromProto(tensor_proto)) {
+            rets->push_back(std::move(t));
+          } else {
+            done(errors::Internal("Could not convert tensor proto: ",
+                                  tensor_proto.DebugString()));
+            return;
+          }
+        }
+        done(Status::OK());
+      });
 }
 
 void EagerClusterFunctionLibraryRuntime::CleanUp(
@@ -220,8 +268,8 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
     return;
   }
 
-  eager::EnqueueRequest* request = new eager::EnqueueRequest;
-  EnqueueResponse* response = new EnqueueResponse;
+  auto request = std::make_shared<EnqueueRequest>();
+  auto response = std::make_shared<EnqueueResponse>();
   request->set_context_id(context_id_);
   CleanupFunctionOp* cleanup_function =
       request->add_queue()->mutable_cleanup_function();
@@ -229,12 +277,9 @@ void EagerClusterFunctionLibraryRuntime::CleanUp(
   // StreamingEnqueueAsync could be blocking when streaming RPC is disabled.
   // CleanUp() needs to be non-blocking since it would be invoked inside the
   // enqueue done callback of Run(). So we don't use StreamingEnqueueAsync here.
-  eager_client->EnqueueAsync(request, response,
-                             [request, response, done](const Status& status) {
-                               done(status);
-                               delete request;
-                               delete response;
-                             });
+  eager_client->EnqueueAsync(
+      /*call_opts=*/nullptr, request.get(), response.get(),
+      [request, response, done](const Status& status) { done(status); });
 }
 
 DistributedFunctionLibraryRuntime* CreateClusterFLR(

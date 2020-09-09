@@ -76,6 +76,15 @@ bool IsAnyMin(const NodeDef& node) {
   return op == "Min" || op == "SegmentMin" || op == "UnsortedSegmentMin";
 }
 
+bool IsAnySparseSegmentReduction(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "SparseSegmentSum" || op == "SparseSegmentSumWithNumSegments" ||
+         op == "SparseSegmentMean" ||
+         op == "SparseSegmentMeanWithNumSegments" ||
+         op == "SparseSegmentSqrtN" ||
+         op == "SparseSegmentSqrtNWithNumSegments";
+}
+
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
@@ -107,6 +116,8 @@ bool IsBiasAdd(const NodeDef& node) {
 bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
+
+bool IsBroadcastTo(const NodeDef& node) { return node.op() == "BroadcastTo"; }
 
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
 
@@ -174,6 +185,14 @@ bool IsConv2DBackpropInput(const NodeDef& node) {
 }
 
 bool IsConv3D(const NodeDef& node) { return node.op() == "Conv3D"; }
+
+bool IsConv3DBackpropFilterV2(const NodeDef& node) {
+  return node.op() == "Conv3DBackpropFilterV2";
+}
+
+bool IsConv3DBackpropInputV2(const NodeDef& node) {
+  return node.op() == "Conv3DBackpropInputV2";
+}
 
 bool IsDepthwiseConv2dNative(const NodeDef& node) {
   return node.op() == "DepthwiseConv2dNative";
@@ -268,6 +287,11 @@ bool IsFusedBatchNormGrad(const NodeDef& node) {
          op == "FusedBatchNormGradV3";
 }
 
+bool IsGather(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Gather" || op == "GatherV2";
+}
+
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
@@ -309,6 +333,12 @@ bool IsImmutableConst(const NodeDef& node) {
 }
 
 bool IsInvGrad(const NodeDef& node) { return node.op() == "InvGrad"; }
+
+bool IsLeakyRelu(const NodeDef& node) { return node.op() == "LeakyRelu"; }
+
+bool IsLeakyReluGrad(const NodeDef& node) {
+  return node.op() == "LeakyReluGrad";
+}
 
 bool IsLess(const NodeDef& node) { return node.op() == "Less"; }
 
@@ -411,6 +441,10 @@ bool IsRank(const NodeDef& node) { return node.op() == "Rank"; }
 
 bool IsReadVariableOp(const NodeDef& node) {
   return node.op() == "ReadVariableOp";
+}
+
+bool IsReadVariablesOp(const NodeDef& node) {
+  return node.op() == "_ReadVariablesOp";
 }
 
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
@@ -588,6 +622,11 @@ bool IsTranspose(const NodeDef& node) { return node.op() == "Transpose"; }
 bool IsTruncateDiv(const NodeDef& node) { return node.op() == "TruncateDiv"; }
 
 bool IsTruncateMod(const NodeDef& node) { return node.op() == "TruncateMod"; }
+
+bool IsUnique(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Unique" || op == "UniqueV2";
+}
 
 bool IsUnpack(const NodeDef& node) { return node.op() == "Unpack"; }
 

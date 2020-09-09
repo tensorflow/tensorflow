@@ -16,7 +16,7 @@
 """Inception-ResNet V2 model for Keras.
 
 
-Reference paper:
+Reference:
   - [Inception-v4, Inception-ResNet and the Impact of
      Residual Connections on Learning](https://arxiv.org/abs/1602.07261)
     (AAAI 2017)
@@ -25,19 +25,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
 
 BASE_WEIGHT_URL = ('https://storage.googleapis.com/tensorflow/'
                    'keras-applications/inception_resnet_v2/')
+layers = None
 
 
 @keras_export('keras.applications.inception_resnet_v2.InceptionResNetV2',
@@ -52,7 +52,7 @@ def InceptionResNetV2(include_top=True,
                       **kwargs):
   """Instantiates the Inception-ResNet v2 architecture.
 
-  Reference paper:
+  Reference:
   - [Inception-v4, Inception-ResNet and the Impact of
      Residual Connections on Learning](https://arxiv.org/abs/1602.07261)
     (AAAI 2017)
@@ -61,8 +61,10 @@ def InceptionResNetV2(include_top=True,
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.inception_resnet_v2.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For InceptionResNetV2, call
+  `tf.keras.applications.inception_resnet_v2.preprocess_input`
+  on your inputs before passing them to the model.
 
   Arguments:
     include_top: whether to include the fully-connected
@@ -105,12 +107,14 @@ def InceptionResNetV2(include_top=True,
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
+  global layers
   if 'layers' in kwargs:
-    global layers
     layers = kwargs.pop('layers')
+  else:
+    layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -289,7 +293,7 @@ def conv2d_bn(x,
 
 
 def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
-  """Adds a Inception-ResNet block.
+  """Adds an Inception-ResNet block.
 
   This function builds 3 types of Inception-ResNet blocks mentioned
   in the paper, controlled by the `block_type` argument (which is the
@@ -300,25 +304,20 @@ def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
 
   Arguments:
     x: input tensor.
-    scale: scaling factor to scale the residuals (i.e., the output of
-      passing `x` through an inception module) before adding them
-      to the shortcut branch.
-      Let `r` be the output from the residual branch,
-      the output of this block will be `x + scale * r`.
-    block_type: `'block35'`, `'block17'` or `'block8'`, determines
-      the network structure in the residual branch.
-    block_idx: an `int` used for generating layer names.
-      The Inception-ResNet blocks
-      are repeated many times in this network.
-      We use `block_idx` to identify
-      each of the repetitions. For example,
-      the first Inception-ResNet-A block
-      will have `block_type='block35', block_idx=0`,
-      and the layer names will have
-      a common prefix `'block35_0'`.
-    activation: activation function to use at the end of the block
-      (see [activations](../activations.md)).
-      When `activation=None`, no activation is applied
+    scale: scaling factor to scale the residuals (i.e., the output of passing
+      `x` through an inception module) before adding them to the shortcut
+      branch. Let `r` be the output from the residual branch, the output of this
+      block will be `x + scale * r`.
+    block_type: `'block35'`, `'block17'` or `'block8'`, determines the network
+      structure in the residual branch.
+    block_idx: an `int` used for generating layer names. The Inception-ResNet
+      blocks are repeated many times in this network. We use `block_idx` to
+      identify each of the repetitions. For example, the first
+      Inception-ResNet-A block will have `block_type='block35', block_idx=0`,
+      and the layer names will have a common prefix `'block35_0'`.
+    activation: activation function to use at the end of the block (see
+      [activations](../activations.md)). When `activation=None`, no activation
+      is applied
       (i.e., "linear" activation: `a(x) = x`).
 
   Returns:
@@ -378,39 +377,16 @@ def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
 
 @keras_export('keras.applications.inception_resnet_v2.preprocess_input')
 def preprocess_input(x, data_format=None):
-  """Preprocesses a numpy array encoding a batch of images.
-
-  Arguments
-    x: A 4D numpy array consists of RGB values within [0, 255].
-
-  Returns
-    Preprocessed array.
-
-  Raises
-    ValueError: In case of unknown `data_format` argument.
-  """
   return imagenet_utils.preprocess_input(x, data_format=data_format, mode='tf')
 
 
 @keras_export('keras.applications.inception_resnet_v2.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction result from the model.
-
-  Arguments
-    preds: Numpy tensor encoding a batch of predictions.
-    top: Integer, how many top-guesses to return.
-
-  Returns
-    A list of lists of top class prediction tuples
-    `(class_name, class_description, score)`.
-    One list of tuples per sample in batch input.
-
-  Raises
-    ValueError: In case of invalid shape of the `preds` array (must be 2D).
-  """
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
 preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
-    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF)
+    mode='',
+    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TF,
+    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__

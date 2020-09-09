@@ -15,10 +15,15 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/convert/trace_events_to_json.h"
 
+#include <algorithm>
+#include <map>
+#include <utility>
+
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
-#include "include/json/json.h"
-#include "tensorflow/core/protobuf/trace_events.pb.h"
+#include "json/json.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/protobuf/trace_events.pb.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -45,11 +50,13 @@ void AddResourceMetadata(uint32 device_id,
       AppendEscapedName(json, resource.name());
       absl::StrAppend(json, "}},");
     }
+    uint32 sort_index =
+        resource.sort_index() ? resource.sort_index() : resource_id;
     absl::StrAppendFormat(
         json,
         R"({"ph":"M","pid":%u,"tid":%u,)"
         R"("name":"thread_sort_index","args":{"sort_index":%u}},)",
-        device_id, resource_id, resource_id);
+        device_id, resource_id, sort_index);
   }
 }
 

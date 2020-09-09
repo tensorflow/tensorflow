@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import json
+import os
 
 from absl.testing import parameterized
 import numpy as np
@@ -35,6 +36,7 @@ from tensorflow.python.keras.engine import base_preprocessing_layer
 from tensorflow.python.keras.engine import base_preprocessing_layer_v1
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.ops.ragged import ragged_factory_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import compat
@@ -120,19 +122,19 @@ class AddingPreprocessingLayerV1(
   pass
 
 
-def get_layer():
+def get_layer(**kwargs):
   if context.executing_eagerly():
-    return AddingPreprocessingLayer()
+    return AddingPreprocessingLayer(**kwargs)
   else:
-    return AddingPreprocessingLayerV1()
+    return AddingPreprocessingLayerV1(**kwargs)
 
 
 @keras_parameterized.run_all_keras_modes
 class PreprocessingLayerTest(keras_parameterized.TestCase):
 
-  def test_adapt_list_fails(self):
+  def test_adapt_bad_input_fails(self):
     """Test that non-Dataset/Numpy inputs cause a reasonable error."""
-    input_dataset = [1, 2, 3, 4, 5]
+    input_dataset = {"foo": 0}
 
     layer = get_layer()
     with self.assertRaisesRegex(ValueError, "requires a"):
@@ -348,6 +350,53 @@ class PreprocessingLayerTest(keras_parameterized.TestCase):
     # Further adapt this layer based on the transferred weights.
     layer_2.adapt(np.array([1, 2]), reset_state=False)
     self.assertAllEqual([[19], [20], [21]], model_2.predict([1., 2., 3.]))
+
+  def test_loading_without_providing_class_fails(self):
+    input_data = keras.Input(shape=(1,))
+    layer = get_layer()
+    output = layer(input_data)
+    model = keras.Model(input_data, output)
+
+    if not context.executing_eagerly():
+      self.evaluate(variables.variables_initializer(model.variables))
+
+    output_path = os.path.join(self.get_temp_dir(), "tf_keras_saved_model")
+    model.save(output_path, save_format="tf")
+
+    with self.assertRaisesRegex(RuntimeError, "Unable to restore a layer of"):
+      _ = keras.models.load_model(output_path)
+
+  def test_adapt_sets_input_shape_rank(self):
+    """Check that `.adapt()` sets the `input_shape`'s rank."""
+    # Shape: (3,1,2)
+    adapt_dataset = np.array([[[1., 2.]],
+                              [[3., 4.]],
+                              [[5., 6.]]], dtype=np.float32)
+
+    layer = get_layer()
+    layer.adapt(adapt_dataset)
+
+    input_dataset = np.array([[[1., 2.], [3., 4.]],
+                              [[3., 4.], [5., 6.]]], dtype=np.float32)
+    layer(input_dataset)
+
+    model = keras.Sequential([layer])
+    self.assertTrue(model.built)
+    self.assertEqual(model.input_shape, (None, None, None))
+
+  def test_adapt_doesnt_overwrite_input_shape(self):
+    """Check that `.adapt()` doesn't change the `input_shape`."""
+    # Shape: (3, 1, 2)
+    adapt_dataset = np.array([[[1., 2.]],
+                              [[3., 4.]],
+                              [[5., 6.]]], dtype=np.float32)
+
+    layer = get_layer(input_shape=[1, 2])
+    layer.adapt(adapt_dataset)
+
+    model = keras.Sequential([layer])
+    self.assertTrue(model.built)
+    self.assertEqual(model.input_shape, (None, 1, 2))
 
 
 @keras_parameterized.run_all_keras_modes

@@ -72,7 +72,7 @@ cc_library(
 tf_cc_test(
     name = "tensor_bundle_test",
     srcs = ["tensor_bundle_test.cc"],
-    data = glob(["testdata/**"]),
+    data = ["//tensorflow/core/util/tensor_bundle/testdata/old_string_tensors:old_string_tensors_testdata"],
     tags = [
         "nomsan",
         "notsan",

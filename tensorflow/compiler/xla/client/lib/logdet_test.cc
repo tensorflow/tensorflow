@@ -51,6 +51,26 @@ XLA_TEST_F(LogDetTest, Simple) {
                              xla::ErrorSpec(1e-4));
 }
 
+XLA_TEST_F(LogDetTest, SimpleTriangle) {
+  xla::XlaBuilder builder(TestName());
+
+  xla::Array2D<float> a_vals({
+      {4, 6, 8, 10},
+      {4, -39, 62, 73},
+      {0, 0, -146, 166},
+      {4, 6, 8, 320},
+  });
+
+  float expected = -15.9131355f;
+
+  xla::XlaOp a;
+  auto a_data = CreateR2Parameter<float>(a_vals, 0, "a", &builder, &a);
+  xla::LogDet(a);
+
+  ComputeAndCompareR0<float>(&builder, expected, {a_data.get()},
+                             xla::ErrorSpec(1e-4));
+}
+
 XLA_TEST_F(LogDetTest, SimpleBatched) {
   xla::XlaBuilder builder(TestName());
 

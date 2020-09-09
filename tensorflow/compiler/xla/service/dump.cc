@@ -85,7 +85,7 @@ struct CanonicalDebugOptions {
       // resort to this hack.
       string pattern = opts.xla_dump_hlo_module_re();
       should_dump_module = [pattern](string_view module_name) {
-        return RE2::PartialMatch(string(module_name), pattern);
+        return RE2::PartialMatch(module_name, pattern);
       };
     } else if (!opts.xla_dump_hlo_pass_re().empty() ||
                !opts.xla_dump_to().empty() || output_format_specified) {
@@ -99,7 +99,7 @@ struct CanonicalDebugOptions {
     if (!opts.xla_dump_hlo_pass_re().empty()) {
       string pattern = opts.xla_dump_hlo_pass_re();
       should_dump_pass = [pattern](string_view pass_name) {
-        return RE2::PartialMatch(string(pass_name), pattern);
+        return RE2::PartialMatch(pass_name, pattern);
       };
     } else {
       should_dump_pass = [](string_view) { return false; };

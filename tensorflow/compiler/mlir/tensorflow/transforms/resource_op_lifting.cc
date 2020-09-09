@@ -21,26 +21,27 @@ limitations under the License.
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/BlockAndValueMapping.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Diagnostics.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/IR/TypeUtilities.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/BlockAndValueMapping.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Diagnostics.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/IR/TypeUtilities.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_types.h"
@@ -62,7 +63,7 @@ namespace {
 // TensorFlow resource variable and returns new value:
 //
 // %resource_handle = "tf.VarHandleOp"()
-// %1 = "tf_device.launch"() ( {
+// %1 = "tf_device.cluster"() ( {
 //   %init_value = "tf.ReadVariableOp"(%resource_handle)
 //   "tf.AssignAddVariableOp"(%resource_handle, %init_value)
 //   %new_value = "tf.ReadVariableOp"(%resource_handle)
@@ -73,7 +74,7 @@ namespace {
 //
 // %resource_handle = "tf.VarHandleOp"()
 // %init_value = "tf.ReadVariableOp"(%resource_handle)
-// %1:2 = "tf_device.launch"() ( {
+// %1:2 = "tf_device.cluster"() ( {
 //   %new_value = "tf.AddV2"(%init_value, %init_value)
 //   tf_device.return %new_value, %new_value
 // })
@@ -81,7 +82,7 @@ namespace {
 //
 // You can see that there are a few main changes applied:
 // 1) All the resource variable reads and writes are now outside of
-//    tf_device.launch op.
+//    tf_device.cluster op.
 // 2) Instead of taking resource handles as input, this device computation now
 //    takes snapshotted values of that device.
 // 3) Some resource load operations are eliminated with store-load forwarding.
@@ -89,13 +90,13 @@ namespace {
 //    external resource store operations so that resources are still updated
 //    after the computation.
 //
-// If the launch body contains functional control flow, the pass first lifts the
-// loads/stores in the body/cond/branch functions to the launch body, then
+// If the cluster body contains functional control flow, the pass first lifts
+// the loads/stores in the body/cond/branch functions to the cluster body, then
 // performs the above lifting. E.g.,
 //
-// func @launch_with_loop() -> () {
+// func @cluster_with_loop() -> () {
 //   %0 = "tf.VarHandleOp"() ...
-//   "tf_device.launch"() ( {
+//   "tf_device.cluster"() ( {
 //      %1 = "tf.While"(%0) {body = @while_body, cond = @while_cond}
 //      tf_device.return
 //   })
@@ -113,10 +114,10 @@ namespace {
 //
 // will be be transformed to:
 //
-// func @launch_with_loop() {
+// func @cluster_with_loop() {
 //   %0 = "tf.VarHandleOp"() ...
 //   %1 = "tf.ReadVariableOp"(%0)
-//   %2 = "tf_device.launch"() ( {
+//   %2 = "tf_device.cluster"() ( {
 //     %3 = "tf.While"(%1) {body = @while_body, cond = @while_cond}
 //     tf_device.return %3 : tensor<f32>
 //   }) : () -> tensor<f32>
@@ -131,15 +132,16 @@ namespace {
 //   return %arg0
 // }
 //
-struct ResourceOpLiftingPass : public ModulePass<ResourceOpLiftingPass> {
-  void runOnModule() override;
+struct ResourceOpLiftingPass
+    : public PassWrapper<ResourceOpLiftingPass, OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
 // Removes identity nodes in the block. The device computation does not need
 // such nodes to carry information.
 void RemoveIdentity(Block* block) {
   for (auto& op : llvm::make_early_inc_range(*block)) {
-    if (llvm::isa<TF::IdentityOp>(&op) || llvm::isa<TF::IdentityNOp>(&op)) {
+    if (isa<TF::IdentityOp, TF::IdentityNOp>(&op)) {
       op.replaceAllUsesWith(op.getOperands());
       op.erase();
     }
@@ -240,7 +242,7 @@ bool AppendResourceStoreValueToReturn(Block* body) {
 
     // TODO(ycao): Prevent same value from being returned multiple times.
     // TODO(ycao): Do not return resource store value if it is defined outside
-    // of launch_op.
+    // of cluster.
     new_return_operands.push_back(assign_variable_op.value());
     has_resource_store = true;
   }
@@ -255,91 +257,79 @@ bool AppendResourceStoreValueToReturn(Block* body) {
   return true;
 }
 
-// Moves resource store operations to after launch_op. This assumes load-store
-// forwarding has been performed on this launch_op such that there is at most
-// one resource store operation carrying its final value.
-tf_device::LaunchOp SinkResourceStores(tf_device::LaunchOp launch_op,
-                                       OpBuilder* builder) {
-  // Update ReturnOp inside launch_op's body to output final values of updated
+// Moves resource store operations to after cluster. This assumes load-store
+// forwarding has been performed on this cluster such that there is at most one
+// resource store operation carrying its final value.
+tf_device::ClusterOp SinkResourceStores(tf_device::ClusterOp cluster,
+                                        OpBuilder* builder) {
+  // Update ReturnOp inside cluster's body to output final values of updated
   // external resources.
-  if (!AppendResourceStoreValueToReturn(&launch_op.GetBody())) return launch_op;
+  if (!AppendResourceStoreValueToReturn(&cluster.GetBody())) return cluster;
 
-  auto new_return_op = launch_op.GetBody().getTerminator();
-  llvm::SmallVector<Type, 4> new_launch_return_types(
-      new_return_op->getOperandTypes());
+  auto new_return_op = cluster.GetBody().getTerminator();
+  llvm::SmallVector<Type, 4> new_return_types(new_return_op->getOperandTypes());
 
-  builder->setInsertionPoint(launch_op);
-  auto new_launch_op = builder->create<tf_device::LaunchOp>(
-      launch_op.getLoc(), new_launch_return_types,
-      /*operands=*/llvm::SmallVector<Value, 4>(), launch_op.getAttrs());
-  new_launch_op.body().takeBody(launch_op.body());
+  builder->setInsertionPoint(cluster);
+  auto new_cluster = builder->create<tf_device::ClusterOp>(
+      cluster.getLoc(), new_return_types,
+      /*operands=*/llvm::SmallVector<Value, 4>(), cluster.getAttrs());
+  new_cluster.body().takeBody(cluster.body());
 
-  // Replace uses of old launch_op results with those of new_launch_op.
-  for (auto p : llvm::zip(launch_op.getResults(), new_launch_op.getResults())) {
-    std::get<0>(p).replaceAllUsesWith(std::get<1>(p));
-  }
+  // Replace uses of old cluster results with those of new_cluster.
+  for (auto result : llvm::zip(cluster.getResults(), new_cluster.getResults()))
+    std::get<0>(result).replaceAllUsesWith(std::get<1>(result));
 
-  // Create a mapping from operands of new_return_op operands to new_launch_op
+  // Create a mapping from operands of new_return_op operands to new_cluster
   // results.
   BlockAndValueMapping mapper;
-  for (auto p :
-       llvm::zip(new_return_op->getOperands(), new_launch_op.getResults())) {
-    mapper.map(std::get<0>(p), std::get<1>(p));
-  }
+  for (auto operand_result :
+       llvm::zip(new_return_op->getOperands(), new_cluster.getResults()))
+    mapper.map(std::get<0>(operand_result), std::get<1>(operand_result));
 
   // Clone all resource store ops and map their operands to values returned from
-  // new_launch_op.
-  for (Operation& op : llvm::make_early_inc_range(new_launch_op.GetBody())) {
-    if (dyn_cast<TF::AssignVariableOp>(&op)) {
+  // new_cluster.
+  for (Operation& op : llvm::make_early_inc_range(new_cluster.GetBody())) {
+    if (isa<TF::AssignVariableOp>(op)) {
       builder->clone(op, mapper);
       op.erase();
     }
   }
 
-  launch_op.erase();
-  return new_launch_op;
+  cluster.erase();
+  return new_cluster;
 }
 
-// Hoists resource variable loads and sinks stores from launch_op.
-LogicalResult HoistResourceOpsFromLaunchOp(tf_device::LaunchOp launch_op) {
-  ModuleOp m = launch_op.getParentOfType<ModuleOp>();
-  OpBuilder builder(m);
+// Hoists resource variable loads and sinks stores from cluster.
+LogicalResult HoistResourceOpsFromCluster(tf_device::ClusterOp cluster,
+                                          ModuleOp module) {
+  OpBuilder builder(module);
 
   // Remove identity nodes to avoid aliasing.
-  RemoveIdentity(&launch_op.GetBody());
+  RemoveIdentity(&cluster.GetBody());
 
   // Perform store-load forwarding. So that each resource is only loaded with
   // its initial value and is only stored with its final value.
-  ForwardStoreToLoad(&launch_op.GetBody());
+  ForwardStoreToLoad(&cluster.GetBody());
 
-  // Move loads of external resources, if any, to before launch_op.
-  // (Skipping resources created inside of launch_op.)
+  // Move loads of external resources, if any, to before cluster.
+  // (Skipping resources created inside of cluster.)
   HoistResourceLoads(
-      &launch_op.GetBody(),
+      &cluster.GetBody(),
       /*skip_load=*/
       [&](TF::ReadVariableOp read) {
-        return read.resource().getParentRegion() == &launch_op.body();
+        return read.resource().getParentRegion() == &cluster.body();
       },
       /*move_load=*/
       [&](TF::ReadVariableOp read) {
-        read.getOperation()->moveBefore(launch_op);
+        read.getOperation()->moveBefore(cluster);
       });
 
-  // Move stores of external resources, if any, to after launch_op.
-  auto new_launch_op = SinkResourceStores(launch_op, &builder);
+  // Move stores of external resources, if any, to after cluster.
+  auto new_cluster = SinkResourceStores(cluster, &builder);
 
   llvm::SetVector<Value> captured_values;
-  getUsedValuesDefinedAbove(new_launch_op.body(), new_launch_op.body(),
+  getUsedValuesDefinedAbove(new_cluster.body(), new_cluster.body(),
                             captured_values);
-
-  for (Value v : captured_values) {
-    auto tensor_type = v.getType().dyn_cast<TensorType>();
-    if (!tensor_type) continue;
-    if (!tensor_type.getElementType().isa<TF::ResourceType>()) continue;
-
-    return new_launch_op.emitOpError()
-           << "has remaining resource inputs that can not be lifted";
-  }
 
   return success();
 }
@@ -363,30 +353,23 @@ LogicalResult FindResourceArgUseInfo(
     ResourceArgUseInfo info;
     info.used = false;
     info.updated = false;
-    bool do_not_touch = false;
+    bool read_or_assigned = false;
     for (auto user : arg.getUsers()) {
       if (user == return_op) continue;
+      info.used = true;
       if (auto read = llvm::dyn_cast<TF::ReadVariableOp>(user)) {
-        info.used = true;
+        read_or_assigned = true;
         info.data_type = read.getType();
         continue;
       }
       if (auto assign = llvm::dyn_cast<TF::AssignVariableOp>(user)) {
-        info.used = true;
+        read_or_assigned = true;
         info.updated = true;
         info.data_type = assign.value().getType();
         continue;
       }
-      if (llvm::isa<TF::StackPushV2Op>(user) ||
-          llvm::isa<TF::StackPopV2Op>(user)) {
-        // Stacks will be handled by a separate pass.
-        do_not_touch = true;
-        break;
-      }
-      user->emitOpError("found unsupported operations on resource.");
-      return failure();
     }
-    if (!do_not_touch) (*result)[arg.getArgNumber()] = info;
+    if (!info.used || read_or_assigned) (*result)[arg.getArgNumber()] = info;
   }
   return success();
 }
@@ -561,20 +544,18 @@ void AddLoadsStoresOutsideControlFlowOp(
     auto operand = caller->getOperand(index);
     builder.setInsertionPoint(caller);
     new_operands[index] = builder.create<TF::ReadVariableOp>(
-        caller->getLoc(), ArrayRef<Type>{new_type}, ArrayRef<Value>{operand},
-        ArrayRef<NamedAttribute>{});
+        caller->getLoc(), ArrayRef<Type>{new_type}, ArrayRef<Value>{operand});
     caller->setOperand(index, new_operands[index]);
     if (updated_index < 0) continue;
     builder.setInsertionPointAfter(caller);
     builder.create<TF::AssignVariableOp>(
         caller->getLoc(), ArrayRef<Type>{},
-        ArrayRef<Value>{operand, caller->getResult(updated_index)},
-        ArrayRef<NamedAttribute>{});
+        ArrayRef<Value>{operand, caller->getResult(updated_index)});
   }
 }
 
 // Lifts loads/stores from while loop's body and cond functions.
-LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
+LogicalResult HandleWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
   // Remove identity nodes to avoid aliasing.
   RemoveIdentity(&body.front());
   RemoveIdentity(&cond.front());
@@ -632,8 +613,6 @@ LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
                                  });
   // Recreate the while op.
   OpBuilder builder(while_op);
-  auto new_output_shapes = FilterRange<Attribute, ArrayRef<Attribute>>(
-      while_op.output_shapes().getValue(), resource_arg_uses);
   // Now use the filtered original operands, which will be replaced by
   // AddLoadsStoresOutsideControlFlowOp().
   auto new_while = builder.create<TF::WhileOp>(
@@ -641,8 +620,7 @@ LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
       FilterRange<Value, OperandRange>(while_op.getOperands(),
                                        resource_arg_uses),
       while_op.getAttrs());
-  // Prepare for AddLoadsStoresOutsideControlFlowOp() and update
-  // new_output_shapes.
+  // Prepare for AddLoadsStoresOutsideControlFlowOp().
   llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
       arg_data_type_and_updated_output_index;
   for (const auto& entry : remaining_resource_data_types) {
@@ -652,19 +630,11 @@ LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
                                : entry.getFirst();
     arg_data_type_and_updated_output_index[entry.getFirst()] = {
         entry.getSecond(), update_index};
-    if (!new_output_shapes.empty()) {
-      tensorflow::TensorShapeProto shape_proto;
-      tensorflow::ConvertTypeToTensorShape(entry.getSecond())
-          .AsProto(&shape_proto);
-      new_output_shapes[entry.getFirst()] = builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(shape_proto));
-    }
   }
   AddLoadsStoresOutsideControlFlowOp(new_while,
                                      arg_data_type_and_updated_output_index);
-  new_while.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   // Replace uses.
-  for (int64_t i = 0; i < old_to_new_indices.size(); ++i) {
+  for (int64_t i = 0, end = old_to_new_indices.size(); i < end; ++i) {
     if (old_to_new_indices[i] >= 0) {
       while_op.getResult(i).replaceAllUsesWith(
           new_while.getResult(old_to_new_indices[i]));
@@ -674,72 +644,76 @@ LogicalResult HanldeWhileLoop(TF::WhileOp while_op, FuncOp body, FuncOp cond) {
   return success();
 }
 
-// Lifts loads/stores from an IfOp's branches.
-LogicalResult HandleIfOP(TF::IfOp if_op, FuncOp then_branch,
-                         FuncOp else_branch) {
+// Lifts loads/stores from an IfOp or CaseOp's branches.
+template <class CaseOrIfOp>
+LogicalResult HandleCaseOrIfOp(CaseOrIfOp op, ArrayRef<FuncOp> branches) {
   // Remove identity nodes to avoid aliasing.
-  RemoveIdentity(&then_branch.front());
-  RemoveIdentity(&else_branch.front());
+  for (auto func : branches) RemoveIdentity(&func.front());
+
   // Sanity check: branch return of resources should be aliases of inputs. If
   // so, replace the output uses with the input so that we can remove these
   // outputs.
-  for (auto entry : llvm::enumerate(
-           llvm::zip(then_branch.front().getTerminator()->getOperands(),
-                     else_branch.front().getTerminator()->getOperands()))) {
-    auto then_retval = std::get<0>(entry.value());
-    auto else_retval = std::get<1>(entry.value());
-    assert(then_retval.getType() == else_retval.getType());
-    if (!getElementTypeOrSelf(then_retval.getType()).isa<TF::ResourceType>()) {
+  for (OpResult result : op.getResults()) {
+    if (!getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>())
       continue;
+    unsigned result_index = result.getResultNumber();
+    constexpr unsigned kUnassigned = -1;
+    unsigned common_aliasing_arg_num = kUnassigned;
+    for (auto func : branches) {
+      auto retval = func.front().getTerminator()->getOperand(result_index);
+      assert(result.getType() == retval.getType());
+      auto aliasing_arg = retval.dyn_cast<BlockArgument>();
+      if (!aliasing_arg)
+        return op.emitOpError("unsupported output: ")
+               << "resource does not alias input";
+      if (common_aliasing_arg_num == kUnassigned)
+        common_aliasing_arg_num = aliasing_arg.getArgNumber();
+      if (aliasing_arg.getArgNumber() != common_aliasing_arg_num)
+        return op.emitOpError("unsupported output: ")
+               << "resource does not alias a single input";
     }
-    auto then_aliasing_arg = then_retval.dyn_cast<BlockArgument>();
-    auto else_aliasing_arg = else_retval.dyn_cast<BlockArgument>();
-    if (!then_aliasing_arg || !else_aliasing_arg ||
-        then_aliasing_arg.getArgNumber() != else_aliasing_arg.getArgNumber()) {
-      return if_op.emitOpError("unsupported tf.IfOp output: ")
-             << "resource does not alias a single input.";
-    }
-    if_op.getResult(entry.index())
-        .replaceAllUsesWith(
-            if_op.getOperand(then_aliasing_arg.getArgNumber() + 1));
+    assert(common_aliasing_arg_num != kUnassigned);
+    result.replaceAllUsesWith(op.getOperand(common_aliasing_arg_num + 1));
   }
+
   // Erase the resource outputs from the branches.
   int64_t non_resource_results = 0;
   llvm::SmallVector<int64_t, 4> old_to_new_output_indices;
-  llvm::SmallVector<Attribute, 4> new_output_shapes;
   bool output_removed = false;
-  for (auto result : if_op.getResults()) {
-    if (!getElementTypeOrSelf(result.getType()).isa<TF::ResourceType>()) {
+  for (auto result : op.getResults()) {
+    if (!getElementTypeOrSelf(result.getType())
+             .template isa<TF::ResourceType>()) {
       old_to_new_output_indices.push_back(non_resource_results++);
-      if (!if_op.output_shapes().getValue().empty()) {
-        new_output_shapes.push_back(
-            if_op.output_shapes().getValue()[result.getResultNumber()]);
-      }
       continue;
     }
     old_to_new_output_indices.push_back(-1);
-    then_branch.front().getTerminator()->eraseOperand(non_resource_results);
-    else_branch.front().getTerminator()->eraseOperand(non_resource_results);
+    for (auto func : branches)
+      func.front().getTerminator()->eraseOperand(non_resource_results);
     output_removed = true;
   }
 
-  llvm::SmallDenseMap<int64_t, ResourceArgUseInfo> then_use_info;
-  llvm::SmallDenseMap<int64_t, ResourceArgUseInfo> else_use_info;
-  if (failed(FindResourceArgUseInfo(then_branch, &then_use_info)) ||
-      failed(FindResourceArgUseInfo(else_branch, &else_use_info))) {
+  llvm::SmallDenseMap<int64_t, ResourceArgUseInfo> resource_arg_uses;
+  if (failed(FindResourceArgUseInfo(branches.front(), &resource_arg_uses)))
     return failure();
+
+  for (auto func : branches.drop_front()) {
+    llvm::SmallDenseMap<int64_t, ResourceArgUseInfo> branch_use_info;
+    if (failed(FindResourceArgUseInfo(func, &branch_use_info)))
+      return failure();
+    // A resource is considered used as long as it is used in either branch.
+    resource_arg_uses =
+        MergeArgResourceUseInfo(resource_arg_uses, branch_use_info);
   }
-  // A resource is considered used as long as it is used in either branch.
-  auto resource_arg_uses =
-      MergeArgResourceUseInfo(then_use_info, else_use_info);
+
   if (resource_arg_uses.empty() && !output_removed) return success();
   // Remove unused resources in functions.
   llvm::SmallDenseMap<int64_t, Type> remaining_resource_data_types;
   RemoveUnusedResourceArgumentsAndForwardedRetvals(
-      resource_arg_uses, then_branch, /*old_to_new_arg_indices=*/nullptr,
+      resource_arg_uses, branches.front(), /*old_to_new_arg_indices=*/nullptr,
       &remaining_resource_data_types);
-  RemoveUnusedResourceArgumentsAndForwardedRetvals(resource_arg_uses,
-                                                   else_branch);
+  for (auto func : branches.drop_front())
+    RemoveUnusedResourceArgumentsAndForwardedRetvals(resource_arg_uses, func);
+
   // Forward resource inputs updated in any branch to the outputs of both
   // branches. First prepare the mapping from arg to new update output.
   llvm::SmallDenseMap<int64_t, int64_t> resource_arg_to_new_output;
@@ -757,14 +731,18 @@ LogicalResult HandleIfOP(TF::IfOp if_op, FuncOp then_branch,
           new_output_index;
     }
   }
+
   // Append resource updates to the return ops: now they are just forwarded
   // input resources, but will be replaced by the data value in
   // LiftArgRetResourcesForFunction().
-  for (auto branch : {then_branch, else_branch}) {
+  for (auto branch : branches) {
     auto new_retvals =
         llvm::to_vector<4>(branch.front().getTerminator()->getOperands());
+    new_retvals.resize(new_retvals.size() + resource_arg_to_new_output.size());
     for (const auto& entry : resource_arg_to_new_output) {
-      new_retvals.push_back(branch.getArgument(entry.getFirst()));
+      int64_t resource_arg_index = entry.getFirst();
+      int64_t output_index = entry.getSecond();
+      new_retvals[output_index] = branch.getArgument(resource_arg_index);
     }
     auto old_return = branch.front().getTerminator();
     OpBuilder builder(old_return);
@@ -777,18 +755,18 @@ LogicalResult HandleIfOP(TF::IfOp if_op, FuncOp then_branch,
         });
   }
 
-  // Recreate the if op.
-  OpBuilder builder(if_op);
+  // Recreate the op without resource operands.
+  OpBuilder builder(op);
   // Now use the filtered original operands, which will be replaced by
   // AddLoadsStoresOutsideControlFlowOp().
   auto new_operands =
-      FilterRange<Value, OperandRange>(if_op.input(), resource_arg_uses);
-  new_operands.insert(new_operands.begin(), if_op.cond());
-  auto new_if = builder.create<TF::IfOp>(if_op.getLoc(),
-                                         then_branch.getType().getResults(),
-                                         new_operands, if_op.getAttrs());
-  // Prepare for AddLoadsStoresOutsideControlFlowOp() and update
-  // new_output_shapes.
+      FilterRange<Value, OperandRange>(op.input(), resource_arg_uses);
+  new_operands.insert(new_operands.begin(), op.getOperand(0));
+  FuncOp first_func = branches.front();
+  auto new_op =
+      builder.create<CaseOrIfOp>(op.getLoc(), first_func.getType().getResults(),
+                                 new_operands, op.getAttrs());
+  // Prepare for AddLoadsStoresOutsideControlFlowOp()
   llvm::SmallDenseMap<int64_t, std::pair<Type, int64_t>>
       arg_data_type_and_updated_output_index;
   for (const auto& entry : remaining_resource_data_types) {
@@ -798,25 +776,17 @@ LogicalResult HandleIfOP(TF::IfOp if_op, FuncOp then_branch,
                                : new_output_it->getSecond();
     arg_data_type_and_updated_output_index[entry.getFirst() + 1] = {
         entry.getSecond(), update_index};
-    if (!if_op.output_shapes().getValue().empty() && update_index >= 0) {
-      tensorflow::TensorShapeProto shape_proto;
-      tensorflow::ConvertTypeToTensorShape(entry.getSecond())
-          .AsProto(&shape_proto);
-      new_output_shapes.push_back(builder.getStringAttr(
-          tensorflow::mangling_util::MangleShape(shape_proto)));
-    }
   }
-  AddLoadsStoresOutsideControlFlowOp(new_if,
+  AddLoadsStoresOutsideControlFlowOp(new_op,
                                      arg_data_type_and_updated_output_index);
-  new_if.setAttr("output_shapes", builder.getArrayAttr(new_output_shapes));
   // Replace uses.
-  for (int64_t i = 0; i < old_to_new_output_indices.size(); ++i) {
+  for (int64_t i = 0, end = old_to_new_output_indices.size(); i < end; ++i) {
     if (old_to_new_output_indices[i] >= 0) {
-      if_op.getResult(i).replaceAllUsesWith(
-          new_if.getResult(old_to_new_output_indices[i]));
+      op.getResult(i).replaceAllUsesWith(
+          new_op.getResult(old_to_new_output_indices[i]));
     }
   }
-  if_op.erase();
+  op.erase();
   return success();
 }
 
@@ -877,6 +847,7 @@ LogicalResult HandlePartitionedCallOpCallee(
   name_base += "_resource_lifted";
   auto name = name_base;
   callee = callee.clone();
+  callee.setVisibility(SymbolTable::Visibility::Private);
   callee.setName(name);
   SymbolTable(module).insert(callee);
   result->lifted_callee = callee;
@@ -890,23 +861,34 @@ LogicalResult HandlePartitionedCallOpCallee(
     result->arg_data_type_and_updated_output_index[entry.getFirst()] = {
         entry.getSecond(), -1};
   }
-  llvm::SmallVector<Value, 4> new_retvals;
-  for (auto val : callee.front().getTerminator()->getOperands()) {
-    // Remove resource type outputs.
-    if (getElementTypeOrSelf(val.getType()).isa<TF::ResourceType>()) continue;
-    new_retvals.push_back(val);
+  llvm::SmallVector<int64_t, 4> retval_indices_to_preserve;
+  for (auto& val : callee.front().getTerminator()->getOpOperands()) {
+    // Store indices of results that are not resources.
+    if (!getElementTypeOrSelf(val.get().getType()).isa<TF::ResourceType>())
+      retval_indices_to_preserve.push_back(val.getOperandNumber());
   }
+  int64_t num_retvals = retval_indices_to_preserve.size();
+  llvm::SmallVector<Value, 4> new_retvals;
   // Lift resources.
   LiftArgRetResourcesForFunction(
       callee, remaining_resource_data_types, [&](int64_t index, Value value) {
         result->arg_data_type_and_updated_output_index[index].second =
-            new_retvals.size();
+            num_retvals++;
         new_retvals.push_back(value);
       });
+
   auto old_return = callee.front().getTerminator();
+  llvm::SmallVector<Value, 4> old_and_new_retvals;
+  old_and_new_retvals.reserve(retval_indices_to_preserve.size() +
+                              new_retvals.size());
+  for (int64_t retval_index : retval_indices_to_preserve)
+    old_and_new_retvals.push_back(old_return->getOperand(retval_index));
+
+  old_and_new_retvals.append(new_retvals.begin(), new_retvals.end());
   // Replace old return with the new ones with update values.
   OpBuilder builder(old_return);
-  auto new_return = builder.create<ReturnOp>(old_return->getLoc(), new_retvals);
+  auto new_return =
+      builder.create<ReturnOp>(old_return->getLoc(), old_and_new_retvals);
   old_return->erase();
   callee.setType(FunctionType::get(
       callee.getType().getInputs(),
@@ -918,8 +900,8 @@ LogicalResult HandlePartitionedCallOpCallee(
 // resource-lifted new callee function in lifting_info.
 template <typename CallOpType>
 void UpdatePartitionedCallOpWithNewCallee(
-    CallOpType call_op, const PartitionedCallLiftingInfo& lifting_info) {
-  if (lifting_info.lifted_callee == nullptr) return;
+    CallOpType call_op, PartitionedCallLiftingInfo& lifting_info) {
+  if (!lifting_info.lifted_callee) return;
   // Replace output resource uses with the aliasing input, so that we can remove
   // this output.
   for (const auto& entry : lifting_info.old_outputs_aliasing_old_inputs) {
@@ -933,16 +915,15 @@ void UpdatePartitionedCallOpWithNewCallee(
   auto new_operands =
       FilterRange<Value, OperandRange>(call_op.args(), lifting_info.use_info);
   auto new_call = builder.create<CallOpType>(
-      call_op.getLoc(),
-      const_cast<FuncOp&>(lifting_info.lifted_callee).getType().getResults(),
+      call_op.getLoc(), lifting_info.lifted_callee.getType().getResults(),
       new_operands, call_op.getAttrs());
   new_call.setAttr(
-      "f", builder.getSymbolRefAttr(
-               const_cast<FuncOp&>(lifting_info.lifted_callee).getName()));
+      "f", builder.getSymbolRefAttr(lifting_info.lifted_callee.getName()));
   AddLoadsStoresOutsideControlFlowOp(
       new_call, lifting_info.arg_data_type_and_updated_output_index);
   // Replace uses.
-  for (int64_t i = 0; i < lifting_info.old_to_new_output_indices.size(); ++i) {
+  for (int64_t i = 0, end = lifting_info.old_to_new_output_indices.size();
+       i < end; ++i) {
     if (lifting_info.old_to_new_output_indices[i] >= 0) {
       call_op.getResult(i).replaceAllUsesWith(
           new_call.getResult(lifting_info.old_to_new_output_indices[i]));
@@ -952,7 +933,8 @@ void UpdatePartitionedCallOpWithNewCallee(
 }
 
 LogicalResult HoistForFunctionalControlFlow(
-    Block*, ModuleOp, llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>*);
+    Block*, ModuleOp,
+    llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>*);
 
 // A templated routine for handling both PartitionedCallOp and
 // StatefulPartitionedCallOp. If the callee is already lifted, it just updates
@@ -961,9 +943,10 @@ LogicalResult HoistForFunctionalControlFlow(
 template <typename CallOpType>
 LogicalResult HandlePartitionedCallOp(
     CallOpType call_op, FuncOp callee, ModuleOp module,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>* lifted_callees) {
-  auto emplace_res =
-      lifted_callees->try_emplace(callee, PartitionedCallLiftingInfo());
+    llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>*
+        lifted_callees) {
+  auto emplace_res = lifted_callees->try_emplace(callee.getName(),
+                                                 PartitionedCallLiftingInfo());
   if (emplace_res.second) {
     // Unseen callee. Perform resource lifting on it.
     HoistForFunctionalControlFlow(&callee.front(), module, lifted_callees);
@@ -980,38 +963,47 @@ LogicalResult HandlePartitionedCallOp(
 // body/cond/branch/callee functions.
 LogicalResult HoistForFunctionalControlFlow(
     Block* block, ModuleOp module,
-    llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>*
+    llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>*
         lifted_partitioned_call_callees) {
   // Remove identity nodes to avoid aliasing.
   RemoveIdentity(block);
   for (Operation& op : llvm::make_early_inc_range(*block)) {
     if (auto while_op = llvm::dyn_cast<TF::WhileOp>(&op)) {
-      auto body = llvm::cast<FuncOp>(module.lookupSymbol(while_op.body()));
-      auto cond = llvm::cast<FuncOp>(module.lookupSymbol(while_op.cond()));
+      auto body = while_op.body_func();
+      auto cond = while_op.cond_func();
       // Recursively handle the nested control flow.
       HoistForFunctionalControlFlow(&body.front(), module,
                                     lifted_partitioned_call_callees);
       HoistForFunctionalControlFlow(&cond.front(), module,
                                     lifted_partitioned_call_callees);
-      if (failed(HanldeWhileLoop(while_op, body, cond))) return failure();
+      if (failed(HandleWhileLoop(while_op, body, cond))) return failure();
     } else if (auto if_op = llvm::dyn_cast<TF::IfOp>(&op)) {
-      auto then_branch =
-          llvm::cast<FuncOp>(module.lookupSymbol(if_op.then_branch()));
-      auto else_branch =
-          llvm::cast<FuncOp>(module.lookupSymbol(if_op.else_branch()));
+      auto then_branch = if_op.then_func();
+      auto else_branch = if_op.else_func();
       // Recursively handle the nested control flow.
       HoistForFunctionalControlFlow(&then_branch.front(), module,
                                     lifted_partitioned_call_callees);
       HoistForFunctionalControlFlow(&else_branch.front(), module,
                                     lifted_partitioned_call_callees);
-      if (failed(HandleIfOP(if_op, then_branch, else_branch))) return failure();
+      if (failed(HandleCaseOrIfOp(if_op, {then_branch, else_branch})))
+        return failure();
+    } else if (auto case_op = llvm::dyn_cast<TF::CaseOp>(&op)) {
+      SmallVector<FuncOp, 4> branch_functions;
+      branch_functions.reserve(case_op.branches().size());
+      for (const Attribute& branch : case_op.branches()) {
+        FuncOp func =
+            module.lookupSymbol<FuncOp>(branch.cast<FlatSymbolRefAttr>());
+        // Recursively handle the nested control flow.
+        HoistForFunctionalControlFlow(&func.front(), module,
+                                      lifted_partitioned_call_callees);
+        branch_functions.push_back(func);
+      }
+      if (failed(HandleCaseOrIfOp(case_op, branch_functions))) return failure();
     } else if (auto call_op = llvm::dyn_cast<TF::PartitionedCallOp>(&op)) {
-      if (!call_op.f().isa<FlatSymbolRefAttr>()) {
+      auto callee = call_op.func();
+      if (!callee)
         return call_op.emitOpError(
             "resource lifting does not support call with nested references.");
-      }
-      auto callee = llvm::cast<FuncOp>(
-          module.lookupSymbol(call_op.f().getRootReference()));
       if (failed(HandlePartitionedCallOp(call_op, callee, module,
                                          lifted_partitioned_call_callees))) {
         // Nested control flow handling is done in HandlePartitionedCallOp().
@@ -1019,8 +1011,7 @@ LogicalResult HoistForFunctionalControlFlow(
       }
     } else if (auto call_op =
                    llvm::dyn_cast<TF::StatefulPartitionedCallOp>(&op)) {
-      auto callee = llvm::cast<FuncOp>(module.lookupSymbol(call_op.f()));
-      if (failed(HandlePartitionedCallOp(call_op, callee, module,
+      if (failed(HandlePartitionedCallOp(call_op, call_op.func(), module,
                                          lifted_partitioned_call_callees))) {
         return failure();
       }
@@ -1038,7 +1029,7 @@ LogicalResult HoistForFunctionalControlFlow(
   for (auto local_var : local_vars) {
     if (llvm::all_of(local_var.resource().getUsers(),
                      [](const Operation* user) {
-                       return llvm::isa<TF::AssignVariableOp>(user);
+                       return isa<TF::AssignVariableOp>(user);
                      })) {
       for (auto user : local_var.resource().getUsers()) user->erase();
       local_var.erase();
@@ -1047,18 +1038,18 @@ LogicalResult HoistForFunctionalControlFlow(
   return success();
 }
 
-// Lifts resource operation from tf_device.launch_func ops nested in `op`
-// outside. Returns failure if there are remaining resource-type values that can
-// not be lifted.
-void ResourceOpLiftingPass::runOnModule() {
-  llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>
+// Lifts resource operation from tf_device.cluster ops nested in `op` outside.
+// Returns failure if there are remaining resource-type values that can not be
+// lifted.
+void ResourceOpLiftingPass::runOnOperation() {
+  llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
-  auto result = getModule().walk([&](FuncOp func_op) {
-    return func_op.walk([&](tf_device::LaunchOp launch_op) {
+  ModuleOp module = getOperation();
+  auto result = module.walk([&](FuncOp func_op) {
+    return func_op.walk([&](tf_device::ClusterOp cluster) {
       if (failed(HoistForFunctionalControlFlow(
-              &launch_op.GetBody(), getModule(),
-              &lifted_partitioned_call_callees)) ||
-          failed(HoistResourceOpsFromLaunchOp(launch_op))) {
+              &cluster.GetBody(), module, &lifted_partitioned_call_callees)) ||
+          failed(HoistResourceOpsFromCluster(cluster, module))) {
         return WalkResult::interrupt();
       }
       return WalkResult::advance();
@@ -1070,12 +1061,13 @@ void ResourceOpLiftingPass::runOnModule() {
 }
 
 struct ResourceOpLiftingForMainFunctionPass
-    : public ModulePass<ResourceOpLiftingForMainFunctionPass> {
-  void runOnModule() override;
+    : public PassWrapper<ResourceOpLiftingForMainFunctionPass,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
-void ResourceOpLiftingForMainFunctionPass::runOnModule() {
-  ModuleOp module = getModule();
+void ResourceOpLiftingForMainFunctionPass::runOnOperation() {
+  ModuleOp module = getOperation();
   FuncOp main_func = module.lookupSymbol<FuncOp>("main");
   if (!main_func) {
     return;
@@ -1099,7 +1091,7 @@ static PassRegistration<ResourceOpLiftingPass> pass(
 }  // namespace
 
 namespace TFDevice {
-std::unique_ptr<OpPassBase<ModuleOp>> CreateResourceOpLiftingPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateResourceOpLiftingPass() {
   return std::make_unique<ResourceOpLiftingPass>();
 }
 }  // namespace TFDevice
@@ -1109,13 +1101,13 @@ LogicalResult ResourceLiftingForFunctionalControlFlow(FuncOp function) {
   // This routine should only be called when control flow operations are still
   // represented with TF IfOp and WhileOp operations. In this case, there should
   // be only one basic blocks in the MLIR representation.
-  if (!has_single_element(function.getBlocks())) {
+  if (!llvm::hasSingleElement(function)) {
     return function.emitError()
            << "expect the function to have 1 block while it has "
            << function.getBlocks().size();
   }
 
-  llvm::SmallDenseMap<FuncOp, PartitionedCallLiftingInfo>
+  llvm::SmallDenseMap<llvm::StringRef, PartitionedCallLiftingInfo>
       lifted_partitioned_call_callees;
   return HoistForFunctionalControlFlow(&function.front(),
                                        cast<ModuleOp>(function.getParentOp()),

@@ -39,7 +39,7 @@ class GetLayerPolicyTest(test.TestCase):
     self.assertEqual(get_layer_policy.get_layer_policy(layer).name, 'float64')
 
   def test_error(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'get_policy can only be called on a layer, but got: 1'):
       get_layer_policy.get_layer_policy(1)
 

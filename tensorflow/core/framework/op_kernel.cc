@@ -26,6 +26,7 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/match.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -52,6 +53,7 @@ limitations under the License.
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/platform_strings.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
 #include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
@@ -105,8 +107,7 @@ OpKernel::OpKernel(OpKernelConstruction* context, bool is_deferred)
       name_view_(props_->node_def.name()),
       type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
-      is_deferred_(is_deferred),
-      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
+      is_deferred_(is_deferred) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
@@ -133,8 +134,7 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
       name_view_(props_->node_def.name()),
       type_string_view_(props_->node_def.op()),
       graph_def_version_(context->graph_def_version()),
-      is_deferred_(is_deferred),
-      cost_estimate_(OpKernel::kInitialCostEstimateCycles) {
+      is_deferred_(is_deferred) {
   OP_REQUIRES_OK(context,
                  NameRangesForNode(props_->node_def, *props_->op_def,
                                    &input_name_map_, &output_name_map_));
@@ -148,11 +148,6 @@ OpKernel::OpKernel(OpKernelConstruction* context, NodeDef&& custom_def,
 }
 
 OpKernel::~OpKernel() {}
-
-const uint64 OpKernel::kInitialCostEstimateCycles;
-const uint64 OpKernel::kOpIsExpensiveThresholdCycles;
-const uint64 OpKernel::kCostDecay;
-
 
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
@@ -178,34 +173,38 @@ Status OpKernel::OutputRange(StringPiece output_name, int* start,
   }
 }
 
-string OpKernel::GetTraceArgument(OpKernelContext* ctx) {
-  int num_inputs = ctx->num_inputs();
+string OpKernel::ShapeTraceString(const OpKernelContext& ctx) const {
+  int num_inputs = ctx.num_inputs();
   if (num_inputs == 0) return "";
   std::vector<string> tensor_shapes;
   tensor_shapes.reserve(num_inputs);
   for (int i = 0; i < num_inputs; i++) {
-    if (!ctx->has_input(i)) {
+    if (!ctx.has_input(i)) {
       tensor_shapes.emplace_back();  // Placeholder
       continue;
     }
-    DataType input_dtype = ctx->input_dtype(i);
+    DataType input_dtype = ctx.input_dtype(i);
     if (input_dtype == DataType::DT_RESOURCE ||
         input_dtype == DataType::DT_VARIANT || IsRefType(input_dtype)) {
       tensor_shapes.emplace_back();  // Placeholder
       continue;
     }
     tensor_shapes.emplace_back(strings::StrCat(
-        DataTypeString(input_dtype), ctx->input(i).shape().DebugString()));
+        DataTypeString(input_dtype), ctx.input(i).shape().DebugString()));
   }
-  return strings::StrCat("shape=(", absl::StrJoin(tensor_shapes, ";"), ")");
+  return strings::StrCat("(", absl::StrJoin(tensor_shapes, ";"), ")");
 }
 
-string OpKernel::TraceString(OpKernelContext* ctx, bool verbose) {
-  string trace_string = strings::StrCat(name_view(), ":", type_string_view());
-  if (!verbose) return trace_string;
-  string trace_args = GetTraceArgument(ctx);
-  if (trace_args.empty()) return trace_string;
-  return strings::StrCat(trace_string, "#", trace_args, "#");
+string OpKernel::TraceString(const OpKernelContext& ctx, bool verbose) const {
+  string trace_string = profiler::TraceMeOp(name_view(), type_string_view());
+  if (verbose) {
+    string shape = ShapeTraceString(ctx);
+    if (!shape.empty()) {
+      trace_string =
+          profiler::TraceMeEncode(std::move(trace_string), {{"shape", shape}});
+    }
+  }
+  return trace_string;
 }
 
 void AsyncOpKernel::Compute(OpKernelContext* context) {
@@ -394,49 +393,32 @@ void OpKernelContext::SetStatus(const Status& status) {
 }
 
 Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was "
-                                   "expected");
-  }
-  if (input_is_ref(start)) {
+  int index;
+  TF_RETURN_IF_ERROR(get_input_index(name, &index));
+  if (input_is_ref(index)) {
     return errors::InvalidArgument("OpKernel used ref input name '", name,
                                    "' when non-ref input was expected");
   }
-  *tensor = (*params_->inputs)[start].tensor;
+  *tensor = (*params_->inputs)[index].tensor;
   return Status::OK();
 }
 
 Status OpKernelContext::input_dtype(StringPiece name, DataType* dtype) const {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was "
-                                   "expected");
-  }
-  const TensorValue& value((*params_->inputs)[start]);
+  int index;
+  TF_RETURN_IF_ERROR(get_input_index(name, &index));
+  const TensorValue& value((*params_->inputs)[index]);
   *dtype = value.dtype();
   return Status::OK();
 }
 
 Status OpKernelContext::input_ref_mutex(StringPiece name, mutex** out_mutex) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was expected");
-  }
-  *out_mutex = input_ref_mutex(start);
+  int index;
+  TF_RETURN_IF_ERROR(get_input_index(name, &index));
+  *out_mutex = input_ref_mutex(index);
   return Status::OK();
 }
 
-const Tensor& OpKernelContext::input(int index) {
+const Tensor& OpKernelContext::input(int index) const {
   CHECK_GE(index, 0);
   CHECK_LT(index, num_inputs()) << " name: " << op_kernel().name();
   CHECK(!input_is_ref(index));
@@ -504,23 +486,9 @@ bool OpKernelContext::forward_input_to_output_with_shape(
 Status OpKernelContext::forward_input_to_output_with_shape(
     StringPiece input_name, StringPiece output_name,
     const TensorShape& output_shape, Tensor** output) {
-  int input_index, output_index, stop;
-  TF_RETURN_IF_ERROR(
-      params_->op_kernel->InputRange(input_name, &input_index, &stop));
-  if (stop != input_index + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   input_name,
-                                   "' when single-valued input was "
-                                   "expected");
-  }
-  TF_RETURN_IF_ERROR(
-      params_->op_kernel->OutputRange(output_name, &output_index, &stop));
-  if (stop != output_index + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   output_name,
-                                   "' when single-valued output was "
-                                   "expected");
-  }
+  int input_index, output_index;
+  TF_RETURN_IF_ERROR(get_input_index(input_name, &input_index));
+  TF_RETURN_IF_ERROR(get_output_index(output_name, &output_index));
   if (!forward_input_to_output_with_shape(input_index, output_index,
                                           output_shape, output)) {
     return errors::FailedPrecondition("OpKernel could not forward input '",
@@ -628,23 +596,18 @@ void OpKernelContext::delete_ref_input(int index, bool lock_held) {
 
 Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
                                       bool lock_held) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was expected");
-  }
-  if (!input_is_ref(start)) {
+  int index;
+  TF_RETURN_IF_ERROR(get_input_index(name, &index));
+  if (!input_is_ref(index)) {
     return errors::InvalidArgument("OpKernel used non-ref input name '", name,
                                    "' when ref input was expected");
   }
   // return a copy of the Ref acquired while holding the mutex
   if (lock_held) {
-    *tensor = *(*params_->inputs)[start].tensor;
+    *tensor = *(*params_->inputs)[index].tensor;
   } else {
-    tf_shared_lock l(*input_ref_mutex(start));
-    *tensor = *(*params_->inputs)[start].tensor;
+    tf_shared_lock l(*input_ref_mutex(index));
+    *tensor = *(*params_->inputs)[index].tensor;
   }
   return Status::OK();
 }
@@ -652,18 +615,13 @@ Status OpKernelContext::mutable_input(StringPiece name, Tensor* tensor,
 Status OpKernelContext::replace_ref_input(StringPiece name,
                                           const Tensor& tensor,
                                           bool lock_held) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued input name '",
-                                   name,
-                                   "' when single-valued input was expected");
-  }
-  if (!input_is_ref(start)) {
+  int index;
+  TF_RETURN_IF_ERROR(get_input_index(name, &index));
+  if (!input_is_ref(index)) {
     return errors::InvalidArgument("OpKernel used immutable input name '", name,
                                    "' when ref input was expected");
   }
-  replace_ref_input(start, tensor, lock_held);
+  replace_ref_input(index, tensor, lock_held);
   return Status::OK();
 }
 
@@ -751,12 +709,11 @@ Status OpKernelContext::allocate_tensor(
     DataType type, const TensorShape& shape, Tensor* out_tensor,
     AllocatorAttributes attr, const AllocationAttributes& allocation_attr) {
   Allocator* a = get_allocator(attr);
-  MEMDEBUG_CACHE_OP(op_kernel().name().c_str());
-  MEMDEBUG_CACHE_STEPID(step_id());
-  Tensor new_tensor(a, type, shape,
-                    AllocationAttributes(allocation_attr.no_retry_on_failure,
-                                         /* allocation_will_be_logged= */ true,
-                                         allocation_attr.freed_by_func));
+  Tensor new_tensor(
+      a, type, shape,
+      AllocationAttributes(
+          /*retry_on_failure=*/allocation_attr.retry_on_failure,
+          /*allocation_will_be_logged=*/true, allocation_attr.freed_by_func));
 
   if (!new_tensor.IsInitialized()) {
     return errors::ResourceExhausted(
@@ -806,6 +763,8 @@ Status OpKernelContext::allocate_output(int index, const TensorShape& shape,
           " more than once.  Try turning off the ScopedAllocator optimizer.");
     }
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "output", type, &shape);
   auto output_tensor = MakeUnique<Tensor>();
   Status s = allocate_tensor(type, shape, output_tensor.get(), attr);
   if (s.ok()) {
@@ -835,6 +794,8 @@ Status OpKernelContext::allocate_temp(
             << ".  Switch to allocate_output to avoid performance penalty.";
     allocator_attr.scope_id = -1;
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "temp", type, &shape);
   Status s =
       allocate_tensor(type, shape, out_temp, allocator_attr, allocation_attr);
   if (track_allocations() && s.ok() && out_temp->TotalBytes() > 0) {
@@ -863,6 +824,8 @@ Status OpKernelContext::allocate_persistent(DataType type,
     return errors::Internal(
         "Unexpected call to allocate_persistent with scope_id ", attr.scope_id);
   }
+  ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                            step_id(), "persist", type, &shape);
   Tensor persistent;
   Status s = allocate_tensor(type, shape, &persistent, attr);
   if (s.ok()) {
@@ -895,7 +858,22 @@ Status OpKernelContext::allocate_persistent(DataType type,
   return s;
 }
 
-Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
+Status OpKernelContext::get_input_index(StringPiece name,
+                                        int* out_index) const {
+  int start, stop;
+  TF_RETURN_IF_ERROR(params_->op_kernel->InputRange(name, &start, &stop));
+  if (stop != start + 1) {
+    return errors::InvalidArgument("OpKernel used list-valued input name '",
+                                   name,
+                                   "' when single-valued input was "
+                                   "expected");
+  }
+  *out_index = start;
+  return Status::OK();
+}
+
+Status OpKernelContext::get_output_index(StringPiece name,
+                                         int* out_index) const {
   int start, stop;
   TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
   if (stop != start + 1) {
@@ -904,22 +882,31 @@ Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
                                    "' when single-valued output was "
                                    "expected");
   }
-  set_output(start, tensor);
+  *out_index = start;
   return Status::OK();
 }
 
-void OpKernelContext::set_output(int index, const Tensor& tensor) {
-  CHECK_GE(index, 0);
-  CHECK_LT(index, outputs_.size());
-  const DataType type = params_->op_kernel->output_type(index);
-  CHECK(!IsRefType(type));
-  CHECK_EQ(mutable_output(index), nullptr);
+Status OpKernelContext::set_output(StringPiece name, const Tensor& tensor) {
+  int index;
+  TF_RETURN_IF_ERROR(get_output_index(name, &index));
+  set_output(index, tensor);
+  return Status::OK();
+}
 
+Status OpKernelContext::set_output(StringPiece name, Tensor&& tensor) {
+  int index;
+  TF_RETURN_IF_ERROR(get_output_index(name, &index));
+  set_output(index, std::move(tensor));
+  return Status::OK();
+}
+
+bool OpKernelContext::maybe_set_output_by_allocate_and_copy(
+    int index, const Tensor& tensor) {
   bool allocate_and_copy = false;
   const bool never_forward =
       (params_->forward_from_array != nullptr &&
        params_->forward_from_array[index] == Params::kNeverForward);
-  if (never_forward) {
+  if (TF_PREDICT_FALSE(never_forward)) {
     maybe_initialize_scope_id_set();
     if (allocated_scope_ids_->find(output_alloc_attr(index).scope_id) ==
         allocated_scope_ids_->end()) {
@@ -936,7 +923,7 @@ void OpKernelContext::set_output(int index, const Tensor& tensor) {
     }
   }
 
-  if (allocate_and_copy) {
+  if (TF_PREDICT_FALSE(allocate_and_copy)) {
     // This output was marked to not be forwarded either during graph
     // construction or grappler passes.  Force an allocation and copy input to
     // output.
@@ -945,32 +932,63 @@ void OpKernelContext::set_output(int index, const Tensor& tensor) {
             << " params_->forward_from_array[index] "
             << params_->forward_from_array[index] << " alloc_attr.scope_id "
             << output_alloc_attr(index).scope_id;
+    ScopedMemoryDebugAnnotation op_annotation(op_kernel().name_view().data(),
+                                              step_id(), "output",
+                                              tensor.dtype(), &tensor.shape());
     auto new_tensor = MakeUnique<Tensor>();
-    Status s = allocate_tensor(type, tensor.shape(), new_tensor.get(),
+    Status s = allocate_tensor(tensor.dtype(), tensor.shape(), new_tensor.get(),
                                output_alloc_attr(index));
     TF_CHECK_OK(s);
     device()->CopyTensorInSameDevice(&tensor, new_tensor.get(),
                                      op_device_context(), [](const Status&) {});
     outputs_[index] = TensorValue(new_tensor.release());
-  } else {
+  }
+  return allocate_and_copy;
+}
+
+void OpKernelContext::maybe_track_allocations_for_set_output(
+    const Tensor& tensor) {
+  if (TF_PREDICT_FALSE(track_allocations()) && tensor.TotalBytes() > 0) {
+    DCHECK(tracking_state_);
+    mutex_lock l(tracking_state_->stats_mu);
+    const auto it = std::find_if(
+        tracking_state_->temp_tensor_buffer_and_size.begin(),
+        tracking_state_->temp_tensor_buffer_and_size.end(),
+        [&tensor](const std::pair<const void*, int64>& e) {
+          return e.first ==
+                 static_cast<const void*>(tensor.tensor_data().data());
+        });
+    if (it != tracking_state_->temp_tensor_buffer_and_size.end()) {
+      tracking_state_->temp_memory_allocated -= it->second;
+      tracking_state_->temp_tensor_buffer_and_size.erase(it);
+    }
+  }
+}
+
+void OpKernelContext::set_output(int index, const Tensor& tensor) {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, outputs_.size());
+  const DataType type = params_->op_kernel->output_type(index);
+  CHECK(!IsRefType(type));
+  CHECK_EQ(outputs_[index].tensor, nullptr);
+  if (TF_PREDICT_TRUE(!maybe_set_output_by_allocate_and_copy(index, tensor))) {
     // Input can be forwarded to output; incref on `tensor` and set output at
     // `index` to this tensor.
     outputs_[index] = TensorValue(new Tensor(tensor));
-    if (track_allocations() && tensor.TotalBytes() > 0) {
-      DCHECK(tracking_state_);
-      mutex_lock l(tracking_state_->stats_mu);
-      const auto it = std::find_if(
-          tracking_state_->temp_tensor_buffer_and_size.begin(),
-          tracking_state_->temp_tensor_buffer_and_size.end(),
-          [&tensor](const std::pair<const void*, int64>& e) {
-            return e.first ==
-                   static_cast<const void*>(tensor.tensor_data().data());
-          });
-      if (it != tracking_state_->temp_tensor_buffer_and_size.end()) {
-        tracking_state_->temp_memory_allocated -= it->second;
-        tracking_state_->temp_tensor_buffer_and_size.erase(it);
-      }
-    }
+    maybe_track_allocations_for_set_output(*outputs_[index].tensor);
+  }
+}
+
+void OpKernelContext::set_output(int index, Tensor&& tensor) {
+  CHECK_GE(index, 0);
+  CHECK_LT(index, outputs_.size());
+  const DataType type = params_->op_kernel->output_type(index);
+  CHECK(!IsRefType(type));
+  CHECK_EQ(outputs_[index].tensor, nullptr);
+  if (TF_PREDICT_TRUE(!maybe_set_output_by_allocate_and_copy(index, tensor))) {
+    // Input can be forwarded to output; set output at `index` to this tensor.
+    outputs_[index] = TensorValue(new Tensor(std::move(tensor)));
+    maybe_track_allocations_for_set_output(*outputs_[index].tensor);
   }
 }
 
@@ -984,28 +1002,16 @@ void OpKernelContext::set_output_ref(int index, mutex* mu,
 
 Status OpKernelContext::set_output_ref(StringPiece name, mutex* mu,
                                        Tensor* tensor_for_ref) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   name,
-                                   "' when single-valued output was "
-                                   "expected");
-  }
-  set_output_ref(start, mu, tensor_for_ref);
+  int index;
+  TF_RETURN_IF_ERROR(get_output_index(name, &index));
+  set_output_ref(index, mu, tensor_for_ref);
   return Status::OK();
 }
 
 Status OpKernelContext::mutable_output(StringPiece name, Tensor** tensor) {
-  int start, stop;
-  TF_RETURN_IF_ERROR(params_->op_kernel->OutputRange(name, &start, &stop));
-  if (stop != start + 1) {
-    return errors::InvalidArgument("OpKernel used list-valued output name '",
-                                   name,
-                                   "' when single-valued output was "
-                                   "expected");
-  }
-  *tensor = mutable_output(start);
+  int index;
+  TF_RETURN_IF_ERROR(get_output_index(name, &index));
+  *tensor = mutable_output(index);
   return Status::OK();
 }
 
@@ -1098,6 +1104,15 @@ void OpKernelContext::set_record_memory_consumption(bool v) {
   record_memory_consumption_ = v;
   if (v && !tracking_state_) {
     tracking_state_ = absl::make_unique<TrackingState>();
+  }
+}
+
+const string& OpKernelContext::executor_type() const {
+  if (params_->executor_type) {
+    return *params_->executor_type;
+  } else {
+    static const string& kEmptyString = *new string("");
+    return kEmptyString;
   }
 }
 
@@ -1197,7 +1212,8 @@ void LoadDynamicKernelsInternal() {
         if (s.ok() || override_abi_check) {
           // TODO(gunan): Store the handles to the opened files.
           void* unused_filehandle;
-          TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));
+          TF_CHECK_OK(
+              env->LoadDynamicLibrary(fullpath.c_str(), &unused_filehandle));
         } else {
           LOG(WARNING) << "Not loading plugin library " << fullpath << ": "
                        << s.error_message();
@@ -1274,7 +1290,21 @@ OpKernel* OpKernelRegistrar::PtrOpKernelFactory::Create(
 
 namespace {
 
-static const StringPiece kKernelAttr("_kernel");
+// Label defaults to empty if not found in NodeDef.
+const string& GetKernelLabelAttr(const AttrSlice& node_attrs) {
+  static const string& kKernelAttr = *new string("_kernel");
+  static const string& kEmptyString = *new string("");
+
+  // NOTE: We inline the implementation of `GetNodeAttrString()` here in order
+  // to use the `AttrSlice::FindByString()` overload, which does a more
+  // efficient map lookup (instead of a linear scan) when the attribute name is
+  // already a `const string&`.
+  const AttrValue* attr_value = node_attrs.FindByString(kKernelAttr);
+  if (attr_value == nullptr || attr_value->value_case() != AttrValue::kS)
+    return kEmptyString;
+  else
+    return attr_value->s();
+}
 
 // TODO(irving): Replace with const Node& version below.
 Status FindKernelRegistration(
@@ -1285,8 +1315,8 @@ Status FindKernelRegistration(
     bool* was_attr_mismatch) {
   *reg = nullptr;
   *was_attr_mismatch = false;
-  // Label defaults to empty if not found in NodeDef.
-  const string& label = GetNodeAttrString(node_attrs, kKernelAttr);
+
+  const string& label = GetKernelLabelAttr(node_attrs);
 
   const string key = Key(node_op, device_type, label);
   auto typed_registry = GlobalKernelRegistryTyped();
@@ -1390,10 +1420,10 @@ Status FindKernelDef(
       device_type, node_name, has_experimental_debug_info,
       experimental_debug_info, node_op, node_attrs, &reg, &was_attr_mismatch));
   if (reg == nullptr) {
-    std::string device_str = DeviceTypeString(device_type);
+    const std::string device_str = DeviceTypeString(device_type);
     Status s = errors::NotFound(
-        "No registered '", node_op, "' OpKernel for ",
-        DeviceTypeString(device_type), " devices compatible with node ",
+        "No registered '", node_op, "' OpKernel for ", device_str,
+        " devices compatible with node ",
         FormatNodeDefForError(node_name, has_experimental_debug_info,
                               experimental_debug_info));
     if (was_attr_mismatch) {
@@ -1474,6 +1504,13 @@ Status SupportedDeviceTypesForNode(
         }
       }
     }
+
+    // If we were unable to find any valid devices let's validate if the node is
+    // even valid.
+    if (prioritized_device_types->empty()) {
+      TF_RETURN_IF_ERROR(ValidateNodeDef(def, op_reg_data->op_def));
+    }
+
     std::sort(prioritized_device_types->begin(),
               prioritized_device_types->end(),
               [](const std::pair<DeviceType, int32>& a,

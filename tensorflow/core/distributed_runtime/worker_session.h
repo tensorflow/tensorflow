@@ -37,7 +37,7 @@ class WorkerSession {
   // sessions created with `isolate_session_state == false`. In the
   // those cases, this method returns a pointer to a borrowed
   // DeviceMgr (typically the `worker_env.device_mgr`).
-  DeviceMgr* device_mgr() {
+  const DeviceMgr* device_mgr() {
     return device_mgr_ ? device_mgr_.get() : borrowed_device_mgr_;
   }
 
@@ -46,7 +46,10 @@ class WorkerSession {
   const string& session_name() const { return session_name_; }
   const string& worker_name() const { return worker_name_; }
 
-  WorkerCacheInterface* worker_cache() const { return worker_cache_.get(); }
+  WorkerCacheInterface* worker_cache() const {
+    tf_shared_lock l(worker_session_state_mu_);
+    return worker_cache_.get();
+  }
   GraphMgr* graph_mgr() const { return graph_mgr_.get(); }
 
   ClusterFunctionLibraryRuntime* cluster_flr() const {
@@ -62,8 +65,17 @@ class WorkerSession {
   static std::shared_ptr<WorkerSession> CreateWithBorrowedDeviceMgr(
       const string& session_name, const string& worker_name,
       std::unique_ptr<WorkerCacheInterface> worker_cache,
-      DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
+      const DeviceMgr* borrowed_device_mgr, std::unique_ptr<GraphMgr> graph_mgr,
       std::unique_ptr<DynamicDeviceMgr> remote_device_mgr);
+
+  // In the eager runtime we allow WorkerSession to be updated, where the
+  // worker cache will be recreated. If WorkerSession upate is expected and a
+  // worker in the cache is used in RPCs, the caller should hold a shared
+  // pointer to avoid the workers getting deleted.
+  std::shared_ptr<WorkerCacheInterface> GetSharedWorkerCache() {
+    tf_shared_lock l(worker_session_state_mu_);
+    return worker_cache_;
+  }
 
   // Update an existing worker session with new set of remote workers and
   // devices. Added devices will be owned by the worker session, and removed
@@ -78,7 +90,7 @@ class WorkerSession {
  private:
   WorkerSession(const string& session_name, const string& worker_name,
                 std::unique_ptr<WorkerCacheInterface> worker_cache,
-                DeviceMgr* borrowed_device_mgr,
+                const DeviceMgr* borrowed_device_mgr,
                 std::unique_ptr<GraphMgr> graph_mgr,
                 std::unique_ptr<DynamicDeviceMgr> remote_device_mgr);
 
@@ -88,8 +100,10 @@ class WorkerSession {
   // The name of the worker. E.g., /job:mnist/replica:0/task:1.
   const string worker_name_;
 
+  mutable mutex worker_session_state_mu_;
   // Object from which WorkerInterface instances can be obtained.
-  std::unique_ptr<WorkerCacheInterface> worker_cache_;
+  std::shared_ptr<WorkerCacheInterface> worker_cache_
+      TF_GUARDED_BY(worker_session_state_mu_);
 
   // graph_mgr keeps track of the registered graphs of this session.
   //
@@ -99,8 +113,8 @@ class WorkerSession {
 
   std::unique_ptr<ClusterFunctionLibraryRuntime> cluster_flr_;
 
-  const std::unique_ptr<DeviceMgr> device_mgr_;
-  DeviceMgr* const borrowed_device_mgr_;  // Not owned.
+  const std::unique_ptr<const DeviceMgr> device_mgr_;
+  const DeviceMgr* const borrowed_device_mgr_;  // Not owned.
   std::unique_ptr<DynamicDeviceMgr> remote_device_mgr_;
 };
 

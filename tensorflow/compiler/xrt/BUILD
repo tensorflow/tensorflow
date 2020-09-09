@@ -58,6 +58,7 @@ cc_library(
         "xrt_state.h",
         "xrt_util.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":xrt_proto_cc",
         "//tensorflow/compiler/jit:xla_device",
@@ -73,6 +74,7 @@ cc_library(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:backend",
         "//tensorflow/compiler/xla/service:executable",
+        "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -94,6 +96,7 @@ tf_gen_op_libs(
         "xrt_execute_op",
     ],
     deps = [
+        "//tensorflow/compiler/jit:flags",
         "//tensorflow/core:lib",
     ],
 )

@@ -24,6 +24,8 @@ import sys
 # pylint: disable=unused-import
 from tensorflow import python as _tf_for_api_traversal
 from tensorflow.lite.python import lite as _tflite_for_api_traversal
+from tensorflow.python.framework import combinations
+from tensorflow.python.framework import test_combinations
 # pylint: enable=unused-import
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test

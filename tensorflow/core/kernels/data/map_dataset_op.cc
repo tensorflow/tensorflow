@@ -72,7 +72,13 @@ class MapDatasetOp::Dataset : public DatasetBase {
     return name_utils::DatasetDebugString(kDatasetType);
   }
 
-  int64 Cardinality() const override { return input_->Cardinality(); }
+  int64 Cardinality() const override {
+    if (preserve_cardinality_) {
+      return input_->Cardinality();
+    } else {
+      return kUnknownCardinality;
+    }
+  }
 
   Status CheckExternalState() const override {
     TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
@@ -174,9 +180,11 @@ class MapDatasetOp::Dataset : public DatasetBase {
       return model::MakeKnownRatioNode(std::move(args), /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+          dataset()->captured_func_->CheckExternalState()));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       return Status::OK();
     }
 

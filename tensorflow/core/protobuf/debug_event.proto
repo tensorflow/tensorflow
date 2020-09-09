@@ -9,7 +9,7 @@ option cc_enable_arenas = true;
 option java_outer_classname = "DebugEventProtos";
 option java_multiple_files = true;
 option java_package = "org.tensorflow.util";
-option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/core_protos_go_proto";
+option go_package = "github.com/tensorflow/tensorflow/tensorflow/go/core/protobuf/for_core_protos_go_proto";
 
 // Available modes for extracting debugging information from a Tensor.
 // TODO(cais): Document the detailed column names and semantics in a separate
@@ -115,6 +115,12 @@ message DebugMetadata {
   // Version of the DebugEvent file format.
   // Has a format of "debug.Event:<number>", e.g., "debug.Event:1".
   string file_version = 2;
+
+  // A unique ID for the current run of tfdbg.
+  // A run of tfdbg is defined as a TensorFlow job instrumented by tfdbg.
+  // Multiple hosts in a distributed TensorFlow job instrumented by tfdbg
+  // have the same ID.
+  string tfdbg_run_id = 3;
 }
 
 // Content of a source file involved in the execution of the debugged TensorFlow

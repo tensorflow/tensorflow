@@ -208,8 +208,6 @@ REGISTER_CONCAT(qint8);
 REGISTER_CONCAT(quint16);
 REGISTER_CONCAT(qint16);
 REGISTER_CONCAT(qint32);
-REGISTER_CONCAT(uint32);
-REGISTER_CONCAT(uint64);
 
 #undef REGISTER_CONCAT
 
@@ -227,13 +225,10 @@ REGISTER_CONCAT(uint64);
                               .HostMemory("axis"),       \
                           ConcatV2Op<GPUDevice, type>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
-REGISTER_GPU(bfloat16);
+TF_CALL_bfloat16(REGISTER_GPU);
 TF_CALL_uint8(REGISTER_GPU);
-TF_CALL_complex64(REGISTER_GPU);
-TF_CALL_complex128(REGISTER_GPU);
 TF_CALL_int64(REGISTER_GPU);
-REGISTER_GPU(bool);
+TF_CALL_GPU_ALL_TYPES(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.

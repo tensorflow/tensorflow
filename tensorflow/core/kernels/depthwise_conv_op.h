@@ -32,8 +32,8 @@ struct DepthwiseArgs {
   int filter_cols;
   int depth_multiplier;
   int stride;
-  int pad_rows;
-  int pad_cols;
+  int pad_rows;  // Amount of padding to the top of the input
+  int pad_cols;  // Amount of padding to the left of the input
 
   // Output layer dimensions
   int out_rows;

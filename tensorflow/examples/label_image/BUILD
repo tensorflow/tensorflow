@@ -35,10 +35,10 @@ tf_cc_binary(
             # cc:cc_ops is used to include image ops (for label_image)
             # Jpg, gif, and png related code won't be included
             "//tensorflow/cc:cc_ops",
-            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:portable_tensorflow_lib",
             # cc:android_tensorflow_image_op is for including jpeg/gif/png
             # decoder to enable real-image evaluation on Android
-            "//tensorflow/core/kernels:android_tensorflow_image_op",
+            "//tensorflow/core/kernels/image:android_tensorflow_image_op",
         ],
         "//conditions:default": [
             "//tensorflow/cc:cc_ops",

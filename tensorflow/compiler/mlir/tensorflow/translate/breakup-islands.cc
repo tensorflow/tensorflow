@@ -19,14 +19,13 @@ limitations under the License.
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Support/STLExtras.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/analysis/side_effect_analysis.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
@@ -42,25 +41,32 @@ namespace mlir {
 
 namespace {
 
-struct BreakUpIslands : FunctionPass<BreakUpIslands> {
-  void runOnFunction() final;
+class BreakUpIslands : public TF::PerFunctionAggregateAnalysisConsumerPass<
+                           BreakUpIslands, TF::SideEffectAnalysis> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<tf_executor::TensorFlowExecutorDialect>();
+  }
+
+ public:
+  void runOnFunction(FuncOp func,
+                     const TF::SideEffectAnalysis::Info& side_effect_analysis);
 
   void BreakUpIsland(tf_executor::IslandOp island_op,
-                     const TF::SideEffectAnalysis& side_effect_analysis,
+                     const TF::SideEffectAnalysis::Info& side_effect_analysis,
                      llvm::DenseMap<Operation*, llvm::SmallVector<Value, 4>>*
                          new_control_inputs);
 };
 
-void BreakUpIslands::runOnFunction() {
-  auto graph_op_range = getFunction().getBody().front().without_terminator();
+void BreakUpIslands::runOnFunction(
+    FuncOp func, const TF::SideEffectAnalysis::Info& side_effect_analysis) {
+  auto graph_op_range = func.front().without_terminator();
   tf_executor::GraphOp graph_op;
-  if (graph_op_range.begin() != graph_op_range.end() &&
-      std::next(graph_op_range.begin()) == graph_op_range.end()) {
-    graph_op = dyn_cast<tf_executor::GraphOp>(
-        getOperation().getBody().front().front());
-  }
+
+  if (llvm::hasSingleElement(graph_op_range))
+    graph_op = dyn_cast<tf_executor::GraphOp>(func.front().front());
+
   if (!graph_op) {
-    getOperation().emitError("expected function to contain only a graph_op");
+    func.emitError("expected function to contain only a graph_op");
     signalPassFailure();
     return;
   }
@@ -68,7 +74,6 @@ void BreakUpIslands::runOnFunction() {
   // New control inputs to be added. For an operation x, new_control_inputs[x]
   // contains all control inputs that need to be added to x as operands.
   llvm::DenseMap<Operation*, llvm::SmallVector<Value, 4>> new_control_inputs;
-  auto& side_effect_analysis = getAnalysis<TF::SideEffectAnalysis>();
   // Iterate in reverse order to avoid invalidating Operation* stored in
   // new_control_inputs.
   for (auto& item :
@@ -77,7 +82,7 @@ void BreakUpIslands::runOnFunction() {
       BreakUpIsland(island, side_effect_analysis, &new_control_inputs);
     }
   }
-  OpBuilder builder(getOperation());
+  OpBuilder builder(func);
 
   // For every op, add new control inputs in reverse order so that the ops don't
   // get invalidated.
@@ -114,7 +119,7 @@ void BreakUpIslands::runOnFunction() {
     state.addOperands(operands);
     Operation* new_op = builder.createOperation(state);
     item.replaceAllUsesWith(new_op);
-    new_op->setAttrs(item.getAttrList());
+    new_op->setAttrs(item.getMutableAttrDict());
     item.erase();
   }
 }
@@ -182,7 +187,7 @@ struct IslandSourcesAndSinks {
 // Finds IslandSourcesAndSinks for an unmodified island.
 IslandSourcesAndSinks FindSourcesAndSinksInIsland(
     tf_executor::IslandOp island,
-    const TF::SideEffectAnalysis& side_effect_analysis) {
+    const TF::SideEffectAnalysis::Info& side_effect_analysis) {
   IslandSourcesAndSinks result;
   auto island_body = island.GetBody().without_terminator();
   for (Operation& sub_op : island_body) {
@@ -209,7 +214,7 @@ IslandSourcesAndSinks FindSourcesAndSinksInIsland(
 // are chained together by control flow values.
 void BreakUpIslands::BreakUpIsland(
     tf_executor::IslandOp island_op,
-    const TF::SideEffectAnalysis& side_effect_analysis,
+    const TF::SideEffectAnalysis::Info& side_effect_analysis,
     llvm::DenseMap<Operation*, llvm::SmallVector<Value, 4>>*
         new_control_inputs) {
   auto island_body = island_op.GetBody().without_terminator();
@@ -220,7 +225,7 @@ void BreakUpIslands::BreakUpIsland(
   }
 
   // Skip islands that are already only a single op.
-  if (has_single_element(island_body)) return;
+  if (island_op.WrapsSingleOp()) return;
 
   auto control_type = tf_executor::ControlType::get(&getContext());
   auto island_control_inputs = llvm::to_vector<4>(island_op.controlInputs());
@@ -307,9 +312,8 @@ void BreakUpIslands::BreakUpIsland(
               llvm::dyn_cast<tf_executor::IslandOp>(owner->getParentOp())) {
         (*new_control_inputs)[other_island_op].push_back(sink_island_control);
       } else if (owner->getDialect() == island_op.getDialect() &&
-                 !llvm::isa<tf_executor::GraphOp>(owner) &&
-                 !llvm::isa<tf_executor::YieldOp>(owner) &&
-                 !llvm::isa<tf_executor::NextIterationSourceOp>(owner)) {
+                 !llvm::isa<tf_executor::GraphOp, tf_executor::YieldOp,
+                            tf_executor::NextIterationSourceOp>(owner)) {
         (*new_control_inputs)[owner].push_back(sink_island_control);
       } else {
         owner->emitOpError("adding control dependency not supported");
@@ -325,7 +329,7 @@ void BreakUpIslands::BreakUpIsland(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateBreakUpIslandsPass() {
+std::unique_ptr<OperationPass<ModuleOp>> CreateBreakUpIslandsPass() {
   return std::make_unique<BreakUpIslands>();
 }
 

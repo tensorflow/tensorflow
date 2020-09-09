@@ -34,10 +34,10 @@ namespace gpu {
 // issue (b/31336476).
 class TupleThunk : public Thunk {
  public:
-  TupleThunk(absl::Span<const BufferAllocation::Slice> tuple_element_buffers,
-             const BufferAllocation::Slice& dest_buffer,
-             const HloInstruction* hlo_instruction)
-      : Thunk(Kind::kTuple, hlo_instruction),
+  TupleThunk(ThunkInfo thunk_info,
+             absl::Span<const BufferAllocation::Slice> tuple_element_buffers,
+             const BufferAllocation::Slice& dest_buffer)
+      : Thunk(Kind::kTuple, thunk_info),
         tuple_element_buffers_(tuple_element_buffers.begin(),
                                tuple_element_buffers.end()),
         dest_buffer_(dest_buffer) {}

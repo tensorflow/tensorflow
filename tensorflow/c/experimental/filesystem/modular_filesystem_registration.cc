@@ -14,7 +14,6 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/c/experimental/filesystem/modular_filesystem_registration.h"
 
-#include "tensorflow/c/experimental/filesystem/filesystem_interface.h"
 #include "tensorflow/c/experimental/filesystem/modular_filesystem.h"
 #include "tensorflow/c/tf_status_internal.h"
 #include "tensorflow/core/platform/env.h"
@@ -304,40 +303,22 @@ static Status ValidatePluginMemoryRoutines(
 
 namespace filesystem_registration {
 
-Status RegisterFilesystemPluginImpl(const std::string& dso_path) {
-  // Step 1: Load plugin
-  Env* env = Env::Default();
-  void* dso_handle;
-  TF_RETURN_IF_ERROR(env->LoadLibrary(dso_path.c_str(), &dso_handle));
+Status RegisterFilesystemPluginImpl(const TF_FilesystemPluginInfo* info) {
+  TF_RETURN_IF_ERROR(ValidatePluginMemoryRoutines(info));
 
-  // Step 2: Load symbol for `TF_InitPlugin`
-  void* dso_symbol;
-  TF_RETURN_IF_ERROR(
-      env->GetSymbolFromLibrary(dso_handle, "TF_InitPlugin", &dso_symbol));
-
-  // Step 3: Call `TF_InitPlugin`
-  TF_FilesystemPluginInfo info;
-  memset(&info, 0, sizeof(info));
-  auto TF_InitPlugin =
-      reinterpret_cast<int (*)(TF_FilesystemPluginInfo*)>(dso_symbol);
-  TF_InitPlugin(&info);
-
-  // Step 4: Ensure plugin provides the memory management functions.
-  TF_RETURN_IF_ERROR(ValidatePluginMemoryRoutines(&info));
-
-  // Step 5: Validate and register all filesystems
+  // Validate and register all filesystems
   // Try to register as many filesystems as possible.
   // Free memory once we no longer need it
   Status status;
-  for (int i = 0; i < info.num_schemes; i++) {
-    status.Update(ValidateAndRegisterFilesystems(&info, i));
-    info.plugin_memory_free(info.ops[i].scheme);
-    info.plugin_memory_free(info.ops[i].filesystem_ops);
-    info.plugin_memory_free(info.ops[i].random_access_file_ops);
-    info.plugin_memory_free(info.ops[i].writable_file_ops);
-    info.plugin_memory_free(info.ops[i].read_only_memory_region_ops);
+  for (int i = 0; i < info->num_schemes; i++) {
+    status.Update(ValidateAndRegisterFilesystems(info, i));
+    info->plugin_memory_free(info->ops[i].scheme);
+    info->plugin_memory_free(info->ops[i].filesystem_ops);
+    info->plugin_memory_free(info->ops[i].random_access_file_ops);
+    info->plugin_memory_free(info->ops[i].writable_file_ops);
+    info->plugin_memory_free(info->ops[i].read_only_memory_region_ops);
   }
-  info.plugin_memory_free(info.ops);
+  info->plugin_memory_free(info->ops);
   return status;
 }
 

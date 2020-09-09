@@ -20,6 +20,12 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "mlir/Dialect/Shape/IR/Shape.h"  // from @llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
+#include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 #include "tensorflow/compiler/mlir/tensorflow/translate/import_model.h"
@@ -124,7 +130,7 @@ Status ConvertGraphDefToXlaViaMlir(
         std::string* file_name = debug_info.mutable_files(i);
         size_t location =
             file_name->rfind(std::string(debug_info_path_begin_marker));
-        if (location != -1) {
+        if (location != std::string::npos) {
           *file_name = file_name->substr(location +
                                          debug_info_path_begin_marker.length());
         }
@@ -133,7 +139,6 @@ Status ConvertGraphDefToXlaViaMlir(
   }
 
   mlir::MLIRContext context;
-
   TF_ASSIGN_OR_RETURN(
       mlir::OwningModuleRef module,
       ConvertGraphdefToMlir(pruned_graph_def, debug_info, specs, &context));
@@ -147,18 +152,14 @@ Status ConvertGraphDefToXlaViaMlir(
   device_set.AddDevice(&device);
   AddDevicesToOp(*module, &device_set);
 
-  if (failed(mlir::TF::MarkFunctionVisibilityUsingEntryFunctionSpecification(
-          *module))) {
-    return errors::Internal("Problem with mark function visibility");
-  }
-
   TF_RETURN_IF_ERROR(mlir::TF::RunBridgeWithStandardPipeline(
       *module, /*enable_logging=*/VLOG_IS_ON(1), /*enable_inliner=*/true));
 
   // Convert the MLIR module to XLA computation. If the input graph can't be
   // lowered down to a single graph node with a single island by the previous
   // step, this step will return an error.
-  return ConvertMLIRToXlaComputation(*module, computation,
+  return ConvertMLIRToXlaComputation(*module, /*device_type=*/"XLA_CPU_JIT",
+                                     computation,
                                      /*use_tuple_args=*/false,
                                      /*always_return_tuple=*/true);
 }

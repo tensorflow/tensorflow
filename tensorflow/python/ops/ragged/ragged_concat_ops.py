@@ -27,6 +27,7 @@ from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_util
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -71,6 +72,7 @@ def concat(values, axis, name=None):
 
 
 @tf_export('ragged.stack')
+@dispatch.add_dispatch_support
 def stack(values, axis=0, name=None):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` `RaggedTensor`.
 

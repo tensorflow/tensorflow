@@ -14,17 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/reference/non_max_suppression.h"
 
-#include <string.h>
+#include <initializer_list>
 
-#include <numeric>
-#include <vector>
-
-#include "flatbuffers/flexbuffers.h"  // TF:flatbuffers
-#include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
+#include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
-#include "tensorflow/lite/kernels/op_macros.h"
 
 namespace tflite {
 namespace ops {

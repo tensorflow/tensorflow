@@ -41,7 +41,7 @@ class InferenceEnvironment {
  public:
   virtual ~InferenceEnvironment() = default;
 
-  virtual Status NewInferenceBuilder(
+  virtual absl::Status NewInferenceBuilder(
       GraphFloat32&& model, const InferenceOptions& options,
       std::unique_ptr<InferenceBuilder>* builder) = 0;
 };
@@ -52,7 +52,7 @@ struct InferenceEnvironmentOptions {
 
 // Creates a new OpenGL environment that needs to stay around until all
 // inference runners are destroyed.
-Status NewInferenceEnvironment(
+absl::Status NewInferenceEnvironment(
     const InferenceEnvironmentOptions& options,
     std::unique_ptr<InferenceEnvironment>* environment,
     InferenceEnvironmentProperties* properties /* optional */);

@@ -1,4 +1,4 @@
-// RUN: tf-opt -split-input-file -tf-tpu-merge-variables-with-execute %s | FileCheck %s --dump-input=fail
+// RUN: tf-opt -split-input-file -tf-tpu-merge-variables-with-execute %s | FileCheck %s
 
 // Tests that the pass merges only variable reads/writes on the same device.
 
@@ -192,5 +192,101 @@ func @do_not_merge_multi_assign(
   // CHECK-NEXT: "tf.AssignVariableOp"(%[[ARG_0]], %[[EXE]]#1)
   "tf.AssignVariableOp"(%arg0, %execute#1) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
   // CHECK-NEXT: return
+  return
+}
+
+// -----
+
+// Tests that the pass merges only variable reads/writes on the same device,
+// with TPUExecutes in a tf_device.parallel_execute.
+
+// CHECK-LABEL: func @parallel_execute
+// CHECK-SAME: %[[ARG_0:.*]]: tensor<*x!tf.resource<tensor<32xf32>>>
+// CHECK-SAME: %[[ARG_1:.*]]: tensor<*x!tf.resource<tensor<64xf32>>>
+// CHECK-SAME: %[[ARG_2:.*]]: tensor<!tf.string>
+func @parallel_execute(
+  %arg0: tensor<*x!tf.resource<tensor<32xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:0"},
+  %arg1: tensor<*x!tf.resource<tensor<64xf32>>> {tf.device = "/job:localhost/replica:0/task:0/device:TPU:1"},
+  %arg2: tensor<!tf.string>) {
+  %read0 = "tf.ReadVariableOp"(%arg0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+  %read1 = "tf.ReadVariableOp"(%arg1) : (tensor<*x!tf.resource<tensor<64xf32>>>) -> tensor<64xf32>
+  // CHECK-NOT: "tf.ReadVariableOp"
+  // CHECK: "tf_device.parallel_execute"
+  %pe:2 = "tf_device.parallel_execute"() ( {
+    // CHECK: "tf_device.launch"
+    %execute0 = "tf_device.launch"() ( {
+      // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[ARG_0]], %[[ARG_2]])
+      %0 = "tf.TPUExecute"(%read0, %arg2) : (tensor<32xf32>, tensor<!tf.string>) -> tensor<32xf32>
+      // CHECK-NEXT: tf_device.return
+      tf_device.return %0 : tensor<32xf32>
+    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:TPU:0"
+    }) {device = "/job:localhost/replica:0/task:0/device:TPU:0"} : () -> tensor<32xf32>
+    tf_device.return %execute0 : tensor<32xf32>
+  }, {
+    // CHECK: "tf_device.launch"
+    %execute1 = "tf_device.launch"() ( {
+      // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[ARG_1]], %[[ARG_2]])
+      %1 = "tf.TPUExecute"(%read1, %arg2) : (tensor<64xf32>, tensor<!tf.string>) -> tensor<64xf32>
+      // CHECK-NEXT: tf_device.return
+      tf_device.return %1 : tensor<64xf32>
+    // CHECK-NEXT: device = "/job:localhost/replica:0/task:0/device:TPU:1"
+    }) {device = "/job:localhost/replica:0/task:0/device:TPU:1"} : () -> tensor<64xf32>
+    tf_device.return %execute1 : tensor<64xf32>
+  }) : () -> (tensor<32xf32>, tensor<64xf32>)
+  // CHECK-NOT: "tf.AssignVariableOp"
+  "tf.AssignVariableOp"(%arg0, %pe#0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+  "tf.AssignVariableOp"(%arg1, %pe#1) : (tensor<*x!tf.resource<tensor<64xf32>>>, tensor<64xf32>) -> ()
+  return
+}
+
+// -----
+
+// Tests that the pass merges variable reads/writes for TPUExecutes in a
+// tf_device.parallel_execute that is replicated (tf_device.replicate).
+
+// CHECK-LABEL: func @replicated_parallel_execute
+// CHECK-SAME: %[[ARG_0:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<32xf32>>>
+// CHECK-SAME: %[[ARG_1:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<32xf32>>>
+// CHECK-SAME: %[[ARG_2:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<64xf32>>>
+// CHECK-SAME: %[[ARG_3:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<64xf32>>>
+// CHECK-SAME: %[[ARG_4:[a-z0-9]+]]: tensor<!tf.string>
+func @replicated_parallel_execute(
+  %arg0: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg1: tensor<*x!tf.resource<tensor<32xf32>>>,
+  %arg2: tensor<*x!tf.resource<tensor<64xf32>>>,
+  %arg3: tensor<*x!tf.resource<tensor<64xf32>>>,
+  %arg4: tensor<!tf.string>) {
+  // CHECK: tf_device.replicate
+  // CHECK-SAME: [%[[ARG_0]], %[[ARG_1]]] as %[[RI_0:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<32xf32>>>
+  // CHECK-SAME: [%[[ARG_2]], %[[ARG_3]]] as %[[RI_1:[a-z0-9]+]]: tensor<*x!tf.resource<tensor<64xf32>>>
+  tf_device.replicate([%arg0, %arg1] as %ri0: tensor<*x!tf.resource<tensor<32xf32>>>,
+                      [%arg2, %arg3] as %ri1: tensor<*x!tf.resource<tensor<64xf32>>>) {n = 2 : i32} {
+    // CHECK-NOT: "tf.ReadVariableOp"
+    %read0 = "tf.ReadVariableOp"(%ri0) : (tensor<*x!tf.resource<tensor<32xf32>>>) -> tensor<32xf32>
+    %read1 = "tf.ReadVariableOp"(%ri1) : (tensor<*x!tf.resource<tensor<64xf32>>>) -> tensor<64xf32>
+    // CHECK: "tf_device.parallel_execute"
+    %pe:2 = "tf_device.parallel_execute"() ( {
+      // CHECK: "tf_device.launch"
+      %execute0 = "tf_device.launch"() ( {
+        // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[RI_0]], %[[ARG_4]])
+        %0 = "tf.TPUExecute"(%read0, %arg4) : (tensor<32xf32>, tensor<!tf.string>) -> tensor<32xf32>
+        // CHECK-NEXT: tf_device.return
+        tf_device.return %0 : tensor<32xf32>
+      }) {device = ""} : () -> tensor<32xf32>
+      tf_device.return %execute0 : tensor<32xf32>
+    }, {
+      // CHECK: "tf_device.launch"
+      %execute1 = "tf_device.launch"() ( {
+        // CHECK-NEXT: "tf.TPUExecuteAndUpdateVariables"(%[[RI_1]], %[[ARG_4]])
+        %1 = "tf.TPUExecute"(%read1, %arg4) : (tensor<64xf32>, tensor<!tf.string>) -> tensor<64xf32>
+        // CHECK-NEXT: tf_device.return
+        tf_device.return %1 : tensor<64xf32>
+      }) {device = ""} : () -> tensor<64xf32>
+      tf_device.return %execute1 : tensor<64xf32>
+    }) : () -> (tensor<32xf32>, tensor<64xf32>)
+    // CHECK-NOT: "tf.AssignVariableOp"
+    "tf.AssignVariableOp"(%ri0, %pe#0) : (tensor<*x!tf.resource<tensor<32xf32>>>, tensor<32xf32>) -> ()
+    "tf.AssignVariableOp"(%ri1, %pe#1) : (tensor<*x!tf.resource<tensor<64xf32>>>, tensor<64xf32>) -> ()
+  }
   return
 }

@@ -5,12 +5,32 @@ tf_class {
   is_instance: "<class \'tensorflow.python.framework.type_spec.TypeSpec\'>"
   is_instance: "<type \'object\'>"
   member {
+    name: "dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "flat_values_spec"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "ragged_rank"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "row_splits_dtype"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "shape"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "value_type"
     mtype: "<type \'property\'>"
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'shape\', \'dtype\', \'ragged_rank\', \'row_splits_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'None\', \"<dtype: \'int64\'>\"], "
+    argspec: "args=[\'self\', \'shape\', \'dtype\', \'ragged_rank\', \'row_splits_dtype\', \'flat_values_spec\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'float32\'>\", \'None\', \"<dtype: \'int64\'>\", \'None\'], "
   }
   member_method {
     name: "from_value"

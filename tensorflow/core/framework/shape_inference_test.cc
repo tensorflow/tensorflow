@@ -74,7 +74,7 @@ class ShapeInferenceTest : public ::testing::Test {
   void TestMergeHandles(bool input_not_output);
   void TestRelaxHandles(bool input_not_output);
 
-  static const int kVersion = 0;  // used for graph-def version.
+  static constexpr int kVersion = 0;  // used for graph-def version.
 };
 
 TEST_F(ShapeInferenceTest, InputOutputByName) {

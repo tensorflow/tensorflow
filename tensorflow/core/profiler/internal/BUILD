@@ -212,14 +212,7 @@ tf_cc_test(
     name = "tfprof_show_test",
     size = "small",
     srcs = ["tfprof_show_test.cc"],
-    data = [
-        "testdata/ckpt.data-00000-of-00001",
-        "testdata/ckpt.index",
-        "testdata/ckpt.meta",
-        "testdata/graph.pbtxt",
-        "testdata/run_meta",
-        "testdata/tfprof_log",
-    ],
+    data = ["//tensorflow/core/profiler/internal/testdata:profiler_testdata"],
     deps = [
         ":tfprof_constants",
         ":tfprof_stats",
@@ -238,10 +231,7 @@ tf_cc_test(
     name = "tfprof_timeline_test",
     size = "small",
     srcs = ["tfprof_timeline_test.cc"],
-    data = [
-        "testdata/graph.pbtxt",
-        "testdata/run_meta",
-    ],
+    data = ["//tensorflow/core/profiler/internal/testdata:profiler_testdata"],
     deps = [
         ":tfprof_constants",
         ":tfprof_stats",
@@ -300,14 +290,7 @@ tf_cc_test(
     name = "tfprof_stats_test",
     size = "small",
     srcs = ["tfprof_stats_test.cc"],
-    data = [
-        "testdata/ckpt.data-00000-of-00001",
-        "testdata/ckpt.index",
-        "testdata/ckpt.meta",
-        "testdata/graph.pbtxt",
-        "testdata/run_meta",
-        "testdata/tfprof_log",
-    ],
+    data = ["//tensorflow/core/profiler/internal/testdata:profiler_testdata"],
     deps = [
         ":tfprof_constants",
         ":tfprof_stats",
@@ -340,12 +323,7 @@ tf_cc_test(
     name = "tfprof_tensor_test",
     size = "small",
     srcs = ["tfprof_tensor_test.cc"],
-    data = [
-        "testdata/ckpt.data-00000-of-00001",
-        "testdata/ckpt.index",
-        "testdata/ckpt.meta",
-        "testdata/graph.pbtxt",
-    ],
+    data = ["//tensorflow/core/profiler/internal/testdata:profiler_testdata"],
     deps = [
         ":tfprof_stats",
         ":tfprof_tf_testlib",
@@ -423,8 +401,10 @@ tf_cc_test(
     deps = [
         ":traceme_recorder",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
         "@com_google_absl//absl/strings",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -443,6 +423,7 @@ cc_library(
     hdrs = ["profiler_factory.h"],
     deps = [
         ":profiler_interface",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
     ] + if_static([
         ":profiler_factory_impl",
     ]),
@@ -460,8 +441,7 @@ cc_library(
     deps = [
         ":profiler_interface",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/profiler/protobuf:xplane_proto_cc",
+        "//tensorflow/core/profiler:profiler_options_proto_cc",
     ],
     alwayslink = True,
 )
@@ -512,15 +492,10 @@ tf_cc_test(
     srcs = ["scoped_annotation_test.cc"],
     deps = [
         ":annotation_stack",
-        "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
         "//tensorflow/core/profiler/lib:scoped_annotation",
         "@com_google_absl//absl/strings",
     ],
@@ -543,6 +518,6 @@ tf_cc_test(
         ":parse_annotation",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
-        "//tensorflow/core:testlib",
+        "@com_google_absl//absl/strings",
     ],
 )

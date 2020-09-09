@@ -32,6 +32,26 @@ class MetalDelegateTests: XCTestCase {
     XCTAssertTrue(delegate.options.allowsPrecisionLoss)
     XCTAssertEqual(delegate.options.waitType, .active)
   }
+
+  func testInitInterpreterWithDelegate() throws {
+    let metalDelegate = MetalDelegate()
+    let interpreter = try Interpreter(modelPath: AddQuantizedModel.path, delegates: [metalDelegate])
+    XCTAssertEqual(interpreter.delegates?.count, 1)
+    XCTAssertNil(interpreter.options)
+  }
+
+  func testInitInterpreterWithOptionsAndDelegate() throws {
+    var options = Interpreter.Options()
+    options.threadCount = 1
+    let metalDelegate = MetalDelegate()
+    let interpreter = try Interpreter(
+      modelPath: AddQuantizedModel.path,
+      options: options,
+      delegates: [metalDelegate]
+    )
+    XCTAssertNotNil(interpreter.options)
+    XCTAssertEqual(interpreter.delegates?.count, 1)
+  }
 }
 
 class MetalDelegateOptionsTests: XCTestCase {

@@ -43,11 +43,11 @@ class CNHTest(test_util.TensorFlowTestCase):
     self.assertFalse(nav_history.can_go_forward())
     self.assertFalse(nav_history.can_go_back())
 
-    with self.assertRaisesRegexp(ValueError, "Empty navigation history"):
+    with self.assertRaisesRegex(ValueError, "Empty navigation history"):
       nav_history.go_back()
-    with self.assertRaisesRegexp(ValueError, "Empty navigation history"):
+    with self.assertRaisesRegex(ValueError, "Empty navigation history"):
       nav_history.go_forward()
-    with self.assertRaisesRegexp(ValueError, "Empty navigation history"):
+    with self.assertRaisesRegex(ValueError, "Empty navigation history"):
       nav_history.update_scroll_position(3)
 
   def testAddOneItemWorks(self):

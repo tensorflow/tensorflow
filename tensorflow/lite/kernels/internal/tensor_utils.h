@@ -20,13 +20,18 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/lite/c/builtin_op_data.h"
-#include "tensorflow/lite/kernels/cpu_backend_context.h"
 
 #if defined(_MSC_VER)
 #define __restrict__ __restrict
 #endif
 
 namespace tflite {
+
+// Not all backends support CpuBackendContext usage, so forward declare to avoid
+// pulling in its implementation. Use of CpuBackendContext in method
+// implementations is purely optional.
+class CpuBackendContext;
+
 namespace tensor_utils {
 
 // Checks if all entries of vector are zero for float.
@@ -55,6 +60,33 @@ void AsymmetricQuantizeFloats(const float* values, const int size,
                               int8_t* quantized_values, float* scaling_factor,
                               int32_t* offset);
 
+// Helper function to quantize floats.
+// float_data_ptr     input float vectors
+// n_batch            number of input vectors
+// n_data             size of a single input vector
+// quantized_data_ptr (out) vector with quantized data
+// scaling_factors    (out) scaling factors (one per vector)
+// zero_points        (out) zero points (one per vector)
+// do_asymmetric      controls if the quantization should be asymmetric.
+inline void BatchQuantizeFloats(const float* float_data_ptr, int n_batch,
+                                int n_data, int8_t* quantized_data_ptr,
+                                float* scaling_factors, int32_t* zero_points,
+                                bool do_asymmetric) {
+  for (int b = 0; b < n_batch; ++b) {
+    const int offset = b * n_data;
+    if (do_asymmetric) {
+      tensor_utils::AsymmetricQuantizeFloats(
+          float_data_ptr + offset, n_data, quantized_data_ptr + offset,
+          &scaling_factors[b], &zero_points[b]);
+    } else {
+      float unused_min, unused_max;
+      tensor_utils::SymmetricQuantizeFloats(
+          float_data_ptr + offset, n_data, quantized_data_ptr + offset,
+          &unused_min, &unused_max, &scaling_factors[b]);
+    }
+  }
+}
+
 // Multiplies a matrix by a "batched" vector (i.e. a matrix with a batch
 // dimension composed by input vectors independent from each other). The result
 // of the multiplication is accumulated to the passed result buffer.
@@ -64,6 +96,15 @@ void AsymmetricQuantizeFloats(const float* values, const int size,
 void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int m_cols, const float* vector,
                                          int n_batch, float* result);
+
+// Same as the function above, but the matrix is a sparse tensor with block
+// pattern 1x4.
+// This function assumes that m_cols is a multiple of the block size (4 in this
+// case) so that there's no incomplete block.
+void SparseMatrixBatchVectorMultiplyAccumulate1x4(
+    const float* __restrict__ matrix, const int32_t* __restrict__ segments,
+    const int32_t* __restrict__ indices, int m_rows, int m_cols,
+    const float* __restrict__ vector, int n_batch, float* __restrict__ result);
 
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
@@ -121,6 +162,27 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
     bool* compute_row_sums, CpuBackendContext* context);
 
+// Same as the function above, but provides separate scaling factor for the
+// matrix and the vectors. The scaling factors are multiplied in the
+// scaling_factor_scratch buffer.
+inline void MatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
+    const int8_t* __restrict__ vectors, const float matrix_scaling_factor,
+    const float* vector_scaling_factors, int n_batch,
+    float* __restrict__ result, const float* per_channel_scale,
+    const int32_t* input_offset, int32_t* scratch, int32_t* row_sums,
+    bool* compute_row_sums, float* scaling_factor_scratch,
+    CpuBackendContext* context) {
+  for (int b = 0; b < n_batch; ++b) {
+    scaling_factor_scratch[b] =
+        vector_scaling_factors[b] * matrix_scaling_factor;
+  }
+  MatrixBatchVectorMultiplyAccumulate(matrix, m_rows, m_cols, vectors,
+                                      scaling_factor_scratch, n_batch, result,
+                                      per_channel_scale, input_offset, scratch,
+                                      row_sums, compute_row_sums, context);
+}
+
 // Same as the function above, but the matrix is stored in block compressed
 // sparse row format with block pattern 1x16 which consists of two arrays:
 //   1. A matrix array stores non-zero blocks of the matrix in row major.
@@ -161,8 +223,8 @@ void SparseMatrixBatchVectorMultiplyAccumulate(
 //     - multiplier and shift combined gives the scale.
 //     - assumes input zero point is 0.
 //     - scratch is created for optimization purpose only.
-//       TODO(jianlijianli): this can be removed if some furture optimization
-//       work makes it unnecesssary.
+//       TODO(b/152066492): this can be removed if some future optimization
+//       work makes it unnecessary.
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
@@ -192,8 +254,8 @@ void MatrixBatchVectorMultiplyAccumulate(
 //     - multiplier and shift combined gives the scale.
 //     - assumes input zero point is 0.
 //     - scratch is created for optimization purpose only.
-//       TODO(jianlijianli): this can be removed if some furture optimization
-//       work makes it unnecesssary.
+//       TODO(b/152066492): this can be removed if some future optimization
+//       work makes it unnecessary.
 void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* input, const int32_t* bias,
     const int8_t* input_to_gate_weights, int32_t multiplier, int32_t shift,
@@ -231,7 +293,7 @@ void MatrixBatchVectorMultiply(const int16_t* hidden,
 //     - output: the 32bit output
 // Note: We do not need saturation because the int8 * int8 is safe from overflow
 // in (2^31-1) / (2^14) = 131072, which is bigger than the n_row. Non-zero
-// initial output value is not exceiptionally large.
+// initial output value is not exceptionally large.
 void MatrixScalarMultiplyAccumulate(const int8_t* matrix, int32_t scalar,
                                     int32_t n_row, int32_t n_col,
                                     int32_t* output);
@@ -344,23 +406,16 @@ void CwiseMul(const int16_t* input_1, const int16_t* input_2,
 void CwiseAdd(const int16_t* input_1, const int16_t* input_2, int n_batch,
               int n_input, int16_t* output);
 
-// Element-wise in-place clipping of a quantized vector.
-// Parameters:
-//     - input:          batch vector of size n_batch * n_input; 16 bit.
+// Element-wise in-place clipping of a vector. Overloaded for float, int16_t,
+// int8_t. Parameters:
+//     - vector:         vector of size v_size.
+//     - v_size:         the size of the vector.
 //     - clipping_value: the value used for clipping.
-//     - n_batch:        the number of batches.
-//     - n_input:        the size for input and output.
-void CwiseClipping(int16_t* input, const int16_t clipping_value,
-                   int32_t n_batch, int32_t n_input);
-
-// Element-wise in-place clipping of a quantized vector.
-// Parameters:
-//     - input:          batch vector of size n_batch * n_input; 8 bit.
-//     - clipping_value: the value used for clipping.
-//     - n_batch:        the number of batches.
-//     - n_input:        the size for input and output.
-void CwiseClipping(int8_t* input, const int8_t clipping_value, int32_t n_batch,
-                   int32_t n_input);
+void CwiseClipping(float* vector, const int v_size, const float clipping_value);
+void CwiseClipping(int16_t* vector, const int v_size,
+                   const int16_t clipping_value);
+void CwiseClipping(int8_t* vector, const int v_size,
+                   const int8_t clipping_value);
 
 // Cwise product of two vectors.
 template <typename T>
@@ -372,7 +427,7 @@ inline void VectorVectorCwiseProduct(const T* __restrict__ vector1,
   }
 }
 
-// Cwise product and accumulate of two vectors. Since it's a MAC opertation, the
+// Cwise product and accumulate of two vectors. Since it's a MAC operation, the
 // assumption here is that result array is initialized to valid values.
 template <typename T>
 inline void VectorVectorCwiseProductAccumulate(const T* __restrict__ vector1,
@@ -525,7 +580,7 @@ inline void ApplyActivationToVector(const float* __restrict__ vector,
       return;
     case kTfLiteActRelu:
       return ApplyReluToVector(vector, v_size, result);
-    case kTfLiteActRelu1:
+    case kTfLiteActReluN1To1:
       return ApplyRelu1ToVector(vector, v_size, result);
     case kTfLiteActRelu6:
       return ApplyRelu6ToVector(vector, v_size, result);
@@ -549,10 +604,6 @@ void Sub1Vector(const int16_t* vector, int v_size, int16_t* result);
 void VectorScalarMultiply(const int8_t* vector, int v_size, float scale,
                           float* result);
 
-// Clip elements of a vector using a abs_limit value.
-void ClipVector(const float* vector, int v_size, float abs_limit,
-                float* result);
-
 // Reduce-sum on a float input vector:
 // input_vector: float pointer to input vector.
 // output_vector: float pointer to vector.
@@ -575,13 +626,13 @@ void MeanStddevNormalization(const float* input_vector, float* output_vector,
                              int v_size, int n_batch);
 
 // Saturate Add with rescale on both inputs.
-void TwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
-                           const int8_t* recurrent, int8_t recurrent_zp,
-                           int32_t input_effective_scale_a,
-                           int32_t input_effective_scale_b,
-                           int32_t recurrent_effective_scale_a,
-                           int32_t recurrent_effective_scale_b, int32_t n_batch,
-                           int32_t n_cell, int16_t* output);
+void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                          const int8_t* recurrent, int8_t recurrent_zp,
+                          int32_t input_effective_scale_a,
+                          int32_t input_effective_scale_b,
+                          int32_t recurrent_effective_scale_a,
+                          int32_t recurrent_effective_scale_b, int32_t n_batch,
+                          int32_t n_cell, int16_t* output);
 
 }  // namespace tensor_utils
 }  // namespace tflite

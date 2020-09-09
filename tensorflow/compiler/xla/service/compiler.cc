@@ -28,6 +28,14 @@ namespace xla {
 /* static */ tensorflow::mutex Compiler::platform_compiler_mutex_(
     tensorflow::LINKER_INITIALIZED);
 
+StatusOr<
+    std::tuple<std::unique_ptr<HloModule>, std::unique_ptr<BufferAssignment>>>
+Compiler::RunHloPassesAndBufferAssignement(
+    std::unique_ptr<HloModule> module, se::StreamExecutor* executor,
+    se::DeviceMemoryAllocator* device_allocator) {
+  return Unimplemented("This compiler does not support this method");
+}
+
 std::vector<std::unique_ptr<tensorflow::protobuf::Message>>
 Compiler::ComputeBackendConfigs(const HloInstruction& hlo,
                                 se::StreamExecutor* executor) const {

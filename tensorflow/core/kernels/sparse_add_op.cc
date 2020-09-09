@@ -159,7 +159,9 @@ class SparseAddOp : public OpKernel {
       out_indices_mat.chip<0>(i) =
           from_a ? a_indices_mat.chip<0>(idx) : b_indices_mat.chip<0>(idx);
     }
-    std::copy_n(out_values.begin(), sum_nnz, &out_values_flat(0));
+    if (sum_nnz > 0) {
+      std::copy_n(out_values.begin(), sum_nnz, &out_values_flat(0));
+    }
     ctx->set_output(2, *a_shape);
   }
 };

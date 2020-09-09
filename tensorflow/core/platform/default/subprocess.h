@@ -101,7 +101,7 @@ class SubProcess {
                           string* stderr_output);
 
  private:
-  static const int kNFds = 3;
+  static constexpr int kNFds = 3;
   static bool chan_valid(int chan) { return ((chan >= 0) && (chan < kNFds)); }
   static bool retry(int e) {
     return ((e == EINTR) || (e == EAGAIN) || (e == EWOULDBLOCK));

@@ -32,7 +32,8 @@ class ScopedAllocatorContainer : public core::RefCounted {
  public:
   // Establishes a reachable ScopedAllocator.
   Status AddScopedAllocator(
-      const Tensor& backing_tensor, int32 scope_id, const string& scope_name,
+      const Tensor& backing_tensor, int32 scope_id,
+      const std::string& scope_name,
       const gtl::ArraySlice<ScopedAllocator::Field>& fields,
       int32 expected_call_count);
 
@@ -72,7 +73,7 @@ class ScopedAllocatorContainer : public core::RefCounted {
 // At most one of these exists per device.
 class ScopedAllocatorMgr {
  public:
-  explicit ScopedAllocatorMgr(const string& device_name)
+  explicit ScopedAllocatorMgr(const std::string& device_name)
       : device_name_(device_name) {}
   ~ScopedAllocatorMgr();
 
@@ -81,7 +82,7 @@ class ScopedAllocatorMgr {
   // Establishes a reachable ScopedAllocator.
   Status AddScopedAllocator(
       const Tensor& backing_tensor, int64 step_id, int32 scope_id,
-      const string& scope_name,
+      const std::string& scope_name,
       const gtl::ArraySlice<ScopedAllocator::Field>& fields,
       int32 expected_call_count);
 
@@ -97,10 +98,10 @@ class ScopedAllocatorMgr {
                                const DataType dtype,
                                std::vector<ScopedAllocator::Field>* fields);
 
-  const string& device_name() const { return device_name_; }
+  const std::string& device_name() const { return device_name_; }
 
  private:
-  string device_name_;
+  std::string device_name_;
   mutex mu_;
   std::unordered_map<int64, ScopedAllocatorContainer*> per_step_map_
       TF_GUARDED_BY(mu_);

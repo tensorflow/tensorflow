@@ -18,10 +18,10 @@ limitations under the License.
 #include <functional>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/gl/kernels/pad.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/pooling.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/prelu.h"
+#include "tensorflow/lite/delegates/gpu/gl/kernels/quantize_and_dequantize.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/relu.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/reshape.h"
 #include "tensorflow/lite/delegates/gpu/gl/kernels/resize.h"
@@ -81,10 +82,13 @@ class Registry : public NodeShader {
     insert_op(Type::FULLY_CONNECTED, NewFullyConnectedNodeShader);
     insert_op(Type::LSTM, NewLstmNodeShader);
     insert_op(Type::MEAN, NewMeanNodeShader);
+    // TODO(b/162763635): implement MeanStddevNormalization for OpenGL.
     insert_op(Type::MUL, NewMultiplyNodeShader);
     insert_op(Type::PAD, NewPadNodeShader);
     insert_op(Type::POOLING_2D, NewPoolingNodeShader);
     insert_op(Type::PRELU, NewPReLUNodeShader);
+    insert_op(Type::QUANTIZE_AND_DEQUANTIZE,
+              NewQuantizeAndDequantizeNodeShader);
     insert_op(Type::RELU, NewReLUNodeShader);
     insert_op(Type::RESIZE, NewResizeNodeShader);
     insert_op(Type::RESHAPE, NewReshapeNodeShader);
@@ -92,11 +96,14 @@ class Registry : public NodeShader {
     insert_op(Type::SOFTMAX, NewSoftmaxNodeShader);
 
     insert_elementwise_op(Type::ABS);
+    insert_elementwise_op(Type::COPY);
     insert_elementwise_op(Type::COS);
     insert_elementwise_op(Type::DIV);
+    insert_elementwise_op(Type::ELU);
     insert_elementwise_op(Type::EXP);
     insert_elementwise_op(Type::HARD_SWISH);
     insert_elementwise_op(Type::LOG);
+    insert_elementwise_op(Type::NEG);
     insert_elementwise_op(Type::MAXIMUM);
     insert_elementwise_op(Type::MINIMUM);
     insert_elementwise_op(Type::POW);
@@ -117,23 +124,23 @@ class Registry : public NodeShader {
 
   ~Registry() final = default;
 
-  Status GenerateCode(const GenerationContext& ctx,
-                      GeneratedCode* generated_code) const final {
+  absl::Status GenerateCode(const GenerationContext& ctx,
+                            GeneratedCode* generated_code) const final {
     std::vector<std::string> errors;
-    auto it = shaders_.find(ctx.node->operation.type);
+    auto it = shaders_.find(ctx.op_type);
     if (it != shaders_.end()) {
       for (auto& shader : it->second) {
         const auto status = shader->GenerateCode(ctx, generated_code);
         if (status.ok()) return status;
-        errors.push_back(status.error_message());
+        errors.push_back(std::string(status.message()));
       }
     }
-    return NotFoundError(absl::StrCat("Suitable node shader is not found: ",
-                                      absl::StrJoin(errors, ", ")));
+    return absl::NotFoundError(absl::StrCat(
+        "Suitable node shader is not found: ", absl::StrJoin(errors, ", ")));
   }
 
  private:
-  std::unordered_map<std::string, std::vector<std::unique_ptr<NodeShader>>>
+  absl::flat_hash_map<std::string, std::vector<std::unique_ptr<NodeShader>>>
       shaders_;
 };
 

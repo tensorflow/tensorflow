@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_EXECUTABLE_H_
 
 #include <memory>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -45,40 +46,66 @@ namespace xla {
 // TODO(b/150633678): Both the ExecutionInput and ExecutionOutput need to be
 // revisited, with the execute APIs taking data structure which can better model
 // shareable buffers.
+//
+// ExecutionInput buffers are in one of three states:
+//
+// 1) Owned by the caller and immutable.
+// 2) Donated by the caller but returned on error.
+// 3) Donated by the caller and freed on error.
+//
+// Case (1) buffers are stored as MaybeOwningDeviceMemory(DeviceMemoryBase).
+// Case (2) buffers are stored as MaybeOwningDeviceMemory(OwningDeviceMemory),
+//   with their indices present in unowned_indices_.
+// Case (3) buffers are stored as MaybeOwningDeviceMemory(OwningDeviceMemory),
+//   with their indices absent from unowned_indices_.
 class ExecutionInput {
  public:
-  ExecutionInput() = default;
-  explicit ExecutionInput(xla::Shape shape) : buffers_(std::move(shape)) {}
-  explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers)
-      : buffers_(std::move(buffers)) {}
-  ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
-                 std::vector<ShapeIndex> owner_held_indices)
-      : buffers_(std::move(buffers)),
-        unowned_indices_(std::move(owner_held_indices)) {}
+  explicit ExecutionInput(xla::Shape shape, xla::Shape host_shape)
+      : buffers_(std::move(shape)) {
+    SetHostShape(std::move(host_shape));
+  }
+
+  explicit ExecutionInput(ShapeTree<MaybeOwningDeviceMemory> buffers,
+                          xla::Shape host_shape)
+      : buffers_(std::move(buffers)) {
+    SetHostShape(std::move(host_shape));
+  }
+
   ExecutionInput(ExecutionInput&&) = default;
 
-  ~ExecutionInput() {
-    for (auto& index : unowned_indices_) {
-      auto buffer = buffers_.mutable_element(index)->Release();
-      if (buffer) {
-        buffer->Release();
-      }
-    }
-  }
+  ~ExecutionInput();
 
   ExecutionInput& operator=(ExecutionInput&&) = default;
 
-  const Shape& shape() const { return buffers_.shape(); }
+  const Shape& shape() const {
+    return dynamic_shape_ != nullptr ? *dynamic_shape_ : buffers_.shape();
+  }
+
+  const Shape& host_shape() const {
+    return host_shape_ != nullptr ? *host_shape_ : shape();
+  }
+
+  Status SetDynamicShape(Shape dynamic_shape);
+
+  xla::StatusOr<xla::ShapedBuffer> ToShapedBuffer(
+      se::DeviceMemoryAllocator* allocator, int device_ordinal) const;
 
   void SetBuffer(const ShapeIndex& index, MaybeOwningDeviceMemory buffer) {
     *buffers_.mutable_element(index) = std::move(buffer);
   }
 
   void SetUnownedBuffer(const ShapeIndex& index,
-                        MaybeOwningDeviceMemory buffer) {
-    *buffers_.mutable_element(index) = std::move(buffer);
-    unowned_indices_.push_back(index);
+                        MaybeOwningDeviceMemory buffer);
+
+  void SetUnownedIndex(const ShapeIndex& index) {
+    unowned_indices_.insert(index);
   }
+
+  void ClearUnownedIndex(const ShapeIndex& index) {
+    unowned_indices_.erase(index);
+  }
+
+  const std::set<ShapeIndex>& unowned_indices() { return unowned_indices_; }
 
   const ShapeTree<MaybeOwningDeviceMemory>& Buffers() const { return buffers_; }
 
@@ -93,8 +120,18 @@ class ExecutionInput {
   }
 
  private:
+  void SetHostShape(xla::Shape host_shape) {
+    if (shape() != host_shape) {
+      host_shape_ = absl::make_unique<Shape>(std::move(host_shape));
+    }
+  }
+
   ShapeTree<MaybeOwningDeviceMemory> buffers_;
-  std::vector<ShapeIndex> unowned_indices_;
+  // Set of indices of buffers that should be returned to the caller if an error
+  // occurs when enqueuing the computation.
+  std::set<ShapeIndex> unowned_indices_;
+  std::unique_ptr<Shape> dynamic_shape_;
+  std::unique_ptr<Shape> host_shape_;
 };
 
 // ExecutionOutput encapsulates the output buffers of a execution and the
@@ -131,10 +168,6 @@ class ExecutionOutput {
     to_be_released_.push_back(std::move(mem));
   }
 
-  void SetOutputShapeTable(se::OwningDeviceMemory output_shape_table) {
-    output_shape_table_ = std::move(output_shape_table);
-  }
-
   // Should be called once it is known that the execute operation succeeded,
   // before returning the ExecutionOutput to the caller.
   ExecutionOutput& Commit() {
@@ -146,17 +179,9 @@ class ExecutionOutput {
 
   ScopedShapedBuffer* MutableResult() { return &result_; }
 
-  const se::OwningDeviceMemory& ShapeTable() const {
-    return output_shape_table_;
-  }
-
   ScopedShapedBuffer ConsumeResult() {
     aliased_indices_.clear();
     return std::move(result_);
-  }
-
-  se::OwningDeviceMemory ConsumeShapeTable() {
-    return std::move(output_shape_table_);
   }
 
   const std::vector<se::OwningDeviceMemory>& ToBeReleased() const {
@@ -165,6 +190,12 @@ class ExecutionOutput {
 
   std::vector<se::OwningDeviceMemory> ConsumeToBeReleased() {
     return std::move(to_be_released_);
+  }
+
+  std::vector<ShapeIndex> ConsumeAliasedIndices() {
+    auto aliased = std::move(aliased_indices_);
+    aliased_indices_.clear();
+    return aliased;
   }
 
  private:
@@ -273,6 +304,10 @@ class Executable {
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
 
+  StatusOr<ExecutionOutput> ExecuteOnStreamWrapper(
+      const ServiceExecutableRunOptions* run_options,
+      std::vector<ExecutionInput> arguments);
+
   StatusOr<ScopedShapedBuffer> ExecuteAsyncOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options,
       absl::Span<const ShapedBuffer* const> arguments);
@@ -315,7 +350,7 @@ class Executable {
   // not supported by the executable.
   //
   // Does not include the size of used libraries (e.g. cuDNN, Eigen, etc.).
-  virtual int64 SizeOfGeneratedCodeInBytes();
+  virtual int64 SizeOfGeneratedCodeInBytes() const;
 
   // Dumping helpers.
   void set_hlo_proto(std::unique_ptr<xla::HloProto> hlo_proto) {
@@ -323,6 +358,15 @@ class Executable {
   }
   bool dumping_snapshot() const { return hlo_proto_ != nullptr; }
   HloProto const* hlo_proto() const { return hlo_proto_.get(); }
+
+  // Gather unused but donated buffers, return them to the caller of this API.
+  // We don't free buffers inside this function since the caller could have
+  // different preferences for buffer deallocation. For example, in TensorFlow,
+  // buffers are mostly efficiently deallocated as soon as a program has been
+  // launched. However, in XRT, the buffers are expected to be deallocated after
+  // the program has finished since XRT doesn't support async deallocation.
+  void MarkToBeReleasedArguments(absl::Span<ExecutionInput> arguments,
+                                 ExecutionOutput& result);
 
  protected:
   // HloModule this was compiled from. BufferAssignment keeps pointers to

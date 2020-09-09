@@ -27,23 +27,20 @@ def HasOneUse : Constraint<CPred<"$0.hasOneUse()">>;
 
 // If we see a Conv2D op followed by Mul, then multiply the filter
 // with the value in Mul.
-def FuseMulAndConv2D : Pat<(TF_MulOp (TF_Conv2DOp:$output $input,
-                          (ConstantOp F32ElementsAttr:$filter),
-                          $strides,
-                          $use_cudnn,
-                          $padding, $explicit_padding,
-                          IsDataFormatNHWC:$data_format,
-                          $dilations),
-           (ConstantOp F32ElementsAttr:$value)),
-// TODO(karimnosseir): Add check for output is of rank 4.
-          (TF_Conv2DOp $input,
-                       (TF_MulOp (ConstantOp $filter),
-                                 (ConstantOp $value)),
-                       $strides,
-                       $use_cudnn,
-                       $padding, $explicit_padding, $data_format,
-                       $dilations),
-          [(BroadcastableElements $filter, $value), (HasOneUse $output)]>;
+def FuseMulAndConv2D :
+  Pat<(TF_MulOp:$mul (TF_Conv2DOp:$conv $input,
+                          (ConstantOp:$filter F32ElementsAttr:$filter_value),
+                          $strides, $use_cudnn, $padding, $explicit_padding,
+                          IsDataFormatNHWC:$data_format, $dilations),
+                     (ConstantOp:$multiplier F32ElementsAttr:$mul_value)),
+// TODO(karimnosseir): Add check for $conv is of rank 4.
+      (TF_Conv2DOp $input,
+          (TF_MulOp (ConstantOp $filter_value, (location $filter)),
+                    (ConstantOp $mul_value, (location $multiplier)),
+                    (location $mul)),
+          $strides, $use_cudnn, $padding, $explicit_padding, $data_format,
+          $dilations, (location $conv)),
+      [(BroadcastableElements $filter_value, $mul_value), (HasOneUse $conv)]>;
 
 // This rule does the following pattern match and rewrite:
 //

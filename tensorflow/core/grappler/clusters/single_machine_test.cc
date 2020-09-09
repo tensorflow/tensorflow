@@ -51,7 +51,7 @@ class SingleMachineTest : public ::testing::Test {
 #endif
     cluster_.reset(
         new SingleMachine(timeout_s, 3 /* num_cpu_cores */, 0 /* num_gpus */));
-    TF_CHECK_OK(cluster_->EnablePeakMemoryStats(true));
+    TF_CHECK_OK(cluster_->EnablePeakMemoryStats());
     TF_CHECK_OK(cluster_->Provision());
   }
 

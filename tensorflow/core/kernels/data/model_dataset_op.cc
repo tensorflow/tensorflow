@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "absl/memory/memory.h"
-#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/framework/model.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -50,7 +50,17 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
     OP_REQUIRES(ctx, cpu_budget_ > 0,
                 errors::InvalidArgument("CPU budget must be positive but is ",
                                         cpu_budget_, "."));
-    ram_budget_ = kRamBudgetShare * port::AvailableRam();
+    if (ctx->HasAttr("ram_budget")) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("ram_budget", &ram_budget_));
+    } else {
+      ram_budget_ = 0;
+    }
+    if (ram_budget_ == 0) {
+      ram_budget_ = kRamBudgetShare * port::AvailableRam();
+    }
+    OP_REQUIRES(ctx, ram_budget_ > 0,
+                errors::InvalidArgument("RAM budget must be positive but is ",
+                                        ram_budget_, "."));
   }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
@@ -110,10 +120,7 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
      public:
       explicit Iterator(const Params& params)
           : DatasetIterator<Dataset>(params) {
-        auto remove_node_hook = [](std::shared_ptr<model::Node> node) {
-          metrics::RecordTFDataElements(node->name(), node->num_elements());
-        };
-        model_ = std::make_shared<model::Model>(std::move(remove_node_hook));
+        model_ = std::make_shared<model::Model>();
       }
 
       ~Iterator() override {
@@ -139,9 +146,15 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           TF_RETURN_IF_ERROR(EnsureOptimizeThreadStarted(ctx));
           params.model = model_;
+          int64 now_nanos = EnvTime::NowNanos();
+          RecordInput(now_nanos);
         }
-        return input_impl_->GetNext(IteratorContext(std::move(params)),
-                                    out_tensors, end_of_sequence);
+        Status s = input_impl_->GetNext(IteratorContext(std::move(params)),
+                                        out_tensors, end_of_sequence);
+        int64 now_nanos = EnvTime::NowNanos();
+        mutex_lock l(mu_);
+        RecordOutput(now_nanos);
+        return s;
       }
 
      protected:
@@ -151,9 +164,10 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
       }
 
@@ -167,16 +181,16 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
      private:
       Status EnsureOptimizeThreadStarted(IteratorContext* ctx)
           TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        if (!optimize_thread_) {
+        if (!model_thread_) {
           std::shared_ptr<IteratorContext> new_ctx =
               std::make_shared<IteratorContext>(*ctx);
-          optimize_thread_ = ctx->StartThread(
-              "tf_data_model", [this, new_ctx]() { OptimizeThread(new_ctx); });
+          model_thread_ = ctx->StartThread(
+              "tf_data_model", [this, new_ctx]() { ModelThread(new_ctx); });
         }
         return Status::OK();
       }
 
-      void OptimizeThread(const std::shared_ptr<IteratorContext>& ctx) {
+      void ModelThread(const std::shared_ptr<IteratorContext>& ctx) {
         int64 last_optimization_ms = 0;
         int64 optimization_period_ms = 10;
         int64 current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
@@ -194,8 +208,13 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
             }
             if (cancelled_) return;
           }
+          double model_input_time;
+          {
+            tf_shared_lock l(mu_);
+            model_input_time = SelfInputTime();
+          }
           model_->Optimize(dataset()->algorithm_, dataset()->cpu_budget_,
-                           dataset()->ram_budget_);
+                           dataset()->ram_budget_, /*model_input_time=*/0);
           // Exponentially increase the period of running the optimization
           // until a threshold is reached.
           if (optimization_period_ms != kOptimizationPeriodThresholdMs) {
@@ -204,15 +223,39 @@ class ModelDatasetOp : public UnaryDatasetOpKernel {
           }
           current_time_ms = EnvTime::NowMicros() / EnvTime::kMillisToMicros;
           last_optimization_ms = current_time_ms;
+          model_->FlushMetrics();
         }
+      }
+
+      void RecordInput(int64 time_nanos) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        if (last_output_time_ != 0) {
+          DCHECK_LE(last_output_time_, time_nanos);
+          input_time_ += time_nanos - last_output_time_;
+          num_input_events_++;
+        }
+      }
+
+      void RecordOutput(int64 time_nanos) TF_EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        last_output_time_ = time_nanos;
+      }
+
+      double SelfInputTime() const TF_SHARED_LOCKS_REQUIRED(mu_) {
+        if (num_input_events_ == 0) {
+          return 0;
+        }
+        return static_cast<double>(input_time_) /
+               static_cast<double>(num_input_events_);
       }
 
       mutex mu_;
       condition_variable cond_var_;
       std::shared_ptr<model::Model> model_;
-      std::unique_ptr<Thread> optimize_thread_ TF_GUARDED_BY(mu_);
+      std::unique_ptr<Thread> model_thread_ TF_GUARDED_BY(mu_);
       bool cancelled_ TF_GUARDED_BY(mu_) = false;
       std::unique_ptr<IteratorBase> input_impl_;
+      int64 num_input_events_ TF_GUARDED_BY(mu_) = 0;
+      int64 input_time_ TF_GUARDED_BY(mu_) = 0;
+      int64 last_output_time_ TF_GUARDED_BY(mu_) = 0;
     };
 
     const DatasetBase* input_;

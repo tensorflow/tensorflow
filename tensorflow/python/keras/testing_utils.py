@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import functools
 import threading
 
@@ -25,6 +26,9 @@ import numpy as np
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import config
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
@@ -32,6 +36,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras.engine import base_layer_utils
+from tensorflow.python.keras.engine import keras_tensor
 from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
@@ -42,6 +47,14 @@ from tensorflow.python.keras.optimizer_v2 import rmsprop as rmsprop_v2
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+
+
+def string_test(actual, expected):
+  np.testing.assert_array_equal(actual, expected)
+
+
+def numeric_test(actual, expected):
+  np.testing.assert_allclose(actual, expected, rtol=1e-3, atol=1e-6)
 
 
 def get_test_data(train_samples,
@@ -74,10 +87,18 @@ def get_test_data(train_samples,
 
 
 @test_util.disable_cudnn_autotune
-def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
-               input_data=None, expected_output=None,
-               expected_output_dtype=None, expected_output_shape=None,
-               validate_training=True, adapt_data=None):
+def layer_test(layer_cls,
+               kwargs=None,
+               input_shape=None,
+               input_dtype=None,
+               input_data=None,
+               expected_output=None,
+               expected_output_dtype=None,
+               expected_output_shape=None,
+               validate_training=True,
+               adapt_data=None,
+               custom_objects=None,
+               test_harness=None):
   """Test routine for a layer with a single input and single output.
 
   Arguments:
@@ -95,6 +116,10 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
       string or integer values.
     adapt_data: Optional data for an 'adapt' call. If None, adapt() will not
       be tested for this layer. This is only relevant for PreprocessingLayers.
+    custom_objects: Optional dictionary mapping name strings to custom objects
+      in the layer class. This is helpful for testing custom layers.
+    test_harness: The Tensorflow test, if any, that this function is being
+      called in.
 
   Returns:
     The output data (Numpy array) returned by the layer, for additional
@@ -122,6 +147,17 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     input_dtype = input_data.dtype
   if expected_output_dtype is None:
     expected_output_dtype = input_dtype
+
+  if dtypes.as_dtype(expected_output_dtype) == dtypes.string:
+    if test_harness:
+      assert_equal = test_harness.assertAllEqual
+    else:
+      assert_equal = string_test
+  else:
+    if test_harness:
+      assert_equal = test_harness.assertAllClose
+    else:
+      assert_equal = numeric_test
 
   # instantiation
   kwargs = kwargs or {}
@@ -190,21 +226,21 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
         (layer_cls.__name__, x, actual_output.dtype,
          computed_output_signature.dtype, kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output,
-                               rtol=1e-3, atol=1e-6)
+    assert_equal(actual_output, expected_output)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
-  recovered_model = models.Model.from_config(model_config)
+  recovered_model = models.Model.from_config(model_config, custom_objects)
   if model.weights:
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
+    assert_equal(output, actual_output)
 
   # test training mode (e.g. useful for dropout tests)
   # Rebuild the model to avoid the graph being reused between predict() and
   # See b/120160788 for more details. This should be mitigated after 2.0.
+  layer_weights = layer.get_weights()  # Get the layer weights BEFORE training.
   if validate_training:
     model = models.Model(x, layer(x))
     if _thread_local_data.run_eagerly is not None:
@@ -229,6 +265,8 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   model = models.Sequential()
   model.add(layers.Input(shape=input_shape[1:], dtype=input_dtype))
   model.add(layer)
+
+  layer.set_weights(layer_weights)
   actual_output = model.predict(input_data)
   actual_output_shape = actual_output.shape
   for expected_dim, actual_dim in zip(computed_output_shape,
@@ -245,17 +283,16 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
              computed_output_shape,
              kwargs))
   if expected_output is not None:
-    np.testing.assert_allclose(actual_output, expected_output,
-                               rtol=1e-3, atol=1e-6)
+    assert_equal(actual_output, expected_output)
 
   # test serialization, weight setting at model level
   model_config = model.get_config()
-  recovered_model = models.Sequential.from_config(model_config)
+  recovered_model = models.Sequential.from_config(model_config, custom_objects)
   if model.weights:
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3, atol=1e-6)
+    assert_equal(output, actual_output)
 
   # for further checks in the caller function
   return actual_output
@@ -308,6 +345,29 @@ def run_eagerly_scope(value):
   finally:
     # Restore model type to initial value.
     _thread_local_data.run_eagerly = previous_value
+
+
+@tf_contextlib.contextmanager
+def use_keras_tensors_scope(value):
+  """Provides a scope within which we use KerasTensors in the func. API or not.
+
+  The boolean gets restored to its original value upon exiting the scope.
+
+  Arguments:
+     value: Bool specifying if we should build functional models
+      using KerasTensors in the active test.
+     Should be True or False.
+
+  Yields:
+    The provided value.
+  """
+  previous_value = keras_tensor._KERAS_TENSORS_ENABLED  # pylint: disable=protected-access
+  try:
+    keras_tensor._KERAS_TENSORS_ENABLED = value  # pylint: disable=protected-access
+    yield value
+  finally:
+    # Restore KerasTensor usage to initial value.
+    keras_tensor._KERAS_TENSORS_ENABLED = previous_value  # pylint: disable=protected-access
 
 
 def should_run_eagerly():
@@ -860,3 +920,123 @@ def _set_v2_dtype_behavior(fn, enabled):
       base_layer_utils.V2_DTYPE_BEHAVIOR = v2_dtype_behavior
 
   return tf_decorator.make_decorator(fn, wrapper)
+
+
+@contextlib.contextmanager
+def device(should_use_gpu):
+  """Uses gpu when requested and available."""
+  if should_use_gpu and test_util.is_gpu_available():
+    dev = '/device:GPU:0'
+  else:
+    dev = '/device:CPU:0'
+  with ops.device(dev):
+    yield
+
+
+@contextlib.contextmanager
+def use_gpu():
+  """Uses gpu when requested and available."""
+  with device(should_use_gpu=True):
+    yield
+
+
+def for_all_test_methods(decorator, *args, **kwargs):
+  """Generate class-level decorator from given method-level decorator.
+
+  It is expected for the given decorator to take some arguments and return
+  a method that is then called on the test method to produce a decorated
+  method.
+
+  Args:
+    decorator: The decorator to apply.
+    *args: Positional arguments
+    **kwargs: Keyword arguments
+  Returns: Function that will decorate a given classes test methods with the
+    decorator.
+  """
+
+  def all_test_methods_impl(cls):
+    """Apply decorator to all test methods in class."""
+    for name in dir(cls):
+      value = getattr(cls, name)
+      if callable(value) and name.startswith('test') and (name !=
+                                                          'test_session'):
+        setattr(cls, name, decorator(*args, **kwargs)(value))
+    return cls
+
+  return all_test_methods_impl
+
+
+# The description is just for documentation purposes.
+def run_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute test with TensorFloat-32 disabled.
+
+  While almost every real-world deep learning model runs fine with
+  TensorFloat-32, many tests use assertAllClose or similar methods.
+  TensorFloat-32 matmuls typically will cause such methods to fail with the
+  default tolerances.
+
+  Args:
+    description: A description used for documentation purposes, describing why
+      the test requires TensorFloat-32 to be disabled.
+
+  Returns:
+    Decorator which runs a test with TensorFloat-32 disabled.
+  """
+
+  def decorator(f):
+
+    @functools.wraps(f)
+    def decorated(self, *args, **kwargs):
+      allowed = config.tensor_float_32_execution_enabled()
+      try:
+        config.enable_tensor_float_32_execution(False)
+        f(self, *args, **kwargs)
+      finally:
+        config.enable_tensor_float_32_execution(allowed)
+
+    return decorated
+
+  return decorator
+
+
+# The description is just for documentation purposes.
+def run_all_without_tensor_float_32(description):  # pylint: disable=unused-argument
+  """Execute all tests in a class with TensorFloat-32 disabled."""
+  return for_all_test_methods(run_without_tensor_float_32, description)
+
+
+def run_v2_only(func=None):
+  """Execute the decorated test only if running in v2 mode.
+
+  This function is intended to be applied to tests that exercise v2 only
+  functionality. If the test is run in v1 mode it will simply be skipped.
+
+  See go/tf-test-decorator-cheatsheet for the decorators to use in different
+  v1/v2/eager/graph combinations.
+
+  Args:
+    func: function to be annotated. If `func` is None, this method returns a
+      decorator the can be applied to a function. If `func` is not None this
+      returns the decorator applied to `func`.
+
+  Returns:
+    Returns a decorator that will conditionally skip the decorated test method.
+  """
+
+  def decorator(f):
+    if tf_inspect.isclass(f):
+      raise ValueError('`run_v2_only` only supports test methods.')
+
+    def decorated(self, *args, **kwargs):
+      if not tf2.enabled():
+        self.skipTest('Test is only compatible with v2')
+
+      return f(self, *args, **kwargs)
+
+    return decorated
+
+  if func is not None:
+    return decorator(func)
+
+  return decorator

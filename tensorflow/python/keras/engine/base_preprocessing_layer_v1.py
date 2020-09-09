@@ -55,8 +55,9 @@ class CombinerPreprocessingLayer(
 
   def _get_dataset_iterator(self, dataset):
     """Gets an iterator from a tf.data.Dataset."""
-    iterator = dataset_ops.make_one_shot_iterator(dataset)
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     session = K.get_session()
+    session.run(iterator.initializer)
     next_element = iterator.get_next()
     return lambda: session.run(next_element)
 

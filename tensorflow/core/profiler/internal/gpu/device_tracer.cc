@@ -26,10 +26,12 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
+#include "absl/synchronization/mutex.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
-#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/abi.h"
 #include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -39,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/parse_annotation.h"
 #include "tensorflow/core/profiler/internal/profiler_factory.h"
 #include "tensorflow/core/profiler/internal/profiler_interface.h"
+#include "tensorflow/core/profiler/protobuf/xplane.pb.h"
 #include "tensorflow/core/profiler/utils/xplane_builder.h"
 #include "tensorflow/core/profiler/utils/xplane_schema.h"
 #include "tensorflow/core/profiler/utils/xplane_utils.h"
@@ -85,7 +88,7 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
   if (!event.annotation.empty()) {
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kKernelAnnotation)),
-                        event.annotation);
+                        *plane->GetOrCreateStatMetadata(event.annotation));
   }
   if (event.context_id != CuptiTracerEvent::kInvalidContextId) {
     xevent.AddStatValue(
@@ -102,7 +105,7 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
                         event.kernel_info.block_y, event.kernel_info.block_z);
     xevent.AddStatValue(*plane->GetOrCreateStatMetadata(
                             GetStatTypeStr(StatType::kKernelDetails)),
-                        kernel_details);
+                        *plane->GetOrCreateStatMetadata(kernel_details));
   } else if (event.type == CuptiTracerEventType::MemcpyH2D ||
              event.type == CuptiTracerEventType::MemcpyD2H ||
              event.type == CuptiTracerEventType::MemcpyD2D ||
@@ -145,7 +148,7 @@ void CreateXEvent(const CuptiTracerEvent& event, XPlaneBuilder* plane,
   if (!annotation_stack.empty()) {
     xevent.AddStatValue(
         *plane->GetOrCreateStatMetadata(GetStatTypeStr(StatType::kLevel0)),
-        annotation_stack.begin()->name);
+        *plane->GetOrCreateStatMetadata(annotation_stack.begin()->name));
   }
 }
 
@@ -189,25 +192,28 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     if (event.device_id >= num_gpus_) return;
     if (event.source == CuptiTracerEventSource::DriverCallback) {
       if (num_callback_events_ > options_.max_callback_api_events) {
-        OnEventsDropped("trace collector", 1);
+        OnEventsDropped("total driver(callback) events reaches max", 1);
         return;
       }
       num_callback_events_++;
     } else {
       if (num_activity_events_ > options_.max_activity_api_events) {
-        OnEventsDropped("trace collector", 1);
+        OnEventsDropped("total device(activity) events reaches max", 1);
         return;
       }
       num_activity_events_++;
     }
     per_device_collector_[event.device_id].AddEvent(std::move(event));
   }
-  void OnEventsDropped(const std::string& reason, uint32 num_events) override {}
+  void OnEventsDropped(const std::string& reason, uint32 num_events) override {
+    absl::MutexLock lock(&mutex_);
+    dropped_events_[reason] += num_events;
+  }
   void Flush() override {}
   void Export(StepStats* step_stats) {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
-              << " activity events.";
+              << " activity events. " << ReportDroppedEvents();
     for (int i = 0; i < num_gpus_; ++i) {
       per_device_collector_[i].Flush(i, start_walltime_ns_, start_gpu_ns_,
                                      step_stats);
@@ -216,14 +222,14 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   void Export(XSpace* space) {
     LOG(INFO) << " GpuTracer has collected " << num_callback_events_
               << " callback api events and " << num_activity_events_
-              << " activity events.";
+              << " activity events. " << ReportDroppedEvents();
     uint64 end_gpu_ns = CuptiTracer::GetTimestamp();
-    XPlaneBuilder host_plane(GetOrCreatePlane(space, kCuptiDriverApiPlaneName));
-    host_plane.SetId(kCuptiDriverApiPlaneId);
+    XPlaneBuilder host_plane(
+        FindOrAddMutablePlaneWithName(space, kCuptiDriverApiPlaneName));
     for (int device_ordinal = 0; device_ordinal < num_gpus_; ++device_ordinal) {
-      std::string name = absl::StrCat(kGpuPlanePrefix, device_ordinal);
-      XPlaneBuilder device_plane(GetOrCreatePlane(space, name));
-      device_plane.SetId(kGpuPlaneBaseId + device_ordinal);
+      std::string name = GpuPlaneName(device_ordinal);
+      XPlaneBuilder device_plane(FindOrAddMutablePlaneWithName(space, name));
+      device_plane.SetId(device_ordinal);
       per_device_collector_[device_ordinal].Flush(start_gpu_ns_, end_gpu_ns,
                                                   &device_plane, &host_plane);
       per_device_collector_[device_ordinal].GetDeviceCapabilities(
@@ -232,10 +238,32 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
     }
     NormalizeTimeStamps(&host_plane, start_walltime_ns_);
   }
+  std::string ReportDroppedEvents() {
+    absl::MutexLock lock(&mutex_);
+    string result;
+    for (const auto& dropped : dropped_events_) {
+      absl::StrAppend(&result, " ", dropped.second, " events dropped because ",
+                      dropped.first, ";");
+    }
+    if (!result.empty()) result.back() = '.';
+    return result;
+  }
+  std::string ReportNumEventsIfDropped() {
+    std::string events_dropped = ReportDroppedEvents();
+    if (events_dropped.empty()) return "";
+    return absl::StrCat("Detected GPU events dropped on ", port::Hostname(),
+                        ": Profiler has collected ",
+                        num_callback_events_.load(), " driver events and ",
+                        num_activity_events_.load(), " device events.",
+                        events_dropped);
+  }
 
  private:
   std::atomic<int> num_callback_events_;
   std::atomic<int> num_activity_events_;
+  absl::Mutex mutex_;
+  absl::flat_hash_map<std::string, uint64> dropped_events_
+      ABSL_GUARDED_BY(mutex_);
   uint64 start_walltime_ns_;
   uint64 start_gpu_ns_;
   int num_gpus_;
@@ -247,9 +275,8 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
   // start_walltime_ns to normalize with CPU wall time.
   static void NormalizeTimeStamps(XPlaneBuilder* plane,
                                   uint64 start_walltime_ns) {
-    plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
-      line.SetTimestampNs(start_walltime_ns);
-    });
+    plane->ForEachLine(
+        [&](XLineBuilder line) { line.SetTimestampNs(start_walltime_ns); });
   }
 
   struct CorrelationInfo {
@@ -418,9 +445,12 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         CreateXEvent(event, plane, start_gpu_ns, end_gpu_ns, &line);
         events_types_per_line[line_id].emplace(event.type);
       }
-      device_plane->ForEachLine([&](tensorflow::profiler::XLineBuilder line) {
+      device_plane->ForEachLine([&](XLineBuilder line) {
         line.SetName(
             GetDeviceXLineName(line.Id(), events_types_per_line[line.Id()]));
+      });
+      host_plane->ForEachLine([&](XLineBuilder line) {
+        line.SetName(absl::StrCat("Host Threads/", line.Id()));
       });
       events.clear();
     }
@@ -456,7 +486,7 @@ class CuptiTraceCollectorImpl : public CuptiTraceCollector {
         // Times 2 because HBM is DDR memory; it gets two data bits per each
         // data lane.
         auto memory_bandwidth =
-            2ULL * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
+            uint64{2} * (*mem_clock_khz) * 1000 * (*mem_bus_width_bits) / 8;
         device_plane->AddStatValue(
             *device_plane->GetOrCreateStatMetadata(
                 GetStatTypeStr(StatType::kDevCapMemoryBandwidth)),
@@ -513,9 +543,6 @@ class GpuTracer : public profiler::ProfilerInterface {
   Status Stop() override;
   Status CollectData(RunMetadata* run_metadata) override;
   Status CollectData(XSpace* space) override;
-  profiler::DeviceType GetDeviceType() override {
-    return profiler::DeviceType::kGpu;
-  }
 
  private:
   Status DoStart();
@@ -585,8 +612,11 @@ Status GpuTracer::DoStart() {
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_MEMCPY2);
   options_.activities_selected.push_back(CUPTI_ACTIVITY_KIND_OVERHEAD);
 
+// CUDA/CUPTI 10 have issues (leaks and crashes) with CuptiFinalize.
 #if CUDA_VERSION < 10000
   if (!trace_concurrent_kernels) options_.cupti_finalize = true;
+#elif CUDA_VERSION >= 11000
+  options_.cupti_finalize = true;
 #endif
 
   CuptiTracerCollectorOptions collector_options;
@@ -662,12 +692,20 @@ Status GpuTracer::CollectData(XSpace* space) {
     case State::kStartedOk:
       return errors::FailedPrecondition("Cannot collect trace before stopping");
     case State::kStartedError:
-      LOG(ERROR) << "Cannot collect, xprof failed to start";
+      LOG(ERROR) << "Cannot collect, profiler failed to start";
       return Status::OK();
     case State::kStoppedError:
       VLOG(1) << "No trace data collected";
       return Status::OK();
     case State::kStoppedOk: {
+      std::string cupti_error = CuptiTracer::ErrorIfAny();
+      if (!cupti_error.empty()) {
+        space->add_errors(std::move(cupti_error));
+      }
+      std::string events_dropped = cupti_collector_->ReportNumEventsIfDropped();
+      if (!events_dropped.empty()) {
+        space->add_warnings(std::move(events_dropped));
+      }
       if (cupti_collector_) {
         cupti_collector_->Export(space);
       }
@@ -679,9 +717,9 @@ Status GpuTracer::CollectData(XSpace* space) {
 
 // Not in anonymous namespace for testing purposes.
 std::unique_ptr<profiler::ProfilerInterface> CreateGpuTracer(
-    const profiler::ProfilerOptions& options) {
-  if (options.device_type != profiler::DeviceType::kGpu &&
-      options.device_type != profiler::DeviceType::kUnspecified)
+    const ProfileOptions& options) {
+  if (options.device_type() != ProfileOptions::GPU &&
+      options.device_type() != ProfileOptions::UNSPECIFIED)
     return nullptr;
   profiler::CuptiTracer* cupti_tracer =
       profiler::CuptiTracer::GetCuptiTracerSingleton();

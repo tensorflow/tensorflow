@@ -188,15 +188,11 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   bool CanEnablePeerAccessTo(StreamExecutorInterface* other) override;
 
-  SharedMemoryConfig GetDeviceSharedMemoryConfig() override;
-
-  port::Status SetDeviceSharedMemoryConfig(SharedMemoryConfig config) override;
-
   bool DeviceMemoryUsage(int64* free, int64* total) const override;
 
   // Search for the symbol and returns a device pointer and size.
   // Returns false if symbol does not exist.
-  bool GetSymbol(const string& symbol_name, ModuleHandle module_handle,
+  bool GetSymbol(const std::string& symbol_name, ModuleHandle module_handle,
                  void** mem, size_t* bytes) override;
 
   port::StatusOr<std::unique_ptr<DeviceDescription>> CreateDeviceDescription()
@@ -245,7 +241,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // (supported on CUDA only)
   bool FindOnDiskForComputeCapability(absl::string_view filename,
                                       absl::string_view canonical_suffix,
-                                      string* found_filename) const;
+                                      std::string* found_filename) const;
 
   // Attempts to find a more specific version of the file indicated by
   // filename by looking for AMDGPU ISA-specific suffixed versions.
@@ -253,7 +249,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
 
   bool FindOnDiskForISAVersion(absl::string_view filename,
                                absl::string_view canonical_suffix,
-                               string* found_filename) const;
+                               std::string* found_filename) const;
 
   // Host callback landing routine invoked by CUDA.
   // data: User-provided callback provided to HostCallback() above, captured
@@ -294,7 +290,7 @@ class GpuExecutor : public internal::StreamExecutorInterface {
   // Multiple GPUFunctionHandle are usually obtained from a single
   // GPUModuleHandle so we attempt to hit in this mapping first, before
   // retrieving it.
-  std::map<string, GpuModuleHandle> disk_modules_
+  std::map<std::string, GpuModuleHandle> disk_modules_
       TF_GUARDED_BY(disk_modules_mu_);
 
   // Guards the in-memory-module mapping.

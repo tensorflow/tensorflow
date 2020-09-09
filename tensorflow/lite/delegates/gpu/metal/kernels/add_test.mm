@@ -17,6 +17,7 @@ limitations under the License.
 
 #import <XCTest/XCTest.h>
 
+#include <string>
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -28,7 +29,7 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/test_util.h"
 #include "tensorflow/lite/delegates/gpu/metal/runtime_options.h"
 
-using ::tflite::gpu::AddAttributes;
+using ::tflite::gpu::ElementwiseAttributes;
 using ::tflite::gpu::BHWC;
 using ::tflite::gpu::DataType;
 using ::tflite::gpu::Linear;
@@ -60,18 +61,18 @@ using ::tflite::gpu::metal::SingleOpModel;
   output.ref = 2;
   output.shape = BHWC(1, 2, 2, 1);
 
-  AddAttributes attr;
+  ElementwiseAttributes attr;
   SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {augend, addend}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {-2.0, 0.2, 0.7, 0.8}));
   XCTAssertTrue(model.PopulateTensor(1, {0.1, 0.2, 0.3, 0.5}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({-1.9, 0.4, 1.0, 1.3}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 - (void)testInputTensorAndScalar {
-  AddAttributes attr;
+  ElementwiseAttributes attr;
   attr.param = 0.1f;
   TensorRef<BHWC> input, output;
   input.type = DataType::FLOAT32;
@@ -85,18 +86,18 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {-2.0, 0.2, 0.7, 0.8, 1.1, 2.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status = CompareVectors({-1.9, 0.3, 0.8, 0.9, 1.2, 2.1}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
-- (void)testInputTensorWithConstandBroadcast {
+- (void)testInputTensorWithConstantBroadcast {
   TensorRef<BHWC> input;
   input.type = DataType::FLOAT32;
   input.ref = 0;
   input.shape = BHWC(1, 2, 2, 2);
 
-  AddAttributes attr;
+  ElementwiseAttributes attr;
   Tensor<Linear, DataType::FLOAT32> tensor;
   tensor.shape.v = 2;
   tensor.id = 1;
@@ -112,10 +113,10 @@ using ::tflite::gpu::metal::SingleOpModel;
   SingleOpModel model({ToString(OperationType::ADD), std::move(attr)}, {input}, {output});
   XCTAssertTrue(model.PopulateTensor(0, {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0}));
   auto status = model.Invoke();
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
   status =
       CompareVectors({11.0, 22.0, 13.0, 24.0, 15.0, 26.0, 17.0, 28.0}, model.GetOutput(0), 1e-6f);
-  XCTAssertTrue(status.ok(), @"%s", status.error_message().c_str());
+  XCTAssertTrue(status.ok(), @"%s", std::string(status.message()).c_str());
 }
 
 @end

@@ -43,7 +43,7 @@ The current implementation includes the following features:
   <li>DeepLabv3+: We extend DeepLabv3 to include a simple yet effective decoder module to refine the segmentation results especially along object boundaries. Furthermore, in this encoder-decoder structure one can arbitrarily control the resolution of extracted encoder features by atrous convolution to trade-off precision and runtime.</li>
 </ol>
 
-## Performance Benchmarks
+## Performance benchmarks
 
 Performance benchmark numbers are generated with the tool
 [described here](https://www.tensorflow.org/lite/performance/benchmarks).

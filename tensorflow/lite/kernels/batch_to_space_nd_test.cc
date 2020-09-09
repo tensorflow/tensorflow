@@ -13,11 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <stdint.h>
+
+#include <initializer_list>
+#include <vector>
+
 #include <gtest/gtest.h>
+#include "flatbuffers/flatbuffers.h"  // from @flatbuffers
 #include "tensorflow/lite/interpreter.h"
-#include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
-#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
 
 namespace tflite {
 namespace {
@@ -67,7 +72,7 @@ class BatchToSpaceNDOpConstModel : public BatchToSpaceNDOpModel {
                              std::initializer_list<int> crops,
                              const TensorType& type = TensorType_FLOAT32) {
     int spatial_dims = static_cast<int>(block_shape.size());
-    input_ = AddInput(type);
+    input_ = AddInput({type, input_shape});
     block_shape_ = AddConstInput(TensorType_INT32, block_shape, {spatial_dims});
     crops_ = AddConstInput(TensorType_INT32, crops, {spatial_dims, 2});
     output_ = AddOutput(type);
@@ -91,7 +96,7 @@ class BatchToSpaceNDOpDynamicModel : public BatchToSpaceNDOpModel {
  public:
   BatchToSpaceNDOpDynamicModel(std::initializer_list<int> input_shape,
                                const TensorType& type = TensorType_FLOAT32) {
-    input_ = AddInput(type);
+    input_ = AddInput({type, input_shape});
     block_shape_ = AddInput(TensorType_INT32);
     crops_ = AddInput(TensorType_INT32);
     output_ = AddOutput(type);

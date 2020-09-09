@@ -15,29 +15,38 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 
+#include <memory>
+
 #include "grpcpp/support/status.h"
-#include "absl/container/flat_hash_set.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/string_view.h"
-#include "tensorflow/core/lib/core/errors.h"
+#include "absl/container/flat_hash_map.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/env_time.h"
-#include "tensorflow/core/profiler/convert/xplane_to_profile_response.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/status.h"
+#include "tensorflow/core/profiler/internal/profiler_interface.h"
 #include "tensorflow/core/profiler/lib/profiler_session.h"
+#include "tensorflow/core/profiler/profiler_service.grpc.pb.h"
+#include "tensorflow/core/profiler/profiler_service.pb.h"
 #include "tensorflow/core/profiler/protobuf/xplane.pb.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
+namespace profiler {
 namespace {
+
+const absl::string_view kXPlanePb = "xplane.pb";
 
 Status CollectDataToResponse(const ProfileRequest& req,
                              ProfilerSession* profiler,
                              ProfileResponse* response) {
   profiler::XSpace xspace;
   TF_RETURN_IF_ERROR(profiler->CollectData(&xspace));
-  TF_RETURN_IF_ERROR(
-      profiler::ConvertXSpaceToProfileResponse(xspace, req, response));
+  auto* tool_data = response->add_tool_data();
+  tool_data->set_name(kXPlanePb.data(), kXPlanePb.size());
+  xspace.SerializeToString(tool_data->mutable_data());
   return Status::OK();
 }
 
@@ -51,7 +60,8 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
   ::grpc::Status Profile(::grpc::ServerContext* ctx, const ProfileRequest* req,
                          ProfileResponse* response) override {
     VLOG(1) << "Received a profile request: " << req->DebugString();
-    std::unique_ptr<ProfilerSession> profiler = ProfilerSession::Create();
+    std::unique_ptr<ProfilerSession> profiler =
+        ProfilerSession::Create(req->opts());
     Status status = profiler->Status();
     if (!status.ok()) {
       return ::grpc::Status(::grpc::StatusCode::INTERNAL,
@@ -59,10 +69,15 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
     }
 
     Env* env = Env::Default();
-    for (size_t i = 0; i < req->duration_ms(); ++i) {
+    for (uint64 i = 0; i < req->duration_ms(); ++i) {
       env->SleepForMicroseconds(EnvTime::kMillisToMicros);
       if (ctx->IsCancelled()) {
         return ::grpc::Status::CANCELLED;
+      }
+      if (TF_PREDICT_FALSE(IsStopped(req->session_id()))) {
+        mutex_lock lock(mutex_);
+        stop_signals_per_session_.erase(req->session_id());
+        break;
       }
     }
 
@@ -74,12 +89,33 @@ class ProfilerServiceImpl : public grpc::ProfilerService::Service {
 
     return ::grpc::Status::OK;
   }
+
+  ::grpc::Status Terminate(::grpc::ServerContext* ctx,
+                           const TerminateRequest* req,
+                           TerminateResponse* response) override {
+    mutex_lock lock(mutex_);
+    stop_signals_per_session_[req->session_id()] = true;
+    return ::grpc::Status::OK;
+  }
+
+ private:
+  bool IsStopped(const std::string& session_id) {
+    mutex_lock lock(mutex_);
+    auto it = stop_signals_per_session_.find(session_id);
+    return it != stop_signals_per_session_.end() && it->second;
+  }
+
+  mutex mutex_;
+  absl::flat_hash_map<std::string, bool> stop_signals_per_session_
+      GUARDED_BY(mutex_);
 };
 
 }  // namespace
 
 std::unique_ptr<grpc::ProfilerService::Service> CreateProfilerService() {
-  return MakeUnique<ProfilerServiceImpl>();
+  return absl::make_unique<ProfilerServiceImpl>();
 }
+
+}  // namespace profiler
 
 }  // namespace tensorflow

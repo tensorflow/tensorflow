@@ -41,6 +41,7 @@ xla_test(
     deps = [
         ":arithmetic",
         "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -54,9 +55,13 @@ xla_test(
 cc_library(
     name = "comparators",
     srcs = ["comparators.cc"],
-    hdrs = ["comparators.h"],
+    hdrs = [
+        "comparators.h",
+        "//tensorflow/compiler/xla:literal_util",
+    ],
     deps = [
         ":constants",
+        "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
@@ -194,6 +199,7 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -299,6 +305,7 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_macros_header",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
+        "//tensorflow/core/platform:tensor_float_32_utils",
     ],
 )
 
@@ -339,6 +346,9 @@ cc_library(
     hdrs = ["sorting.h"],
     deps = [
         ":comparators",
+        ":constants",
+        ":loops",
+        ":slicing",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
@@ -440,7 +450,7 @@ cc_library(
 xla_test(
     name = "self_adjoint_eig_test",
     srcs = ["self_adjoint_eig_test.cc"],
-    blacklisted_backends = [
+    disabled_backends = [
         "cpu",
         "gpu",
     ],
@@ -531,12 +541,15 @@ cc_library(
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:xla_data_proto_cc",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
 xla_test(
     name = "tridiagonal_test",
     srcs = ["tridiagonal_test.cc"],
+    real_hardware_only = True,
+    shard_count = 10,
     tags = ["optonly"],
     deps = [
         ":constants",
@@ -567,6 +580,7 @@ cc_library(
         ":loops",
         ":math",
         ":matrix",
+        ":qr",
         ":slicing",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

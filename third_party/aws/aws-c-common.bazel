@@ -14,7 +14,6 @@ cc_library(
     srcs = select({
         "@org_tensorflow//tensorflow:linux_aarch64": glob([
             "source/posix/*.c",
-            "source/arch/*.c"
         ]),
         "@org_tensorflow//tensorflow:linux_x86_64": glob([
             "source/posix/*.c",
@@ -28,6 +27,9 @@ cc_library(
         "@org_tensorflow//tensorflow:raspberry_pi_armeabi": glob([
             "source/posix/*.c",
         ]),
+        "@org_tensorflow//tensorflow:windows": glob([
+            "source/windows/*.c",
+        ]),
         "//conditions:default": [],
     }) + glob([
         "source/*.c",
@@ -38,6 +40,12 @@ cc_library(
         "include/**/*.h",
         "include/aws/common/**/*.inl"
     ]),
+    linkopts = select({
+        "@org_tensorflow//tensorflow:windows": [
+            "-DEFAULTLIB:BCrypt.lib",
+        ],
+        "//conditions:default": [],
+    }),
     includes = [
         "include/",
     ],

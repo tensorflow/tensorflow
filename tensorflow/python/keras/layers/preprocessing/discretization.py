@@ -17,83 +17,113 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine import base_preprocessing_layer
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import boosted_trees_ops
+from tensorflow.python.ops import gen_math_ops
+from tensorflow.python.ops.parallel_for import control_flow_ops
 from tensorflow.python.ops.ragged import ragged_functional_ops
-from tensorflow.python.ops.ragged import ragged_tensor
-
-INTEGER = "int"
-BINARY = "binary"
+from tensorflow.python.util.tf_export import keras_export
 
 
-class Discretization(Layer):
+@keras_export("keras.layers.experimental.preprocessing.Discretization")
+class Discretization(base_preprocessing_layer.PreprocessingLayer):
   """Buckets data into discrete ranges.
 
   This layer will place each element of its input data into one of several
-  contiguous ranges and output either an integer index or a one-hot vector
-  indicating which range each element was placed in.
-
-  What happens in `adapt()`: The dataset is examined and sliced.
+  contiguous ranges and output an integer index indicating which range each
+  element was placed in.
 
   Input shape:
     Any `tf.Tensor` or `tf.RaggedTensor` of dimension 2 or higher.
 
   Output shape:
-    The same as the input shape if `output_mode` is 'int', or
-      `[output_shape, num_buckets]` if `output_mode` is 'binary'.
+    Same as input shape.
 
   Attributes:
-    bins: Optional boundary specification. Bins include the left boundary and
-      exclude the right boundary, so `bins=[0., 1., 2.]` generates bins
+    bins: Optional boundary specification. Bins exclude the left boundary and
+      include the right boundary, so `bins=[0., 1., 2.]` generates bins
       `(-inf, 0.)`, `[0., 1.)`, `[1., 2.)`, and `[2., +inf)`.
-    output_mode: One of 'int', 'binary'. Defaults to 'int'.
+
+  Examples:
+
+  Bucketize float values based on provided buckets.
+  >>> input = np.array([[-1.5, 1.0, 3.4, .5], [0.0, 3.0, 1.3, 0.0]])
+  >>> layer = tf.keras.layers.experimental.preprocessing.Discretization(
+  ...          bins=[0., 1., 2.])
+  >>> layer(input)
+  <tf.Tensor: shape=(2, 4), dtype=int32, numpy=
+  array([[0, 1, 3, 1],
+         [0, 3, 2, 0]], dtype=int32)>
   """
 
-  def __init__(self, bins, output_mode=INTEGER, **kwargs):
+  def __init__(self, bins, **kwargs):
     super(Discretization, self).__init__(**kwargs)
-    self._supports_ragged_inputs = True
-    self.bins = bins
-    self.output_mode = output_mode
+    base_preprocessing_layer._kpl_gauge.get_cell("V2").set("Discretization")
+    # The bucketization op requires a final rightmost boundary in order to
+    # correctly assign values higher than the largest left boundary.
+    # This should not impact intended buckets even if a max value is provided.
+    self.bins = np.append(bins, [np.Inf])
 
   def get_config(self):
     config = {
         "bins": self.bins,
-        "output_mode": self.output_mode,
     }
     base_config = super(Discretization, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
   def compute_output_shape(self, input_shape):
-    if self.output_mode == INTEGER:
-      return input_shape
-    else:
-      return tensor_shape.TensorShape([dim for dim in input_shape] +
-                                      [len(self.bins)])
+    return input_shape
 
   def compute_output_signature(self, input_spec):
     output_shape = self.compute_output_shape(input_spec.shape.as_list())
     output_dtype = dtypes.int64
+    if isinstance(input_spec, sparse_tensor.SparseTensorSpec):
+      return sparse_tensor.SparseTensorSpec(
+          shape=output_shape, dtype=output_dtype)
     return tensor_spec.TensorSpec(shape=output_shape, dtype=output_dtype)
 
   def call(self, inputs):
-    if ragged_tensor.is_ragged(inputs):
+    def _bucketize_op(bins):
+      bins = [gen_math_ops.cast(bins, dtypes.float32)]
+      return lambda inputs: boosted_trees_ops.boosted_trees_bucketize(  # pylint: disable=g-long-lambda
+          float_values=[gen_math_ops.cast(inputs, dtypes.float32)],
+          bucket_boundaries=bins)[0]
+
+    if tf_utils.is_ragged(inputs):
       integer_buckets = ragged_functional_ops.map_flat_values(
-          math_ops._bucketize, inputs, boundaries=self.bins)  # pylint: disable=protected-access
+          _bucketize_op(array_ops.squeeze(self.bins)),
+          inputs)
       # Ragged map_flat_values doesn't touch the non-values tensors in the
       # ragged composite tensor. If this op is the only op a Keras model,
       # this can cause errors in Graph mode, so wrap the tensor in an identity.
-      integer_buckets = array_ops.identity(integer_buckets)
+      return array_ops.identity(integer_buckets)
+    elif isinstance(inputs, sparse_tensor.SparseTensor):
+      integer_buckets = boosted_trees_ops.boosted_trees_bucketize(
+          [gen_math_ops.cast(inputs.values, dtypes.float32)],
+          bucket_boundaries=[gen_math_ops.cast(array_ops.squeeze(self.bins),
+                                               dtypes.float32)])[0]
+      return sparse_tensor.SparseTensor(
+          indices=array_ops.identity(inputs.indices),
+          values=integer_buckets,
+          dense_shape=array_ops.identity(inputs.dense_shape))
     else:
-      integer_buckets = math_ops._bucketize(inputs, boundaries=self.bins)  # pylint: disable=protected-access
+      input_shape = inputs.get_shape()
+      if any(dim is None for dim in input_shape.as_list()[1:]):
+        raise NotImplementedError(
+            "Discretization Layer requires known non-batch shape,"
+            "found {}".format(input_shape))
 
-    if self.output_mode == INTEGER:
-      return integer_buckets
-    else:
-      # The 'bins' array is the set of boundaries between the bins. We actually
-      # have 'len(bins)+1' outputs.
-      # TODO(momernick): This will change when we have the ability to adapt().
-      return array_ops.one_hot(integer_buckets, depth=len(self.bins) + 1)
+      reshaped = array_ops.reshape(
+          inputs, [-1, gen_math_ops.prod(input_shape.as_list()[1:], axis=0)])
+
+      return array_ops.reshape(
+          control_flow_ops.vectorized_map(
+              _bucketize_op(array_ops.squeeze(self.bins)), reshaped),
+          array_ops.constant([-1] + input_shape.as_list()[1:]))

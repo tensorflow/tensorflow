@@ -62,7 +62,7 @@ class CudaPlatform : public Platform {
   // Returns -1 as a sentinel on internal failure (and logs the error).
   int VisibleDeviceCount() const override;
 
-  const string& Name() const override;
+  const std::string& Name() const override;
 
   port::StatusOr<std::unique_ptr<DeviceDescription>> DescriptionForDevice(
       int ordinal) const override;
@@ -87,7 +87,7 @@ class CudaPlatform : public Platform {
   void InspectNumaNodes();
 
   // This platform's name.
-  string name_;
+  std::string name_;
 
   // Cache of created executors.
   ExecutorCache executor_cache_;

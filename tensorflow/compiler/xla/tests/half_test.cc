@@ -34,7 +34,7 @@ class HalfTestBase : public ClientLibraryTestBase {
  protected:
   const ErrorSpec error_spec_{0.001, 0.001};
   // Number of elements in the input buffers.
-  static const int kNumElements = 4;
+  static constexpr int kNumElements = 4;
 };
 
 using UnaryBuildFuncTy = std::function<void(const xla::XlaOp& src)>;

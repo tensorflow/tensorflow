@@ -90,6 +90,32 @@ class Sharding(object):
             tile_assignment_devices=list(flattened_devices)))
 
   @classmethod
+  def partial_tile(cls, tile_assignment):
+    """Returns a partially tiled sharding attribute.
+
+    This is similar to tile(), but tile_assignment has one more dimension than
+    the tensor, and tiles in the last dimension of tile_assignment are
+    replicated.
+
+    Args:
+      tile_assignment: An np.ndarray describing the topology of the tiling and
+        which device will compute which part of the topology.
+
+    Raises:
+      TypeError: tile_assignment was not of np.array type.
+    """
+    if not isinstance(tile_assignment, _np.ndarray):
+      raise TypeError('PartialTile assignment must be of type np.ndarray')
+    dims = list(tile_assignment.shape)
+    flattened_devices = tile_assignment.reshape(-1, order='C')
+    return Sharding(
+        proto=xla_data_pb2.OpSharding(
+            type=xla_data_pb2.OpSharding.OTHER,
+            tile_assignment_dimensions=dims,
+            tile_assignment_devices=list(flattened_devices),
+            replicate_on_last_tile_dim=True))
+
+  @classmethod
   def split(cls, tensor, split_dimension, num_devices, input_shape=None):
     """Returns a Sharding that splits a tensor across a dimension.
 
@@ -243,3 +269,117 @@ def split(tensor,
       tensor, split_dimension, num_devices, input_shape).apply_to_tensor(
           tensor, assign_tuple_sharding=assign_tuple_sharding)
   return tensor
+
+
+def partial_tile(tensor, tile_assignment, use_sharding_op=False):
+  """Returns a tensor that has tiled sharding.
+
+  Args:
+    tensor: A tf.Tensor to shard.
+    tile_assignment: An np.ndarray describing the topology of the tiling and
+      which device will compute which part of the topology. It must have one
+      more dimension than tensor, and the last dimension represents partially
+      replicated tiles.
+    use_sharding_op: If true, adds a sharding op to set the sharding.
+  """
+  if use_sharding_op:
+    tensor = tf2xla.sharding(tensor)
+  Sharding.partial_tile(tile_assignment).apply_to_tensor(tensor)
+  return tensor
+
+
+def get_op_sharding(op):
+  """Returns sharding attribute of an op.
+
+  Args:
+    op: a TensorFlow op.
+
+  Returns:
+    The attribute representing XLA sharding on this op.
+  """
+  return op.get_attr('_XlaSharding')
+
+
+def auto_to_manual_spmd_partition(tensor, manual_sharding):
+  """Switches from automatic SPMD partitioning to manual partitioning.
+
+  Converts a full-shaped tensor (to be automatically partitioned by SPMD
+  partitioner) to a shard-shaped tensor to be consumed by manually partitioned
+  ops.
+
+  Args:
+    tensor: A tf.Tensor in full shape.
+    manual_sharding: a serialized string of OpSharding to be used in manual
+      partitioning.
+
+  Returns:
+    A shard-shaped tensor to be consumed by manually partitioned ops.
+  """
+  return tf2xla.spmd_full_to_shard_shape(
+      tensor, manual_sharding=manual_sharding)
+
+
+def manual_to_auto_spmd_partition(tensor, manual_sharding, full_shape):
+  """Switches from manual partitioning to automatic SPMD partitioning.
+
+  Converts a shard-shaped tensor (manually partitioned in SPMD-style) to a
+  full-shaped tensor to be partitioned automatically by the SPMD partitioner.
+
+  Args:
+    tensor: A tf.Tensor in shard shape.
+    manual_sharding: a serialized string of OpSharding to be used in manual
+      partitioning.
+    full_shape: the shape of tensor before partitioning.
+
+  Returns:
+    A full-shaped tensor to be partitioned automatically by the SPMD
+    partitioner.
+  """
+  return tf2xla.spmd_shard_to_full_shape(
+      tensor, manual_sharding=manual_sharding, full_shape=full_shape)
+
+
+def mesh_split(tensor,
+               device_mesh,
+               tensor_split_dims_mapping,
+               use_sharding_op=False):
+  """Returns a tensor that is split along multiple dimensions in a device mesh.
+
+  Args:
+    tensor: A tf.Tensor to split.
+    device_mesh: An np.ndarray describing the topology of the device mesh and
+      each element is the ID of the device in the topology.
+    tensor_split_dims_mapping: A list of integers that map each tensor axis to
+      the device mesh axis along which it is sharded. Its length is the tensor
+      rank, and tensor_split_dims_mapping[i] is device mesh axis for tensor
+      dimension i. Use -1 for tensor dimensions that are not sharded.
+    use_sharding_op: If true, adds a sharding op to set the sharding.
+
+  Raises:
+    ValueError: The number of tensor split dimensions is larger than device mesh
+      rank.
+  """
+  permutation = [d for d in tensor_split_dims_mapping if d >= 0]
+  if len(permutation) > len(device_mesh.shape):
+    raise ValueError(
+        'Number of tensor split dimensions (%r) is larger than device mesh '
+        'rank (%r). tensor_split_dims_mapping: %r, device_mesh.shape: %r' %
+        (len(permutation), len(
+            device_mesh.shape), tensor_split_dims_mapping, device_mesh.shape))
+  # Append replicated dimensions to the end.
+  transpose_permutation = permutation + [
+      d for d in range(len(device_mesh.shape)) if d not in permutation
+  ]
+  tile_assignment = _np.transpose(device_mesh, transpose_permutation)
+  tile_shape = [
+      1 if d < 0 else device_mesh.shape[d] for d in tensor_split_dims_mapping
+  ]
+  partial = len(permutation) < len(device_mesh.shape)
+  if partial:
+    tile_shape.append(_np.prod(device_mesh.shape) // _np.prod(tile_shape))
+  tile_assignment = _np.reshape(tile_assignment, tile_shape)
+
+  if partial:
+    return partial_tile(
+        tensor, tile_assignment, use_sharding_op=use_sharding_op)
+  return tile(tensor, tile_assignment, use_sharding_op=use_sharding_op)

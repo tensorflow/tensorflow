@@ -69,7 +69,7 @@ class WorkerSession;
 //   EXPECT_EQ(out["c"], Tensor({4, 6}));
 class GraphMgr {
  public:
-  explicit GraphMgr(const WorkerEnv* worker_env, DeviceMgr* device_mgr);
+  explicit GraphMgr(const WorkerEnv* worker_env, const DeviceMgr* device_mgr);
   ~GraphMgr();
 
   // Registers a graph. Fills in "handle". The registered graph retains a
@@ -145,7 +145,7 @@ class GraphMgr {
   };
 
   const WorkerEnv* worker_env_;  // Not owned.
-  DeviceMgr* device_mgr_;
+  const DeviceMgr* device_mgr_;
 
   CostModelManager cost_model_manager_;
 

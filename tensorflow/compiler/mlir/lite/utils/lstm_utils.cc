@@ -21,20 +21,20 @@ limitations under the License.
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/raw_ostream.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/Identifier.h"  // TF:llvm-project
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/OpDefinition.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/StandardTypes.h"  // TF:llvm-project
-#include "mlir/IR/Types.h"  // TF:llvm-project
-#include "mlir/IR/Value.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/Identifier.h"  // from @llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/OpDefinition.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/StandardTypes.h"  // from @llvm-project
+#include "mlir/IR/Types.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/lite/ir/tfl_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 
@@ -94,9 +94,10 @@ Value Transpose(OpBuilder* builder, Value value_to_transpose,
 
   // Create tensor type for the transpose result.
   auto transpose_type = original_type;
-  auto transpose_shape = functional::map(
-      [transpose_type](int32_t dim) { return transpose_type.getDimSize(dim); },
-      perm);
+  auto transpose_shape =
+      llvm::to_vector<8>(llvm::map_range(perm, [transpose_type](int32_t dim) {
+        return transpose_type.getDimSize(dim);
+      }));
   auto elem_type = transpose_type.getElementType();
   auto result_type = RankedTensorType::get(transpose_shape, elem_type);
 
@@ -133,7 +134,7 @@ Value SliceRankedTensor(OpBuilder* builder, Value input,
   // the input tensor's dimensions, return 0-valued tensor of the requested
   // shape.
   ArrayRef<int64_t> input_shape = GetRankedTensorShape(input);
-  for (int i = 0; i < input_shape.size(); i++) {
+  for (int i = 0, end = input_shape.size(); i < end; i++) {
     if (begin_values[i] < 0 ||
         (begin_values[i] + size_values[i] > input_shape[i])) {
       return CreateF32SplatConst(builder, size_shape, 0, location);

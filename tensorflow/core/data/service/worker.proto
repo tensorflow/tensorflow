@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package tensorflow.data;
+
+import "tensorflow/core/data/dataset.proto";
+import "tensorflow/core/data/service/common.proto";
+
+message ProcessTaskRequest {
+  TaskDef task = 1;
+}
+
+message ProcessTaskResponse {}
+
+message GetElementRequest {
+  // The task to fetch an element from.
+  int64 task_id = 1;
+}
+
+message GetElementResponse {
+  // The produced element.
+  CompressedElement compressed_element = 3;
+  // Boolean to indicate whether the iterator has been exhausted.
+  bool end_of_sequence = 2;
+}
+
+service WorkerService {
+  // Processes an task for a dataset, making elements available to clients.
+  rpc ProcessTask(ProcessTaskRequest) returns (ProcessTaskResponse);
+
+  // Gets the next dataset element.
+  rpc GetElement(GetElementRequest) returns (GetElementResponse);
+}

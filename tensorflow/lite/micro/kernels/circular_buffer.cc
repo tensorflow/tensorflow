@@ -15,12 +15,12 @@ limitations under the License.
 
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/compatibility.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
-#include "tensorflow/lite/kernels/internal/reference/process_broadcast_shapes.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
 #include "tensorflow/lite/kernels/op_macros.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 
 /*
  * The circular buffer custom operator is used to implement strided streaming
@@ -73,6 +73,8 @@ OpData op_data_array[kMaxOpDataSize];
 
 }  // namespace
 
+void Free(TfLiteContext* context, void* buffer) { op_data_counter = 0; }
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
@@ -86,13 +88,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TF_LITE_ENSURE_EQ(context, 1, input->dims->data[2]);
   TF_LITE_ENSURE_EQ(context, output->dims->data[3], input->dims->data[3]);
 
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, output->type);
 
-  // The circular buffer custom operator currently only supports int8.
-  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt8);
+  // The circular buffer custom operator currently only supports int8_t.
+  TF_LITE_ENSURE_TYPES_EQ(context, input->type, kTfLiteInt8);
 
   // TODO(b/132070898): Use statically slotted OpData structures until a
   // scratch memory API is ready.
+  TFLITE_DCHECK_LE(op_data_counter, kMaxOpDataSize);
   OpData* op_data = &op_data_array[op_data_counter++];
   // The last circular buffer layer (length 5) simply accumulates outputs, and
   // does not run periodically.
@@ -117,8 +120,10 @@ void EvalInt8(const int8_t* input, int num_slots, int depth, int8_t* output) {
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  const TfLiteTensor* input = GetInput(context, node, kInputTensor);
-  TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  const TfLiteEvalTensor* input =
+      tflite::micro::GetEvalInput(context, node, kInputTensor);
+  TfLiteEvalTensor* output =
+      tflite::micro::GetEvalOutput(context, node, kOutputTensor);
 
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
 
@@ -126,8 +131,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   int depth = output->dims->data[3];
 
   if (input->type == kTfLiteInt8) {
-    EvalInt8(GetTensorData<int8_t>(input), num_slots, depth,
-             GetTensorData<int8_t>(output));
+    EvalInt8(tflite::micro::GetTensorData<int8_t>(input), num_slots, depth,
+             tflite::micro::GetTensorData<int8_t>(output));
   } else {
     TF_LITE_KERNEL_LOG(context, "Type %s (%d) not supported.",
                        TfLiteTypeGetName(input->type), input->type);
@@ -155,9 +160,14 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace circular_buffer
 
 TfLiteRegistration* Register_CIRCULAR_BUFFER() {
-  static TfLiteRegistration r = {};
-  r.prepare = circular_buffer::Prepare;
-  r.invoke = circular_buffer::Eval;
+  static TfLiteRegistration r = {/*init=*/nullptr,
+                                 /*free=*/circular_buffer::Free,
+                                 /*prepare=*/circular_buffer::Prepare,
+                                 /*invoke=*/circular_buffer::Eval,
+                                 /*profiling_string=*/nullptr,
+                                 /*builtin_code=*/0,
+                                 /*custom_name=*/nullptr,
+                                 /*version=*/0};
   return &r;
 }
 

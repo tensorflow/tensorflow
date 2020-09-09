@@ -265,36 +265,21 @@ TF_CAPI_EXPORT extern void TFE_MonitoringDeleteSampler2(
 TF_CAPI_EXPORT extern TFE_MonitoringSamplerCell* TFE_MonitoringGetCellSampler2(
     TFE_MonitoringSampler2* sampler, const char* label1, const char* label2);
 
-// LINT.IfChange
-// Note: Keep in sync with internal copy of enum in eager/context.h.
-typedef enum TFE_ContextMirroringPolicy {
-  // Do not maintain mirrors in a TensorHandle, instead make new TensorHandle
-  // copies with their own lifetime.
-  TFE_MIRRORING_NONE = 0,
-  // Mirroring any remote tensor handles, associating them with the lifetime of
-  // the local TensorHandle.
-  TFE_MIRRORING_ALL = 1,
-} TFE_ContextMirroringPolicy;
-// LINT.ThenChange(//tensorflow/core/common_runtime/eager/context.h)
-
-TF_CAPI_EXPORT extern void TFE_ContextOptionsSetMirroringPolicy(
-    TFE_ContextOptions*, TFE_ContextMirroringPolicy);
-
-// Sets a thread-local mirroring policy. After this call, other calls to
-// TFE_Execute in the same thread will use the mirroring policy specified here
-// instead of the mirroring policy used to construct the context. This has no
-// effect on the mirroring policy used by other program threads.
-TF_CAPI_EXPORT extern void TFE_ContextSetThreadLocalMirroringPolicy(
-    TFE_Context*, TFE_ContextMirroringPolicy);
-
-// Returns the mirroring policy to be used by this context in the current
-// thread.
-TF_CAPI_EXPORT extern TFE_ContextMirroringPolicy TFE_ContextGetMirroringPolicy(
-    TFE_Context*);
-
 // Sets whether to copy the remote inputs of a function lazily.
 TF_CAPI_EXPORT extern void TFE_ContextOptionsSetLazyRemoteInputsCopy(
     TFE_ContextOptions*, bool lazy_copy);
+
+// Sets whether to use TFRT
+TF_CAPI_EXPORT extern void TFE_ContextOptionsSetTfrt(TFE_ContextOptions*,
+                                                     bool use_tfrt);
+
+// Returns the context_id from the EagerContext which is used by the
+// EagerService to maintain consistency between client and worker. The
+// context_id is initialized with a dummy value and is later set when the worker
+// is initialized (either locally or remotely). The context_id can change during
+// the process lifetime although this should cause the worker to be
+// reinitialized (e.g. cleared caches) as well.
+TF_CAPI_EXPORT extern uint64_t TFE_GetContextId(TFE_Context* ctx);
 
 // -----------------------------------------------------------------------------
 // Cancellation APIs.
@@ -388,12 +373,6 @@ TF_CAPI_EXPORT extern bool TFE_ContextCheckAlive(TFE_Context* ctx,
 TF_CAPI_EXPORT extern void TFE_ContextAsyncWait(TFE_Context* ctx,
                                                 TF_Status* status);
 
-// If the TensorHandle is copied to another device as part of an op execution,
-// the copy is destroyed after the op has executed. Enabling implicit mirroring
-// causes the copy to be held as a mirror for the lifetime of the TensorHandle.
-TF_CAPI_EXPORT extern void TFE_TensorHandleEnableImplicitMirroring(
-    TFE_TensorHandle*, TF_Status*);
-
 // This function will block till the operation that produces `h` has
 // completed. This is only valid on local TFE_TensorHandles. The pointer
 // returned will be on the device in which the TFE_TensorHandle resides (so e.g.
@@ -433,11 +412,9 @@ TF_CAPI_EXPORT extern void TFE_HostAddressSpace(TFE_Context* ctx,
 // A reference to an op's name -> attribute mapping
 typedef struct TFE_OpAttrs TFE_OpAttrs;
 
-// Fetch a struct with a reference to information about attributes of `op`.
-//
-// The `attrs` struct does not own any memory, and `op` must outlive it.
-TF_CAPI_EXPORT extern void TFE_OpGetAttrs(TFE_Op* op, TFE_OpAttrs* attrs);
-
+// Fetch a reference to `op`'s attributes. The returned reference is only valid
+// while `op` is alive.
+TF_CAPI_EXPORT extern const TFE_OpAttrs* TFE_OpGetAttrs(const TFE_Op* op);
 // Add attributes in `attrs` to `op`.
 //
 // Does not overwrite or update existing attributes, but adds new ones.
@@ -458,7 +435,11 @@ TF_CAPI_EXPORT extern void TFE_OpSetAttrValueProto(const TFE_Op* op,
                                                    size_t proto_len,
                                                    TF_Status* status);
 
-#define TFE_CUSTOM_DEVICE_VERSION 2
+// TODO(b/166642410): It would be nice, for custom devices and for other users,
+// to have a non-string representation of devices (TF_Device) extracted from
+// tensors/ops/etc. and usable in APIs like OpSetDevice/ResetOp/etc.
+
+#define TFE_CUSTOM_DEVICE_VERSION 3
 
 // Struct to be filled in
 typedef struct TFE_CustomDevice {
@@ -477,9 +458,16 @@ typedef struct TFE_CustomDevice {
                                                void* device_info);
 
   // Method to execute an operation.
-  void (*execute)(TFE_Context* context, int num_inputs,
-                  TFE_TensorHandle** inputs, const char* operation_name,
-                  const TFE_OpAttrs* attributes, int* num_outputs,
+  //
+  // Arguments provide enough information to reconstruct the original `TFE_Op`,
+  // or construct a transformed version, by inspecting the passed `op`.
+  //
+  // TFE_OpGetDevice(op) records the original placement of the operation. It may
+  // be an empty string if no device was explicitly requested, but will
+  // otherwise be the name of this custom device. Ops are placed onto a custom
+  // device if any of their inputs are on that custom device, but custom devices
+  // are free to set a bad status in order to require explicit placement.
+  void (*execute)(const TFE_Op* op, int* num_outputs,
                   TFE_TensorHandle** outputs, TF_Status* s, void* device_info);
 
   // Method to delete a device.
@@ -517,13 +505,52 @@ typedef struct TFE_CustomDevice {
 // This API is highly experimental, and in particular is expected to change when
 // it starts supporting operations with attributes and when tf.function support
 // is added.
-void TFE_RegisterCustomDevice(TFE_Context* ctx, TFE_CustomDevice device,
-                              const char* device_name, void* device_info,
-                              TF_Status* status);
+TF_CAPI_EXPORT extern void TFE_RegisterCustomDevice(TFE_Context* ctx,
+                                                    TFE_CustomDevice device,
+                                                    const char* device_name,
+                                                    void* device_info,
+                                                    TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_ContextGetFunctionDef(TFE_Context* ctx,
                                                      const char* function_name,
                                                      TF_Buffer* buf,
+                                                     TF_Status* status);
+
+// Allocate and return a new Tensor on the host.
+//
+// The caller must set the Tensor values by writing them to the pointer returned
+// by TF_TensorData with length TF_TensorByteSize.
+TF_CAPI_EXPORT extern TF_Tensor* TFE_AllocateHostTensor(TFE_Context* ctx,
+                                                        TF_DataType dtype,
+                                                        const int64_t* dims,
+                                                        int num_dims,
+                                                        TF_Status* status);
+
+// Given a Tensor, wrap it with a TensorHandle
+//
+// Similar to TFE_NewTensorHandle, but includes a pointer to the TFE_Context.
+// The context should be identical to that of the Tensor.
+TF_CAPI_EXPORT TFE_TensorHandle* TFE_NewTensorHandleFromTensor(
+    TFE_Context* ctx, TF_Tensor* t, TF_Status* status);
+
+// Create a packed TensorHandle with the given list of TensorHandles.
+// If `handles` are on the same device, assign the same device to the packed
+// handle; if `handles` are on different deivces, assign a CompositeDevice to
+// it.
+TF_CAPI_EXPORT extern TFE_TensorHandle* TFE_CreatePackedTensorHandle(
+    TFE_Context* ctx, TFE_TensorHandle** handles, int* num_handles,
+    TF_Status* status);
+
+// Configure soft device placement policy for the eager executor. Note this
+// policy is applied to any subsequent op executions.
+TF_CAPI_EXPORT void TFE_ContextSetSoftDevicePlacement(TFE_Context* ctx,
+                                                      unsigned char enable,
+                                                      TF_Status* status);
+
+// Configure device placement policy logging for the eager executor. Note this
+// policy is applied to any subsequent op executions.
+TF_CAPI_EXPORT void TFE_ContextSetLogDevicePlacement(TFE_Context* ctx,
+                                                     unsigned char enable,
                                                      TF_Status* status);
 
 #ifdef __cplusplus

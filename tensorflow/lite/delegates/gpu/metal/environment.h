@@ -16,21 +16,73 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_METAL_ENVIRONMENT_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_METAL_ENVIRONMENT_H_
 
+#include <string>
+
 namespace tflite {
 namespace gpu {
 namespace metal {
 
-enum class GpuType {
+enum class Vendor {
   kUnknown,
-  kA7,   // iPhone 5s, iPad Air, iPad Mini 2, iPad Mini 3.
-  kA8,   // A8 iPhone 6, A8X iPad Air 2, iPad Mini 4.
-  kA9,   // A9 iPhone 6s, iPad (2017), A9X iPad Pro (1st generation).
-  kA10,  // iPhone 7, iPad (2018), A10X iPad Pro (2nd generation).
-  kA11,  // iPhone 8/X.
-  kA12,  // iPhone Xs.
+  kApple,
+  kIntel,
+  kAMD,
 };
 
-GpuType GetGpuType();
+enum class AppleGPU {
+  kUnknown,
+  kA7,
+  kA8,
+  kA8X,
+  kA9,
+  kA9X,
+  kA10,
+  kA10X,
+  kA11,
+  kA12,
+  kA12X,
+  kA12Z,
+  kA13,
+};
+
+struct AppleGPUInfo {
+  AppleGPUInfo() = default;
+  explicit AppleGPUInfo(const std::string& device_name);
+  AppleGPU gpu_type;
+
+  bool IsLocalMemoryPreferredOverGlobal() const;
+
+  bool IsBionic() const;
+
+  // floating point rounding mode
+  bool IsRoundToNearestSupported() const;
+
+  // returns true if device have fixed wave size equal to 32
+  bool IsWaveSizeEqualTo32() const;
+
+  int GetComputeUnitsCount() const;
+};
+
+struct DeviceInfo {
+  DeviceInfo() = default;
+  explicit DeviceInfo(const std::string& device_name);
+
+  Vendor vendor;
+
+  AppleGPUInfo apple_info;
+
+  bool IsIntelGPU() const;
+  bool IsAppleGPU() const;
+  bool IsAMDGPU() const;
+
+  // floating point rounding mode
+  bool IsRoundToNearestSupported() const;
+
+  // returns true if device have fixed wave size equal to 32
+  bool IsWaveSizeEqualTo32() const;
+
+  int GetComputeUnitsCount() const;
+};
 
 }  // namespace metal
 }  // namespace gpu

@@ -16,15 +16,15 @@ limitations under the License.
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/Twine.h"
-#include "mlir/Dialect/StandardOps/IR/Ops.h"  // TF:llvm-project
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/SymbolTable.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/SymbolTable.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/bridge.h"
@@ -44,20 +44,31 @@ constexpr llvm::StringRef kOutlinedFuncPrefix = "_tpu_v1_compat_outlined_func";
 // This is only intended for V1 compatibility mode where the bridge runs without
 // feed/fetches on session create/extend.
 struct TPUBridgeExecutorIslandOutlining
-    : public ModulePass<TPUBridgeExecutorIslandOutlining> {
-  void runOnModule() override;
+    : public PassWrapper<TPUBridgeExecutorIslandOutlining,
+                         OperationPass<ModuleOp>> {
+  void runOnOperation() override;
 };
 
-void TPUBridgeExecutorIslandOutlining::runOnModule() {
+// Move FuncOp referenced by `symbol_ref` from one symbol table to another.
+void MoveFuncOp(FlatSymbolRefAttr &symbol_ref, SymbolTable &from,
+                SymbolTable &to) {
+  if (to.lookup<FuncOp>(symbol_ref.getValue())) return;
+  FuncOp callee = from.lookup<FuncOp>(symbol_ref.getValue());
+  callee.getOperation()->getBlock()->getOperations().remove(
+      callee.getOperation());
+  to.insert(callee);
+}
+
+void TPUBridgeExecutorIslandOutlining::runOnOperation() {
   MLIRContext *ctx = &getContext();
 
-  SymbolTable symbol_table(getModule());
+  SymbolTable symbol_table(getOperation());
   if (Operation *nested_module = symbol_table.lookup(kNestedModule)) {
     nested_module->emitOpError("unexpected already present outlined module.");
     return signalPassFailure();
   }
-  ModuleOp outlined_module = ModuleOp::create(getModule().getLoc());
-  outlined_module.setAttrs(getModule().getAttrs());
+  ModuleOp outlined_module = ModuleOp::create(getOperation().getLoc());
+  outlined_module.setAttrs(getOperation().getAttrs());
   outlined_module.setAttr(SymbolTable::getSymbolAttrName(),
                           StringAttr::get(kNestedModule, ctx));
   symbol_table.insert(outlined_module);
@@ -66,7 +77,7 @@ void TPUBridgeExecutorIslandOutlining::runOnModule() {
   // Find every island that contains a TPUReplicateMetadata node and extract it
   // in a new module to run the V1 bridge there.
   SmallVector<IslandOp, 8> islands_to_outline;
-  getModule().walk([&](TF::TPUReplicateMetadataOp replicate_op) {
+  getOperation().walk([&](TF::TPUReplicateMetadataOp replicate_op) {
     auto island_op = cast<IslandOp>(replicate_op.getParentOp());
     if (!island_op || island_op.WrapsSingleOp()) return;
     islands_to_outline.push_back(island_op);
@@ -94,9 +105,10 @@ void TPUBridgeExecutorIslandOutlining::runOnModule() {
     // Create the outlined function
     SmallString<32> name = kOutlinedFuncPrefix;
     name += llvm::Twine(prefix_id++).str();
-    auto outlined_func = OpBuilder(ctx).create<FuncOp>(
-        island_op.getLoc(), name, func_type, ArrayRef<NamedAttribute>());
+    auto outlined_func =
+        OpBuilder(ctx).create<FuncOp>(island_op.getLoc(), name, func_type);
     outlined_symbol_table.insert(outlined_func);
+    outlined_func.setVisibility(FuncOp::Visibility::Nested);
 
     // We will "steal" the body of the island and replace it with a call to the
     // new function later.
@@ -123,7 +135,7 @@ void TPUBridgeExecutorIslandOutlining::runOnModule() {
 
     // The function is in place in the nested module, create a call and yield in
     // the original island.
-    OpBuilder builder(&island_op.GetBody());
+    OpBuilder builder = OpBuilder::atBlockEnd(&island_op.GetBody());
     auto call_op = builder.create<mlir::TF::PartitionedCallOp>(
         island_op.getLoc(), func_result_types, operands.getArrayRef(),
         builder.getSymbolRefAttr(
@@ -140,14 +152,17 @@ void TPUBridgeExecutorIslandOutlining::runOnModule() {
   for (FuncOp func : outlined_module.getOps<FuncOp>()) {
     func.walk([&](Operation *op) {
       for (NamedAttribute attr : op->getAttrs()) {
-        auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>();
-        if (!symbol_ref) continue;
-        if (outlined_symbol_table.lookup<FuncOp>(symbol_ref.getValue()))
+        if (auto symbol_ref = attr.second.dyn_cast<FlatSymbolRefAttr>()) {
+          MoveFuncOp(symbol_ref, symbol_table, outlined_symbol_table);
           continue;
-        FuncOp callee = symbol_table.lookup<FuncOp>(symbol_ref.getValue());
-        callee.getOperation()->getBlock()->getOperations().remove(
-            callee.getOperation());
-        outlined_symbol_table.insert(callee);
+        }
+        if (auto array_attr = attr.second.dyn_cast<ArrayAttr>()) {
+          for (const Attribute &attribute : array_attr) {
+            auto symbol_ref = attribute.dyn_cast<FlatSymbolRefAttr>();
+            if (!symbol_ref) continue;
+            MoveFuncOp(symbol_ref, symbol_table, outlined_symbol_table);
+          }
+        }
       }
     });
   }
@@ -160,7 +175,7 @@ PassRegistration<TPUBridgeExecutorIslandOutlining> tpu_pass(
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<ModuleOp>>
+std::unique_ptr<OperationPass<ModuleOp>>
 CreateTFExecutorTPUV1IslandOutliningPass() {
   return std::make_unique<TPUBridgeExecutorIslandOutlining>();
 }

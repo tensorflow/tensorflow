@@ -34,26 +34,48 @@ class Hints(object):
   One common optimization is to break gradients all-reduce into multiple packs
   so that weight updates can overlap with gradient all-reduce.
 
-  Example:
+  Examples:
+
+  - bytes_per_pack
 
   ```python
   hints = tf.distribute.experimental.CollectiveHints(
       bytes_per_pack=50 * 1024 * 1024)
   grads = tf.distribute.get_replica_context().all_reduce(
       'sum', grads, experimental_hints=hints)
-  optimizer.apply_gradients(zip(grads, vars), all_reduce_sum_gradients=False)
+  optimizer.apply_gradients(zip(grads, vars),
+      experimental_aggregate_gradients=False)
+  ```
+
+  - timeout_seconds
+
+  ```python
+  strategy = tf.distribute.MirroredStrategy()
+  hints = tf.distribute.experimental.CollectiveHints(
+      timeout_seconds=120)
+  try:
+    strategy.reduce("sum", v, axis=None, experimental_hints=hints)
+  except tf.errors.DeadlineExceededError:
+    do_something()
   ```
 
   """
 
-  def __init__(self, bytes_per_pack=0):
+  def __init__(self, bytes_per_pack=0, timeout_seconds=None):
     """Creates a CollectiveHints.
 
     Args:
-      bytes_per_pack: A non-negative integer. Breaks collective operations into
+      bytes_per_pack: a non-negative integer. Breaks collective operations into
         packs of certain size. If it's zero, the value is determined
         automatically. This only applies to all-reduce with
         `MultiWorkerMirroredStrategy` currently.
+      timeout_seconds: a float or None, timeout in seconds. If not None, the
+        collective raises `tf.errors.DeadlineExceededError` if it takes longer
+        than this timeout. This can be useful when debugging hanging issues.
+        This should only be used for debugging since it creates a new thread for
+        each collective, i.e. an overhead of `timeout_seconds *
+        num_collectives_per_second` more threads.  This only works for
+        `tf.distribute.experimental.MultiWorkerMirroredStrategy`.
 
     Raises:
       ValueError: When arguments have invalid value.
@@ -61,3 +83,4 @@ class Hints(object):
     if bytes_per_pack < 0:
       raise ValueError("bytes_per_pack must be non-negative")
     self.bytes_per_pack = bytes_per_pack
+    self.timeout_seconds = timeout_seconds

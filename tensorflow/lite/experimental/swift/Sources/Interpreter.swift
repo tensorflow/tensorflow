@@ -15,6 +15,12 @@
 import Foundation
 import TensorFlowLiteC
 
+#if os(Linux)
+  import SwiftGlibc
+#else
+  import Darwin
+#endif
+
 /// A TensorFlow Lite interpreter that performs inference from a given model.
 public final class Interpreter {
   /// The configuration options for the `Interpreter`.
@@ -38,6 +44,9 @@ public final class Interpreter {
 
   /// The underlying `TfLiteInterpreter` C pointer.
   private var cInterpreter: CInterpreter?
+
+  /// The underlying `TfLiteDelegate` C pointer for XNNPACK delegate.
+  private var cXNNPackDelegate: Delegate.CDelegate?
 
   /// Creates a new instance with the given values.
   ///
@@ -78,6 +87,14 @@ public final class Interpreter {
       )
     }
     delegates?.forEach { TfLiteInterpreterOptionsAddDelegate(cInterpreterOptions, $0.cDelegate) }
+
+    // Configure the XNNPack delegate after the other delegates explicitly added by the user.
+    options.map {
+      if $0.isXNNPackEnabled {
+        configureXNNPack(options: $0, cInterpreterOptions: cInterpreterOptions)
+      }
+    }
+
     guard let cInterpreter = TfLiteInterpreterCreate(model.cModel, cInterpreterOptions) else {
       throw InterpreterError.failedToCreateInterpreter
     }
@@ -86,6 +103,7 @@ public final class Interpreter {
 
   deinit {
     TfLiteInterpreterDelete(cInterpreter)
+    TfLiteXNNPackDelegateDelete(cXNNPackDelegate)
   }
 
   /// Invokes the interpreter to perform inference from the loaded graph.
@@ -201,12 +219,13 @@ public final class Interpreter {
     guard case 0...maxIndex = index else {
       throw InterpreterError.invalidTensorIndex(index: index, maxIndex: maxIndex)
     }
-    guard TfLiteInterpreterResizeInputTensor(
-      cInterpreter,
-      Int32(index),
-      shape.int32Dimensions,
-      Int32(shape.rank)
-    ) == kTfLiteOk
+    guard
+      TfLiteInterpreterResizeInputTensor(
+        cInterpreter,
+        Int32(index),
+        shape.int32Dimensions,
+        Int32(shape.rank)
+      ) == kTfLiteOk
     else {
       throw InterpreterError.failedToResizeInputTensor(index: index)
     }
@@ -236,11 +255,11 @@ public final class Interpreter {
     }
 
     #if swift(>=5.0)
-    let status = data.withUnsafeBytes {
-      TfLiteTensorCopyFromBuffer(cTensor, $0.baseAddress, data.count)
-    }
+      let status = data.withUnsafeBytes {
+        TfLiteTensorCopyFromBuffer(cTensor, $0.baseAddress, data.count)
+      }
     #else
-    let status = data.withUnsafeBytes { TfLiteTensorCopyFromBuffer(cTensor, $0, data.count) }
+      let status = data.withUnsafeBytes { TfLiteTensorCopyFromBuffer(cTensor, $0, data.count) }
     #endif  // swift(>=5.0)
     guard status == kTfLiteOk else { throw InterpreterError.failedToCopyDataToInputTensor }
     return try input(at: index)
@@ -256,6 +275,18 @@ public final class Interpreter {
       throw InterpreterError.failedToAllocateTensors
     }
   }
+
+  // MARK: - Private
+
+  private func configureXNNPack(options: Options, cInterpreterOptions: OpaquePointer) {
+    var cXNNPackOptions = TfLiteXNNPackDelegateOptionsDefault()
+    if let threadCount = options.threadCount, threadCount > 0 {
+      cXNNPackOptions.num_threads = Int32(threadCount)
+    }
+
+    cXNNPackDelegate = TfLiteXNNPackDelegateCreate(&cXNNPackOptions)
+    TfLiteInterpreterOptionsAddDelegate(cInterpreterOptions, cXNNPackDelegate)
+  }
 }
 
 extension Interpreter {
@@ -264,6 +295,28 @@ extension Interpreter {
     /// The maximum number of CPU threads that the interpreter should run on. The default is `nil`
     /// indicating that the `Interpreter` will decide the number of threads to use.
     public var threadCount: Int? = nil
+
+    /// Indicates whether an optimized set of floating point CPU kernels, provided by XNNPACK, is
+    /// enabled.
+    ///
+    /// - Experiment:
+    /// Enabling this flag will enable use of a new, highly optimized set of CPU kernels provided
+    /// via the XNNPACK delegate. Currently, this is restricted to a subset of floating point
+    /// operations. Eventually, we plan to enable this by default, as it can provide significant
+    /// performance benefits for many classes of floating point models. See
+    /// https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/delegates/xnnpack/README.md
+    /// for more details.
+    ///
+    /// - Important:
+    /// Things to keep in mind when enabling this flag:
+    ///
+    ///     * Startup time and resize time may increase.
+    ///     * Baseline memory consumption may increase.
+    ///     * Compatibility with other delegates (e.g., GPU) has not been fully validated.
+    ///     * Quantized models will not see any benefit.
+    ///
+    /// - Warning: This is an experimental interface that is subject to change.
+    public var isXNNPackEnabled: Bool = false
 
     /// Creates a new instance with the default values.
     public init() {}
@@ -284,8 +337,19 @@ extension String {
   ///   - cFormat: The format C array as a template for substituting values.
   ///   - arguments: A C pointer to a `va_list` of arguments to substitute into `cFormat`.
   init?(cFormat: UnsafePointer<CChar>, arguments: CVaListPointer) {
-    var buffer: UnsafeMutablePointer<CChar>?
-    guard vasprintf(&buffer, cFormat, arguments) != 0, let cString = buffer else { return nil }
-    self.init(validatingUTF8: cString)
+    #if os(Linux)
+      let length = Int(vsnprintf(nil, 0, cFormat, arguments) + 1) // null terminator
+      guard length > 0 else { return nil }
+      let buffer = UnsafeMutablePointer<CChar>.allocate(capacity: length)
+      defer {
+        buffer.deallocate()
+      }
+      guard vsnprintf(buffer, length, cFormat, arguments) == length - 1 else { return nil }
+      self.init(validatingUTF8: buffer)
+    #else
+      var buffer: UnsafeMutablePointer<CChar>?
+      guard vasprintf(&buffer, cFormat, arguments) != 0, let cString = buffer else { return nil }
+      self.init(validatingUTF8: cString)
+    #endif
   }
 }

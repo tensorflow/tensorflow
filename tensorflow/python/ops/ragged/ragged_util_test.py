@@ -220,7 +220,7 @@ class RaggedUtilTest(test_util.TensorFlowTestCase,
       data = array_ops.placeholder_with_default(data, None)
       repeats = array_ops.placeholder_with_default(repeats, None)
 
-    with self.assertRaisesRegexp(exception, error):
+    with self.assertRaisesRegex(exception, error):
       ragged_util.repeat(data, repeats, axis)
 
 

@@ -28,6 +28,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 #include "tensorflow/core/protobuf/error_codes.pb.h"
 
 namespace tensorflow {
@@ -100,9 +102,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
     TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
     AttrValue slack_period_attr;
     b->BuildAttrValue(slack_period_, &slack_period_attr);
-    TF_RETURN_IF_ERROR(b->AddDataset(
-        this, {input_graph_node, buffer_size},
-        {std::make_pair(kSlackPeriod, slack_period_attr)}, output));
+    AttrValue legacy_autotune_attr;
+    b->BuildAttrValue(legacy_autotune_, &legacy_autotune_attr);
+    TF_RETURN_IF_ERROR(
+        b->AddDataset(this, {input_graph_node, buffer_size},
+                      {std::make_pair(kSlackPeriod, slack_period_attr),
+                       std::make_pair(kLegacyAutotune, legacy_autotune_attr)},
+                      output));
     return Status::OK();
   }
 
@@ -206,12 +212,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
                                 /*max=*/std::numeric_limits<int64>::max())});
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       // Acquire both locks to ensure that the prefetch thread and
       // all GetNext threads are blocked.
       mutex_lock input_l(input_mu_);
       mutex_lock l(*mu_);
-      TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+      TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       TF_RETURN_IF_ERROR(
           writer->WriteScalar(prefix(), kBufferSize, buffer_.size()));
       for (size_t i = 0; i < buffer_.size(); i++) {
@@ -298,6 +305,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // The buffered data element.
       std::vector<Tensor> value;
       int64 created_us;
+      int64 id;
     };
 
     int64 buffer_limit() const TF_EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
@@ -334,6 +342,13 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       // (if we successfully got an element) the output values.
       Status s = buffer_.front().status;
       if (s.ok()) {
+        int64 buffer_element_id = buffer_.front().id;
+        profiler::TraceMe traceme(
+            [&] {
+              return profiler::TraceMeEncode(
+                  "PrefetchConsume", {{"element_id", buffer_element_id}});
+            },
+            profiler::kInfo);
         if (dataset()->slack_period_ > 0 &&
             (num_elements() + 1) % dataset()->slack_period_ == 0) {
           // TODO(rachelim): Consider doing something more sophisticated
@@ -418,8 +433,16 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
         mutex_lock input_l(input_mu_);
         bool end_of_sequence;
         BufferElement buffer_element;
-        buffer_element.status = input_impl_->GetNext(
-            ctx.get(), &buffer_element.value, &end_of_sequence);
+        {
+          profiler::TraceMe traceme(
+              [&] {
+                return profiler::TraceMeEncode("PrefetchProduce",
+                                               {{"element_id", num_produced}});
+              },
+              profiler::kInfo);
+          buffer_element.status = input_impl_->GetNext(
+              ctx.get(), &buffer_element.value, &end_of_sequence);
+        }
         if (buffer_element.status.ok() && end_of_sequence) {
           mutex_lock l(*mu_);
           prefetch_thread_finished_ = true;
@@ -432,6 +455,7 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
           mutex_lock l(*mu_);
           RecordBufferEnqueue(ctx.get(), buffer_element.value);
           buffer_element.created_us = EnvTime::NowMicros();
+          buffer_element.id = num_produced;
           buffer_.push_back(std::move(buffer_element));
           cond_var_->notify_all();
         }

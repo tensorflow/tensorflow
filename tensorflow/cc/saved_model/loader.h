@@ -96,6 +96,21 @@ class SavedModelBundleLite : public SavedModelBundleInterface {
   protobuf::Map<string, SignatureDef> signatures_;
 };
 
+// Restore variable and resources in the SavedModel export dir for the
+// indicated metagraph.
+// The recommended way to load a saved model is to call LoadSavedModel,
+// which provides an already initialized Metagraph, Session, and DebugInfo.
+Status RestoreSession(const RunOptions& run_options,
+                      const MetaGraphDef& meta_graph, const string& export_dir,
+                      std::unique_ptr<Session>* session);
+
+// Initialize a session which wraps this metagraph.
+// The recommended way to load a saved model is to call LoadSavedModel,
+// which provides an already initialized Metagraph, Session, and DebugInfo.
+Status LoadMetagraphIntoSession(const SessionOptions& session_options,
+                                const MetaGraphDef& meta_graph,
+                                std::unique_ptr<Session>* session);
+
 /// Loads a SavedModel from the specified export directory. The MetaGraphDef
 /// to be loaded is identified by the supplied tags, corresponding exactly to
 /// the set of tags used at SavedModel build time. Stores a SavedModel bundle in
@@ -124,7 +139,7 @@ Status LoadSavedModel(const SessionOptions& session_options,
 /// the export directory definitely does not contain a SavedModel. If the method
 /// returns `true`, the export directory may contain a SavedModel but provides
 /// no guarantee that it can be loaded.
-bool MaybeSavedModelDirectory(const string& export_dir);
+bool MaybeSavedModelDirectory(const std::string& export_dir);
 
 }  // namespace tensorflow
 

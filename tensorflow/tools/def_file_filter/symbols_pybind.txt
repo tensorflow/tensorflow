@@ -17,8 +17,10 @@ tensorflow::swig::Flatten
 tensorflow::swig::IsSequenceForData
 tensorflow::swig::FlattenForData
 tensorflow::swig::AssertSameStructureForData
+tensorflow::swig::RegisterPyObject
 tensorflow::swig::RegisterType
 tensorflow::swig::IsEagerTensorSlow
+tensorflow::swig::GetRegisteredPyObject
 
 [util_port] # util_port
 tensorflow::IsGoogleCudaEnabled
@@ -76,13 +78,31 @@ tensorflow::Status::code
 tensorflow::Status::error_message
 tensorflow::Status::ok()
 
-[core_cpu_impl]  # device_lib, tfe, tf_session
+[device]  # device_lib, tfe, tf_session
 tensorflow::Device::attributes
+
+[device_factory]  # device_lib, tfe, tf_session
 tensorflow::DeviceFactory::AddDevices
-tensorflow::SessionOptions::SessionOptions
-tensorflow::DoQuantizeTrainingOnSerializedGraphDef
 tensorflow::DeviceFactory::ListAllPhysicalDevices
+tensorflow::DeviceFactory::GetAnyDeviceDetails
+
+[session_options]  # device_lib, tfe, tf_session
+tensorflow::SessionOptions::SessionOptions
+
+[quantize_training]  # quantize_training
+tensorflow::DoQuantizeTrainingOnSerializedGraphDef
+
+[session_state]  # tf_session
 tensorflow::SessionState::kTensorHandleResourceTypeName
+
+[server_lib] # server_lib
+tensorflow::data::GrpcDataServerBase::Join
+tensorflow::data::GrpcDataServerBase::Start
+tensorflow::data::GrpcDataServerBase::Stop
+tensorflow::data::GrpcDataServerBase::BoundPort
+tensorflow::data::DispatchGrpcDataServer::NumWorkers
+tensorflow::data::NewDispatchServer
+tensorflow::data::NewWorkerServer
 
 [protos_all]  # device_lib, dtypes
 tensorflow::DataType_IsValid
@@ -100,6 +120,8 @@ tensorflow::swig::TryFindKernelClass
 [toco_python_api] # toco_python_api
 toco::TocoConvert
 toco::TocoGetPotentiallySupportedOps
+toco::MlirQuantizeModel
+toco::MlirSparsifyModel
 
 [transform_graph_lib] # transform_graph
 tensorflow::graph_transforms::TransformGraph
@@ -165,6 +187,10 @@ TFE_Py_TapeGradient
 TFE_Py_FastPathExecute_C
 TFE_Py_RecordGradient
 TFE_Py_TapeWatchedVariables
+TFE_Py_VariableWatcherNew
+TFE_Py_VariableWatcherRemove
+TFE_Py_VariableWatcherVariableAccessed
+TFE_Py_VariableWatcherWatchedVariables
 TFE_Py_ForwardAccumulatorNew
 TFE_Py_ForwardAccumulatorSetAdd
 TFE_Py_ForwardAccumulatorSetRemove
@@ -198,7 +224,7 @@ tensorflow::ImportGraphDef
 [op_gen_lib] # tf_session
 tensorflow::ApiDefMap::~ApiDefMap
 
-[core_cpu_base_no_ops] # tf_session
+[graph_constructor] # tf_session
 tensorflow::ShapeRefiner::~ShapeRefiner
 
 [python_api] # tf_session
@@ -310,6 +336,15 @@ tensorflow::ProfilerSession::SerializeToString
 tensorflow::ProfilerSession::Status
 tensorflow::ProfilerSession::~ProfilerSession
 
+[profiler_server_impl] # profiler
+tensorflow::profiler::ProfilerServer::StartProfilerServer
+tensorflow::profiler::ProfilerServer::~ProfilerServer
+
+[profiler_client_impl] # profiler
+tensorflow::profiler::ProfileGrpc
+tensorflow::profiler::NewSessionGrpc
+tensorflow::profiler::MonitorGrpc
+
 [status_macros] # tfcompile
 xla::status_macros::MakeErrorStream::Impl::Impl
 xla::status_macros::MakeErrorStream::Impl::~Impl
@@ -343,3 +378,9 @@ tensorflow::grappler::CostAnalyzer::GenerateReport
 
 [flags] # tfe
 tensorflow::IsXlaEnabled
+tensorflow::GetMlirCommonFlags
+tensorflow::GetXlaDeviceFlags
+
+[tensor_float_32_utils] # tensor_float_32
+tensorflow::enable_tensor_float_32_execution
+tensorflow::tensor_float_32_execution_enabled

@@ -216,7 +216,7 @@ experiment with different models to find the optimal balance between
 performance, accuracy, and model size. For guidance, see
 <a href="#choose_a_different_model">Choose a different model</a>.
 
-## Performance Benchmarks
+## Performance benchmarks
 
 Performance benchmark numbers are generated with the tool
 [described here](https://www.tensorflow.org/lite/performance/benchmarks).
@@ -260,7 +260,7 @@ Performance benchmark numbers are generated with the tool
 
 ## Choose a different model
 
-There are a large number of image classification models available on our
+A large number of image classification models are available on our
 <a href="../../guide/hosted_models.md">List of hosted models</a>. You should aim
 to choose the optimal model for your application based on performance, accuracy
 and model size. There are trade-offs between each of them.
@@ -302,7 +302,7 @@ Our quantized MobileNet models’ size ranges from 0.5 to 3.4 Mb.
 
 ### Architecture
 
-There are several different architectures of models available on
+Several different model architectures are available on
 <a href="../../guide/hosted_models.md">List of hosted models</a>, indicated by
 the model’s name. For example, you can choose between MobileNet, Inception, and
 others.
@@ -329,4 +329,4 @@ images for each of the new labels you wish to train.
 Learn how to perform transfer learning in the
 <a href="https://codelabs.developers.google.com/codelabs/recognize-flowers-with-tensorflow-on-android/#0">Recognize
 flowers with TensorFlow</a> codelab, or with the
-[model maker toolkit](https://github.com/tensorflow/examples/tree/master/tensorflow_examples/lite/model_maker/demo/image_classification.ipynb).
+[model maker toolkit](/lite/tutorials/model_maker_image_classification).

@@ -14,8 +14,12 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
 
+#include <math.h>
+
 #include <gmock/gmock.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/kernels/cpu_backend_context.h"
+#include "tensorflow/lite/kernels/internal/common.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/test_util.h"
 
@@ -26,16 +30,11 @@ limitations under the License.
 namespace tflite {
 namespace tensor_utils {
 
-TEST(uKernels, ClipTest) {
-  constexpr int kVectorSize = 10;
-  constexpr float kAbsLimit = 2.0;
-  static float input[kVectorSize] = {0.0,  -0.5, 1.0,  -1.5, 2.0,
-                                     -2.5, 3.0,  -3.5, 4.0,  -4.5};
-  std::vector<float> output(kVectorSize);
-  ClipVector(input, kVectorSize, kAbsLimit, output.data());
-  EXPECT_THAT(output,
-              ElementsAreArray(ArrayFloatNear(
-                  {0.0, -0.5, 1.0, -1.5, 2.0, -2.0, 2.0, -2.0, 2.0, -2.0})));
+TEST(uKernels, FloorLog2Test) {
+  for (int i = 1; i < 257; ++i) {
+    EXPECT_EQ(::tflite::FloorLog2(i),
+              static_cast<int>(std::floor(std::log2(i))));
+  }
 }
 
 TEST(uKernels, VectorScalarMultiply) {
@@ -371,14 +370,14 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
   const int32_t multiplier = 2080364544;
   const int32_t shift = -2;
 
-  std::vector<int32_t> scrach(2 * 9, 0);
+  std::vector<int32_t> scratch(2 * 9, 0);
   std::vector<int16_t> output = {10, 2, 33, 4, 5,  6,  65, 4,  3,
                                  52, 1, 2,  8, -1, -2, 11, 17, -18};
   MatrixBatchVectorMultiplyAccumulate(
       input.data(), input_zeropoint_times_weights.data(),
       input_to_gate_weights.data(), multiplier, shift,
       /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, /*output_zp=*/0,
-      scrach.data(), output.data(), &context);
+      scratch.data(), output.data(), &context);
   const std::vector<int16_t> expected_output = {
       -210, 331,  153, 139, -570, -657, 258, 515,  -495,
       91,   -243, -73, 603, -744, -269, 169, -748, -174,
@@ -457,6 +456,37 @@ TEST(uKernels, HybridMatrixBatchVectorMultiplyAccumulate8x8_16Test) {
       &context);
 
   EXPECT_THAT(output2, testing::ElementsAreArray(expected_output));
+
+  // Run with a large batch size to trigger the CpuBackendGemm path on any
+  // device.
+  constexpr int kBatchMultiplier = 8;
+  std::vector<int8_t> input_big_batch(input.size() * kBatchMultiplier);
+  std::vector<float> scaling_factors_big_batch(scaling_factors.size() *
+                                               kBatchMultiplier);
+  std::vector<int32_t> scratch_big_batch(scratch.size() * kBatchMultiplier);
+  std::vector<int32_t> input_offsets_big_batch(input_offsets.size() *
+                                               kBatchMultiplier);
+  for (int i = 0; i < kBatchMultiplier; i++) {
+    std::copy(input.begin(), input.end(),
+              input_big_batch.begin() + i * input.size());
+    std::copy(scaling_factors.begin(), scaling_factors.end(),
+              scaling_factors_big_batch.begin() + i * scaling_factors.size());
+    std::copy(input_offsets.begin(), input_offsets.end(),
+              input_offsets_big_batch.begin() + i * input_offsets.size());
+  }
+  std::vector<float> output_big_batch(output.size() * kBatchMultiplier, 0);
+  MatrixBatchVectorMultiplyAccumulate(
+      input_to_gate_weights.data(), /*m_rows=*/8, /*m_cols=*/32,
+      input_big_batch.data(), scaling_factors_big_batch.data(),
+      /*n_batch*/ 4 * kBatchMultiplier, output_big_batch.data(), nullptr,
+      input_offsets_big_batch.data(), scratch_big_batch.data(), row_sums,
+      &compute_row_sums, &context);
+  for (int i = 0; i < kBatchMultiplier; i++) {
+    std::vector<float> output_per_batch(
+        output_big_batch.begin() + i * output.size(),
+        output_big_batch.begin() + (i + 1) * output.size());
+    EXPECT_THAT(output_per_batch, testing::ElementsAreArray(expected_output));
+  }
 }
 
 // Qautnized matmul with 2 * 30 input and 9 * 30 matrix.
@@ -497,11 +527,11 @@ TEST(uKernels, QuantMatrixBatchVectorMultiplyAccumulate8x8_8Test) {
 
   std::vector<int8_t> output = {1, 2, 3, 4, 5,  6,  5,  4,  3,
                                 2, 1, 2, 8, -1, -2, 11, 17, 18};
-  std::vector<int32_t> scrach(2 * 9, 0);
+  std::vector<int32_t> scratch(2 * 9, 0);
   MatrixBatchVectorMultiplyAccumulate(
       input.data(), input_zeropoint_times_weights.data(),
       input_to_gate_weights.data(), multiplier, shift,
-      /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, output_zp, scrach.data(),
+      /*n_batch=*/2, /*n_input=*/30, /*n_output=*/9, output_zp, scratch.data(),
       output.data(), &context);
   const std::vector<int8_t> expected_output = {
       5,   -9, -2, -30, -5, -11, -22, -18, 18,
@@ -934,15 +964,28 @@ TEST(uKernels, QuantAddTest) {
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
 }
 
+TEST(uKernels, ClipTest) {
+  constexpr int kVectorSize = 10;
+  constexpr float kAbsLimit = 2.0;
+  std::vector<float> input = {0.0,  -0.5, 1.0,  -1.5, 2.0,
+                              -2.5, 3.0,  -3.5, 4.0,  -4.5};
+  CwiseClipping(input.data(), kVectorSize, kAbsLimit);
+  const std::vector<float> expected_output = {0.0,  -0.5, 1.0,  -1.5, 2.0,
+                                              -2.0, 2.0,  -2.0, 2.0,  -2.0};
+  EXPECT_THAT(input, testing::ElementsAreArray(expected_output));
+}
+
 // Quantized clipping for 16 bit.
 TEST(uKernels, QuantClip16Test) {
+  constexpr int kVectorSize = 30;
+  constexpr int16_t kAbsLimit = 300;
   std::vector<int16_t> input = {
       -10500, 1,     -2,     -7404,  200,    -5401,  -1757, -7668,
       -19248, -9692, -24249, -17923, -15840, -10026, 5249,  -89,
       1787,   -200,  -6691,  -19524, -13439, -24048, -1123, 32767,
       -17267, -3378, 823,    11482,  -11139, 7508,
   };
-  CwiseClipping(input.data(), 300, 2, 15);
+  CwiseClipping(input.data(), kVectorSize, kAbsLimit);
   const std::vector<int16_t> expected_output = {
       -300, 1,    -2,   -300, 200,  -300, -300, -300, -300, -300,
       -300, -300, -300, -300, 300,  -89,  300,  -200, -300, -300,
@@ -953,11 +996,13 @@ TEST(uKernels, QuantClip16Test) {
 
 // Quantized clipping for 8 bit.
 TEST(uKernels, QuantClip8Test) {
+  constexpr int kVectorSize = 30;
+  constexpr int8_t kAbsLimit = 32;
   std::vector<int8_t> input = {
       4,   -11, -5, -34, -10, -17, -27, -22, 15,  127, -128, 1,  3, 56, 3,
       -21, 1,   9,  -13, 10,  0,   -1,  -55, -40, 127, -128, 11, 4, 6,  32,
   };
-  CwiseClipping(input.data(), 32, 2, 15);
+  CwiseClipping(input.data(), kVectorSize, kAbsLimit);
   const std::vector<int8_t> expected_output = {
       4,   -11, -5, -32, -10, -17, -27, -22, 15,  32, -32, 1,  3, 32, 3,
       -21, 1,   9,  -13, 10,  0,   -1,  -32, -32, 32, -32, 11, 4, 6,  32,
@@ -1094,11 +1139,15 @@ std::vector<float> TestPerChannelDotprodMatrixBatchVectorMultiply(
     bool is_per_channel = true) {
   MatrixVectorData data =
       SetupMatrixVectorData(rows, cols, batch, negative, is_per_channel);
-
+  std::vector<int32_t> scratch(rows * batch);
+  std::vector<int32_t> row_sums(rows);
+  bool compute_row_sums = true;
+  CpuBackendContext context;
   MatrixBatchVectorMultiplyAccumulate(
       data.matrix.data(), rows, cols, data.vectors.data(),
       data.scale_factors.data(), batch, &data.results[0],
-      data.per_channel_scales.data(), data.input_offsets.data());
+      data.per_channel_scales.data(), data.input_offsets.data(), scratch.data(),
+      row_sums.data(), &compute_row_sums, &context);
   return data.results;
 }
 
@@ -1897,13 +1946,13 @@ TEST(uKernels, ReductionSumVectorIntegerTest) {
   EXPECT_THAT(result1, testing::ElementsAreArray({3, 6, -1, 3, 15}));
 }
 
-void TwoGateSaturationgAdd(const int8_t* input, int8_t input_zp,
-                           const int8_t* recurrent, int8_t recurrent_zp,
-                           int32_t input_effective_scale_a,
-                           int32_t input_effective_scale_b,
-                           int32_t recurrent_effective_scale_a,
-                           int32_t recurrent_effective_scale_b, int32_t n_batch,
-                           int32_t n_cell, int16_t* output);
+void TwoGateSaturatingAdd(const int8_t* input, int8_t input_zp,
+                          const int8_t* recurrent, int8_t recurrent_zp,
+                          int32_t input_effective_scale_a,
+                          int32_t input_effective_scale_b,
+                          int32_t recurrent_effective_scale_a,
+                          int32_t recurrent_effective_scale_b, int32_t n_batch,
+                          int32_t n_cell, int16_t* output);
 
 TEST(uKernels, TwoGateSaturateAddTest) {
   const std::vector<int8_t> input1 = {1, 2, 3, 4, 55, 66, 77};
@@ -1916,9 +1965,9 @@ TEST(uKernels, TwoGateSaturateAddTest) {
   const int32_t shift2 = -6;
   std::vector<int16_t> output(7);
 
-  TwoGateSaturationgAdd(input1.data(), input1_zp, input2.data(), input2_zp,
-                        multiplier1, shift1, multiplier2, shift2, 1, 7,
-                        output.data());
+  TwoGateSaturatingAdd(input1.data(), input1_zp, input2.data(), input2_zp,
+                       multiplier1, shift1, multiplier2, shift2, 1, 7,
+                       output.data());
 
   const std::vector<int16_t> expected_output = {1, 0, 0, 0, 0, 1, 1};
   EXPECT_THAT(output, testing::ElementsAreArray(expected_output));
@@ -2000,6 +2049,37 @@ TEST(uKernels, MeanStddevNormalizationAllBatches) {
   };
   EXPECT_THAT(output, testing::ElementsAreArray(
                           ArrayFloatNear(expected_output, 1.81e-4f)));
+}
+
+TEST(uKernels, MeanStddevNormalizationLargeVector) {
+  const float mean = 100.0f;
+  const float diff = 1.0f;
+  // Some large vector that is not a round multiple of any SIMD vector sizes.
+  // Note this is odd.
+  constexpr int kVectorSize = 16 * 16 + 16 + 1;
+
+  float input[kVectorSize];
+  // First input is mean.
+  input[0] = mean;
+  // Rest is alternating between mean + diff and mean - diff.
+  for (int i = 1; i < kVectorSize - 1; i += 2) {
+    input[i + 0] = mean + diff;
+    input[i + 1] = mean - diff;
+  }
+  float output[kVectorSize];
+  MeanStddevNormalization(input, output, kVectorSize, 1);
+
+  float expected_output[kVectorSize];
+  // First output should be 0.
+  expected_output[0] = 0.0;
+  // Rest should be alternating between ±√(N/(N-1)).
+  const float expected_elem = std::sqrt(static_cast<double>(kVectorSize) /
+                                        static_cast<double>(kVectorSize - 1));
+  for (int i = 1; i < kVectorSize - 1; i += 2) {
+    expected_output[i + 0] = +expected_elem;
+    expected_output[i + 1] = -expected_elem;
+  }
+  EXPECT_THAT(output, testing::Pointwise(testing::FloatEq(), expected_output));
 }
 
 }  // namespace tensor_utils

@@ -34,7 +34,6 @@ cuda_py_test(
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/eager:backprop",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/keras",
         "@six_archive//:six",
     ],
 )

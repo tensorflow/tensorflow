@@ -31,7 +31,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
-#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
 
@@ -187,7 +186,7 @@ Status HierarchicalTreeBroadcaster::InitializeCollectiveParams(
 }
 
 Status HierarchicalTreeBroadcaster::InitializeCollectiveContext(
-    CollectiveContext* col_ctx) {
+    std::shared_ptr<CollectiveContext> col_ctx) {
   CHECK(col_ctx->dev_mgr);
   col_ctx_ = col_ctx;
   col_params_ = &col_ctx->col_params;
@@ -409,7 +408,9 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
                                                int src_rank,
                                                const Tensor* src_tensor,
                                                const StatusCallback& done) {
-  MEMDEBUG_CACHE_OP(col_ctx_->op_ctx->op_kernel().name().c_str());
+  ScopedMemoryDebugAnnotation op_annotation(
+      col_ctx_->op_ctx->op_kernel().name_view().data(), col_ctx_->step_id,
+      "dynamic", src_tensor->dtype(), &src_tensor->shape());
   string send_buf_key =
       BroadcastBufKey(col_ctx_->exec_key, subdiv, src_rank, dst_rank);
   int dst_idx =
@@ -418,12 +419,12 @@ void HierarchicalTreeBroadcaster::DispatchSend(int subdiv, int dst_rank,
           << col_ctx_->device_name << " to_device "
           << col_params_->instance.device_names[dst_idx] << " subdiv=" << subdiv
           << " dst_rank=" << dst_rank << " dst_idx=" << dst_idx;
-  col_ctx_->col_exec->PostToPeer(col_params_->instance.device_names[dst_idx],
-                                 col_params_->instance.task_names[dst_idx],
-                                 send_buf_key, col_ctx_->device,
-                                 col_ctx_->op_ctx->op_device_context(),
-                                 col_ctx_->op_ctx->output_alloc_attr(0),
-                                 src_tensor, col_ctx_->device_locality, done);
+  col_ctx_->col_exec->remote_access()->PostToPeer(
+      col_params_->instance.device_names[dst_idx],
+      col_params_->instance.task_names[dst_idx], send_buf_key, col_ctx_->device,
+      col_ctx_->op_ctx->op_device_context(),
+      col_ctx_->op_ctx->output_alloc_attr(0), src_tensor,
+      col_ctx_->device_locality, done);
 }
 
 void HierarchicalTreeBroadcaster::DispatchRecv(int subdiv, int src_rank,
@@ -437,7 +438,7 @@ void HierarchicalTreeBroadcaster::DispatchRecv(int subdiv, int src_rank,
           << col_params_->instance.device_names[src_idx] << " to_device "
           << col_ctx_->device_name << " subdiv=" << subdiv
           << " src_rank=" << src_rank << " src_idx=" << src_idx;
-  col_ctx_->col_exec->RecvFromPeer(
+  col_ctx_->col_exec->remote_access()->RecvFromPeer(
       col_params_->instance.device_names[src_idx],
       col_params_->instance.task_names[src_idx],
       col_params_->task.is_local[src_idx], recv_buf_key, col_ctx_->device,
@@ -446,6 +447,8 @@ void HierarchicalTreeBroadcaster::DispatchRecv(int subdiv, int src_rank,
       col_ctx_->device_locality, 0 /*stream_index*/, done);
 }
 
+namespace {
 REGISTER_COLLECTIVE(HierarchicalTreeBroadcast, HierarchicalTreeBroadcaster);
+}  // namespace
 
 }  // namespace tensorflow

@@ -21,8 +21,8 @@ limitations under the License.
 
 namespace toco {
 
-void DumpGraphviz(const Model& model, string* output_file_contents,
-                  const string& graph_name);
+void DumpGraphviz(const Model& model, std::string* output_file_contents,
+                  const std::string& graph_name);
 
 }  // namespace toco
 

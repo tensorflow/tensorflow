@@ -161,12 +161,17 @@ def ops_used_by_graph_def(graph_def):
       functions_to_process.append(name_to_function[op])
     used_ops.add(op)
 
-  for node in graph_def.node:
+  def process_node(node):
     mark_op_as_used(node.op)
+    if node.op in ["PartitionedCall", "StatefulPartitionedCall"]:
+      mark_op_as_used(node.attr["f"].func.name)
+
+  for node in graph_def.node:
+    process_node(node)
   while functions_to_process:
     fun = functions_to_process.pop()
     for node in fun.node_def:
-      mark_op_as_used(node.op)
+      process_node(node)
 
   return [op for op in used_ops if op not in name_to_function]
 

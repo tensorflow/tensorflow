@@ -28,7 +28,7 @@ output: A 3-D tensor with the shape of [seq_length, batch_size,
     dir * num_units].
 output_h: The same shape has input_h.
 output_c: The same shape as input_c for LSTM. An empty tensor for other models.
-is_training: Indicates whether this operation is used for inferenece or
+is_training: Indicates whether this operation is used for inference or
   training.
 reserve_space: An opaque tensor that can be used in backprop calculation. It
   is only produced if is_training is false.

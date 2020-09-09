@@ -1,4 +1,4 @@
-// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s --dump-input=fail
+// RUN: tf-opt %s -pass-pipeline='func(canonicalize)' | FileCheck %s
 
 // Test empty launch with no results is folded away.
 // CHECK-LABEL: func @empty_launch_no_results

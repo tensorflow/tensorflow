@@ -69,12 +69,13 @@ limitations under the License.
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SetVector.h"
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LLVM.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
-#include "mlir/Transforms/RegionUtils.h"  // TF:llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Value.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LLVM.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/RegionUtils.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_executor.h"
 
@@ -83,7 +84,7 @@ namespace TFDevice {
 namespace {
 
 struct ParallelExecuteToIslandsPass
-    : public FunctionPass<ParallelExecuteToIslandsPass> {
+    : public PassWrapper<ParallelExecuteToIslandsPass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -111,8 +112,8 @@ LogicalResult ExpandParallelExecuteToIslands(
     // executed.
     llvm::SetVector<Value> region_inputs;
     getUsedValuesDefinedAbove(*execute_region, region_inputs);
-    llvm::SmallVector<Value, 8> execution_control_inputs;
-    if (region_inputs.empty())
+    llvm::SmallVector<Value, 1> execution_control_inputs;
+    if (region_inputs.empty() && input_sink_island)
       execution_control_inputs.emplace_back(input_sink_island.control());
 
     // Collect result types and operands.
@@ -147,13 +148,22 @@ tf_executor::IslandOp CreateInputBarrierIsland(
     OpBuilder* builder, tf_executor::IslandOp island_op) {
   builder->setInsertionPoint(island_op);
 
-  llvm::SetVector<Value> island_inputs;
-  getUsedValuesDefinedAbove(island_op.body(), island_inputs);
+  llvm::SetVector<Value> all_inputs;
+  getUsedValuesDefinedAbove(island_op.body(), all_inputs);
 
+  // Filter out values that are arguments and doesn't need to be part of the
+  // entry barrier.
+  llvm::SmallVector<Value, 8> island_inputs;
   llvm::SmallVector<Type, 8> input_types;
-  input_types.reserve(island_inputs.size());
-  for (const auto& input_val : island_inputs)
-    input_types.emplace_back(input_val.getType());
+  island_inputs.reserve(all_inputs.size());
+  input_types.reserve(all_inputs.size());
+  for (Value val : all_inputs) {
+    if (!val.isa<BlockArgument>()) {
+      island_inputs.push_back(val);
+      input_types.push_back(val.getType());
+    }
+  }
+  if (island_inputs.empty() && island_op.controlInputs().empty()) return {};
 
   // Create new island for that forwards all inputs.
   auto control_type = tf_executor::ControlType::get(island_op.getContext());
@@ -190,7 +200,7 @@ tf_executor::IslandOp CreateOutputBarrierIsland(
   builder->setInsertionPoint(island_op);
   auto island_output_sink = builder->create<tf_executor::IslandOp>(
       island_op.getLoc(), llvm::to_vector<8>(island_op.getResultTypes()),
-      island_operands, llvm::ArrayRef<NamedAttribute>{});
+      island_operands);
   island_output_sink.body().push_back(new Block);
   return island_output_sink;
 }
@@ -237,7 +247,7 @@ LogicalResult CreateIslandsFromParallelExecute(
 // individual islands per region of parallel_execute.
 void LowerSingleIslandParallelExecuteToIslands(
     tf_executor::IslandOp island_op) {
-  if (!has_single_element(island_op.GetBody().without_terminator())) return;
+  if (!hasSingleElement(island_op.GetBody().without_terminator())) return;
 
   if (auto parallel_execute_op = llvm::dyn_cast<tf_device::ParallelExecuteOp>(
           &island_op.GetBody().front()))
@@ -251,7 +261,7 @@ void ParallelExecuteToIslandsPass::runOnFunction() {
 }
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateParallelExecuteToIslandsPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateParallelExecuteToIslandsPass() {
   return std::make_unique<ParallelExecuteToIslandsPass>();
 }
 

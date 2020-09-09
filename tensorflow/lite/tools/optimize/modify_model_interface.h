@@ -22,9 +22,10 @@ namespace tflite {
 namespace optimize {
 
 // Changes the interface of a quantized model. This method allows the users to
-// replace float interface with other types.
-// This populates the builder with the new model.
-// Currently only int8 and unit8 are supported.
+// replace float interface with other types. Currently only int8, int16 and
+// uint8 are supported.
+//
+// This method populates the builder with the new model.
 //
 // Note: This is a private API, subject to change.
 TfLiteStatus ModifyModelInterface(flatbuffers::FlatBufferBuilder* builder,
@@ -38,6 +39,24 @@ TfLiteStatus ModifyModelInterface(const string& input_file,
                                   const string& output_file,
                                   const TensorType& input_type,
                                   const TensorType& output_type);
+
+// Adds uint8 quantize ops for specified inputs and uint8 dequantize ops for
+// specified outputs for a float model. The scale and zero point of uint8
+// tensors are provided through quant_params.
+//   - input_quant_params has a map between tensor name and the
+//     <scale and zero_point> pair for inputs.
+//   - output_quant_params has a map between tensor name and the
+//     <scale and zero_point> pair for inputs.
+// For the inputs/output tensors for the model, if its quantization parameters
+// are not provided, that tensor is not affected.
+//
+// Note: This is a private API, subject to change.
+TfLiteStatus Uint8QuantizeModelInputsOutputs(
+    flatbuffers::FlatBufferBuilder* builder, const Model* input_model,
+    const std::unordered_map<string, std::pair<float, int32_t>>&
+        input_quant_params,
+    const std::unordered_map<string, std::pair<float, int32_t>>&
+        output_quant_params);
 
 }  // namespace optimize
 }  // namespace tflite

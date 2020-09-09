@@ -110,7 +110,8 @@ class SkipDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       return Status::OK();
     }
 
@@ -139,21 +140,16 @@ class SkipDatasetOp::Dataset : public DatasetBase {
         return Status::OK();
       }
 
-      // Keep calling GetNext().  TODO(vrv): Figure out a way to
-      // skip records without reading, perhaps by adding an
-      // interface to iterator.
-      while (i_ < dataset()->count_) {
-        // Fetch and throw away Tensors.
-        std::vector<Tensor> dummy_out_tensors;
-        TF_RETURN_IF_ERROR(
-            input_impl_->GetNext(ctx, &dummy_out_tensors, end_of_sequence));
+      if (i_ < dataset()->count_) {
+        int num_skipped;
+        TF_RETURN_IF_ERROR(input_impl_->Skip(ctx, dataset()->count_ - i_,
+                                             end_of_sequence, &num_skipped));
+        i_ += num_skipped;
         if (*end_of_sequence) {
           // We reached the end before the count was reached.
           input_impl_.reset();
           return Status::OK();
         }
-
-        ++i_;
       }
 
       // Return GetNext() on the underlying iterator.
@@ -172,11 +168,12 @@ class SkipDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kCurIndex), i_));
       if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       } else {
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kInputImplEmpty), ""));
       }

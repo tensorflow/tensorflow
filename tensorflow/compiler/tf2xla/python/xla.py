@@ -28,6 +28,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.compiler.tf2xla.ops import gen_xla_ops
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -37,6 +38,7 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import gen_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import special_math_ops
 
 # TODO(phawkins): provide wrappers for all XLA operators. Currently the missing
 # ops include:
@@ -103,8 +105,8 @@ sign = _unary_op(math_ops.sign)
 tanh = _unary_op(math_ops.tanh)
 
 # Bessel
-bessel_i0e = _unary_op(math_ops.bessel_i0e)
-bessel_i1e = _unary_op(math_ops.bessel_i1e)
+bessel_i0e = _unary_op(special_math_ops.bessel_i0e)
+bessel_i1e = _unary_op(special_math_ops.bessel_i1e)
 
 # Binary operators
 
@@ -385,6 +387,14 @@ def reduce_window(operand,
 
 replica_id = gen_xla_ops.xla_replica_id
 
+# Set a static bound for the given input value as a hint to Xla compiler,
+# returns the same value.
+# Usage:
+# def f(t, p):
+#   p = xla.set_bound(p, 3) # Tells xla the constraint that p <= 3.
+#   return t[:p]            # xla knows the bound of the slice is 3.
+set_bound = gen_xla_ops.xla_set_bound
+
 
 def reshape(x, new_sizes, dimensions=None, name=None):
   if dimensions is not None:
@@ -414,8 +424,31 @@ sharding = gen_xla_ops.xla_sharding
 
 @ops.RegisterGradient("XlaSharding")
 def _sharding_grad(op, grad):
-  del op  # Unused
-  return [grad]
+  grad_sharding = gen_xla_ops.xla_sharding(grad)
+  # pylint: disable=protected-access
+  grad_sharding.op._set_attr(
+      "_XlaSharding", attr_value_pb2.AttrValue(s=op.get_attr("_XlaSharding")))
+  return [grad_sharding]
+
+
+spmd_full_to_shard_shape = gen_xla_ops.xla_spmd_full_to_shard_shape
+spmd_shard_to_full_shape = gen_xla_ops.xla_spmd_shard_to_full_shape
+
+
+@ops.RegisterGradient("XlaSpmdFullToShardShape")
+def _spmd_full_to_shard_shape_grad(op, grad):
+  s2f = gen_xla_ops.xla_spmd_shard_to_full_shape(
+      grad,
+      manual_sharding=op.get_attr("manual_sharding"),
+      full_shape=op.inputs[0].shape.as_list())
+  return [s2f]
+
+
+@ops.RegisterGradient("XlaSpmdShardToFullShape")
+def _spmd_shard_to_full_shape_grad(op, grad):
+  f2s = gen_xla_ops.xla_spmd_full_to_shard_shape(
+      grad, manual_sharding=op.get_attr("manual_sharding"))
+  return [f2s]
 
 
 sort = gen_xla_ops.xla_sort

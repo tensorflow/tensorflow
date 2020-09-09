@@ -14,12 +14,37 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
+
+#include "absl/types/optional.h"
+#include "tensorflow/core/framework/metrics.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+
+namespace {
+class ScopedTimeTracker {
+ public:
+  explicit ScopedTimeTracker(Env* env) : env_(env) {}
+  void Enable() {
+    if (!start_us_) {  // Only override start_us when not set yet.
+      start_us_ = env_->NowMicros();
+    }
+  }
+  ~ScopedTimeTracker() {
+    if (start_us_) {
+      uint64 end_us = env_->NowMicros();
+      metrics::UpdateBfcAllocatorDelayTime(end_us - *start_us_);
+    }
+  }
+
+ private:
+  Env* env_;
+  absl::optional<uint64> start_us_;
+};
+}  // namespace
 
 AllocatorRetry::AllocatorRetry() : env_(Env::Default()) {}
 
@@ -31,6 +56,7 @@ void* AllocatorRetry::AllocateRaw(
   if (num_bytes == 0) {
     return nullptr;
   }
+  ScopedTimeTracker tracker(env_);
   uint64 deadline_micros = 0;
   bool first = true;
   void* ptr = nullptr;
@@ -43,6 +69,7 @@ void* AllocatorRetry::AllocateRaw(
         first = false;
       }
       if (now < deadline_micros) {
+        tracker.Enable();
         mutex_lock l(mu_);
         WaitForMilliseconds(&l, &memory_returned_,
                             (deadline_micros - now) / 1000);

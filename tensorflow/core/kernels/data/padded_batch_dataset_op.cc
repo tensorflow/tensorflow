@@ -76,7 +76,7 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
     const auto& input_shapes = input_->output_shapes();
     output_shapes_.reserve(input_shapes.size());
     for (size_t i = 0; i < input_shapes.size(); ++i) {
-      if (drop_remainder_) {
+      if (drop_remainder_ || input_->Cardinality() == kInfiniteCardinality) {
         output_shapes_.push_back(
             PartialTensorShape({batch_size_}).Concatenate(padded_shapes_[i]));
       } else {
@@ -343,10 +343,11 @@ class PaddedBatchDatasetOp::Dataset : public DatasetBase {
       return model::MakeKnownRatioNode(std::move(args), dataset()->batch_size_);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (input_impl_)
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       else
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name(kExhausted), ""));
       return Status::OK();

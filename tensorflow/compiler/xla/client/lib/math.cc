@@ -511,7 +511,7 @@ XlaOp Lgamma(XlaOp input) {
     XlaOp z = Select(need_to_reflect, -input, input - one);
 
     XlaOp x = base_lanczos_coeff;
-    for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
       XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
       XlaOp index = ScalarLike(input, i);
       x = x + lanczos_coefficient / (z + index + one);
@@ -647,7 +647,7 @@ XlaOp Digamma(XlaOp input) {
 
     XlaOp num = zero;
     XlaOp denom = base_lanczos_coeff;
-    for (int i = 0; i < kLanczosCoefficients.size(); ++i) {
+    for (int i = 0, end = kLanczosCoefficients.size(); i < end; ++i) {
       XlaOp lanczos_coefficient = ScalarLike(input, kLanczosCoefficients[i]);
       XlaOp index = ScalarLike(input, i);
       num = num - lanczos_coefficient / ((z + index + one) * (z + index + one));
@@ -922,7 +922,6 @@ XlaOp Igamma(XlaOp a, XlaOp x) {
         ScalarLike(a, 1) - IgammacContinuedFraction<VALUE>(
                                ax, x, a, And(enabled, use_igammac), type),
         IgammaSeries<VALUE>(ax, x, a, And(enabled, Not(use_igammac)), type));
-    output = Select(underflow, ZerosLike(output), output);
     output = Select(x_is_zero, ZerosLike(output), output);
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
@@ -968,7 +967,6 @@ XlaOp IgammaGradA(XlaOp a, XlaOp x) {
                               ax, x, a, And(enabled, use_igammac), type),
                           IgammaSeries<DERIVATIVE>(
                               ax, x, a, And(enabled, Not(use_igammac)), type));
-    output = Select(underflow, ZerosLike(output), output);
     output = Select(x_is_zero, ZerosLike(output), output);
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
@@ -1016,7 +1014,6 @@ XlaOp RandomGammaGrad(XlaOp a, XlaOp x) {
                               ax, x, a, And(enabled, use_igammac), type),
                           IgammaSeries<SAMPLE_DERIVATIVE>(
                               ax, x, a, And(enabled, Not(use_igammac)), type));
-    output = Select(underflow, ZerosLike(output), output);
     output = Select(x_is_zero, ZerosLike(output), output);
     output = Select(Or(domain_error, is_nan), FullLike(a, nan), output);
     return output;
@@ -1061,8 +1058,7 @@ XlaOp Igammac(XlaOp a, XlaOp x) {
                                       ax, x, a, And(enabled, use_igamma), type),
                IgammacContinuedFraction<VALUE>(
                    ax, x, a, And(enabled, Not(use_igamma)), type));
-    return Select(underflow, ZerosLike(a),
-                  Select(out_of_range, FullLike(a, 1), result));
+    return Select(out_of_range, FullLike(a, 1), result);
   };
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto a_shape, b.GetShape(a));
@@ -1115,11 +1111,28 @@ XlaOp RoundToEven(XlaOp x) {
 
 // acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x)) if x != -1
 //           pi                                if x == -1
+// For complex:
+// acos(x) = -(i * log(x + i * sqrt((1 + x) * (1 - x))))
 XlaOp Acos(XlaOp x) {
-  return Select(Ne(x, FullLike(x, -1)),
-                ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
-                                           ScalarLike(x, 1.0) + x),
-                FullLike(x, M_PI));
+  XlaBuilder* b = x.builder();
+  return b->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b->GetShape(x));
+
+    if (primitive_util::IsComplexType(shape.element_type())) {
+      auto one = ScalarLike(x, 1);
+      auto imag_one = Complex(
+          Zero(b, primitive_util::ComplexComponentType(shape.element_type())),
+          One(b, primitive_util::ComplexComponentType(shape.element_type())));
+
+      auto result =
+          Neg(imag_one * Log(x + imag_one * Sqrt((one + x) * (one - x))));
+      return result;
+    }
+    return Select(Ne(x, FullLike(x, -1)),
+                  ScalarLike(x, 2.0) * Atan2(Sqrt(ScalarLike(x, 1.0) - x * x),
+                                             ScalarLike(x, 1.0) + x),
+                  FullLike(x, M_PI));
+  });
 }
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
@@ -1395,11 +1408,6 @@ XlaOp NextAfter(XlaOp from, XlaOp to) {
     // Cast back to the original type.
     return BitcastConvertType(result, shape.element_type());
   });
-}
-
-XlaOp Logistic(XlaOp x) {
-  auto half = xla::ScalarLike(x, 0.5);
-  return half + half * xla::Tanh(half * x);
 }
 
 // Computes an approximation to the modified Bessel function of the first kind,

@@ -111,7 +111,7 @@ class ThreadPoolHandleOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, MakeResourceHandleToOutput(
                             ctx, 0, cinfo_.container(), cinfo_.name(),
-                            MakeTypeIndex<ThreadPoolResource>()));
+                            TypeIndex::Make<ThreadPoolResource>()));
   }
 
  private:
@@ -216,10 +216,11 @@ class ThreadPoolDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         DCHECK(input_impl_ != nullptr);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
       }
 
@@ -348,10 +349,11 @@ class MaxIntraOpParallelismDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         DCHECK(input_impl_ != nullptr);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
       }
 
@@ -470,10 +472,11 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         DCHECK(input_impl_ != nullptr);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         return Status::OK();
       }
 

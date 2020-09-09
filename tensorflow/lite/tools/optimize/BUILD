@@ -17,6 +17,7 @@ cc_library(
     srcs = ["modify_model_interface.cc"],
     hdrs = ["modify_model_interface.h"],
     deps = [
+        ":model_utils",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/kernels/internal:compatibility",
@@ -107,8 +108,8 @@ cc_library(
         "//tensorflow/lite:minimal_logging",
         "//tensorflow/lite/c:common",
         "//tensorflow/lite/core/api",
+        "//tensorflow/lite/kernels/internal:cppmath",
         "//tensorflow/lite/kernels/internal:quantization_util",
-        "//tensorflow/lite/kernels/internal:round",
         "//tensorflow/lite/kernels/internal:tensor_utils",
         "//tensorflow/lite/kernels/internal:types",
         "//tensorflow/lite/schema:schema_fbs",
@@ -285,6 +286,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/maximum.bin",
         "//tensorflow/lite/tools/optimize:testdata/minimum.bin",
         "//tensorflow/lite/tools/optimize:testdata/mixed.bin",
+        "//tensorflow/lite/tools/optimize:testdata/mixed16x8.bin",
         "//tensorflow/lite/tools/optimize:testdata/multi_input_add_reshape.bin",
         "//tensorflow/lite/tools/optimize:testdata/pack.bin",
         "//tensorflow/lite/tools/optimize:testdata/single_avg_pool_min_minus_5_max_plus_5.bin",
@@ -295,6 +297,7 @@ tf_cc_test(
         "//tensorflow/lite/tools/optimize:testdata/split.bin",
         "//tensorflow/lite/tools/optimize:testdata/svdf_calibrated.bin",
         "//tensorflow/lite/tools/optimize:testdata/svdf_quantized.bin",
+        "//tensorflow/lite/tools/optimize:testdata/transpose.bin",
         "//tensorflow/lite/tools/optimize:testdata/unpack.bin",
     ],
     tags = [

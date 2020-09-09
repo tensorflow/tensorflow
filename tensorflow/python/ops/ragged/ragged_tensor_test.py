@@ -41,6 +41,7 @@ from tensorflow.python.ops.ragged.ragged_tensor import RaggedTensorSpec
 from tensorflow.python.ops.ragged.row_partition import RowPartition
 
 from tensorflow.python.platform import googletest
+from tensorflow.python.util import nest
 
 
 def int32array(values):
@@ -150,18 +151,19 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     row_splits = constant_op.constant([0, 2, 2, 5, 6, 7], dtypes.int64)
     rp = RowPartition.from_row_splits(row_splits)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 'RaggedTensor constructor is private'):
+    with self.assertRaisesRegex(ValueError,
+                                'RaggedTensor constructor is private'):
       RaggedTensor(values=values, row_partition=rp)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 'values must be a Tensor or RaggedTensor'):
+    with self.assertRaisesRegex(
+        TypeError,
+        r"""type\(values\) must be one of: 'Tensor, RaggedTensor.*"""):
       RaggedTensor(values=range(7), row_partition=rp, internal=True)
 
-    with self.assertRaisesRegexp(TypeError,
-                                 'row_partition must be a RowPartition'):
-      RaggedTensor(values=values, row_partition=[0, 2, 2, 5, 6, 7],
-                   internal=True)
+    with self.assertRaisesRegex(TypeError,
+                                'row_partition must be a RowPartition'):
+      RaggedTensor(
+          values=values, row_partition=[0, 2, 2, 5, 6, 7], internal=True)
 
   #=============================================================================
   # RaggedTensor Factory Ops
@@ -307,7 +309,7 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
   def testFromRowSplitsWithEmptySplits(self):
     err_msg = 'row_splits tensor may not be empty'
-    with self.assertRaisesRegexp(ValueError, err_msg):
+    with self.assertRaisesRegex(ValueError, err_msg):
       RaggedTensor.from_row_splits([], [])
 
   def testFromRowStarts(self):
@@ -510,18 +512,18 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         constant_op.constant([0, 0, 2, 2, 2, 3, 4], dtypes.int64)
     ]
     nrows = [constant_op.constant(6, dtypes.int64)]
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, 'nested_nrows must have the same '
         'length as nested_value_rowids'):
       RaggedTensor.from_nested_value_rowids(values, nested_value_rowids, nrows)
 
   def testFromNestedValueRowIdsWithNonListInput(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         TypeError, 'nested_value_rowids must be a list of Tensors'):
       RaggedTensor.from_nested_value_rowids(
           [1, 2, 3], constant_op.constant([[0, 1, 2], [0, 1, 2]], dtypes.int64))
-    with self.assertRaisesRegexp(TypeError,
-                                 'nested_nrows must be a list of Tensors'):
+    with self.assertRaisesRegex(TypeError,
+                                'nested_nrows must be a list of Tensors'):
       RaggedTensor.from_nested_value_rowids([1, 2, 3], [[0, 1, 2], [0, 1, 2]],
                                             constant_op.constant([3, 3]))
 
@@ -577,8 +579,8 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         rt, [[[b'a', b'b'], []], [[b'c', b'd', b'e']], [], [[b'f'], [b'g']]])
 
   def testFromNestedRowSplitsWithNonListInput(self):
-    with self.assertRaisesRegexp(TypeError,
-                                 'nested_row_splits must be a list of Tensors'):
+    with self.assertRaisesRegex(TypeError,
+                                'nested_row_splits must be a list of Tensors'):
       RaggedTensor.from_nested_row_splits(
           [1, 2], constant_op.constant([[0, 1, 2], [0, 1, 2]], dtypes.int64))
 
@@ -587,32 +589,31 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     value_rowids = constant_op.constant([0, 0, 2, 2, 2, 3, 4], dtypes.int64)
     nrows = constant_op.constant(5, dtypes.int64)
 
-    with self.assertRaisesRegexp(ValueError, r'Expected nrows >= 0; got -2'):
+    with self.assertRaisesRegex(ValueError, r'Expected nrows >= 0; got -2'):
       RaggedTensor.from_value_rowids(
           values=values,
           value_rowids=array_ops.placeholder_with_default(value_rowids, None),
           nrows=-2)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'Expected nrows >= value_rowids\[-1\] \+ 1; got nrows=2, '
         r'value_rowids\[-1\]=4'):
       RaggedTensor.from_value_rowids(
           values=values, value_rowids=value_rowids, nrows=2)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r'Expected nrows >= value_rowids\[-1\] \+ 1; got nrows=4, '
         r'value_rowids\[-1\]=4'):
       RaggedTensor.from_value_rowids(
           values=values, value_rowids=value_rowids, nrows=4)
 
-    with self.assertRaisesRegexp(ValueError,
-                                 r'Shape \(7, 1\) must have rank 1'):
+    with self.assertRaisesRegex(ValueError, r'Shape \(7, 1\) must have rank 1'):
       RaggedTensor.from_value_rowids(
           values=values,
           value_rowids=array_ops.expand_dims(value_rowids, 1),
           nrows=nrows)
 
-    with self.assertRaisesRegexp(ValueError, r'Shape \(1,\) must have rank 0'):
+    with self.assertRaisesRegex(ValueError, r'Shape \(1,\) must have rank 0'):
       RaggedTensor.from_value_rowids(
           values=values,
           value_rowids=value_rowids,
@@ -631,9 +632,9 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
         values = constant_op.constant([1, 2, 3], dtypes.int64)
       with ops.Graph().as_default():
         splits = constant_op.constant([0, 2, 3], dtypes.int64)
-      self.assertRaisesRegexp(ValueError,
-                              '.* must be from the same graph as .*',
-                              RaggedTensor.from_row_splits, values, splits)
+      with self.assertRaisesRegex(ValueError,
+                                  '.* must be from the same graph as .*'):
+        RaggedTensor.from_row_splits(values, splits)
 
   #=============================================================================
   # Ragged Value & Row-Partitioning Tensor Accessors
@@ -754,11 +755,16 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     if not context.executing_eagerly():
       rt5 = RaggedTensor.from_row_splits(
           array_ops.placeholder(dtype=dtypes.string), [0, 2, 3, 5])
-      self.assertEqual(rt5.shape.ndims, None)
+      self.assertIsNone(rt5.shape.ndims)
 
       rt6 = RaggedTensor.from_row_splits(
           [1, 2, 3], array_ops.placeholder(dtype=dtypes.int64))
       self.assertEqual(rt6.shape.as_list(), [None, None])
+
+  def testGetShape(self):
+    rt = RaggedTensor.from_row_splits(b'a b c d e f g'.split(),
+                                      [0, 2, 5, 6, 6, 7])
+    self.assertEqual(rt.shape.as_list(), rt.get_shape().as_list())
 
   #=============================================================================
   # RaggedTensor.__str__
@@ -1418,8 +1424,8 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     rt = ragged_factory_ops.constant([[0], [1], [2], [3]])
     batched_variant = rt._to_variant(batched_input=True)
     nested_batched_variant = array_ops.reshape(batched_variant, [2, 2])
-    with self.assertRaisesRegexp(ValueError,
-                                 'output_ragged_rank must be equal to'):
+    with self.assertRaisesRegex(ValueError,
+                                'output_ragged_rank must be equal to'):
       RaggedTensor._from_variant(
           nested_batched_variant,
           dtype=dtypes.int32,
@@ -1480,8 +1486,75 @@ class RaggedTensorTest(test_util.TensorFlowTestCase, parameterized.TestCase):
       self.assertNumpyObjectTensorsRecursivelyEqual(
           expected, actual, 'Expected %r, got %r' % (expected, actual))
     else:
-      with self.assertRaisesRegexp(ValueError, 'only supported in eager mode'):
+      with self.assertRaisesRegex(ValueError, 'only supported in eager mode'):
         rt.numpy()
+
+  @parameterized.parameters([
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, None),
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, [None, None, None]),
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, [2, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, None),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [None, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [2, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [2, None, 3]),
+      ([[[1, 2, 3]]], 1, [1, 1, None]),
+      ([[[1, 2, 3]]], 1, [1, 1, 3]),
+  ])
+  def testRaggedTensorSetShape(self, rt, rt_ragged_rank, shape):
+    rt1 = ragged_factory_ops.constant(rt, ragged_rank=rt_ragged_rank)
+    rt1._set_shape(shape)
+    rt1.shape.assert_is_compatible_with(shape)
+    if shape is not None:
+      self.assertIsNot(rt1.shape.rank, None)
+      for a, b in zip(rt1.shape, shape):
+        if b is not None:
+          self.assertEqual(a, b)
+
+  @parameterized.parameters([
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, None),
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, [None, None, None]),
+      ([[[1, 2], [3, 4, 5]], [[6]]], 2, [2, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, None),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [None, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [2, None, None]),
+      ([[[1, 2, 3], [4, 5, 6]], [[7, 8, 9]]], 1, [2, None, 3]),
+      ([[[1, 2, 3]]], 1, [1, 1, None]),
+      ([[[1, 2, 3]]], 1, [1, 1, 3]),
+  ])
+  def testRaggedTensorSetShapeWithPlaceholders(self, rt, rt_ragged_rank, shape):
+    rt2 = nest.map_structure(
+        lambda x: array_ops.placeholder_with_default(x, None),
+        ragged_factory_ops.constant(rt, ragged_rank=rt_ragged_rank),
+        expand_composites=True)
+    rt2._set_shape(shape)
+    rt2.shape.assert_is_compatible_with(shape)
+    if shape is not None:
+      self.assertIsNot(rt2.shape.rank, None)
+      for a, b in zip(rt2.shape, shape):
+        if b is not None:
+          self.assertEqual(a, b)
+
+  def testRaggedTensorSetShapeUniformRowLength(self):
+    rt = [[[1], [2], [3]], [[4], [5], [6]]]
+
+    rt1 = RaggedTensor.from_tensor(rt, ragged_rank=1)
+    rt1._set_shape([2, 3, 1])
+
+    rt2 = nest.map_structure(
+        lambda x: array_ops.placeholder_with_default(x, None),
+        rt1, expand_composites=True)
+    rt2._set_shape([2, 3, 1])
+
+  def testRaggedTensorSetShapeInconsistentShapeError(self):
+    rt = RaggedTensor.from_tensor([[[1], [2], [3]], [[4], [5], [6]]],
+                                  ragged_rank=1)
+    self.assertEqual(rt.shape.as_list(), [2, 3, 1])
+    with self.assertRaises(ValueError):
+      rt._set_shape([None, None, 5])
+    with self.assertRaisesRegex(ValueError, 'Inconsistent size'):
+      rt._set_shape([None, 5, None])
+    with self.assertRaises(ValueError):
+      rt._set_shape([5, None, None])
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1495,10 +1568,15 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
 
   def testConstruction(self):
     spec1 = RaggedTensorSpec(ragged_rank=1)
-    self.assertEqual(spec1._shape.rank, None)
+    self.assertIsNone(spec1._shape.rank)
     self.assertEqual(spec1._dtype, dtypes.float32)
     self.assertEqual(spec1._row_splits_dtype, dtypes.int64)
     self.assertEqual(spec1._ragged_rank, 1)
+
+    self.assertIsNone(spec1.shape.rank)
+    self.assertEqual(spec1.dtype, dtypes.float32)
+    self.assertEqual(spec1.row_splits_dtype, dtypes.int64)
+    self.assertEqual(spec1.ragged_rank, 1)
 
     spec2 = RaggedTensorSpec(shape=[None, None, None])
     self.assertEqual(spec2._shape.as_list(), [None, None, None])
@@ -1506,12 +1584,12 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
     self.assertEqual(spec2._row_splits_dtype, dtypes.int64)
     self.assertEqual(spec2._ragged_rank, 2)
 
-    with self.assertRaisesRegexp(ValueError, 'Must specify ragged_rank'):
+    with self.assertRaisesRegex(ValueError, 'Must specify ragged_rank'):
       RaggedTensorSpec()
-    with self.assertRaisesRegexp(TypeError, 'ragged_rank must be an int'):
+    with self.assertRaisesRegex(TypeError, 'ragged_rank must be an int'):
       RaggedTensorSpec(ragged_rank=constant_op.constant(1))
-    with self.assertRaisesRegexp(ValueError,
-                                 'ragged_rank must be less than rank'):
+    with self.assertRaisesRegex(ValueError,
+                                'ragged_rank must be less than rank'):
       RaggedTensorSpec(ragged_rank=2, shape=[None, None])
 
   def testValueType(self):
@@ -1664,6 +1742,17 @@ class RaggedTensorSpecTest(test_util.TensorFlowTestCase,
     first_row = rt_spec._unbatch()._from_tensor_list(
         [t[0] for t in tensor_list])
     self.assertAllEqual(rt[0], first_row)
+
+  def testToFromBatchedTensorListPreservesUniformRowLengths(self):
+    rt = RaggedTensor.from_tensor(array_ops.zeros([3, 4, 5]),
+                                  ragged_rank=2)
+    rt_spec = rt._type_spec
+    tensor_list = rt_spec._to_batched_tensor_list(rt)
+    rt_reconstructed = rt_spec._from_tensor_list(tensor_list)
+    self.assertAllEqual(rt, rt_reconstructed)
+    self.assertTrue(rt.shape.is_fully_defined())
+    self.assertTrue(rt_reconstructed.shape.is_fully_defined())
+    self.assertEqual(rt.shape.as_list(), rt_reconstructed.shape.as_list())
 
   @parameterized.parameters([
       (RaggedTensorSpec([2, None], dtypes.float32, 1), 32,

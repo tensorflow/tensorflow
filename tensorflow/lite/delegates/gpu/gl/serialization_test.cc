@@ -45,18 +45,19 @@ struct ProgramDesc {
 };
 
 struct Handler : public DeserializationHandler {
-  Status OnShader(absl::Span<const char> shader_src) final {
+  absl::Status OnShader(absl::Span<const char> shader_src) final {
     shaders.push_back(std::string(shader_src.data(), shader_src.size()));
-    return OkStatus();
+    return absl::OkStatus();
   }
 
-  Status OnProgram(const std::vector<Variable>& parameters,
-                   const std::vector<Object>& objects,
-                   const uint3& workgroup_size, const uint3& num_workgroups,
-                   size_t shader_index) final {
+  absl::Status OnProgram(const std::vector<Variable>& parameters,
+                         const std::vector<Object>& objects,
+                         const uint3& workgroup_size,
+                         const uint3& num_workgroups,
+                         size_t shader_index) final {
     programs.push_back(
         {parameters, objects, workgroup_size, num_workgroups, shader_index});
-    return OkStatus();
+    return absl::OkStatus();
   }
 
   void OnOptions(const CompiledModelOptions& o) final { options = o; }

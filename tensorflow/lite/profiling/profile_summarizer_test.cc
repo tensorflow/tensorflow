@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
 #include "tensorflow/lite/profiling/buffered_profiler.h"
-#include "tensorflow/lite/testing/util.h"
 #include "tensorflow/lite/version.h"
 
 namespace tflite {
@@ -182,13 +181,13 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfTrue) {
   EXPECT_EQ(2, events.size());
   int event_count_of_subgraph_zero = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 0; });
+      [](auto event) { return event->extra_event_metadata == 0; });
   int event_count_of_subgraph_one = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 1; });
+      [](auto event) { return event->extra_event_metadata == 1; });
   int event_count_of_subgraph_two = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 2; });
+      [](auto event) { return event->extra_event_metadata == 2; });
   EXPECT_EQ(1, event_count_of_subgraph_zero);
   EXPECT_EQ(1, event_count_of_subgraph_one);
   EXPECT_EQ(0, event_count_of_subgraph_two);
@@ -209,13 +208,13 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
   EXPECT_EQ(2, events.size());
   int event_count_of_subgraph_zero = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 0; });
+      [](auto event) { return event->extra_event_metadata == 0; });
   int event_count_of_subgraph_one = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 1; });
+      [](auto event) { return event->extra_event_metadata == 1; });
   int event_count_of_subgraph_two = std::count_if(
       events.begin(), events.end(),
-      [](auto event) { return event->event_subgraph_index == 2; });
+      [](auto event) { return event->extra_event_metadata == 2; });
   EXPECT_EQ(1, event_count_of_subgraph_zero);
   EXPECT_EQ(0, event_count_of_subgraph_one);
   EXPECT_EQ(1, event_count_of_subgraph_two);
@@ -224,9 +223,3 @@ TEST_F(ProfileSummarizerIfOpTest, TestIfFalse) {
 }  // namespace
 }  // namespace profiling
 }  // namespace tflite
-
-int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

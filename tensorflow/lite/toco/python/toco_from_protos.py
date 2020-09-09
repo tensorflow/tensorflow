@@ -21,7 +21,7 @@ import argparse
 import sys
 
 # We need to import pywrap_tensorflow prior to the toco wrapper.
-# pylint: disable=invalud-import-order,g-bad-import-order
+# pylint: disable=invalid-import-order,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 from tensorflow.python import _pywrap_toco_api
 from tensorflow.python.platform import app

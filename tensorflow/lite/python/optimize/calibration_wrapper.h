@@ -26,6 +26,8 @@ limitations under the License.
 // automatically move <Python.h> before <locale>.
 #include <Python.h>
 
+#include "tensorflow/lite/interpreter.h"
+
 // We forward declare TFLite classes here to avoid exposing them to SWIG.
 namespace tflite {
 namespace ops {
@@ -35,7 +37,6 @@ class BuiltinOpResolver;
 }  // namespace ops
 
 class FlatBufferModel;
-class Interpreter;
 
 namespace interpreter_wrapper {
 class PythonErrorReporter;
@@ -56,11 +57,12 @@ class CalibrationWrapper {
   ~CalibrationWrapper();
 
   PyObject* Prepare();
+  PyObject* Prepare(PyObject* input_shapes);
 
   PyObject* FeedTensor(PyObject* input_value);
 
   PyObject* QuantizeModel(int input_py_type, int output_py_type,
-                          bool allow_float, bool enable_mlir_quantizer = false);
+                          bool allow_float, int activations_py_type);
 
   // Allows quantizing only the operator that produces the tensor with name
   // operator_output_name. (This can be used to help debug.).

@@ -102,14 +102,14 @@ class ParseDebugTensorNameTest(test_util.TensorFlowTestCase):
     self.assertEqual(0, exec_index)
 
   def testParseMalformedDebugTensorName(self):
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r"The debug tensor name in the to-be-evaluated expression is "
         r"malformed:"):
       evaluator._parse_debug_tensor_name(
           "/job:ps/replica:0/task:2/cpu:0:foo:1:DebugNanCount:1337")
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError,
         r"The debug tensor name in the to-be-evaluated expression is "
         r"malformed:"):
@@ -184,7 +184,7 @@ class EvaluatorTest(test_util.TensorFlowTestCase):
     with test.mock.patch.object(
         dump, "get_tensors", side_effect=fake_get_tensors, autospec=True):
       ev = evaluator.ExpressionEvaluator(dump)
-      with self.assertRaisesRegexp(
+      with self.assertRaisesRegex(
           ValueError, "Eval failed due to the value of .* being unavailable"):
         ev.evaluate("np.matmul(`a:0`, `b:0`)")
 
@@ -206,7 +206,7 @@ class EvaluatorTest(test_util.TensorFlowTestCase):
     with test.mock.patch.object(
         dump, "get_tensors", side_effect=fake_get_tensors, autospec=True):
       ev = evaluator.ExpressionEvaluator(dump)
-      with self.assertRaisesRegexp(ValueError, r"multiple \(2\) devices"):
+      with self.assertRaisesRegex(ValueError, r"multiple \(2\) devices"):
         ev.evaluate("`a:0` + `a:0`")
 
       self.assertAllClose(
@@ -252,12 +252,12 @@ class EvaluatorTest(test_util.TensorFlowTestCase):
   def testEvaluateExpressionWithInvalidDebugTensorName(self):
     dump = test.mock.MagicMock()
     ev = evaluator.ExpressionEvaluator(dump)
-    with self.assertRaisesRegexp(
-        ValueError, r".* tensor name .* expression .* malformed"):
+    with self.assertRaisesRegex(ValueError,
+                                r".* tensor name .* expression .* malformed"):
       ev.evaluate("np.matmul(`a`, `b`)")
 
-    with self.assertRaisesRegexp(
-        ValueError, r".* tensor name .* expression .* malformed"):
+    with self.assertRaisesRegex(ValueError,
+                                r".* tensor name .* expression .* malformed"):
       ev.evaluate("np.matmul(`a:0:DebugIdentity:0`, `b:1:DebugNanCount:2`)")
 
     with self.assertRaises(ValueError):

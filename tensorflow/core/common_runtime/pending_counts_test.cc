@@ -144,25 +144,24 @@ TEST(PendingCounts, AdjustForActivation) {
     PendingCounts::Handle h = handles[id];
     // Test for both packed and large.
     int count = (id == 0) ? 5 : 15;
-    int pending, dead;
 
     PendingCounts c(layout);
     c.set_initial_count(h, count);
     EXPECT_EQ(c.pending(h), count);
 
     // Don't increment the dead count this time
-    c.adjust_for_activation(h, false, &pending, &dead);
+    PendingCounts::AdjustResult result = c.adjust_for_activation(h, false);
     EXPECT_EQ(c.pending(h), count - 1);
-    EXPECT_EQ(c.pending(h), pending);
+    EXPECT_TRUE(result.any_pending);
     EXPECT_EQ(c.dead_count(h), 0);
-    EXPECT_EQ(c.dead_count(h), dead);
+    EXPECT_FALSE(result.any_dead);
 
     // Increment the dead count this time
-    c.adjust_for_activation(h, true, &pending, &dead);
+    result = c.adjust_for_activation(h, true);
     EXPECT_EQ(c.pending(h), count - 2);
-    EXPECT_EQ(c.pending(h), pending);
-    EXPECT_EQ(c.dead_count(h), dead);
+    EXPECT_TRUE(result.any_pending);
     EXPECT_EQ(c.dead_count(h), 1);
+    EXPECT_TRUE(result.any_dead);
   }
 }
 

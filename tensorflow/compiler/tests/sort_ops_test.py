@@ -129,42 +129,35 @@ class XlaSortOpTest(xla_test.XLATestCase):
 
   def testTopKZeros(self):
     """Tests that positive and negative zeros sort correctly."""
-    # Only bfloat16 is implemented.
-    bfloat16 = dtypes.bfloat16.as_numpy_dtype
-    if bfloat16 not in self.numeric_types:
-      return
-
-    with self.session() as sess:
-      p = array_ops.placeholder(dtypes.bfloat16)
-      with self.test_scope():
-        topk = nn_ops.top_k(p, k=4)
-      results = sess.run(
-          topk,
-          {p: np.array([0., -0., 0., 3., -0., -4., 0., -0.], dtype=bfloat16)})
-      self.assertAllEqual(
-          np.array([3., 0., 0., 0.], dtype=bfloat16), results[0])
-      self.assertEqual(list([3, 0, 2, 6]), list(results[1]))
+    supported_types = set([dtypes.bfloat16.as_numpy_dtype, np.float32])
+    for dtype in supported_types.intersection(self.numeric_types):
+      with self.session() as sess:
+        p = array_ops.placeholder(dtype)
+        with self.test_scope():
+          topk = nn_ops.top_k(p, k=4)
+        results = sess.run(
+            topk,
+            {p: np.array([0., -0., 0., 3., -0., -4., 0., -0.], dtype=dtype)})
+        self.assertAllEqual(np.array([3., 0., 0., 0.], dtype=dtype), results[0])
+        self.assertEqual(list([3, 0, 2, 6]), list(results[1]))
 
   def testTopKInfinities(self):
     """Tests that positive and negative infinity sort correctly."""
-    # Only bfloat16 is implemented.
-    bfloat16 = dtypes.bfloat16.as_numpy_dtype
-    if bfloat16 not in self.numeric_types:
-      return
-
-    with self.session() as sess:
-      p = array_ops.placeholder(dtypes.bfloat16)
-      with self.test_scope():
-        topk = nn_ops.top_k(p, k=6)
-      results = sess.run(topk, {
-          p: np.array(
-              [1, 2, float("inf"), -float("inf"), -1, -2], dtype=bfloat16)
-      })
-      self.assertAllEqual(
-          np.array(
-              [float("inf"), 2.0, 1.0, -1.0, -2.0, -float("inf")],
-              dtype=bfloat16), results[0])
-      self.assertEqual(list([2, 1, 0, 4, 5, 3]), list(results[1]))
+    supported_types = set([dtypes.bfloat16.as_numpy_dtype, np.float32])
+    for dtype in supported_types.intersection(self.numeric_types):
+      with self.session() as sess:
+        p = array_ops.placeholder(dtype)
+        with self.test_scope():
+          topk = nn_ops.top_k(p, k=6)
+        results = sess.run(topk, {
+            p:
+                np.array([1, 2, float("inf"), -float("inf"), -1, -2],
+                         dtype=dtype)
+        })
+        self.assertAllEqual(
+            np.array([float("inf"), 2.0, 1.0, -1.0, -2.0, -float("inf")],
+                     dtype=dtype), results[0])
+        self.assertEqual(list([2, 1, 0, 4, 5, 3]), list(results[1]))
 
   def testInTopK(self):
     supported_types = set([np.int32, np.int64])

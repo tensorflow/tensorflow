@@ -42,6 +42,7 @@ struct MainFlags {
   string out_header;
   string out_session_module;
   string mlir_components;
+  bool experimental_quantize = false;
 
   // C++ codegen options
   bool gen_name_to_index = false;

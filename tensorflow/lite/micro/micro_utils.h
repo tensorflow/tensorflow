@@ -34,6 +34,9 @@ uint8_t FloatToSymmetricQuantizedUInt8(const float value, const float scale);
 int8_t FloatToAsymmetricQuantizedInt8(const float value, const float scale,
                                       const int zero_point);
 
+int16_t FloatToAsymmetricQuantizedInt16(const float value, const float scale,
+                                        const int zero_point);
+
 int8_t FloatToSymmetricQuantizedInt8(const float value, const float scale);
 
 // Converts a float value into a signed thirty-two-bit quantized value.  Note
@@ -45,9 +48,10 @@ int32_t FloatToSymmetricQuantizedInt32(const float value, const float scale);
 //
 // There are several key flavors of quantization in TfLite:
 //        asymmetric symmetric  per channel
-// int8  |     X    |    X    |     X      |
-// uint8 |     X    |    X    |            |
-// int32 |          |    X    |     X      |
+// int8_t  |     X    |    X    |     X      |
+// uint8_t |     X    |    X    |            |
+// int16_t |     X    |         |            |
+// int32_t |          |    X    |     X      |
 //
 // The per-op quantization spec can be found here:
 // https://www.tensorflow.org/lite/performance/quantization_spec
@@ -57,6 +61,9 @@ void AsymmetricQuantize(const float* input, int8_t* output, int num_elements,
 
 void AsymmetricQuantize(const float* input, uint8_t* output, int num_elements,
                         float scale, int zero_point = 128);
+
+void AsymmetricQuantize(const float* input, int16_t* output, int num_elements,
+                        float scale, int zero_point = 0);
 
 void SymmetricQuantize(const float* input, int32_t* output, int num_elements,
                        float scale);
@@ -86,6 +93,17 @@ void SymmetricQuantize(const float* values, TfLiteIntArray* dims,
 void SymmetricDequantize(const int8_t* values, const int size,
                          const float dequantization_scale,
                          float* dequantized_values);
+
+template <typename T>
+void AsymmetricDequantize(const T* values, const int size,
+                          const float dequantization_scale,
+                          int dequantization_zero_point,
+                          float* dequantized_values) {
+  for (int i = 0; i < size; ++i) {
+    dequantized_values[i] =
+        (values[i] - dequantization_zero_point) * dequantization_scale;
+  }
+}
 
 }  // namespace tflite
 

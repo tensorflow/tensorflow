@@ -149,7 +149,7 @@ class DeviceSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     d.parse_from_string("/job:muu/device:GPU:2")
     self.assertEqual("/job:muu/device:GPU:2", d.to_string())
 
-    with self.assertRaisesRegexp(ValueError, "Cannot specify multiple"):
+    with self.assertRaisesRegex(ValueError, "Cannot specify multiple"):
       d.parse_from_string("/job:muu/device:GPU:2/cpu:0")
 
   @parameterized.named_parameters(*TEST_V1_AND_V2)
@@ -173,7 +173,7 @@ class DeviceSpecTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     self.assertAllEqual(["muu", "GPU", 2],
                         [d.job, d.device_type, d.device_index])
 
-    with self.assertRaisesRegexp(ValueError, "Cannot specify multiple"):
+    with self.assertRaisesRegex(ValueError, "Cannot specify multiple"):
       d.parse_from_string("/job:muu/device:GPU:2/cpu:0")
 
   def test_merge_legacy(self):

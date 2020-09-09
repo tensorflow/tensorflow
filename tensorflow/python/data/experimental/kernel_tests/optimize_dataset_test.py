@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import os
 import warnings
 
 from absl.testing import parameterized
@@ -99,6 +100,28 @@ def _captured_refvar_test_combinations():
     name, dataset_fn = y
     return x + combinations.combine(
         dataset_fn=combinations.NamedObject(name, dataset_fn))
+
+  return functools.reduce(reduce_fn, cases, [])
+
+
+def _disable_intra_op_parallelism_test_combinations():
+
+  def make_tensor_dataset():
+    return dataset_ops.Dataset.from_tensors(42)
+
+  def make_map_dataset():
+    return dataset_ops.Dataset.from_tensors(42).map(lambda x: x + 1)
+
+  cases = [
+      ("FromTensors", make_tensor_dataset, [42]),
+      ("Map", make_map_dataset, [43]),
+  ]
+
+  def reduce_fn(x, y):
+    name, dataset_fn, expected_output = y
+    return x + combinations.combine(
+        dataset_fn=combinations.NamedObject(name, dataset_fn),
+        expected_output=[expected_output])
 
   return functools.reduce(reduce_fn, cases, [])
 
@@ -185,6 +208,22 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     dataset = dataset.with_options(options)
     self.assertDatasetProduces(dataset, expected_output=[[0]])
 
+  @combinations.generate(
+      combinations.times(test_base.default_test_combinations(),
+                         _disable_intra_op_parallelism_test_combinations()))
+  def testOptimizationDisableIntraOpParallelism(self, dataset_fn,
+                                                expected_output):
+    os.environ["TF_DATA_EXPERIMENT_OPT_IN"] = "disable_intra_op_parallelism"
+    os.environ["TF_JOB_NAME"] = "test_job"
+
+    dataset = dataset_fn()
+    dataset = dataset.apply(testing.assert_next(["MaxIntraOpParallelism"]))
+
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
+
+    del os.environ["TF_DATA_EXPERIMENT_OPT_IN"]
+    del os.environ["TF_JOB_NAME"]
+
   @combinations.generate(test_base.default_test_combinations())
   def testOptimizationThreadPoolDataset(self):
     dataset = dataset_ops.Dataset.range(10).batch(10)
@@ -225,11 +264,14 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       optimized_it = dataset_ops.make_initializable_iterator(optimized_dataset)
 
     self.assertGreaterEqual(len(w), 1)
-    expected = ("tf.data graph rewrites are not compatible with "
-                "tf.Variable. The following rewrites will be disabled: %s."
-                " To enable rewrites, use resource variables instead by "
-                "calling `tf.enable_resource_variables()` at the start of the "
-                "program." % (", ".join(options._graph_rewrites())))
+    graph_rewrites = options._graph_rewrites()
+    expected = (
+        "tf.data graph rewrites are not compatible with "
+        "tf.Variable. The following rewrites will be disabled: %s."
+        " To enable rewrites, use resource variables instead by "
+        "calling `tf.enable_resource_variables()` at the start of the "
+        "program." %
+        (", ".join(graph_rewrites.enabled + graph_rewrites.default)))
     self.assertTrue(any(expected in str(warning) for warning in w))
 
     # Check that outputs are the same in the optimized and unoptimized cases,
@@ -251,57 +293,162 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
         break
 
   @combinations.generate(test_base.default_test_combinations())
-  def testOptimizationEnabledByDefault(self):
-    """Tests that some optimizations are applied to datasets by default."""
+  def testOptimizationDefault(self):
+    """Tests the optimization settings by default."""
     options = dataset_ops.Options()
-    expected_optimizations = [
+    expected_optimizations_enabled = []
+    expected_optimizations_disabled = []
+    expected_optimizations_default = [
         "map_and_batch_fusion",
         "noop_elimination",
         "shuffle_and_repeat_fusion",
     ]
-    self.assertEqual(
-        set(options._graph_rewrites()), set(expected_optimizations))
+    graph_rewrites = options._graph_rewrites()
+    self.assertEqual(set(graph_rewrites.enabled),
+                     set(expected_optimizations_enabled))
+    self.assertEqual(set(graph_rewrites.disabled),
+                     set(expected_optimizations_disabled))
+    self.assertEqual(set(graph_rewrites.default),
+                     set(expected_optimizations_default))
+
+    options.experimental_optimization.apply_default_optimizations = True
+    graph_rewrites = options._graph_rewrites()
+    self.assertEqual(set(graph_rewrites.enabled),
+                     set(expected_optimizations_enabled))
+    self.assertEqual(set(graph_rewrites.disabled),
+                     set(expected_optimizations_disabled))
+    self.assertEqual(set(graph_rewrites.default),
+                     set(expected_optimizations_default))
+
+    options.experimental_optimization.apply_default_optimizations = False
+    expected_optimizations_default = []
+    graph_rewrites = options._graph_rewrites()
+    self.assertEqual(set(graph_rewrites.enabled),
+                     set(expected_optimizations_enabled))
+    self.assertEqual(set(graph_rewrites.disabled),
+                     set(expected_optimizations_disabled))
+    self.assertEqual(set(graph_rewrites.default),
+                     set(expected_optimizations_default))
 
   @combinations.generate(test_base.default_test_combinations())
-  def testOptimizationDisableDefault(self):
-    """Tests that we can disable all graph optimizations enabled by default.
-
-    If the `apply_default_optimizations` optimization options flag is False,
-    only explicitly enabled optimizations will be applied.
-    """
+  def testOptimizationEnabled(self):
+    """Tests the optimization settings by enabling all."""
     options = dataset_ops.Options()
-    options.experimental_optimization.apply_default_optimizations = False
+    options.experimental_optimization.filter_fusion = True
+    options.experimental_optimization.filter_with_random_uniform_fusion = True
     options.experimental_optimization.hoist_random_uniform = True
+    options.experimental_optimization.map_and_batch_fusion = True
+    options.experimental_optimization.map_and_filter_fusion = True
+    options.experimental_optimization.map_parallelization = True
+    options.experimental_optimization.map_fusion = True
     options.experimental_optimization.noop_elimination = True
-    expected_optimizations = [
+    options.experimental_optimization.parallel_batch = True
+    options.experimental_optimization.shuffle_and_repeat_fusion = True
+    options.experimental_optimization.map_vectorization.enabled = True
+    options.experimental_optimization.autotune_buffers = True
+    options.experimental_deterministic = False
+    options.experimental_stats.latency_all_edges = True
+    options.experimental_slack = True
+
+    expected_optimizations_enabled = [
+        "filter_fusion",
+        "filter_with_random_uniform_fusion",
         "hoist_random_uniform",
+        "map_and_batch_fusion",
+        "map_and_filter_fusion",
+        "map_parallelization",
+        "map_fusion",
         "noop_elimination",
+        "parallel_batch",
+        "shuffle_and_repeat_fusion",
+        "map_vectorization",
+        "inject_prefetch",
+        "make_sloppy",
+        "latency_all_edges",
+        "slack",
     ]
-    self.assertEqual(
-        set(options._graph_rewrites()), set(expected_optimizations))
+    expected_optimizations_disabled = []
+    expected_optimizations_default = []
+    graph_rewrites = options._graph_rewrites()
+    self.assertEqual(set(graph_rewrites.enabled),
+                     set(expected_optimizations_enabled))
+    self.assertEqual(set(graph_rewrites.disabled),
+                     set(expected_optimizations_disabled))
+    self.assertEqual(set(graph_rewrites.default),
+                     set(expected_optimizations_default))
+
+  @combinations.generate(test_base.default_test_combinations())
+  def testOptimizationDisabled(self):
+    """Tests the optimization settings by disabling all."""
+    options = dataset_ops.Options()
+    options.experimental_optimization.filter_fusion = False
+    options.experimental_optimization.filter_with_random_uniform_fusion = False
+    options.experimental_optimization.hoist_random_uniform = False
+    options.experimental_optimization.map_and_batch_fusion = False
+    options.experimental_optimization.map_and_filter_fusion = False
+    options.experimental_optimization.map_parallelization = False
+    options.experimental_optimization.map_fusion = False
+    options.experimental_optimization.noop_elimination = False
+    options.experimental_optimization.parallel_batch = False
+    options.experimental_optimization.shuffle_and_repeat_fusion = False
+    options.experimental_optimization.map_vectorization.enabled = False
+    options.experimental_optimization.autotune = False
+    options.experimental_deterministic = True
+    options.experimental_stats.latency_all_edges = False
+    options.experimental_slack = False
+
+    expected_optimizations_enabled = []
+    expected_optimizations_disabled = [
+        "filter_fusion",
+        "filter_with_random_uniform_fusion",
+        "hoist_random_uniform",
+        "map_and_batch_fusion",
+        "map_and_filter_fusion",
+        "map_parallelization",
+        "map_fusion",
+        "noop_elimination",
+        "parallel_batch",
+        "shuffle_and_repeat_fusion",
+        "map_vectorization",
+        "inject_prefetch",
+        "make_sloppy",
+        "latency_all_edges",
+        "slack",
+    ]
+    expected_optimizations_default = []
+    graph_rewrites = options._graph_rewrites()
+    self.assertEqual(set(graph_rewrites.enabled),
+                     set(expected_optimizations_enabled))
+    self.assertEqual(set(graph_rewrites.disabled),
+                     set(expected_optimizations_disabled))
+    self.assertEqual(set(graph_rewrites.default),
+                     set(expected_optimizations_default))
 
   @combinations.generate(test_base.default_test_combinations())
   def testAutotuningDefaults(self):
     options = dataset_ops.Options()
 
     # Check defaults
-    autotune, algorithm, cpu_budget = options._autotune_settings()
+    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()
     self.assertTrue(autotune)
     self.assertEqual(algorithm,
                      optimization_options._AutotuneAlgorithm.HILL_CLIMB)
     self.assertEqual(cpu_budget, 0)
+    self.assertEqual(ram_budget, 0)
 
   @combinations.generate(test_base.default_test_combinations())
-  def testAutotuningBufferSizes(self):
+  def testAutotuningSettings(self):
     options = dataset_ops.Options()
+    options.experimental_optimization.autotune_cpu_budget = 1000
+    options.experimental_optimization.autotune_ram_budget = 999999999
     options.experimental_optimization.autotune_buffers = True
-    self.assertIn("inject_prefetch", options._graph_rewrites())
-    autotune, algorithm, cpu_budget = options._autotune_settings()
+    self.assertIn("inject_prefetch", options._graph_rewrites().enabled)
+    autotune, algorithm, cpu_budget, ram_budget = options._autotune_settings()
     self.assertTrue(autotune)
     self.assertEqual(algorithm,
                      optimization_options._AutotuneAlgorithm.GRADIENT_DESCENT)
-    self.assertEqual(cpu_budget, 0)
-
+    self.assertEqual(cpu_budget, 1000)
+    self.assertEqual(ram_budget, 999999999)
 
 if __name__ == "__main__":
   test.main()

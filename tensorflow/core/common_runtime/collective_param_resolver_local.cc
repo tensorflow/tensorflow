@@ -17,7 +17,7 @@ limitations under the License.
 #include <stddef.h>
 
 #include <algorithm>
-#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -30,7 +30,10 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/errors.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -72,12 +75,21 @@ const char* GetCollectiveName(const CollectiveParams* cp, bool nccl) {
       return "undef";
   }
 }
+
+string TaskNameFromDeviceName(const string& device_name) {
+  DeviceNameUtils::ParsedName parsed_device;
+  CHECK(DeviceNameUtils::ParseFullName(device_name, &parsed_device));
+  string task_name;
+  CHECK(DeviceNameUtils::GetTaskName(parsed_device, &task_name));
+  return task_name;
+}
 }  // namespace
 
 void CollectiveParamResolverLocal::CompleteGroupLocal(
-    const string& device, CollectiveParams* cp, const GroupRecCallback& done) {
-  VLOG(1) << "CompleteGroupLocal device=" << device << " cp: " << cp << ": "
-          << cp->ToString();
+    const DeviceAttributes& device, CollectiveParams* cp,
+    const GroupRecCallback& done) {
+  VLOG(1) << "CompleteGroupLocal device=" << device.name() << " cp: " << cp
+          << ": " << cp->ToString();
   std::vector<StatusCallback> to_be_called;
   GroupRec* gr = nullptr;
   Status status;
@@ -123,19 +135,27 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     }
   }
   {
+    mutex_lock l(status_mu_);
+    status = status_;
+  }
+  if (!status.ok()) {
+    done(status, nullptr);
+    return;
+  }
+  {
     mutex_lock gr_lock(gr->mu);
     // If there is ever an error associated with a group key, we store the error
     // status and invoke all waiting and future callbacks with this error
     // status.
     VLOG(2) << "gr device_type=" << gr->group.device_type
             << " cp device_type=" << cp->group.device_type
-            << " current device=" << device;
+            << " current device=" << device.name();
     if (gr->status.ok()) {
       // Check for consistency with existing GroupRec.
       if (cp->group.device_type != gr->group.device_type) {
         gr->status = errors::Internal(
-            "Collective Op ", cp->name, " is assigned to device ", device,
-            " with type ", cp->group.device_type.type_string(),
+            "Collective Op ", cp->name, " is assigned to device ",
+            device.name(), " with type ", cp->group.device_type.type_string(),
             " and group_key ", cp->group.group_key, " but that group has type ",
             gr->group.device_type.type_string());
       } else if (cp->group.group_size != gr->group.group_size) {
@@ -147,37 +167,46 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
     }
     if (gr->status.ok()) {
       // Insert device if not already present.
-      auto it = gr->device_set.find(device);
-      if (it == gr->device_set.end()) {
-        if (gr->device_set.size() == gr->group.group_size) {
+      auto it = gr->devices.find(device.name());
+      if (it == gr->devices.end()) {
+        if (gr->devices.size() == gr->group.group_size) {
           // The group is already full.
           gr->status = errors::Internal(
-              "Collective Op ", cp->name, " is assigned to device ", device,
-              " and group_key ", cp->group.group_key,
+              "Collective Op ", cp->name, " is assigned to device ",
+              device.name(), " and group_key ", cp->group.group_key,
               " but that group doesn't contain that device.");
         } else {
           // This is a new device that has not yet joined the group.
-          gr->device_set.insert(device);
-          gr->device_list.push_back(device);
-          DeviceNameUtils::ParsedName parsed_device;
-          DeviceNameUtils::ParseFullName(device, &parsed_device);
-          string task_name = strings::StrCat("/job:", parsed_device.job,
-                                             "/replica:", parsed_device.replica,
-                                             "/task:", parsed_device.task);
-          gr->task_set.insert(task_name);
-          gr->task_list.push_back(task_name);
-          gr->group.num_tasks = static_cast<int32>(gr->task_set.size());
+          gr->devices[device.name()] = device;
+          if (gr->devices.size() == gr->group.group_size) {
+            // The group is full after adding this device, calculate the number
+            // of tasks.
+            std::unordered_set<string> tasks;
+            for (const auto& item : gr->devices) {
+              tasks.insert(TaskNameFromDeviceName(item.first));
+            }
+            gr->group.num_tasks = static_cast<int32>(tasks.size());
+          }
           if (VLOG_IS_ON(1)) {
             string dev_buf;
-            for (const auto& d : gr->device_set) {
-              strings::StrAppend(&dev_buf, ",", d);
+            for (const auto& d : gr->devices) {
+              strings::StrAppend(&dev_buf, ",", d.first);
             }
             VLOG(1) << "CompleteGroupLocal group_key=" << gr->group.group_key
                     << " group_size=" << gr->group.group_size << " (current"
                     << " devices)=(" << dev_buf << ") (number of"
                     << " devices pending)="
-                    << (gr->group.group_size - gr->device_set.size());
+                    << (gr->group.group_size - gr->devices.size());
           }
+        }
+      } else {
+        // If the device already exists, check if the incarnation matches.
+        if (it->second.incarnation() != device.incarnation()) {
+          gr->status = errors::FailedPrecondition(
+              "Device ", device.name(),
+              " current incarnation doesn't match with one in the group. This "
+              "usually means this worker has restarted but the collective "
+              "leader hasn't, or this worker connects to a wrong cluster.");
         }
       }
     }
@@ -186,13 +215,13 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
       cp->group.runtime_details = gr->group.runtime_details;
       // If the group is not yet complete, queue to wait for it.
       VLOG(2) << "group_size " << gr->group.group_size << " set size "
-              << gr->device_set.size() << " gr " << gr;
+              << gr->devices.size() << " gr " << gr;
 
-      if (gr->device_set.size() < gr->group.group_size) {
+      if (gr->devices.size() < gr->group.group_size) {
         gr->waiting.push_back(std::bind(done, std::placeholders::_1, gr));
         return;
       }
-      CHECK_EQ(gr->device_set.size(), gr->group.group_size);
+      CHECK_EQ(gr->devices.size(), gr->group.group_size);
     }
     // At this point, we either have a full group, or an error status.  Ensure
     // that all callbacks are invoked with the appropriate status.
@@ -471,10 +500,15 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
   {
     mutex_lock gl(gr->mu);
     ir->shared.group = gr->group;
-    ir->shared.instance.device_names.assign(gr->device_list.begin(),
-                                            gr->device_list.end());
-    ir->shared.instance.task_names.assign(gr->task_list.begin(),
-                                          gr->task_list.end());
+    ir->shared.instance.device_names.clear();
+    ir->shared.instance.task_names.clear();
+    ir->shared.instance.device_names.reserve(gr->devices.size());
+    ir->shared.instance.task_names.reserve(gr->devices.size());
+    for (const auto& item : gr->devices) {
+      ir->shared.instance.device_names.push_back(item.first);
+      ir->shared.instance.task_names.push_back(
+          TaskNameFromDeviceName(item.first));
+    }
     VLOG(2) << "Initialized names for instance: "
             << ir->shared.instance.ToString();
   }
@@ -576,26 +610,43 @@ void CollectiveParamResolverLocal::FindInstanceRec(
   InstanceRec* irec = nullptr;
   bool exit_outside_locks = false;
   {
+    bool found_instance = false;
     mutex_lock l(instance_mu_);
-    auto it = instance_table_.find(cp->instance.instance_key);
-    if (it != instance_table_.end()) {
-      irec = it->second.get();
-      {
-        mutex_lock l(irec->in_mu);
-        if (irec->is_init) {
-          exit_outside_locks = true;
-        } else {
-          irec->init_waiters.push_back([this, done](InstanceRec* irec) {
-            CallbackWithStatus(done, irec);
-          });
-          return;
+    auto group_it = instance_table_.find(gr->group.group_key);
+    if (group_it != instance_table_.end()) {
+      auto instance_it = group_it->second.find(cp->instance.instance_key);
+      if (instance_it != group_it->second.end()) {
+        irec = instance_it->second.get();
+        {
+          mutex_lock l(irec->in_mu);
+          if (irec->is_init) {
+            exit_outside_locks = true;
+          } else {
+            irec->init_waiters.push_back([this, done](InstanceRec* irec) {
+              CallbackWithStatus(done, irec);
+            });
+            return;
+          }
         }
+        found_instance = true;
       }
-    } else {
+    }
+    if (!found_instance) {
       // Create new InstanceRec.
       irec = new InstanceRec;
-      instance_table_[cp->instance.instance_key].reset(irec);
+      instance_table_[gr->group.group_key][cp->instance.instance_key].reset(
+          irec);
     }
+  }
+  Status status;
+  {
+    mutex_lock l(status_mu_);
+    status = status_;
+  }
+  if (!status.ok()) {
+    mutex_lock il(irec->out_mu);
+    irec->WaitForOutMu(il);
+    irec->status = status;
   }
   if (exit_outside_locks) {
     CallbackWithStatus(done, irec);
@@ -655,15 +706,15 @@ void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
 }
 
 void CollectiveParamResolverLocal::CompleteParamsAsync(
-    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
-    const StatusCallback& done) {
-  VLOG(1) << "CompleteParams local " << device << " for " << cp << ": "
+    const DeviceAttributes& device, CollectiveParams* cp,
+    CancellationManager* cancel_mgr, const StatusCallback& done) {
+  VLOG(1) << "CompleteParams local " << device.name() << " for " << cp << ": "
           << cp->ToString();
   CompleteGroupLocal(
       device, cp,
       [this, device, cp, done](const Status& s, const GroupRec* gr) {
         if (s.ok()) {
-          CompleteInstanceLocal(device, gr, cp, cp->is_source, done);
+          CompleteInstanceLocal(device.name(), gr, cp, cp->is_source, done);
         } else {
           done(s);
         }
@@ -789,9 +840,12 @@ void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
                                                 bool is_source,
                                                 const IRConsumer& f) {
   std::vector<IRConsumer> ready_waiters;
-  {
+  do {
     mutex_lock l(ir->out_mu);
     ir->WaitForOutMu(l);
+    if (!ir->status.ok()) {
+      break;
+    }
     CHECK_EQ(cp->group.group_size, ir->known.size());
     CHECK_GE(cp->default_rank, 0);
     if (!ir->known[cp->default_rank]) {
@@ -827,10 +881,63 @@ void CollectiveParamResolverLocal::WaitForGroup(InstanceRec* ir,
     if (!ir->known_waiters.empty()) {
       ready_waiters = std::move(ir->known_waiters);
     }
-  }
+  } while (false);
   f(ir);
   for (auto& f : ready_waiters) {
     f(ir);
+  }
+}
+
+void CollectiveParamResolverLocal::StartAbort(const Status& s) {
+  {
+    mutex_lock l(status_mu_);
+    if (!status_.ok()) {
+      VLOG(1) << "CollectiveParamResolverLocal already aborted. Ignoring "
+                 "subsequent abortion with status: "
+              << s;
+      return;
+    }
+    status_ = s;
+  }
+  StartAbortLocal(s);
+}
+
+void CollectiveParamResolverLocal::StartAbortLocal(const Status& s) {
+  {
+    mutex_lock l(group_mu_);
+    for (const auto& item : group_table_) {
+      GroupRec* gr = item.second.get();
+      std::vector<StatusCallback> waiting;
+      {
+        mutex_lock gl(gr->mu);
+        gr->status = s;
+        waiting.swap(gr->waiting);
+      }
+      for (const StatusCallback& done : waiting) {
+        done(s);
+      }
+    }
+  }
+  std::vector<InstanceRec*> instances;
+  {
+    mutex_lock l(instance_mu_);
+    for (const auto& group_entry : instance_table_) {
+      for (const auto& item : group_entry.second) {
+        instances.push_back(item.second.get());
+      }
+    }
+  }
+  for (InstanceRec* ir : instances) {
+    std::vector<IRConsumer> known_waiters;
+    {
+      mutex_lock il(ir->out_mu);
+      ir->WaitForOutMu(il);
+      ir->status = s;
+      known_waiters.swap(ir->known_waiters);
+    }
+    for (const IRConsumer& done : known_waiters) {
+      done(ir);
+    }
   }
 }
 

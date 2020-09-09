@@ -20,9 +20,7 @@ from __future__ import print_function
 
 import itertools
 
-from tensorflow.python.client import device_lib
-from tensorflow.python.eager import context
-from tensorflow.python.framework import gpu_util
+from tensorflow.python.framework import config
 from tensorflow.python.platform import tf_logging
 
 
@@ -60,14 +58,16 @@ def _dedup_strings(device_strs):
   return new_device_strs
 
 
-def _log_device_compatibility_check(policy_name, device_attr_list):
+def _log_device_compatibility_check(policy_name, gpu_details_list):
   """Logs a compatibility check if the devices support the policy.
 
   Currently only logs for the policy mixed_float16.
 
   Args:
     policy_name: The name of the dtype policy.
-    device_attr_list: A list of DeviceAttributes.
+    gpu_details_list: A list of dicts, one dict per GPU. Each dict
+      is the device details for a GPU, as returned by
+      `tf.config.experimental.get_device_details()`.
   """
   if policy_name != 'mixed_float16':
     # TODO(b/145686977): Log if the policy is 'mixed_bfloat16'. This requires
@@ -75,19 +75,18 @@ def _log_device_compatibility_check(policy_name, device_attr_list):
     return
   supported_device_strs = []
   unsupported_device_strs = []
-  for device in device_attr_list:
-    if device.device_type == 'GPU':
-      name, cc = gpu_util.compute_capability_from_device_desc(device)
-      name = name or 'Unknown GPU'
-      if cc:
-        device_str = '%s, compute capability %s.%s' % (name, cc[0], cc[1])
-        if cc >= (7, 0):
-          supported_device_strs.append(device_str)
-        else:
-          unsupported_device_strs.append(device_str)
+  for details in gpu_details_list:
+    name = details.get('device_name', 'Unknown GPU')
+    cc = details.get('compute_capability')
+    if cc:
+      device_str = '%s, compute capability %s.%s' % (name, cc[0], cc[1])
+      if cc >= (7, 0):
+        supported_device_strs.append(device_str)
       else:
-        unsupported_device_strs.append(
-            name + ', no compute capability (probably not an Nvidia GPU)')
+        unsupported_device_strs.append(device_str)
+    else:
+      unsupported_device_strs.append(
+          name + ', no compute capability (probably not an Nvidia GPU)')
 
   if unsupported_device_strs:
     warning_str = _COMPAT_CHECK_WARNING_PREFIX + '\n'
@@ -143,11 +142,9 @@ def log_device_compatibility_check(policy_name):
     policy_name: The name of the dtype policy.
   """
   global _logged_compatibility_check
-  # In graph mode, calling list_local_devices may initialize some session state,
-  # so we only call it in eager mode.
-  if not context.executing_eagerly() or _logged_compatibility_check:
+  if _logged_compatibility_check:
     return
   _logged_compatibility_check = True
-  device_attr_list = device_lib.list_local_devices()
-  _log_device_compatibility_check(policy_name, device_attr_list)
-
+  gpus = config.list_physical_devices('GPU')
+  gpu_details_list = [config.get_device_details(g) for g in gpus]
+  _log_device_compatibility_check(policy_name, gpu_details_list)

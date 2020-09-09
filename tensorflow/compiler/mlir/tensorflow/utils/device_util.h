@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_UTILS_DEVICE_UTIL_H_
 
 #include "llvm/ADT/SmallVector.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_structs.h"
 #include "tensorflow/core/common_runtime/device_set.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -40,6 +41,12 @@ void AddDevicesToOp(mlir::Operation* op, const DeviceSet* device_set);
 // failure if can't parse device metadata from the attribute.
 mlir::LogicalResult GetDevicesFromOp(mlir::Operation* op,
                                      mlir::TF::RuntimeDevices* devices);
+
+// Parses a device string and returns its ordinal (id). This will return an
+// error if the device string is invalid or has no id.
+mlir::LogicalResult GetDeviceOrdinalFromDeviceString(mlir::Location loc,
+                                                     llvm::StringRef device,
+                                                     int64_t* device_ordinal);
 
 }  // namespace tensorflow
 

@@ -31,10 +31,12 @@ from tensorflow.python.ops.signal import fft_ops
 from tensorflow.python.ops.signal import reconstruction_ops
 from tensorflow.python.ops.signal import shape_ops
 from tensorflow.python.ops.signal import window_ops
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export('signal.stft')
+@dispatch.add_dispatch_support
 def stft(signals, frame_length, frame_step, fft_length=None,
          window_fn=window_ops.hann_window,
          pad_end=False, name=None):
@@ -95,6 +97,7 @@ def stft(signals, frame_length, frame_step, fft_length=None,
 
 
 @tf_export('signal.inverse_stft_window_fn')
+@dispatch.add_dispatch_support
 def inverse_stft_window_fn(frame_step,
                            forward_window_fn=window_ops.hann_window,
                            name=None):
@@ -156,6 +159,7 @@ def inverse_stft_window_fn(frame_step,
 
 
 @tf_export('signal.inverse_stft')
+@dispatch.add_dispatch_support
 def inverse_stft(stfts,
                  frame_length,
                  frame_step,
@@ -291,6 +295,7 @@ def _enclosing_power_of_two(value):
 
 
 @tf_export('signal.mdct')
+@dispatch.add_dispatch_support
 def mdct(signals, frame_length, window_fn=window_ops.vorbis_window,
          pad_end=False, norm=None, name=None):
   """Computes the [Modified Discrete Cosine Transform][mdct] of `signals`.
@@ -366,6 +371,7 @@ def mdct(signals, frame_length, window_fn=window_ops.vorbis_window,
 
 
 @tf_export('signal.inverse_mdct')
+@dispatch.add_dispatch_support
 def inverse_mdct(mdcts,
                  window_fn=window_ops.vorbis_window,
                  norm=None,

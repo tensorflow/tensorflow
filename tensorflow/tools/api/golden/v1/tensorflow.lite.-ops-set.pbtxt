@@ -2,6 +2,10 @@ path: "tensorflow.lite.OpsSet"
 tf_class {
   is_instance: "<enum \'OpsSet\'>"
   member {
+    name: "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
+    mtype: "<enum \'OpsSet\'>"
+  }
+  member {
     name: "SELECT_TF_OPS"
     mtype: "<enum \'OpsSet\'>"
   }

@@ -17,20 +17,33 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_TENSORFLOW_TRANSLATE_EXPORT_TF_DIALECT_OP_H_
 
 #include "llvm/ADT/StringRef.h"
-#include "mlir/IR/Operation.h"  // TF:llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/utils/export_utils.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/platform/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 
 namespace tensorflow {
 
-// Converts an MLIR operation to TensorFlow NodeDef with given node name. This
+// Extracts the attributes of a MLIR operation and populates the converted
+// attributes in a proto map<string, AttrValue>.
+Status GetAttrValuesFromOperation(mlir::Operation* inst, llvm::StringRef name,
+                                  bool ignore_unregistered_attrs,
+                                  AttrValueMap* attributes);
+
+// Converts a MLIR operation to TensorFlow NodeDef with given node name. This
 // name should be unique to the graph it is being inserted to. If the
 // `ignore_unregistered_attrs` argument is set to true, the attributes which are
-// not in the op registry will be ignored. Set it to true if the returned
-// NodeDef will be executed by the linked TF Eager runtime.
-stream_executor::port::StatusOr<std::unique_ptr<NodeDef>>
-ConvertTFDialectOpToNodeDef(mlir::Operation* inst, llvm::StringRef name,
-                            bool ignore_unregistered_attrs);
+// not in the op registry will be ignored. If the `ignore_unregistered_attrs`
+// argument is not set to true, _output_shapes attribute is added to nodes with
+// ShapedType for the leading values with ShapedType in the results of the
+// nodes. Set it to true if the returned NodeDef will be executed by the linked
+// TF Eager runtime.
+StatusOr<std::unique_ptr<NodeDef>> ConvertTFDialectOpToNodeDef(
+    mlir::Operation* inst, llvm::StringRef name,
+    bool ignore_unregistered_attrs);
 
 }  // namespace tensorflow
 

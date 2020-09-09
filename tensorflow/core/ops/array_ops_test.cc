@@ -27,6 +27,39 @@ limitations under the License.
 
 namespace tensorflow {
 
+TEST(ArrayOpsTest, TensorScatterUpdate_ShapeFn) {
+  ShapeInferenceTestOp op("TensorScatterUpdate");
+
+  INFER_OK(op, "[4,3];[8,2];[8]", "in0");
+  INFER_OK(op, "[?,?];[?,2];[?]", "in0");
+  INFER_OK(op, "[?];[?];[?]", "in0");
+
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op,
+              "[];[?,2];[?]");
+  INFER_ERROR("Indices and updates specified for empty input", op,
+              "[0,2,2];[8,2];[8]");
+  INFER_ERROR(
+      "Dimensions [0,1) of indices[shape=[8,2]] = [8] must match "
+      "dimensions [0,1) of updates[shape=[9]] = [9]",
+      op, "[?,?];[8,2];[9]");
+  INFER_ERROR(
+      "Dimensions [2,2) of input[shape=[?,?]] = [] must match "
+      "dimensions [1,2) of updates[shape=[?,1]] = [1]",
+      op, "[?,?];[?,2];[?,1]");
+}
+
+TEST(ArrayOpsTest, ScatterNd_ShapeFn) {
+  ShapeInferenceTestOp op("ScatterNd");
+
+  INFER_OK(op, "[8,2];[8];[2]", "[?,?]");
+
+  INFER_ERROR("Shape must be rank 1 but is rank 0", op, "[?,2];[?];[]");
+  INFER_ERROR(
+      "Dimensions [0,1) of indices[shape=[8,2]] = [8] must match "
+      "dimensions [0,1) of updates[shape=[9]] = [9]",
+      op, "[8,2];[9];[?]");
+}
+
 TEST(ArrayOpsTest, UnravelIndex_ShapeFn) {
   ShapeInferenceTestOp op("UnravelIndex");
 
@@ -862,12 +895,14 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // No valid shape provided.
   INFER_OK(op, "?;?", "?");
   INFER_OK(op, "[?];?", "?");
+  INFER_OK(op, "?;[?]", "?");
   INFER_OK(op, "[?];[?]", "?");
   INFER_OK(op, "[4];[?]", "?");
 
   // All dimensions provided.
   Tensor new_shape = test::AsTensor<int32>({1, 2, 3});
   op.input_tensors[1] = &new_shape;
+  INFER_OK(op, "?;[3]", "[1,2,3]");
   INFER_OK(op, "[?];[3]", "[1,2,3]");
   INFER_OK(op, "[6];[3]", "[1,2,3]");
   // The number of elements should match for the reshape to succeed.
@@ -878,6 +913,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Unknown dimensions.
   // Flatten:
   new_shape = test::AsTensor<int32>({-1});
+  INFER_OK(op, "?;[1]", "[?]");
   INFER_OK(op, "[?];[1]", "[d0_0]");
   INFER_OK(op, "[2,2];[1]", "[4]");
   // The first dimension is inferred:
@@ -890,6 +926,7 @@ TEST(ArrayOpsTest, Reshape_ShapeFn) {
   // Multiple missing dimensions cannot be inferred.
   new_shape = test::AsTensor<int32>({-1, -1, 2});
   INFER_OK(op, "[8];[3]", "[?,?,2]");
+  INFER_OK(op, "?;[3]", "[?,?,2]");
 
   // Symbolic shape propagation
   new_shape = test::AsTensor<int32>({-1, 2, 3});
@@ -1434,6 +1471,16 @@ TEST(ArrayOpsTest, SpaceToBatchND_ShapeFn) {
     Tensor paddings = test::AsTensor<int32>({0, 0, 0, 0}, {{2, 2}});
     op.input_tensors[2] = &paddings;
     INFER_ERROR("divisible", op, "[1,2,3,1];[2];[2,2]");
+    op.input_tensors[1] = nullptr;
+    op.input_tensors[2] = nullptr;
+  }
+
+  {
+    Tensor block_shape = test::AsTensor<int32>({});
+    op.input_tensors[1] = &block_shape;
+    Tensor paddings = test::AsTensor<int32>({});
+    op.input_tensors[2] = &paddings;
+    INFER_OK(op, "?;[0];[0,2]", "?");
     op.input_tensors[1] = nullptr;
     op.input_tensors[2] = nullptr;
   }

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.eager import context
@@ -25,20 +26,20 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras import combinations
 from tensorflow.python.keras.optimizer_v2 import adadelta
 from tensorflow.python.ops import embedding_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 _DATA_TYPES = [dtypes.half, dtypes.float32, dtypes.float64]
 # TODO(b/143684500): Eigen to support complex sqrt
-if (not test_util.IsBuiltWithNvcc() and not test.is_built_with_rocm()):
+if not test_util.IsBuiltWithNvcc():
   _DATA_TYPES += [dtypes.complex64, dtypes.complex128]
 
 
-class AdadeltaOptimizerTest(test.TestCase):
+class AdadeltaOptimizerTest(test.TestCase, parameterized.TestCase):
 
   def doTestBasic(self, use_resource=False, use_callable_params=False):
     num_updates = 4  # number of ADADELTA steps to perform
@@ -48,10 +49,8 @@ class AdadeltaOptimizerTest(test.TestCase):
           var0_init = [1.0, 2.0]
           var1_init = [3.0, 4.0]
           if use_resource:
-            var0 = resource_variable_ops.ResourceVariable(
-                var0_init, dtype=dtype)
-            var1 = resource_variable_ops.ResourceVariable(
-                var1_init, dtype=dtype)
+            var0 = variables.Variable(var0_init, dtype=dtype)
+            var1 = variables.Variable(var1_init, dtype=dtype)
           else:
             var0 = variables.Variable(var0_init, dtype=dtype)
             var1 = variables.Variable(var1_init, dtype=dtype)
@@ -145,19 +144,19 @@ class AdadeltaOptimizerTest(test.TestCase):
                   self.evaluate(var1),
                   rtol=1e-5)
 
-  @test_util.run_in_graph_and_eager_modes(reset_test=True)
+  @combinations.generate(combinations.combine(mode=["graph", "eager"]))
   def testResourceBasic(self):
     self.doTestBasic(use_resource=True)
 
+  @combinations.generate(combinations.combine(mode=["eager"]))
   def testBasicCallableParams(self):
-    with context.eager_mode():
-      self.doTestBasic(use_resource=True, use_callable_params=True)
+    self.doTestBasic(use_resource=True, use_callable_params=True)
 
   def testMinimizeSparseResourceVariable(self):
     # TODO(tanzheny, omalleyt): Fix test in eager mode.
     with ops.Graph().as_default():
       for dtype in _DATA_TYPES:
-        var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
+        var0 = variables.Variable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
 
         def loss():

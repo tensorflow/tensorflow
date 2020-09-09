@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <unordered_map>
 
+#include "absl/base/casts.h"
 #include "absl/strings/ascii.h"
 #include "absl/strings/escaping.h"
 #include "absl/strings/numbers.h"
@@ -280,6 +281,7 @@ TokKind HloLexer::LexIdentifier() {
   KEYWORD(ROOT);
   KEYWORD(maximal);
   KEYWORD(replicated);
+  KEYWORD(last_tile_dim_replicate);
 
 #undef KEYWORD
 
@@ -368,6 +370,11 @@ TokKind HloLexer::LexNumberOrPattern() {
     auto slice =
         StringPieceFromPointers(token_state_.token_start, current_ptr_);
     if (absl::SimpleAtoi(slice, &token_state_.int64_val)) {
+      return TokKind::kInt;
+    }
+    uint64 uint64_val;
+    if (absl::SimpleAtoi(slice, &uint64_val)) {
+      token_state_.int64_val = absl::bit_cast<int64>(uint64_val);
       return TokKind::kInt;
     }
     LOG(ERROR) << "Failed to parse int literal: " << slice;
@@ -489,6 +496,8 @@ string TokKindToString(TokKind kind) {
       return "kw_maximal";
     case TokKind::kw_replicated:
       return "kw_replicated";
+    case TokKind::kw_last_tile_dim_replicate:
+      return "kw_last_tile_dim_replicate";
     case TokKind::kw_nan:
       return "kw_nan";
     case TokKind::kw_inf:

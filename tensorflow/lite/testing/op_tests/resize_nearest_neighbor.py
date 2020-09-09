@@ -28,23 +28,26 @@ def make_resize_nearest_neighbor_tests(options):
   """Make a set of tests to do resize_nearest_neighbor."""
 
   test_parameters = [{
-      "dtype": [tf.float32, tf.int32],
-      "input_shape": [[1, 3, 4, 3], [1, 10, 2, 1]],
-      "size": [[1, 1], [4, 3], [2, 2], [5, 6]],
-      "align_corners": [False],
-      "fully_quantize": [False],
-  }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 3, 4, 3], [1, 10, 2, 1]],
       "size": [[1, 1], [4, 3], [2, 2], [5, 6]],
       "align_corners": [False],
-      "fully_quantize": [True],
+      "half_pixel_centers": [False],
+      "fully_quantize": [True, False],
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 16, 24, 3], [1, 12, 18, 3]],
       "size": [[8, 12], [12, 18]],
-      "align_corners": [None, True, False],
-      "fully_quantize": [True]
+      "align_corners": [True],
+      "half_pixel_centers": [False],
+      "fully_quantize": [True, False]
+  }, {
+      "dtype": [tf.float32],
+      "input_shape": [[1, 16, 24, 3], [1, 12, 18, 3]],
+      "size": [[8, 12], [12, 18]],
+      "align_corners": [False],
+      "half_pixel_centers": [True],
+      "fully_quantize": [True, False]
   }]
 
   def build_graph(parameters):
@@ -55,7 +58,8 @@ def make_resize_nearest_neighbor_tests(options):
     out = tf.image.resize_nearest_neighbor(
         input_tensor,
         size=parameters["size"],
-        align_corners=parameters["align_corners"])
+        align_corners=parameters["align_corners"],
+        half_pixel_centers=parameters["half_pixel_centers"])
     return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

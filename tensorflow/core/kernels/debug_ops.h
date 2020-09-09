@@ -18,7 +18,7 @@ limitations under the License.
 
 #include <numeric>
 
-#include "tensorflow/core/lib/bfloat16/bfloat16.h"
+#include "tensorflow/core/platform/bfloat16.h"
 
 #if GOOGLE_CUDA || TENSORFLOW_USE_ROCM
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -410,7 +410,8 @@ class DebugIdentityV2Op : public OpKernel {
       : OpKernel(context),
         device_name_(context->device()->name()),
         output_slot_(-1),
-        tensor_debug_mode_(0) {
+        tensor_debug_mode_(0),
+        tfdbg_run_id_() {
     std::vector<string> debug_urls;
     OP_REQUIRES_OK(context, context->GetAttr("debug_urls", &debug_urls));
     for (const string& debug_url : debug_urls) {
@@ -428,16 +429,27 @@ class DebugIdentityV2Op : public OpKernel {
     OP_REQUIRES_OK(context, context->GetAttr("output_slot", &output_slot_));
     OP_REQUIRES_OK(context,
                    context->GetAttr("tensor_debug_mode", &tensor_debug_mode_));
+    if (context->HasAttr("circular_buffer_size")) {
+      OP_REQUIRES_OK(context, context->GetAttr("circular_buffer_size",
+                                               &circular_buffer_size_));
+    } else {
+      circular_buffer_size_ =
+          tfdbg::DebugEventsWriter::kDefaultCyclicBufferSize;
+    }
+    if (context->HasAttr("tfdbg_run_id")) {
+      OP_REQUIRES_OK(context, context->GetAttr("tfdbg_run_id", &tfdbg_run_id_));
+    }
   }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& tensor = context->input(0);
     for (const string& dump_root : dump_roots_) {
       tfdbg::DebugEventsWriter* debug_events_writer =
-          tfdbg::DebugEventsWriter::GetDebugEventsWriter(dump_root);
-      debug_events_writer->WriteGraphExecutionTrace(
-          tfdbg_context_id_, device_name_, op_name_, output_slot_,
-          tensor_debug_mode_, tensor);
+          tfdbg::DebugEventsWriter::GetDebugEventsWriter(
+              dump_root, tfdbg_run_id_, circular_buffer_size_);
+      OP_REQUIRES_OK(context, debug_events_writer->WriteGraphExecutionTrace(
+                                  tfdbg_context_id_, device_name_, op_name_,
+                                  output_slot_, tensor_debug_mode_, tensor));
     }
     context->set_output(0, tensor);
   }
@@ -449,6 +461,8 @@ class DebugIdentityV2Op : public OpKernel {
   string op_name_;
   int32 output_slot_;
   int32 tensor_debug_mode_;
+  int64 circular_buffer_size_;
+  string tfdbg_run_id_;
 };
 
 typedef Eigen::ThreadPoolDevice CPUDevice;

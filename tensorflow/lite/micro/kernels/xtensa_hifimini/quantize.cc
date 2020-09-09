@@ -21,8 +21,8 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/tensor_ctypes.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
+#include "tensorflow/lite/micro/kernels/kernel_util.h"
 #include "tensorflow/lite/micro/kernels/xtensa_hifimini/fixedpoint_utils.h"
-#include "tensorflow/lite/micro/kernels/xtensa_hifimini/utils.h"
 
 namespace tflite {
 namespace ops {
@@ -31,11 +31,9 @@ namespace micro {
 namespace xtensa {
 namespace hifimini {
 
-void AffineQuantize(int scale_multiplier,
-                    const tflite::QuantizationParams& op_params,
+void AffineQuantize(int scale_multiplier, const int32_t zero_point,
                     const RuntimeShape& input_shape, const int16_t* input_data,
                     const RuntimeShape& output_shape, int8_t* output_data) {
-  const int32 zero_point = op_params.zero_point;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
   ae_q56s min_val_56 = AE_CVTQ48A32S(INT16_MIN);
   ae_q56s max_val_56 = AE_CVTQ48A32S(INT16_MAX);
@@ -43,7 +41,7 @@ void AffineQuantize(int scale_multiplier,
 
   const ae_p16x2s* input_data_ptr = (const ae_p16x2s*)(input_data - 2);
 
-  ae_p24x2s scale_multiplier_24x2 = AE_CONVERT_INT32_24x2(scale_multiplier);
+  ae_p24x2s scale_multiplier_24x2 = AE_MOVPA24(scale_multiplier);
 
   int iters = flat_size / 2;
   for (int i = 0; i < iters; i++) {
@@ -55,10 +53,8 @@ void AffineQuantize(int scale_multiplier,
     inputs_24x2 = AE_P24X2S_SRAI(inputs_24x2, 8);
 
     // Q0.23 * Q16.0 == Q16.23
-    ae_q56s sum_56 = AE_ZEROQ56();
-
     {
-      AE_MULAS56P24S_HH(sum_56, scale_multiplier_24x2, inputs_24x2);
+      ae_q56s sum_56 = AE_MULP24S_HH(scale_multiplier_24x2, inputs_24x2);
 
       // Q16.23 -> Q16.0
       // Shift right only 7 bits (23 - 16). This truncated shift aligns the
@@ -78,10 +74,8 @@ void AffineQuantize(int scale_multiplier,
 
       output_data[i * 2] = static_cast<int16_t>(AE_TRUNCA32Q48(sum_56));
     }
-
-    sum_56 = AE_ZEROQ56();
     {
-      AE_MULAS56P24S_LL(sum_56, scale_multiplier_24x2, inputs_24x2);
+      ae_q56s sum_56 = AE_MULP24S_LL(scale_multiplier_24x2, inputs_24x2);
 
       // Q16.23 -> Q16.0
       // Shift right only 7 bits (23 - 16). This truncated shift aligns the
@@ -110,40 +104,40 @@ void AffineQuantize(int scale_multiplier,
 namespace quantize {
 
 struct OpData {
+  int32_t zero_point = 0;
   int scale_multiplier = 0;
 };
 
-static OpData kStaticOpData;
-
 void* Init(TfLiteContext* context, const char* buffer, size_t length) {
-  return nullptr;
+  TFLITE_DCHECK(context->AllocatePersistentBuffer != nullptr);
+  return context->AllocatePersistentBuffer(context, sizeof(OpData));
 }
 
-void Free(TfLiteContext* context, void* buffer) {}
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  TFLITE_DCHECK(node->user_data != nullptr);
+  auto* op_data = static_cast<OpData*>(node->user_data);
 
-  // TODO(b/132070898): Use statically slotted OpData structures until a
-  // scratch memory API is ready.
-  OpData* op_data = &kStaticOpData;
-  node->user_data = op_data;
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  const TfLiteTensor* input = GetInput(context, node, 0);
 
-  op_data->scale_multiplier =
-      xtensa::hifimini::CreateQConstantForInt24(0, 1.f / output->params.scale);
+  // TODO(b/155682734): Fix dangerous input/output scale ratio assumptions.
+  op_data->scale_multiplier = xtensa::hifimini::CreateQConstantForInt24(
+      0, input->params.scale / output->params.scale);
+
+  op_data->zero_point = output->params.zero_point;
 
   return kTfLiteOk;
 }
 
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* op_data = reinterpret_cast<OpData*>(node->user_data);
+  TFLITE_DCHECK(node->user_data != nullptr);
+  auto* op_data = static_cast<OpData*>(node->user_data);
 
-  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
-  TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  const TfLiteEvalTensor* input = tflite::micro::GetEvalInput(context, node, 0);
+  TfLiteEvalTensor* output = tflite::micro::GetEvalOutput(context, node, 0);
 
   tflite::QuantizationParams op_params;
-  op_params.zero_point = output->params.zero_point;
-  op_params.scale = static_cast<double>(output->params.scale);
+  op_params.zero_point = op_data->zero_point;
 
   if (input->type != kTfLiteInt16 && output->type != kTfLiteInt8) {
     TF_LITE_KERNEL_LOG(context, "Input %s, output %s not supported.",
@@ -153,9 +147,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   xtensa::hifimini::AffineQuantize(
-      op_data->scale_multiplier, op_params, GetTensorShape(input),
-      GetTensorData<int16_t>(input), GetTensorShape(output),
-      GetTensorData<int8_t>(output));
+      op_data->scale_multiplier, op_data->zero_point,
+      tflite::micro::GetTensorShape(input),
+      tflite::micro::GetTensorData<int16_t>(input),
+      tflite::micro::GetTensorShape(output),
+      tflite::micro::GetTensorData<int8_t>(output));
   return kTfLiteOk;
 }
 
@@ -163,14 +159,16 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
 // This Op (QUANTIZE) quantizes the input and produces quantized output.
 // AffineQuantize takes scale and zero point and quantizes the float value to
-// quantized output, in int8 or uint8 format.
-TfLiteRegistration* Register_QUANTIZE() {
-  static TfLiteRegistration r = {};
-  r.init = quantize::Init;
-  r.free = quantize::Free;
-  r.prepare = quantize::Prepare;
-  r.invoke = quantize::Eval;
-  return &r;
+// quantized output, in int8_t or uint8_t format.
+TfLiteRegistration Register_QUANTIZE() {
+  return {/*init=*/quantize::Init,
+          /*free=*/nullptr,
+          /*prepare=*/quantize::Prepare,
+          /*invoke=*/quantize::Eval,
+          /*profiling_string=*/nullptr,
+          /*builtin_code=*/0,
+          /*custom_name=*/nullptr,
+          /*version=*/0};
 }
 
 }  // namespace micro

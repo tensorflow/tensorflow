@@ -661,9 +661,9 @@ class BufferAssigner {
 
   // Uses the results of the heap simulator to create a single allocation, with
   // LogicalBuffers packed to specific offsets.
-  void AssignBuffersFromHeapSimulator(const HeapSimulator::Result& result,
-                                      BufferAssignment* assignment,
-                                      LogicalBuffer::Color color);
+  void AssignBuffersFromHeapSimulator(
+      const HeapSimulator::Result<HloValue>& result,
+      BufferAssignment* assignment, LogicalBuffer::Color color);
 
   // Tries to assign the given instruction to the given buffer. Returns if the
   // assignment was successful.
@@ -673,8 +673,7 @@ class BufferAssigner {
   // Split a set of buffers into several sets, each of which contains buffers
   // colored with the same color.
   absl::flat_hash_map<LogicalBuffer::Color,
-                      absl::flat_hash_set<const HloValue*>,
-                      LogicalBuffer::Color::Hasher>
+                      absl::flat_hash_set<const HloValue*>>
   SplitBuffersByColor(const absl::flat_hash_set<const HloValue*>& buffers);
 
   // If true, allocate buffers for constant instructions.

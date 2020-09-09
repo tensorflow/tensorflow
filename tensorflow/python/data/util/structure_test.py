@@ -417,46 +417,46 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     s_nest = structure.type_spec_from_value(value_nest)
     flat_nest = structure.to_tensor_list(s_nest, value_nest)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"SparseTensor.* is not convertible to a tensor with "
         r"dtype.*float32.* and shape \(\)"):
       structure.to_tensor_list(s_tensor, value_sparse_tensor)
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_tensor, value_nest)
 
-    with self.assertRaisesRegexp(
-        TypeError, "Neither a SparseTensor nor SparseTensorValue"):
+    with self.assertRaisesRegex(TypeError,
+                                "Neither a SparseTensor nor SparseTensorValue"):
       structure.to_tensor_list(s_sparse_tensor, value_tensor)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_sparse_tensor, value_nest)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_nest, value_tensor)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_nest, value_sparse_tensor)
 
-    with self.assertRaisesRegexp(ValueError, r"Incompatible input:"):
+    with self.assertRaisesRegex(ValueError, r"Incompatible input:"):
       structure.from_tensor_list(s_tensor, flat_sparse_tensor)
 
-    with self.assertRaisesRegexp(ValueError, "Expected 1 tensors but got 2."):
+    with self.assertRaisesRegex(ValueError, "Expected 1 tensors but got 2."):
       structure.from_tensor_list(s_tensor, flat_nest)
 
-    with self.assertRaisesRegexp(ValueError, "Incompatible input: "):
+    with self.assertRaisesRegex(ValueError, "Incompatible input: "):
       structure.from_tensor_list(s_sparse_tensor, flat_tensor)
 
-    with self.assertRaisesRegexp(ValueError, "Expected 1 tensors but got 2."):
+    with self.assertRaisesRegex(ValueError, "Expected 1 tensors but got 2."):
       structure.from_tensor_list(s_sparse_tensor, flat_nest)
 
-    with self.assertRaisesRegexp(ValueError, "Expected 2 tensors but got 1."):
+    with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 1."):
       structure.from_tensor_list(s_nest, flat_tensor)
 
-    with self.assertRaisesRegexp(ValueError, "Expected 2 tensors but got 1."):
+    with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 1."):
       structure.from_tensor_list(s_nest, flat_sparse_tensor)
 
   def testIncompatibleNestedStructure(self):
@@ -498,20 +498,20 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     s_2 = structure.type_spec_from_value(value_2)
     flat_s_2 = structure.to_tensor_list(s_2, value_2)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, r"SparseTensor.* is not convertible to a tensor with "
         r"dtype.*int32.* and shape \(3,\)"):
       structure.to_tensor_list(s_0, value_1)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_0, value_2)
 
-    with self.assertRaisesRegexp(
-        TypeError, "Neither a SparseTensor nor SparseTensorValue"):
+    with self.assertRaisesRegex(TypeError,
+                                "Neither a SparseTensor nor SparseTensorValue"):
       structure.to_tensor_list(s_1, value_0)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_1, value_2)
 
@@ -519,30 +519,30 @@ class StructureTest(test_base.DatasetTestBase, parameterized.TestCase,
     # needs to account for "a" coming before or after "b". It might be worth
     # adding a deterministic repr for these error messages (among other
     # improvements).
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_2, value_0)
 
-    with self.assertRaisesRegexp(
+    with self.assertRaisesRegex(
         ValueError, "The two structures don't have the same nested structure."):
       structure.to_tensor_list(s_2, value_1)
 
-    with self.assertRaisesRegexp(ValueError, r"Incompatible input:"):
+    with self.assertRaisesRegex(ValueError, r"Incompatible input:"):
       structure.from_tensor_list(s_0, flat_s_1)
 
-    with self.assertRaisesRegexp(ValueError, "Expected 2 tensors but got 3."):
+    with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 3."):
       structure.from_tensor_list(s_0, flat_s_2)
 
-    with self.assertRaisesRegexp(ValueError, "Incompatible input: "):
+    with self.assertRaisesRegex(ValueError, "Incompatible input: "):
       structure.from_tensor_list(s_1, flat_s_0)
 
-    with self.assertRaisesRegexp(ValueError, "Expected 2 tensors but got 3."):
+    with self.assertRaisesRegex(ValueError, "Expected 2 tensors but got 3."):
       structure.from_tensor_list(s_1, flat_s_2)
 
-    with self.assertRaisesRegexp(ValueError, "Expected 3 tensors but got 2."):
+    with self.assertRaisesRegex(ValueError, "Expected 3 tensors but got 2."):
       structure.from_tensor_list(s_2, flat_s_0)
 
-    with self.assertRaisesRegexp(ValueError, "Expected 3 tensors but got 2."):
+    with self.assertRaisesRegex(ValueError, "Expected 3 tensors but got 2."):
       structure.from_tensor_list(s_2, flat_s_1)
 
   @parameterized.named_parameters(

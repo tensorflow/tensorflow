@@ -32,6 +32,7 @@ NS_ASSUME_NONNULL_BEGIN
   TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
   XCTAssertNotNil(options);
   XCTAssertEqual(options.numberOfThreads, 0);
+  XCTAssertFalse(options.useXNNPACK);
 }
 
 - (void)testSetNumberOfThread {
@@ -42,6 +43,14 @@ NS_ASSUME_NONNULL_BEGIN
   XCTAssertEqual(options.numberOfThreads, 0);
   options.numberOfThreads = 3;
   XCTAssertEqual(options.numberOfThreads, 3);
+}
+
+- (void)testUseXNNPACK {
+  TFLInterpreterOptions *options = [[TFLInterpreterOptions alloc] init];
+  options.useXNNPACK = YES;
+  XCTAssertTrue(options.useXNNPACK);
+  options.useXNNPACK = NO;
+  XCTAssertFalse(options.useXNNPACK);
 }
 
 @end

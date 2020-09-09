@@ -91,20 +91,20 @@ class ParseDebugNodeNameTest(test_util.TensorFlowTestCase):
   def testParseDebugNodeName_invalidPrefix(self):
     invalid_debug_node_name_1 = "__copy_ns_a/ns_b/node_c:1_0_DebugIdentity"
 
-    with self.assertRaisesRegexp(ValueError, "Invalid prefix"):
+    with self.assertRaisesRegex(ValueError, "Invalid prefix"):
       debug_graphs.parse_debug_node_name(invalid_debug_node_name_1)
 
   def testParseDebugNodeName_missingDebugOpIndex(self):
     invalid_debug_node_name_1 = "__dbg_node1:0_DebugIdentity"
 
-    with self.assertRaisesRegexp(ValueError, "Invalid debug node name"):
+    with self.assertRaisesRegex(ValueError, "Invalid debug node name"):
       debug_graphs.parse_debug_node_name(invalid_debug_node_name_1)
 
   def testParseDebugNodeName_invalidWatchedTensorName(self):
     invalid_debug_node_name_1 = "__dbg_node1_0_DebugIdentity"
 
-    with self.assertRaisesRegexp(ValueError,
-                                 "Invalid tensor name in debug node name"):
+    with self.assertRaisesRegex(ValueError,
+                                "Invalid tensor name in debug node name"):
       debug_graphs.parse_debug_node_name(invalid_debug_node_name_1)
 
 

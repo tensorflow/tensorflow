@@ -765,8 +765,9 @@ bool Tensor::RefCountIsOne() const {
   }
 
 #define CASES(TYPE_ENUM, STMTS)                                      \
-  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS, LOG(FATAL) << "Type not set"; \
-                     , LOG(FATAL) << "Unexpected type: " << TYPE_ENUM;)
+  CASES_WITH_DEFAULT(TYPE_ENUM, STMTS,                               \
+                     LOG(FATAL) << "Unexpected type: " << TYPE_ENUM; \
+                     , LOG(FATAL) << "Type not set";)
 
 Tensor::Tensor(Allocator* a, DataType type, const TensorShape& shape)
     : shape_(shape), buf_(nullptr) {
@@ -1006,9 +1007,9 @@ inline const strings::AlphaNum& PrintOneElement(const strings::AlphaNum& a,
 }
 inline string PrintOneElement(const tstring& a, bool print_v2) {
   if (print_v2) {
-    return "\"" + absl::CEscape(a) + "\"";
+    return "\"" + absl::Utf8SafeCEscape(a) + "\"";
   } else {
-    return absl::CEscape(a);
+    return absl::Utf8SafeCEscape(a);
   }
 }
 inline float PrintOneElement(const Eigen::half& h, bool print_v2) {

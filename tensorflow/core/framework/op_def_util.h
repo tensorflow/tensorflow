@@ -54,7 +54,7 @@ const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def);
 
 // Produce a human-readable version of an op_def that is more concise
 // than a text-format proto.  Excludes descriptions.
-string SummarizeOpDef(const OpDef& op_def);
+std::string SummarizeOpDef(const OpDef& op_def);
 
 // Returns an error if new_op is not backwards-compatible with (more
 // accepting than) old_op.

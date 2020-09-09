@@ -39,7 +39,7 @@ StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
 
 // Creates a compare HLO instruction and adds it to the computation containing
 // `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
-StatusOr<HloInstruction*> MakeCompareHlo(ComparisonDirection direction,
+StatusOr<HloInstruction*> MakeCompareHlo(Comparison::Direction direction,
                                          HloInstruction* lhs,
                                          HloInstruction* rhs);
 
@@ -61,7 +61,8 @@ StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
 // containing `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
 StatusOr<HloInstruction*> MakeConvolveHlo(
     HloInstruction* lhs, HloInstruction* rhs, int64 feature_group_count,
-    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
+    int64 batch_group_count, const Window& window,
+    const ConvolutionDimensionNumbers& dimension_numbers,
     const PrecisionConfig& precision_config);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
@@ -275,6 +276,11 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
 HloInstruction* BroadcastZeros(HloComputation* computation,
                                PrimitiveType element_type,
                                absl::Span<const int64> broadcast_dimensions);
+
+// Same as above, but fill the tensor with ones.
+HloInstruction* BroadcastOnes(HloComputation* computation,
+                              PrimitiveType element_type,
+                              absl::Span<const int64> broadcast_dimensions);
 
 // Creates a HLO computation that takes arguments of type `domain` and produces
 // a value of type `range`.

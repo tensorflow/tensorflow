@@ -15,19 +15,51 @@ limitations under the License.
 
 #include "tensorflow/compiler/mlir/tensorflow/transforms/graph_optimization_pass.h"
 
-namespace tensorflow {
+#include "mlir/IR/Module.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
+#include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/error_util.h"
+
+namespace mlir {
+namespace TF {
+namespace {
+using Status = ::tensorflow::Status;
+using ConfigProto = ::tensorflow::ConfigProto;
+}  // namespace
 
 Status MlirGraphOptimizationPass::Run(const ConfigProto& config_proto,
-                                      mlir::ModuleOp module) {
+                                      ModuleOp module) {
   if (!config_proto.experimental().enable_mlir_graph_optimization()) {
     VLOG(1) << "Skipping MLIR Graph Optimization Pass"
             << ", session flag not enabled";
     return Status::OK();
   }
 
-  // TODO(ezhulenev): Add something here.
+  VLOG(1) << "Run MLIR Graph Optimization Passes";
+  PassManager pm(module.getContext());
 
-  return Status::OK();
+  // Run island coarsening before shape inference to allow more exact shape
+  // inference using constant folding within islands.
+  pm.addNestedPass<FuncOp>(tf_executor::CreateTFExecutorIslandCoarseningPass());
+  pm.addPass(CreateTFShapeInferencePass());
+
+  // Assign optimal data layout to layout sensitive operations and delete
+  // redundant transposes from the IR.
+  LayoutOptimizationPipelineOptions layout_optimization_options;
+  CreateLayoutOptimizationPipeline(pm, layout_optimization_options);
+
+  // Prepare IR for exporting.
+  pm.addPass(CreateBreakUpIslandsPass());
+
+  // In case of failure, the `diag_handler` converts MLIR errors emitted to the
+  // MLIRContext into a tensorflow::Status.
+  StatusScopedDiagnosticHandler diag_handler(module.getContext());
+  LogicalResult result = pm.run(module);
+  (void)result;
+  return diag_handler.ConsumeStatus();
 }
 
-}  // namespace tensorflow
+}  // namespace TF
+}  // namespace mlir

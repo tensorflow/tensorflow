@@ -385,7 +385,7 @@ size_t FloatToBuffer(float value, char* buffer) {
 
 string FpToString(Fprint fp) {
   char buf[17];
-  snprintf(buf, sizeof(buf), "%016llx", static_cast<uint64>(fp));
+  snprintf(buf, sizeof(buf), "%016llx", static_cast<long long>(fp));
   return string(buf);
 }
 

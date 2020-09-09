@@ -99,6 +99,10 @@ struct ComputeTaskDescriptor {
   //   $2
   //   output_buffer[linear_index] = value;
   // }
+
+  // when operation associative, we can rearrange input tensors
+  // for example add is associative
+  bool is_associative_op = false;
   std::string shader_source;
   std::vector<InputBufferDescriptor> input_buffers;
   // A single per-operation output is supported now.

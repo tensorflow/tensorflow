@@ -42,13 +42,13 @@ limitations under the License.
 //                       tensor<i1>, tensor<f32>, tensor<i32>, tensor<i1>
 //   }
 
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Block.h"  // TF:llvm-project
-#include "mlir/IR/Dialect.h"  // TF:llvm-project
-#include "mlir/IR/Operation.h"  // TF:llvm-project
-#include "mlir/IR/Visitors.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Support/LogicalResult.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Block.h"  // from @llvm-project
+#include "mlir/IR/Dialect.h"  // from @llvm-project
+#include "mlir/IR/Operation.h"  // from @llvm-project
+#include "mlir/IR/Visitors.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Support/LogicalResult.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_device.h"
 
 namespace mlir {
@@ -57,7 +57,7 @@ namespace {
 constexpr char kDeviceAttr[] = "device";
 
 struct LaunchToDeviceAttributePass
-    : public FunctionPass<LaunchToDeviceAttributePass> {
+    : public PassWrapper<LaunchToDeviceAttributePass, FunctionPass> {
   void runOnFunction() override;
 };
 
@@ -104,10 +104,10 @@ LogicalResult HoistOpsAndAnnotateWithDevice(const Dialect* tf_dialect,
 }
 
 void LaunchToDeviceAttributePass::runOnFunction() {
-  const Dialect* tf_dialect = getContext().getRegisteredDialect("tf");
+  const Dialect* tf_dialect = getContext().getLoadedDialect("tf");
   if (!tf_dialect) {
-    signalPassFailure();
     getFunction().emitError() << "'tf' dialect is not registered";
+    return signalPassFailure();
   }
 
   auto result = getFunction().walk([&](tf_device::LaunchOp launch) {
@@ -122,7 +122,7 @@ void LaunchToDeviceAttributePass::runOnFunction() {
 
 }  // anonymous namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateLaunchToDeviceAttributePass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateLaunchToDeviceAttributePass() {
   return std::make_unique<LaunchToDeviceAttributePass>();
 }
 

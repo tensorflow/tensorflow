@@ -40,7 +40,6 @@ py_test(
         "no_windows",
         "noasan",  # TODO(b/137568139): enable after this is fixed.
         "nomsan",  # TODO(b/137568139): enable after this is fixed.
-        "notsan",  # TODO(b/149882556): enable after this is fixed.
     ],
     deps = [
         ":interpreter",
@@ -97,12 +96,15 @@ py_test(
         "@tflite_mobilenet_ssd_quant_protobuf//:tflite_graph.pb",
     ],
     python_version = "PY3",
+    # Increased thread count for reducing timeout failures.
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_oss",
         "no_pip",
         "no_windows",
         "noasan",  # b/144707533
+        "notsan",  # b/160824139
     ],
     deps = [
         ":tflite_convert",
@@ -157,6 +159,26 @@ py_test(
     name = "lite_v2_test",
     srcs = ["lite_v2_test.py"],
     python_version = "PY3",
+    shard_count = 4,
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        ":lite_v2_test_util",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "lite_v2_test_util",
+    testonly = 1,
+    srcs = ["lite_v2_test_util.py"],
     srcs_version = "PY2AND3",
     tags = [
         "no_windows",
@@ -174,11 +196,6 @@ py_test(
     srcs = ["lite_flex_test.py"],
     python_version = "PY3",
     srcs_version = "PY2AND3",
-    tags = [
-        # TODO(b/111881877): Enable in oss after resolving op registry issues.
-        "no_oss",
-        "no_windows",
-    ],
     deps = [
         ":lite",
         "//tensorflow/python:client_testlib",
@@ -196,8 +213,11 @@ py_library(
     deps = [
         ":lite_constants",
         ":op_hint",
+        ":schema_py",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/eager:wrap_function",
+        "@absl_py//absl/logging",
+        "@flatbuffers//:runtime_py",
         "@six_archive//:six",
     ],
 )
@@ -208,12 +228,24 @@ py_test(
     python_version = "PY3",
     srcs_version = "PY2AND3",
     tags = [
+        "no_mac",  # TODO(b/148247402): flatbuffers import broken on Mac OS.
         "no_windows",
     ],
     deps = [
+        ":lite_constants",
         ":util",
+        "//tensorflow:tensorflow_py",
+        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:convert_to_constants",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
         "@six_archive//:six",
     ],
 )

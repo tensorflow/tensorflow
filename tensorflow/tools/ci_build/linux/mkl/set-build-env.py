@@ -173,7 +173,7 @@ class CascadelakePlatform(IntelPlatform):
     if IntelPlatform.use_old_arch_names(self, 9, 1):
       ret_val = self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \
         CASCADELAKE_ARCH_OLD + " "
-      return ret_val + self.BAZEL_PREFIX_ + slef.FLAG_PREFIX_ + \
+      return ret_val + self.BAZEL_PREFIX_ + self.FLAG_PREFIX_ + \
              VNNI_FLAG + " "
     else:
       return self.BAZEL_PREFIX_ + self.ARCH_PREFIX_ + \

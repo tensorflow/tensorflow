@@ -14,14 +14,62 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/kernels/kernel_util.h"
 
+#include <stdint.h>
+#include <stdlib.h>
+
 #include <algorithm>
-#include <cmath>
+#include <limits>
 #include <memory>
 
+#include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/common.h"
+#include "tensorflow/lite/kernels/internal/cppmath.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
-#include "tensorflow/lite/kernels/internal/round.h"
 
 namespace tflite {
+
+namespace {
+
+inline TfLiteTensor* GetMutableInput(const TfLiteContext* context,
+                                     const TfLiteNode* node, int index) {
+  if (context->tensors != nullptr) {
+    return &context->tensors[node->inputs->data[index]];
+  } else {
+    return context->GetTensor(context, node->inputs->data[index]);
+  }
+}
+
+}  // anonymous namespace.
+
+const TfLiteTensor* GetInput(const TfLiteContext* context,
+                             const TfLiteNode* node, int index) {
+  return GetMutableInput(context, node, index);
+}
+
+TfLiteTensor* GetVariableInput(TfLiteContext* context, const TfLiteNode* node,
+                               int index) {
+  TfLiteTensor* tensor = GetMutableInput(context, node, index);
+  return tensor->is_variable ? tensor : nullptr;
+}
+
+TfLiteTensor* GetOutput(TfLiteContext* context, const TfLiteNode* node,
+                        int index) {
+  if (context->tensors != nullptr) {
+    return &context->tensors[node->outputs->data[index]];
+  } else {
+    return context->GetTensor(context, node->outputs->data[index]);
+  }
+}
+
+const TfLiteTensor* GetOptionalInputTensor(const TfLiteContext* context,
+                                           const TfLiteNode* node, int index) {
+  const bool use_tensor = index < node->inputs->size &&
+                          node->inputs->data[index] != kTfLiteOptionalTensor;
+  if (use_tensor) {
+    return GetMutableInput(context, node, index);
+  }
+  return nullptr;
+}
 
 // Per-axis
 TfLiteStatus PopulateConvolutionQuantizationParams(
@@ -62,8 +110,9 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
   TF_LITE_ENSURE(context, affine_quantization->scale);
   const bool is_per_channel = affine_quantization->scale->size > 1;
   if (is_per_channel) {
-    //  Currently only Int8 is supported for per channel quantization.
-    TF_LITE_ENSURE_EQ(context, input->type, kTfLiteInt8);
+    //  Currently only Int8/Int16 is supported for per channel quantization.
+    TF_LITE_ENSURE(context,
+                   input->type == kTfLiteInt8 || input->type == kTfLiteInt16);
     TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteInt8);
     TF_LITE_ENSURE_EQ(context, affine_quantization->scale->size, num_channels);
     TF_LITE_ENSURE_EQ(
@@ -100,11 +149,12 @@ TfLiteStatus PopulateConvolutionQuantizationParams(
         context, input, filter, bias, output, &real_multiplier));
     int exponent;
 
-    // Populate quantization parameteters with multiplier and shift.
+    // Populate quantization parameters with multiplier and shift.
     QuantizeMultiplier(real_multiplier, multiplier, &exponent);
     *shift = -exponent;
   }
-  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8) {
+  if (input->type == kTfLiteInt8 || input->type == kTfLiteUInt8 ||
+      input->type == kTfLiteInt16) {
     TF_LITE_ENSURE_STATUS(CalculateActivationRangeQuantized(
         context, activation, output, output_activation_min,
         output_activation_max));
@@ -124,9 +174,27 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
   // pipeline.
   if (bias) {
     const double bias_scale = static_cast<double>(bias->params.scale);
-    TF_LITE_ENSURE(context,
-                   std::abs(input_product_scale - bias_scale) <=
-                       1e-6 * std::min(input_product_scale, bias_scale));
+    // Here we're making sure the input_product_scale & bias_scale are about the
+    // same. Since we have:
+    // (output - output_zp) * output_scale =
+    // input_product_scale * input_product + bias * bias_scale ---- (0)
+    //
+    // (0) equals:
+    // (input_product + bias) * input_product_scale ----- (1)
+    //           +
+    // bias * (bias_scale - input_product_scale)   ------ (2)
+    //
+    // For the real kernel computation, we're doing (1), so we really need to
+    // make sure (2) has minimum impact on the output, so:
+    // bias * (bias_scale - input_product_scale) / output_scale should be
+    // a small number for an integer.
+    // Since normally bias should be within a small range.
+    // We should expect (bias_scale - input_product_scale) / output_scale to
+    // be a small number like 0.02.
+    const double scale_diff = std::abs(input_product_scale - bias_scale);
+    const double output_scale = static_cast<double>(output->params.scale);
+
+    TF_LITE_ENSURE(context, scale_diff / output_scale <= 0.02);
   }
   return GetQuantizedConvolutionMultipler(context, input, filter, output,
                                           multiplier);
@@ -163,7 +231,7 @@ void CalculateActivationRangeQuantizedImpl(TfLiteFusedActivation activation,
   } else if (activation == kTfLiteActRelu6) {
     *act_min = std::max(qmin, quantize(0.0));
     *act_max = std::min(qmax, quantize(6.0));
-  } else if (activation == kTfLiteActRelu1) {
+  } else if (activation == kTfLiteActReluN1To1) {
     *act_min = std::max(qmin, quantize(-1.0));
     *act_max = std::min(qmax, quantize(1.0));
   } else {

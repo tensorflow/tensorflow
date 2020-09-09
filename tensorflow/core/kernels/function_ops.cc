@@ -21,12 +21,12 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/gradients.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/gradients.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/profiler/lib/traceme.h"
@@ -44,13 +44,28 @@ ArgOp::ArgOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
 void ArgOp::Compute(OpKernelContext* ctx) {
   auto frame = ctx->call_frame();
   OP_REQUIRES(ctx, frame != nullptr, errors::Internal("no call frame"));
-  Tensor val;
-  OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
-  OP_REQUIRES(ctx, val.dtype() == dtype_,
-              errors::InvalidArgument("Type mismatch: actual ",
-                                      DataTypeString(val.dtype()),
-                                      " vs. expect ", DataTypeString(dtype_)));
-  ctx->set_output(0, val);
+  const Tensor* val;
+
+  auto validate_type = [this](const Tensor& val) {
+    if (val.dtype() == dtype_) {
+      return Status::OK();
+    } else {
+      return errors::InvalidArgument("Type mismatch: actual ",
+                                     DataTypeString(val.dtype()),
+                                     " vs. expect ", DataTypeString(dtype_));
+    }
+  };
+
+  if (frame->CanConsumeArg(index_)) {
+    Tensor val;
+    frame->ConsumeArg(index_, &val);
+    OP_REQUIRES_OK(ctx, validate_type(val));
+    ctx->set_output(0, std::move(val));
+  } else {
+    OP_REQUIRES_OK(ctx, frame->GetArg(index_, &val));
+    OP_REQUIRES_OK(ctx, validate_type(*val));
+    ctx->set_output(0, *val);
+  }
 }
 
 RetvalOp::RetvalOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
@@ -73,6 +88,11 @@ REGISTER_SYSTEM_KERNEL_BUILDER(Name(kArgOp).Device(DEVICE_CPU), ArgOp);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceArgOp).Device(DEVICE_CPU), ArgOp);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_CPU), RetvalOp);
 REGISTER_SYSTEM_KERNEL_BUILDER(Name(kDeviceRetOp).Device(DEVICE_CPU), RetvalOp);
+
+// TPU ops are only registered when they are required as part of the larger
+// TPU runtime, and does not need to be registered when selective registration
+// is turned on.
+REGISTER_KERNEL_BUILDER(Name(kRetOp).Device(DEVICE_TPU_SYSTEM), RetvalOp);
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER(type)     \
@@ -252,24 +272,18 @@ class SymbolicGradientOp : public AsyncOpKernel {
     FunctionLibraryRuntime::Options opts;
     opts.rendezvous = ctx->rendezvous();
     opts.cancellation_manager = ctx->cancellation_manager();
+    opts.collective_executor = ctx->collective_executor();
     opts.runner = ctx->runner();
     opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
     opts.stats_collector = ctx->stats_collector();
     opts.step_container = ctx->step_container();
-    opts.collective_executor = ctx->collective_executor();
     std::vector<Tensor> args;
     args.reserve(ctx->num_inputs());
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    profiler::TraceMe trace_me(
-        [&] {
-          return absl::StrCat(
-              "SymbolicGradientOp #parent_step_id=", ctx->step_id(),
-              ",function_step_id=", opts.step_id, "#");
-        },
-        profiler::TraceMeLevel::kInfo);
+    profiler::TraceMe trace_me("SymbolicGradientOp");
     lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
       if (!status.ok()) {
         ctx->SetStatus(status);
@@ -279,7 +293,7 @@ class SymbolicGradientOp : public AsyncOpKernel {
             " tensor(s), but get ", rets->size(), " tensor(s) instead."));
       } else {
         for (size_t i = 0; i < rets->size(); ++i) {
-          ctx->set_output(i, (*rets)[i]);
+          ctx->set_output(i, std::move((*rets)[i]));
         }
       }
       delete rets;
@@ -365,7 +379,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);
 
   FunctionLibraryRuntime::Options opts;
-  opts.runner = ctx->runner();
+  opts.runner = nullptr;  // Use default runner at remote device.
   opts.run_all_kernels_inline = ctx->run_all_kernels_inline();
   opts.source_device = source_device;
   if (opts.source_device != target_device) {
@@ -391,8 +405,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
   profiler::TraceMe trace_me(
       [&] {
         return absl::StrCat("RemoteCallOp#func_name=", func_name,
-                            ",parent_step_id=", ctx->step_id(),
-                            ",function_step_id=", opts.step_id,
                             ",device=", target_device, "#");
       },
       profiler::TraceMeLevel::kInfo);
@@ -404,8 +416,6 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
         profiler::TraceMe activity(
             [&] {
               return absl::StrCat("RemoteCallOpDone#func_name=", func_name,
-                                  ",parent_step_id=", ctx->step_id(),
-                                  ",function_step_id=", function_step_id,
                                   ",device=", target_device, "#");
             },
             profiler::TraceMeLevel::kInfo);
@@ -413,7 +423,7 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
           ctx->SetStatus(status);
         } else {
           for (size_t i = 0; i < rets->size(); ++i) {
-            ctx->set_output(i, (*rets)[i]);
+            ctx->set_output(i, std::move((*rets)[i]));
           }
         }
         delete rets;
@@ -421,13 +431,18 @@ void RemoteCallOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
       });
 }
 
-string RemoteCallOp::TraceString(OpKernelContext* ctx, bool verbose) {
-  string trace_string =
-      strings::StrCat(name_view(), "__", func_.name(), ":", type_string_view());
-  if (!verbose) return trace_string;
-  string trace_args = GetTraceArgument(ctx);
-  if (trace_args.empty()) return trace_string;
-  return strings::StrCat(trace_string, "#", trace_args, "#");
+string RemoteCallOp::TraceString(const OpKernelContext& ctx,
+                                 bool verbose) const {
+  string trace_string = profiler::TraceMeOp(
+      strings::StrCat(name_view(), "__", func_.name()), type_string_view());
+  if (verbose) {
+    string shape = ShapeTraceString(ctx);
+    if (!shape.empty()) {
+      trace_string =
+          profiler::TraceMeEncode(std::move(trace_string), {{"shape", shape}});
+    }
+  }
+  return trace_string;
 }
 
 REGISTER_KERNEL_BUILDER(

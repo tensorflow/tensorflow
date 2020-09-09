@@ -12,14 +12,16 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-// Main abstraction controlling the tflite interpreter.
-// See context.h for the API for defining operations (TfLiteRegistration).
+/// \file
+/// Main abstraction controlling the tflite interpreter.
+/// See context.h for the API for defining operations (TfLiteRegistration).
 #ifndef TENSORFLOW_LITE_INTERPRETER_H_
 #define TENSORFLOW_LITE_INTERPRETER_H_
 
 #include <complex>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -34,7 +36,19 @@ limitations under the License.
 #include "tensorflow/lite/stderr_reporter.h"
 #include "tensorflow/lite/type_to_tflitetype.h"
 
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+#include "tensorflow/lite/experimental/tf_runtime/public/eager_interpreter.h"
+#endif
+
 namespace tflite {
+
+class InterpreterTest;
+class TestDelegate;
+namespace delegates {
+class InterpreterUtils;  // Class for friend declarations.
+}  // namespace delegates
+
+namespace impl {
 
 /// An interpreter for a graph of nodes that input and output from tensors.
 /// Each node of the graph processes a set of input tensors and produces a
@@ -43,35 +57,39 @@ namespace tflite {
 /// Usage:
 ///
 /// <pre><code>
-/// // Create basic model
-/// Interpreter foo(2, 1);
-/// foo.SetTensorParametersReadWrite(0, ...);
-/// foo.SetTensorParametersReadOnly(1, ...);
-/// foo.SetNodeParameters(0, ...)
-/// // Resize input array to 1 length.
-/// foo.ResizeInputTensor(0, 1);
-/// foo.AllocateTensors();
-/// // Install array data
-/// foo.typed_tensor<float>(0)[0] = 3;
-/// foo.Invoke();
-/// foo.typed_tensor<float>(0)[0] = 4;
-/// foo.Invoke();
-/// // Resize input array and set data.
-/// foo.ResizeInputTensor(0, 2);
-/// foo.AllocateTensors();
-/// foo.typed_tensor<float>(0)[0] = 4;
-/// foo.typed_tensor<float>(0)[1] = 8;
-/// foo.Invoke();
+/// // Create model from file. Note that the model instance must outlive the
+/// // interpreter instance.
+/// auto model = tflite::FlatBufferModel::BuildFromFile(...);
+/// if (model == nullptr) {
+///   // Return error.
+/// }
+/// // Create an Interpreter with an InterpreterBuilder.
+/// std::unique_ptr<tflite::Interpreter> interpreter;
+/// tflite::ops::builtin::BuiltinOpResolver resolver;
+/// if (InterpreterBuilder(*model, resolver)(&interpreter) != kTfLiteOk) {
+///   // Return failure.
+/// }
+/// interpreter->AllocateTensors();
+///
+/// auto input = interpreter->typed_tensor<float>(0);
+/// for (int i = 0; i < input_size; i++) {
+///   input[i] = ...;
+//  }
+/// interpreter.Invoke();
 /// </code></pre>
 ///
+/// Note: for nearly all practical use cases, one should not directly construct
+/// an Interpreter object, but rather use the InterpreterBuilder.
 
 class Interpreter {
  public:
-  /// Instantiate an interpreter. All errors associated with reading and
-  /// processing this model will be forwarded to the error_reporter object.
+  // Instantiate an interpreter. All errors associated with reading and
+  // processing this model will be forwarded to the error_reporter object.
   //
-  /// Note, if error_reporter is nullptr, then a default StderrReporter is
-  /// used. Ownership of 'error_reporter' remains with the caller.
+  // Note, if error_reporter is nullptr, then a default StderrReporter is
+  // used. Ownership of 'error_reporter' remains with the caller.
+  // WARNING: Use of this constructor outside of an InterpreterBuilder is not
+  // recommended.
   explicit Interpreter(ErrorReporter* error_reporter = DefaultErrorReporter());
 
   ~Interpreter();
@@ -158,14 +176,23 @@ class Interpreter {
   inline TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name,
       const std::vector<int>& dims, TfLiteQuantizationParams quantization,
-      bool is_variable = false) {
-    return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
-                                        dims.data(), quantization, is_variable);
+      bool is_variable = false,
+      const std::vector<int>* dims_signature = nullptr) {
+    size_t rank_dims_signature = 0;
+    const int* dims_signature_pointer = nullptr;
+    if (dims_signature) {
+      rank_dims_signature = dims_signature->size();
+      dims_signature_pointer = dims_signature->data();
+    }
+    return SetTensorParametersReadWrite(
+        tensor_index, type, name, dims.size(), dims.data(), quantization,
+        is_variable, rank_dims_signature, dims_signature_pointer);
   }
   TfLiteStatus SetTensorParametersReadWrite(
       int tensor_index, TfLiteType type, const char* name, const size_t rank,
       const int* dims, TfLiteQuantizationParams quantization,
-      bool is_variable = false);
+      bool is_variable = false, const size_t rank_dims_signature = 0,
+      const int* dims_signature = nullptr);
 #endif  // DOXYGEN_SKIP
   // Functions to access tensor data
 
@@ -304,12 +331,21 @@ class Interpreter {
 
   /// Change the dimensionality of a given tensor. Note, this is only acceptable
   /// for tensor indices that are inputs or variables.
-  /// Returns status of failure or success.
-  /// TODO(aselle): Consider implementing ArraySlice equivalent to make this
-  ///   more adept at accepting data without an extra copy. Use absl::ArraySlice
-  ///   if our partners determine that dependency is acceptable.
+  /// Returns status of failure or success. Note that this doesn't actually
+  /// resize any existing buffers. A call to AllocateTensors() is required to
+  /// change the tensor input buffer.
   TfLiteStatus ResizeInputTensor(int tensor_index,
                                  const std::vector<int>& dims);
+
+  // WARNING: Experimental interface, subject to change
+  // Change the dimensionality of a given tensor. This is only acceptable for
+  // tensor indices that are inputs or variables. Only unknown dimensions can be
+  // resized with this function. Unknown dimensions are indicated as `-1` in the
+  // `dims_signature` attribute of a `TfLiteTensor`. Returns status of failure
+  // or success.  Note that this doesn't actually resize any existing buffers.
+  /// A call to AllocateTensors() is required to change the tensor input buffer.
+  TfLiteStatus ResizeInputTensorStrict(int tensor_index,
+                                       const std::vector<int>& dims);
 
   // This releases memory held by non-persistent tensors. It does NOT re-perform
   // memory planning.
@@ -317,10 +353,12 @@ class Interpreter {
   /// WARNING: Experimental interface, subject to change
   TfLiteStatus ReleaseNonPersistentMemory();
 
-  /// Update allocations for all tensors. This will redim dependent tensors
-  /// using the input tensor dimensionality as given. This is relatively
-  /// expensive. If you know that your sizes are not changing, you need not call
-  /// this. Returns status of success or failure.
+  // Update allocations for all tensors. This will redim dependent tensors
+  // using the input tensor dimensionality as given. This is relatively
+  // expensive. This *must be* called after the interpreter has been created
+  // and before running inference (and accessing tensor buffers), and *must be*
+  // called again if (and only if) an input tensor is resized. Returns status of
+  // success or failure.
   TfLiteStatus AllocateTensors();
 
   /// Invoke the interpreter (run the whole graph in dependency order).
@@ -331,7 +369,13 @@ class Interpreter {
   /// Returns status of success or failure.
   TfLiteStatus Invoke();
 
-  /// Enable or disable the NN API (true to enable)
+  /// Enable or disable NNAPI (true to enable). Disabled by default.
+  ///
+  /// WARNING: NNAPI cannot be disabled after the graph has been prepared
+  /// (via `AllocateTensors`) with NNAPI enabled.
+  ///
+  /// NOTE: This API is deprecated, prefer using the NNAPI delegate directly.
+  /// This method will be removed in a future release.
   void UseNNAPI(bool enable);
 
   /// Set the number of threads available to the interpreter.
@@ -339,7 +383,7 @@ class Interpreter {
   /// NOTE: num_threads should be >= -1.
   /// User may pass -1 to let the TFLite interpreter set the no of threads
   /// available to itself.
-  void SetNumThreads(int num_threads);
+  TfLiteStatus SetNumThreads(int num_threads);
 
   /// Allow float16 precision for FP32 calculation when possible.
   /// default: not allow.
@@ -365,6 +409,12 @@ class Interpreter {
   /// parts of the graph themselves. After this is called, the graph may
   /// contain new nodes that replace 1 more nodes.
   /// 'delegate' must outlive the interpreter.
+  /// Returns one of the following three status codes:
+  /// 1. kTfLiteOk: Success.
+  /// 2. kTfLiteDelegateError: Delegation failed due to an error in the
+  /// delegate. The Interpreter has been restored to its pre-delegation state.
+  /// NOTE: This undoes all delegates previously applied to the Interpreter.
+  /// 3. kTfLiteError: Unexpected/runtime failure.
   /// WARNING: This is an experimental API and subject to change.
   TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
 
@@ -373,10 +423,29 @@ class Interpreter {
       std::unique_ptr<TfLiteDelegate, void (*)(TfLiteDelegate*)>;
 
   /// Same as ModifyGraphWithDelegate except this interpreter takes
-  /// ownership of the provided delegate. Be sure to construct the unique_ptr
-  /// with a suitable destruction function.
+  /// ownership of the provided delegate.
   /// WARNING: This is an experimental API and subject to change.
-  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegatePtr delegate);
+  template <typename Delegate, typename Deleter>
+  inline TfLiteStatus ModifyGraphWithDelegate(
+      std::unique_ptr<Delegate, Deleter> delegate) {
+    Deleter deleter = std::move(delegate.get_deleter());
+
+    // Note that we retain ownership of the delegate even if graph modification
+    // fails, as delegate use will be in an indeterminate state at that point.
+    owned_delegates_.emplace_back(
+        delegate.release(), [deleter](TfLiteDelegate* delegate_to_delete) {
+          deleter(
+              static_cast<typename std::unique_ptr<Delegate, Deleter>::pointer>(
+                  delegate_to_delete));
+        });
+    return ModifyGraphWithDelegate(owned_delegates_.back().get());
+  }
+
+  /// This overload is *never* OK. TfLiteDelegate is a C structure, so it has no
+  /// virtual destructor. The default deleter of the unique_ptr does not know
+  /// how to delete C++ objects deriving from TfLiteDelegate.
+  TfLiteStatus ModifyGraphWithDelegate(
+      std::unique_ptr<TfLiteDelegate> delegate) = delete;
 
   /// Ensure the data in `tensor.data` is readable. In case delegate is used,
   /// it might require to copy the data from delegate buffer to raw memory.
@@ -459,6 +528,29 @@ class Interpreter {
   void SetExternalContext(TfLiteExternalContextType type,
                           TfLiteExternalContext* ctx);
 
+  // Assigns (or reassigns) a custom memory allocation for the given tensor.
+  // If AllocateTensors() is called after this, the runtime does not consider
+  // the tensor during internal memory planning and will continue using the
+  // provided allocation for the tensor (assuming it satisfies the expected
+  // tensor byte length).
+  // The runtime does NOT take ownership of the underlying memory.
+  // Note that while this function can be called again to set a new allocation
+  // for the tensor, it can no longer be reset to the TFLite arena memory.
+  //
+  // Parameters should satisfy the following conditions:
+  // 1. tensor->allocation_type == kTfLiteArenaRw or kTfLiteArenaRwPersistent
+  //    In general, this is true for I/O tensors & variable tensors.
+  // 2. allocation->data has the appropriate permissions for runtime access
+  //    (Read-only for inputs, Read-Write for others), and outlives Interpreter.
+  // 3. allocation->bytes >= tensor->bytes.
+  //    This condition is checked again if any tensors are resized.
+  // 4. allocation->data should be aligned to kDefaultTensorAlignment
+  //    defined in lite/util.h. (Currently 64 bytes)
+  //
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus SetCustomAllocationForTensor(
+      int tensor_index, const TfLiteCustomAllocation& allocation);
+
 #ifndef DOXYGEN_SKIP
   /// Adds `subgraphs_to_add` subgraphs, preserving pre-existing Subgraph
   /// entries. The value pointed to by `first_new_subgraph_index` will be set to
@@ -494,7 +586,9 @@ class Interpreter {
 
  private:
   friend class InterpreterBuilder;
-  friend class InterpreterTest;
+  friend class tflite::InterpreterTest;
+  friend class tflite::TestDelegate;
+  friend class tflite::delegates::InterpreterUtils;
 
   /// Set the value of an external context.
   static void SetExternalContext(struct TfLiteContext* context,
@@ -502,26 +596,44 @@ class Interpreter {
                                  TfLiteExternalContext* ctx);
 
   // Sets the profiler to all subgraphs.
-  void SetSubgraphProfiler(Profiler* profiler);
+  void SetSubgraphProfiler();
+
+  // Remove delegates (for fallback behaviour). The interpreter is invokable
+  // afterwards.
+  TfLiteStatus RemoveAllDelegates();
+
+  // Returns true if delegates have been applied.
+  bool HasDelegates();
+
+  // Returns true if cancellation function returns true.
+  bool IsCancelled();
+
+  // Get the error reporter associated with this interpreter.
+  ErrorReporter* error_reporter() { return error_reporter_; }
 
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
   // This is the primary subgraph context.
-  TfLiteContext* context_;
+  TfLiteContext* context_ = nullptr;
 
   // The error reporter delegate that tflite will forward queries errors to.
-  ErrorReporter* error_reporter_;
+  ErrorReporter* error_reporter_ = nullptr;
 
   // List of delegates that have been installed and are owned by this
   // interpreter instance. Useful if client delegate ownership is burdensome.
   // WARNING: This is an experimental API and subject to change.
   // TODO(b/116667551): Use TfLiteExternalContext for storing state.
-  std::vector<TfLiteDelegatePtr> owned_delegates_;
+  std::vector<
+      std::unique_ptr<TfLiteDelegate, std::function<void(TfLiteDelegate*)>>>
+      owned_delegates_;
 
   // Profiler that has been installed and is owned by this interpreter instance.
   // Useful if client profiler ownership is burdensome.
   std::unique_ptr<Profiler> owned_profiler_;
+
+  // Points to the installed Profiler instance.
+  Profiler* installed_profiler_ = nullptr;
 
   bool allow_buffer_handle_output_ = false;
 
@@ -540,7 +652,20 @@ class Interpreter {
 
   // A map of resources. Owned by interpreter and shared by multiple subgraphs.
   resource::ResourceMap resources_;
+
+  // Indicating delegates that the TFLite interpreter will apply by default.
+  // An empty one means there's no delegate to be applied by default or
+  // delegates have been applied and doesn't need to be applied again.
+  std::vector<TfLiteDelegatePtr> lazy_delegate_providers_;
 };
+
+}  // namespace impl
+
+#if TFLITE_EXPERIMENTAL_RUNTIME_EAGER
+using Interpreter = tflrt::EagerInterpreter;
+#else
+using Interpreter = impl::Interpreter;
+#endif
 
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_INTERPRETER_H_

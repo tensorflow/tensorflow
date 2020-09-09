@@ -44,7 +44,7 @@ namespace tensorflow {
 namespace {
 
 // Returns the expanded size of a filter used for depthwise convolution.
-// If `shape` is [H, W, ..., M, N] returns [H, W, ..., M, M*N].
+// If `shape` is [H, W, ..., M, N] returns [H, W, ..., 1, M*N].
 xla::Shape GroupedFilterShapeForDepthwiseConvolution(
     const xla::Shape& filter_shape) {
   int64 input_feature_dim = filter_shape.dimensions_size() - 2;
@@ -52,7 +52,7 @@ xla::Shape GroupedFilterShapeForDepthwiseConvolution(
   int64 depthwise_multiplier = filter_shape.dimensions(output_feature_dim);
   int64 input_feature = filter_shape.dimensions(input_feature_dim);
 
-  // Create a [H, W, ..., 1, N*M] reshape of the filter.
+  // Create a [H, W, ..., 1, M*N] reshape of the filter.
   xla::Shape grouped_filter_shape = filter_shape;
   grouped_filter_shape.set_dimensions(input_feature_dim, 1);
   grouped_filter_shape.set_dimensions(output_feature_dim,
@@ -124,7 +124,8 @@ xla::XlaOp ReshapeFilterForDepthwiseConvolution(const xla::Shape& filter_shape,
 // convolutions (as currently implemented).
 Status CheckConvAttrs(const ConvOpAttrs& attrs) {
   const int num_dims = attrs.num_spatial_dims + 2;
-  if (attrs.strides.size() != num_dims) {
+  const int attrs_strides_size = attrs.strides.size();
+  if (attrs_strides_size != num_dims) {
     return errors::InvalidArgument("Sliding window strides field must specify ",
                                    num_dims, " dimensions");
   }
@@ -135,7 +136,8 @@ Status CheckConvAttrs(const ConvOpAttrs& attrs) {
         "Current implementation does not yet support strides in the batch and "
         "depth dimensions.");
   }
-  if (attrs.dilations.size() != num_dims) {
+  const int attrs_dilations_size = attrs.dilations.size();
+  if (attrs_dilations_size != num_dims) {
     return errors::InvalidArgument("Dilations field must specify ", num_dims,
                                    " dimensions");
   }
@@ -200,6 +202,10 @@ xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
   if (!FormatFromString(data_format, &attrs.data_format)) {
     return errors::InvalidArgument("Invalid data format: ", data_format);
   }
+
+  TF_RETURN_IF_ERROR(CheckValidPadding(attrs.padding, attrs.explicit_paddings,
+                                       /*num_dims=*/num_spatial_dims + 2,
+                                       attrs.data_format));
 
   return attrs;
 }

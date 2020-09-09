@@ -84,8 +84,8 @@ class ProcessState : public ProcessStateInterface {
 
   // If these flags need to be runtime configurable consider adding
   // them to ConfigProto.
-  static const bool FLAGS_brain_mem_reg_gpu_dma = true;
-  static const bool FLAGS_brain_gpu_record_mem_types = false;
+  static constexpr bool FLAGS_brain_mem_reg_gpu_dma = true;
+  static constexpr bool FLAGS_brain_gpu_record_mem_types = false;
 
   // Helper method for unit tests to reset the ProcessState singleton by
   // cleaning up everything. Never use in production.
@@ -101,6 +101,13 @@ class ProcessState : public ProcessStateInterface {
   std::vector<Allocator*> cpu_allocators_ TF_GUARDED_BY(mu_);
   std::vector<SubAllocator::Visitor> cpu_alloc_visitors_ TF_GUARDED_BY(mu_);
   std::vector<SubAllocator::Visitor> cpu_free_visitors_ TF_GUARDED_BY(mu_);
+
+  // A cache of cpu allocators indexed by a numa node. Used as a fast path to
+  // get CPU allocator by numa node id without locking the mutex. We can't use
+  // `cpu_allocators_` storage in the lock-free path because concurrent
+  // operation can deallocate the vector storage.
+  std::atomic<int> cpu_allocators_cached_;
+  std::array<Allocator*, 8> cpu_allocators_cache_;
 
   // Optional RecordingAllocators that wrap the corresponding
   // Allocators for runtime attribute use analysis.

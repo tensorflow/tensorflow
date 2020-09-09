@@ -31,6 +31,8 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/blocking_counter.h"
 #include "tensorflow/core/platform/stringprintf.h"
+#include "tensorflow/core/profiler/lib/traceme.h"
+#include "tensorflow/core/profiler/lib/traceme_encode.h"
 
 namespace tensorflow {
 namespace data {
@@ -70,8 +72,8 @@ constexpr char kInterleaveIndices[] = "interleave_indices";
 constexpr char kStagingSize[] = "staging_size";
 constexpr char kStagingIndices[] = "staging_indices";
 constexpr char kWorkerThreadsRunning[] = "worker_threads_running";
-constexpr char kTFDataParallelInterleaveWorker[] =
-    "tf_data_parallel_interleave_worker";
+constexpr char kDataParallelInterleaveWorker[] =
+    "data_parallel_interleave_worker";
 constexpr char kWorker[] = "worker";
 constexpr char kInputSize[] = "input_size";
 constexpr char kInput[] = "input";
@@ -323,6 +325,11 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
             }
             *end_of_sequence = false;
             Status s = current_worker->outputs.front().status;
+            profiler::TraceMe traceme([&] {
+              return profiler::TraceMeEncode(
+                  "ParallelInterleaveConsume",
+                  {{"element_id", current_worker->outputs.front().id}});
+            });
             current_worker->outputs.front().output.swap(*out_tensors);
             current_worker->outputs.pop_front();
             current_worker->cond_var.notify_one();
@@ -396,13 +403,15 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                                                 /*parameters=*/{});
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
-      TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
+      TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+          dataset()->captured_func_->CheckExternalState()));
       // The order of locking is important here to avoid deadlock.
       mutex_lock l(mu_);
       mutex_lock ckpt_l(ckpt_mu_);
       if (input_impl_) {
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
       } else {
         TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInputExhausted, ""));
       }
@@ -416,7 +425,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         TF_RETURN_IF_ERROR(WriteWorkerStateLocked(writer, i));
       }
       for (int i = 0; i < worker_thread_states_.size(); ++i) {
-        TF_RETURN_IF_ERROR(WriteWorkerThreadStateLocked(writer, i));
+        TF_RETURN_IF_ERROR(WriteWorkerThreadStateLocked(ctx, writer, i));
       }
       TF_RETURN_IF_ERROR(writer->WriteScalar(prefix(), kInterleaveSize,
                                              interleave_indices_.size()));
@@ -542,7 +551,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
         for (size_t i = 0; i < dataset()->num_threads(); ++i) {
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           worker_threads_.emplace_back(ctx->StartThread(
-              strings::StrCat(kTFDataParallelInterleaveWorker, "_", i),
+              strings::StrCat(kDataParallelInterleaveWorker, "_", i),
               [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
         }
       }
@@ -562,8 +571,10 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       Status status;
       // The buffered data element.
       std::vector<Tensor> output;
+      int64 id = -1;
 
       explicit OutputElem(const Status& s) : status(s) {}
+      OutputElem(const Status& s, int64 id) : status(s), id(id) {}
     };
 
     // Worker threads operate on their relevant WorkerState structs.
@@ -653,7 +664,7 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
           workers_[i].SetInputs(s, std::move(args));
           std::shared_ptr<IteratorContext> new_ctx(new IteratorContext(*ctx));
           worker_threads_.push_back(ctx->StartThread(
-              strings::StrCat(kTFDataParallelInterleaveWorker, "_", i),
+              strings::StrCat(kDataParallelInterleaveWorker, "_", i),
               [this, new_ctx, i]() { WorkerThread(new_ctx, i); }));
           if (i < dataset()->cycle_length_) {
             interleave_indices_.push_back(i);
@@ -811,6 +822,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                   worker_thread_states_[thread_index]
                       .output_elem.output.empty() &&
                   !worker_thread_states_[thread_index].end_of_sequence) {
+                int64& id = worker_thread_states_[thread_index].output_elem.id;
+                profiler::TraceMe traceme(
+                    [&] {
+                      id = profiler::TraceMe::NewActivityId();
+                      return profiler::TraceMeEncode(
+                          "ParallelInterleaveProduce", {{"element_id", id}});
+                    },
+                    profiler::kInfo);
                 worker_thread_states_[thread_index].output_elem.status =
                     worker_thread_states_[thread_index].iterator->GetNext(
                         ctx.get(),
@@ -854,7 +873,8 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
                 worker_thread_states_[thread_index].end_of_sequence = false;
               } else {
                 workers_[thread_index].outputs.emplace_back(
-                    worker_thread_states_[thread_index].output_elem.status);
+                    worker_thread_states_[thread_index].output_elem.status,
+                    worker_thread_states_[thread_index].output_elem.id);
                 workers_[thread_index].outputs.back().output.swap(
                     worker_thread_states_[thread_index].output_elem.output);
               }
@@ -932,13 +952,14 @@ class ParallelInterleaveDatasetOp::Dataset : public DatasetBase {
       return Status::OK();
     }
 
-    Status WriteWorkerThreadStateLocked(IteratorStateWriter* writer, int index)
+    Status WriteWorkerThreadStateLocked(SerializationContext* ctx,
+                                        IteratorStateWriter* writer, int index)
         TF_EXCLUSIVE_LOCKS_REQUIRED(mu_, ckpt_mu_) {
       string iterator_name =
           strings::StrCat(prefix(), "::", kWorkerThread, "_", index);
       if (worker_thread_states_[index].iterator != nullptr) {
         TF_RETURN_IF_ERROR(
-            SaveInput(writer, worker_thread_states_[index].iterator));
+            SaveInput(ctx, writer, worker_thread_states_[index].iterator));
       } else {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(iterator_name, kIteratorExhausted, ""));

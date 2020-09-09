@@ -106,7 +106,13 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
 
     string DebugString() const override { return "ScanDatasetOp::Dataset"; }
 
-    int64 Cardinality() const override { return input_->Cardinality(); }
+    int64 Cardinality() const override {
+      if (preserve_cardinality_) {
+        return input_->Cardinality();
+      } else {
+        return kUnknownCardinality;
+      }
+    }
 
     Status CheckExternalState() const override {
       TF_RETURN_IF_ERROR(captured_func_->CheckExternalState());
@@ -248,10 +254,12 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
                                          /*ratio=*/1);
       }
 
-      Status SaveInternal(IteratorStateWriter* writer) override {
-        TF_RETURN_IF_ERROR(dataset()->captured_func_->CheckExternalState());
+      Status SaveInternal(SerializationContext* ctx,
+                          IteratorStateWriter* writer) override {
+        TF_RETURN_IF_ERROR(ctx->HandleCheckExternalStateStatus(
+            dataset()->captured_func_->CheckExternalState()));
         mutex_lock l(mu_);
-        TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
+        TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl_));
         if (!state_.empty()) {
           TF_RETURN_IF_ERROR(
               writer->WriteScalar(full_name("state_size"), state_.size()));

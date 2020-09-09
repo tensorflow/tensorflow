@@ -14,14 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "llvm/ADT/STLExtras.h"
-#include "mlir/IR/Attributes.h"  // TF:llvm-project
-#include "mlir/IR/Builders.h"  // TF:llvm-project
-#include "mlir/IR/Function.h"  // TF:llvm-project
-#include "mlir/IR/PatternMatch.h"  // TF:llvm-project
-#include "mlir/Pass/Pass.h"  // TF:llvm-project
-#include "mlir/Pass/PassManager.h"  // TF:llvm-project
-#include "mlir/Pass/PassRegistry.h"  // TF:llvm-project
-#include "mlir/Transforms/Passes.h"  // TF:llvm-project
+#include "mlir/IR/Attributes.h"  // from @llvm-project
+#include "mlir/IR/Builders.h"  // from @llvm-project
+#include "mlir/IR/Function.h"  // from @llvm-project
+#include "mlir/IR/PatternMatch.h"  // from @llvm-project
+#include "mlir/Pass/Pass.h"  // from @llvm-project
+#include "mlir/Pass/PassManager.h"  // from @llvm-project
+#include "mlir/Pass/PassRegistry.h"  // from @llvm-project
+#include "mlir/Transforms/Passes.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/tensorflow/ir/tf_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/transforms/passes.h"
 
@@ -35,7 +35,7 @@ namespace {
 // GpuOpFusionPass is a pass performing fusion specific to GPU targets.
 // This is an ad-hoc pass for now, but should be integrated with some notion
 // of "target" in the MLIR pipeline in the future.
-class GpuOpFusionPass : public FunctionPass<GpuOpFusionPass> {
+class GpuOpFusionPass : public PassWrapper<GpuOpFusionPass, FunctionPass> {
  public:
   void runOnFunction() final;
 };
@@ -60,10 +60,10 @@ class GpuOpFusionPass : public FunctionPass<GpuOpFusionPass> {
 struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
   using OpRewritePattern<ReluOp>::OpRewritePattern;
 
-  PatternMatchResult matchAndRewrite(ReluOp relu_op,
-                                     PatternRewriter &rewriter) const override {
+  LogicalResult matchAndRewrite(ReluOp relu_op,
+                                PatternRewriter &rewriter) const override {
     Operation *relu_input = relu_op.features().getDefiningOp();
-    if (!relu_input) return matchFailure();
+    if (!relu_input) return failure();
     auto batch_norm = dyn_cast_or_null<FusedBatchNormV3Op>(relu_input);
     AddV2Op add_op;
     Value side_input;
@@ -71,7 +71,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
       // We don't have a FusedBatchNorm as input to the ReLu, but we can get
       // through an AddV2 as well.
       add_op = dyn_cast_or_null<AddV2Op>(relu_input);
-      if (!add_op) return matchFailure();
+      if (!add_op) return failure();
 
       batch_norm =
           dyn_cast_or_null<FusedBatchNormV3Op>(add_op.x().getDefiningOp());
@@ -81,17 +81,17 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
         // Didn't get a FusedBatchNorm on the LHS of the AddV2, try the RHS.
         batch_norm =
             dyn_cast_or_null<FusedBatchNormV3Op>(add_op.y().getDefiningOp());
-        if (!batch_norm) return matchFailure();
+        if (!batch_norm) return failure();
         side_input = add_op.x();
       }
     }
     assert(batch_norm);
-    if (batch_norm.is_training()) return matchFailure();
-    if (!batch_norm.y().hasOneUse()) return matchFailure();
+    if (batch_norm.is_training()) return failure();
+    if (!batch_norm.y().hasOneUse()) return failure();
 
     // Build the newly fused operation to replace the batch norm
     OperationState state(batch_norm.getLoc(),
-                         FusedBatchNormExOp::getOperationName());
+                         _FusedBatchNormExOp::getOperationName());
     state.addOperands(batch_norm.getOperands());
     if (side_input) state.operands.push_back(side_input);
     state.addTypes(batch_norm.getResultTypes());
@@ -110,7 +110,7 @@ struct ReluToFusedBatchNorm : public OpRewritePattern<ReluOp> {
       rewriter.replaceOp(add_op, op->getResult(0));
     }
 
-    return matchSuccess();
+    return success();
   }
 };
 
@@ -118,12 +118,12 @@ void GpuOpFusionPass::runOnFunction() {
   FuncOp func = getFunction();
   OwningRewritePatternList patterns;
   patterns.insert<ReluToFusedBatchNorm>(&getContext());
-  applyPatternsGreedily(func, patterns);
+  applyPatternsAndFoldGreedily(func, patterns);
 }
 
 }  // namespace
 
-std::unique_ptr<OpPassBase<FuncOp>> CreateGpuOpFusionPass() {
+std::unique_ptr<OperationPass<FuncOp>> CreateGpuOpFusionPass() {
   return std::make_unique<GpuOpFusionPass>();
 }
 

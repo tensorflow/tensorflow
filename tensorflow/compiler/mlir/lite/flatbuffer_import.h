@@ -17,9 +17,9 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_MLIR_LITE_FLATBUFFER_IMPORT_H_
 
 #include "absl/strings/string_view.h"
-#include "mlir/IR/Location.h"  // TF:llvm-project
-#include "mlir/IR/MLIRContext.h"  // TF:llvm-project
-#include "mlir/IR/Module.h"  // TF:llvm-project
+#include "mlir/IR/Location.h"  // from @llvm-project
+#include "mlir/IR/MLIRContext.h"  // from @llvm-project
+#include "mlir/IR/Module.h"  // from @llvm-project
 
 namespace tflite {
 // Converts a TFLite flatbuffer stored in `buffer` to a MLIR module

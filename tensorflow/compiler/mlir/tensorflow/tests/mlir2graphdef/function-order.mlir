@@ -22,7 +22,7 @@ func @main() {
 // CHECK-NEXT:       name: "tf.Const"
 // CHECK-NEXT:       op: "Const"
 // CHECK-NEXT:       attr {
-// CHECK-NEXT:         key: "dtype"
+// CHECK:              key: "dtype"
 // CHECK-NEXT:         value {
 // CHECK-NEXT:           type: DT_INT32
 // CHECK-NEXT:         }
@@ -43,8 +43,8 @@ func @main() {
 // CHECK-NEXT:       name: "tf.Empty"
 // CHECK-NEXT:       op: "Empty"
 // CHECK-NEXT:       input: "tf.Const:output:0"
-// CHECK-NEXT:       attr {
-// CHECK-NEXT:         key: "dtype"
+// CHECK-NEXT:         attr {
+// CHECK:              key: "dtype"
 // CHECK-NEXT:         value {
 // CHECK-NEXT:           type: DT_FLOAT
 // CHECK-NEXT:         }

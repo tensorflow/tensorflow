@@ -94,6 +94,20 @@ class OpsSet(enum.Enum):
   # quantized implementations.
   TFLITE_BUILTINS_INT8 = "TFLITE_BUILTINS_INT8"
 
+  # Convert model using only TensorFlow Lite operations with quantized int8
+  # weights, int16 activations and int64 bias.
+  # Specifying this will throw an error for operations that do not yet have
+  # quantized implementations.
+  # This quantization mode may be used in models for super-resolution,
+  # audio signal processing or image de-noising. It improves accuracy
+  # significantly, but only slightly increases the model size.
+  # WARNING: These ops are currently experimental and have not yet been
+  # finalized.
+  # They are only compatible with CPU execution, and have not been optimized for
+  # production.
+  EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8 = \
+    "EXPERIMENTAL_TFLITE_BUILTINS_ACTIVATIONS_INT16_WEIGHTS_INT8"
+
   def __str__(self):
     return self.value
 
@@ -106,6 +120,43 @@ class OpsSet(enum.Enum):
 class ConverterError(Exception):
   """Raised when an error occurs during model conversion."""
   pass
+
+
+def mlir_quantize(input_data_str,
+                  disable_per_channel=False,
+                  fully_quantize=False,
+                  inference_type=_types_pb2.INT8):
+  """Quantize `input_data_str` with calibration results.
+
+  Args:
+    input_data_str: Input data in serialized form (e.g. a TFLITE model with
+      calibration results).
+    disable_per_channel: Bool indicating whether to do per-channel or per-tensor
+      quantization
+    fully_quantize: Bool indicating whether to fully quantize the model. Besides
+      model body, the input/output will be quantized as well.
+    inference_type: Data type for the activations. The default value is int8.
+
+  Returns:
+    Quantized model in serialized form (e.g. a TFLITE model) with floating-point
+    inputs and outputs.
+  """
+  return wrap_toco.wrapped_experimental_mlir_quantize(input_data_str,
+                                                      disable_per_channel,
+                                                      fully_quantize,
+                                                      inference_type)
+
+
+def mlir_sparsify(input_data_str):
+  """Sparsify `input_data_str` to encode sparse tensor with proper format.
+
+  Args:
+    input_data_str: Input data in serialized form (e.g. a TFLITE model).
+
+  Returns:
+    Sparsified model in serialized form (e.g. a TFLITE model).
+  """
+  return wrap_toco.wrapped_experimental_mlir_sparsify(input_data_str)
 
 
 def toco_convert_protos(model_flags_str,
@@ -137,9 +188,10 @@ def toco_convert_protos(model_flags_str,
     RuntimeError: When conversion fails, an exception is raised with the error
       message embedded.
   """
-  # TODO(aselle): When toco does not use fatal errors for failure, we can
-  # switch this on.
-  if not _toco_from_proto_bin:
+  # Historically, TOCO conversion failures would trigger a crash, so we would
+  # attempt to run the converter out-of-process. The MLIR conversion pipeline
+  # surfaces errors instead, and can be safely run in-process.
+  if enable_mlir_converter or not _toco_from_proto_bin:
     try:
       model_str = wrap_toco.wrapped_toco_convert(model_flags_str,
                                                  toco_flags_str, input_data_str,
@@ -257,7 +309,11 @@ def build_toco_convert_protos(input_tensors,
                               target_ops=None,
                               allow_nonexistent_arrays=False,
                               debug_info=None,
-                              conversion_summary_dir=None):
+                              conversion_summary_dir=None,
+                              saved_model_dir=None,
+                              saved_model_version=0,
+                              saved_model_tags=None,
+                              saved_model_exported_names=None):
   """Builds protocol buffers describing a conversion of a model using TOCO.
 
   Typically this is to convert from TensorFlow GraphDef to TFLite, in which
@@ -323,6 +379,18 @@ def build_toco_convert_protos(input_tensors,
     debug_info: `GraphDebugInfo` proto containing the stack traces for the
       original nodes referred by the converted graph.
     conversion_summary_dir: A string, the path to the generated conversion logs.
+    saved_model_dir: Filepath of the saved model to be converted. This value
+      will be non-empty only when the saved model import path will be used.
+      Otherwises, the graph def-based conversion will be processed.
+    saved_model_version: SavedModel file format version of The saved model file
+      to be converted. This value will be set only when the SavedModel import
+      path will be used.
+    saved_model_tags: Set of string saved model tags, formatted in the
+      comma-separated value. This value will be set only when the SavedModel
+      import path will be used.
+    saved_model_exported_names: Names to be exported (default: export all) when
+      the saved model import path is on. This value will be set only when the
+      SavedModel import path will be used.
 
   Returns:
     model_flags, toco_flags, debug_info: three protocol buffers describing the
@@ -360,17 +428,19 @@ def build_toco_convert_protos(input_tensors,
   if conversion_summary_dir:
     toco.conversion_summary_dir = conversion_summary_dir
   if target_ops:
-    if set(target_ops) == set([OpsSet.TFLITE_BUILTINS, OpsSet.SELECT_TF_OPS]):
+    if OpsSet.SELECT_TF_OPS in set(target_ops):
       toco.enable_select_tf_ops = True
-    elif set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
-      toco.enable_select_tf_ops = True
+    if set(target_ops) == set([OpsSet.SELECT_TF_OPS]):
       toco.force_select_tf_ops = True
 
   model = _model_flags_pb2.ModelFlags()
   model.change_concat_input_ranges = change_concat_input_ranges
   for idx, input_tensor in enumerate(input_tensors):
     input_array = model.input_arrays.add()
-    input_array.name = util.get_tensor_name(input_tensor)
+    if saved_model_dir:
+      input_array.name = input_tensor.name
+    else:
+      input_array.name = util.get_tensor_name(input_tensor)
     input_array.data_type = util.convert_dtype_to_tflite_type(
         input_tensor.dtype)
 
@@ -393,9 +463,20 @@ def build_toco_convert_protos(input_tensors,
     input_array.shape.dims.extend(dims)
 
   for output_tensor in output_tensors:
-    model.output_arrays.append(util.get_tensor_name(output_tensor))
+    if saved_model_dir:
+      model.output_arrays.append(output_tensor.name)
+    else:
+      model.output_arrays.append(util.get_tensor_name(output_tensor))
 
   model.allow_nonexistent_arrays = allow_nonexistent_arrays
+
+  if saved_model_dir:
+    model.saved_model_dir = saved_model_dir
+  model.saved_model_version = saved_model_version
+  if saved_model_tags:
+    model.saved_model_tags.extend(saved_model_tags)
+  if saved_model_exported_names:
+    model.saved_model_exported_names.extend(saved_model_exported_names)
 
   return model, toco, debug_info
 

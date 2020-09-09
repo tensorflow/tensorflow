@@ -9,8 +9,7 @@
   * `TF_ROCM_VERSION`: The version of the ROCm toolkit. If this is blank, then
     use the system default.
   * `TF_MIOPEN_VERSION`: The version of the MIOpen library.
-  * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets. Default is
-    `gfx803,gfx900`.
+  * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets.
 """
 
 load(
@@ -35,7 +34,7 @@ load(
 
 _GCC_HOST_COMPILER_PATH = "GCC_HOST_COMPILER_PATH"
 _GCC_HOST_COMPILER_PREFIX = "GCC_HOST_COMPILER_PREFIX"
-_ROCM_TOOLKIT_PATH = "ROCM_TOOLKIT_PATH"
+_ROCM_TOOLKIT_PATH = "ROCM_PATH"
 _TF_ROCM_VERSION = "TF_ROCM_VERSION"
 _TF_MIOPEN_VERSION = "TF_MIOPEN_VERSION"
 _TF_ROCM_AMDGPU_TARGETS = "TF_ROCM_AMDGPU_TARGETS"
@@ -44,7 +43,6 @@ _TF_ROCM_CONFIG_REPO = "TF_ROCM_CONFIG_REPO"
 _DEFAULT_ROCM_VERSION = ""
 _DEFAULT_MIOPEN_VERSION = ""
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
-_DEFAULT_ROCM_AMDGPU_TARGETS = ["gfx803", "gfx900"]
 
 def verify_build_defines(params):
     """Verify all variables that crosstool/BUILD.rocm.tpl expects are substituted.
@@ -169,24 +167,7 @@ def auto_configure_warning(msg):
 
 # END cc_configure common functions (see TODO above).
 
-def _host_compiler_includes(repository_ctx, cc):
-    """Computed the list of gcc include directories.
-
-    Args:
-      repository_ctx: The repository context.
-      cc: The path to the gcc host compiler.
-
-    Returns:
-      A list of gcc include directories.
-    """
-    inc_dirs = get_cxx_inc_directories(repository_ctx, cc)
-
-    # Add numpy headers
-    inc_dirs.append("/usr/lib/python2.7/dist-packages/numpy/core/include")
-
-    return inc_dirs
-
-def _rocm_include_path(repository_ctx, rocm_config):
+def _rocm_include_path(repository_ctx, rocm_config, bash_bin):
     """Generates the cxx_builtin_include_directory entries for rocm inc dirs.
 
     Args:
@@ -200,55 +181,25 @@ def _rocm_include_path(repository_ctx, rocm_config):
     """
     inc_dirs = []
 
-    # general ROCm include path
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/include")
-
-    # Add HSA headers
+    # Add HSA headers (needs to match $HSA_PATH)
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hsa/include")
 
-    # Add HIP headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/include/hip/hcc_detail")
+    # Add HIP headers (needs to match $HIP_PATH)
     inc_dirs.append(rocm_config.rocm_toolkit_path + "/hip/include")
 
-    # Add HIP-Clang headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/llvm/lib/clang/8.0/include")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/llvm/lib/clang/9.0.0/include")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/llvm/lib/clang/10.0.0/include")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/llvm/lib/clang/11.0.0/include")
+    # Add HIP-Clang headers (realpath relative to compiler binary)
+    rocm_toolkit_path = realpath(repository_ctx, rocm_config.rocm_toolkit_path, bash_bin)
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/8.0/include")
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/9.0.0/include")
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/10.0.0/include")
+    inc_dirs.append(rocm_toolkit_path + "/llvm/lib/clang/11.0.0/include")
 
-    # Add rocrand and hiprand headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/rocrand/include")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hiprand/include")
-
-    # Add rocfft headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/rocfft/include")
-
-    # Add rocBLAS headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/rocblas/include")
-
-    # Add MIOpen headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/miopen/include")
-
-    # Add RCCL headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/rccl/include")
+    # Support hcc based off clang 10.0.0 (for ROCm 3.3)
+    inc_dirs.append(rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")
+    inc_dirs.append(rocm_toolkit_path + "/hcc/lib/clang/10.0.0/include")
 
     # Add hcc headers
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/include")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/7.0.0/include/")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/7.0.0/include")
-
-    # Newer hcc builds use/are based off of clang 8.0.0.
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/8.0.0/include/")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/8.0.0/include")
-
-    # Support hcc based off clang 9.0.0, included in ROCm2.2
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/9.0.0/include/")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/9.0.0/include")
-
-    # Support hcc based off clang 10.0.0, included in ROCm2.8
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/compiler/lib/clang/10.0.0/include/")
-    inc_dirs.append(rocm_config.rocm_toolkit_path + "/hcc/lib/clang/10.0.0/include")
+    inc_dirs.append(rocm_toolkit_path + "/hcc/include")
 
     return inc_dirs
 
@@ -273,13 +224,16 @@ def _rocm_toolkit_path(repository_ctx, bash_bin):
     rocm_toolkit_path = get_host_environ(repository_ctx, _ROCM_TOOLKIT_PATH, _DEFAULT_ROCM_TOOLKIT_PATH)
     if files_exist(repository_ctx, [rocm_toolkit_path], bash_bin) != [True]:
         auto_configure_fail("Cannot find rocm toolkit path.")
-    return realpath(repository_ctx, rocm_toolkit_path, bash_bin)
+    return rocm_toolkit_path
 
-def _amdgpu_targets(repository_ctx):
+def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
     """Returns a list of strings representing AMDGPU targets."""
     amdgpu_targets_str = get_host_environ(repository_ctx, _TF_ROCM_AMDGPU_TARGETS)
     if not amdgpu_targets_str:
-        return _DEFAULT_ROCM_AMDGPU_TARGETS
+        cmd = "%s/bin/rocm_agent_enumerator" % rocm_toolkit_path
+        result = execute(repository_ctx, [bash_bin, "-c", cmd])
+        targets = [target for target in result.stdout.strip().split("\n") if target != "gfx000"]
+        amdgpu_targets_str = ",".join(targets)
     amdgpu_targets = amdgpu_targets_str.split(",")
     for amdgpu_target in amdgpu_targets:
         if amdgpu_target[:3] != "gfx" or not amdgpu_target[3:].isdigit():
@@ -436,7 +390,7 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
-            ("hip_hcc", rocm_config.rocm_toolkit_path),
+            ("hip_hcc", rocm_config.rocm_toolkit_path + "/hip"),
             ("rocblas", rocm_config.rocm_toolkit_path + "/rocblas"),
             ("rocfft", rocm_config.rocm_toolkit_path + "/rocfft"),
             ("hiprand", rocm_config.rocm_toolkit_path + "/hiprand"),
@@ -463,7 +417,7 @@ def _get_rocm_config(repository_ctx, bash_bin):
     rocm_toolkit_path = _rocm_toolkit_path(repository_ctx, bash_bin)
     return struct(
         rocm_toolkit_path = rocm_toolkit_path,
-        amdgpu_targets = _amdgpu_targets(repository_ctx),
+        amdgpu_targets = _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin),
     )
 
 def _tpl_path(repository_ctx, labelname):
@@ -511,6 +465,7 @@ def _create_dummy_repository(repository_ctx):
         {
             "%{rocm_is_configured}": "False",
             "%{rocm_extra_copts}": "[]",
+            "%{rocm_gpu_architectures}": "[]",
         },
     )
     _tpl(
@@ -579,12 +534,8 @@ def _genrule(src_dir, genrule_name, command, outs):
     )
 
 def _compute_rocm_extra_copts(repository_ctx, amdgpu_targets):
-    if False:
-        amdgpu_target_flags = ["--amdgpu-target=" +
-                               amdgpu_target for amdgpu_target in amdgpu_targets]
-    else:
-        # AMDGPU targets are handled in the "crosstool_wrapper_driver_is_not_gcc"
-        amdgpu_target_flags = []
+    amdgpu_target_flags = ["--amdgpu-target=" +
+                           amdgpu_target for amdgpu_target in amdgpu_targets]
     return str(amdgpu_target_flags)
 
 def _create_local_rocm_repository(repository_ctx):
@@ -611,6 +562,7 @@ def _create_local_rocm_repository(repository_ctx):
             name = "rocm-include",
             src_dir = rocm_toolkit_path + "/include",
             out_dir = "rocm/include",
+            exceptions = ["gtest", "gmock"],
         ),
         make_copy_dir_rule(
             repository_ctx,
@@ -657,6 +609,26 @@ def _create_local_rocm_repository(repository_ctx):
         outs = rocm_lib_outs,
     ))
 
+    clang_offload_bundler_path = rocm_toolkit_path + _if_hipcc_is_hipclang(
+        repository_ctx,
+        rocm_config,
+        bash_bin,
+        "/llvm/bin/",
+        "/hcc/bin/",
+    ) + "clang-offload-bundler"
+
+    # copy files mentioned in third_party/gpus/rocm/BUILD
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "rocm-bin",
+        srcs = [
+            clang_offload_bundler_path,
+        ],
+        outs = [
+            "rocm/bin/" + "clang-offload-bundler",
+        ],
+    ))
+
     # Set up BUILD file for rocm/
     repository_ctx.template(
         "rocm/build_defs.bzl",
@@ -667,6 +639,7 @@ def _create_local_rocm_repository(repository_ctx):
                 repository_ctx,
                 rocm_config.amdgpu_targets,
             ),
+            "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
         },
     )
     repository_ctx.template(
@@ -729,8 +702,9 @@ def _create_local_rocm_repository(repository_ctx):
 
     rocm_defines["%{host_compiler_path}"] = "clang/bin/crosstool_wrapper_driver_is_not_gcc"
 
-    rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(host_compiler_includes +
-                                                                            _rocm_include_path(repository_ctx, rocm_config))
+    rocm_defines["%{cxx_builtin_include_directories}"] = to_list_of_strings(
+        host_compiler_includes + _rocm_include_path(repository_ctx, rocm_config, bash_bin),
+    )
 
     verify_build_defines(rocm_defines)
 
@@ -753,7 +727,7 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
-            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/bin/hipcc",
+            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/hip/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{hipcc_is_hipclang}": _hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin),
             "%{rocr_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
@@ -764,9 +738,6 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hcc_runtime_library}": "mcwamp",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
-            "%{rocm_amdgpu_targets}": ",".join(
-                ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
-            ),
         },
     )
 

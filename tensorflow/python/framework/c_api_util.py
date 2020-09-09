@@ -29,6 +29,8 @@ from tensorflow.python.util import tf_contextlib
 class ScopedTFStatus(object):
   """Wrapper around TF_Status that handles deletion."""
 
+  __slots__ = ["status"]
+
   def __init__(self):
     self.status = c_api.TF_NewStatus()
 
@@ -41,6 +43,8 @@ class ScopedTFStatus(object):
 
 class ScopedTFGraph(object):
   """Wrapper around TF_Graph that handles deletion."""
+
+  __slots__ = ["graph", "deleter"]
 
   def __init__(self):
     self.graph = c_api.TF_NewGraph()
@@ -57,6 +61,8 @@ class ScopedTFGraph(object):
 class ScopedTFImportGraphDefOptions(object):
   """Wrapper around TF_ImportGraphDefOptions that handles deletion."""
 
+  __slots__ = ["options"]
+
   def __init__(self):
     self.options = c_api.TF_NewImportGraphDefOptions()
 
@@ -70,6 +76,8 @@ class ScopedTFImportGraphDefOptions(object):
 class ScopedTFImportGraphDefResults(object):
   """Wrapper around TF_ImportGraphDefOptions that handles deletion."""
 
+  __slots__ = ["results"]
+
   def __init__(self, results):
     self.results = results
 
@@ -82,6 +90,8 @@ class ScopedTFImportGraphDefResults(object):
 
 class ScopedTFFunction(object):
   """Wrapper around TF_Function that handles deletion."""
+
+  __slots__ = ["func", "deleter"]
 
   def __init__(self, func):
     self.func = func
@@ -100,6 +110,8 @@ class ScopedTFFunction(object):
 class ScopedTFBuffer(object):
   """An internal class to help manage the TF_Buffer lifetime."""
 
+  __slots__ = ["buffer"]
+
   def __init__(self, buf_string):
     self.buffer = c_api.TF_NewBufferFromString(compat.as_bytes(buf_string))
 
@@ -113,6 +125,8 @@ class ApiDefMap(object):
   The OpDef protos are also stored in this class so that they could
   be queried by op name.
   """
+
+  __slots__ = ["_api_def_map", "_op_per_name"]
 
   def __init__(self):
     op_def_proto = op_def_pb2.OpList()

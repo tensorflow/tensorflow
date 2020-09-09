@@ -174,14 +174,15 @@ class ZipDatasetOp::Dataset : public DatasetBase {
                                        /*ratio=*/1);
     }
 
-    Status SaveInternal(IteratorStateWriter* writer) override {
+    Status SaveInternal(SerializationContext* ctx,
+                        IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       if (input_impls_.empty()) {
         TF_RETURN_IF_ERROR(
             writer->WriteScalar(full_name(kInputImplsEmpty), ""));
       } else {
         for (auto& input_impl : input_impls_)
-          TF_RETURN_IF_ERROR(SaveInput(writer, input_impl));
+          TF_RETURN_IF_ERROR(SaveInput(ctx, writer, input_impl));
       }
       return Status::OK();
     }

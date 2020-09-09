@@ -15,22 +15,21 @@
 # pylint: disable=invalid-name
 """DenseNet models for Keras.
 
-Reference paper:
-  - [Densely Connected Convolutional Networks]
-    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
+Reference:
+  - [Densely Connected Convolutional Networks](
+      https://arxiv.org/abs/1608.06993) (CVPR 2017)
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-
 from tensorflow.python.keras import backend
-from tensorflow.python.keras import layers
 from tensorflow.python.keras.applications import imagenet_utils
 from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.layers import VersionAwareLayers
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import layer_utils
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -51,6 +50,8 @@ DENSENET201_WEIGHT_PATH = (
 DENSENET201_WEIGHT_PATH_NO_TOP = (
     BASE_WEIGTHS_PATH +
     'densenet201_weights_tf_dim_ordering_tf_kernels_notop.h5')
+
+layers = VersionAwareLayers()
 
 
 def dense_block(x, blocks, name):
@@ -133,20 +134,20 @@ def DenseNet(
     input_shape=None,
     pooling=None,
     classes=1000,
-    classifier_activation='softmax',
-):
+    classifier_activation='softmax'):
   """Instantiates the DenseNet architecture.
 
-  Reference paper:
-  - [Densely Connected Convolutional Networks]
-    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
+  Reference:
+  - [Densely Connected Convolutional Networks](
+      https://arxiv.org/abs/1608.06993) (CVPR 2017)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.densenet.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For DenseNet, call `tf.keras.applications.densenet.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
     blocks: numbers of building blocks for the four dense layers.
@@ -192,7 +193,7 @@ def DenseNet(
     ValueError: if `classifier_activation` is not `softmax` or `None` when
       using a pretrained top layer.
   """
-  if not (weights in {'imagenet', None} or os.path.exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -358,54 +359,35 @@ def DenseNet201(include_top=True,
 
 @keras_export('keras.applications.densenet.preprocess_input')
 def preprocess_input(x, data_format=None):
-  """Preprocesses a numpy array encoding a batch of images.
-
-  Arguments
-    x: A 4D numpy array consists of RGB values within [0, 255].
-
-  Returns
-    Preprocessed array.
-
-  Raises
-    ValueError: In case of unknown `data_format` argument.
-  """
   return imagenet_utils.preprocess_input(
       x, data_format=data_format, mode='torch')
 
 
 @keras_export('keras.applications.densenet.decode_predictions')
 def decode_predictions(preds, top=5):
-  """Decodes the prediction result from the model.
-
-  Arguments
-    preds: Numpy tensor encoding a batch of predictions.
-    top: Integer, how many top-guesses to return.
-
-  Returns
-    A list of lists of top class prediction tuples
-    `(class_name, class_description, score)`.
-    One list of tuples per sample in batch input.
-
-  Raises
-    ValueError: In case of invalid shape of the `preds` array (must be 2D).
-  """
   return imagenet_utils.decode_predictions(preds, top=top)
 
 
 preprocess_input.__doc__ = imagenet_utils.PREPROCESS_INPUT_DOC.format(
-    mode='', ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TORCH)
+    mode='',
+    ret=imagenet_utils.PREPROCESS_INPUT_RET_DOC_TORCH,
+    error=imagenet_utils.PREPROCESS_INPUT_ERROR_DOC)
 decode_predictions.__doc__ = imagenet_utils.decode_predictions.__doc__
 
 DOC = """
 
-  Reference paper:
-  - [Densely Connected Convolutional Networks]
-    (https://arxiv.org/abs/1608.06993) (CVPR 2017 Best Paper Award)
+  Reference:
+  - [Densely Connected Convolutional Networks](
+      https://arxiv.org/abs/1608.06993) (CVPR 2017)
 
   Optionally loads weights pre-trained on ImageNet.
   Note that the data format convention used by the model is
   the one specified in your Keras config at `~/.keras/keras.json`.
-  
+
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For DenseNet, call `tf.keras.applications.densenet.preprocess_input` on your
+  inputs before passing them to the model.
+
   Arguments:
     include_top: whether to include the fully-connected
       layer at the top of the network.

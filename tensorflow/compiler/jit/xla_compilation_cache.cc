@@ -20,8 +20,11 @@ limitations under the License.
 #include "absl/base/call_once.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
+#include "tensorflow/compiler/jit/flags.h"
 #include "tensorflow/compiler/jit/xla_activity.pb.h"
 #include "tensorflow/compiler/jit/xla_activity_listener.h"
+#include "tensorflow/compiler/mlir/tensorflow/utils/compile_mlir_util.h"
+#include "tensorflow/compiler/mlir/utils/array_container_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
@@ -30,16 +33,19 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/common_runtime/graph_constructor.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/protobuf/graph_debug_info.pb.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/dump_graph.h"
 
@@ -93,7 +99,7 @@ bool XlaCompilationCache::Signature::operator==(const Signature& other) const {
   if (arg_shapes != other.arg_shapes) return false;
 
   if (arg_values.size() != other.arg_values.size()) return false;
-  for (int i = 0; i < arg_values.size(); ++i) {
+  for (int i = 0, end = arg_values.size(); i < end; ++i) {
     if (arg_values[i].dtype() != other.arg_values[i].dtype() ||
         arg_values[i].shape() != other.arg_values[i].shape() ||
         arg_values[i].tensor_data() != other.arg_values[i].tensor_data()) {
@@ -154,7 +160,7 @@ Status XlaCompilationCache::BuildExecutable(
 
   std::vector<const xla::Shape*> argument_layouts(
       result.xla_input_shapes.size());
-  for (int i = 0; i < result.xla_input_shapes.size(); ++i) {
+  for (int i = 0, end = result.xla_input_shapes.size(); i < end; ++i) {
     argument_layouts[i] = &result.xla_input_shapes[i];
   }
   xla::ExecutableBuildOptions build_options;
@@ -220,7 +226,7 @@ static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
 
   // Create dummy _Arg nodes. Link these to `node` and also via a control
   // dependency edge to the _SOURCE node.
-  for (int64 i = 0; i < args.size(); ++i) {
+  for (int64 i = 0, end = args.size(); i < end; ++i) {
     Node* node;
     string arg_name = absl::StrCat("_arg", i);
     Status status =
@@ -236,7 +242,7 @@ static xla::StatusOr<std::unique_ptr<Graph>> CreateGraph(
   }
 
   // Similarly with return values, create dummy _Retval nodes fed by `node`.
-  for (int64 i = 0; i < result_types.size(); ++i) {
+  for (int64 i = 0, end = result_types.size(); i < end; ++i) {
     Node* node;
     string retval_name = absl::StrCat("_retval", i);
     Status status = NodeBuilder(retval_name, FunctionLibraryDefinition::kRetOp)
@@ -267,14 +273,30 @@ Status XlaCompilationCache::CompileSingleOp(
   auto compile_op = [&](XlaCompiler* compiler,
                         XlaCompiler::CompilationResult* result) {
     std::vector<DataType> result_dtypes(ctx->num_outputs());
-    for (int i = 0; i < result_dtypes.size(); ++i) {
+    for (int i = 0, end = result_dtypes.size(); i < end; ++i) {
       result_dtypes[i] = ctx->expected_output_dtype(i);
     }
 
     const NodeDef& node_def = ctx->op_kernel().def();
     TF_ASSIGN_OR_RETURN(auto graph, CreateGraph(node_def, args, result_dtypes));
-    return compiler->CompileGraph(compile_options, node_def.name(),
-                                  std::move(graph), args, result);
+
+    bool has_tensor_list_arg =
+        absl::c_any_of(args, [](const XlaCompiler::Argument arg) {
+          return arg.kind == XlaCompiler::Argument::kTensorList;
+        });
+    const ConfigProto* config = ctx->function_library()->config_proto();
+    bool use_mlir = config && config->experimental().enable_mlir_bridge();
+    // TODO(b/155596779): Support TensorList args.
+    if (!use_mlir || !has_tensor_list_arg) {
+      return compiler->CompileGraph(compile_options, node_def.name(),
+                                    std::move(graph), args, result);
+    }
+
+    GraphDebugInfo debug_info;
+    return CompileGraphToXlaHlo(
+        *graph, mlir::SpanToArrayRef<XlaCompiler::Argument>(args),
+        options.device_type.type_string(), compile_options.use_tuple_arg,
+        *options.flib_def, debug_info, options.shape_representation_fn, result);
   };
   return CompileImpl(options, name, args, compile_op,
                      /*compile_threshold=*/absl::nullopt,
@@ -303,12 +325,16 @@ Status XlaCompilationCache::CompileImpl(
     absl::optional<int64> compile_threshold,
     const XlaCompiler::CompilationResult** out_compilation_result,
     xla::LocalExecutable** out_executable) {
+  if (FailOnXlaCompilation()) {
+    return errors::Internal("XLA compilation disabled");
+  }
+
   DCHECK_NE(out_executable, nullptr);
   VLOG(2) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "num_inputs=" << args.size();
-    for (int i = 0; i < args.size(); i++) {
+    for (int i = 0, end = args.size(); i < end; i++) {
       VLOG(3) << i << ": " << args[i].HumanString();
     }
   }

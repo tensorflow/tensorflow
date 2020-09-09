@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/proto_serialization.h"
+#include "tensorflow/core/platform/regexp.h"
 #include "tensorflow/core/util/work_sharder.h"
 
 namespace tensorflow {
@@ -51,12 +52,18 @@ constexpr std::array<const char*, 3> kOpsWithSeed = {
 
 constexpr char kSeedInputName[] = "seed";
 constexpr char kSeed2InputName[] = "seed2";
+constexpr char kSeedGeneratorInputName[] = "seed_generator";
+constexpr char kComponent[] = "component";
+constexpr char kNumElements[] = "num_elements";
+constexpr char kNumComponents[] = "num_components";
 
 template <std::size_t SIZE>
 bool IsNodeOfType(const NodeDef& node,
                   const std::array<const char*, SIZE>& op_types) {
   for (const auto& type : op_types) {
-    if (node.op() == type) return true;
+    if (MatchesAnyVersion(type, node.op())) {
+      return true;
+    }
   }
   return false;
 }
@@ -107,7 +114,8 @@ Status ShouldIgnoreInput(const NodeDef& node, int i, bool* result) {
       if (reg->op_def.input_arg_size() > i) {
         const std::string input_arg_name = reg->op_def.input_arg(i).name();
         if (input_arg_name == kSeedInputName ||
-            input_arg_name == kSeed2InputName) {
+            input_arg_name == kSeed2InputName ||
+            input_arg_name == kSeedGeneratorInputName) {
           VLOG(2) << "Ignoring arg: " << input_arg_name
                   << " from node: " << node.name();
           *result = true;
@@ -153,10 +161,11 @@ Status ParseInputNodeName(const std::string& input_name, std::string* node_name,
 // https://stackoverflow.com/questions/11338746/directed-graphs-with-a-given-root-node-match-another-directed-graph-for-equali
 class GraphHasher {
  public:
-  explicit GraphHasher(const GraphDef& graph_def, const NodeDef* root_node)
-      : graph_def_(graph_def),
-        root_node_(root_node),
-        flib_def_(OpRegistry::Global(), graph_def.library()) {}
+  // `GraphHasher` does not take ownership of `graph_def`, `root_node`, or
+  // `flib_def`.
+  explicit GraphHasher(const GraphDef* graph_def, const NodeDef* root_node,
+                       const FunctionLibraryDefinition* flib_def)
+      : graph_def_(graph_def), root_node_(root_node), flib_def_(flib_def) {}
 
   Status ComputeHash(uint64* hash) {
     TF_RETURN_IF_ERROR(Init());
@@ -189,7 +198,7 @@ class GraphHasher {
         TF_RETURN_IF_ERROR(ParseInputNodeName(node->input(i), &node_name,
                                               &suffix, &is_control_input));
         const NodeDef* input_node;
-        TF_RETURN_IF_ERROR(FindNode(graph_def_, node_name, &input_node));
+        TF_RETURN_IF_ERROR(FindNode(*graph_def_, node_name, &input_node));
 
         // If we've already seen this node before, skip it and don't add it to
         // the queue.
@@ -244,7 +253,7 @@ class GraphHasher {
 
     // Hash regular inputs. We combine them in an ordered fashion.
     uint64 inputs_hash = 0;
-    for (auto input : node_rep->node_inputs) {
+    for (const auto& input : node_rep->node_inputs) {
       uint64 node_hash = 0;
       EdgeRep edge(node, input.first);
       // If the edge was pruned we get the non input node hash to avoid cycles.
@@ -308,20 +317,19 @@ class GraphHasher {
   }
 
   Status HashFunction(const NameAttrList& func, uint64* hash) {
-    const FunctionDef* fdef = flib_def_.Find(func.name());
+    const FunctionDef* fdef = flib_def_->Find(func.name());
 
     // Convert to a GraphDef.
     std::unique_ptr<FunctionBody> fbody;
     TF_RETURN_IF_ERROR(FunctionDefToBodyHelper(*fdef, AttrSlice(&func.attr()),
-                                               &flib_def_, &fbody));
+                                               flib_def_, &fbody));
     GraphDef graph_def = fbody->graph->ToGraphDefDebug();
-    graph_def.mutable_library()->MergeFrom(flib_def_.ToProto());
 
     // For each return node, we create a new GraphHasher to compute a hash.
     // We then combine these hashes to produce the hash ordered.
     uint64 ret_nodes_hash = 0;
     for (const auto& ret_node : fbody->ret_nodes) {
-      GraphHasher ret_node_hasher(graph_def, &ret_node->def());
+      GraphHasher ret_node_hasher(&graph_def, &ret_node->def(), flib_def_);
       uint64 ret_node_hash = 0;
       TF_RETURN_IF_ERROR(ret_node_hasher.ComputeHash(&ret_node_hash));
       ret_nodes_hash = Hash64Combine(ret_nodes_hash, ret_node_hash);
@@ -359,9 +367,9 @@ class GraphHasher {
     }
   };
 
-  const GraphDef graph_def_;
-  const NodeDef* root_node_;
-  const FunctionLibraryDefinition flib_def_;
+  const GraphDef* const graph_def_;                  // Not owned.
+  const NodeDef* const root_node_;                   // Not owned.
+  const FunctionLibraryDefinition* const flib_def_;  // Not owned.
   // Edges that need to be pruned as their presence will cause cycles.
   absl::flat_hash_set<uint64> cycle_forming_edges_;
   absl::flat_hash_map<const NodeDef*, NodeRep> nodes_;
@@ -397,7 +405,14 @@ Status HashTensor(const Tensor& tensor, uint64* hash) {
 }
 
 Status HashNode(const GraphDef& graph, const NodeDef& node, uint64* hash) {
-  GraphHasher graph_hasher(graph, &node);
+  const FunctionLibraryDefinition flib_def(OpRegistry::Global(),
+                                           graph.library());
+  return HashNode(graph, node, flib_def, hash);
+}
+
+Status HashNode(const GraphDef& graph, const NodeDef& node,
+                const FunctionLibraryDefinition& flib_def, uint64* hash) {
+  GraphHasher graph_hasher(&graph, &node, &flib_def);
   return graph_hasher.ComputeHash(hash);
 }
 
@@ -414,8 +429,53 @@ Status HashGraph(const GraphDef& graph_def, uint64* hash) {
     return errors::Internal("Cannot find sink node for dataset graph.");
   }
 
-  GraphHasher graph_hasher(graph_def, sink);
+  const FunctionLibraryDefinition flib_def(OpRegistry::Global(),
+                                           graph_def.library());
+  GraphHasher graph_hasher(&graph_def, sink, &flib_def);
   TF_RETURN_IF_ERROR(graph_hasher.ComputeHash(hash));
+  return Status::OK();
+}
+
+Status WriteElementsToCheckpoint(
+    IteratorStateWriter* writer, StringPiece key_prefix,
+    const std::vector<std::vector<Tensor>>& elements) {
+  TF_RETURN_IF_ERROR(
+      writer->WriteScalar(key_prefix, kNumElements, elements.size()));
+  for (int i = 0; i < elements.size(); ++i) {
+    const std::vector<Tensor>& element = elements[i];
+    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
+    TF_RETURN_IF_ERROR(
+        writer->WriteScalar(element_prefix, kNumComponents, element.size()));
+    for (int j = 0; j < elements[i].size(); ++j) {
+      TF_RETURN_IF_ERROR(writer->WriteTensor(
+          element_prefix, absl::StrCat(kComponent, "[", j, "]"), element[j]));
+    }
+  }
+  return Status::OK();
+}
+
+Status ReadElementsFromCheckpoint(IteratorStateReader* reader,
+                                  StringPiece key_prefix,
+                                  std::vector<std::vector<Tensor>>* elements) {
+  int64 num_elements;
+  TF_RETURN_IF_ERROR(
+      reader->ReadScalar(key_prefix, kNumElements, &num_elements));
+  elements->reserve(num_elements);
+  for (int i = 0; i < num_elements; ++i) {
+    std::string element_prefix = absl::StrCat(key_prefix, "::", i);
+    int64 num_components;
+    TF_RETURN_IF_ERROR(
+        reader->ReadScalar(element_prefix, kNumComponents, &num_components));
+    elements->emplace_back();
+    std::vector<Tensor>& element = elements->at(i);
+    element.reserve(num_components);
+    for (int j = 0; j < num_components; ++j) {
+      element.emplace_back();
+      TF_RETURN_IF_ERROR(reader->ReadTensor(
+          element_prefix, absl::StrCat(kComponent, "[", j, "]"),
+          &element.back()));
+    }
+  }
   return Status::OK();
 }
 
@@ -446,6 +506,16 @@ Status RegisterCancellationCallback(CancellationManager* cancellation_manager,
   return Status::OK();
 }
 
+Status VerifyTypeMatch(const DataType& expected, const DataType& received,
+                       int index) {
+  if (expected != received) {
+    return errors::InvalidArgument("Data type mismatch at component ", index,
+                                   ": expected ", DataTypeString(expected),
+                                   " but got ", DataTypeString(received), ".");
+  }
+  return Status::OK();
+}
+
 Status VerifyTypesMatch(const DataTypeVector& expected,
                         const DataTypeVector& received) {
   if (expected.size() != received.size()) {
@@ -454,12 +524,30 @@ Status VerifyTypesMatch(const DataTypeVector& expected,
         " types but got ", received.size(), ".");
   }
   for (size_t i = 0; i < expected.size(); ++i) {
-    if (expected[i] != received[i]) {
-      return errors::InvalidArgument("Data type mismatch at component ", i,
-                                     ": expected ", DataTypeString(expected[i]),
-                                     " but got ", DataTypeString(received[i]),
-                                     ".");
-    }
+    TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i], i));
+  }
+  return Status::OK();
+}
+
+Status VerifyTypesMatch(const DataTypeVector& expected,
+                        const std::vector<Tensor>& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " types but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    TF_RETURN_IF_ERROR(VerifyTypeMatch(expected[i], received[i].dtype(), i));
+  }
+  return Status::OK();
+}
+
+Status VerifyShapeCompatible(const PartialTensorShape& expected,
+                             const PartialTensorShape& received, int index) {
+  if (!expected.IsCompatibleWith(received)) {
+    return errors::InvalidArgument("Incompatible shapes at component ", index,
+                                   ": expected ", expected.DebugString(),
+                                   " but got ", received.DebugString(), ".");
   }
   return Status::OK();
 }
@@ -472,12 +560,22 @@ Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
         " shapes but got ", received.size(), ".");
   }
   for (size_t i = 0; i < expected.size(); ++i) {
-    if (!expected[i].IsCompatibleWith(received[i])) {
-      return errors::InvalidArgument("Incompatible shapes at component ", i,
-                                     ": expected ", expected[i].DebugString(),
-                                     " but got ", received[i].DebugString(),
-                                     ".");
-    }
+    TF_RETURN_IF_ERROR(VerifyShapeCompatible(expected[i], received[i], i));
+  }
+
+  return Status::OK();
+}
+
+Status VerifyShapesCompatible(const std::vector<PartialTensorShape>& expected,
+                              const std::vector<Tensor>& received) {
+  if (expected.size() != received.size()) {
+    return errors::InvalidArgument(
+        "Number of components does not match: expected ", expected.size(),
+        " shapes but got ", received.size(), ".");
+  }
+  for (size_t i = 0; i < expected.size(); ++i) {
+    TF_RETURN_IF_ERROR(
+        VerifyShapeCompatible(expected[i], received[i].shape(), i));
   }
 
   return Status::OK();
@@ -803,6 +901,163 @@ std::string DeterminismPolicy::String() const {
       LOG(ERROR) << "Unrecognized determinism value";
       return "Unrecognized";
   }
+}
+
+bool MatchesAnyVersion(StringPiece op_prefix, StringPiece op_to_match) {
+  if (!absl::StartsWith(op_to_match, op_prefix)) {
+    return false;
+  }
+  if (op_to_match.length() == op_prefix.length()) {
+    return true;
+  }
+  size_t index = op_to_match.length() - 1;
+  while (isdigit(op_to_match[index])) {
+    index--;
+  }
+  return (op_to_match[index] == 'V') && (op_prefix.length() == index);
+}
+
+std::vector<tstring> SelectOptimizations(
+    const string& job_name,
+    const absl::flat_hash_map<string, uint64>& live_experiments,
+    const std::vector<tstring>& optimizations_enabled,
+    const std::vector<tstring>& optimizations_disabled,
+    const std::vector<tstring>& optimizations_default,
+    std::function<uint64(const string&)> hash_func) {
+  std::vector<tstring> optimizations;
+  if (job_name.empty()) {
+    // If `job_name` is empty, apply the enabled and default optimizations
+    // directly.
+    optimizations.insert(optimizations.end(), optimizations_enabled.begin(),
+                         optimizations_enabled.end());
+    optimizations.insert(optimizations.end(), optimizations_default.begin(),
+                         optimizations_default.end());
+    return optimizations;
+  }
+
+  // If `job_name` is non-empty, we determine which optimizations to apply to
+  // this job based on the enable/disable settings from tf.data.Options, the
+  // opt in/out settings from environment variables, and rollout condition from
+  // `live_experiments`.
+  const char* opt_ins_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_IN");
+  const char* opt_outs_raw_cs = std::getenv("TF_DATA_EXPERIMENT_OPT_OUT");
+  string opt_ins_raw;
+  if (opt_ins_raw_cs != nullptr) {
+    opt_ins_raw = string(opt_ins_raw_cs);
+  }
+  string opt_outs_raw;
+  if (opt_outs_raw_cs != nullptr) {
+    opt_outs_raw = string(opt_outs_raw_cs);
+  }
+
+  // Creates a set of optimizations.
+  absl::flat_hash_set<tstring> optimizations_set;
+
+  // Creates the opt in and opt out settings.
+  std::vector<string> opt_ins, opt_outs;
+  if (opt_ins_raw == "all") {
+    for (auto& pair : live_experiments) {
+      opt_ins.push_back(pair.first);
+    }
+  } else {
+    opt_ins = str_util::Split(opt_ins_raw, ',', str_util::SkipEmpty());
+  }
+  if (opt_outs_raw == "all") {
+    for (auto& pair : live_experiments) {
+      opt_outs.push_back(pair.first);
+    }
+  } else {
+    opt_outs = str_util::Split(opt_outs_raw, ',', str_util::SkipEmpty());
+  }
+
+  // Checks if the opt in and opt out experiments are live experiments.
+  for (auto& optimization : opt_ins) {
+    if (live_experiments.find(optimization) == live_experiments.end()) {
+      LOG(WARNING) << "The experiment \"" << optimization
+                   << "\" is opted in but it is not a live experiment.";
+    }
+  }
+  for (auto& optimization : opt_outs) {
+    if (live_experiments.find(optimization) == live_experiments.end()) {
+      LOG(WARNING) << "The experiment \"" << optimization
+                   << "\" is opted out but it is not a live experiment.";
+    }
+  }
+
+  // Checks if the opt in settings conflict with opt out settings.
+  for (auto& optimization : opt_ins) {
+    if (std::find(opt_outs.begin(), opt_outs.end(), optimization) !=
+        opt_outs.end()) {
+      LOG(WARNING) << "The experiment \"" << optimization
+                   << "\" is set in both \"TF_DATA_EXPERIMENT_OPT_IN\" and "
+                      "\"TF_DATA_EXPERIMENT_OPT_OUT\". Unless the experiment "
+                      "corresponds to an explicitly enabled optimization, it "
+                      "is not applied.";
+    }
+  }
+
+  // Checks if the enable/disable settings from tf.data.Options conflict with
+  // user opt in/out settings. In which case we assume tf.data.Options settings
+  // have higher priority to overwrite.
+  for (auto& optimization : optimizations_enabled) {
+    if (std::find(opt_outs.begin(), opt_outs.end(), optimization) !=
+        opt_outs.end()) {
+      LOG(WARNING) << "The optimization \"" << optimization
+                   << "\" is opt out, but is still applied since"
+                      " it is enabled through tf.data.Options.";
+    }
+  }
+  for (auto& optimization : optimizations_disabled) {
+    if (std::find(opt_ins.begin(), opt_ins.end(), optimization) !=
+        opt_ins.end()) {
+      LOG(WARNING) << "The optimization \"" << optimization
+                   << "\" is opt in, but is not applied since"
+                      " it is disabled through tf.data.Options.";
+    }
+  }
+
+  // Add the enabled optimizations.
+  optimizations_set.insert(optimizations_enabled.begin(),
+                           optimizations_enabled.end());
+
+  // Add the default optimizations that are not explicitly opted out.
+  for (auto& optimization : optimizations_default) {
+    if (std::find(opt_outs.begin(), opt_outs.end(), optimization) ==
+        opt_outs.end()) {
+      optimizations_set.insert(optimization);
+    }
+  }
+
+  // Add the live experiments stochastically if they are neither opted in nor
+  // opted out.
+  for (auto& pair : live_experiments) {
+    string experiment = pair.first;
+    // Skip experiments that are explicitly opted out.
+    if (std::find(opt_outs.begin(), opt_outs.end(), experiment) !=
+        opt_outs.end()) {
+      continue;
+    }
+    // Skip experiments whose transformations are explicitly disabled.
+    if (std::find(optimizations_disabled.begin(), optimizations_disabled.end(),
+                  experiment) != optimizations_disabled.end()) {
+      continue;
+    }
+    // Apply experiments that are explicitly opted in.
+    if (std::find(opt_ins.begin(), opt_ins.end(), experiment) !=
+        opt_ins.end()) {
+      optimizations_set.insert(experiment);
+      continue;
+    }
+    // Otherwise, apply experiment stochastically based on job name and
+    // experiment roll out percentage.
+    if (hash_func(strings::StrCat(job_name, experiment)) % 100 < pair.second) {
+      optimizations_set.insert(experiment);
+    }
+  }
+
+  optimizations.insert(optimizations.end(), optimizations_set.begin(),
+                       optimizations_set.end());
+  return optimizations;
 }
 
 }  // namespace data
