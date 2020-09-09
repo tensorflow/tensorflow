@@ -1831,6 +1831,7 @@ tf_cc_test(
     deps = [
         ":horizontal_input_fusion",
         ":multi_output_fusion",
+        "//tensorflow/compiler/jit:xla_gpu_jit",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
