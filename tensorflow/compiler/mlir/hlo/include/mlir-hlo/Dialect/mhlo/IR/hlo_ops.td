@@ -379,6 +379,8 @@ class HLO_BinaryLogicalElementwiseOp<string mnemonic> :
     HLO_PredOrIntTensor:$lhs,
     HLO_PredOrIntTensor:$rhs
   );
+
+  let hasFolder = 1;
 }
 
 def HLO_AndOp: HLO_BinaryLogicalElementwiseOp<"and">, BASE_HLO_AndOp;

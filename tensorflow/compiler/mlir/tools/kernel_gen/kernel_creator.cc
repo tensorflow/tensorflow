@@ -192,7 +192,6 @@ Status LowerGPUToLLVM(mlir::ModuleOp module, bool gpu_binary_only,
   if (!gpu_binary_only) {
     pm.addPass(mlir::kernel_gen::tf_framework::
                    createTestTFFrameworkLegalizeToLLVMPass());
-    pm.addPass(mlir::createGpuToLLVMConversionPass(gpu_binary_attr_name));
     pm.addPass(mlir::createCanonicalizerPass());
     pm.addPass(mlir::createCSEPass());
   }

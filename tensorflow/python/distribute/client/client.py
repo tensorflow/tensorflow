@@ -42,13 +42,11 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import executor
 from tensorflow.python.eager import function as tf_function
-from tensorflow.python.eager import remote
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
 
 # Maximum time for failed worker to come back is 1 hour
@@ -759,31 +757,11 @@ class Cluster(object):
     workers: a list of `Worker` objects in the cluster.
   """
 
-  def __init__(self, cluster_resolver, client_name="chief"):
-    """Initializes the cluster instance and connect to the remote cluster."""
-    if client_name in ["worker", "ps"]:
-      raise ValueError("Client name should not be 'worker' or 'ps'.")
-    cluster_spec = cluster_resolver.cluster_spec()
+  def __init__(self, strategy):
+    """Initializes the cluster instance."""
 
-    self._num_workers = len(cluster_spec.as_dict().get("worker", ()))
-    self._num_ps = len(cluster_spec.as_dict().get("ps", ()))
-    device_filters = server_lib.ClusterDeviceFilters()
-    # For any worker, only the devices on PS and chief nodes are visible
-    for i in range(self._num_workers):
-      device_filters.set_device_filters(
-          "worker", i, ["/job:ps", "/job:%s" % client_name])
-    # Similarly for any ps, only the devices on workers and chief are visible
-    for i in range(self._num_ps):
-      device_filters.set_device_filters(
-          "ps", i, ["/job:worker", "/job:%s" % client_name])
-
-    # Allow at most one outstanding RPC for each worker at a certain time. This
-    # is to simplify worker failure handling in the runtime
-    os.environ["TF_ENABLE_EAGER_CLIENT_STREAMING_ENQUEUE"] = "False"
-    remote.connect_to_cluster(cluster_spec,
-                              job_name=client_name,
-                              protocol=cluster_resolver.rpc_layer,
-                              cluster_device_filters=device_filters)
+    self._num_workers = strategy._num_workers
+    self._num_ps = strategy._num_ps
 
     # Ignore PS failures reported by workers due to transient connection errors.
     # Transient connectivity issues between workers and PS are relayed by the
@@ -894,7 +872,7 @@ class Client(object):
       raise ValueError("Only `ParameterServerStrategyV2` is supported in "
                        "`Client` currently.")
     self._strategy = strategy
-    self.cluster = Cluster(strategy._cluster_resolver)
+    self.cluster = Cluster(strategy)
 
   @property
   def strategy(self):

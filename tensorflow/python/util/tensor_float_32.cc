@@ -13,15 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_PLATFORM_TF32_UTILS_H_
-#define TENSORFLOW_CORE_PLATFORM_TF32_UTILS_H_
+#include "pybind11/pybind11.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 
-namespace tensorflow {
-
-void allow_tf32_execution(bool allowed);
-
-bool tf32_execution_allowed();
-
-}  // namespace tensorflow
-
-#endif  // TENSORFLOW_CORE_PLATFORM_TF32_UTILS_H_
+PYBIND11_MODULE(_pywrap_tensor_float_32_execution, m) {
+  m.def("enable", &tensorflow::enable_tensor_float_32_execution);
+  m.def("is_enabled", &tensorflow::tensor_float_32_execution_enabled);
+}

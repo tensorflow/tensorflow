@@ -13,18 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/platform/tf32_utils.h"
-
-#include <atomic>
+#ifndef TENSORFLOW_CORE_PLATFORM_TENSOR_FLOAT_32_UTILS_H_
+#define TENSORFLOW_CORE_PLATFORM_TENSOR_FLOAT_32_UTILS_H_
 
 namespace tensorflow {
 
-// Whether TensorFloat-32 should be used where supported.
-// TODO(reedwm): Change word "allow" to "enable" in all TensorFloat-32 functions
-static std::atomic<bool> tf32_allowed{true};
+void enable_tensor_float_32_execution(bool enabled);
 
-void allow_tf32_execution(bool allowed) { tf32_allowed = allowed; }
-
-bool tf32_execution_allowed() { return tf32_allowed; }
+bool tensor_float_32_execution_enabled();
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_PLATFORM_TENSOR_FLOAT_32_UTILS_H_

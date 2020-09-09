@@ -42,7 +42,7 @@ static SE_ExecutableRunOptions ToC(
   se_options.device_ordinal = options.run_options().device_ordinal();
   if (options.run_options().host_to_device_stream() != nullptr) {
     se_options.host_to_device_stream =
-        static_cast<TpuStream*>(
+        static_cast<tensorflow::tpu::TpuStream*>(
             options.run_options().host_to_device_stream()->implementation())
             ->se_stream();
   } else {
@@ -71,7 +71,8 @@ static SE_ExecutableRunOptions ToC(
 
   auto impl =
       const_cast<stream_executor::Stream*>(options.stream())->implementation();
-  se_options.stream = static_cast<TpuStream*>(impl)->se_stream();
+  se_options.stream =
+      static_cast<tensorflow::tpu::TpuStream*>(impl)->se_stream();
   return se_options;
 }
 }  // namespace ApiConverter

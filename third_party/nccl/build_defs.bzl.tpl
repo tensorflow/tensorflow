@@ -392,7 +392,7 @@ def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwarg
     merged = name + "_merged"
     _merge_archive(
         name = merged,
-        srcs = [pruned, dlink],
+        srcs = [lib, dlink],
     )
 
     # Create cc target from archive.

@@ -381,6 +381,6 @@ tensorflow::IsXlaEnabled
 tensorflow::GetMlirCommonFlags
 tensorflow::GetXlaDeviceFlags
 
-[tf32_utils] # tf32
-tensorflow::allow_tf32_execution
-tensorflow::tf32_execution_allowed
+[tensor_float_32_utils] # tensor_float_32
+tensorflow::enable_tensor_float_32_execution
+tensorflow::tensor_float_32_execution_enabled
