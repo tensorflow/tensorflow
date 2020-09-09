@@ -80,8 +80,8 @@ def c_tfe_py_fastpath_execute(a,
   assert ctx.executing_eagerly(
   ), "The prototype doesn't contain C code for graph construction"
   try:
-    return pywrap_tfe.TFE_Py_FastPathExecute(ctx._handle, ctx.device_name,
-                                             "MatMul", name, ctx.op_callbacks,
+    return pywrap_tfe.TFE_Py_FastPathExecute(ctx, ctx._handle,
+                                             "MatMul", name,
                                              a, b, "transpose_a", transpose_a,
                                              "transpose_b", transpose_b)
   except core._NotOkStatusException as e:
