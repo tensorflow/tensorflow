@@ -23,7 +23,6 @@ limitations under the License.
 #include "tensorflow/lite/micro/examples/micro_speech/micro_features/model.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
-//#include "tensorflow/lite/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h"
 #include "tensorflow/lite/version.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 
@@ -89,11 +88,8 @@ void setup_tf() {
   // copying or parsing, it's a very lightweight operation.
   model = tflite::GetModel(g_model);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
-    error_reporter->Report(
-        "Model provided is schema version %d not equal "
-        "to supported version %d.",
-        model->version(), TFLITE_SCHEMA_VERSION);
-    return;
+	   TF_LITE_REPORT_ERROR(error_reporter, "Model provided is schema version %d not equal to supported version %d.",model->version(), TFLITE_SCHEMA_VERSION);
+	   return;
   }
 
 // Pull in only the operation implementations we need.
@@ -126,7 +122,7 @@ void setup_tf() {
   // Allocate memory from the tensor_arena for the model's tensors.
   TfLiteStatus allocate_status = interpreter->AllocateTensors();
   if (allocate_status != kTfLiteOk) {
-    error_reporter->Report("AllocateTensors() failed");
+   	TF_LITE_REPORT_ERROR(error_reporter, "AllocateTensors() failed");
     return;
   }
 
@@ -171,14 +167,14 @@ int detection_loop() {
 printf("frame =  %d\n",frame_counter);
 frame_counter++;
   if (feature_status != kTfLiteOk) {
-    error_reporter->Report("Feature generation failed");
-    return retVal;;
+   	TF_LITE_REPORT_ERROR(error_reporter, "Feature generation failed");
+    return retVal;
   }
   previous_time = current_time;
   // If no new audio samples have been received since last time, don't bother
   // running the network model.
   if (how_many_new_slices == 0) {
-printf("no new slices\n");
+	printf("no new slices\n");
     return retVal;
   }
 // Copy feature buffer to input tensor
@@ -189,8 +185,8 @@ printf("no new slices\n");
   // Run the model on the spectrogram input and make sure it succeeds.
   TfLiteStatus invoke_status = interpreter->Invoke();
   if (invoke_status != kTfLiteOk) {
-    error_reporter->Report("Invoke failed");
-    return retVal;
+   	TF_LITE_REPORT_ERROR(error_reporter, "Invoke failed");
+	return retVal;
   }
 
   // The output from the model is a vector containing the scores for each
