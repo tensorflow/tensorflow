@@ -200,7 +200,8 @@ to determine if the requested feature aligns with the TFLM roadmap.
     tree with
 
     ```
-    clang-format -i -style=google `git ls-files -m`
+    clang-format -i -style=google `git ls-files -m | grep "\.cc"`
+    clang-format -i -style=google `git ls-files -m | grep "\.h"`
     ```
 
 1.  Make sure your code is lint-free.
@@ -211,7 +212,7 @@ to determine if the requested feature aligns with the TFLM roadmap.
     Run cpplint.py on all modified files in your git tree:
 
     ```
-    cpplint.py `gitls-files -m`
+    cpplint.py `git ls-files -m`
     ```
 
 1.  Run all the tests for x86, and any other platform that you are modifying.
