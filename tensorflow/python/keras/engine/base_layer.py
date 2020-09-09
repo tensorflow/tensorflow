@@ -94,9 +94,11 @@ _TF_OP_LAYER_NAME_PREFIX = 'tf_op_layer_'
 _AUTOCAST_TYPES = (ops.Tensor, sparse_tensor.SparseTensor,
                    ragged_tensor.RaggedTensor)
 
-_keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
-                                           'keras layers usage', 'method')
-_keras_model_gauge = monitoring.BoolGauge(
+keras_layers_gauge = monitoring.BoolGauge('/tensorflow/api/keras/layers',
+                                          'keras layers usage', 'method')
+keras_api_gauge = monitoring.BoolGauge('/tensorflow/api/keras',
+                                       'keras api usage', 'method')
+keras_model_gauge = monitoring.BoolGauge(
     '/tensorflow/api/keras/premade_models', 'premade keras model usage', 'type')
 
 
@@ -301,6 +303,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                dtype=None,
                dynamic=False,
                **kwargs):
+    keras_api_gauge.get_cell('layer').set(True)
+    keras_layers_gauge.get_cell(self.__class__.__name__).set(True)
     # These properties should be set by the user via keyword arguments.
     # note that 'dtype', 'input_shape' and 'batch_input_shape'
     # are only applicable to input layers: do not pass these keywords
@@ -378,8 +382,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # These lists will be filled via successive calls
     # to self._add_inbound_node().
     # Used in symbolic mode only, only in conjunction with graph-networks
-    self._inbound_nodes = []
-    self._outbound_nodes = []
+    self._inbound_nodes_value = []
+    self._outbound_nodes_value = []
 
     self._init_call_fn_args()
 
@@ -970,12 +974,11 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if self._autocast:
         inputs = self._maybe_cast_inputs(inputs, input_list)
 
+      input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
       if eager:
         call_fn = self.call
         name_scope = self._name
       else:
-        input_spec.assert_input_compatibility(self.input_spec, inputs,
-                                              self.name)
         name_scope = self._name_scope()  # Avoid autoincrementing.
         call_fn = self._autographed_call()
 
@@ -1003,10 +1006,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         np_arrays.ndarray, np.ndarray, float, int)) for x in input_list):
 
       def _convert_non_tensor(x):
-        # Don't call `ops.convert_to_tensor_v2` on all `inputs` because
+        # Don't call `ops.convert_to_tensor` on all `inputs` because
         # `SparseTensors` can't be converted to `Tensor`.
         if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
-          return ops.convert_to_tensor_v2(x)
+          return ops.convert_to_tensor_v2_with_dispatch(x)
         return x
 
       inputs = nest.map_structure(_convert_non_tensor, inputs)
@@ -1515,7 +1518,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
       if loss is None:
         return None  # Will be filtered out when computing the .losses property
       if not tensor_util.is_tensor(loss):
-        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx())
       loss._unconditional_loss = True  # pylint: disable=protected-access
       return loss
 
@@ -1532,7 +1536,8 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
         continue
       if not tensor_util.is_tensor(loss) and not isinstance(
           loss, keras_tensor.KerasTensor):
-        loss = ops.convert_to_tensor_v2(loss, dtype=backend.floatx())
+        loss = ops.convert_to_tensor_v2_with_dispatch(
+            loss, dtype=backend.floatx())
       # TF Functions should take the eager path.
       if ((tf_utils.is_symbolic_tensor(loss) or
            isinstance(loss, keras_tensor.KerasTensor)) and
@@ -1754,7 +1759,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     if not call_context.frozen:
       for update in nest.flatten(updates):
         if callable(update):
-          update()
+          update()  # pylint: disable=not-callable
 
   def set_weights(self, weights):
     """Sets the weights of the layer, from Numpy arrays.
@@ -2265,6 +2270,24 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
   # Methods & attributes below are all private and only used by the framework. #
   ##############################################################################
 
+  @property
+  def _inbound_nodes(self):
+    return self._inbound_nodes_value
+
+  @_inbound_nodes.setter
+  @trackable.no_automatic_dependency_tracking
+  def _inbound_nodes(self, value):
+    self._inbound_nodes_value = value
+
+  @property
+  def _outbound_nodes(self):
+    return self._outbound_nodes_value
+
+  @_outbound_nodes.setter
+  @trackable.no_automatic_dependency_tracking
+  def _outbound_nodes(self, value):
+    self._outbound_nodes_value = value
+
   def _set_dtype_policy(self, dtype):
     """Sets self._dtype_policy."""
     if isinstance(dtype, policy.Policy):
@@ -2565,10 +2588,10 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     # we copy them to avoid loss of KerasHistory metadata.
     flat_outputs = nest.flatten(outputs)
     flat_inputs = nest.flatten((args, kwargs))
-    inputs_set = object_identity.ObjectIdentitySet(flat_inputs)
+    input_ids_set = {id(i) for i in flat_inputs}
     outputs_copy = []
     for x in flat_outputs:
-      if x in inputs_set:
+      if id(x) in input_ids_set:
         with backend.name_scope(self.name):
           x = array_ops.identity(x)
       outputs_copy.append(x)
@@ -2905,14 +2928,14 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
                               self._call_accepts_kwargs)
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_full_argspec(self):
     # Argspec inspection is expensive and the call spec is used often, so it
     # makes sense to cache the result.
     return tf_inspect.getfullargspec(self.call)
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_args(self):
     all_args = self._call_full_argspec.args
     # Scrub `self` that appears if a decorator was applied.
@@ -2921,7 +2944,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return all_args
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_arg_defaults(self):
     call_fn_args = self._call_fn_args
     call_fn_defaults = self._call_full_argspec.defaults or []
@@ -2934,7 +2957,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return defaults
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_fn_arg_positions(self):
     call_fn_arg_positions = dict()
     for pos, arg in enumerate(self._call_fn_args):
@@ -2942,7 +2965,7 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
     return call_fn_arg_positions
 
   @property
-  @tracking.cached_per_instance
+  @layer_utils.cached_per_instance
   def _call_accepts_kwargs(self):
     return self._call_full_argspec.varkw is not None
 
@@ -2964,12 +2987,13 @@ class Layer(module.Module, version_utils.LayerVersionSelector):
 
   def _dedup_weights(self, weights):
     """Dedupe weights while maintaining order as much as possible."""
-    output, seen_weights = [], object_identity.ObjectIdentitySet()
+    output, seen_ids = [], set()
     for w in weights:
-      if w not in seen_weights:
+      if id(w) not in seen_ids:
         output.append(w)
         # Track the Variable's identity to avoid __eq__ issues.
-        seen_weights.add(w)
+        seen_ids.add(id(w))
+
     return output
 
   def _split_out_first_arg(self, args, kwargs):
@@ -3085,7 +3109,6 @@ class TensorFlowOpLayer(Layer):
     super(TensorFlowOpLayer, self).__init__(
         name=_TF_OP_LAYER_NAME_PREFIX + name, trainable=trainable, dtype=dtype,
         autocast=False)
-    _keras_layers_gauge.get_cell('TensorflowOpLayer').set(True)
     if isinstance(node_def, dict):
       self.node_def = json_format.ParseDict(node_def, node_def_pb2.NodeDef())
     else:
@@ -3246,7 +3269,7 @@ def _in_functional_construction_mode(layer, inputs, args, kwargs, input_list):  
 
 def _convert_numpy_or_python_types(x):
   if isinstance(x, (np_arrays.ndarray, np.ndarray, float, int)):
-    return ops.convert_to_tensor_v2(x)
+    return ops.convert_to_tensor_v2_with_dispatch(x)
   return x
 
 

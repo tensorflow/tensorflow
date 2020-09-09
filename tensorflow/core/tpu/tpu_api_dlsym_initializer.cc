@@ -31,7 +31,7 @@ limitations under the License.
   Struct->FnName##Fn =                                                       \
       reinterpret_cast<decltype(FnName)*>(dlsym(library_handle, #FnName));   \
   if (!(Struct->FnName##Fn)) {                                               \
-    LOG(ERROR) << #FnName " not available in this library.";                 \
+    LOG(FATAL) << #FnName " not available in this library.";                 \
     return errors::Unimplemented(#FnName " not available in this library."); \
   }
 
@@ -72,7 +72,7 @@ Status InitializeTpuLibrary(void* library_handle) {
 }
 
 bool FindAndLoadTpuLibrary() {
-  void* library = dlopen("libtftpu.so", RTLD_NOW);
+  void* library = dlopen("libtpu.so", RTLD_NOW);
   if (library) {
     InitializeTpuLibrary(library);
   }

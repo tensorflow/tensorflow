@@ -26,26 +26,7 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-class SpaceToDepth : public GPUOperation {
- public:
-  SpaceToDepth(const OperationDef& op_def, const SpaceToDepthAttributes& attr)
-      : GPUOperation(op_def), attr_(attr) {}
-  absl::Status BindArguments() override;
-  int3 GetGridSize() const override;
-  absl::Status Compile(const CreationContext& creation_context) override;
-
-  SpaceToDepth(SpaceToDepth&& operation);
-  SpaceToDepth& operator=(SpaceToDepth&& operation);
-  SpaceToDepth(const SpaceToDepth&) = delete;
-  SpaceToDepth& operator=(const SpaceToDepth&) = delete;
-
- private:
-  std::string GetSpaceToDepthCode(const OperationDef& op_def);
-
-  SpaceToDepthAttributes attr_;
-};
-
-SpaceToDepth CreateSpaceToDepth(const OperationDef& op_def,
+GPUOperation CreateSpaceToDepth(const OperationDef& op_def,
                                 const SpaceToDepthAttributes& attr);
 
 }  // namespace cl

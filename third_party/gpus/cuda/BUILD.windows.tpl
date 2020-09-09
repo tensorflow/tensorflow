@@ -171,6 +171,11 @@ cc_library(
     ],
 )
 
+alias(
+    name = "cub_headers",
+    actual = "%{cub_actual}"
+)
+
 cuda_header_library(
     name = "cupti_headers",
     hdrs = [":cuda-extras"],

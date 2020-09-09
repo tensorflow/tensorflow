@@ -79,6 +79,7 @@ StridedSlice::StridedSlice(const OperationDef& definition,
                            const SliceAttributes& attr)
     : GPUOperation(definition), attributes_(attr) {
   work_group_size_ = int3(8, 4, 1);
+  code_ = GetStridedSliceCode(definition_, Is4Aligned(attributes_));
 }
 
 StridedSlice::StridedSlice(StridedSlice&& operation)
@@ -151,19 +152,6 @@ std::string StridedSlice::GetStridedSliceCode(const OperationDef& op_def,
   c += "  args.dst_tensor.Write(result, X, Y, Z);\n";
   c += "}\n";
   return c;
-}
-
-absl::Status StridedSlice::Compile(const CreationContext& creation_context) {
-  std::string code = GetStridedSliceCode(definition_, Is4Aligned(attributes_));
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status StridedSlice::BindArguments() {

@@ -30,37 +30,54 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as tf_variables
-from tensorflow.python.platform import device_context
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util.tf_export import keras_export
 
 
 class BatchNormalizationBase(Layer):
-  r"""Normalize and scale inputs or activations.
+  r"""Layer that normalizes its inputs.
 
-  Normalize the activations of the previous layer at each batch,
-  i.e. applies a transformation that maintains the mean activation
-  close to 0 and the activation standard deviation close to 1.
+  Batch normalization applies a transformation that maintains the mean output
+  close to 0 and the output standard deviation close to 1.
 
-  Batch normalization differs from other layers in several key aspects:
+  Importantly, batch normalization works differently during training and
+  during inference.
 
-  1) Adding BatchNormalization with `training=True` to a model causes the
-  result of one example to depend on the contents of all other examples in a
-  minibatch. Be careful when padding batches or masking examples, as these can
-  change the minibatch statistics and affect other examples.
+  **During training** (i.e. when using `fit()` or when calling the layer/model
+  with the argument `training=True`), the layer normalizes its output using
+  the mean and standard deviation of the current batch of inputs. That is to
+  say, for each channel being normalized, the layer returns
+  `(batch - mean(batch)) / (var(batch) + epsilon) * gamma + beta`, where:
 
-  2) Updates to the weights (moving statistics) are based on the forward pass
-  of a model rather than the result of gradient computations.
+  - `epsilon` is small constant (configurable as part of the constructor
+  arguments)
+  - `gamma` is a learned scaling factor (initialized as 1), which
+  can be disabled by passing `scale=False` to the constructor.
+  - `beta` is a learned offset factor (initialized as 0), which
+  can be disabled by passing `center=False` to the constructor.
 
-  3) When performing inference using a model containing batch normalization, it
-  is generally (though not always) desirable to use accumulated statistics
-  rather than mini-batch statistics. This is accomplished by passing
-  `training=False` when calling the model, or using `model.predict`.
+  **During inference** (i.e. when using `evaluate()` or `predict()` or when
+  calling the layer/model with the argument `training=False` (which is the
+  default), the layer normalizes its output using a moving average of the
+  mean and standard deviation of the batches it has seen during training. That
+  is to say, it returns
+  `(batch - self.moving_mean) / (self.moving_var + epsilon) * gamma + beta`.
+
+  `self.moving_mean` and `self.moving_var` are non-trainable variables that
+  are updated each time the layer in called in training mode, as such:
+
+  - `moving_mean = moving_mean * momentum + mean(batch) * (1 - momentum)`
+  - `moving_var = moving_var * momentum + var(batch) * (1 - momentum)`
+
+  As such, the layer will only normalize its inputs during inference
+  *after having been trained on data that has similar statistics as the
+  inference data*.
 
   Arguments:
     axis: Integer, the axis that should be normalized (typically the features
@@ -117,6 +134,7 @@ class BatchNormalizationBase(Layer):
             across all examples), and finally apply gamma and/or beta. If
             `None`, no adjustment is applied. Cannot be specified if
             virtual_batch_size is specified.
+
   Call arguments:
     inputs: Input tensor (of any rank).
     training: Python boolean indicating whether the layer should behave in
@@ -125,21 +143,13 @@ class BatchNormalizationBase(Layer):
         variance of the current batch of inputs.
       - `training=False`: The layer will normalize its inputs using the mean and
         variance of its moving statistics, learned during training.
+
   Input shape: Arbitrary. Use the keyword argument `input_shape` (tuple of
     integers, does not include the samples axis) when using this layer as the
     first layer in a model.
+
   Output shape: Same shape as input.  {{TRAINABLE_ATTRIBUTE_NOTE}}
-  Normalization equations: Consider the intermediate activations \(x\) of a
-    mini-batch of size
-    \\(m\\):  We can compute the mean and variance of the batch  \\({\mu_B} =
-      \frac{1}{m} \sum_{i=1}^{m} {x_i}\\)  \\({\sigma_B^2} = \frac{1}{m}
-      \sum_{i=1}^{m} ({x_i} - {\mu_B})^2\\)  and then compute a normalized
-      \\(x\\), including a small factor \\({\epsilon}\\) for numerical
-      stability.  \\(\hat{x_i} = \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 +
-      \epsilon}}\\)  And finally \\(\hat{x}\) is linearly transformed by
-      \({\gamma}\\)
-    and \\({\beta}\\), which are learned parameters:  \\({y_i} = {\gamma *
-      \hat{x_i} + \beta}\\)
+
   Reference:
     - [Ioffe and Szegedy, 2015](https://arxiv.org/abs/1502.03167).
   """
@@ -480,7 +490,8 @@ class BatchNormalizationBase(Layer):
   def _assign_moving_average(self, variable, value, momentum, inputs_size):
     with K.name_scope('AssignMovingAvg') as scope:
       with ops.colocate_with(variable):
-        decay = ops.convert_to_tensor_v2(1.0 - momentum, name='decay')
+        decay = ops.convert_to_tensor_v2_with_dispatch(
+            1.0 - momentum, name='decay')
         if decay.dtype != variable.dtype.base_dtype:
           decay = math_ops.cast(decay, variable.dtype.base_dtype)
         update_delta = (variable - math_ops.cast(value, variable.dtype)) * decay
@@ -514,7 +525,7 @@ class BatchNormalizationBase(Layer):
     use_fused_avg_updates = (
         ops.executing_eagerly_outside_functions() and
         isinstance(self.momentum, (float, int)) and
-        device_context.enclosing_tpu_context() is None)
+        enclosing_xla_context() is None)
     if use_fused_avg_updates:
       exponential_avg_factor = 1.0 - self.momentum
     else:
@@ -577,7 +588,7 @@ class BatchNormalizationBase(Layer):
         training, train_op, _fused_batch_norm_inference)
     variance = _maybe_add_or_remove_bessels_correction(variance, remove=True)
 
-    training_value = control_flow_util.smart_constant_value(training)
+    training_value = control_flow_util.constant_value(training)
     if training_value or training_value is None:
       if not use_fused_avg_updates:
         if training_value is None:
@@ -585,7 +596,7 @@ class BatchNormalizationBase(Layer):
                                                   lambda: self.momentum,
                                                   lambda: 1.0)
         else:
-          momentum = ops.convert_to_tensor_v2(self.momentum)
+          momentum = ops.convert_to_tensor_v2_with_dispatch(self.momentum)
 
       def mean_update():
         """Update self.moving_mean with the most recent data point."""
@@ -762,7 +773,7 @@ class BatchNormalizationBase(Layer):
       return (scale, offset)
 
     # Determine a boolean value for `training`: could be True, False, or None.
-    training_value = control_flow_util.smart_constant_value(training)
+    training_value = control_flow_util.constant_value(training)
     if training_value == False:  # pylint: disable=singleton-comparison,g-explicit-bool-comparison
       mean, variance = self.moving_mean, self.moving_variance
     else:
@@ -787,10 +798,11 @@ class BatchNormalizationBase(Layer):
       moving_variance = self.moving_variance
 
       mean = control_flow_util.smart_cond(
-          training, lambda: mean, lambda: ops.convert_to_tensor_v2(moving_mean))
+          training, lambda: mean,
+          lambda: ops.convert_to_tensor_v2_with_dispatch(moving_mean))
       variance = control_flow_util.smart_cond(
           training, lambda: variance,
-          lambda: ops.convert_to_tensor_v2(moving_variance))
+          lambda: ops.convert_to_tensor_v2_with_dispatch(moving_variance))
 
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are
@@ -930,6 +942,23 @@ def replace_in_base_docstring(replacements):
     assert old in string
     string = string.replace(old, new)
   return string
+
+
+def enclosing_xla_context():
+  """Recursively find and return the XLAControlFlowContext."""
+  graph = ops.get_default_graph()
+  while graph is not None:
+    # pylint: disable=protected-access
+    context_ = graph._get_control_flow_context()
+    # pylint: enable=protected-access
+    while context_ is not None:
+      if isinstance(context_, control_flow_ops.XLAControlFlowContext):
+        return context_
+      context_ = context_.outer_context
+    # This may be a FuncGraph due to defuns or v2 control flow. We need to
+    # find the original graph with the XLAControlFlowContext.
+    graph = getattr(graph, 'outer_graph', None)
+  return None
 
 
 @keras_export(v1=['keras.layers.BatchNormalization'])  # pylint: disable=missing-docstring

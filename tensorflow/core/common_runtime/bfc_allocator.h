@@ -133,7 +133,7 @@ class BFCAllocator : public Allocator {
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
   // kInvalidChunkHandle means an invalid chunk
   typedef size_t ChunkHandle;
-  static constexpr ChunkHandle kInvalidChunkHandle = -1;
+  static constexpr ChunkHandle kInvalidChunkHandle = SIZE_MAX;
 
   typedef int BinNum;
   static constexpr int kInvalidBinNum = -1;

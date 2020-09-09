@@ -99,7 +99,24 @@ class ClusterParameters(combinations_lib.ParameterModifier):
     return update
 
 
-class NamedGPUCombination(combinations_lib.TestCombination):
+class DistributionCombination(combinations_lib.TestCombination):
+  """Sets up distribution strategy for tests."""
+
+  def parameter_modifiers(self):
+    return [
+        DistributionParameter(),
+        combinations_lib.OptionalParameter("use_var_policy"),
+    ]
+
+
+class ClusterCombination(combinations_lib.TestCombination):
+  """Sets up multi worker tests."""
+
+  def parameter_modifiers(self):
+    return [ClusterParameters()]
+
+
+class GPUCombination(combinations_lib.TestCombination):
   """Enable tests to request GPU hardware and skip non-GPU combinations.
 
   This class expects test_combinations to be generated with `NamedDistribution`
@@ -141,17 +158,7 @@ class NamedGPUCombination(combinations_lib.TestCombination):
     return [combinations_lib.OptionalParameter("required_gpus")]
 
 
-class GPUCombination(NamedGPUCombination):
-  """NamedGPUCombination that passes `tf.distribute.Strategy` to the tests."""
-
-  def parameter_modifiers(self):
-    return [
-        ClusterParameters(),
-        DistributionParameter(),
-    ] + NamedGPUCombination.parameter_modifiers(self)
-
-
-class NamedTPUCombination(combinations_lib.TestCombination):
+class TPUCombination(combinations_lib.TestCombination):
   """Allow to request TPU hardware and skip non-TPU combinations.
 
   This class expects test_combinations to be generated with `NamedDistribution`
@@ -211,16 +218,6 @@ class NamedTPUCombination(combinations_lib.TestCombination):
         combinations_lib.OptionalParameter("required_tpu"),
         combinations_lib.OptionalParameter("use_cloud_tpu"),
     ]
-
-
-class TPUCombination(NamedTPUCombination):
-  """NamedTPUCombination that passes `tf.distribute.Strategy` to the tests."""
-
-  def parameter_modifiers(self):
-    return [
-        ClusterParameters(),
-        DistributionParameter(),
-    ] + NamedTPUCombination.parameter_modifiers(self)
 
 
 class NamedDistribution(object):
@@ -304,6 +301,8 @@ def generate(combinations, test_combinations=()):
   default_combinations = (
       framework_combinations.EagerGraphCombination(),
       framework_combinations.TFVersionCombination(),
+      ClusterCombination(),
+      DistributionCombination(),
       GPUCombination(),
       TPUCombination(),
   )

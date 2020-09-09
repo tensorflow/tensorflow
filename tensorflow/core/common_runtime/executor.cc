@@ -629,8 +629,8 @@ template <class PropagatorStateType>
 void ExecutorState<PropagatorStateType>::Process(TaggedNode tagged_node,
                                                  int64 scheduled_nsec) {
   profiler::TraceMeConsumer activity(
-      // From TraceMeProducer in KernelAndDeviceFunc::RunAsync,
-      // DirectSession::RunInternal or GraphMgr::ExecuteAsync.
+      // From TraceMeProducer in DirectSession::RunInternal,
+      // GraphMgr::ExecuteAsync, or FunctionLibraryRuntime::Run.
       [&] {
         // NOTE: This tracing uses the iteration number from the first tagged
         // node that executes during this call to `Process()`. In principle,

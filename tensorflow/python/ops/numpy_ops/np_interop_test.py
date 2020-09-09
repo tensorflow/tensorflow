@@ -98,6 +98,18 @@ class InteropTest(tf.test.TestCase):
     self.assertAllClose(dx, 2.0)
     self.assertAllClose(dy, 3.0)
 
+  def testGradientTapeNoneGradients(self):
+    y = np.asarray(2.0)
+
+    with tf.GradientTape() as t:
+      x = np.asarray(3.0)
+      t.watch([x])
+      z = 2 * x
+
+    dz = t.gradient(z, y)
+
+    self.assertIsNone(dz)
+
   def testCondInterop(self):
     x = np.asarray(3.0)
 
@@ -161,6 +173,17 @@ class InteropTest(tf.test.TestCase):
     sq = onp.square(arr)
     self.assertIsInstance(sq, onp.ndarray)
     self.assertEqual(100., sq[0])
+
+  def testArrayModule(self):
+    arr = np.asarray([10])
+
+    module = arr.__array_module__((np.ndarray,))
+    self.assertIs(module, tf.experimental.numpy)
+
+    class Dummy:
+      pass
+    module = arr.__array_module__((np.ndarray, Dummy))
+    self.assertIs(module, NotImplemented)
 
     # TODO(nareshmodi): Fails since the autopacking code doesn't use
     # nest.flatten.
@@ -293,12 +316,12 @@ class InteropTest(tf.test.TestCase):
 
     model = tf.keras.Sequential(
         [tf.keras.layers.Dense(100), ProjectionLayer(2)])
-    output = model.call(np.random.randn(10, 100))
+    output = model.call(np.random.randn(10, 100).astype(np.float32))
 
     self.assertIsInstance(output, np.ndarray)
 
     dense_layer = tf.keras.layers.Dense(100)
-    output = dense_layer(np.random.randn(10, 100))
+    output = dense_layer(np.random.randn(10, 100).astype(np.float32))
 
   def testPForInterop(self):
     def outer_product(a):
@@ -310,6 +333,11 @@ class InteropTest(tf.test.TestCase):
 
     self.assertIsInstance(c, np.ndarray)
     self.assertEqual(c.shape, (batch_size, 32, 32, 32, 32))
+
+    c = tf.vectorized_map(lambda x: x.T, a)
+
+    self.assertIsInstance(c, np.ndarray)
+    self.assertEqual(c.shape, (batch_size, 32, 32))
 
   def testJacobian(self):
     with tf.GradientTape() as g:

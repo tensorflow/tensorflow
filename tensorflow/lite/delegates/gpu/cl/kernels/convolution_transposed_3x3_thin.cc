@@ -28,31 +28,28 @@ namespace cl {
 
 ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
     const OperationDef& definition, const ConvolutionTransposedAttributes& attr)
-    : GPUOperation(definition),
-      src_channels_(attr.weights.shape.i),
-      dst_channels_(attr.weights.shape.o) {}
+    : GPUOperation(definition) {
+  code_ = GenerateConvolutionTransposedCode(
+      definition_, DivideRoundUp(attr.weights.shape.i, 4),
+      DivideRoundUp(attr.weights.shape.o, 4));
+}
 
 ConvolutionTransposed3x3Thin::ConvolutionTransposed3x3Thin(
     ConvolutionTransposed3x3Thin&& operation)
-    : GPUOperation(std::move(operation)),
-      src_channels_(operation.src_channels_),
-      dst_channels_(operation.dst_channels_) {}
+    : GPUOperation(std::move(operation)) {}
 
 ConvolutionTransposed3x3Thin& ConvolutionTransposed3x3Thin::operator=(
     ConvolutionTransposed3x3Thin&& operation) {
   if (this != &operation) {
-    std::swap(src_channels_, operation.src_channels_);
-    std::swap(dst_channels_, operation.dst_channels_);
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
 }
 
 std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
-    const OperationDef& op_def, int src_depth, int dst_depth,
-    const CLDevice& device) {
+    const OperationDef& op_def, int src_depth, int dst_depth) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   AddSrcTensor("src_tensor", src_desc);
   AddDstTensor("dst_tensor", op_def.dst_tensors[0]);
 
@@ -184,22 +181,6 @@ std::string ConvolutionTransposed3x3Thin::GenerateConvolutionTransposedCode(
   return c;
 }
 
-absl::Status ConvolutionTransposed3x3Thin::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GenerateConvolutionTransposedCode(
-      definition_, DivideRoundUp(src_channels_, 4),
-      DivideRoundUp(dst_channels_, 4), *creation_context.device);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
 int3 ConvolutionTransposed3x3Thin::GetGridSize() const {
   const int grid_x = src_[0]->Width() * dst_[0]->Batch();
   const int grid_y = src_[0]->Height();
@@ -208,7 +189,7 @@ int3 ConvolutionTransposed3x3Thin::GetGridSize() const {
 }
 
 bool IsConvolutionTransposed3x3ThinSupported(
-    const CLDevice& device, const ConvolutionTransposedAttributes& attr) {
+    const ConvolutionTransposedAttributes& attr) {
   return attr.weights.shape.o <= 8 && attr.weights.shape.w == 3 &&
          attr.weights.shape.h == 3 && attr.stride.w == 2 &&
          attr.stride.h == 2 && attr.padding.prepended.w == 1 &&
@@ -216,19 +197,12 @@ bool IsConvolutionTransposed3x3ThinSupported(
          attr.padding.appended.h == 1;
 }
 
-absl::Status CreateConvolutionTransposed3x3Thin(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr,
-    ConvolutionTransposed3x3Thin* result) {
-  if (!IsConvolutionTransposed3x3ThinSupported(*creation_context.device,
-                                               attr)) {
-    return absl::InvalidArgumentError(
-        "ConvolutionTransposed3x3Thin doesn't support this attributes");
-  }
-  *result = ConvolutionTransposed3x3Thin(definition, attr);
-  RETURN_IF_ERROR(
-      result->UploadData(attr.weights, attr.bias, creation_context.context));
-  return absl::OkStatus();
+ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
+  ConvolutionTransposed3x3Thin result(definition, attr);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
 }  // namespace cl

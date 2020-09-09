@@ -99,6 +99,10 @@ class XlaExpression {
   xla::StatusOr<absl::optional<Tensor>> ResolveConstant(
       xla::Client* client, bool dynamic_dimension_is_minus_one = false) const;
 
+  // ResolveDynamism computes where a value inside this op is dynamic or can be
+  // inferred at compile time.
+  xla::StatusOr<Tensor> ResolveDynamism(xla::Client* client) const;
+
   // Returns the shape of the tensor.
   // The shape of a resource is the shape of a resource handle (i.e., a scalar),
   // not the shape of the resource's value.

@@ -24,6 +24,11 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
+Resize::Resize(const OperationDef& definition, const Resize2DAttributes& attr)
+    : GPUOperation(definition), attr_(attr) {
+  code_ = GetResizeCode(definition_, attr_);
+}
+
 Resize::Resize(Resize&& operation)
     : GPUOperation(std::move(operation)), attr_(operation.attr_) {}
 
@@ -127,19 +132,6 @@ std::string Resize::GetResizeCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status Resize::Compile(const CreationContext& creation_context) {
-  std::string code = GetResizeCode(definition_, attr_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
-}
-
 absl::Status Resize::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("border_x", src_[0]->Width() - 1));
   RETURN_IF_ERROR(args_.SetInt("border_y", src_[0]->Height() - 1));
@@ -162,6 +154,12 @@ int3 Resize::GetGridSize() const {
 Resize CreateResize(const OperationDef& definition,
                     const Resize2DAttributes& attr) {
   return Resize(definition, attr);
+}
+
+Resize3D::Resize3D(const OperationDef& definition,
+                   const Resize3DAttributes& attr)
+    : GPUOperation(definition), attr_(attr) {
+  code_ = GetResize3DCode(definition_, attr_);
 }
 
 Resize3D::Resize3D(Resize3D&& operation)
@@ -286,19 +284,6 @@ std::string Resize3D::GetResize3DCode(const OperationDef& op_def,
   c += "  args.dst_tensor.Write(r0, X, Y, Z, S);\n";
   c += "}\n";
   return c;
-}
-
-absl::Status Resize3D::Compile(const CreationContext& creation_context) {
-  std::string code = GetResize3DCode(definition_, attr_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status Resize3D::BindArguments() {

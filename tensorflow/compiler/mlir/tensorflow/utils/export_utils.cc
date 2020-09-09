@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_split.h"
 #include "absl/strings/string_view.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Casting.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"  // from @llvm-project
 #include "mlir/IR/Attributes.h"  // from @llvm-project
@@ -227,25 +228,13 @@ Status ConvertAttribute(const mlir::ArrayAttr& attr, AttrValue* value) {
   return Status::OK();
 }
 
-// Updates NodeDef constructed out of an MLIR If op to map it to either
-// TensorFlow StatelessIf or If op depending on the additional attribute.
-void UpdateCompositeIfOp(NodeDef* node_def) {
+// Updates NodeDef constructed out of an MLIR Case/IfW/While op to map it to
+// either TensorFlow StatelessX or X op depending on the additional attribute.
+void UpdateCompositeOp(NodeDef* node_def) {
   auto it = node_def->mutable_attr()->find("is_stateless");
   if (it != node_def->attr().end()) {
     if (it->second.b()) {
-      *node_def->mutable_op() = "StatelessIf";
-    }
-    node_def->mutable_attr()->erase(it);
-  }
-}
-
-// Updates NodeDef constructed out of an MLIR While op to map it to either
-// TensorFlow StatelessWhile or While op depending on the additional attribute.
-void UpdateCompositeWhileOp(NodeDef* node_def) {
-  auto it = node_def->mutable_attr()->find("is_stateless");
-  if (it != node_def->attr().end()) {
-    if (it->second.b()) {
-      *node_def->mutable_op() = "StatelessWhile";
+      *node_def->mutable_op() = "Stateless" + node_def->op();
     }
     node_def->mutable_attr()->erase(it);
   }
@@ -352,8 +341,9 @@ StatusOr<std::unique_ptr<NodeDef>> GetOperationNodeDef(
   TF_RETURN_IF_ERROR(ConvertLocation(
       inst->getLoc(), node_def->mutable_experimental_debug_info()));
 
-  if (node_def->op() == "If") UpdateCompositeIfOp(node_def.get());
-  if (node_def->op() == "While") UpdateCompositeWhileOp(node_def.get());
+  if (node_def->op() == "Case") UpdateCompositeOp(node_def.get());
+  if (node_def->op() == "If") UpdateCompositeOp(node_def.get());
+  if (node_def->op() == "While") UpdateCompositeOp(node_def.get());
 
   return node_def;
 }
@@ -379,65 +369,36 @@ Status ConvertAttributes(
       name = mangling_util::DemangleAttributeName(name);
     }
     AttrValue value;
-    switch (attr.getKind()) {
-      case mlir::StandardAttributes::SymbolRef: {
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::FlatSymbolRefAttr>(), &value));
-        func_call_attrs[string(name)] = value;
-        continue;
-      }
-      case mlir::StandardAttributes::Integer:
-        if (auto boolAttr = attr.dyn_cast<mlir::BoolAttr>()) {
-          TF_RETURN_IF_ERROR(ConvertAttribute(boolAttr, &value));
-        } else {
-          TF_RETURN_IF_ERROR(
-              ConvertAttribute(attr.cast<mlir::IntegerAttr>(), &value));
-        }
-        break;
-      case mlir::StandardAttributes::Float:
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::FloatAttr>(), &value));
-        break;
-      case mlir::StandardAttributes::String:
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::StringAttr>(), &value));
-        break;
-      case mlir::StandardAttributes::Array:
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::ArrayAttr>(), &value));
-        break;
-      case mlir::StandardAttributes::DenseIntOrFPElements:
-      case mlir::StandardAttributes::DenseStringElements:
-      case mlir::StandardAttributes::OpaqueElements:
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::ElementsAttr>(), &value));
-        break;
-      case mlir::StandardAttributes::Type:
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::TypeAttr>(), &value));
-        break;
-      case mlir::StandardAttributes::Unit:
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::UnitAttr>(), &value));
-        break;
-      case static_cast<unsigned>(mlir::TF::AttrKind::SHAPE):
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::TF::ShapeAttr>(), &value));
-        break;
-      case static_cast<unsigned>(mlir::TF::AttrKind::FUNC): {
-        TF_RETURN_IF_ERROR(
-            ConvertAttribute(attr.cast<mlir::TF::FuncAttr>(), &value));
-        func_call_attrs[string(name)] = value;
-        continue;
-      }
-      // AffineMap kind is not implemented.
-      case mlir::StandardAttributes::AffineMap:
-        return errors::Unimplemented("AffineMap attribute (needed for '",
-                                     name_strref, "') unimplemented");
-      default:
-        return errors::Unimplemented("Unhandled attribute kind for attribute '",
-                                     name_strref, '\'');
+    if (auto symbol_ref = attr.dyn_cast<mlir::SymbolRefAttr>()) {
+      TF_RETURN_IF_ERROR(
+          ConvertAttribute(symbol_ref.cast<mlir::FlatSymbolRefAttr>(), &value));
+      func_call_attrs[string(name)] = value;
+      continue;
     }
+    if (auto func_attr = attr.dyn_cast<mlir::TF::FuncAttr>()) {
+      TF_RETURN_IF_ERROR(ConvertAttribute(func_attr, &value));
+      func_call_attrs[string(name)] = value;
+      continue;
+    }
+    if (attr.isa<mlir::AffineMapAttr>()) {
+      // AffineMapAttr is not implemented.
+      return errors::Unimplemented("AffineMap attribute (needed for '",
+                                   name_strref, "') unimplemented");
+    }
+    TF_RETURN_IF_ERROR(
+        llvm::TypeSwitch<mlir::Attribute, Status>(attr)
+            .Case<mlir::BoolAttr, mlir::IntegerAttr, mlir::FloatAttr,
+                  mlir::StringAttr, mlir::ArrayAttr, mlir::ElementsAttr,
+                  mlir::TypeAttr, mlir::UnitAttr, mlir::TF::ShapeAttr>(
+                [&](auto derived_attr) {
+                  return ConvertAttribute(derived_attr, &value);
+                })
+            .Default([&](mlir::Attribute) {
+              return errors::Unimplemented(
+                  "Unhandled attribute kind for attribute '", name_strref,
+                  '\'');
+            }));
+
     // According to the NodeDef proto definition, an attribute name from the
     // input TensorFlow GraphDef shouldn't contain '.'. If it does appear in
     // the attribute from MLIR, it is treated as an attribute from function

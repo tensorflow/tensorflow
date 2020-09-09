@@ -28,6 +28,11 @@ namespace tensorflow {
 namespace data {
 namespace experimental {
 
+/* static */ constexpr const int SaveDatasetOp::kFileFormatVersion;
+/* static */ constexpr const char* const LoadDatasetOp::kCompression;
+/* static */ constexpr const char* const LoadDatasetOp::kReaderFunc;
+/* static */ constexpr const char* const LoadDatasetOp::kReaderFuncTarguments;
+
 SaveDatasetOp::SaveDatasetOp(OpKernelConstruction* ctx)
     : HybridAsyncOpKernel(ctx, "tf_data_save_dataset") {
   OP_REQUIRES_OK(ctx, ctx->GetAttr(kCompression, &compression_));

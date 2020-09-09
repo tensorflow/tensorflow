@@ -1004,14 +1004,20 @@ absl::optional<int64> LiteralBase::GetIntegralAsS64(
   switch (shape().element_type()) {
     case PRED:
       return Get<bool>(multi_index);
+    case S8:
+      return Get<int8>(multi_index);
     case U8:
       return Get<uint8>(multi_index);
+    case S16:
+      return Get<int16>(multi_index);
+    case U16:
+      return Get<uint16>(multi_index);
     case S32:
       return Get<int32>(multi_index);
-    case S64:
-      return Get<int64>(multi_index);
     case U32:
       return Get<uint32>(multi_index);
+    case S64:
+      return Get<int64>(multi_index);
     case U64:
       return Get<uint64>(multi_index);
     default:

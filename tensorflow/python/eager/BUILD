@@ -5,6 +5,9 @@ load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # buildifier: disable=same-origin-load
 load("//tensorflow:tensorflow.bzl", "tf_python_pybind_extension")
+
+# buildifier: disable=same-origin-load
+load("//tensorflow:tensorflow.bzl", "pybind_extension")
 load("//tensorflow/python/tpu:tpu.bzl", "tpu_py_test")
 load(
     "//tensorflow/tools/test:performance.bzl",
@@ -77,6 +80,36 @@ cc_library(
     ],
 )
 
+tf_python_pybind_extension(
+    name = "pywrap_tensor_test_util",
+    testonly = True,
+    srcs = ["pywrap_tensor_test_util.cc"],
+    module_name = "pywrap_tensor_test_util",
+    deps = [
+        ":pywrap_tfe_lib",
+        "//tensorflow/c:tf_status_helper",
+        "//tensorflow/c/eager:c_api_test_util",
+        "//tensorflow/python:pybind11_lib",
+        "@pybind11",
+    ],
+)
+
+cuda_py_test(
+    name = "pywrap_tensor_test",
+    size = "small",
+    srcs = ["pywrap_tensor_test.py"],
+    python_version = "PY3",
+    tags = [
+        "no_oss",  # TODO(b/168051787): Enable.
+        "no_pip",  # TODO(b/168051787): Enable.
+    ],
+    deps = [
+        ":pywrap_tensor_test_util",
+        ":test",
+        "//third_party/py/numpy",
+    ],
+)
+
 filegroup(
     name = "pywrap_required_hdrs",
     srcs = [
@@ -144,6 +177,7 @@ cuda_py_test(
     size = "small",
     srcs = ["cancellation_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":cancellation",
         ":test",
@@ -250,6 +284,7 @@ cuda_py_test(
     name = "monitoring_test",
     srcs = ["monitoring_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":monitoring",
         ":test",
@@ -374,6 +409,7 @@ cuda_py_test(
     size = "small",
     srcs = ["core_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":context",
         ":core",
@@ -393,6 +429,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["function_argument_naming_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":def_function",
@@ -408,6 +445,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["function_defun_collection_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":def_function",
@@ -444,7 +482,6 @@ cuda_py_test(
     python_version = "PY3",
     shard_count = 15,
     tags = [
-        "nogpu",  # TODO(b/162544929): segfault
         "nomac",  # b/157056289
     ],
     deps = [
@@ -524,6 +561,7 @@ cuda_py_test(
     name = "graph_only_ops_test",
     srcs = ["graph_only_ops_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "graph_only_ops",
         "//tensorflow/python:client_testlib",
@@ -571,6 +609,16 @@ py_library(
         "//tensorflow/python/saved_model:save_options",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+pybind_extension(
+    name = "_concrete_function",
+    srcs = ["function.cc"],
+    module_name = "_concrete_function",
+    deps = [
+        "//third_party/python_runtime:headers",
+        "@pybind11",
     ],
 )
 
@@ -670,6 +718,7 @@ cuda_py_test(
     name = "remote_benchmarks_test",
     srcs = ["remote_benchmarks_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":benchmarks_test_base",
@@ -695,6 +744,7 @@ tf_py_test(
     name = "tape_test",
     srcs = ["tape_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         ":backprop",
         ":context",
@@ -803,6 +853,7 @@ tf_py_test(
     size = "medium",
     srcs = ["lift_to_graph_test.py"],
     python_version = "PY3",
+    tfrt_enabled = True,
     deps = [
         "lift_to_graph",
         "//tensorflow/python:framework_ops",
@@ -853,12 +904,10 @@ tf_py_test(
 tf_xla_py_test(
     name = "def_function_xla_jit_test",
     srcs = ["def_function_xla_jit_test.py"],
-    enable_mlir_bridge = True,
-    enabled_backends = [
-        # TODO(b/162438052): Enable the test on TPU.
-        "cpu",
-        "gpu",
+    disabled_backends = [
+        "cpu_ondemand",
     ],
+    enable_mlir_bridge = True,
     python_version = "PY3",
     tags = [
         "no_mac",
@@ -952,6 +1001,7 @@ cuda_py_test(
         "optonly",  # times out
     ],
     deps = [
+        ":cancellation",
         ":context",
         ":def_function",
         ":remote",

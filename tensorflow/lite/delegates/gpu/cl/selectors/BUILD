@@ -49,6 +49,7 @@ cc_library(
     hdrs = ["default_selector.h"],
     deps = [
         ":subgraph",
+        "//tensorflow/lite/delegates/gpu/cl:device_info",
         "//tensorflow/lite/delegates/gpu/cl:model_hints",
         "//tensorflow/lite/delegates/gpu/cl:tensor_type",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
@@ -108,6 +109,9 @@ cc_library(
         "//tensorflow/lite/delegates/gpu/cl/kernels:conv_common",
         "//tensorflow/lite/delegates/gpu/cl/kernels:elementwise",
         "//tensorflow/lite/delegates/gpu/cl/kernels:gpu_operation",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:mean_stddev_normalization",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:reduce",
+        "//tensorflow/lite/delegates/gpu/cl/kernels:transpose",
         "//tensorflow/lite/delegates/gpu/cl/selectors:default_selector",
         "//tensorflow/lite/delegates/gpu/common:data_type",
         "//tensorflow/lite/delegates/gpu/common:model",

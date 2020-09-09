@@ -1487,6 +1487,27 @@ class RNNTest(keras_parameterized.TestCase):
     self.assertAllClose(predict_1, predict_6)
     self.assertAllClose(predict_6, predict_7)
 
+  def test_stateful_rnn_with_customized_get_initial_state(self):
+
+    class TestCell(keras.layers.AbstractRNNCell):
+
+      state_size = 1
+      output_size = 2
+
+      def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+        return np.ones((batch_size, 1), dtype=dtype)
+
+      def call(self, inputs, states):
+        return inputs, states
+
+    layer = keras.layers.RNN(TestCell(), stateful=True, return_state=True)
+    inputs = keras.Input(shape=(10, 2), batch_size=4)
+    model = keras.Model(inputs, layer(inputs))
+    x = np.ones((4, 10, 2), dtype=np.float32)
+    output, state = model.predict(x)
+    self.assertAllClose(output, np.ones((4, 2)))
+    self.assertAllClose(state, np.ones((4, 1)))
+
   def test_input_dim_length(self):
     simple_rnn = keras.layers.SimpleRNN(5, input_length=10, input_dim=8)
     self.assertEqual(simple_rnn._batch_input_shape, (None, 10, 8))

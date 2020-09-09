@@ -20,8 +20,10 @@ limitations under the License.
 #include "llvm/ADT/ArrayRef.h"
 #include "mlir-hlo/Dialect/mhlo/IR/lhlo_ops.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/map_lmhlo_to_scalar_op.h"
+#include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/GPU/GPUDialect.h"
 #include "mlir/Dialect/Linalg/IR/LinalgOps.h"
+#include "mlir/Dialect/Linalg/IR/LinalgTypes.h"
 #include "mlir/Dialect/SCF/SCF.h"
 #include "mlir/Dialect/StandardOps/IR/Ops.h"
 #include "mlir/IR/Attributes.h"
@@ -147,9 +149,9 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
       // Now copy over the actual body of the reduction, leaving out the
       // terminator.
       BlockAndValueMapping mapping;
-      mapping.map(reduce_op.body().front().getArgument(0), accumulator);
-      mapping.map(reduce_op.body().front().getArgument(1), rhs);
-      mapping.map(reduce_op.body().front().getArgument(2), accumulator);
+      mapping.map(reduce_op.body().getArgument(0), accumulator);
+      mapping.map(reduce_op.body().getArgument(1), rhs);
+      mapping.map(reduce_op.body().getArgument(2), accumulator);
       for (auto& nested : reduce_op.body().front().without_terminator()) {
         auto clone = rewriter.clone(nested, mapping);
         for (auto pair : llvm::zip(nested.getResults(), clone->getResults())) {
@@ -169,6 +171,11 @@ class LhloReduceToGPULaunchConverter : public OpConversionPattern<ReduceOp> {
 
 struct LhloLegalizeToGpuPass
     : public PassWrapper<LhloLegalizeToGpuPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry& registry) const override {
+    registry.insert<AffineDialect, gpu::GPUDialect, linalg::LinalgDialect,
+                    scf::SCFDialect>();
+  }
+
   void runOnFunction() override {
     OwningRewritePatternList patterns;
     ConversionTarget target(getContext());

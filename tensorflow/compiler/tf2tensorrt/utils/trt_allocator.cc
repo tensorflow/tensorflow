@@ -74,7 +74,7 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
   // algorithm uses too much memory. If we don't fail immediately building the
   // engine can be *very* slow with TensorRT7 when GPU memory is limited.
   AllocationAttributes attributes;
-  attributes.no_retry_on_failure = true;
+  attributes.retry_on_failure = false;
   void* mem = allocator_->AllocateRaw(alignment, total_size, attributes);
   if (!mem) return nullptr;
 

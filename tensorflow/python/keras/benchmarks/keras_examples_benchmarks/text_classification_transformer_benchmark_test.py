@@ -66,77 +66,65 @@ class TextWithTransformerBenchmark(tf.test.Benchmark):
   #   Check more details in `measure_performance()` method of
   #   benchmark_util.
   def benchmark_text_classification_bs_128(self):
-    """Measure performance with batch_size=128 and run_iters=3."""
+    """Measure performance with batch_size=128."""
     batch_size = 128
-    run_iters = 3
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
         y=self.imdb_y,
         batch_size=batch_size,
-        run_iters=run_iters,
         optimizer='adam',
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy'])
 
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_text_classification_bs_256(self):
-    """Measure performance with batch_size=256 and run_iters=3."""
+    """Measure performance with batch_size=256."""
     batch_size = 256
-    run_iters = 3
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
         y=self.imdb_y,
         batch_size=batch_size,
-        run_iters=run_iters,
         optimizer='adam',
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy'])
 
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_text_classification_bs_512(self):
-    """Measure performance with batch_size=512 and run_iters=4."""
+    """Measure performance with batch_size=512."""
     batch_size = 512
-    run_iters = 4
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
         y=self.imdb_y,
         batch_size=batch_size,
-        run_iters=run_iters,
         optimizer='adam',
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy'])
 
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_text_classification_bs_512_gpu_2(self):
-    """Measure performance with batch_size=512, run_iters=4, gpu=1 and
+    """Measure performance with batch_size=512, gpu=1 and
 
     distribution_strategy='mirrored'
     """
     batch_size = 512
-    run_iters = 4
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.imdb_x,
         y=self.imdb_y,
         batch_size=batch_size,
-        run_iters=run_iters,
         num_gpus=2,
         distribution_strategy='mirrored',
         optimizer='adam',
         loss='sparse_categorical_crossentropy',
         metrics=['accuracy'])
 
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
 
 class MultiHeadSelfAttention(tf.keras.layers.Layer):

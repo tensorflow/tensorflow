@@ -24,12 +24,40 @@ limitations under the License.
 #include "tensorflow/core/kernels/batching_util/concat_split_util.h"
 #include "tensorflow/core/kernels/batching_util/periodic_function.h"
 #include "tensorflow/core/kernels/ops_util.h"
+#include "tensorflow/core/lib/monitoring/gauge.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 
 namespace tensorflow {
+
+auto* batch_op_split_usage = monitoring::Gauge<string, 1>::New(
+    "/tensorflow/serving/batching/enable_large_batch_splitting",
+    "Tracks the usage of attribute `enable_large_batch_splitting` for "
+    "BatchFunction kernel in a saved model.",
+    "model_name");
+
+void RecordBatchSplitUsage(
+    absl::optional<bool> maybe_enable_large_batch_splitting,
+    const string& model_name) {
+  if (maybe_enable_large_batch_splitting.has_value()) {
+    if (maybe_enable_large_batch_splitting.value()) {
+      batch_op_split_usage->GetCell(model_name)->Set("true");
+    } else {
+      batch_op_split_usage->GetCell(model_name)->Set("false");
+    }
+  } else {
+    batch_op_split_usage->GetCell(model_name)->Set("unset");
+  }
+}
+
+const string& GetModelName(OpKernelContext* ctx) {
+  static string* kModelNameUnset = new string("model_name_unset");
+  if (!ctx->session_metadata()) return *kModelNameUnset;
+  if (ctx->session_metadata()->name().empty()) return *kModelNameUnset;
+  return ctx->session_metadata()->name();
+}
 
 using ::tensorflow::concat_split_util::Concat;
 using ::tensorflow::concat_split_util::Split;
@@ -72,9 +100,10 @@ class BatchResource : public serving::BatchResourceBase {
         fhandle_(fhandle) {}
 
   void ProcessFuncBatchImpl(
-      OpKernelContext* last_task_context, absl::Span<const Tensor> inputs,
+      const BatchTask& last_task, absl::Span<const Tensor> inputs,
       std::vector<Tensor>* combined_outputs,
       std::function<void(const Status&)> done) const override {
+    auto* last_task_context = last_task.context;
     FunctionLibraryRuntime::Options opts;
     opts.step_container = last_task_context->step_container();
     opts.cancellation_manager = last_task_context->cancellation_manager();
@@ -129,8 +158,10 @@ class BatchFunctionKernel : public AsyncOpKernel {
     if (c->HasAttr("enable_large_batch_splitting")) {
       OP_REQUIRES_OK(c, c->GetAttr("enable_large_batch_splitting",
                                    &enable_large_batch_splitting_));
+      has_attribute_enable_large_batch_splitting_ = true;
     } else {
       enable_large_batch_splitting_ = false;
+      has_attribute_enable_large_batch_splitting_ = false;
     }
 
     OP_REQUIRES_OK(c, ValidateAllowedBatchSizes());
@@ -139,6 +170,11 @@ class BatchFunctionKernel : public AsyncOpKernel {
   bool IsExpensive() override { return false; }
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
+    RecordBatchSplitUsage(
+        has_attribute_enable_large_batch_splitting_
+            ? absl::make_optional(enable_large_batch_splitting_)
+            : absl::nullopt,
+        GetModelName(c));
     BatchResource* br;
     std::function<Status(BatchResource**)> creator = [this](BatchResource** r) {
       std::unique_ptr<BatchResource> new_resource;
@@ -197,6 +233,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
   std::vector<int32> allowed_batch_sizes_;
   FunctionLibraryRuntime::Handle fhandle_;
   bool enable_large_batch_splitting_;
+  bool has_attribute_enable_large_batch_splitting_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("BatchFunction").Device(DEVICE_CPU),

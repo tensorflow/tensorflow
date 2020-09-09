@@ -419,6 +419,19 @@ cc_binary(
     ],
 )
 
+cc_library(
+    name = "filecheck-lib",
+    srcs = glob([
+        "lib/FileCheck/*.cpp",
+        "lib/FileCheck/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/FileCheck/*.h",
+    ]),
+    includes = ["include"],
+    deps = [":Support"],
+)
+
 cc_binary(
     name = "FileCheck",
     testonly = 1,
@@ -429,7 +442,10 @@ cc_binary(
     copts = llvm_copts,
     linkopts = llvm_linkopts,
     stamp = 0,
-    deps = [":Support"],
+    deps = [
+        ":Support",
+        ":filecheck-lib",
+    ],
 )
 
 llvm_target_list = [
@@ -685,26 +701,36 @@ cc_library(
     ],
 )
 
-gentbl(
-    name = "omp_gen",
-    tbl_outs = [("--gen-directive-decl", "include/llvm/Frontend/OpenMP/OMP.h.inc")],
-    tblgen = ":llvm-tblgen",
-    td_file = "include/llvm/Frontend/OpenMP/OMP.td",
-    td_srcs = glob([
+exports_files([
+    "include/llvm/Frontend/OpenMP/OMP.td",
+])
+
+filegroup(
+    name = "omp_td_files",
+    srcs = glob([
         "include/llvm/Frontend/OpenMP/*.td",
         "include/llvm/Frontend/Directive/*.td",
     ]),
 )
 
 gentbl(
-    name = "omp_gen_impl",
-    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp.inc")],
+    name = "omp_gen",
+    tbl_outs = [("--gen-directive-decl", "include/llvm/Frontend/OpenMP/OMP.h.inc")],
     tblgen = ":llvm-tblgen",
     td_file = "include/llvm/Frontend/OpenMP/OMP.td",
-    td_srcs = glob([
-        "include/llvm/Frontend/OpenMP/*.td",
-        "include/llvm/Frontend/Directive/*.td",
-    ]),
+    td_srcs = [
+        ":omp_td_files",
+    ],
+)
+
+gentbl(
+    name = "omp_gen_impl",
+    tbl_outs = [("--gen-directive-impl", "include/llvm/Frontend/OpenMP/OMP.cpp")],
+    tblgen = ":llvm-tblgen",
+    td_file = "include/llvm/Frontend/OpenMP/OMP.td",
+    td_srcs = [
+        ":omp_td_files",
+    ],
 )
 
 # TODO(b/159809163): autogenerate this after enabling release-mode ML
@@ -1556,7 +1582,9 @@ cc_library(
         ":BPFInfo",
         ":CodeGen",
         ":Core",
+        ":IPO",
         ":MC",
+        ":Scalar",
         ":SelectionDAG",
         ":Support",
         ":Target",
@@ -1747,6 +1775,7 @@ cc_library(
         "lib/CodeGen/*.c",
         "lib/CodeGen/*.cpp",
         "lib/CodeGen/*.inc",
+        "lib/CodeGen/LiveDebugValues/*.cpp",
         "lib/CodeGen/*.h",
     ]),
     hdrs = glob([
@@ -2082,7 +2111,10 @@ cc_library(
         "include/llvm/Extensions/*.inc",
     ]),
     copts = llvm_copts,
-    deps = [":config"],
+    deps = [
+        ":Support",
+        ":config",
+    ],
 )
 
 cc_library(
@@ -2092,7 +2124,7 @@ cc_library(
         "lib/Frontend/OpenMP/*.cpp",
         "lib/Frontend/OpenMP/*.inc",
         "lib/Frontend/OpenMP/*.h",
-    ]),
+    ]) + ["include/llvm/Frontend/OpenMP/OMP.cpp"],
     hdrs = glob([
         "include/llvm/Frontend/OpenMP/*.h",
         "include/llvm/Frontend/OpenMP/*.def",
@@ -2395,6 +2427,27 @@ cc_library(
         ":ProfileData",
         ":Support",
         ":TransformUtils",
+        ":config",
+    ],
+)
+
+cc_library(
+    name = "InterfaceStub",
+    srcs = glob([
+        "lib/InterfaceStub/*.c",
+        "lib/InterfaceStub/*.cpp",
+        "lib/InterfaceStub/*.inc",
+        "lib/InterfaceStub/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/InterfaceStub/*.h",
+        "include/llvm/InterfaceStub/*.def",
+        "include/llvm/InterfaceStub/*.inc",
+    ]),
+    copts = llvm_copts,
+    deps = [
+        ":Object",
+        ":Support",
         ":config",
     ],
 )
@@ -3290,6 +3343,7 @@ cc_library(
         ":IPO",
         ":InstCombine",
         ":Instrumentation",
+        ":ObjCARC",
         ":Scalar",
         ":Support",
         ":Target",
@@ -4082,8 +4136,6 @@ cc_library(
         "include/llvm/TextAPI/*.def",
         "include/llvm/TextAPI/*.inc",
     ]) + [
-        "include/llvm/TextAPI/ELF/TBEHandler.h",
-        "include/llvm/TextAPI/ELF/ELFStub.h",
         "include/llvm/TextAPI/MachO/Architecture.def",
         "include/llvm/TextAPI/MachO/PackedVersion.h",
         "include/llvm/TextAPI/MachO/InterfaceFile.h",

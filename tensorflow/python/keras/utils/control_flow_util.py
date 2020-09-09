@@ -22,8 +22,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import smart_cond as smart_module
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variables
 
@@ -107,43 +106,34 @@ def smart_cond(pred, true_fn=None, false_fn=None, name=None):  # pylint: disable
   Raises:
     TypeError: If `true_fn` or `false_fn` is not callable.
   """
-  if not callable(true_fn):
-    raise TypeError("`true_fn` must be callable.")
-  if not callable(false_fn):
-    raise TypeError("`false_fn` must be callable.")
-  pred_value = smart_constant_value(pred)
-  if pred_value is not None:
-    if pred_value:
-      return true_fn()
-    else:
-      return false_fn()
-  else:
+  if isinstance(pred, variables.Variable):
     return control_flow_ops.cond(
         pred, true_fn=true_fn, false_fn=false_fn, name=name)
+  return smart_module.smart_cond(
+      pred, true_fn=true_fn, false_fn=false_fn, name=name)
 
 
-def smart_constant_value(pred):  # pylint: disable=invalid-name
+def constant_value(pred):  # pylint: disable=invalid-name
   """Return the bool value for `pred`, or None if `pred` had a dynamic value.
 
   Arguments:
-    pred: A scalar, either a Python bool or tensor.
+    pred: A scalar, either a Python bool or a TensorFlow boolean variable
+      or tensor, or the Python integer 1 or 0.
 
   Returns:
     True or False if `pred` has a constant boolean value, None otherwise.
 
   Raises:
-    TypeError: If `pred` is not a Tensor or bool.
+    TypeError: If `pred` is not a Variable, Tensor or bool, or Python
+      integer 1 or 0.
   """
-  if isinstance(pred, ops.Tensor):
-    pred_value = tensor_util.constant_value(pred)
-  elif isinstance(pred, variables.Variable):
-    pred_value = None
-  elif pred in {0, 1}:  # Accept 1/0 as valid boolean values
-    pred_value = bool(pred)
-  elif isinstance(pred, bool):
-    pred_value = pred
-  else:
-    raise TypeError("`pred` must be a Tensor, or a Python bool, or 1 or 0. "
-                    "Found instead: %s" % type(pred))
+  # Allow integer booleans.
+  if isinstance(pred, int):
+    if pred == 1:
+      pred = True
+    elif pred == 0:
+      pred = False
 
-  return pred_value
+  if isinstance(pred, variables.Variable):
+    return None
+  return smart_module.smart_constant_value(pred)

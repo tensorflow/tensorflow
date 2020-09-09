@@ -30,9 +30,7 @@ namespace cl {
 class ConverterToConvWeights : public GPUOperation {
  public:
   ConverterToConvWeights(const OperationDef& definition,
-                         const ConvWeightsDescription& conv_weights_desc)
-      : GPUOperation(definition), conv_weights_desc_(conv_weights_desc) {}
-  absl::Status Compile(const CreationContext& creation_context) override;
+                         const ConvWeightsDescription& conv_weights_desc);
   absl::Status BindArguments() override;
   int3 GetGridSize() const override;
 

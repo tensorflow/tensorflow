@@ -309,6 +309,8 @@ QuantizedLstmTest/BasicQuantizedLstmTest/29
 
 # quantize_test
 QuantizeOpTest/UINT8,29
+QuantizeOpTest/UInt8UInt8.+,29
+QuantizeOpTest/Int8Int8.+,30
 QuantizeOpTest/INT8,30
 
 # rank

@@ -30,9 +30,9 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 namespace {
-bool UseFP16SIMD(const CLDevice& device, CalculationsPrecision precision,
+bool UseFP16SIMD(const DeviceInfo& device_info, CalculationsPrecision precision,
                  bool kernel1x1) {
-  if (!device.IsAdreno()) {
+  if (!device_info.IsAdreno()) {
     return false;
   }
   switch (precision) {
@@ -40,7 +40,7 @@ bool UseFP16SIMD(const CLDevice& device, CalculationsPrecision precision,
     case CalculationsPrecision::F32_F16:
       return false;
     case CalculationsPrecision::F16:
-      return device.IsAdreno3xx() && kernel1x1;
+      return device_info.IsAdreno3xx() && kernel1x1;
   }
 }
 }  // namespace
@@ -95,10 +95,9 @@ std::string ConvTexture::GenerateConvCode(const OperationDef& op_def,
                                           const int3& block_size, bool is1x1,
                                           bool adreno4xx_optimization,
                                           bool stride_correction,
-                                          bool different_weights_for_height,
-                                          const CLDevice& device) {
+                                          bool different_weights_for_height) {
   auto src_desc = op_def.src_tensors[0];
-  src_desc.SetTextureAddressMode(GetFastestZeroMode(device));
+  src_desc.SetTextureAddressMode(TextureAddressMode::ZERO);
   if (op_def.IsBatchSupported()) {
     src_desc.SetStateVar("BatchedWidth", "true");
   }
@@ -380,33 +379,23 @@ std::string ConvTexture::GenerateConvCode(const OperationDef& op_def,
   return c;
 }
 
-absl::Status ConvTexture::Compile(const CreationContext& creation_context) {
+void ConvTexture::GenerateCode(const DeviceInfo& device_info) {
   auto storage_type = definition_.GetPrimaryStorageType();
   bool is1x1 = kernel_size_.x == 1 && kernel_size_.y == 1;
   bool adreno4xx_optimization =
       stride_.x == 1 && stride_.y == 1 && padding_.x == 0 && padding_.y == 0 &&
-      creation_context.device->IsAdreno4xx() &&
+      device_info.IsAdreno4xx() &&
       storage_type == TensorStorageType::TEXTURE_ARRAY &&
       definition_.precision == CalculationsPrecision::F16;
   const bool stride_correction =
       definition_.IsBatchSupported() && stride_.x != 1;
-  std::string code =
+  code_ =
       GenerateConvCode(definition_, block_size_, is1x1, adreno4xx_optimization,
-                       stride_correction, different_weights_for_height_,
-                       *creation_context.device);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-  std::vector<CompilerOptions> options;
-  if (UseFP16SIMD(*creation_context.device, definition_.precision, is1x1)) {
-    options.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
+                       stride_correction, different_weights_for_height_);
+
+  if (UseFP16SIMD(device_info, definition_.precision, is1x1)) {
+    compiler_options_.push_back(CompilerOptions::ADRENO_FULL_SIMD_LINE);
   }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status ConvTexture::BindArguments() {
@@ -431,35 +420,40 @@ int3 ConvTexture::GetGridSize() const {
   return int3(grid_x, grid_y, grid_z);
 }
 
-absl::Status ConvTexture::Tune(const TuningParameters& params) {
-  RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-  return GetBestWorkGroupConv(params, kernel_, grid_size_, &work_group_size_);
+void ConvTexture::GetPossibleKernelWorkGroups(
+    TuningType tuning_type, const DeviceInfo& device_info,
+    const KernelInfo& kernel_info, std::vector<int3>* work_groups) const {
+  GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                            work_groups);
 }
 
-absl::Status CreateConvTexture(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const Convolution2DAttributes& attr,
-                               ConvTexture* result) {
-  *result = ConvTexture(definition, attr);
-  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const Convolution2DAttributes& attr) {
+  ConvTexture result(definition, attr);
+  result.GenerateCode(device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
-absl::Status CreateConvTexture(const CreationContext& creation_context,
-                               const OperationDef& definition,
-                               const FullyConnectedAttributes& attr,
-                               ConvTexture* result) {
-  *result = ConvTexture(definition);
-  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+ConvTexture CreateConvTexture(const DeviceInfo& device_info,
+                              const OperationDef& definition,
+                              const FullyConnectedAttributes& attr) {
+  ConvTexture result(definition);
+  result.GenerateCode(device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
-absl::Status CreateConvTextureWino4x4To6x6(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const Convolution2DAttributes& attr, ConvTexture* result) {
-  *result = ConvTexture(definition);
-  result->different_weights_for_height_ = true;
-  result->block_size_ = {4, 1, 2};
-  return result->UploadDataForWinograd4x4To6x6(
-      attr.weights, *creation_context.device, creation_context.context);
+ConvTexture CreateConvTextureWino4x4To6x6(const DeviceInfo& device_info,
+                                          const OperationDef& definition,
+                                          const Convolution2DAttributes& attr) {
+  ConvTexture result(definition);
+  result.different_weights_for_height_ = true;
+  result.block_size_ = {4, 1, 2};
+  result.GenerateCode(device_info);
+  result.UploadDataForWinograd4x4To6x6(attr.weights);
+  return result;
 }
 
 }  // namespace cl

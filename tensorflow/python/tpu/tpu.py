@@ -825,7 +825,7 @@ class XLAOptions(
       requested.
   """
 
-  def __new__(cls, use_spmd_for_xla_partitioning=False):
+  def __new__(cls, use_spmd_for_xla_partitioning=True):
     return super(XLAOptions, cls).__new__(cls, use_spmd_for_xla_partitioning)
 
 

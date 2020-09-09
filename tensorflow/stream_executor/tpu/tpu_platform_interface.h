@@ -18,11 +18,15 @@ limitations under the License.
 
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/stream_executor/platform.h"
+#include "tensorflow/stream_executor/tpu/c_api_decl.h"
+#include "tensorflow/stream_executor/tpu/tpu_topology.h"
 
 namespace tensorflow {
 namespace tpu {
 
-typedef void* TpuTopologyPtr;
+// TODO(skyewm): get rid of TpuTopologyPtr and either use SE_TpuTopology* or
+// return a TpuTopologyExternal.
+typedef SE_TpuTopology* TpuTopologyPtr;
 
 class TpuPlatformInterface : public stream_executor::Platform {
  public:
@@ -45,6 +49,8 @@ class TpuPlatformInterface : public stream_executor::Platform {
   virtual bool ShouldRegisterTpuDeviceToDeviceCopy() = 0;
 
   virtual const TpuTopologyPtr GetTopologyPtr() = 0;
+
+  virtual const TpuHostLocationExternal GetTpuHostLocation() const = 0;
 };
 
 }  // namespace tpu

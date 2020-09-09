@@ -20,7 +20,6 @@ from __future__ import print_function
 import os
 
 from tensorflow.python.distribute import distributed_file_utils
-from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
@@ -104,12 +103,6 @@ class WorkerTrainingState(object):
       True if the training state is successfully restored. False if the training
       state doesn't need to be restored, or error occurred so it can't.
     """
-    # For multi-worker training, it should not restore a model in certain
-    # worker setting (e.g. non-chief worker in ParameterServerStrategy).
-    # pylint: disable=protected-access
-    if self._model._in_multi_worker_mode(
-    ) and not multi_worker_util.should_load_checkpoint():
-      return
     self.read_checkpoint_manager.restore_or_initialize()
 
   def delete_backup(self):
@@ -119,12 +112,12 @@ class WorkerTrainingState(object):
     successfully finishes.
     """
     # pylint: disable=protected-access
-    for pathname in file_io.get_matching_files(
+    for pathname in file_io.get_matching_files_v2(
         self.write_checkpoint_manager._prefix + '*'):
-      file_io.delete_recursively(pathname)
-    for pathname in file_io.get_matching_files(
+      file_io.delete_recursively_v2(pathname)
+    for pathname in file_io.get_matching_files_v2(
         os.path.join(self.write_checkpoint_manager.directory, 'checkpoint')):
-      file_io.delete_recursively(pathname)
+      file_io.delete_recursively_v2(pathname)
 
   def maybe_load_initial_epoch_from_ckpt(self, initial_epoch, mode):
     """Maybe load initial epoch from ckpt considering possible worker recovery.

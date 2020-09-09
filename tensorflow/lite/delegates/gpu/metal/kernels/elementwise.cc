@@ -16,9 +16,9 @@ limitations under the License.
 #include "tensorflow/lite/delegates/gpu/metal/kernels/elementwise.h"
 
 #include <cstddef>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/lite/delegates/gpu/common/convert.h"
 #include "tensorflow/lite/delegates/gpu/common/operations.h"
@@ -32,7 +32,7 @@ namespace metal {
 namespace {
 
 std::string OneInputFunctor(OperationType op_type, const std::string& value) {
-  const std::unordered_map<OperationType, std::string> functors{
+  const absl::flat_hash_map<OperationType, std::string> functors{
       {OperationType::ABS, "abs($0)"},
       {OperationType::SIN, "sin($0)"},
       {OperationType::HARD_SWISH,
@@ -45,6 +45,7 @@ std::string OneInputFunctor(OperationType op_type, const std::string& value) {
        "$0.w < FLT(0.0f) ? exp($0.w) - FLT(1.0f) : $0.w)"},
       {OperationType::EXP, "exp($0)"},
       {OperationType::LOG, "log($0)"},
+      {OperationType::NEG, "-($0)"},
       {OperationType::SQRT, "sqrt($0)"},
       {OperationType::RSQRT, "1.0 / sqrt($0)"},
       {OperationType::SQUARE, "$0 * $0"},
@@ -62,7 +63,7 @@ std::string OneInputFunctor(OperationType op_type, const std::string& value) {
 
 std::string TwoInputFunctor(OperationType op_type, const std::string& value0,
                             const std::string& value1) {
-  const std::unordered_map<OperationType, std::string> functors{
+  const absl::flat_hash_map<OperationType, std::string> functors{
       {OperationType::ADD, "$0 + $1"},
       {OperationType::DIV, "$0 / $1"},
       {OperationType::MAXIMUM, "max($0, $1)"},
@@ -115,7 +116,7 @@ std::vector<ComputeTaskDescriptorPtr> ElementwiseWithTwoInputs(
 
   desc->uniform_buffers = {
       {"constant int2&",
-       [input_ids, output_id](const std::map<ValueId, BHWC>& buffers) {
+       [input_ids](const std::map<ValueId, BHWC>& buffers) {
          const auto& input_dim_1 = buffers.find(input_ids[1])->second;
          std::vector<int> uniform_params{
              input_dim_1.w,

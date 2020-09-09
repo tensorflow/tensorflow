@@ -20,6 +20,18 @@ tf_py_test(
 )
 
 cuda_py_test(
+    name = "scatter_nd_ops_test",
+    size = "small",
+    srcs = ["scatter_nd_ops_test.py"],
+    deps = [
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:state_ops",
+        "//tensorflow/python:variables",
+        "//third_party/py/numpy",
+    ],
+)
+
+cuda_py_test(
     name = "session_ops_test",
     size = "small",
     srcs = ["session_ops_test.py"],

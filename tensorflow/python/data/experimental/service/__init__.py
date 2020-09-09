@@ -64,8 +64,8 @@ workers, the tf.data service should be able to achieve similar speed.
 ## Running the tf.data service
 
 tf.data servers should be brought up alongside your training jobs, and brought
-down when the jobs are finished. The tf.data service uses one DispatchServer and
-any number of WorkerServers. See
+down when the jobs are finished. The tf.data service uses one `DispatchServer`
+and any number of `WorkerServers`. See
 https://github.com/tensorflow/ecosystem/tree/master/data_service for an example
 of using Google Kubernetes Engine (GKE) to manage the tf.data service. The
 server implementation in
@@ -75,12 +75,17 @@ contexts.
 
 ### Fault tolerance
 
-The tf.data dispatch server manages all state for the service, so it is
-important to keep the server alive. If the dispatch server is restarted
-mid-training, the training must also be restarted.
+By default, the tf.data dispatch server stores its state in-memory, making it a
+single point of failure during training. To avoid this, pass
+`fault_tolerant_mode=True` when creating your `DispatchServer`. Dispatcher
+fault tolerance requires `work_dir` to be configured and accessible from the
+dispatcher both before and after restart (e.g. a GCS path). With fault tolerant
+mode enabled, the dispatcher will journal its state to the work directory so
+that no state is lost when the dispatcher is restarted.
 
-WorkerServers, on the other hand, may be freely restarted, added, or removed
-during training.
+WorkerServers may be freely restarted, added, or removed during training. At
+startup, workers will register with the dispatcher and begin processing all
+outstanding jobs from the beginning.
 
 ## Using the tf.data service from your training job
 
@@ -102,10 +107,11 @@ dataset = dataset.apply(tf.data.experimental.service.distribute(
 
 Below is a toy example that you can run yourself.
 
->>> dispatcher = tf.data.experimental.service.DispatchServer(port=0)
+>>> dispatcher = tf.data.experimental.service.DispatchServer()
 >>> dispatcher_address = dispatcher.target.split("://")[1]
 >>> worker = tf.data.experimental.service.WorkerServer(
-...     port=0, dispatcher_address=dispatcher_address)
+...     tf.data.experimental.service.WorkerConfig(
+...         dispatcher_address=dispatcher_address))
 >>> dataset = tf.data.Dataset.range(10)
 >>> dataset = dataset.apply(tf.data.experimental.service.distribute(
 ...     processing_mode="parallel_epochs", service=dispatcher.target))
@@ -123,5 +129,7 @@ from __future__ import print_function
 from tensorflow.python.data.experimental.ops.data_service_ops import distribute
 from tensorflow.python.data.experimental.ops.data_service_ops import from_dataset_id
 from tensorflow.python.data.experimental.ops.data_service_ops import register_dataset
+from tensorflow.python.data.experimental.service.server_lib import DispatcherConfig
 from tensorflow.python.data.experimental.service.server_lib import DispatchServer
+from tensorflow.python.data.experimental.service.server_lib import WorkerConfig
 from tensorflow.python.data.experimental.service.server_lib import WorkerServer

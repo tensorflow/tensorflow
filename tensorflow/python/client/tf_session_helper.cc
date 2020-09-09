@@ -89,8 +89,7 @@ void TF_Run_wrapper_helper(TF_DeprecatedSession* session, const char* handle,
     input_names.push_back(key_string);
 
     inputs_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
-    s = NdarrayToTensor(nullptr /*ctx*/, value, &inputs_safe.back(),
-                        true /*convert_to_string*/);
+    s = NdarrayToTensor(nullptr /*ctx*/, value, &inputs_safe.back());
     if (!s.ok()) {
       Set_TF_Status_from_Status(out_status, s);
       return;
@@ -383,7 +382,7 @@ void TF_SessionRun_wrapper_helper(TF_Session* session, const char* handle,
   std::vector<Safe_TF_TensorPtr> input_vals_safe;
   for (PyObject* ndarray : input_ndarrays) {
     input_vals_safe.emplace_back(make_safe(static_cast<TF_Tensor*>(nullptr)));
-    s = NdarrayToTensor(nullptr, ndarray, &input_vals_safe.back(), true);
+    s = NdarrayToTensor(nullptr, ndarray, &input_vals_safe.back());
     if (!s.ok()) {
       Set_TF_Status_from_Status(out_status, s);
       return;

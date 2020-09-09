@@ -167,7 +167,8 @@ std::string GenerateConv(CalculationsPrecision precision,
 }  // namespace
 
 Conv3D::Conv3D(const OperationDef& definition,
-               const Convolution3DAttributes& attr, const CLDevice& device)
+               const Convolution3DAttributes& attr,
+               const DeviceInfo& device_info)
     : GPUOperation(definition),
       stride_(attr.strides.w, attr.strides.h, attr.strides.d),
       padding_(-attr.padding.prepended.w, -attr.padding.prepended.h,
@@ -175,7 +176,15 @@ Conv3D::Conv3D(const OperationDef& definition,
       kernel_size_(attr.weights.shape.w, attr.weights.shape.h,
                    attr.weights.shape.d),
       dilation_(attr.dilations.w, attr.dilations.h, attr.dilations.d),
-      conv_params_(GuessBestParams(device, definition, attr)) {}
+      conv_params_(GuessBestParams(device_info, definition, attr)) {
+  const bool stride_correction =
+      definition_.IsBatchSupported() && stride_.x != 1;
+  code_ = GenerateConv3D(definition_, stride_correction, conv_params_);
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
+  }
+}
 
 Conv3D::Conv3D(Conv3D&& operation)
     : GPUOperation(std::move(operation)),
@@ -195,29 +204,6 @@ Conv3D& Conv3D::operator=(Conv3D&& operation) {
     GPUOperation::operator=(std::move(operation));
   }
   return *this;
-}
-
-absl::Status Conv3D::Compile(const CreationContext& creation_context) {
-  const bool stride_correction =
-      definition_.IsBatchSupported() && stride_.x != 1;
-  std::string code =
-      GenerateConv3D(definition_, stride_correction, conv_params_);
-  work_group_size_ = conv_params_.work_group_size;
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsPowerVR()) {
-    options.push_back(CompilerOptions::POWERVR_FP16);
-  }
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status Conv3D::BindArguments() {
@@ -252,33 +238,33 @@ int3 Conv3D::GetGridSize() const {
       DivideRoundUp(dst_[0]->Slices(), conv_params_.block_size.w) *
       DivideRoundUp(dst_[0]->Depth(), conv_params_.block_size.z);
   int3 wg;
-  wg.x = DivideRoundUp(grid_x, conv_params_.work_group_size.x);
-  wg.y = DivideRoundUp(grid_y, conv_params_.work_group_size.y);
-  wg.z = DivideRoundUp(grid_z, conv_params_.work_group_size.z);
-  return int3(wg[conv_params_.work_group_launch_order[0]] *
-                  conv_params_.work_group_size.x,
-              wg[conv_params_.work_group_launch_order[1]] *
-                  conv_params_.work_group_size.y,
-              wg[conv_params_.work_group_launch_order[2]] *
-                  conv_params_.work_group_size.z);
+  wg.x = DivideRoundUp(grid_x, work_group_size_.x);
+  wg.y = DivideRoundUp(grid_y, work_group_size_.y);
+  wg.z = DivideRoundUp(grid_z, work_group_size_.z);
+  return int3(wg[conv_params_.work_group_launch_order[0]] * work_group_size_.x,
+              wg[conv_params_.work_group_launch_order[1]] * work_group_size_.y,
+              wg[conv_params_.work_group_launch_order[2]] * work_group_size_.z);
 }
 
-absl::Status Conv3D::Tune(const TuningParameters& params) {
+void Conv3D::GetPossibleKernelWorkGroups(TuningType tuning_type,
+                                         const DeviceInfo& device_info,
+                                         const KernelInfo& kernel_info,
+                                         std::vector<int3>* work_groups) const {
   if (conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP ||
       conv_params_.weights_upload_type ==
           WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    return absl::OkStatus();
+    work_groups->push_back(work_group_size_);
+    return;
   }
   if (conv_params_.work_group_launch_order[0] == 0 &&
       conv_params_.work_group_launch_order[1] == 1 &&
       conv_params_.work_group_launch_order[2] == 2) {
-    RETURN_IF_ERROR(args_.Bind(kernel_.kernel()));
-    RETURN_IF_ERROR(GetBestWorkGroupConv(params, kernel_, grid_size_,
-                                         &conv_params_.work_group_size));
-    work_group_size_ = conv_params_.work_group_size;
+    GetPossibleWorkGroupsConv(tuning_type, device_info, kernel_info, grid_size_,
+                              work_groups);
+  } else {
+    work_groups->push_back(work_group_size_);
   }
-  return absl::OkStatus();
 }
 
 std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
@@ -343,14 +329,13 @@ std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
       conv_params.weights_upload_type ==
           Conv3D::WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP;
 
-  const int3 work_group_size = conv_params.work_group_size;
   const int4 block_size = conv_params.block_size;
   std::string c = GetCommonDefines(op_def.precision);
   if (need_local_mem) {  // we use fixed workgroup size when use local mem
     c += "__attribute__((reqd_work_group_size(" +
-         std::to_string(work_group_size.x) + ", " +
-         std::to_string(work_group_size.y) + ", " +
-         std::to_string(work_group_size.z) + ")))\n";
+         std::to_string(work_group_size_.x) + ", " +
+         std::to_string(work_group_size_.y) + ", " +
+         std::to_string(work_group_size_.z) + ")))\n";
   }
   c += "__kernel void main_function(\n";
   c += "$0) {\n";
@@ -363,7 +348,7 @@ std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
   }
   if (conv_params.weights_upload_type ==
       Conv3D::WeightsUploadType::LOCAL_MEM_BY_THREADS) {
-    c += "  int lid = get_local_id(1) * " + std::to_string(work_group_size.x) +
+    c += "  int lid = get_local_id(1) * " + std::to_string(work_group_size_.x) +
          " + get_local_id(0);\n";
   }
   for (int s = 0; s < block_size.w; ++s) {
@@ -623,7 +608,7 @@ std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
   declare_src();
   c += "  do {\n";
   const int total_work_items =
-      work_group_size.x * work_group_size.y * work_group_size.z;
+      work_group_size_.x * work_group_size_.y * work_group_size_.z;
   if (conv_params.weights_upload_type ==
       Conv3D::WeightsUploadType::LOCAL_MEM_ASYNC_SUBGROUP) {
     c +=
@@ -741,19 +726,19 @@ std::string Conv3D::GenerateConv3D(const OperationDef& op_def,
   return c;
 }
 
-Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
+Conv3D::ConvParams Conv3D::GuessBestParams(const DeviceInfo& device_info,
                                            const OperationDef& definition,
                                            int src_slices, int dst_slices,
                                            bool x_kernel_is_1,
                                            bool y_kernel_is_1,
-                                           bool z_kernel_is_1) const {
+                                           bool z_kernel_is_1) {
   ConvParams conv_params;
   conv_params.x_kernel_is_1 = x_kernel_is_1;
   conv_params.y_kernel_is_1 = y_kernel_is_1;
   conv_params.z_kernel_is_1 = z_kernel_is_1;
-  if (device.IsNvidia()) {
+  if (device_info.IsNvidia()) {
     conv_params.block_size = int4(1, 1, 1, 4);
-    conv_params.work_group_size = int3(8, 4, 1);
+    work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(2, 0, 1);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::LOCAL_MEM_BY_THREADS;
@@ -770,9 +755,9 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
     if (src_slices % 4 == 0 && conv_params.block_size.w <= 2) {
       conv_params.src_depth_loop_size = 4;
     }
-  } else if (device.IsPowerVR()) {
+  } else if (device_info.IsPowerVR()) {
     conv_params.block_size = int4(1, 1, 1, 4);
-    conv_params.work_group_size = int3(8, 4, 1);
+    work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(2, 0, 1);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type =
@@ -806,17 +791,17 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
         }
       }
       conv_params.block_size.x = 2;
-      conv_params.work_group_size = int3(4, 8, 1);
+      work_group_size_ = int3(4, 8, 1);
     }
-  } else if (device.IsAdreno()) {
+  } else if (device_info.IsAdreno()) {
     conv_params.block_size = int4(2, 2, 1, 2);
-    conv_params.work_group_size = int3(8, 4, 1);
+    work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM;
-  } else if (device.IsMali()) {
+  } else if (device_info.IsMali()) {
     conv_params.block_size = int4(1, 1, 1, 4);
-    conv_params.work_group_size = int3(8, 4, 1);
+    work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::GLOBAL_MEM;
@@ -835,7 +820,7 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
     }
   } else {
     conv_params.block_size = int4(2, 2, 1, 2);
-    conv_params.work_group_size = int3(8, 4, 1);
+    work_group_size_ = int3(8, 4, 1);
     conv_params.work_group_launch_order = int3(0, 1, 2);
     conv_params.src_depth_loop_size = 1;
     conv_params.weights_upload_type = WeightsUploadType::TEXTURES_MEM;
@@ -845,8 +830,8 @@ Conv3D::ConvParams Conv3D::GuessBestParams(const CLDevice& device,
 }
 
 Conv3D::ConvParams Conv3D::GuessBestParams(
-    const CLDevice& device, const OperationDef& definition,
-    const Convolution3DAttributes& attr) const {
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const Convolution3DAttributes& attr) {
   const int dst_slices = DivideRoundUp(attr.weights.shape.o, 4);
   const int src_slices = DivideRoundUp(attr.weights.shape.i, 4);
   const bool x_kernel_is_1 = attr.weights.shape.w == 1 && attr.strides.w == 1 &&
@@ -861,15 +846,16 @@ Conv3D::ConvParams Conv3D::GuessBestParams(
                              attr.dilations.d == 1 &&
                              attr.padding.prepended.d == 0 &&
                              attr.padding.appended.d == 0;
-  return GuessBestParams(device, definition, src_slices, dst_slices,
+  return GuessBestParams(device_info, definition, src_slices, dst_slices,
                          x_kernel_is_1, y_kernel_is_1, z_kernel_is_1);
 }
 
-absl::Status CreateConv3D(const CreationContext& creation_context,
-                          const OperationDef& definition,
-                          const Convolution3DAttributes& attr, Conv3D* result) {
-  *result = Conv3D(definition, attr, *creation_context.device);
-  return result->UploadData(attr.weights, attr.bias, creation_context.context);
+Conv3D CreateConv3D(const DeviceInfo& device_info,
+                    const OperationDef& definition,
+                    const Convolution3DAttributes& attr) {
+  Conv3D result(definition, attr, device_info);
+  result.UploadData(attr.weights, attr.bias);
+  return result;
 }
 
 }  // namespace cl

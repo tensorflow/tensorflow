@@ -80,6 +80,11 @@ Status TpuExecutor::GetStatus(Stream* stream) {
   return status.status();
 }
 
+tpu::TpuCoreLocationExternal TpuExecutor::GetCoreLocationExternal() const {
+  return tpu::TpuCoreLocationExternal(
+      tpu::ExecutorApiFn()->TpuExecutor_GetCoreLocationFn(executor_));
+}
+
 bool TpuExecutor::AllocateStream(Stream* stream) {
   return tpu::ExecutorApiFn()->TpuExecutor_AllocateStreamFn(
       executor_, stream_map().at(stream->implementation()));
@@ -168,7 +173,7 @@ TpuExecutor::GetTimerImplementation() {
 std::unique_ptr<::stream_executor::internal::StreamInterface>
 TpuExecutor::GetStreamImplementation() {
   SE_Stream* tpu_stream = tpu::ExecutorApiFn()->TpuStream_NewFn(executor_);
-  auto ptr = absl::make_unique<TpuStream>(tpu_stream);
+  auto ptr = absl::make_unique<tpu::TpuStream>(tpu_stream);
   tpu_platform().mutex().lock();
   stream_map()[ptr.get()] = tpu_stream;
   tpu_platform().mutex().unlock();

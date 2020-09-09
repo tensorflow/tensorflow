@@ -67,9 +67,8 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
 
   auto ctx = new EagerContext(
       SessionOptions(),
-      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT,
-      tensorflow::ContextMirroringPolicy::MIRRORING_NONE, false, false,
-      &device_mgr, false, nullptr, nullptr, nullptr);
+      tensorflow::ContextDevicePlacementPolicy::DEVICE_PLACEMENT_SILENT, false,
+      false, &device_mgr, false, nullptr, nullptr, nullptr);
 
   // Set a RemoteMgr to the EagerContext.
   auto remote_mgr = absl::make_unique<eager::RemoteMgr>(
@@ -94,9 +93,9 @@ TEST(ExecuteNodeTest, ExecuteNodeArgs) {
       TensorHandle::CreateLocalHandle(std::move(t1), device0, device0, ctx);
   // Create two remote TensorHandles
   TensorHandle* h2 = TensorHandle::CreateLazyRemoteHandle(
-      /*op_id=*/1, /*output_num=*/0, dtype, device1, ctx);
+      /*op_id=*/1, /*output_num=*/0, dtype, device1, /*is_ready=*/true, ctx);
   TensorHandle* h3 = TensorHandle::CreateLazyRemoteHandle(
-      /*op_id=*/2, /*output_num=*/1, dtype, device1, ctx);
+      /*op_id=*/2, /*output_num=*/1, dtype, device1, /*is_ready=*/true, ctx);
   // Create a packed TensorHandle
   TensorHandle* packed_h = nullptr;
   TF_ASSERT_OK(TensorHandle::CreatePackedHandle({h1, h2}, ctx, &packed_h));

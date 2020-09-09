@@ -24,13 +24,11 @@ namespace tflite {
 namespace testing {
 namespace {
 
-void TestNegFloat(std::initializer_list<int> input_dims_data,
-                  std::initializer_list<float> input_data,
-                  std::initializer_list<float> expected_output_data,
-                  std::initializer_list<int> output_dims_data,
-                  float* output_data) {
-  TfLiteIntArray* input_dims = IntArrayFromInitializer(input_dims_data);
-  TfLiteIntArray* output_dims = IntArrayFromInitializer(output_dims_data);
+void TestNegFloat(const int* input_dims_data, const float* input_data,
+                  const float* expected_output_data,
+                  const int* output_dims_data, float* output_data) {
+  TfLiteIntArray* input_dims = IntArrayFromInts(input_dims_data);
+  TfLiteIntArray* output_dims = IntArrayFromInts(output_dims_data);
   const int output_dims_count = ElementCount(*output_dims);
   constexpr int inputs_size = 1;
   constexpr int outputs_size = 1;
@@ -53,9 +51,9 @@ void TestNegFloat(std::initializer_list<int> input_dims_data,
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.InitAndPrepare());
   TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, runner.Invoke());
 
-  TF_LITE_MICRO_EXPECT_EQ(expected_output_data.begin()[0], output_data[0]);
+  TF_LITE_MICRO_EXPECT_EQ(expected_output_data[0], output_data[0]);
   for (int i = 0; i < output_dims_count; ++i) {
-    TF_LITE_MICRO_EXPECT_EQ(expected_output_data.begin()[i], output_data[i]);
+    TF_LITE_MICRO_EXPECT_EQ(expected_output_data[i], output_data[i]);
   }
 }
 
@@ -66,23 +64,21 @@ void TestNegFloat(std::initializer_list<int> input_dims_data,
 TF_LITE_MICRO_TESTS_BEGIN
 
 TF_LITE_MICRO_TEST(NegOpSingleFloat) {
+  const int dims[] = {1, 2};
+  const float input_data[] = {8.5, 0.0};
+  const float golden[] = {-8.5, 0.0};
   float output_data[2];
-  tflite::testing::TestNegFloat(/*input_dims_data=*/{1, 2},
-                                /*input_data=*/{8.5f, 0.0f},
-                                /*expected_output_data=*/{-8.5f, 0.0f},
-                                /*output_dims_data*/ {1, 2},
-                                /*output_data=*/output_data);
+
+  tflite::testing::TestNegFloat(dims, input_data, golden, dims, output_data);
 }
 
 TF_LITE_MICRO_TEST(NegOpFloat) {
+  const int dims[] = {2, 2, 3};
+  const float input_data[] = {-2.0f, -1.0f, 0.f, 1.0f, 2.0f, 3.0f};
+  const float golden[] = {2.0f, 1.0f, -0.f, -1.0f, -2.0f, -3.0f};
   float output_data[6];
-  tflite::testing::TestNegFloat(/*input_dims_data=*/{2, 2, 3},
-                                /*input_data=*/
-                                {-2.0f, -1.0f, 0.f, 1.0f, 2.0f, 3.0f},
-                                /*expected_output_data=*/
-                                {2.0f, 1.0f, -0.f, -1.0f, -2.0f, -3.0f},
-                                /*output_dims_data=*/{2, 2, 3},
-                                /*output_data=*/output_data);
+
+  tflite::testing::TestNegFloat(dims, input_data, golden, dims, output_data);
 }
 
 TF_LITE_MICRO_TESTS_END

@@ -199,6 +199,8 @@ typedef struct {
 
 typedef struct {
   TfLiteFusedActivation activation;
+  // Parameter added for the version 4.
+  bool pot_scale_int16;
 } TfLiteAddParams;
 
 typedef struct {
@@ -220,6 +222,8 @@ typedef struct {
 
 typedef struct {
   TfLiteFusedActivation activation;
+  // Parameter added for the version 5.
+  bool pot_scale_int16;
 } TfLiteSubParams;
 
 typedef struct {

@@ -213,6 +213,28 @@ func @testNoOutputs(%arg0: tensor<i1>, %arg1: tensor<*xf32>) -> () {
 }
 
 // -----
+// Check ToBool folding for IfRegion
+// CHECK: func @tf.IfRegion_else(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:   "tf.Neg"
+// CHECK: func @tf.IfRegion_then(%arg0: tensor<*xf32>) -> tensor<*xf32>
+// CHECK-NEXT:   "tf.Abs"
+// CHECK-LABEL: @testToBoolFold
+func @testToBoolFold(%arg0: tensor<i32>, %arg1: tensor<*xf32>) -> tensor<*xf32> {
+  // CHECK-NEXT: "tf.If"(%arg0, %arg1)
+  // CHECK-SAME: else_branch = @tf.IfRegion_else
+  // CHECK-SAME: then_branch = @tf.IfRegion_then
+  %tobool = "tf.ToBool"(%arg0) : (tensor<i32>) -> tensor<i1>
+  %0 = "tf.IfRegion"(%tobool) ({
+    %1 = "tf.Abs"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.Yield"(%1) : (tensor<*xf32>) -> ()
+    }, {
+    %2 = "tf.Neg"(%arg1) : (tensor<*xf32>) -> tensor<*xf32>
+    "tf.Yield"(%2) : (tensor<*xf32>) -> ()
+    }) {is_stateless = true} :  (tensor<i1>) -> tensor<*xf32>
+  return %0 : tensor<*xf32>
+}
+
+// -----
 
 // Simple WhileRegion
 // CHECK: func @tf.WhileRegion_body{{.+}}{sym_visibility = "private"}
@@ -591,4 +613,65 @@ func @testWhileRegionBlockArgMismatch(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>
   ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
   // CHECK: return [[Result]]#0
   return %0#0 : tensor<*xf32>
+}
+
+// -----
+
+// Simple trivially transformable while with ToBool
+// CHECK: func @while_cond
+// CHECK: func @while_body
+// CHECK-LABEL: testWhileRegionTrivial
+func @while_cond(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<i32>
+func @while_body(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+func @testWhileRegionTrivial(%arg0 : tensor<*xf32>, %arg1 : tensor<i32>) -> tensor<*xf32> {
+  // CHECK: [[Result:%.*]]:2 = "tf.While"(%arg0, %arg1) {body = @while_body, cond = @while_cond
+  %0:2 = "tf.WhileRegion"(%arg0, %arg1) (
+    {
+      ^bb0(%carg0: tensor<*xf32>, %carg1: tensor<i32>):
+        %cond_i32 = call @while_cond(%carg0, %carg1) : (tensor<*xf32>, tensor<i32>) -> tensor<i32>
+        %cond = "tf.ToBool"(%cond_i32) : (tensor<i32>) -> tensor<i1>
+        "tf.Yield"(%cond) : (tensor<i1>) -> ()
+    },
+    {
+      // loop body
+      ^bb0(%barg0: tensor<*xf32>, %barg1: tensor<i32>):
+        %bdy:2 = call @while_body(%barg0, %barg1) : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+        "tf.Yield"(%bdy#0, %bdy#1) : (tensor<*xf32>, tensor<i32>) -> ()
+    }
+  ) { is_stateless = false } : (tensor<*xf32>, tensor<i32>) -> (tensor<*xf32>, tensor<i32>)
+  // CHECK: return [[Result]]#0
+  return %0#0 : tensor<*xf32>
+}
+
+// -----
+
+// Test tf.IfRegion device is preserved.
+// CHECK-LABEL: func @testIfRegionDevice
+func @testIfRegionDevice(%arg0: tensor<i1>) {
+  "tf.IfRegion"(%arg0) ({
+    "tf.Yield"() : () -> ()
+  }, {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false, device = "/device:CPU:0"} : (tensor<i1>) -> ()
+
+  // CHECK: "tf.If"
+  // CHECK-SAME: device = "/device:CPU:0"
+  return
+}
+
+// -----
+
+// Test tf.WhileRegion device is preserved.
+// CHECK-LABEL: func @testWhileRegionDevice
+func @testWhileRegionDevice() {
+  "tf.WhileRegion"() ( {
+    %0 = "tf.Const"() {value = dense<false> : tensor<i1>} : () -> tensor<i1>
+    "tf.Yield"(%0) : (tensor<i1>) -> ()
+  }, {
+    "tf.Yield"() : () -> ()
+  }) {is_stateless = false, device = "/device:CPU:0"} : () -> ()
+
+  // CHECK: "tf.While"
+  // CHECK-SAME: device = "/device:CPU:0"
+  return
 }

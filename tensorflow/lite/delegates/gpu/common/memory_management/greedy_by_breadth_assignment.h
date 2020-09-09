@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_BY_BREADTH_ASSIGNMENT_H_
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_MEMORY_MANAGEMENT_GREEDY_BY_BREADTH_ASSIGNMENT_H_
 
-#include <cstdint>
+#include <stddef.h>
+
 #include <vector>
 
 #include "tensorflow/lite/delegates/gpu/common/memory_management/types.h"

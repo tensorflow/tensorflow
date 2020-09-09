@@ -289,13 +289,19 @@ class Array {
   }
 
   // Fills the array with random normal variables with the specified mean.
-  void FillRandom(const T& stddev, const double mean = 0.0,
-                  const int seed = 12345) {
+  void FillRandom(const T& stddev, double mean = 0.0, int seed = 12345) {
+    FillRandomDouble(static_cast<double>(stddev), mean, seed);
+  }
+
+  void FillRandomDouble(double stddev, double mean = 0.0, int seed = 12345) {
     std::mt19937 g(seed);
-    std::normal_distribution<double> distribution(mean,
-                                                  static_cast<double>(stddev));
+    std::normal_distribution<double> distribution(mean, stddev);
     for (int64 i = 0; i < num_elements(); ++i) {
-      values_[i] = static_cast<T>(distribution(g));
+      if (std::is_same<T, bool>()) {
+        values_[i] = static_cast<T>(distribution(g) > 0.0);
+      } else {
+        values_[i] = static_cast<T>(distribution(g));
+      }
     }
   }
 

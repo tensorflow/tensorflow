@@ -25,6 +25,13 @@ namespace gpu {
 namespace cl {
 
 ConverterToConvWeights::ConverterToConvWeights(
+    const OperationDef& definition,
+    const ConvWeightsDescription& conv_weights_desc)
+    : GPUOperation(definition), conv_weights_desc_(conv_weights_desc) {
+  code_ = GetConverterToConvWeightsCode(definition_, conv_weights_desc_);
+}
+
+ConverterToConvWeights::ConverterToConvWeights(
     ConverterToConvWeights&& operation)
     : GPUOperation(std::move(operation)),
       conv_weights_desc_(operation.conv_weights_desc_) {}
@@ -101,17 +108,6 @@ std::string ConverterToConvWeights::GetConverterToConvWeightsCode(
   c += "  args.dst_tensor.WriteLinear(r3, dst_offset * 4 + 3)\n;";
   c += "}\n";
   return c;
-}
-
-absl::Status ConverterToConvWeights::Compile(
-    const CreationContext& creation_context) {
-  std::string code =
-      GetConverterToConvWeightsCode(definition_, conv_weights_desc_);
-  RETURN_IF_ERROR(
-      args_.TransformToCLCode(creation_context.device->GetInfo(), {}, &code));
-  return creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", *creation_context.context,
-      *creation_context.device, &kernel_);
 }
 
 absl::Status ConverterToConvWeights::BindArguments() {

@@ -81,7 +81,7 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
       response->set_empty_trace(true);
       return Status::OK();
     }
-    TF_RETURN_IF_ERROR(SaveGzippedToolDataToTensorboardProfile(
+    TF_RETURN_IF_ERROR(SaveGzippedToolData(
         req.repository_root(), req.session_id(), req.host_name(),
         ToolName(kTraceViewer), TraceEventsToJson(trace)));
     // Trace viewer is the only tool, skip OpStats conversion.
@@ -110,7 +110,7 @@ Status ConvertXSpaceToProfileResponse(const XSpace& xspace,
   if (tools.contains(kMemoryProfile)) {
     std::string json_output;
     TF_RETURN_IF_ERROR(ConvertXSpaceToMemoryProfileJson(xspace, &json_output));
-    TF_RETURN_IF_ERROR(SaveGzippedToolDataToTensorboardProfile(
+    TF_RETURN_IF_ERROR(SaveGzippedToolData(
         req.repository_root(), req.session_id(), req.host_name(),
         ToolName(kMemoryProfile), json_output));
   }

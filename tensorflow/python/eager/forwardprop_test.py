@@ -1018,7 +1018,7 @@ class HessianTests(test.TestCase, parameterized.TestCase):
     self.assertAllClose(hess_value, hessian_pfor)
 
 
-class JacobianTests(test.TestCase, parameterized.TestCase):
+class BatchTests(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters([(math_ops.sin, (2, 3), 5),
                              (math_ops.sin, (2, 3, 4), 10)])
@@ -1028,6 +1028,39 @@ class JacobianTests(test.TestCase, parameterized.TestCase):
     self.assertAllClose(
         _jvp_batch(f, primals, tangent_batch)[1],
         _jvp_batch_matmul(f, primals, *tangent_batch))
+
+  def testBatchCorrectness(self):
+    x = constant_op.constant(2.0)
+    y = constant_op.constant(5.0)
+    tangents = (
+        constant_op.constant([1., 0., 1.]),
+        constant_op.constant([0., 1., 1.]),
+    )
+    with forwardprop.ForwardAccumulator._batch_accumulator((x, y),
+                                                           tangents) as acc:
+      z = x * y
+    self.assertAllClose(acc.jvp(z), constant_op.constant([5.0, 2.0, 7.0]))
+
+  @parameterized.named_parameters([("ForwardPropFirst", True),
+                                   ("TapeFirst", False)])
+  def testBatchBackwardOverForward(self, forward_prop_first):
+    x = constant_op.constant(1.)
+    tangents = random_ops.random_normal(shape=[10], seed=1)
+    expected = [-t * math_ops.cos(1.) for t in tangents]
+    if forward_prop_first:
+      batch_acc = forwardprop.ForwardAccumulator._batch_accumulator(x, tangents)
+      gradient_tape = backprop.GradientTape(persistent=True)
+    else:
+      gradient_tape = backprop.GradientTape(persistent=True)
+      batch_acc = forwardprop.ForwardAccumulator._batch_accumulator(x, tangents)
+    with gradient_tape as tape:
+      with batch_acc as acc:
+        tape.watch(x)
+        y = math_ops.cos(x)
+        self.assertTrue(tape_lib.should_record_backprop((acc.jvp(y),)))
+        jvps = acc.jvp(y)
+      d2y_dx2 = [tape.gradient(dy_dx, x) for dy_dx in jvps]
+    self.assertAllClose(expected, d2y_dx2)
 
 
 if __name__ == "__main__":

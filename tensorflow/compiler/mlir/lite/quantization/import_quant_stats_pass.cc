@@ -62,6 +62,10 @@ class ImportQuantStatsPass
 
   void runOnFunction() override;
 
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<quant::QuantizationDialect>();
+  }
+
   // Parses the serialized quant stats protobuf and initialize the internal
   // data structure. This method must be called after the pass is created.
   bool ParseQuantStats(const std::string &stats_str);

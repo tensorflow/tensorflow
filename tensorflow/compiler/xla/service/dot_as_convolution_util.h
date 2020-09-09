@@ -68,6 +68,11 @@ CreateShardedConvForDotGeneralConvolution(
 // dilation B.
 bool ConvSpatialDimensionIsParallel(const WindowDimension& wd, int64 lhs_size);
 
+// Returns a DotGeneralAsConvolutionDimsInfo from a kDot instruction, where all
+// the spatial_dim values are set to -1.
+DotGeneralAsConvolutionDimsInfo ParseDotGeneralFromDot(
+    const HloInstruction* dot);
+
 }  // namespace dot_as_convolution_util
 }  // namespace xla
 

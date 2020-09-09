@@ -19,10 +19,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
+import threading
 from absl import logging
+
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.distribute import multi_worker_test_base
-from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.client import client
 from tensorflow.python.distribute.client import parameter_server_client
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -33,11 +36,52 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.ops import check_ops
-from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.training.server_lib import ClusterSpec
+
+
+class ErrorReportingThread(threading.Thread):
+
+  error = None
+
+  def __init__(self, *args, **kwargs):
+    assert "target" in kwargs
+    target = kwargs["target"]
+
+    @functools.wraps(target)
+    def wrapped_target(*args, **kwargs):
+      try:
+        return target(*args, **kwargs)
+      except Exception as e:  # pylint: disable=broad-except
+        ErrorReportingThread.error = e
+
+    kwargs["target"] = wrapped_target
+    super(ErrorReportingThread, self).__init__(*args, **kwargs)
+
+
+class TestCaseWithErrorReportingThread(test.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    cls._threading_thread = threading.Thread
+    threading.Thread = ErrorReportingThread
+    super(TestCaseWithErrorReportingThread, cls).setUpClass()
+
+  @classmethod
+  def tearDownClass(cls):
+    super(TestCaseWithErrorReportingThread, cls).tearDownClass()
+    threading.Thread = cls._threading_thread
+
+  def setUp(self):
+    ErrorReportingThread.error = None
+    super(TestCaseWithErrorReportingThread, self).setUp()
+
+  def tearDown(self):
+    super(TestCaseWithErrorReportingThread, self).tearDown()
+    if ErrorReportingThread.error:
+      raise ErrorReportingThread.error  # pylint: disable=raising-bad-type
 
 
 def make_client(num_workers, num_ps):
@@ -52,7 +96,7 @@ def make_client(num_workers, num_ps):
   return parameter_server_client.ParameterServerClient(cluster_resolver)
 
 
-class ParameterServerClientTest(test.TestCase):
+class ParameterServerClientTest(TestCaseWithErrorReportingThread):
 
   @classmethod
   def setUpClass(cls):
@@ -61,7 +105,7 @@ class ParameterServerClientTest(test.TestCase):
 
   def testBasic(self):
     self.client._strategy.extended._variable_count = 0
-    with self.client.context():
+    with self.client.strategy.scope():
       v1 = variables.Variable(initial_value=0.0)
       v2 = variables.Variable(initial_value=1.0)
     self.assertEqual(self.client._strategy.extended._variable_count, 2)
@@ -95,7 +139,7 @@ class ParameterServerClientTest(test.TestCase):
     def input_fn():
       return dataset_ops.DatasetV2.range(1, 2)
 
-    with self.client.context():
+    with self.client.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int64)
 
     @def_function.function
@@ -119,7 +163,7 @@ class ParameterServerClientTest(test.TestCase):
     def input_fn():
       return dataset_ops.DatasetV2.from_tensor_slices([2] * 10)
 
-    with self.client.context():
+    with self.client.strategy.scope():
       v = variables.Variable(initial_value=0, dtype=dtypes.int32)
 
     # TODO(yuefengz): the following tf.function has a return value which is None
@@ -186,89 +230,6 @@ class ParameterServerClientTest(test.TestCase):
     with self.assertRaises(ValueError):
       self.client.create_per_worker_dataset(input_fn)
 
-
-class LimitedClosureQueueSizeBasicTest(ParameterServerClientTest):
-  """Test basic functionality works with explicit maximum closure queue size.
-
-  Execute the same set of test cases as in ParameterServerClientTest, with an
-  explicit size limit for the closure queue. Note that even when the queue size
-  is set to infinite, there is still a maximum practical size (depends on host
-  memory limit) that might cause the queue.put operations to be blocking when
-  scheduling a large number of closures on a big cluster. These tests make sure
-  that the client does not run into deadlocks in such scenario.
-  """
-
-  @classmethod
-  def setUpClass(cls):
-    super(LimitedClosureQueueSizeBasicTest, cls).setUpClass()
-    client._CLOSURE_QUEUE_MAX_SIZE = 2
-    cls.client = make_client(num_workers=3, num_ps=2)
-
-
-class VariablePartitioningScopeTest(test.TestCase):
-
-  @classmethod
-  def setUpClass(cls):
-    super(VariablePartitioningScopeTest, cls).setUpClass()
-    cls.client = make_client(num_workers=3, num_ps=2)
-
-  def testBasic(self):
-    with self.client.context():
-      with self.client.experimental_variable_partitioning_scope():
-        init1 = init_ops_v2.Constant([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-        v1 = variables.Variable(
-            initial_value=lambda: init1(shape=(5, 2), dtype=dtypes.int64),
-            shape=(5, 2),
-            dtype=dtypes.int64)
-
-        init2 = init_ops_v2.Constant([0, 1, 2, 3, 4, 5])
-        v2 = variables.Variable(
-            initial_value=lambda: init2(shape=(6, 1), dtype=dtypes.int64),
-            shape=(6, 1),
-            dtype=dtypes.int64)
-
-    self.assertIsInstance(v1, sharded_variable.ShardedVariable)
-    self.assertLen(v1.variables, 2)
-    self.assertRegex(v1.variables[0].device, "/job:ps/replica:0/task:0")
-    self.assertRegex(v1.variables[1].device, "/job:ps/replica:0/task:1")
-    self.assertAllEqual(v1.variables[0].read_value().numpy(),
-                        [[0, 1], [2, 3], [4, 5]])
-    self.assertAllEqual(v1.variables[1].read_value().numpy(), [[6, 7], [8, 9]])
-
-    self.assertIsInstance(v2, sharded_variable.ShardedVariable)
-    self.assertLen(v2.variables, 2)
-    self.assertRegex(v2.variables[0].device, "/job:ps/replica:0/task:0")
-    self.assertRegex(v2.variables[1].device, "/job:ps/replica:0/task:1")
-    self.assertAllEqual(v2.variables[0].read_value().numpy(), [[0], [1], [2]])
-    self.assertAllEqual(v2.variables[1].read_value().numpy(), [[3], [4], [5]])
-
-  def testSurplusPS(self):
-    with self.client.context():
-      with self.client.experimental_variable_partitioning_scope():
-        initializer = init_ops_v2.Constant([0])
-
-        v = variables.Variable(
-            initial_value=lambda: initializer(shape=(1,), dtype=dtypes.int64),
-            shape=(1,),
-            dtype=dtypes.int64)
-
-    self.assertIsInstance(v, sharded_variable.ShardedVariable)
-    self.assertLen(v.variables, 1)
-    self.assertRegex(v.variables[0].device, "/job:ps/replica:0/task:0")
-    self.assertAllEqual(v.variables[0].read_value().numpy(), [0])
-
-  def testInvalidArgument(self):
-    with self.assertRaisesRegex(ValueError, "initial_value"):
-      with self.client.experimental_variable_partitioning_scope():
-        variables.Variable(initial_value=[0, 1, 2], shape=(3,))
-
-    with self.assertRaisesRegex(ValueError, "shape"):
-      with self.client.experimental_variable_partitioning_scope():
-        initializer = init_ops_v2.Constant([0, 1, 2])
-        variables.Variable(
-            initial_value=lambda: initializer(shape=(3,), dtype=dtypes.int64),
-            dtype=dtypes.int64)
-
   def testPerWorkerValue(self):
     var_shape = tuple()
     var_dtype = dtypes.float32
@@ -304,14 +265,32 @@ class VariablePartitioningScopeTest(test.TestCase):
     self.assertEqual(var_sum, 10.0)
 
 
-class ErrorReportingTest(test.TestCase):
+class LimitedClosureQueueSizeBasicTest(ParameterServerClientTest):
+  """Test basic functionality works with explicit maximum closure queue size.
+
+  Execute the same set of test cases as in ParameterServerClientTest, with an
+  explicit size limit for the closure queue. Note that even when the queue size
+  is set to infinite, there is still a maximum practical size (depends on host
+  memory limit) that might cause the queue.put operations to be blocking when
+  scheduling a large number of closures on a big cluster. These tests make sure
+  that the client does not run into deadlocks in such scenario.
+  """
+
+  @classmethod
+  def setUpClass(cls):
+    super(LimitedClosureQueueSizeBasicTest, cls).setUpClass()
+    client._CLOSURE_QUEUE_MAX_SIZE = 2
+    cls.client = make_client(num_workers=3, num_ps=2)
+
+
+class ErrorReportingTest(TestCaseWithErrorReportingThread):
 
   @classmethod
   def setUpClass(cls):
     super(ErrorReportingTest, cls).setUpClass()
     cls.client = make_client(num_workers=3, num_ps=2)
 
-    with cls.client.context():
+    with cls.client.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
 
   @def_function.function
@@ -329,6 +308,15 @@ class ErrorReportingTest(test.TestCase):
     self.iteration.assign_add(1.0)
     return self.iteration
 
+  @def_function.function
+  def _long_function(self):
+    x = random_ops.random_uniform((1000, 1000))
+    for _ in math_ops.range(10000):
+      a = random_ops.random_uniform((1000, 1000))
+      b = random_ops.random_uniform((1000, 1000))
+      x += math_ops.matmul(a, b)
+    return x
+
   def testJoinRaiseError(self):
     for _ in range(3):
       self.client.schedule(self._normal_function)
@@ -344,8 +332,16 @@ class ErrorReportingTest(test.TestCase):
       while True:
         self.client.schedule(self._normal_function)
 
+  def testScheduleRaiseErrorWithMultipleFailure(self):
+    for _ in range(3):
+      self.client.schedule(self._normal_function)
+    self.client.schedule(self._error_function)
+    with self.assertRaises(errors.InvalidArgumentError):
+      while True:
+        self.client.schedule(self._error_function)
+    self.client.join()
+
   def testErrorWillbeCleared(self):
-    self.skipTest("b/157597579")
     self.client.schedule(self._error_function)
     with self.assertRaises(errors.InvalidArgumentError):
       self.client.join()
@@ -356,7 +352,7 @@ class ErrorReportingTest(test.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.client.join()
 
-  def testFutureReturnError(self):
+  def testRemoteValueReturnError(self):
     result = self.client.schedule(self._error_function)
 
     with self.assertRaises(errors.InvalidArgumentError):
@@ -383,6 +379,22 @@ class ErrorReportingTest(test.TestCase):
     with self.assertRaises(client.InputError):
       self.client.join()
 
+  def testCancellation(self):
+    for _ in range(3):
+      self.client.schedule(self._normal_function)
+    long_function = self.client.schedule(self._long_function)
+    self.client.schedule(self._error_function)
+
+    with self.assertRaises(errors.InvalidArgumentError):
+      self.client.join()
+
+    with self.assertRaises(client.FunctionRetryableError):
+      long_function.fetch()
+
+    for _ in range(3):
+      self.client.schedule(self._normal_function)
+    self.client.join()
+
 
 class LimitedClosureQueueErrorTest(ErrorReportingTest):
   """Test error reporting works with explicit maximum closure queue size.
@@ -397,8 +409,42 @@ class LimitedClosureQueueErrorTest(ErrorReportingTest):
     client._CLOSURE_QUEUE_MAX_SIZE = 2
     cls.client = make_client(num_workers=3, num_ps=2)
 
-    with cls.client.context():
+    with cls.client.strategy.scope():
       cls.iteration = variables.Variable(initial_value=0.0)
+
+
+class StrategyRunTest(test.TestCase):
+
+  @classmethod
+  def setUpClass(cls):
+    super(StrategyRunTest, cls).setUpClass()
+    cls.client = make_client(num_workers=1, num_ps=1)
+
+  def testStrategyRun(self):
+    self.assertFalse(distribution_strategy_context.in_cross_replica_context())
+    with self.client._strategy.scope():
+      self.assertTrue(distribution_strategy_context.in_cross_replica_context())
+      v = variables.Variable(initial_value=1)
+
+      @def_function.function
+      def worker_fn(input_tensor):
+
+        def replica_fn(input_tensor):
+          # Within `replica_fn`, it has to be in a replica context.
+          self.assertFalse(
+              distribution_strategy_context.in_cross_replica_context())
+          return input_tensor + v
+
+        return self.client._strategy.run(replica_fn, args=(input_tensor,))
+
+      # Asserting scheduling in scope has the expected behavior.
+      result = self.client.schedule(worker_fn, args=(constant_op.constant(3),))
+      self.assertIsInstance(result, client.RemoteValue)
+      self.assertEqual(result.fetch(), 4)
+
+    # Asserting scheduling out of scope has the expected behavior.
+    result = self.client.schedule(worker_fn, args=(constant_op.constant(3),))
+    self.assertEqual(result.fetch(), 4)
 
 
 if __name__ == "__main__":

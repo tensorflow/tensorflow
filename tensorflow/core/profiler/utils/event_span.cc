@@ -141,6 +141,7 @@ void CombineStepDetails(const StepDetails& src, StepDetails* dst) {
   dst->AppendMarkers(src.Markers());
   dst->AppendEvents(src.Events());
   dst->AppendCollectives(src.Collectives());
+  dst->AggregateDeviceMemoryTransfers(src.DeviceMemoryTransfers());
 }
 
 EventType ClassifyDeviceCompute(absl::string_view event_name,
@@ -288,6 +289,8 @@ StepEvents ToNonOverlappedStepEvents(const StepEvents& overlapped_step_events) {
         ToNonOverlappedEvents(step_details.Events());
     *non_overlapped_step_events[step_id].MutableCollectives() =
         step_details.Collectives();
+    *non_overlapped_step_events[step_id].MutableDeviceMemoryTransfers() =
+        step_details.DeviceMemoryTransfers();
   }
   return non_overlapped_step_events;
 }
@@ -311,8 +314,52 @@ void StepDetails::AppendCollectives(
   }
 }
 
+void StepDetails::AggregateDeviceMemoryTransfers(
+    const std::vector<DeviceMemoryTransfer> device_memory_transfers) {
+  if (device_memory_transfers.size() != device_memory_transfers_.size()) {
+    return;  // Sanity check.
+  }
+  for (size_t i = 0; i < device_memory_transfers.size(); ++i) {
+    device_memory_transfers_[i].set_occurrence(
+        device_memory_transfers_[i].occurrence() +
+        device_memory_transfers[i].occurrence());
+    device_memory_transfers_[i].set_bytes_transferred(
+        device_memory_transfers_[i].bytes_transferred() +
+        device_memory_transfers[i].bytes_transferred());
+    device_memory_transfers_[i].set_time_us(
+        device_memory_transfers_[i].time_us() +
+        device_memory_transfers[i].time_us());
+  }
+}
+
 void StepDetails::AddCollectiveOpEvent(uint64 core_id, const AllReduceInfo& e) {
   *collectives_[core_id].add_all_reduce_info() = e;
+}
+
+void StepDetails::AddDeviceMemoryTransferEvent(EventType event_type,
+                                               const Timespan& time_span,
+                                               uint64 bytes) {
+  int index = 0;
+  switch (event_type) {
+    case HOST_TO_DEVICE:
+      index = 0;
+      break;
+    case DEVICE_TO_HOST:
+      index = 1;
+      break;
+    case DEVICE_TO_DEVICE:
+      index = 2;
+      break;
+    default:
+      return;
+  }
+  device_memory_transfers_[index].set_occurrence(
+      device_memory_transfers_[index].occurrence() + 1);
+  device_memory_transfers_[index].set_time_us(
+      device_memory_transfers_[index].time_us() +
+      time_span.duration_ps() / 1000000.0);
+  device_memory_transfers_[index].set_bytes_transferred(
+      device_memory_transfers_[index].bytes_transferred() + bytes);
 }
 
 Timespan StepDetails::StepTime() const {

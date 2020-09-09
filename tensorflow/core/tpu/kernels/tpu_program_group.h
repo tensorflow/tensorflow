@@ -15,9 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_
 #define TENSORFLOW_CORE_TPU_KERNELS_TPU_PROGRAM_GROUP_H_
 
+#include <memory>
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compiler.h"
 #include "tensorflow/compiler/xla/client/compile_only_client.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -102,12 +104,17 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
       const absl::optional<xla::DeviceAssignment>& xla_device_assignment,
       TpuProgramGroupInterface* tpu_program_group_interface);
 
+  // Creates the `count` instances of uninitialized `XLA_TpuPrograms`.
+  static std::unique_ptr<TpuProgramGroup> Create(int count);
+
   // Initializes `TpuProgramGroup` object with `xla_tpu_programs`.
   void Initialize(absl::Span<XLA_TpuProgram* const> xla_tpu_programs);
 
   TpuProgramGroup() = default;
   TpuProgramGroup(TpuProgramGroup&& other);
   TpuProgramGroup& operator=(TpuProgramGroup&&) = delete;
+
+  bool has_sharding_program() const override;
 
   size_t program_count() const override;
 
@@ -120,19 +127,40 @@ class TpuProgramGroup : public TpuProgramGroupInterface {
   Status LogCompilationStats(const TpuCompilationCacheKey& key,
                              absl::Duration duration) override;
 
-  const std::vector<bool>& may_modify_variables() const override;
+  const std::vector<bool>& may_modify_variables_list() const override;
   void set_may_modify_variables(const std::vector<bool>& may_modify_variables);
+  bool may_modify_variables(int index) const override;
 
   const std::vector<XLA_TpuProgram*>& tpu_programs() const;
+  std::vector<XLA_TpuProgram*> tpu_programs(TpuProgramShardingType type) const;
   const XLA_TpuProgram* tpu_program(int index) const;
   void set_tpu_programs(absl::Span<XLA_TpuProgram* const> tpu_programs);
 
   const TPUExecutableInfoProto& executable_info(int index) const;
 
   const TPUHostTransferInfoProto& host_transfer_info(int index) const;
-  void set_hlo_metadata(const xla::HloProto& hlo_metadata);
+  void set_hlo_metadatas(absl::Span<const xla::HloProto> hlo_metadatas);
   const xla::HloProto* hlo_metadata(int index) const;
   absl::Span<const xla::HloProto* const> hlo_metadatas() const override;
+
+  // Deserializes `GetTpuProgramResponse` proto into an `XLA_TpuProgram` for
+  // the given core `index`.
+  Status DeserializeFromProto(int index, TpuSerializedProto proto);
+
+  // Serializes executable proto from the TPU program for the given core
+  // `index`.
+  Status SerializeExecutable(int index,
+                             TpuExecutableSerializedProto* executable) const;
+
+  // Serializes compiler metadata of the TPU program for the given core `index`.
+  Status SerializeCompilerMetadata(
+      int index, CompilerMetadataSerializedProto* compiler_metadata) const;
+
+  // Serializes host compute metadata of the TPU program for the given core
+  // `index`.
+  Status SerializeHostComputeMetadata(
+      int index,
+      HostComputeMetadataSerializedProto* host_compute_metadata) const;
 
  private:
   void RefreshHloMetadatasPtrs();

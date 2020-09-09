@@ -113,6 +113,7 @@ class ResNet50Test(tf.test.TestCase):
   def test_apply_async(self):
     self._apply(defun=False, execution_mode=context.ASYNC)
 
+  @test_util.disable_tfrt('Graph is not supported yet. b/156187905')
   def test_apply_with_defun(self):
     self._apply(defun=True)
 

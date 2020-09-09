@@ -26,66 +26,73 @@ from tensorflow.python.platform import test
 class ServerLibTest(test.TestCase):
 
   def testStartDispatcher(self):
-    dispatcher = server_lib.DispatchServer(0, start=False)
+    dispatcher = server_lib.DispatchServer(start=False)
     dispatcher.start()
 
   def testMultipleStartDispatcher(self):
-    dispatcher = server_lib.DispatchServer(0, start=True)
+    dispatcher = server_lib.DispatchServer(start=True)
     dispatcher.start()
 
   def testStartWorker(self):
-    dispatcher = server_lib.DispatchServer(0)
-    worker = server_lib.WorkerServer(0, dispatcher._address, start=False)
+    dispatcher = server_lib.DispatchServer()
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(dispatcher._address), start=False)
     worker.start()
 
   def testMultipleStartWorker(self):
-    dispatcher = server_lib.DispatchServer(0)
-    worker = server_lib.WorkerServer(0, dispatcher._address, start=True)
+    dispatcher = server_lib.DispatchServer()
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(dispatcher._address), start=True)
     worker.start()
 
   def testStopDispatcher(self):
-    dispatcher = server_lib.DispatchServer(0)
+    dispatcher = server_lib.DispatchServer()
     dispatcher._stop()
     dispatcher._stop()
 
   def testStopWorker(self):
-    dispatcher = server_lib.DispatchServer(0)
-    worker = server_lib.WorkerServer(0, dispatcher._address)
+    dispatcher = server_lib.DispatchServer()
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(dispatcher._address))
     worker._stop()
     worker._stop()
 
   def testStopStartDispatcher(self):
-    dispatcher = server_lib.DispatchServer(0)
+    dispatcher = server_lib.DispatchServer()
     dispatcher._stop()
     with self.assertRaisesRegex(
         RuntimeError, "Server cannot be started after it has been stopped"):
       dispatcher.start()
 
   def testStopStartWorker(self):
-    dispatcher = server_lib.DispatchServer(0)
-    worker = server_lib.WorkerServer(0, dispatcher._address)
+    dispatcher = server_lib.DispatchServer()
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(dispatcher._address))
     worker._stop()
     with self.assertRaisesRegex(
         RuntimeError, "Server cannot be started after it has been stopped"):
       worker.start()
 
   def testJoinDispatcher(self):
-    dispatcher = server_lib.DispatchServer(0)
+    dispatcher = server_lib.DispatchServer()
     dispatcher._stop()
     dispatcher.join()
 
   def testJoinWorker(self):
-    dispatcher = server_lib.DispatchServer(0)
-    worker = server_lib.WorkerServer(0, dispatcher._address)
+    dispatcher = server_lib.DispatchServer()
+    worker = server_lib.WorkerServer(
+        server_lib.WorkerConfig(dispatcher._address))
     worker._stop()
     worker.join()
 
   def testDispatcherNumWorkers(self):
-    dispatcher = server_lib.DispatchServer(0)
+    dispatcher = server_lib.DispatchServer()
     self.assertEqual(0, dispatcher._num_workers())
-    worker1 = server_lib.WorkerServer(0, dispatcher._address)  # pylint: disable=unused-variable
+    worker1 = server_lib.WorkerServer(  # pylint: disable=unused-variable
+        server_lib.WorkerConfig(dispatcher._address))
     self.assertEqual(1, dispatcher._num_workers())
-    worker2 = server_lib.WorkerServer(0, dispatcher._address)  # pylint: disable=unused-variable
+    worker2 = server_lib.WorkerServer(  # pylint: disable=unused-variable
+        server_lib.WorkerConfig(dispatcher._address))
     self.assertEqual(2, dispatcher._num_workers())
 
 

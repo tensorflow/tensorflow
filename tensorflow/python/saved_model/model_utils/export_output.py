@@ -26,6 +26,7 @@ import six
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.saved_model import signature_def_utils
 
 
@@ -342,16 +343,16 @@ class _SupervisedOutput(ExportOutput):
         raise ValueError(
             '{} output value must be a Tensor; got {}.'.format(
                 key, metric_val))
-      if (not isinstance(metric_op, ops.Tensor) and
-          not isinstance(metric_op, ops.Operation)):
+      if not (tensor_util.is_tensor(metric_op) or
+              isinstance(metric_op, ops.Operation)):
         raise ValueError(
             '{} update_op must be a Tensor or Operation; got {}.'.format(
                 key, metric_op))
 
-      # We must wrap any ops in a Tensor before export, as the SignatureDef
-      # proto expects tensors only. See b/109740581
+      # We must wrap any ops (or variables) in a Tensor before export, as the
+      # SignatureDef proto expects tensors only. See b/109740581
       metric_op_tensor = metric_op
-      if isinstance(metric_op, ops.Operation):
+      if not isinstance(metric_op, ops.Tensor):
         with ops.control_dependencies([metric_op]):
           metric_op_tensor = constant_op.constant([], name='metric_op_wrapper')
 

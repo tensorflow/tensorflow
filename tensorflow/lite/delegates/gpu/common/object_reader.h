@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_LITE_DELEGATES_GPU_COMMON_OBJECT_READER_H_
 
 #include <cstdint>
-#include <unordered_map>
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/lite/c/common.h"
 #include "tensorflow/lite/delegates/gpu/common/model.h"
 #include "tensorflow/lite/delegates/gpu/common/model_builder_helper.h"
@@ -34,14 +34,14 @@ namespace gpu {
 class ObjectReader {
  public:
   static absl::Status ReadNonConstantTensor(
-      TfLiteContext* context, std::unordered_map<int, Value*>* tensor_to_value,
-      std::unordered_map<int, int>* quant_conversion_map, GraphFloat32* graph,
+      TfLiteContext* context, absl::flat_hash_map<int, Value*>* tensor_to_value,
+      absl::flat_hash_map<int, int>* quant_conversion_map, GraphFloat32* graph,
       uint32_t tensor_idx, Value** value = nullptr);
 
   ObjectReader(GraphFloat32* graph, TfLiteContext* context,
                const TfLiteNode* node,
-               std::unordered_map<int, Value*>* tensor_to_value,
-               std::unordered_map<int, int>* quant_conversion_map = nullptr)
+               absl::flat_hash_map<int, Value*>* tensor_to_value,
+               absl::flat_hash_map<int, int>* quant_conversion_map = nullptr)
       : graph_(graph),
         context_(context),
         node_(node),
@@ -58,6 +58,11 @@ class ObjectReader {
 
   template <typename TensorT>
   absl::Status ReadTensor(uint32_t idx, TensorT* t) const {
+    if (idx < 0 || idx >= node_->inputs->size) {
+      // If larger, this can be an older model with fewer input tensors than the
+      // current implementation.
+      return absl::OutOfRangeError("Invalid data index found.");
+    }
     const int32_t tensor_idx = node_->inputs->data[idx];
     if (tensor_idx < 0) {
       return absl::InvalidArgumentError(
@@ -81,6 +86,8 @@ class ObjectReader {
 
   absl::Status AddInput(const Node* node, uint32_t idx);
 
+  absl::Status AddUpdate(const Node* node, uint32_t idx);
+
   TfLiteTensor* GetInputTensor(int index) const;
 
   TfLiteTensor* GetOutputTensor(int index) const;
@@ -93,8 +100,8 @@ class ObjectReader {
   GraphFloat32* graph_;
   TfLiteContext* context_;
   const TfLiteNode* node_;
-  std::unordered_map<int, Value*>* tensor_to_value_;
-  std::unordered_map<int, int>* quant_conversion_map_;
+  absl::flat_hash_map<int, Value*>* tensor_to_value_;
+  absl::flat_hash_map<int, int>* quant_conversion_map_;
 };
 
 }  // namespace gpu

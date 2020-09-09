@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/c/eager/gradients.h"
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/c/eager/abstract_tensor_handle.h"
 #include "tensorflow/c/eager/c_api_unified_experimental_internal.h"
 #include "tensorflow/c/eager/gradients_internal.h"
 #include "tensorflow/core/common_runtime/eager/attr_builder.h"
@@ -23,25 +24,97 @@ limitations under the License.
 namespace tensorflow {
 namespace gradients {
 
-Status GradientRegistry::Register(const string& op_name,
-                                  GradientFunctionFactory factory) {
+namespace {
+Status ZerosLike(AbstractContext* ctx, AbstractTensorHandle* t,
+                 AbstractTensorHandle** result) {
+  AbstractOperationPtr op(ctx->CreateOperation());
+  TF_RETURN_IF_ERROR(op->Reset("ZerosLike", /*raw_device_name=*/nullptr));
+  if (isa<tracing::TracingOperation>(op.get())) {
+    TF_RETURN_IF_ERROR(dyn_cast<tracing::TracingOperation>(op.get())->SetOpName(
+        absl::StrCat("ZerosLike", ToId(t)).c_str()));
+  }
+  TF_RETURN_IF_ERROR(op->AddInput(t));
+  int num_outputs = 1;
+  std::vector<AbstractTensorHandle*> outputs(num_outputs);
+  TF_RETURN_IF_ERROR(
+      op->Execute(absl::Span<AbstractTensorHandle*>(outputs), &num_outputs));
+  *result = outputs[0];
+  return Status::OK();
+}
+}  // namespace
+
+class IncomingGradientsImpl : public IncomingGradients {
+ public:
+  explicit IncomingGradientsImpl(
+      absl::Span<AbstractTensorHandle* const> grad_inputs, Context* ctx,
+      DefaultGradientFunction* default_gradients)
+      : grad_inputs_(grad_inputs),
+        ctx_(ctx),
+        default_gradients_(default_gradients) {}
+  AbstractTensorHandle* operator[](int i) const override {
+    return default_gradients_->get(ctx_, grad_inputs_, i);
+  }
+  size_t size() const override { return grad_inputs_.size(); }
+
+ private:
+  absl::Span<AbstractTensorHandle* const> grad_inputs_;
+  Context* ctx_;
+  DefaultGradientFunction* default_gradients_;
+};
+
+AllZerosDefaultGradients::AllZerosDefaultGradients(const ForwardOperation& op)
+    : outputs_(op.outputs) {
+  for (auto output : outputs_) {
+    output->Ref();
+  }
+}
+AbstractTensorHandle* AllZerosDefaultGradients::get(
+    Context* ctx, absl::Span<AbstractTensorHandle* const> grad_inputs, int i) {
+  if (grad_inputs[i]) {
+    return grad_inputs[i];
+  }
+  if (cached_default_grads_[i]) {
+    return cached_default_grads_[i].get();
+  }
+  AbstractTensorHandle* result = nullptr;
+  Status s = ZerosLike(ctx->ctx, outputs_[i], &result);
+  if (!s.ok()) {
+    if (result) {
+      result->Unref();
+    }
+    VLOG(1) << "Failed to create ZerosLike for index " << i;
+    return nullptr;
+  }
+  cached_default_grads_[i].reset(result);
+  return result;
+}
+
+PassThroughDefaultGradients::PassThroughDefaultGradients(
+    const ForwardOperation& op) {}
+AbstractTensorHandle* PassThroughDefaultGradients::get(
+    Context* ctx, absl::Span<AbstractTensorHandle* const> grad_inputs, int i) {
+  return grad_inputs[i];
+}
+
+Status GradientRegistry::Register(
+    const string& op_name, BackwardFunctionFactory backward_function_factory) {
   auto iter = registry_.find(op_name);
   if (iter != registry_.end()) {
     const string error_msg = "Gradient already exists for op: " + op_name + ".";
     return errors::AlreadyExists(error_msg);
   }
-  registry_.insert({op_name, factory});
+  registry_.insert({op_name, backward_function_factory});
   return Status::OK();
 }
 Status GradientRegistry::Lookup(
     const ForwardOperation& op,
-    std::unique_ptr<GradientFunction>* grad_fn) const {
+    std::unique_ptr<BackwardFunction>* backward_function) const {
   auto iter = registry_.find(op.op_name);
   if (iter == registry_.end()) {
     const string error_msg = "No gradient defined for op: " + op.op_name + ".";
     return errors::NotFound(error_msg);
   }
-  grad_fn->reset(iter->second(op));
+  backward_function->reset(iter->second(op));
   return Status::OK();
 }
 
@@ -92,33 +165,8 @@ AbstractTensorHandle* TapeTensor::OnesLike() const {
   }
   return outputs[0];
 }
-AbstractTensorHandle* TapeTensor::ZerosLike() const {
-  AbstractOperationPtr op(ctx_->CreateOperation());
-  // TODO(srbs): Consider adding a TF_RETURN_NULLPTR_IF_ERROR.
-  Status s = op->Reset("ZerosLike", /*raw_device_name=*/nullptr);
-  if (!s.ok()) {
-    return nullptr;
-  }
-  if (isa<tracing::TracingOperation>(op.get())) {
-    s = dyn_cast<tracing::TracingOperation>(op.get())->SetOpName(
-        absl::StrCat("OnesLike", ToId(handle_)).c_str());
-    if (!s.ok()) {
-      return nullptr;
-    }
-  }
-  s = op->AddInput(handle_);
-  if (!s.ok()) {
-    return nullptr;
-  }
-  int num_outputs = 1;
-  // TODO(srbs): Figure out who is in charge of releasing this.
-  std::vector<AbstractTensorHandle*> outputs(num_outputs);
-  s = op->Execute(absl::Span<AbstractTensorHandle*>(outputs), &num_outputs);
-  if (!s.ok()) {
-    return nullptr;
-  }
-  return outputs[0];
-}
+
+AbstractTensorHandle* TapeTensor::ZerosLike() const { return nullptr; }
 
 // Returns the number of elements in the gradient tensor.
 int64 TapeVSpace::NumElements(AbstractTensorHandle* tensor) const {
@@ -159,13 +207,16 @@ AbstractTensorHandle* TapeVSpace::AggregateGradients(
 
 // Calls the passed-in backward function.
 Status TapeVSpace::CallBackwardFunction(
-    GradientFunction* backward_function,
+    BackwardFunction* backward_function,
     const std::vector<int64>& unneeded_gradients,
     gtl::ArraySlice<AbstractTensorHandle*> output_gradients,
     std::vector<AbstractTensorHandle*>* result) const {
   if (backward_function == nullptr) return Status::OK();
   Context ctx = {ctx_};
-  return backward_function->Compute(&ctx, output_gradients, result);
+  IncomingGradientsImpl incoming_gradients(
+      output_gradients, &ctx, backward_function->GetDefaultGradientFunction());
+  return backward_function->GetGradientFunction()->Compute(
+      &ctx, incoming_gradients, result);
 }
 
 // Looks up the ID of a Gradient.
@@ -191,6 +242,7 @@ namespace internal {
 Status Reset(AbstractOperation* op_, const char* op,
              const char* raw_device_name, ForwardOperation* forward_op_) {
   forward_op_->op_name = op;
+  forward_op_->attrs.Reset(op);
   return op_->Reset(op, raw_device_name);
 }
 Status AddInput(AbstractOperation* op_, AbstractTensorHandle* input,
@@ -363,21 +415,30 @@ Status Execute(AbstractOperation* op_, AbstractContext* ctx,
     input_ids[i] = ToId(forward_op_->inputs[i]);
     input_dtypes[i] = forward_op_->inputs[i]->DataType();
   }
+  for (int i = 0; i < *num_retvals; i++) {
+    // TODO(srbs): Manage refcount of ForwardOperation's inputs/outputs.
+    forward_op_->outputs.push_back(retvals[i]);
+  }
+  // TODO(b/166669239): This is needed to support AttrBuilder::Get for string
+  // attributes. Number type attrs and DataType attrs work fine without this.
+  // Consider getting rid of this and making the behavior between number types
+  // and string consistent.
+  forward_op_->attrs.BuildNodeDef();
   std::vector<TapeTensor> tape_tensors;
   for (auto t : retvals) {
     tape_tensors.push_back(TapeTensor(t, ctx));
   }
   tape->RecordOperation(
       op_->Name(), tape_tensors, input_ids, input_dtypes,
-      [registry, forward_op_]() -> GradientFunction* {
-        std::unique_ptr<GradientFunction> grad_fn;
-        Status s = registry.Lookup(*forward_op_, &grad_fn);
+      [registry, forward_op_]() -> BackwardFunction* {
+        std::unique_ptr<BackwardFunction> backward_fn;
+        Status s = registry.Lookup(*forward_op_, &backward_fn);
         if (!s.ok()) {
           return nullptr;
         }
-        return grad_fn.release();
+        return backward_fn.release();
       },
-      [](GradientFunction* ptr) {
+      [](BackwardFunction* ptr) {
         if (ptr) {
           delete ptr;
         }

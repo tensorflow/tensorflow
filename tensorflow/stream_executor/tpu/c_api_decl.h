@@ -31,6 +31,13 @@ enum TpuCoreTypeEnum {
   kEmbeddingV2,
 };
 
+enum TpuVersionEnum {
+  kUnknownTpuVersion,
+  kTpuV2,
+  kTpuV3,
+  kTpuV4,
+};
+
 typedef struct SE_Status SE_Status;
 
 typedef struct SE_Platform SE_Platform;
@@ -253,6 +260,10 @@ typedef struct XLA_ComputationPlacer XLA_ComputationPlacer;
 
 typedef void (*XLA_CallbackFn)(void*);
 typedef void (*XLA_StatusCallbackFn)(void*, SE_Status*);
+
+typedef struct SE_TpuTopology SE_TpuTopology;
+typedef struct SE_TpuTopology_Core SE_TpuTopology_Core;
+typedef struct SE_TpuTopology_Core SE_TpuTopology_Host;
 }
 
 #endif  // TENSORFLOW_STREAM_EXECUTOR_TPU_C_API_DECL_H_

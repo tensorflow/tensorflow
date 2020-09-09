@@ -237,7 +237,7 @@ class DeviceBase {
   // Unimplemented by default
   virtual const DeviceAttributes& attributes() const;
   virtual int NumaNode() const { return attributes().locality().numa_node(); }
-  virtual const string& name() const;
+  virtual const std::string& name() const;
 
   // Materializes the given TensorProto into 'tensor' stored in Device
   // memory.  Most devices will want to override this.

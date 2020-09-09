@@ -31,7 +31,7 @@ class Cifar10CNNBenchmark(tf.test.Benchmark):
     (self.x_train, self.y_train), _ = tf.keras.datasets.cifar10.load_data()
     self.x_train = self.x_train.astype('float32') / 255
     self.y_train = tf.keras.utils.to_categorical(self.y_train, self.num_classes)
-    self.epochs = 25
+    self.epochs = 5
 
   def _build_model(self):
     """Model from https://github.com/keras-team/keras/blob/master/examples/cifar10_cnn.py."""
@@ -70,72 +70,61 @@ class Cifar10CNNBenchmark(tf.test.Benchmark):
   #   Check more details in `measure_performance()` method of
   #   benchmark_util.
   def benchmark_cnn_cifar10_bs_256(self):
-    """Measure performance with batch_size=256 and run_iters=3."""
+    """Measure performance with batch_size=256."""
     batch_size = 256
-    run_iters = 3
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.x_train,
         y=self.y_train,
         batch_size=batch_size,
-        run_iters=run_iters,
         epochs=self.epochs,
         optimizer=tf.keras.optimizers.RMSprop(learning_rate=0.0001, decay=1e-6),
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_cnn_cifar10_bs_512(self):
-    """Measure performance with batch_size=512 and run_iters=3."""
+    """Measure performance with batch_size=512."""
     batch_size = 512
-    run_iters = 3
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.x_train,
         y=self.y_train,
         batch_size=batch_size,
-        run_iters=run_iters,
         epochs=self.epochs,
         optimizer=tf.keras.optimizers.RMSprop(learning_rate=0.0001, decay=1e-6),
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_cnn_cifar10_bs_1024(self):
-    """Measure performance with batch_size=1024 and run_iters=2."""
+    """Measure performance with batch_size=1024."""
     batch_size = 1024
-    run_iters = 2
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.x_train,
         y=self.y_train,
         batch_size=batch_size,
-        run_iters=run_iters,
         epochs=self.epochs,
         optimizer=tf.keras.optimizers.RMSprop(learning_rate=0.0001, decay=1e-6),
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
   def benchmark_cnn_cifar10_bs_1024_gpu_2(self):
-    """Measure performance with batch_size=1024, run_iters=2, gpu=2 and
+    """Measure performance with batch_size=1024, gpu=2 and
 
     distribution_strategy=`mirrored`.
     """
     batch_size = 1024
-    run_iters = 2
     metrics, wall_time, extras = benchmark_util.measure_performance(
         self._build_model,
         x=self.x_train,
         y=self.y_train,
         batch_size=batch_size,
-        run_iters=run_iters,
         num_gpus=2,
         distribution_strategy='mirrored',
         epochs=self.epochs,
@@ -143,8 +132,7 @@ class Cifar10CNNBenchmark(tf.test.Benchmark):
         loss='categorical_crossentropy',
         metrics=['accuracy'])
 
-    self.report_benchmark(
-        iters=run_iters, wall_time=wall_time, metrics=metrics, extras=extras)
+    self.report_benchmark(wall_time=wall_time, metrics=metrics, extras=extras)
 
 
 if __name__ == '__main__':

@@ -104,8 +104,9 @@ def MobileNet(input_shape=None,
   Note that the data format convention used by the model is
   the one specified in the `tf.keras.backend.image_data_format()`.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.mobilenet.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For MobileNet, call `tf.keras.applications.mobilenet.preprocess_input`
+  on your inputs before passing them to the model.
 
   Arguments:
     input_shape: Optional shape tuple, only to be specified if `include_top`
@@ -164,7 +165,7 @@ def MobileNet(input_shape=None,
     layers = VersionAwareLayers()
   if kwargs:
     raise ValueError('Unknown argument(s): %s' % (kwargs,))
-  if not (weights in {'imagenet', None} or file_io.file_exists(weights)):
+  if not (weights in {'imagenet', None} or file_io.file_exists_v2(weights)):
     raise ValueError('The `weights` argument should be either '
                      '`None` (random initialization), `imagenet` '
                      '(pre-training on ImageNet), '
@@ -349,15 +350,13 @@ def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
   """
   channel_axis = 1 if backend.image_data_format() == 'channels_first' else -1
   filters = int(filters * alpha)
-  x = layers.ZeroPadding2D(padding=((0, 1), (0, 1)), name='conv1_pad')(inputs)
   x = layers.Conv2D(
       filters,
       kernel,
-      padding='valid',
+      padding='same',
       use_bias=False,
       strides=strides,
-      name='conv1')(
-          x)
+      name='conv1')(inputs)
   x = layers.BatchNormalization(axis=channel_axis, name='conv1_bn')(x)
   return layers.ReLU(6., name='conv1_relu')(x)
 

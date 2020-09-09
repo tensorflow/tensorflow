@@ -9,8 +9,7 @@
   * `TF_ROCM_VERSION`: The version of the ROCm toolkit. If this is blank, then
     use the system default.
   * `TF_MIOPEN_VERSION`: The version of the MIOpen library.
-  * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets. Default is
-    `gfx803,gfx900`.
+  * `TF_ROCM_AMDGPU_TARGETS`: The AMDGPU targets.
 """
 
 load(
@@ -44,7 +43,6 @@ _TF_ROCM_CONFIG_REPO = "TF_ROCM_CONFIG_REPO"
 _DEFAULT_ROCM_VERSION = ""
 _DEFAULT_MIOPEN_VERSION = ""
 _DEFAULT_ROCM_TOOLKIT_PATH = "/opt/rocm"
-_DEFAULT_ROCM_AMDGPU_TARGETS = ["gfx803", "gfx900"]
 
 def verify_build_defines(params):
     """Verify all variables that crosstool/BUILD.rocm.tpl expects are substituted.
@@ -228,11 +226,14 @@ def _rocm_toolkit_path(repository_ctx, bash_bin):
         auto_configure_fail("Cannot find rocm toolkit path.")
     return rocm_toolkit_path
 
-def _amdgpu_targets(repository_ctx):
+def _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin):
     """Returns a list of strings representing AMDGPU targets."""
     amdgpu_targets_str = get_host_environ(repository_ctx, _TF_ROCM_AMDGPU_TARGETS)
     if not amdgpu_targets_str:
-        return _DEFAULT_ROCM_AMDGPU_TARGETS
+        cmd = "%s/bin/rocm_agent_enumerator" % rocm_toolkit_path
+        result = execute(repository_ctx, [bash_bin, "-c", cmd])
+        targets = [target for target in result.stdout.strip().split("\n") if target != "gfx000"]
+        amdgpu_targets_str = ",".join(targets)
     amdgpu_targets = amdgpu_targets_str.split(",")
     for amdgpu_target in amdgpu_targets:
         if amdgpu_target[:3] != "gfx" or not amdgpu_target[3:].isdigit():
@@ -389,7 +390,7 @@ def _find_libs(repository_ctx, rocm_config, bash_bin):
     libs_paths = [
         (name, _rocm_lib_paths(repository_ctx, name, path))
         for name, path in [
-            ("hip_hcc", rocm_config.rocm_toolkit_path),
+            ("hip_hcc", rocm_config.rocm_toolkit_path + "/hip"),
             ("rocblas", rocm_config.rocm_toolkit_path + "/rocblas"),
             ("rocfft", rocm_config.rocm_toolkit_path + "/rocfft"),
             ("hiprand", rocm_config.rocm_toolkit_path + "/hiprand"),
@@ -416,7 +417,7 @@ def _get_rocm_config(repository_ctx, bash_bin):
     rocm_toolkit_path = _rocm_toolkit_path(repository_ctx, bash_bin)
     return struct(
         rocm_toolkit_path = rocm_toolkit_path,
-        amdgpu_targets = _amdgpu_targets(repository_ctx),
+        amdgpu_targets = _amdgpu_targets(repository_ctx, rocm_toolkit_path, bash_bin),
     )
 
 def _tpl_path(repository_ctx, labelname):
@@ -464,6 +465,7 @@ def _create_dummy_repository(repository_ctx):
         {
             "%{rocm_is_configured}": "False",
             "%{rocm_extra_copts}": "[]",
+            "%{rocm_gpu_architectures}": "[]",
         },
     )
     _tpl(
@@ -532,12 +534,8 @@ def _genrule(src_dir, genrule_name, command, outs):
     )
 
 def _compute_rocm_extra_copts(repository_ctx, amdgpu_targets):
-    if False:
-        amdgpu_target_flags = ["--amdgpu-target=" +
-                               amdgpu_target for amdgpu_target in amdgpu_targets]
-    else:
-        # AMDGPU targets are handled in the "crosstool_wrapper_driver_is_not_gcc"
-        amdgpu_target_flags = []
+    amdgpu_target_flags = ["--amdgpu-target=" +
+                           amdgpu_target for amdgpu_target in amdgpu_targets]
     return str(amdgpu_target_flags)
 
 def _create_local_rocm_repository(repository_ctx):
@@ -611,6 +609,26 @@ def _create_local_rocm_repository(repository_ctx):
         outs = rocm_lib_outs,
     ))
 
+    clang_offload_bundler_path = rocm_toolkit_path + _if_hipcc_is_hipclang(
+        repository_ctx,
+        rocm_config,
+        bash_bin,
+        "/llvm/bin/",
+        "/hcc/bin/",
+    ) + "clang-offload-bundler"
+
+    # copy files mentioned in third_party/gpus/rocm/BUILD
+    copy_rules.append(make_copy_files_rule(
+        repository_ctx,
+        name = "rocm-bin",
+        srcs = [
+            clang_offload_bundler_path,
+        ],
+        outs = [
+            "rocm/bin/" + "clang-offload-bundler",
+        ],
+    ))
+
     # Set up BUILD file for rocm/
     repository_ctx.template(
         "rocm/build_defs.bzl",
@@ -621,6 +639,7 @@ def _create_local_rocm_repository(repository_ctx):
                 repository_ctx,
                 rocm_config.amdgpu_targets,
             ),
+            "%{rocm_gpu_architectures}": str(rocm_config.amdgpu_targets),
         },
     )
     repository_ctx.template(
@@ -708,7 +727,7 @@ def _create_local_rocm_repository(repository_ctx):
         tpl_paths["crosstool:clang/bin/crosstool_wrapper_driver_rocm"],
         {
             "%{cpu_compiler}": str(cc),
-            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/bin/hipcc",
+            "%{hipcc_path}": rocm_config.rocm_toolkit_path + "/hip/bin/hipcc",
             "%{hipcc_env}": _hipcc_env(repository_ctx),
             "%{hipcc_is_hipclang}": _hipcc_is_hipclang(repository_ctx, rocm_config, bash_bin),
             "%{rocr_runtime_path}": rocm_config.rocm_toolkit_path + "/lib",
@@ -719,9 +738,6 @@ def _create_local_rocm_repository(repository_ctx):
             "%{hcc_runtime_library}": "mcwamp",
             "%{crosstool_verbose}": _crosstool_verbose(repository_ctx),
             "%{gcc_host_compiler_path}": str(cc),
-            "%{rocm_amdgpu_targets}": ",".join(
-                ["\"%s\"" % c for c in rocm_config.amdgpu_targets],
-            ),
         },
     )
 

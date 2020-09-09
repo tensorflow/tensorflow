@@ -33,7 +33,7 @@ class OutfeedReceiver {
  public:
   // A callback takes: device, consumer id, received.
   using Callback =
-      std::function<void(Device*, uint32_t, std::shared_ptr<Literal>)>;
+      std::function<void(PjRtDevice*, uint32_t, std::shared_ptr<Literal>)>;
 
   // Constructs the receiver for the given clients and callback function.
   //

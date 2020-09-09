@@ -364,6 +364,24 @@ def HLOClient_AcosOp: HLOClient_UnaryElementwiseOp<"acos",
   }];
 }
 
+def HLOClient_ConstantLikeOp: HLOClient_Op<"constant_like",
+    [NoSideEffect, SameOperandsAndResultShape,
+     InferTypeOpInterface,
+     DeclareOpInterfaceMethods<InferShapedTypeOpInterface>,
+     NativeOpTrait<"InferTensorType">]> {
+  let summary = "Constant like operator";
+
+  let description = [{
+    Returns a splat constant of the same shape as the operand.
+  }];
+
+  // TODO(jpienaar): value's type could be tightened.
+  let arguments = (ins AnyAttr:$value, HLO_Tensor:$operand);
+  let results = (outs HLO_Tensor);
+
+  let hasCanonicalizer = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Broadcasting compare op
 //===----------------------------------------------------------------------===//

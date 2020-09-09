@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
 
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -88,7 +89,8 @@ int NumIterations(const RewriterConfig& cfg) {
 // Check if optimizer is allowed to run only once.
 bool IsRunOnceOptimizer(const string& name) {
   return name == "layout" || name == "memory_optimizer" ||
-         name == "loop_optimizer" || name == "auto_mixed_precision";
+         name == "loop_optimizer" || name == "auto_mixed_precision" ||
+         name == "auto_mixed_precision_mkl";
 }
 
 bool IsTFDataFunction(const FunctionDef& func) {
@@ -189,7 +191,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
              cfg_.experimental_disable_compressed_tensor_optimization()));
   MK_OPT("shape", new ShapeOptimizer());
   MK_OPT("remap", new Remapper(cfg_.remapping()));
-  MK_OPT("layout", new GenericLayoutOptimizer());
+  MK_OPT("layout", new GenericLayoutOptimizer(
+                       /*optimization level*/ cfg_.layout_optimizer(),
+                       /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
   MK_OPT("auto_mixed_precision",
          new AutoMixedPrecision(AutoMixedPrecisionMode::CUDA));
   MK_OPT("auto_mixed_precision_mkl",
@@ -269,7 +273,9 @@ Status MetaOptimizer::InitializeOptimizers(
         MakeUnique<ArithmeticOptimizer>(cfg_.arithmetic_optimization()));
   }
   if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
-    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>());
+    optimizers->push_back(MakeUnique<GenericLayoutOptimizer>(
+        /*optimization level*/ cfg_.layout_optimizer(),
+        /*CPU layout conversion*/ cfg_.cpu_layout_conversion()));
   }
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
@@ -672,18 +678,41 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
     find_differentiable_functions(function.node_def());
   }
 
-  // Find functions that are formed by XLA and will be compiled later. We do it
-  // by looking for a function attribute in XlaLaunch ops. Grappler rewrites
-  // potentially can add nodes that are not supported by XLA, so we choose to
-  // skip such functions when we optimize function library.
+  // Find functions that will be compiled by XLA later
+  // We do it by looking for XlaLaunch ops that call functions,
+  // then depth first search down those functions to find transitive functions.
+  // Grappler rewrites can potentially add nodes that are
+  // not supported by XLA, so we choose to skip such functions when we optimize
+  // the function library.
   absl::flat_hash_set<string> xla_compiled_functions;
+  std::function<void(const string&)> find_all_functions;
+  find_all_functions = [&](const string& func) -> void {
+    // Ignore call cycles in the graph
+    if (xla_compiled_functions.contains(func)) return;
+    // Find func in the flib
+    const FunctionDef* func_def = flib.Find(func);
+    CHECK(func_def) << "not found: " << func;
+    // Mark function to be ignored by grappler
+    xla_compiled_functions.insert(func);
+    // Depth first search through the func for transitively called funcs
+    for (const NodeDef& node : func_def->node_def()) {
+      for (const auto attr : node.attr()) {
+        const AttrValue& attr_value = attr.second;
+        if (attr_value.has_func()) {
+          find_all_functions(attr_value.func().name());
+        }
+      }
+    }
+  };
 
-  const auto find_xla_compiled_functions = [&](const NodeDefs& nodes) -> void {
+  auto find_xla_compiled_functions = [&](const NodeDefs& nodes) -> void {
     NameAttrList function;
     for (const NodeDef& node : nodes) {
+      // Look only for XlaLaunch nodes that call a function
       if (!IsXlaLaunch(node)) continue;
       if (!GetNodeAttr(node, "function", &function).ok()) continue;
-      xla_compiled_functions.insert(function.name());
+      // Find all transitively called functions
+      find_all_functions(function.name());
     }
   };
 
@@ -826,14 +855,21 @@ Status MetaOptimizer::OptimizeConsumeItem(Cluster* cluster, GrapplerItem&& item,
   return Status::OK();
 }
 
-void MetaOptimizer::PrintResult() {
+string MetaOptimizer::GetResultString() const {
+  std::string result_string;
   for (const GraphOptimizationResult& graph_result : optimization_results_) {
-    LOG(INFO) << "Optimization results for grappler item: " << graph_result.id;
+    absl::StrAppend(&result_string,
+                    "Optimization results for grappler item: ", graph_result.id,
+                    "\n");
     for (const OptimizerResult& result : graph_result.results) {
-      LOG(INFO) << "  " << result.optimizer_name << ": " << result.message;
+      absl::StrAppend(&result_string, "  ", result.optimizer_name, ": ",
+                      result.message, "\n");
     }
   }
+  return result_string;
 }
+
+void MetaOptimizer::PrintResult() { LOG(INFO) << GetResultString(); }
 
 bool MetaOptimizerEnabled(const ConfigProto& cfg) {
   const auto& rewrite_cfg = cfg.graph_options().rewrite_options();

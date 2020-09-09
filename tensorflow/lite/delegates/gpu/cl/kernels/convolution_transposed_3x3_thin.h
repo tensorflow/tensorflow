@@ -37,7 +37,6 @@ namespace cl {
 class ConvolutionTransposed3x3Thin : public GPUOperation {
  public:
   ConvolutionTransposed3x3Thin() = default;
-  absl::Status Compile(const CreationContext& creation_context) override;
   int3 GetGridSize() const override;
 
   // Move only
@@ -49,90 +48,77 @@ class ConvolutionTransposed3x3Thin : public GPUOperation {
       delete;
 
  private:
-  friend absl::Status CreateConvolutionTransposed3x3Thin(
-      const CreationContext& creation_context, const OperationDef& definition,
-      const ConvolutionTransposedAttributes& attr,
-      ConvolutionTransposed3x3Thin* result);
+  friend ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
+      const DeviceInfo& device_info, const OperationDef& definition,
+      const ConvolutionTransposedAttributes& attr);
   explicit ConvolutionTransposed3x3Thin(
       const OperationDef& definition,
       const ConvolutionTransposedAttributes& attr);
   template <DataType T>
-  absl::Status UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
-                          const tflite::gpu::Tensor<Linear, T>& biases,
-                          CLContext* context);
+  void UploadData(const tflite::gpu::Tensor<OHWI, T>& weights,
+                  const tflite::gpu::Tensor<Linear, T>& biases);
 
   template <DataType S, typename T>
   void RearrangeWeightsData(const tflite::gpu::Tensor<OHWI, S>& weights,
                             absl::Span<T> dst);
 
   std::string GenerateConvolutionTransposedCode(const OperationDef& op_def,
-                                                int src_depth, int dst_depth,
-                                                const CLDevice& device);
-
-  int src_channels_;
-  int dst_channels_;
+                                                int src_depth, int dst_depth);
 };
 
 template <DataType T>
-absl::Status ConvolutionTransposed3x3Thin::UploadData(
+void ConvolutionTransposed3x3Thin::UploadData(
     const tflite::gpu::Tensor<OHWI, T>& weights,
-    const tflite::gpu::Tensor<Linear, T>& biases, CLContext* context) {
-  const int src_depth = DivideRoundUp(src_channels_, 4);
-  const int dst_depth = DivideRoundUp(dst_channels_, 4);
+    const tflite::gpu::Tensor<Linear, T>& biases) {
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 3;  //  This operation support only 3x3 kernel
   const int kernel_y = 3;
   const int flt4_count = kernel_x * kernel_y * src_depth * dst_depth * 4;
 
   const bool f32_weights = definition_.precision == CalculationsPrecision::F32;
+  const int flt4_size = f32_weights ? sizeof(float4) : sizeof(half4);
 
   BufferDescriptor desc;
   desc.element_type = f32_weights ? DataType::FLOAT32 : DataType::FLOAT16;
   desc.element_size = 4;
   desc.memory_type = MemoryType::CONSTANT;
+  desc.size = flt4_size * (flt4_count + dst_depth);
+  desc.data.resize(desc.size);
 
-  Buffer weights_buffer;
   if (f32_weights) {
-    std::vector<float4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
+    float4* gpu_data = reinterpret_cast<float4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data, flt4_count));
     for (int i = 0; i < dst_depth; ++i) {
       float4 bias_value(0.0f);
       for (int c = 0; c < 4; ++c) {
         int ch = i * 4 + c;
         bias_value[c] = ch < weights.shape.o ? biases.data[ch] : 0.0f;
       }
-      gpu_data.push_back(bias_value);
+      gpu_data[flt4_count + i] = bias_value;
     }
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(float4) * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
   } else {
-    std::vector<half4> gpu_data(flt4_count);
-    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data));
+    half4* gpu_data = reinterpret_cast<half4*>(desc.data.data());
+    RearrangeWeightsData(weights, absl::MakeSpan(gpu_data, flt4_count));
     for (int i = 0; i < dst_depth; ++i) {
       half4 bias_value(0.0f);
       for (int c = 0; c < 4; ++c) {
         int ch = i * 4 + c;
         bias_value[c] = ch < weights.shape.o ? biases.data[ch] : 0.0f;
       }
-      gpu_data.push_back(bias_value);
+      gpu_data[flt4_count + i] = bias_value;
     }
-    RETURN_IF_ERROR(CreateReadOnlyBuffer(sizeof(half4) * gpu_data.size(),
-                                         gpu_data.data(), context,
-                                         &weights_buffer));
   }
 
-  args_.AddObject("weights", AccessType::READ,
-                  absl::make_unique<Buffer>(std::move(weights_buffer)),
-                  absl::make_unique<BufferDescriptor>(desc));
-
-  return absl::OkStatus();
+  args_.AddObject("weights",
+                  absl::make_unique<BufferDescriptor>(std::move(desc)));
 }
 
 template <DataType S, typename T>
 void ConvolutionTransposed3x3Thin::RearrangeWeightsData(
     const tflite::gpu::Tensor<OHWI, S>& weights, absl::Span<T> dst) {
-  const int src_depth = DivideRoundUp(src_channels_, 4);
-  const int dst_depth = DivideRoundUp(dst_channels_, 4);
+  const int src_depth = DivideRoundUp(weights.shape.i, 4);
+  const int dst_depth = DivideRoundUp(weights.shape.o, 4);
   const int kernel_x = 3;
   const int kernel_y = 3;
 
@@ -151,7 +137,7 @@ void ConvolutionTransposed3x3Thin::RearrangeWeightsData(
             for (int i = 0; i < 4; ++i) {
               const int s_ch = s * 4 + i;
               const int d_ch = d * 4 + j;
-              if (s_ch < src_channels_ && d_ch < dst_channels_) {
+              if (s_ch < weights.shape.i && d_ch < weights.shape.o) {
                 const int f_index = weights.shape.LinearIndex(
                     {d_ch, kernel_index_y, kernel_index_x, s_ch});
                 filters[i][j] = weights.data[f_index];
@@ -171,12 +157,11 @@ void ConvolutionTransposed3x3Thin::RearrangeWeightsData(
 }
 
 bool IsConvolutionTransposed3x3ThinSupported(
-    const CLDevice& device, const ConvolutionTransposedAttributes& attr);
+    const ConvolutionTransposedAttributes& attr);
 
-absl::Status CreateConvolutionTransposed3x3Thin(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr,
-    ConvolutionTransposed3x3Thin* result);
+ConvolutionTransposed3x3Thin CreateConvolutionTransposed3x3Thin(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr);
 
 }  // namespace cl
 }  // namespace gpu

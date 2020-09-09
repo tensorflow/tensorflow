@@ -39,7 +39,7 @@ static FactoriesMap& GetFactories() {
   return *factories;
 }
 
-static const char* default_factory = "<unset>";
+static tracing::FactoryFunction default_factory;
 
 void RegisterTracingEngineFactory(const string& name, FactoryFunction factory) {
   assert((!GetFactories().count(name)) ||
@@ -48,15 +48,15 @@ void RegisterTracingEngineFactory(const string& name, FactoryFunction factory) {
   GetFactories()[name] = factory;
 }
 
-void SetDefaultTracingEngine(const char* name) { default_factory = name; }
-
-static TracingContext* CreateTracingExecutionContext(const char* fn_name,
-                                                     TF_Status* s) {
-  auto entry = GetFactories().find(default_factory);
-  if (entry != GetFactories().end()) return entry->second(fn_name, s);
+Status SetDefaultTracingEngine(const char* name) {
+  auto entry = GetFactories().find(name);
+  if (entry != GetFactories().end()) {
+    default_factory = GetFactories().find(name)->second;
+    return Status::OK();
+  }
   string msg = absl::StrCat(
-      "No tracing engine factory has been registered with the key '",
-      default_factory, "' (available: ");
+      "No tracing engine factory has been registered with the key '", name,
+      "' (available: ");
   // Ensure deterministic (sorted) order in the error message
   std::set<string> factories_sorted;
   for (const auto& factory : GetFactories())
@@ -68,7 +68,16 @@ static TracingContext* CreateTracingExecutionContext(const char* fn_name,
   }
   msg += ")";
 
-  TF_SetStatus(s, TF_INVALID_ARGUMENT, msg.c_str());
+  return errors::InvalidArgument(msg.c_str());
+}
+
+static TracingContext* CreateTracingExecutionContext(const char* fn_name,
+                                                     TF_Status* s) {
+  if (default_factory) {
+    return default_factory(fn_name, s);
+  }
+  Set_TF_Status_from_Status(
+      s, errors::FailedPrecondition("default_factory is nullptr"));
   return nullptr;
 }
 
@@ -99,8 +108,8 @@ using tensorflow::tracing::TracingContext;
 using tensorflow::tracing::TracingOperation;
 using tensorflow::tracing::TracingTensorHandle;
 
-void TF_SetTracingImplementation(const char* name) {
-  SetDefaultTracingEngine(name);
+void TF_SetTracingImplementation(const char* name, TF_Status* s) {
+  Set_TF_Status_from_Status(s, SetDefaultTracingEngine(name));
 }
 
 // Creates a new TensorFlow function, it is an execution context attached to a

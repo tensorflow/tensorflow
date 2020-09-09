@@ -26,6 +26,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
@@ -37,6 +38,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import save as saved_model_save
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training.saving import checkpoint_options
@@ -793,6 +795,101 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     load_checkpoint.restore(save_path)
     self.assertAllClose(self.evaluate(load_checkpoint.a), [0, 1])
     self.assertAllClose(self.evaluate(load_checkpoint.b), {"a": 2, "b": 3})
+
+  def _create_trackable(self):
+    class Model(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.v = variables_lib.Variable(2.)
+
+      def __call__(self, x):
+        return self.v * x
+    return Model()
+
+  def test_initialize_with_root_object(self):
+    model = self._create_trackable()
+    input_value = constant_op.constant([[3.]])
+    expected_output = self.evaluate(model(input_value))
+    model.deferred_variable = variables_lib.Variable(5.)
+
+    checkpoint = trackable_utils.Checkpoint(model)
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+
+    new_model = self._create_trackable()
+    load_checkpoint = trackable_utils.Checkpoint(new_model)
+    load_checkpoint.restore(save_path)
+    self.assertAllClose(expected_output, new_model(input_value))
+
+    new_model.deferred_variable = variables_lib.Variable(1.)
+    self.assertEqual(self.evaluate(new_model.deferred_variable), 5)
+
+  def test_initialize_with_root_object_and_kwargs(self):
+    model = self._create_trackable()
+    model.v.assign(3.)
+    separate_variable = variables_lib.Variable(5.)
+
+    with self.assertRaisesRegex(ValueError, "root.v already exists"):
+      trackable_utils.Checkpoint(model, v=separate_variable)
+
+    checkpoint = trackable_utils.Checkpoint(
+        model, separate_variable=separate_variable)
+    checkpoint_directory = self.get_temp_dir()
+    checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
+    save_path = checkpoint.save(checkpoint_prefix)
+
+    # Case 1: Loading checkpoint with same configuration.
+    new_model = self._create_trackable()
+    separate_variable = variables_lib.Variable(1.)
+    load_checkpoint = trackable_utils.Checkpoint(
+        new_model, separate_variable=separate_variable)
+    load_checkpoint.restore(save_path).assert_consumed()
+    self.assertEqual(self.evaluate(new_model.v), 3)
+    self.assertEqual(self.evaluate(separate_variable), 5)
+    self.assertEqual(self.evaluate(load_checkpoint.save_counter), 1)
+
+    # Case 2: Loading checkpoint where v and separate_variable are swapped:
+    # v is not attached to the root, while separate variable is attached to root
+    new_model = tracking.AutoTrackable()
+    new_model.separate_variable = variables_lib.Variable(200.)
+    v = variables_lib.Variable(100.)
+    load_checkpoint = trackable_utils.Checkpoint(new_model, v=v)
+    load_checkpoint.restore(save_path).assert_consumed()
+    self.assertEqual(self.evaluate(v), 3)
+    self.assertEqual(self.evaluate(new_model.separate_variable), 5)
+    self.assertEqual(self.evaluate(load_checkpoint.save_counter), 1)
+
+    # Case 3: Loading checkpoint where no root object is specified
+    separate_variable = variables_lib.Variable(200.)
+    v = variables_lib.Variable(100.)
+    load_checkpoint = trackable_utils.Checkpoint(
+        v=v, separate_variable=separate_variable)
+    load_checkpoint.restore(save_path).assert_consumed()
+    self.assertEqual(self.evaluate(v), 3)
+    self.assertEqual(self.evaluate(new_model.separate_variable), 5)
+    self.assertEqual(self.evaluate(load_checkpoint.save_counter), 1)
+
+  def test_checkpoint_saved_model_compatibility(self):
+    model = self._create_trackable()
+    input_value = constant_op.constant([[3.]])
+    expected_output = self.evaluate(model(input_value))
+    model.deferred_variable = variables_lib.Variable(5.)
+    saved_model_dir = os.path.join(self.get_temp_dir(), "saved_model")
+    saved_model_save.save(model, saved_model_dir)
+
+    new_model = self._create_trackable()
+    load_checkpoint = trackable_utils.Checkpoint(new_model)
+
+    with self.assertRaisesRegex(errors_impl.NotFoundError,
+                                "Could not find checkpoint or SavedModel"):
+      load_checkpoint.restore(saved_model_dir + "no").expect_partial()
+
+    load_checkpoint.restore(saved_model_dir).expect_partial()
+    self.assertAllClose(expected_output, new_model(input_value))
+
+    new_model.deferred_variable = variables_lib.Variable(1.)
+    self.assertEqual(self.evaluate(new_model.deferred_variable), 5)
 
 
 class TemplateTests(parameterized.TestCase, test.TestCase):

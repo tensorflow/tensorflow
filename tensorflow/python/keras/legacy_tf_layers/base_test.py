@@ -277,11 +277,6 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
       def call(self, inputs):
         return inputs
 
-    if not context.executing_eagerly():
-      layer = CustomerLayer()
-      with self.assertRaisesRegex(ValueError, r'requires a defined rank'):
-        layer.apply(array_ops.placeholder('int32'))
-
     layer = CustomerLayer()
     with self.assertRaisesRegex(ValueError, r'expected ndim=2'):
       layer.apply(constant_op.constant([1]))
@@ -295,29 +290,24 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
   def testInputSpecMinNdimCheck(self):
 
-    class CustomerLayer(base_layers.Layer):
+    class CustomLayer(base_layers.Layer):
 
       def __init__(self):
-        super(CustomerLayer, self).__init__()
+        super(CustomLayer, self).__init__()
         self.input_spec = input_spec.InputSpec(min_ndim=2)
 
       def call(self, inputs):
         return inputs
 
-    if not context.executing_eagerly():
-      layer = CustomerLayer()
-      with self.assertRaisesRegex(ValueError, r'requires a defined rank'):
-        layer.apply(array_ops.placeholder('int32'))
-
-    layer = CustomerLayer()
+    layer = CustomLayer()
     with self.assertRaisesRegex(ValueError, r'expected min_ndim=2'):
       layer.apply(constant_op.constant([1]))
 
     # Works
-    layer = CustomerLayer()
+    layer = CustomLayer()
     layer.apply(constant_op.constant([[1], [2]]))
 
-    layer = CustomerLayer()
+    layer = CustomLayer()
     layer.apply(constant_op.constant([[[1], [2]]]))
 
   @combinations.generate(combinations.combine(mode=['graph', 'eager']))
@@ -331,11 +321,6 @@ class BaseLayerTest(test.TestCase, parameterized.TestCase):
 
       def call(self, inputs):
         return inputs
-
-    if not context.executing_eagerly():
-      layer = CustomerLayer()
-      with self.assertRaisesRegex(ValueError, r'requires a defined rank'):
-        layer.apply(array_ops.placeholder('int32'))
 
     layer = CustomerLayer()
     with self.assertRaisesRegex(ValueError, r'expected max_ndim=2'):

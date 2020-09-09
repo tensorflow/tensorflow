@@ -26,79 +26,59 @@ namespace gpu {
 namespace cl {
 namespace {
 
-absl::Status SelectDWConvolutionAdreno(
-    const DepthwiseConvolution2DAttributes& attr,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr) {
+std::unique_ptr<GPUOperation> SelectDWConvolutionAdreno(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
   if (IsDepthwiseConv3x3Supported(attr)) {
-    DepthwiseConv3x3 dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthwiseConv3x3(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthwiseConv3x3>(std::move(dw_conv));
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    DepthwiseConvolution dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthwiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthwiseConvolution>(std::move(dw_conv));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
-  return absl::OkStatus();
 }
 
-absl::Status SelectDWConvolutionPowerVR(
-    const DepthwiseConvolution2DAttributes& attr,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr) {
+std::unique_ptr<GPUOperation> SelectDWConvolutionPowerVR(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
   if (IsDepthwiseConv3x3Supported(attr)) {
-    DepthwiseConv3x3 dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthwiseConv3x3(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthwiseConv3x3>(std::move(dw_conv));
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    DepthwiseConvolution dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthwiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthwiseConvolution>(std::move(dw_conv));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
-  return absl::OkStatus();
 }
 
-absl::Status SelectDWConvolutionMali(
-    const DepthwiseConvolution2DAttributes& attr,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr) {
+std::unique_ptr<GPUOperation> SelectDWConvolutionMali(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
   const auto storage_type = op_def.src_tensors[0].storage_type;
   bool buffer_type = storage_type == TensorStorageType::BUFFER ||
                      storage_type == TensorStorageType::IMAGE_BUFFER;
-  MaliInfo mali_info = creation_context.device->GetInfo().mali_info;
+  const MaliInfo mali_info = device_info.mali_info;
   if (IsDepthwiseConv3x3Supported(attr) && !mali_info.IsMidgard() &&
       !buffer_type && op_def.precision != CalculationsPrecision::F32) {
-    DepthwiseConv3x3 dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthwiseConv3x3(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthwiseConv3x3>(std::move(dw_conv));
+    return absl::make_unique<DepthwiseConv3x3>(
+        CreateDepthwiseConv3x3(device_info, op_def, attr));
   } else {
-    DepthwiseConvolution dw_conv;
-    RETURN_IF_ERROR(
-        CreateDepthwiseConvolution(creation_context, op_def, attr, &dw_conv));
-    *ptr = absl::make_unique<DepthwiseConvolution>(std::move(dw_conv));
+    return absl::make_unique<GPUOperation>(
+        CreateDepthwiseConvolution2D(device_info, op_def, attr));
   }
-  return absl::OkStatus();
 }
 }  // namespace
 
-absl::Status SelectDWConvolution(const DepthwiseConvolution2DAttributes& attr,
-                                 const CreationContext& creation_context,
-                                 const OperationDef& op_def,
-                                 std::unique_ptr<GPUOperation>* ptr) {
-  switch (creation_context.device->vendor()) {
-    case Vendor::QUALCOMM:
-      return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
-    case Vendor::POWERVR:
-      return SelectDWConvolutionPowerVR(attr, creation_context, op_def, ptr);
-    case Vendor::MALI:
-      return SelectDWConvolutionMali(attr, creation_context, op_def, ptr);
-    default:
-      return SelectDWConvolutionAdreno(attr, creation_context, op_def, ptr);
+std::unique_ptr<GPUOperation> SelectDWConvolution(
+    const DepthwiseConvolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
+  if (device_info.IsAdreno()) {
+    return SelectDWConvolutionAdreno(attr, device_info, op_def);
+  } else if (device_info.IsPowerVR()) {
+    return SelectDWConvolutionPowerVR(attr, device_info, op_def);
+  } else if (device_info.IsMali()) {
+    return SelectDWConvolutionMali(attr, device_info, op_def);
+  } else {
+    return SelectDWConvolutionAdreno(attr, device_info, op_def);
   }
 }
 

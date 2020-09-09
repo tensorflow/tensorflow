@@ -61,6 +61,8 @@ def _default_tolerance(dtype):
   Args:
     dtype: A datatype.
   """
+  if dtype == dtypes_lib.bfloat16.as_numpy_dtype:
+    return 5e-3
   if dtype == np.float16:
     return 5e-3
   elif dtype in (np.float32, np.complex64):
@@ -81,12 +83,7 @@ class UnaryOpTest(test.TestCase):
     np_ans = np_func(x)
     with self.cached_session(use_gpu=False):
       inx = ops.convert_to_tensor(x)
-      if x.dtype in (np.float32, np.float64,
-                     dtypes_lib.bfloat16.as_numpy_dtype):
-        y = 1.1 * tf_func(inx)
-        np_ans *= 1.1
-      else:
-        y = tf_func(inx)
+      y = tf_func(inx)
       tf_cpu = self.evaluate(y)
       self.assertShapeEqual(np_ans, y)
       if x.dtype == np.float16:
@@ -99,7 +96,7 @@ class UnaryOpTest(test.TestCase):
       if x.dtype in (np.complex64, np.complex128) and tf_func == math_ops.sign:
         return  # Return early
 
-      if x.dtype == np.float16:
+      if x.dtype in (np.float16, dtypes_lib.bfloat16.as_numpy_dtype):
         s = list(np.shape(x))
         jacob_t, _ = gradient_checker.compute_gradient(
             inx, s, y, s, x_init_value=x)
@@ -108,7 +105,7 @@ class UnaryOpTest(test.TestCase):
         yf = tf_func(inxf)
         _, jacob_n = gradient_checker.compute_gradient(
             inxf, s, yf, s, x_init_value=xf, delta=1e-2)
-        jacob_n = jacob_n.astype(np.float16)
+        jacob_n = jacob_n.astype(x.dtype)
         self.assertAllClose(jacob_t, jacob_n, rtol=grad_rtol, atol=grad_atol)
       elif x.dtype in (np.float32, np.complex64):
         s = list(np.shape(x))
@@ -384,13 +381,36 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, np.sign, math_ops.sign)
     self._compareBothSparse(x, np.vectorize(math.erf), math_ops.erf, tol=1e-3)
 
+  @test_util.run_deprecated_v1
   def testBFloat16Basic(self):
+    def compute_f32(np_func):
+      """Decorator to compute Numpy function with float32 math."""
+      def f(x):
+        y = np_func(x.astype(np.float32))
+        return y.astype(x.dtype)
+      return f
+
+    bfloat16 = dtypes_lib.bfloat16.as_numpy_dtype
     x = np.arange(-6, 6,
                   2).reshape(1, 3, 2).astype(dtypes_lib.bfloat16.as_numpy_dtype)
+    y = (x + .5).astype(bfloat16)  # no zero
+    z = (x + 15.5).astype(bfloat16)  # all positive
     self._compareCpu(x, np.abs, math_ops.abs)
     self._compareCpu(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
     self._compareBoth(x, np.negative, _NEG)
+    self._compareCpu(y, compute_f32(self._inv), math_ops.reciprocal)
+    self._compareCpu(x, np.exp, math_ops.exp)
+    self._compareCpu(x, np.expm1, math_ops.expm1)
+    self._compareCpu(z, compute_f32(np.log), math_ops.log)
+    self._compareCpu(z, compute_f32(np.log1p), math_ops.log1p)
+    self._compareCpu(y, np.sign, math_ops.sign)
+    self._compareBoth(x, compute_f32(np.sin), math_ops.sin)
+    self._compareBoth(x, compute_f32(np.cos), math_ops.cos)
+    self._compareBoth(x, compute_f32(np.tan), math_ops.tan)
+    self._compareBoth(x, compute_f32(np.sinh), math_ops.sinh)
+    self._compareBoth(x, compute_f32(np.cosh), math_ops.cosh)
+    self._compareBoth(x, compute_f32(np.tanh), math_ops.tanh)
 
   def testInt8Basic(self):
     x = np.arange(-6, 6, 2).reshape(1, 3, 2).astype(np.int8)

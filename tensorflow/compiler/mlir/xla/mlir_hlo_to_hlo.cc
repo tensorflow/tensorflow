@@ -41,6 +41,7 @@ limitations under the License.
 #include "mlir/IR/UseDefLists.h"  // from @llvm-project
 #include "tensorflow/compiler/mlir/hlo/include/mlir-hlo/Dialect/mhlo/IR/hlo_ops.h"
 #include "tensorflow/compiler/mlir/tensorflow/utils/convert_type.h"
+#include "tensorflow/compiler/mlir/utils/name_utils.h"
 #include "tensorflow/compiler/mlir/xla/type_to_shape.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/xla/client/lib/matrix.h"
@@ -104,6 +105,9 @@ static mlir::LogicalResult GetXlaOp(
 // Convert APInt into an int.
 // TODO(hpucha): This should be consolidated into a general place.
 static int ConvertAPInt(llvm::APInt i) { return i.getSExtValue(); }
+
+static uint32_t Convertuint32_t(uint32_t i) { return i; }
+static uint64_t Convertuint64_t(uint64_t i) { return i; }
 
 // Convert APFloat to double.
 static double ConvertAPFloat(llvm::APFloat value) {
@@ -428,6 +432,27 @@ static xla::FrontendAttributes CreateOpFrontendAttributesFromAttribute(
           {attr.first.str(), value_str_attr.getValue().str()});
 
   return frontend_attributes;
+}
+
+// Returns a OpMetadata proto based on the location of the op. If the location
+// is unknown, an empty proto is returned. `op_name` are populated with the op
+// location (converted). FileLineColLoc locations are populated by taking the
+// file name and line number, and populating `source_file` and `source_line`
+// respectively.
+static xla::OpMetadata CreateOpMetadataFromLocation(mlir::Operation* op) {
+  xla::OpMetadata metadata;
+  if (op->getLoc().isa<mlir::UnknownLoc>()) return metadata;
+
+  std::string name = mlir::GetNameFromLoc(op->getLoc());
+  mlir::LegalizeNodeName(name);
+  metadata.set_op_name(name);
+
+  if (auto file_line_col_loc = op->getLoc().dyn_cast<mlir::FileLineColLoc>()) {
+    metadata.set_source_file(file_line_col_loc.getFilename().str());
+    metadata.set_source_line(file_line_col_loc.getLine());
+  }
+
+  return metadata;
 }
 
 // Checks if all shardings are set.
@@ -761,7 +786,7 @@ LogicalResult ExportXlaOp(InfeedOp op, OpLoweringContext ctx) {
 LogicalResult ExportXlaOp(IotaOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   value_map[op] = xla::Iota(ctx.builder, xla::TypeToShape(op.getType()),
-                            op.iota_dimension().getSExtValue());
+                            op.iota_dimension());
   return success();
 }
 
@@ -882,6 +907,17 @@ LogicalResult ExportXlaOp(ReturnOp op, OpLoweringContext ctx) {
   return failure();
 }
 
+LogicalResult ExportXlaOp(RngBitGeneratorOp op, OpLoweringContext ctx) {
+  auto& value_map = *ctx.values;
+  auto result = op.getResult();
+  auto xla_arg_1 = value_map[*op.getODSOperands(0).begin()];
+  auto xla_result = xla::RngBitGenerator(
+      static_cast<xla::RandomAlgorithm>(op.rng_algorithm()), Unwrap(xla_arg_1),
+      xla::TypeToShape(result.getType()).tuple_shapes(1));
+  value_map[result] = xla_result;
+  return mlir::success();
+}
+
 LogicalResult ExportXlaOp(RngNormalOp op, OpLoweringContext ctx) {
   auto& value_map = *ctx.values;
   xla::XlaOp mu, sigma;
@@ -974,7 +1010,7 @@ LogicalResult ExportXlaOp(SortOp op, OpLoweringContext ctx) {
 
   auto& value_map = *ctx.values;
   value_map[op] = xla::Sort(GetTuple(op.operands(), ctx), comparator,
-                            op.dimension().getSExtValue(), op.is_stable());
+                            op.dimension(), op.is_stable());
   return success();
 }
 
@@ -1009,8 +1045,32 @@ LogicalResult ExportXlaOp(WhileOp op, OpLoweringContext ctx) {
 }
 
 LogicalResult ExportXlaOp(FusionOp op, OpLoweringContext ctx) {
-  // TODO(whoever): currently not supported.
-  return failure();
+  if (!op.fusion_kind()) {
+    op.emitOpError() << "requires fusion kind for HLO translation";
+    return failure();
+  }
+
+  xla::XlaComputation fused_computation;
+  if (failed(ctx.converter->LowerRegionAsComputation(&op.fused_computation(),
+                                                     &fused_computation)))
+    return failure();
+
+  auto& values = *ctx.values;
+  llvm::SmallVector<xla::XlaOp, 4> operands;
+  for (auto operand : op.operands()) operands.push_back(values[operand]);
+
+  xla::XlaOp fusion = xla::internal::XlaBuilderBuildFusion(
+      ctx.builder, operands,
+      absl::string_view(op.fusion_kind()->data(), op.fusion_kind()->size()),
+      fused_computation);
+  if (op.getNumResults() == 1) {
+    values[op.getResult(0)] = fusion;
+  } else {
+    for (auto item : llvm::enumerate(op.getResults())) {
+      values[item.value()] = xla::GetTupleElement(fusion, item.index());
+    }
+  }
+  return success();
 }
 
 }  // namespace
@@ -1581,6 +1641,16 @@ LogicalResult AddDynamicParameterBindings(mlir::ModuleOp module,
 }
 
 }  // namespace
+
+Status ConvertRegionToComputation(mlir::Region* region,
+                                  xla::XlaComputation* func) {
+  mlir::ModuleOp module;
+  ConvertToHloModule converter(module, true, true, {});
+  if (failed(converter.LowerRegionAsComputation(region, func)))
+    return tensorflow::errors::Internal(
+        "failed to convert region to computation");
+  return Status::OK();
+}
 
 Status ConvertMlirHloToHlo(mlir::ModuleOp module, xla::HloProto* hlo_proto,
                            bool use_tuple_args, bool return_tuple,

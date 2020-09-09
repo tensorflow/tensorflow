@@ -106,7 +106,7 @@ class CholeskyOpTest(test.TestCase):
   def _verifyCholesky(self, x):
     # Verify that LL^T == x.
     chol = linalg_ops.cholesky(x)
-    verification = math_ops.matmul(chol, chol, adjoint_b=True)
+    verification = test_util.matmul_without_tf32(chol, chol, adjoint_b=True)
     self._verifyCholeskyBase(x, chol, verification)
 
   @test_util.run_in_graph_and_eager_modes(use_gpu=True)
@@ -271,8 +271,8 @@ class CholeskyGradTest(test.TestCase):
     def Compute(x):
       # Turn the random matrix x into a Hermitian matrix by
       # computing the quadratic form x * x^H.
-      a = math_ops.matmul(x, math_ops.conj(
-          array_ops.matrix_transpose(x))) / shape[0]
+      a = test_util.matmul_without_tf32(
+          x, math_ops.conj(array_ops.matrix_transpose(x))) / shape[0]
       if batch:
         a = array_ops.tile(array_ops.expand_dims(a, 0), [2, 1, 1])
       # Finally take the cholesky decomposition of the Hermitian matrix.

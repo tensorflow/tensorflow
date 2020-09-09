@@ -56,6 +56,7 @@ from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import type_spec
 from tensorflow.python.layers import convolutional
+from tensorflow.python.module import module
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import clip_ops
@@ -3363,7 +3364,8 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(errors.CancelledError):
       cancelable_func()
 
-  def testCancelBlockedFunctionExecution(self):
+  # TODO(b/162544929): Enable this test.
+  def DISABLE_testCancelBlockedFunctionExecution(self):
     if not context.executing_eagerly():
       self.skipTest('eager only')
 
@@ -4219,6 +4221,62 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     enabled(1, 2, 3, 4, kwonly=5, kwarg1=60, kwarg2=70)  # No retrace
     enabled(1, 2, 3, 4, kwonly=5, kwarg1=600, kwarg2=700)  # No retrace
     self.assertEqual(trace_count[0], 4)
+
+  def testWithModuleNameScope(self):
+    self.skipTest('b/166158748:function does not handle this case correctly.')
+
+    class Foo(module.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.var = None
+
+      @def_function.function
+      @module.Module.with_name_scope
+      def add(self, x, y, z=1):
+        if self.var is None:
+          return x + y + z
+
+    foo = Foo()
+    self.assertEqual(foo.add(2, 3), 6)
+
+  def testWithModuleNameScopeRedundantArgs(self):
+    self.skipTest('b/166158748:function does not handle this case correctly.')
+
+    class Foo(module.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.var = None
+
+      @def_function.function
+      @module.Module.with_name_scope
+      def add(self, x, y):
+        if self.var is None:
+          return x + y
+
+    foo = Foo()
+    with self.assertRaisesRegex(TypeError, 'got two values for argument'):
+      foo.add(2, x=3)  # pylint: disable=redundant-keyword-arg,no-value-for-parameter
+
+  def testWithModuleNameScopeMissingArgs(self):
+    self.skipTest('b/166158748:function does not handle this case correctly.')
+
+    class Foo(module.Module):
+
+      def __init__(self):
+        super().__init__()
+        self.var = None
+
+      @def_function.function
+      @module.Module.with_name_scope
+      def add(self, x, y):
+        if self.var is None:
+          return x + y
+
+    foo = Foo()
+    with self.assertRaisesRegex(TypeError, 'missing required arguments: y'):
+      foo.add(2)  # pylint: disable=no-value-for-parameter
 
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):

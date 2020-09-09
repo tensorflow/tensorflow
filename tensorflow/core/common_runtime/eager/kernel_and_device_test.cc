@@ -133,7 +133,7 @@ void BM_KernelAndDeviceRun(int iters) {
   gtl::InlinedVector<TensorValue, 4> inputs;
   inputs.push_back(TensorValue(&t));
   inputs.push_back(TensorValue(&t));
-  std::vector<Tensor> outputs;
+  std::vector<EagerKernelRet> outputs;
   NodeDef ndef(AttrBuilder("MatMul")
                    .Set("T", DT_FLOAT)
                    .Set("transpose_a", false)

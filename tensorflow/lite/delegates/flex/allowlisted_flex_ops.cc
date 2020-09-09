@@ -75,6 +75,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "BiasAdd",
           "BiasAddGrad",
           "BiasAddV1",
+          "Bincount",
           "BoostedTreesBucketize",
           "BroadcastArgs",
           "BroadcastGradientArgs",
@@ -111,10 +112,18 @@ const std::set<std::string>& GetFlexAllowlist() {
           "DataFormatVecPermute",
           "DebugGradientIdentity",
           "DebugGradientRefIdentity",
+          "DecodeAndCropJpeg",
           "DecodeBase64",
+          "DecodeBmp",
+          "DecodeGif",
+          "DecodeImage",
+          "DecodeJpeg",
+          "DecodePng",
+          "DecodeRaw",
           "DecodeWav",
           "DeepCopy",
           "DeleteSessionTensor",
+          "DenseBincount",
           "DepthToSpace",
           "DepthwiseConv2dNative",
           "Dequantize",
@@ -130,6 +139,9 @@ const std::set<std::string>& GetFlexAllowlist() {
           "EluGrad",
           "Empty",
           "EncodeBase64",
+          "EncodeJpeg",
+          "EncodeJpegVariableQuality",
+          "EncodePng",
           "EncodeWav",
           "EnsureShape",
           "Enter",
@@ -301,7 +313,9 @@ const std::set<std::string>& GetFlexAllowlist() {
           "RFFT",
           "RFFT2D",
           "RFFT3D",
+          "RaggedBincount",
           "RaggedRange",
+          "RaggedTensorToSparse",
           "RaggedTensorToTensor",
           "RandomGamma",
           "RandomStandardNormal",
@@ -414,6 +428,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "SparseApplyProximalAdagrad",
           "SparseApplyProximalGradientDescent",
           "SparseApplyRMSProp",
+          "SparseBincount",
           "SparseCross",
           "SparseCrossHashed",
           "SparseCrossV2",
@@ -457,6 +472,7 @@ const std::set<std::string>& GetFlexAllowlist() {
           "StridedSliceAssign",
           "StridedSliceGrad",
           "StringJoin",
+          "StringLower",
           "StringSplit",
           "StringSplitV2",
           "StringToHashBucket",
@@ -574,10 +590,27 @@ bool IsAllowedTFTextOpForFlex(const std::string& op_name) {
   return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
 }
 
+// Allow the sentencepiece ops if they are registered in the global op registry.
+bool IsAllowedSentencePieceOpForFlex(const std::string& op_name) {
+  static const std::set<std::string>* sentencepiece_flex_ops =
+      new std::set<std::string>({
+          "SentencepieceGetPieceSize",
+          "SentencepiecePieceToId",
+          "SentencepieceIdToPiece",
+          "SentencepieceEncodeDense",
+          "SentencepieceEncodeSparse",
+          "SentencepieceDecode",
+      });
+  if (sentencepiece_flex_ops->count(op_name) == 0) return false;
+  return tensorflow::OpRegistry::Global()->LookUp(op_name) != nullptr;
+}
+
 bool IsAllowlistedFlexOp(const std::string& tensorflow_op_name) {
   if (GetFlexAllowlist().count(tensorflow_op_name) != 0) return true;
-  // Check if the op is an allowlisted tf.text op.
-  return IsAllowedTFTextOpForFlex(tensorflow_op_name);
+
+  // Check if the op is an allowlisted tf.text or sentencepiece op.
+  return IsAllowedTFTextOpForFlex(tensorflow_op_name) ||
+         IsAllowedSentencePieceOpForFlex(tensorflow_op_name);
 }
 
 }  // namespace flex

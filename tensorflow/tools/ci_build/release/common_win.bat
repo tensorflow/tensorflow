@@ -57,13 +57,16 @@ IF "%PYTHON_DIRECTORY%"=="Python37" (
 @REM handle this case.
 %PIP_EXE% install gast==0.3.3
 %PIP_EXE% install astunparse==1.6.3
+%PIP_EXE% install typing_extensions
 
 :: Set cuda related environment variables. If we are not using CUDA, these are not used.
 IF NOT DEFINED TF_CUDA_VERSION (
-  SET TF_CUDA_VERSION=10.1
+  SET TF_CUDA_VERSION=11.0
 )
-SET TF_CUDNN_VERSION=7
-SET TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_37,sm_52,sm_60,sm_61,compute_70
+IF NOT DEFINED TF_CUDNN_VERSION (
+  SET TF_CUDNN_VERSION=8
+)
+SET TF_CUDA_COMPUTE_CAPABILITIES=sm_35,sm_50,sm_60,sm_70,sm_75,compute_80
 SET CUDA_TOOLKIT_PATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v%TF_CUDA_VERSION%
 SET CUDNN_INSTALL_PATH=C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v%TF_CUDA_VERSION%
 SET PATH=%CUDA_TOOLKIT_PATH%\extras\CUPTI\libx64;%PATH%

@@ -28,19 +28,25 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 ConvolutionTransposed3x3::ConvolutionTransposed3x3(
-    const OperationDef& definition, const CLDevice& device, int2 padding)
+    const OperationDef& definition, const DeviceInfo& device_info, int2 padding)
     : GPUOperation(definition),
       padding_(padding),
       work_group_launch_order_(2, 0, 1) {
   work_group_size_ = int3(8, 4, 1);
-  if (device.IsPowerVR()) {
+  if (device_info.IsPowerVR()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_ASYNC;
-  } else if (device.IsNvidia() || device.IsIntel()) {
+  } else if (device_info.IsNvidia() || device_info.IsIntel()) {
     weights_upload_type_ = WeightsUploadType::LOCAL_MEM_BY_THREADS;
-  } else if (device.IsAMD()) {
+  } else if (device_info.IsAMD()) {
     weights_upload_type_ = WeightsUploadType::CONSTANT_MEM;
   } else {
     weights_upload_type_ = WeightsUploadType::GLOBAL_MEM;
+  }
+  code_ = GenerateConvolutionTransposedCode(definition_, weights_upload_type_,
+                                            padding_, work_group_launch_order_);
+  if (definition_.precision == CalculationsPrecision::F16 &&
+      device_info.IsPowerVR()) {
+    compiler_options_.push_back(CompilerOptions::POWERVR_FP16);
   }
 }
 
@@ -299,28 +305,6 @@ std::string ConvolutionTransposed3x3::GenerateConvolutionTransposedCode(
   return c;
 }
 
-absl::Status ConvolutionTransposed3x3::Compile(
-    const CreationContext& creation_context) {
-  std::string code = GenerateConvolutionTransposedCode(
-      definition_, weights_upload_type_, padding_, work_group_launch_order_);
-  std::string element_wise_code;
-  RETURN_IF_ERROR(
-      MergeOperations(linked_operations_, &args_, &element_wise_code));
-  RETURN_IF_ERROR(args_.TransformToCLCode(creation_context.device->GetInfo(),
-                                          {{"dst_tensor", element_wise_code}},
-                                          &code));
-
-  std::vector<CompilerOptions> options;
-  if (definition_.precision == CalculationsPrecision::F16 &&
-      creation_context.device->IsPowerVR()) {
-    options.push_back(CompilerOptions::POWERVR_FP16);
-  }
-  RETURN_IF_ERROR(creation_context.cache->GetOrCreateCLKernel(
-      code, "main_function", options, *creation_context.context,
-      *creation_context.device, &kernel_));
-  return absl::OkStatus();
-}
-
 absl::Status ConvolutionTransposed3x3::BindArguments() {
   RETURN_IF_ERROR(args_.SetInt("filter_offset", 4 * 9 * src_[0]->Slices()));
   const int padding_x =
@@ -345,38 +329,26 @@ int3 ConvolutionTransposed3x3::GetGridSize() const {
 }
 
 bool IsConvolutionTransposed3x3Supported(
-    const CLDevice& device, const OperationDef& definition,
+    const OperationDef& definition,
     const ConvolutionTransposedAttributes& attr) {
   return attr.weights.shape.w == 3 && attr.weights.shape.h == 3 &&
          attr.stride.w == 2 && attr.stride.h == 2;
 }
 
-absl::Status CreateConvolutionTransposed3x3(
-    const CreationContext& creation_context, const OperationDef& definition,
-    const ConvolutionTransposedAttributes& attr,
-    ConvolutionTransposed3x3* result) {
-  if (!IsConvolutionTransposed3x3Supported(*creation_context.device, definition,
-                                           attr)) {
-    return absl::InvalidArgumentError(
-        "ConvolutionTransposed3x3 doesn't support this attributes");
-  }
+ConvolutionTransposed3x3 CreateConvolutionTransposed3x3(
+    const DeviceInfo& device_info, const OperationDef& definition,
+    const ConvolutionTransposedAttributes& attr) {
   const int2 padding = int2(attr.padding.prepended.w, attr.padding.prepended.h);
-  *result =
-      ConvolutionTransposed3x3(definition, *creation_context.device, padding);
-  RETURN_IF_ERROR(
-      result->UploadWeights(attr.weights, creation_context.context));
+  ConvolutionTransposed3x3 result(definition, device_info, padding);
+  result.UploadWeights(attr.weights);
 
   TensorLinearDescriptor desc;
   desc.storage_type = LinearStorageType::TEXTURE_2D;
   desc.element_type = definition.GetDataType();
-
-  LinearStorage lt;
-  RETURN_IF_ERROR(
-      CreateLinearStorage(desc, attr.bias, creation_context.context, &lt));
-  result->args_.AddObject("biases", AccessType::READ,
-                          absl::make_unique<LinearStorage>(std::move(lt)),
-                          absl::make_unique<TensorLinearDescriptor>(desc));
-  return absl::OkStatus();
+  desc.UploadLinearData(attr.bias);
+  result.args_.AddObject(
+      "biases", absl::make_unique<TensorLinearDescriptor>(std::move(desc)));
+  return result;
 }
 
 }  // namespace cl

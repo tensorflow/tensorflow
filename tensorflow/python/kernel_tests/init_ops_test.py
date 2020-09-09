@@ -945,6 +945,8 @@ class ConvolutionDeltaOrthogonalInitializerTest(test.TestCase):
       self.assertAllClose(abs_value, count, rtol=tol, atol=tol)
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests convolutional_orthogonal_1d, which calls matmul")
 class ConvolutionOrthogonal1dInitializerTest(test.TestCase):
 
   @test_util.run_deprecated_v1
@@ -1174,6 +1176,8 @@ class ConvolutionOrthogonal2dInitializerTest(test.TestCase):
         self.assertAllClose(self.evaluate(ratio), gain, rtol=tol, atol=tol)
 
 
+@test_util.run_all_without_tensor_float_32(
+    "Tests convolutional_orthogonal_3d, which calls matmul")
 class ConvolutionOrthogonal3dInitializerTest(test.TestCase):
 
   @test_util.run_deprecated_v1

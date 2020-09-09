@@ -30,30 +30,12 @@ namespace mlir {
 namespace kernel_gen {
 namespace tf_framework {
 
-namespace TFFrameworkTypes {
-enum Kind {
-  // TODO(pifon): Replace enum value with
-  // OpKernelContextType = Type::FIRST_TF_FRAMEWORK_TYPE,
-  // after DialectSymbolRegistry.def is updated.
-  OpKernelContextType = Type::FIRST_PRIVATE_EXPERIMENTAL_0_TYPE,
-};
-}  // namespace TFFrameworkTypes
-
 /// OpKernelContextType corresponds to C++ class OpKernelContext defined in
 /// tensorflow/core/framework/op_kernel.h
 class OpKernelContextType
     : public Type::TypeBase<OpKernelContextType, Type, TypeStorage> {
  public:
   using Base::Base;
-
-  static OpKernelContextType get(MLIRContext *context) {
-    return Base::get(context, TFFrameworkTypes::Kind::OpKernelContextType);
-  }
-
-  /// Support method to enable LLVM-style type casting.
-  static bool kindof(unsigned kind) {
-    return kind == TFFrameworkTypes::Kind::OpKernelContextType;
-  }
 };
 
 #define GET_OP_CLASSES

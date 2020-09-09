@@ -397,8 +397,8 @@ class Conv2DBackpropInputOp : public OpKernel {
     int stride_w = GetTensorDim(strides_, data_format_, 'W');
     OP_REQUIRES(
         context, (stride_n == 1 && stride_c == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+        errors::Unimplemented("Current implementation does not yet support "
+                              "strides in the batch and depth dimensions."));
     OP_REQUIRES(context, stride_h > 0 && stride_w > 0,
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
@@ -411,10 +411,10 @@ class Conv2DBackpropInputOp : public OpKernel {
     int dilation_c = GetTensorDim(dilations_, data_format_, 'C');
     int dilation_h = GetTensorDim(dilations_, data_format_, 'H');
     int dilation_w = GetTensorDim(dilations_, data_format_, 'W');
-    OP_REQUIRES(context, (dilation_n == 1 && dilation_c == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "dilations in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (dilation_n == 1 && dilation_c == 1),
+        errors::Unimplemented("Current implementation does not yet support "
+                              "dilations in the batch and depth dimensions."));
     OP_REQUIRES(
         context, dilation_h > 0 && dilation_w > 0,
         errors::InvalidArgument("Dilated rates should be larger than 0."));
@@ -426,7 +426,6 @@ class Conv2DBackpropInputOp : public OpKernel {
                                               /*num_dims=*/4, data_format_));
 
     OP_REQUIRES_OK(context, context->GetAttr("use_cudnn_on_gpu", &use_cudnn_));
-    use_cudnn_ &= CanUseCudnn();
     cudnn_use_autotune_ = CudnnUseAutotune();
 
     if (std::is_same<Device, CPUDevice>::value ||
@@ -517,8 +516,8 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
                                         "specify 4 dimensions"));
     OP_REQUIRES(
         context, (strides_[0] == 1 && strides_[3] == 1),
-        errors::InvalidArgument("Current implementation does not yet support "
-                                "strides in the batch and depth dimensions."));
+        errors::Unimplemented("Current implementation does not yet support "
+                              "strides in the batch and depth dimensions."));
     OP_REQUIRES(context, strides_[1] > 0 && strides_[2] > 0,
                 errors::InvalidArgument(
                     "Row and column strides should be larger than 0."));
@@ -527,10 +526,10 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
     OP_REQUIRES(context, dilations_.size() == 4,
                 errors::InvalidArgument("Sliding window dilations field must "
                                         "specify 4 dimensions"));
-    OP_REQUIRES(context, (dilations_[0] == 1 && dilations_[3] == 1),
-                errors::InvalidArgument(
-                    "Current implementation does not yet support "
-                    "dilations in the batch and depth dimensions."));
+    OP_REQUIRES(
+        context, (dilations_[0] == 1 && dilations_[3] == 1),
+        errors::Unimplemented("Current implementation does not yet support "
+                              "dilations in the batch and depth dimensions."));
     // TODO(yangzihao): Add a CPU implementation for dilated convolution.
     OP_REQUIRES(context, (dilations_[1] == 1 && dilations_[2] == 1),
                 errors::InvalidArgument(
@@ -1334,19 +1333,20 @@ void LaunchConv2DBackpropInputOp<GPUDevice, T>::operator()(
 
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                              \
-  template <>                                                            \
-  void TransformFilter<GPUDevice, T, int, 4>::operator()(                \
-      const GPUDevice& d, FilterTensorFormat dst_filter_format,          \
-      typename TTypes<T, 4, int>::ConstTensor in,                        \
-      typename TTypes<T, 4, int>::Tensor out);                           \
-  extern template struct TransformFilter<GPUDevice, T, int, 4>;          \
-  template <>                                                            \
-  void PadInput<GPUDevice, T, int, 4>::operator()(                       \
-      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,    \
-      const std::array<int, 2>& padding_left,                            \
-      const std::array<int, 2>& padding_right,                           \
-      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format); \
+#define DECLARE_GPU_SPEC(T)                                             \
+  template <>                                                           \
+  void TransformFilter<GPUDevice, T, int, 4>::operator()(               \
+      const GPUDevice& d, FilterTensorFormat dst_filter_format,         \
+      typename TTypes<T, 4, int>::ConstTensor in,                       \
+      typename TTypes<T, 4, int>::Tensor out);                          \
+  extern template struct TransformFilter<GPUDevice, T, int, 4>;         \
+  template <>                                                           \
+  void PadInput<GPUDevice, T, int, 4>::operator()(                      \
+      const GPUDevice& d, typename TTypes<T, 4, int>::ConstTensor in,   \
+      const std::array<int, 2>& padding_left,                           \
+      const std::array<int, 2>& padding_right,                          \
+      typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format, \
+      T padding_value);                                                 \
   extern template struct PadInput<GPUDevice, T, int, 4>;
 
 DECLARE_GPU_SPEC(float);

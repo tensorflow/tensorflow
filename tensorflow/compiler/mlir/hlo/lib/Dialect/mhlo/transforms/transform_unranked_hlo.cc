@@ -46,7 +46,6 @@ namespace {
           sep fn(ShiftLeftOp) sep fn(ShiftRightArithmeticOp)              \
               sep fn(ShiftRightLogicalOp) sep fn(SubOp)
 
-// TODO(frgossen): Make it variadic.
 template <typename OpTy>
 inline void AddLegalOpOnRankedTensor(ConversionTarget *target) {
   target->addDynamicallyLegalOp<OpTy>([](OpTy op) {
@@ -75,28 +74,24 @@ struct UnaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
 
     // Generate IR to flatten the operand.
     auto loc = op.getLoc();
-    Value shape = rewriter.create<shape::ShapeOfOp>(loc, operand);
-    Value numElements = rewriter.create<shape::NumElementsOp>(loc, shape);
-    Value numElementsAsIndex =
-        rewriter.create<shape::SizeToIndexOp>(loc, numElements);
-    Value flatShapeAsDimTensor =
-        rewriter.create<TensorFromElementsOp>(loc, numElementsAsIndex);
+    Type extentTensorTy = shape::getExtentTensorType(rewriter.getContext());
+    Value shape =
+        rewriter.create<shape::ShapeOfOp>(loc, extentTensorTy, operand);
+    Type indexTy = rewriter.getIndexType();
+    Value numElements =
+        rewriter.create<shape::NumElementsOp>(loc, indexTy, shape);
+    Value flatShape = rewriter.create<TensorFromElementsOp>(loc, numElements);
     auto flatTensorTy = RankedTensorType::get({ShapedType::kDynamicSize},
                                               operandTy.getElementType());
     Value flatOperand = rewriter.create<mhlo::DynamicReshapeOp>(
-        loc, flatTensorTy, operand, flatShapeAsDimTensor);
+        loc, flatTensorTy, operand, flatShape);
 
     // Generate IR for the actual operation.
     Value flatResult = rewriter.create<OpTy>(loc, flatTensorTy, flatOperand);
 
     // Generate IR to restore the original shape.
-    auto extentTensorTy = RankedTensorType::get({ShapedType::kDynamicSize},
-                                                rewriter.getIndexType());
-    Value shapeAsExtentTensor =
-        rewriter.create<shape::ToExtentTensorOp>(loc, extentTensorTy, shape);
-    Value result = rewriter.create<mhlo::DynamicReshapeOp>(
-        loc, operandTy, flatResult, shapeAsExtentTensor);
-    rewriter.replaceOp(op, result);
+    rewriter.replaceOpWithNewOp<mhlo::DynamicReshapeOp>(op, operandTy,
+                                                        flatResult, shape);
 
     return success();
   }
@@ -122,17 +117,18 @@ struct BinaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
     }
 
     // Flatten operands.
-    Type shapeTy = shape::ShapeType::get(rewriter.getContext());
     auto loc = op.getLoc();
-    Value shapeLhs = rewriter.create<shape::ShapeOfOp>(loc, op.lhs());
-    Value shapeRhs = rewriter.create<shape::ShapeOfOp>(loc, op.rhs());
-    Value shape = rewriter.create<shape::AnyOp>(loc, shapeTy,
+    Type extentTensorTy = shape::getExtentTensorType(rewriter.getContext());
+    Value shapeLhs =
+        rewriter.create<shape::ShapeOfOp>(loc, extentTensorTy, op.lhs());
+    Value shapeRhs =
+        rewriter.create<shape::ShapeOfOp>(loc, extentTensorTy, op.rhs());
+    Value shape = rewriter.create<shape::AnyOp>(loc, extentTensorTy,
                                                 ValueRange{shapeLhs, shapeRhs});
-    Value numElements = rewriter.create<shape::NumElementsOp>(loc, shape);
-    Value numElementsAsIndex =
-        rewriter.create<shape::SizeToIndexOp>(loc, numElements);
-    Value flatShape =
-        rewriter.create<TensorFromElementsOp>(loc, numElementsAsIndex);
+    Type indexTy = rewriter.getIndexType();
+    Value numElements =
+        rewriter.create<shape::NumElementsOp>(loc, indexTy, shape);
+    Value flatShape = rewriter.create<TensorFromElementsOp>(loc, numElements);
     TensorType lhsTy = op.lhs().getType().template cast<TensorType>();
     Type flatLhsTy = RankedTensorType::get({ShapedType::kDynamicSize},
                                            lhsTy.getElementType());
@@ -148,13 +144,8 @@ struct BinaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
     Value flatResult = rewriter.create<OpTy>(loc, flatLhs, flatRhs);
 
     // Restore original shape.
-    auto extentTensorTy = RankedTensorType::get({ShapedType::kDynamicSize},
-                                                rewriter.getIndexType());
-    Value shapeAsExtentTensor =
-        rewriter.create<shape::ToExtentTensorOp>(loc, extentTensorTy, shape);
-    Value result = rewriter.create<DynamicReshapeOp>(
-        loc, op.getType(), flatResult, shapeAsExtentTensor);
-    rewriter.replaceOp(op, result);
+    rewriter.replaceOpWithNewOp<DynamicReshapeOp>(op, op.getType(), flatResult,
+                                                  shape);
 
     return success();
   }
@@ -162,6 +153,10 @@ struct BinaryElementwiseOpConversion : public OpRewritePattern<OpTy> {
 
 struct TransformUnrankedHloPass
     : public PassWrapper<TransformUnrankedHloPass, FunctionPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<shape::ShapeDialect>();
+  }
+
   void runOnFunction() override {
     // Setup conversion target.
     MLIRContext &ctx = getContext();
@@ -179,7 +174,7 @@ struct TransformUnrankedHloPass
     PopulateTransformUnrankedHloPatterns(&ctx, &patterns);
 
     // Apply transformation.
-    if (failed(applyFullConversion(getFunction(), target, patterns)))
+    if (failed(applyPartialConversion(getFunction(), target, patterns)))
       return signalPassFailure();
   }
 };
@@ -203,7 +198,7 @@ void PopulateTransformUnrankedHloPatterns(MLIRContext *context,
   // clang-format on
 }
 
-std::unique_ptr<::mlir::Pass> createTransformUnrankedHloPass() {
+std::unique_ptr<FunctionPass> createTransformUnrankedHloPass() {
   return std::make_unique<TransformUnrankedHloPass>();
 }
 

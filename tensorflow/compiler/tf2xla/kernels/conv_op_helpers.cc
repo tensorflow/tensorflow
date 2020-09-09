@@ -203,6 +203,10 @@ xla::StatusOr<ConvOpAttrs> ConvOpAttrs::Create(int num_spatial_dims,
     return errors::InvalidArgument("Invalid data format: ", data_format);
   }
 
+  TF_RETURN_IF_ERROR(CheckValidPadding(attrs.padding, attrs.explicit_paddings,
+                                       /*num_dims=*/num_spatial_dims + 2,
+                                       attrs.data_format));
+
   return attrs;
 }
 

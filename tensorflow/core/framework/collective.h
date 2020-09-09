@@ -43,6 +43,7 @@ enum CollectiveType {
   REDUCTION_COLLECTIVE = 0,
   BROADCAST_COLLECTIVE,
   GATHER_COLLECTIVE,
+  PERMUTE_COLLECTIVE,
   UNDEFINED_COLLECTIVE,
 };
 
@@ -89,6 +90,7 @@ struct CollImplDetails {
 };
 
 // Data common to all members of a collective instance.
+// TODO(b/163171014) Refactor this struct to not be a union of all fields.
 struct CollInstanceParams {
   // Identifies all participating graph nodes.
   int32 instance_key = -1;
@@ -109,6 +111,16 @@ struct CollInstanceParams {
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
+  std::vector<string> devices;  // permuter only
+
+  // For permuter only
+  // Each rank in the permutation is a receiver.
+  // Indices of each rank means a sender to that rank.
+  // Example: permutation = {2,0,1} means
+  //   rank 0 sends to rank 2
+  //   rank 1 sends to rank 0
+  //   rank 2 sends to rank 1
+  std::vector<int> permutation;
 };
 
 // Data common to all instance members in the same task.
@@ -149,18 +161,15 @@ class DeviceResolverInterface {
       std::vector<DeviceAttributes>* attributes,
       const StatusCallback& done) = 0;
 
-  // Populate *attributes with the DeviceAttributes of the specified
-  // device.
+  // Populates *attributes with the DeviceAttributes of the specified device.
   virtual void GetDeviceAttributesAsync(const string& device,
                                         const string& task,
                                         DeviceAttributes* attributes,
                                         const StatusCallback& done) = 0;
 
-  // Clear the cache of device data belonging to the specified task.
-  virtual void ClearTask(const string& task) = 0;
-
-  // Clear the cache of all device data.
-  virtual void ClearCache() = 0;
+  // Returns the cached device attributes of a task.
+  virtual Status GetTaskCached(const string& task,
+                               std::vector<DeviceAttributes>* attributes) = 0;
 };
 
 // Interface that provides resolution of shared CollectiveParams fields.
@@ -171,7 +180,8 @@ class ParamResolverInterface {
   // Called by each collective op at first execution in order to fill out
   // the CollectiveParams structure with data gathered from the full
   // (maybe distributed) collection of peer nodes.
-  virtual void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+  virtual void CompleteParamsAsync(const DeviceAttributes& device,
+                                   CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    const StatusCallback& done) = 0;
 
@@ -246,9 +256,9 @@ class CollectiveExecutorMgrInterface : public StepSequenceInterface {
 // with peers.  Note that data exchange is currently limited to types
 // for which DMAHelper::CanUseDMA() returns true, i.e.  dense numeric
 // types.
-class PeerAccessInterface {
+class CollectiveRemoteAccess {
  public:
-  virtual ~PeerAccessInterface() {}
+  virtual ~CollectiveRemoteAccess() {}
 
   virtual void RecvFromPeer(const string& peer_device, const string& peer_task,
                             bool peer_is_local, const string& key,
@@ -267,15 +277,20 @@ class PeerAccessInterface {
                           const DeviceLocality& client_locality,
                           const StatusCallback& done) = 0;
 
-  // Runs the potentially-blocking closure/expensive callback.
-  virtual void RunClosure(std::function<void()> closure) = 0;
-};
+  // Checks the health of a collective peer. It probes the peer to see if it is
+  // alive. Note that if a peer has restarted, it's considered a different one,
+  // so CheckPeerHealth fails.
+  virtual void CheckPeerHealth(const string& peer_task,
+                               const StatusCallback& done) = 0;
 
-class PerStepCollectiveRemoteAccess;
+  virtual BufRendezvous* buf_rendezvous() = 0;
+
+  virtual void StartAbort(const Status& s) = 0;
+};
 
 // A step-specific object that can execute a collective operation completely
 // described by a CollectiveParams object.
-class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
+class CollectiveExecutor : public core::RefCounted {
  public:
   virtual void StartAbort(const Status& s) {}
 
@@ -287,7 +302,8 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
         "a CollectiveExecutor has not been provided."));
   }
 
-  virtual void CompleteParamsAsync(const string& device, CollectiveParams* cp,
+  virtual void CompleteParamsAsync(const DeviceAttributes& device,
+                                   CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    StatusCallback done) {
     done(errors::Internal(
@@ -295,7 +311,10 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
         "a CollectiveExecutor has not been provided."));
   }
 
-  virtual PerStepCollectiveRemoteAccess* remote_access() { return nullptr; }
+  // Runs the potentially-blocking closure/expensive callback.
+  virtual void RunClosure(std::function<void()> closure) = 0;
+
+  virtual CollectiveRemoteAccess* remote_access() { return nullptr; }
 
   // `WaitForDependencies` and `Launched` are used for fine-grained control of
   // execution order between collective instances.  These functions are intended
@@ -337,24 +356,6 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
   CollectiveExecutorMgrInterface* cem_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveExecutor);
-};
-
-// Interface of a helper object that provides a CollectiveExecutor with
-// all of the remote access it needs.
-class CollectiveRemoteAccess : public PeerAccessInterface,
-                               public DeviceResolverInterface {
- public:
-  virtual ~CollectiveRemoteAccess() {}
-
-  virtual BufRendezvous* buf_rendezvous() = 0;
-};
-
-// A per-step version of CollectiveRemoteAccess that cleans up outstanding
-// communications in case step execution is abandoned.
-class PerStepCollectiveRemoteAccess : public CollectiveRemoteAccess {
- public:
-  virtual ~PerStepCollectiveRemoteAccess() {}
-  virtual void StartAbort(const Status& s) = 0;
 };
 
 class CollectiveContext {

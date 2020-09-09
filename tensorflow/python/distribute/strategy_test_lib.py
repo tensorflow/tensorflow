@@ -428,7 +428,7 @@ class DistributionTestBase(test.TestCase):
       global_step_values = self.evaluate(global_step_tensors)
       self.assertEqual((1,) * len(global_step_tensors), global_step_values)
 
-  def _test_numpy_dataset(self, strategy, session=None):
+  def _test_numpy_dataset(self, strategy, session=None, run_in_function=False):
     cached_session = session or self.cached_session()
     with strategy.scope(), cached_session as sess:
       x = np.asarray([[1, 2], [6, 12], [2, 4], [5, 10], [3, 6], [4, 8]])
@@ -449,7 +449,8 @@ class DistributionTestBase(test.TestCase):
       self.evaluate(i.initializer)
 
       def run_and_concatenate(strategy, i):
-        x, y = strategy.experimental_run(lambda z: z, i)
+        x, y = strategy.experimental_run(
+            _maybe_run_in_function(lambda z: z, run_in_function), i)
         x, y = self.evaluate((strategy.experimental_local_results(x),
                               strategy.experimental_local_results(y)))
         return np.concatenate(x), np.concatenate(y)

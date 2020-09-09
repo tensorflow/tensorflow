@@ -21,6 +21,7 @@ from __future__ import print_function
 
 import time
 from tensorflow.python.distribute import multi_worker_test_base
+from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute.client import client
 from tensorflow.python.distribute.client import metric_utils
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
@@ -31,17 +32,22 @@ from tensorflow.python.training.server_lib import ClusterSpec
 
 class MetricUtilsTest(test.TestCase):
 
+  def get_rpc_layer(self):
+    return 'grpc'
+
   def testClientMetrics(self):
     metric_utils.enable_metrics = True
 
     cluster_def = multi_worker_test_base.create_in_process_cluster(
-        num_workers=1, num_ps=1, rpc_layer='grpc')
+        num_workers=1, num_ps=1, rpc_layer=self.get_rpc_layer())
     cluster_def['chief'] = [
         'localhost:%d' % multi_worker_test_base.pick_unused_port()
     ]
     cluster_resolver = SimpleClusterResolver(
-        ClusterSpec(cluster_def), rpc_layer='grpc')
-    cluster = client.Cluster(cluster_resolver)
+        ClusterSpec(cluster_def), rpc_layer=self.get_rpc_layer())
+    strategy = parameter_server_strategy_v2.ParameterServerStrategyV2(
+        cluster_resolver)
+    cluster = client.Cluster(strategy)
 
     @def_function.function
     def func():

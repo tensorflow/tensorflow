@@ -29,6 +29,7 @@ from tensorflow.python.eager import forwardprop_util
 from tensorflow.python.eager import function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.numpy_ops import np_arrays
@@ -219,7 +220,7 @@ pywrap_tfe.TFE_Py_RegisterJVPFunction(_jvp_dispatch)
 
 
 @tf_export("autodiff.ForwardAccumulator", v1=[])
-class ForwardAccumulator(object):
+class ForwardAccumulator():
   """Computes Jacobian-vector products ("JVP"s) using forward-mode autodiff.
 
   Compare to `tf.GradientTape` which computes vector-Jacobian products ("VJP"s)
@@ -349,7 +350,7 @@ class ForwardAccumulator(object):
       ValueError: If the same tensor or variable is specified multiple times in
         `primals`.
     """
-    self._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew()
+    self._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew(False)
     self._recording = False
     primal_ids = set()
     for primal in nest.flatten(primals):
@@ -451,3 +452,32 @@ class ForwardAccumulator(object):
       return result
 
     return nest.map_structure(_fetch_jvp, primals)
+
+  @classmethod
+  def _batch_accumulator(cls, primals, tangents):
+    """Factory constructor to test accumulator on batches of tangents.
+
+    Args:
+      primals: A tensor or nested structure of tensors to watch.
+      tangents: A tensor or nested structure of tensors, with the same nesting
+        structure as `primals`, with each element being a vector with compatible
+        shape `[None] + primal.shape` of the corresponding primal element.
+
+    Returns:
+      A batch accumulator object.
+    """
+    acc = super(ForwardAccumulator, cls).__new__(cls, primals, tangents)
+    acc._recording = False
+    acc._accumulator = pywrap_tfe.TFE_Py_ForwardAccumulatorNew(True)
+    primal_ids = set()
+    for primal, tangent in zip(nest.flatten(primals), nest.flatten(tangents)):
+      tangent.shape.assert_is_compatible_with(
+          tensor_shape.TensorShape([None]) + primal.shape)
+      if id(primal) in primal_ids:
+        raise ValueError(
+            "Tensor {} was specified as a primal multiple times. This may "
+            "indicate an error. If it was intended, please sum the "
+            "corresponding tangents.")
+      primal_ids.add(id(primal))
+    acc._watch(primals, tangents)
+    return acc

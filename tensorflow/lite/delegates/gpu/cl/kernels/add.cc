@@ -25,42 +25,29 @@ namespace tflite {
 namespace gpu {
 namespace cl {
 
-Add::Add(const OperationDef& definition, const std::vector<int>& channels,
-         int dst_channels)
-    : ElementwiseOperation(definition) {
+GPUOperation CreateAdd(const OperationDef& definition,
+                       const std::vector<int>& channels, int dst_channels) {
+  GPUOperation add(definition);
   int dst_depth = DivideRoundUp(dst_channels, 4);
   int src0_depth = DivideRoundUp(channels[0], 4);
-  linkable_ = dst_depth == src0_depth;
+  add.elementwise_ = true;
+  add.linkable_ = dst_depth == src0_depth;
   if (src0_depth < dst_depth) {
-    check_src_channels_size_ = true;
+    add.check_src_channels_size_ = true;
   }
-  for (int i = 1; i < definition_.src_tensors.size(); ++i) {
+  for (int i = 1; i < definition.src_tensors.size(); ++i) {
     const std::string tensor_name = absl::StrCat("src_data_", i);
-    auto src_desc = definition_.src_tensors[i];
-    if (definition_.IsBatchSupported()) {
+    auto src_desc = definition.src_tensors[i];
+    if (definition.IsBatchSupported()) {
       src_desc.SetStateVar("BatchedWidth", "true");
     }
-    AddSrcTensor(tensor_name, src_desc);
-    code_ += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
-    code_ += "  in_out_value += args." + tensor_name +
-             ".Read(X_COORD, Y_COORD, S_COORD);\n";
-    code_ += "}\n";
+    add.AddSrcTensor(tensor_name, src_desc);
+    add.code_ += "if (S_COORD < args." + tensor_name + ".Slices()) {\n";
+    add.code_ += "  in_out_value += args." + tensor_name +
+                 ".Read(X_COORD, Y_COORD, S_COORD);\n";
+    add.code_ += "}\n";
   }
-}
-
-Add::Add(Add&& operation) : ElementwiseOperation(std::move(operation)) {}
-
-Add& Add::operator=(Add&& operation) {
-  if (this != &operation) {
-    ElementwiseOperation::operator=(std::move(operation));
-  }
-  return *this;
-}
-
-Add CreateAdd(const OperationDef& definition, const std::vector<int>& channels,
-              int dst_channels) {
-  Add operation(definition, channels, dst_channels);
-  return operation;
+  return add;
 }
 
 }  // namespace cl

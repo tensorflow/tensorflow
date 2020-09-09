@@ -30,223 +30,171 @@ namespace gpu {
 namespace cl {
 namespace {
 
-absl::Status SelectConvolutionAdreno(const Convolution2DAttributes& attr,
-                                     const BHWC& dst_shape,
-                                     const CreationContext& creation_context,
-                                     const OperationDef& op_def,
-                                     ModelHints hints,
-                                     std::unique_ptr<GPUOperation>* ptr) {
-  if (IsConvConstantsSupported(*creation_context.device, op_def, attr)) {
-    ConvConstants conv;
-    RETURN_IF_ERROR(CreateConvConstants(creation_context, op_def, attr, &conv));
-    *ptr = absl::make_unique<ConvConstants>(std::move(conv));
-  } else {
-    ConvTexture conv;
-    RETURN_IF_ERROR(CreateConvTexture(creation_context, op_def, attr, &conv));
-    *ptr = absl::make_unique<ConvTexture>(std::move(conv));
-  }
-  return absl::OkStatus();
-}
-
-absl::Status SelectConvolutionWinogradAdreno(
+std::unique_ptr<GPUOperation> SelectConvolutionAdreno(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    ModelHints hints, std::unique_ptr<GPUOperation>* ptr) {
-  ConvTexture conv;
-  RETURN_IF_ERROR(
-      CreateConvTextureWino4x4To6x6(creation_context, op_def, attr, &conv));
-  *ptr = absl::make_unique<ConvTexture>(std::move(conv));
-  return absl::OkStatus();
-}
-
-absl::Status SelectConvolutionDynamicWeightsAdreno(
-    const Convolution2DAttributes& attr, const BHWC& weights_shape,
-    const BHWC& dst_shape, const CreationContext& creation_context,
-    const OperationDef& op_def, ModelHints hints,
-    std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc) {
-  ConvPowerVR conv;
-  RETURN_IF_ERROR(CreateConvPowerVRDynamicWeights(
-      creation_context, op_def, attr, weights_shape, &conv, &dst_shape));
-  *weights_desc = conv.GetConvWeightsDescription();
-  *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
-  return absl::OkStatus();
-}
-
-absl::Status SelectConvolutionNVidia(const Convolution2DAttributes& attr,
-                                     const BHWC& dst_shape,
-                                     const CreationContext& creation_context,
-                                     const OperationDef& op_def,
-                                     std::unique_ptr<GPUOperation>* ptr) {
-  if (IsConvConstantsSupported(*creation_context.device, op_def, attr)) {
-    ConvConstants conv;
-    RETURN_IF_ERROR(CreateConvConstants(creation_context, op_def, attr, &conv));
-    *ptr = absl::make_unique<ConvConstants>(std::move(conv));
+    const DeviceInfo& device_info, const OperationDef& op_def,
+    ModelHints hints) {
+  if (IsConvConstantsSupported(device_info, op_def, attr)) {
+    GPUOperation conv = CreateConvConstants(device_info, op_def, attr);
+    return absl::make_unique<GPUOperation>(std::move(conv));
   } else {
-    ConvPowerVR conv;
-    RETURN_IF_ERROR(
-        CreateConvPowerVR(creation_context, op_def, attr, &conv, &dst_shape));
-    *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+    ConvTexture conv = CreateConvTexture(device_info, op_def, attr);
+    return absl::make_unique<ConvTexture>(std::move(conv));
   }
-  return absl::OkStatus();
 }
 
-absl::Status SelectConvolutionPowerVR(const Convolution2DAttributes& attr,
-                                      const CreationContext& creation_context,
-                                      const OperationDef& op_def,
-                                      std::unique_ptr<GPUOperation>* ptr) {
-  ConvPowerVR conv;
-  RETURN_IF_ERROR(CreateConvPowerVR(creation_context, op_def, attr, &conv));
-  *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
-  return absl::OkStatus();
+std::unique_ptr<GPUOperation> SelectConvolutionWinogradAdreno(
+    const Convolution2DAttributes& attr, const BHWC& dst_shape,
+    const DeviceInfo& device_info, const OperationDef& op_def,
+    ModelHints hints) {
+  ConvTexture conv = CreateConvTextureWino4x4To6x6(device_info, op_def, attr);
+  return absl::make_unique<ConvTexture>(std::move(conv));
 }
 
-absl::Status SelectConvolutionMali(const Convolution2DAttributes& attr,
-                                   const BHWC& dst_shape,
-                                   const CreationContext& creation_context,
-                                   const OperationDef& op_def,
-                                   std::unique_ptr<GPUOperation>* ptr) {
+std::unique_ptr<GPUOperation> SelectConvolutionDynamicWeightsAdreno(
+    const Convolution2DAttributes& attr, const BHWC& weights_shape,
+    const BHWC& dst_shape, const DeviceInfo& device_info,
+    const OperationDef& op_def, ModelHints hints,
+    ConvWeightsDescription* weights_desc) {
+  ConvPowerVR conv = CreateConvPowerVRDynamicWeights(
+      device_info, op_def, attr, weights_shape, &dst_shape);
+  *weights_desc = conv.GetConvWeightsDescription();
+  return absl::make_unique<ConvPowerVR>(std::move(conv));
+}
+
+std::unique_ptr<GPUOperation> SelectConvolutionNVidia(
+    const Convolution2DAttributes& attr, const BHWC& dst_shape,
+    const DeviceInfo& device_info, const OperationDef& op_def) {
+  if (IsConvConstantsSupported(device_info, op_def, attr)) {
+    GPUOperation conv = CreateConvConstants(device_info, op_def, attr);
+    return absl::make_unique<GPUOperation>(std::move(conv));
+  } else {
+    ConvPowerVR conv = CreateConvPowerVR(device_info, op_def, attr, &dst_shape);
+    return absl::make_unique<ConvPowerVR>(std::move(conv));
+  }
+}
+
+std::unique_ptr<GPUOperation> SelectConvolutionPowerVR(
+    const Convolution2DAttributes& attr, const DeviceInfo& device_info,
+    const OperationDef& op_def) {
+  ConvPowerVR conv = CreateConvPowerVR(device_info, op_def, attr);
+  return absl::make_unique<ConvPowerVR>(std::move(conv));
+}
+
+std::unique_ptr<GPUOperation> SelectConvolutionMali(
+    const Convolution2DAttributes& attr, const BHWC& dst_shape,
+    const DeviceInfo& device_info, const OperationDef& op_def) {
   if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
       IsConvBuffer1x1Supported(op_def, attr)) {
-    ConvBuffer1x1 conv;
-    RETURN_IF_ERROR(
-        CreateConvBuffer1x1(creation_context, op_def, attr, &conv, &dst_shape));
-    *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));
+    ConvBuffer1x1 conv =
+        CreateConvBuffer1x1(device_info, op_def, attr, &dst_shape);
+    return absl::make_unique<ConvBuffer1x1>(std::move(conv));
   } else {
-    ConvPowerVR conv;
-    RETURN_IF_ERROR(
-        CreateConvPowerVR(creation_context, op_def, attr, &conv, &dst_shape));
-    *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+    ConvPowerVR conv = CreateConvPowerVR(device_info, op_def, attr, &dst_shape);
+    return absl::make_unique<ConvPowerVR>(std::move(conv));
   }
-  return absl::OkStatus();
 }
 
-absl::Status SelectConvolutionWinogradMali(
+std::unique_ptr<GPUOperation> SelectConvolutionWinogradMali(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    std::unique_ptr<GPUOperation>* ptr) {
+    const DeviceInfo& device_info, const OperationDef& op_def) {
   if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER) {
-    ConvBuffer1x1 conv;
-    RETURN_IF_ERROR(CreateConvBuffer1x1Wino4x4To6x6(creation_context, op_def,
-                                                    attr, &conv, &dst_shape));
-    *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));
+    ConvBuffer1x1 conv =
+        CreateConvBuffer1x1Wino4x4To6x6(device_info, op_def, attr, &dst_shape);
+    return absl::make_unique<ConvBuffer1x1>(std::move(conv));
   } else {
-    ConvPowerVR conv;
-    RETURN_IF_ERROR(CreateConvPowerVRWino4x4To6x6(creation_context, op_def,
-                                                  attr, &conv, &dst_shape));
-    *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+    ConvPowerVR conv =
+        CreateConvPowerVRWino4x4To6x6(device_info, op_def, attr, &dst_shape);
+    return absl::make_unique<ConvPowerVR>(std::move(conv));
   }
-  return absl::OkStatus();
 }
 
-absl::Status SelectConvolutionDynamicWeightsMali(
+std::unique_ptr<GPUOperation> SelectConvolutionDynamicWeightsMali(
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
-    const BHWC& dst_shape, const CreationContext& creation_context,
+    const BHWC& dst_shape, const DeviceInfo& device_info,
     const OperationDef& op_def, ModelHints hints,
-    std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc) {
+    ConvWeightsDescription* weights_desc) {
   if (op_def.src_tensors[0].storage_type == TensorStorageType::BUFFER &&
       IsConvBuffer1x1Supported(op_def, weights_shape, attr)) {
-    ConvBuffer1x1 conv;
-    RETURN_IF_ERROR(CreateConvBuffer1x1DynamicWeights(
-        creation_context, op_def, attr, weights_shape, &conv, &dst_shape));
+    ConvBuffer1x1 conv = CreateConvBuffer1x1DynamicWeights(
+        device_info, op_def, attr, weights_shape, &dst_shape);
     *weights_desc = conv.GetConvWeightsDescription();
-    *ptr = absl::make_unique<ConvBuffer1x1>(std::move(conv));
+    return absl::make_unique<ConvBuffer1x1>(std::move(conv));
   } else {
-    ConvPowerVR conv;
-    RETURN_IF_ERROR(CreateConvPowerVRDynamicWeights(
-        creation_context, op_def, attr, weights_shape, &conv, &dst_shape));
+    ConvPowerVR conv = CreateConvPowerVRDynamicWeights(
+        device_info, op_def, attr, weights_shape, &dst_shape);
     *weights_desc = conv.GetConvWeightsDescription();
-    *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
+    return absl::make_unique<ConvPowerVR>(std::move(conv));
   }
-  return absl::OkStatus();
 }
 
 }  // namespace
 
-absl::Status SelectConvolution(const Convolution2DAttributes& attr,
-                               const BHWC& dst_shape,
-                               const CreationContext& creation_context,
-                               const OperationDef& op_def, ModelHints hints,
-                               std::unique_ptr<GPUOperation>* ptr) {
-  switch (creation_context.device->vendor()) {
-    case Vendor::QUALCOMM:
-      return SelectConvolutionAdreno(attr, dst_shape, creation_context, op_def,
-                                     hints, ptr);
-    case Vendor::POWERVR:
-    case Vendor::INTEL:
-    case Vendor::AMD:
-      return SelectConvolutionPowerVR(attr, creation_context, op_def, ptr);
-    case Vendor::NVIDIA:
-      return SelectConvolutionNVidia(attr, dst_shape, creation_context, op_def,
-                                     ptr);
-    case Vendor::MALI:
-      return SelectConvolutionMali(attr, dst_shape, creation_context, op_def,
-                                   ptr);
-    default:
-      return SelectConvolutionAdreno(attr, dst_shape, creation_context, op_def,
-                                     hints, ptr);
-  }
-}
-
-absl::Status SelectConvolutionForWinograd(
+std::unique_ptr<GPUOperation> SelectConvolution(
     const Convolution2DAttributes& attr, const BHWC& dst_shape,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    ModelHints hints, std::unique_ptr<GPUOperation>* ptr) {
-  switch (creation_context.device->vendor()) {
-    case Vendor::QUALCOMM:
-      return SelectConvolutionWinogradAdreno(attr, dst_shape, creation_context,
-                                             op_def, hints, ptr);
-    case Vendor::POWERVR:
-    case Vendor::AMD:
-    case Vendor::INTEL:
-    case Vendor::NVIDIA: {
-      ConvPowerVR conv;
-      RETURN_IF_ERROR(CreateConvPowerVRWino4x4To6x6(creation_context, op_def,
-                                                    attr, &conv, &dst_shape));
-      *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
-      return absl::OkStatus();
-    }
-    case Vendor::MALI:
-      return SelectConvolutionWinogradMali(attr, dst_shape, creation_context,
-                                           op_def, ptr);
-    default:
-      return SelectConvolutionWinogradAdreno(attr, dst_shape, creation_context,
-                                             op_def, hints, ptr);
+    const DeviceInfo& device_info, const OperationDef& op_def,
+    ModelHints hints) {
+  if (device_info.IsAdreno()) {
+    return SelectConvolutionAdreno(attr, dst_shape, device_info, op_def, hints);
+  } else if (device_info.IsPowerVR() || device_info.IsAMD() ||
+             device_info.IsIntel()) {
+    return SelectConvolutionPowerVR(attr, device_info, op_def);
+  } else if (device_info.IsNvidia()) {
+    return SelectConvolutionNVidia(attr, dst_shape, device_info, op_def);
+  } else if (device_info.IsMali()) {
+    return SelectConvolutionMali(attr, dst_shape, device_info, op_def);
+  } else {
+    return SelectConvolutionAdreno(attr, dst_shape, device_info, op_def, hints);
   }
 }
 
-absl::Status SelectConvolutionWithDynamicWeights(
+std::unique_ptr<GPUOperation> SelectConvolutionForWinograd(
+    const Convolution2DAttributes& attr, const BHWC& dst_shape,
+    const DeviceInfo& device_info, const OperationDef& op_def,
+    ModelHints hints) {
+  if (device_info.IsAdreno()) {
+    return SelectConvolutionWinogradAdreno(attr, dst_shape, device_info, op_def,
+                                           hints);
+  } else if (device_info.IsPowerVR() || device_info.IsAMD() ||
+             device_info.IsNvidia() || device_info.IsIntel()) {
+    ConvPowerVR conv =
+        CreateConvPowerVRWino4x4To6x6(device_info, op_def, attr, &dst_shape);
+    return absl::make_unique<ConvPowerVR>(std::move(conv));
+  } else if (device_info.IsMali()) {
+    return SelectConvolutionWinogradMali(attr, dst_shape, device_info, op_def);
+  } else {
+    return SelectConvolutionWinogradAdreno(attr, dst_shape, device_info, op_def,
+                                           hints);
+  }
+}
+
+std::unique_ptr<GPUOperation> SelectConvolutionWithDynamicWeights(
     const Convolution2DAttributes& attr, const BHWC& weights_shape,
-    const BHWC& dst_shape, const CreationContext& creation_context,
+    const BHWC& dst_shape, const DeviceInfo& device_info,
     const OperationDef& op_def, ModelHints hints,
-    std::unique_ptr<GPUOperation>* ptr, ConvWeightsDescription* weights_desc) {
-  switch (creation_context.device->vendor()) {
-    case Vendor::QUALCOMM:
-      return SelectConvolutionDynamicWeightsAdreno(
-          attr, weights_shape, dst_shape, creation_context, op_def, hints, ptr,
-          weights_desc);
-    case Vendor::MALI:
-      return SelectConvolutionDynamicWeightsMali(attr, weights_shape, dst_shape,
-                                                 creation_context, op_def,
-                                                 hints, ptr, weights_desc);
-    default: {
-      ConvPowerVR conv;
-      RETURN_IF_ERROR(CreateConvPowerVRDynamicWeights(
-          creation_context, op_def, attr, weights_shape, &conv, &dst_shape));
-      *weights_desc = conv.GetConvWeightsDescription();
-      *ptr = absl::make_unique<ConvPowerVR>(std::move(conv));
-      return absl::OkStatus();
-    }
+    ConvWeightsDescription* weights_desc) {
+  if (device_info.IsAdreno()) {
+    return SelectConvolutionDynamicWeightsAdreno(attr, weights_shape, dst_shape,
+                                                 device_info, op_def, hints,
+                                                 weights_desc);
+  } else if (device_info.IsMali()) {
+    return SelectConvolutionDynamicWeightsMali(attr, weights_shape, dst_shape,
+                                               device_info, op_def, hints,
+                                               weights_desc);
+  } else {
+    ConvPowerVR conv = CreateConvPowerVRDynamicWeights(
+        device_info, op_def, attr, weights_shape, &dst_shape);
+    *weights_desc = conv.GetConvWeightsDescription();
+    return absl::make_unique<ConvPowerVR>(std::move(conv));
   }
 }
 
-absl::Status SelectConverterToConvWeights(
-    const ConvWeightsDescription& weights_desc,
-    const CreationContext& creation_context, const OperationDef& op_def,
-    ModelHints hints, std::unique_ptr<GPUOperation>* ptr) {
+std::unique_ptr<GPUOperation> SelectConverterToConvWeights(
+    const ConvWeightsDescription& weights_desc, const OperationDef& op_def,
+    ModelHints hints) {
   ConverterToConvWeights converter =
       ConverterToConvWeights(op_def, weights_desc);
-  *ptr = absl::make_unique<ConverterToConvWeights>(std::move(converter));
-  return absl::OkStatus();
+  return absl::make_unique<ConverterToConvWeights>(std::move(converter));
 }
 
 }  // namespace cl

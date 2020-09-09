@@ -178,8 +178,8 @@ class PosixReadOnlyMemoryRegion : public ReadOnlyMemoryRegion {
 };
 
 Status PosixFileSystem::NewRandomAccessFile(
-    const string& fname,
-    std::unique_ptr<RandomAccessFile>* result /*, TransactionToken* token */) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<RandomAccessFile>* result) {
   string translated_fname = TranslateName(fname);
   Status s;
   int fd = open(translated_fname.c_str(), O_RDONLY);
@@ -191,9 +191,9 @@ Status PosixFileSystem::NewRandomAccessFile(
   return s;
 }
 
-Status PosixFileSystem::NewWritableFile(
-    const string& fname,
-    std::unique_ptr<WritableFile>* result /*, TransactionToken* token */) {
+Status PosixFileSystem::NewWritableFile(const string& fname,
+                                        TransactionToken* token,
+                                        std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
   Status s;
   FILE* f = fopen(translated_fname.c_str(), "w");
@@ -206,8 +206,8 @@ Status PosixFileSystem::NewWritableFile(
 }
 
 Status PosixFileSystem::NewAppendableFile(
-    const string& fname,
-    std::unique_ptr<WritableFile>* result /*, TransactionToken* token */) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<WritableFile>* result) {
   string translated_fname = TranslateName(fname);
   Status s;
   FILE* f = fopen(translated_fname.c_str(), "a");
@@ -220,8 +220,8 @@ Status PosixFileSystem::NewAppendableFile(
 }
 
 Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
-    const string& fname, std::unique_ptr<ReadOnlyMemoryRegion>*
-                             result /*, TransactionToken* token */) {
+    const string& fname, TransactionToken* token,
+    std::unique_ptr<ReadOnlyMemoryRegion>* result) {
   string translated_fname = TranslateName(fname);
   Status s = Status::OK();
   int fd = open(translated_fname.c_str(), O_RDONLY);
@@ -244,17 +244,16 @@ Status PosixFileSystem::NewReadOnlyMemoryRegionFromFile(
   return s;
 }
 
-Status PosixFileSystem::FileExists(
-    const string& fname /*, TransactionToken* token */) {
+Status PosixFileSystem::FileExists(const string& fname,
+                                   TransactionToken* token) {
   if (access(TranslateName(fname).c_str(), F_OK) == 0) {
     return Status::OK();
   }
   return errors::NotFound(fname, " not found");
 }
 
-Status PosixFileSystem::GetChildren(
-    const string& dir,
-    std::vector<string>* result /*, TransactionToken* token */) {
+Status PosixFileSystem::GetChildren(const string& dir, TransactionToken* token,
+                                    std::vector<string>* result) {
   string translated_dir = TranslateName(dir);
   result->clear();
   DIR* d = opendir(translated_dir.c_str());
@@ -274,14 +273,14 @@ Status PosixFileSystem::GetChildren(
   return Status::OK();
 }
 
-Status PosixFileSystem::GetMatchingPaths(
-    const string& pattern,
-    std::vector<string>* results /*, TransactionToken* token */) {
+Status PosixFileSystem::GetMatchingPaths(const string& pattern,
+                                         TransactionToken* token,
+                                         std::vector<string>* results) {
   return internal::GetMatchingPaths(this, Env::Default(), pattern, results);
 }
 
-Status PosixFileSystem::DeleteFile(
-    const string& fname /*, TransactionToken* token */) {
+Status PosixFileSystem::DeleteFile(const string& fname,
+                                   TransactionToken* token) {
   Status result;
   if (unlink(TranslateName(fname).c_str()) != 0) {
     result = IOError(fname, errno);
@@ -289,8 +288,7 @@ Status PosixFileSystem::DeleteFile(
   return result;
 }
 
-Status PosixFileSystem::CreateDir(
-    const string& name /*, TransactionToken* token */) {
+Status PosixFileSystem::CreateDir(const string& name, TransactionToken* token) {
   string translated = TranslateName(name);
   if (translated.empty()) {
     return errors::AlreadyExists(name);
@@ -301,8 +299,7 @@ Status PosixFileSystem::CreateDir(
   return Status::OK();
 }
 
-Status PosixFileSystem::DeleteDir(
-    const string& name /*, TransactionToken* token */) {
+Status PosixFileSystem::DeleteDir(const string& name, TransactionToken* token) {
   Status result;
   if (rmdir(TranslateName(name).c_str()) != 0) {
     result = IOError(name, errno);
@@ -310,8 +307,8 @@ Status PosixFileSystem::DeleteDir(
   return result;
 }
 
-Status PosixFileSystem::GetFileSize(
-    const string& fname, uint64* size /*, TransactionToken* token */) {
+Status PosixFileSystem::GetFileSize(const string& fname,
+                                    TransactionToken* token, uint64* size) {
   Status s;
   struct stat sbuf;
   if (stat(TranslateName(fname).c_str(), &sbuf) != 0) {
@@ -323,8 +320,8 @@ Status PosixFileSystem::GetFileSize(
   return s;
 }
 
-Status PosixFileSystem::Stat(
-    const string& fname, FileStatistics* stats /*, TransactionToken* token */) {
+Status PosixFileSystem::Stat(const string& fname, TransactionToken* token,
+                             FileStatistics* stats) {
   Status s;
   struct stat sbuf;
   if (stat(TranslateName(fname).c_str(), &sbuf) != 0) {
@@ -337,8 +334,8 @@ Status PosixFileSystem::Stat(
   return s;
 }
 
-Status PosixFileSystem::RenameFile(
-    const string& src, const string& target /*, TransactionToken* token */) {
+Status PosixFileSystem::RenameFile(const string& src, const string& target,
+                                   TransactionToken* token) {
   Status result;
   if (rename(TranslateName(src).c_str(), TranslateName(target).c_str()) != 0) {
     result = IOError(src, errno);
@@ -346,8 +343,8 @@ Status PosixFileSystem::RenameFile(
   return result;
 }
 
-Status PosixFileSystem::CopyFile(
-    const string& src, const string& target /*, TransactionToken* token */) {
+Status PosixFileSystem::CopyFile(const string& src, const string& target,
+                                 TransactionToken* token) {
   string translated_src = TranslateName(src);
   struct stat sbuf;
   if (stat(translated_src.c_str(), &sbuf) != 0) {

@@ -229,12 +229,8 @@ class KerasTensor(object):
 
     if hasattr(self, '_keras_history'):
       layer = self._keras_history.layer
-      node_index = self._keras_history.node_index
-      tensor_index = self._keras_history.tensor_index
       symbolic_description = (
-          ', description="Symbolic value %s from '
-          'symbolic call %s of layer \'%s\'"' % (
-              tensor_index, node_index, layer.name))
+          ', description="created by layer \'%s\'"' % (layer.name,))
     if self._inferred_value is not None:
       inferred_value_string = (
           ', inferred_value=%s' % self._inferred_value)
@@ -254,11 +250,7 @@ class KerasTensor(object):
 
     if hasattr(self, '_keras_history'):
       layer = self._keras_history.layer
-      node_index = self._keras_history.node_index
-      tensor_index = self._keras_history.tensor_index
-      symbolic_description = (
-          ' (Symbolic value %s from symbolic call %s of layer \'%s\')' % (
-              tensor_index, node_index, layer.name))
+      symbolic_description = ' (created by layer \'%s\')' % (layer.name,)
     if self._inferred_value is not None:
       inferred_value_string = (
           ' inferred_value=%s' % self._inferred_value)

@@ -37,12 +37,12 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework.ops import composite_tensor
 from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.utils import control_flow_util
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -1006,7 +1006,7 @@ def _process_tensorlike(inputs):
       dtype = None
       if issubclass(x.dtype.type, np.floating):
         dtype = backend.floatx()
-      return ops.convert_to_tensor(x, dtype=dtype)
+      return ops.convert_to_tensor_v2_with_dispatch(x, dtype=dtype)
     elif scipy_sparse and scipy_sparse.issparse(x):
       return _scipy_sparse_to_sparse_tensor(x)
     return x
@@ -1281,7 +1281,7 @@ def _make_class_weight_map_fn(class_weight):
         "than the number of classes, found {}").format(class_weight)
     raise ValueError(error_msg)
 
-  class_weight_tensor = ops.convert_to_tensor_v2(
+  class_weight_tensor = ops.convert_to_tensor_v2_with_dispatch(
       [class_weight[int(c)] for c in class_ids])
 
   def _class_weights_map_fn(*data):
@@ -1296,7 +1296,7 @@ def _make_class_weight_map_fn(class_weight):
       raise ValueError("`class_weight` not supported for "
                        "3+ dimensional targets.")
 
-    y_classes = control_flow_util.smart_cond(
+    y_classes = smart_cond.smart_cond(
         y.shape.rank == 2 and backend.shape(y)[1] > 1,
         lambda: backend.argmax(y, axis=1),
         lambda: math_ops.cast(backend.reshape(y, (-1,)), dtypes.int64))

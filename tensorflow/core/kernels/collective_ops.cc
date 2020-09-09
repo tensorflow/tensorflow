@@ -22,8 +22,10 @@ namespace tensorflow {
 
 namespace {
 
-static string CollectiveKey(OpKernelContext* ctx, int32 instance_key) {
-  return strings::StrCat(instance_key, ":", ctx->frame_iter().frame_id, ":",
+static string CollectiveKey(OpKernelContext* ctx, int32 group_key,
+                            int32 instance_key) {
+  return strings::StrCat(group_key, ":", instance_key, ":",
+                         ctx->frame_iter().frame_id, ":",
                          ctx->frame_iter().iter_id);
 }
 
@@ -52,7 +54,8 @@ class CollectiveOpKernel : public AsyncOpKernel {
   // A string encoding instance, frame and iter to be handed off to
   // the implementation for use in generating RecvBuf keys.
   string GetCollectiveKey(OpKernelContext* c) {
-    return CollectiveKey(c, col_params_.instance.instance_key);
+    return CollectiveKey(c, col_params_.group.group_key,
+                         col_params_.instance.instance_key);
   }
 
   // Returns false if calling invocation of ComputeAsync should return
@@ -70,7 +73,7 @@ class CollectiveOpKernel : public AsyncOpKernel {
                 << " group " << col_params_.group.group_key << " instance "
                 << col_params_.instance.instance_key;
         col_exec->CompleteParamsAsync(
-            c->device()->name(), &col_params_, c->cancellation_manager(),
+            c->device()->attributes(), &col_params_, c->cancellation_manager(),
             [this, c, done](const Status& s) {
               if (s.ok()) {
                 col_params_.instance.impl_details.dependencies = dependencies_;
@@ -535,7 +538,8 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
               << " group " << col_params->group.group_key << " instance "
               << col_params->instance.instance_key;
       col_exec->CompleteParamsAsync(
-          c->device()->name(), col_params.get(), c->cancellation_manager(),
+          c->device()->attributes(), col_params.get(),
+          c->cancellation_manager(),
           [c, done = std::move(done), col_params, col_exec](const Status& s) {
             if (s.ok()) {
               auto actual_done = [c, group_key = col_params->group.group_key,
@@ -557,7 +561,8 @@ class CollectiveReduceV2OpKernel : public AsyncOpKernel {
                       << " instance " << col_params->instance.instance_key;
               col_exec->ExecuteAsync(
                   c, *col_params,
-                  CollectiveKey(c, col_params->instance.instance_key),
+                  CollectiveKey(c, col_params->group.group_key,
+                                col_params->instance.instance_key),
                   actual_done);
             } else {
               c->SetStatus(s);

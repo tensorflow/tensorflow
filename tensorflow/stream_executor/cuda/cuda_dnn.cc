@@ -22,7 +22,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/platform/tf32_utils.h"
+#include "tensorflow/core/platform/tensor_float_32_utils.h"
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
 #include "tensorflow/stream_executor/cuda/cuda_diagnostics.h"
@@ -740,7 +740,7 @@ static bool IsTensorMathOpSet(const CudnnConvolutionDescriptor& conv) {
 
 static bool TensorOpMathAvailable(int cc_major) { return cc_major >= 7; }
 
-static bool IsTensorMathAllowed(Stream* stream, dnn::DataType input_type) {
+static bool IsTensorMathEnabled(Stream* stream, dnn::DataType input_type) {
   int cc_major, cc_minor;
   std::tie(cc_major, cc_minor) = GetCcMajorMinor(stream);
   if (!TensorOpMathAvailable(cc_major)) {
@@ -750,7 +750,7 @@ static bool IsTensorMathAllowed(Stream* stream, dnn::DataType input_type) {
 #if CUDNN_VERSION < 8000
     return false;
 #else
-    if (!tensorflow::tf32_execution_allowed()) {
+    if (!tensorflow::tensor_float_32_execution_enabled()) {
       return false;
     }
 #endif
@@ -1099,7 +1099,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
     // TODO(csigg): Minimal support cuDNN version is 7.3, clean up.
     bool allow_tensor_ops = data_type == CUDNN_DATA_HALF;
     if (data_type == CUDNN_DATA_FLOAT)
-      allow_tensor_ops = tensorflow::tf32_execution_allowed();
+      allow_tensor_ops = tensorflow::tensor_float_32_execution_enabled();
     bool use_tensor_ops =
         algorithm_config.algorithm().has_value()
             ? algorithm_config.algorithm()->tensor_ops_enabled()
@@ -2647,12 +2647,12 @@ port::StatusOr<bool> UseTensorOps(Stream* stream, dnn::DataType type,
   bool use_tensor_ops;
   if (desc.has_value()) {
     use_tensor_ops = desc->tensor_ops_enabled();
-    if (use_tensor_ops && !IsTensorMathAllowed(stream, type)) {
+    if (use_tensor_ops && !IsTensorMathEnabled(stream, type)) {
       return port::Status(port::error::INVALID_ARGUMENT,
-                          "Algo requests disallowed tensor op evaluation.");
+                          "Algo requests disabled tensor op evaluation.");
     }
   } else {
-    use_tensor_ops = IsTensorMathAllowed(stream, type);
+    use_tensor_ops = IsTensorMathEnabled(stream, type);
   }
   return use_tensor_ops;
 }
