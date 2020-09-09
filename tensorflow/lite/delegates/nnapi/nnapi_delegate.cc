@@ -1572,10 +1572,9 @@ bool ExpectIsFloatQuant8OrInt32Operator(const TfLiteContext* context,
                                         const TfLiteNode* node,
                                         OpValidationContext* val_ctx) {
   const auto input_type = context->tensors[node->inputs->data[0]].type;
-  return Expect(
-      IsFloatQuantizedOrInt32(input_type),
-      NNAPIValidationFailureType::kUnsupportedInputType,
-      "Input should be Float, Quant8, or Int32", val_ctx);
+  return Expect(IsFloatQuantizedOrInt32(input_type),
+                NNAPIValidationFailureType::kUnsupportedInputType,
+                "Input should be Float, Quant8, or Int32", val_ctx);
 }
 
 // When using NN API version 1.0 or 1.1, the condition below must be true for
@@ -1617,6 +1616,12 @@ bool NNAPIDelegateKernel::Validate(
       ExpectMaxOpVersion(version, 2, &val_ctx);
       if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
         ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
+        if (IsInt32(context->tensors[node->inputs->data[0]].type)) {
+          Expect(reinterpret_cast<TfLiteAddParams*>(node->builtin_data)
+                         ->activation == kTfLiteActNone,
+                 NNAPIValidationFailureType::kNoActivationExpected,
+                 "No activation function supported", &val_ctx);
+        }
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       }
@@ -1666,6 +1671,12 @@ bool NNAPIDelegateKernel::Validate(
       ExpectMaxOpVersion(version, 2, &val_ctx);
       if (android_sdk_version >= kMinSdkVersionForNNAPI13) {
         ExpectIsFloatQuant8OrInt32Operator(context, node, &val_ctx);
+        if (IsInt32(context->tensors[node->inputs->data[0]].type)) {
+          Expect(reinterpret_cast<TfLiteMulParams*>(node->builtin_data)
+                         ->activation == kTfLiteActNone,
+                 NNAPIValidationFailureType::kNoActivationExpected,
+                 "No activation function supported", &val_ctx);
+        }
       } else {
         ExpectIsFloatOrQuant8Operator(context, node, &val_ctx);
       }
@@ -2028,6 +2039,12 @@ bool NNAPIDelegateKernel::Validate(
                   IsInt32(input_type)),
              NNAPIValidationFailureType::kUnsupportedInputType,
              "NNAPI only support float sub.", &val_ctx);
+      if (IsInt32(input_type)) {
+        Expect(reinterpret_cast<TfLiteSubParams*>(node->builtin_data)
+                       ->activation == kTfLiteActNone,
+               NNAPIValidationFailureType::kNoActivationExpected,
+               "No activation function supported", &val_ctx);
+      }
       const int input0_rank =
           context->tensors[node->inputs->data[0]].dims->size;
       const int input1_rank =
