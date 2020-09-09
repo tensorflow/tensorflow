@@ -278,13 +278,13 @@ def _find_cuda_config(base_paths, required_cuda_version, required_cudnn_version)
         return match.group(1)
     return None
 
-  def maybe_exe(path):
-    return ".exe" if _is_windows() else ""
+  def maybe_add_extension(binary_name):
+    return binary_name + ".exe" if _is_windows() else ""
 
-  nvcc_name      = "nvcc"      + maybe_exe()
-  bin2c_name     = "bin2c"     + maybe_exe()
-  fatbinary_name = "fatbinary" + maybe_exe()
-  nvlink_name    = "nvlink"    + maybe_exe()
+  nvcc_name      = maybe_add_extension("nvcc")
+  bin2c_name     = maybe_add_extension("bin2c")
+  fatbinary_name = maybe_add_extension("fatbinary")
+  nvlink_name    = maybe_add_extension("nvlink")
 
   cuda_nvcc_path, nvcc_version = _find_versioned_file(base_paths, [
       "",
