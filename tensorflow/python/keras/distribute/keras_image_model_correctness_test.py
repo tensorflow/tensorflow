@@ -29,7 +29,8 @@ from tensorflow.python.platform import test
 
 @testing_utils.run_all_without_tensor_float_32(
     'Uses Dense layers, which call matmul. Even if Dense layers run in '
-    'float64, the test sometimes fails with tf32 enabled for unknown reasons')
+    'float64, the test sometimes fails with TensorFloat-32 enabled for unknown '
+    'reasons')
 class DistributionStrategyCnnCorrectnessTest(
     keras_correctness_test_base.TestDistributionStrategyCorrectnessBase):
 

@@ -27,9 +27,7 @@ from tensorflow.python.distribute import multi_worker_test_base
 from tensorflow.python.distribute import parameter_server_strategy_v2
 from tensorflow.python.distribute import sharded_variable
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
-from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
-from tensorflow.python.eager import remote
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
@@ -48,14 +46,6 @@ class ParameterServerStrategyV2Test(test.TestCase):
     cluster_def = multi_worker_test_base.create_in_process_cluster(
         num_workers=2, num_ps=3)
     cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
-    remote.connect_to_cluster(
-        cls.cluster_resolver.cluster_spec(), job_name="chief")
-
-  @classmethod
-  def tearDownClass(cls):
-    super(ParameterServerStrategyV2Test, cls).tearDownClass()
-    # reset context to disconnect from the cluster.
-    context._reset_context()
 
   def testVariablePlacement(self):
 
@@ -97,13 +87,6 @@ class VariablePartitioningTest(test.TestCase):
     cluster_def = multi_worker_test_base.create_in_process_cluster(
         num_workers=2, num_ps=2)
     cls.cluster_resolver = SimpleClusterResolver(ClusterSpec(cluster_def))
-    remote.connect_to_cluster(cls.cluster_resolver.cluster_spec())
-
-  @classmethod
-  def tearDownClass(cls):
-    super(VariablePartitioningTest, cls).tearDownClass()
-    # reset context to disconnect from the cluster.
-    context._reset_context()
 
   def setUp(self):
     super().setUp()

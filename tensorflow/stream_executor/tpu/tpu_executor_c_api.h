@@ -127,6 +127,14 @@ void TpuStream_Free(SE_Stream*);
 void* TpuStream_Stream(SE_Stream*);
 bool TpuStream_Status(SE_Stream*);
 bool TpuStream_IsSameSharedMemoryLocation(SE_Stream*, SE_Stream*);
+void TpuStream_EnqueueTransferHostToDevice(SE_Stream* stream,
+                                           SE_DeviceMemoryBase device_dst,
+                                           void* host_src, uint64_t size,
+                                           SE_Status* status);
+void TpuStream_EnqueueTransferDeviceToHost(SE_Stream* stream,
+                                           SE_DeviceMemoryBase device_src,
+                                           void* host_dst, uint64_t size,
+                                           SE_Status* status);
 void TpuStream_TpuEnqueueOnDeviceSendRecvLocal(SE_Stream* stream,
                                                SE_DeviceMemoryBase send_buffer,
                                                SE_DeviceMemoryBase recv_buffer,
@@ -355,6 +363,8 @@ struct TfTpu_ExecutorApiFn {
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_Stream);
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_Status);
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_IsSameSharedMemoryLocation);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_EnqueueTransferHostToDevice);
+  TFTPU_ADD_FN_IN_STRUCT(TpuStream_EnqueueTransferDeviceToHost);
   TFTPU_ADD_FN_IN_STRUCT(TpuStream_TpuEnqueueOnDeviceSendRecvLocal);
 
   TFTPU_ADD_FN_IN_STRUCT(TpuEvent_New);

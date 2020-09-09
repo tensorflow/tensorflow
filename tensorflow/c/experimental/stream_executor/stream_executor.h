@@ -321,6 +321,16 @@ typedef struct SP_StreamExecutor {
   void (*block_host_for_event)(const SP_Device* device, SP_Event event,
                                TF_Status* status);
 
+  // [Optional]
+  // Causes the host code to synchronously wait for operations entrained onto
+  // stream to complete. Effectively a join on the asynchronous device
+  // operations enqueued on the stream before this program point.
+  // If not set, then corresponding functionality will be implemented
+  // by registering an event on the `stream` and waiting for it using
+  // `block_host_for_event`.
+  void (*block_host_until_done)(const SP_Device* device, SP_Stream stream,
+                                TF_Status* status);
+
   // Synchronizes all activity occurring in the StreamExecutor's context (most
   // likely a whole device).
   void (*synchronize_all_activity)(const SP_Device* device, TF_Status* status);

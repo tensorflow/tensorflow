@@ -373,6 +373,7 @@ cc_library(
         ":cl_command_queue",
         ":cl_device",
         ":environment",
+        ":gpu_object",
         ":model_hints",
         ":opencl_wrapper",
         ":precision",

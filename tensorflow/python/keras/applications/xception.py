@@ -68,8 +68,9 @@ def Xception(
   the one specified in your Keras config at `~/.keras/keras.json`.
   Note that the default input image size for this model is 299x299.
 
-  Caution: Be sure to properly pre-process your inputs to the application.
-  Please see `applications.xception.preprocess_input` for an example.
+  Note: each Keras Application expects a specific kind of input preprocessing.
+  For Xception, call `tf.keras.applications.xception.preprocess_input` on your
+  inputs before passing them to the model.
 
   Arguments:
     include_top: whether to include the fully-connected

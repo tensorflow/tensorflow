@@ -88,15 +88,16 @@ ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
 TARGET_TOOLCHAIN_ROOT :=
 
+OPTIMIZATION_LEVEL := -O3
 ifeq ($(BUILD_TYPE), debug)
-	CXXFLAGS += -DDEBUG -g
-	CCFLAGS  += -DDEBUG -g
+	CXXFLAGS += -DDEBUG -g $(OPTIMIZATION_LEVEL)
+	CCFLAGS  += -DDEBUG -g $(OPTIMIZATION_LEVEL)
 else ifeq ($(BUILD_TYPE), release)
-	CXXFLAGS += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
-	CCFLAGS  += -DNDEBUG -O3 -DTF_LITE_STRIP_ERROR_STRINGS
+	CXXFLAGS += -DNDEBUG $(OPTIMIZATION_LEVEL) -DTF_LITE_STRIP_ERROR_STRINGS
+	CCFLAGS  += -DNDEBUG $(OPTIMIZATION_LEVEL) -DTF_LITE_STRIP_ERROR_STRINGS
 else
-	CXXFLAGS += -DNDEBUG -O3
-	CCFLAGS  += -DNDEBUG -O3
+	CXXFLAGS += -DNDEBUG $(OPTIMIZATION_LEVEL)
+	CCFLAGS  += -DNDEBUG $(OPTIMIZATION_LEVEL)
 endif
 
 # This library is the main target for this makefile. It will contain a minimal
@@ -106,11 +107,14 @@ MICROLITE_LIB_NAME := libtensorflow-microlite.a
 # These two must be defined before we include the target specific Makefile.inc
 # because we filter out the examples that are not supported for those targets.
 # See targets/xtensa_xpg_makefile.inc for an example.
-# We limit max depth of directories to search to do not include
-# target specific Makefiles that are included directly by the
-# main example Makefile.
-# See examples/micro_speech/Makefile.inc for an example.
+#
+# We limit max depth of directories to search to not include target specific
+# Makefiles that are included directly by the main example Makefile. See
+# examples/micro_speech/Makefile.inc for an example. At the same time, we
+# search till an arbitrary depth for files named Makefile_internal.inc as a way
+# to bypass this check and allow for deeper directory structures.
 MICRO_LITE_EXAMPLE_TESTS := $(shell find tensorflow/lite/micro/examples/ -maxdepth 2 -name Makefile.inc)
+MICRO_LITE_EXAMPLE_TESTS += $(shell find tensorflow/lite/micro/examples/ -name Makefile_internal.inc)
 MICRO_LITE_BENCHMARKS := $(wildcard tensorflow/lite/micro/benchmarks/Makefile.inc)
 
 MICROLITE_TEST_SRCS := \

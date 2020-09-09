@@ -1191,7 +1191,7 @@ class ModelCheckpoint(Callback):
         could reflect as little as 1 batch, since the metrics get reset every
         epoch). Defaults to `'epoch'`.
       options: Optional `tf.train.CheckpointOptions` object if
-        `save_weights_only` is true or optional `tf.saved_model.SavedOptions`
+        `save_weights_only` is true or optional `tf.saved_model.SaveOptions`
         object if `save_weights_only` is false.
       **kwargs: Additional arguments for backwards compatibility. Possible key
         is `period`.
