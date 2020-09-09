@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "mlir/Conversion/GPUCommon/GPUCommonPass.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVM.h"  // from @llvm-project
 #include "mlir/Conversion/StandardToLLVM/ConvertStandardToLLVMPass.h"  // from @llvm-project
 #include "mlir/Dialect/GPU/GPUDialect.h"  // from @llvm-project
@@ -52,13 +53,14 @@ class TestTFFrameworkToLLVMPass
     OwningRewritePatternList patterns;
     populateStdToLLVMConversionPatterns(type_converter, patterns);
     PopulateTFFrameworkToLLVMConversionPatterns(&type_converter, &patterns);
+    populateGpuToLLVMConversionPatterns(type_converter, patterns, "gpu.binary");
     lmhlo::PopulateLhloToLLVMConversionPatterns(&type_converter, &patterns);
 
     // Set target.
     ConversionTarget target(getContext());
     target.addLegalDialect<LLVM::LLVMDialect>();
-    target.addLegalDialect<gpu::GPUDialect>();
-    target.addIllegalDialect<tf_framework::TFFrameworkDialect>();
+    target
+        .addIllegalDialect<gpu::GPUDialect, tf_framework::TFFrameworkDialect>();
     target.addIllegalOp<LLVM::DialectCastOp>();
 
     if (failed(applyPartialConversion(m, target, patterns))) {
