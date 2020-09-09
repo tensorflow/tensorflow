@@ -279,7 +279,7 @@ def _find_cuda_config(base_paths, required_cuda_version, required_cudnn_version)
     return None
 
   def maybe_add_extension(binary_name):
-    return binary_name + ".exe" if _is_windows() else ""
+    return binary_name + (".exe" if _is_windows() else "")
 
   nvcc_name      = maybe_add_extension("nvcc")
   bin2c_name     = maybe_add_extension("bin2c")
