@@ -2231,7 +2231,7 @@ class Model(base_layer.Layer, version_utils.ModelVersionSelector):
                 with gfile.GFile(filename, "rb") as f:
                     zf.writestr(os.path.relpath(filename, temp_ram_location), f.read())
     b.seek(0)
-    return self._reconstruct_pickle, (np.asarray(b.read()), )
+    return self._reconstruct_pickle, (np.asarray(memoryview(b.read())), )
 
   @classmethod
   def _reconstruct_pickle(cls, obj):
