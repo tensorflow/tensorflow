@@ -33,12 +33,16 @@ namespace tensorflow {
 namespace gradients {
 namespace internal {
 namespace {
+using tensorflow::TF_StatusPtr;
 
 class CppGradients
     : public ::testing::TestWithParam<std::tuple<const char*, bool, bool>> {
  protected:
   void SetUp() override {
-    TF_SetTracingImplementation(std::get<0>(GetParam()));
+    TF_StatusPtr status(TF_NewStatus());
+    TF_SetTracingImplementation(std::get<0>(GetParam()), status.get());
+    Status s = StatusFromTF_Status(status.get());
+    CHECK_EQ(errors::OK, s.code()) << s.error_message();
   }
 };
 
